@@ -788,7 +788,6 @@ function parseDeployConfig(raw: string): TreeseedDeployConfig {
 		publicTreeDxFederation: parsePublicTreeDxFederationConfig(parsed.publicTreeDxFederation),
 		connections: parseConnectionsConfig(parsed.connections),
 		processing,
-		capacityProviders: optionalRecord(parsed.capacityProviders, 'capacityProviders') as any,
 		smtp: {
 			enabled: optionalBoolean(smtp.enabled, 'smtp.enabled'),
 		},

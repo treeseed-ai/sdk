@@ -1,5 +1,7 @@
 import path from 'node:path';
-import { TreeDxApiError, TreeDxClient, type TreeDxClientConfig } from './treedx-client.ts';
+import { TreeDxClient } from './treedx/client.ts';
+import { TreeDxApiError } from './treedx/errors.ts';
+import type { TreeDxClientOptions } from './treedx/types.ts';
 import { ContentStore } from './content-store.ts';
 import { parseFrontmatterDocument, serializeFrontmatterDocument } from './frontmatter.ts';
 import { ContentGraphRuntime } from './graph.ts';
@@ -306,11 +308,11 @@ export function resolveTreeDxOptions(input?: AgentSdkTreeDxOptions): ResolvedTre
 }
 
 export function createTreeDxClientFromAgentOptions(options: ResolvedTreeDxOptions) {
-	const config: TreeDxClientConfig = compactObject({
+	const config: TreeDxClientOptions = compactObject({
 		baseUrl: options.baseUrl,
 		token: options.token,
-		fetchImpl: options.fetchImpl,
-	}) as TreeDxClientConfig;
+		fetch: options.fetchImpl,
+	}) as TreeDxClientOptions;
 	return new TreeDxClient(config);
 }
 
@@ -321,7 +323,7 @@ export class TreeDxPortfolioResolver {
 	constructor(private readonly options: TreeDxPortfolioResolverOptions) {}
 
 	async listRepositories() {
-		this.repositoryCache ??= this.options.client.repositories.list().then((response) =>
+		this.repositoryCache ??= this.options.client.listRepositories().then((response) =>
 			arrayFromPayload(response)
 				.filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object' && !Array.isArray(entry))),
 		);
@@ -432,7 +434,8 @@ export class TreeDxContentBackend implements ContentBackend {
 	}
 
 	private async readEntry(definition: SdkModelDefinition, candidate: TreeDxRepositoryCandidate, filePath: string) {
-		const payload = await this.options.client.query.readFile(candidate.repoId, compactObject({
+		const payload = await this.options.client.readRepositoryFiles(compactObject({
+			repoId: candidate.repoId,
 			ref: candidate.ref,
 			path: filePath,
 		}));
@@ -459,9 +462,10 @@ export class TreeDxContentBackend implements ContentBackend {
 		const rule = this.pathRule(definition);
 		const candidates = await this.options.resolver.resolveCandidates(rule);
 		const entries = (await Promise.all(candidates.map(async (candidate) => {
-			const listPayload = await this.options.client.query.listPaths(candidate.repoId, compactObject({
+			const listPayload = await this.options.client.listRepositoryPaths(compactObject({
+				repoId: candidate.repoId,
 				ref: candidate.ref,
-				path: candidate.path,
+				paths: [candidate.path],
 			}));
 			const paths = normalizePathList(listPayload)
 				.filter((filePath) => pathMatchesPattern(filePath, candidate.path))
@@ -556,23 +560,18 @@ export class TreeDxContentBackend implements ContentBackend {
 
 	private async createDirectWorkspace() {
 		if (!this.options.directRepoId) return null;
-		const response = await this.options.client.transport.request({
-			method: 'POST',
-			path: `/api/v1/repos/${segment(this.options.directRepoId)}/workspaces`,
-			body: { mode: 'writable' },
+		const payload = await this.options.client.createWorkspace({
+			repoId: this.options.directRepoId,
+			mode: 'writable',
 		});
-		const payload = response.data as Record<string, unknown>;
 		return stringValue(payload.workspaceId) ?? stringValue(payload.id) ?? null;
 	}
 
 	private async commitDirectWorkspace(workspaceId: string, filePath: string) {
-		await this.options.client.transport.request({
-			method: 'POST',
-			path: `/api/v1/workspaces/${segment(workspaceId)}/commit`,
-			body: {
-				message: `Update ${filePath}`,
-				paths: [filePath],
-			},
+		await this.options.client.commit({
+			workspaceId,
+			message: `Update ${filePath}`,
+			author: { name: 'TreeSeed SDK', email: 'sdk@treeseed.local' },
 		});
 	}
 
@@ -589,7 +588,8 @@ export class TreeDxContentBackend implements ContentBackend {
 		});
 		const filePath = await this.resolveWritePath(definition, slug);
 		const workspaceId = this.options.workspaceId ?? await this.createDirectWorkspace() ?? this.requireWorkspaceId();
-		await this.options.client.files.write(workspaceId, {
+		await this.options.client.writeFile({
+			workspaceId,
 			path: filePath,
 			content: serializeFrontmatterDocument(frontmatter, body),
 		});
@@ -640,7 +640,8 @@ export class TreeDxContentBackend implements ContentBackend {
 			},
 		);
 		const nextBody = typeof request.data.body === 'string' ? request.data.body : existing.body;
-		await this.options.client.files.patch(workspaceId, {
+		await this.options.client.patchFile({
+			workspaceId,
 			path: existing.path,
 			content: serializeFrontmatterDocument(nextFrontmatter, nextBody),
 		});
@@ -685,7 +686,8 @@ export class TreeDxGraphBackend implements GraphBackend {
 			paths: request?.paths?.length ? request.paths : ['**'],
 		});
 		return Promise.all(candidates.map((candidate) =>
-			this.options.client.graph.refresh(candidate.repoId, compactObject({
+			this.options.client.refreshGraph(compactObject({
+				repoId: candidate.repoId,
 				ref: candidate.ref ?? this.options.ref,
 				paths: request?.paths,
 			})),
@@ -702,16 +704,13 @@ export class TreeDxGraphBackend implements GraphBackend {
 
 	async queryGraph(request: SdkGraphQueryRequest) {
 		if (this.options.directRepoId) {
-			return this.options.client.request({
-				method: 'POST',
-				path: `/api/v1/repos/${segment(this.options.directRepoId)}/graph/query`,
-				body: compactObject({
+			return this.options.client.queryGraph(compactObject({
+				repoId: this.options.directRepoId,
 					...request,
 					ref: this.options.ref,
-				}),
-			});
+				}));
 		}
-		return this.options.client.federation.graphQuery({
+		return this.options.client.federatedGraph({
 			...request,
 			repoIds: await this.repoIds(),
 			ref: this.options.ref,
@@ -721,26 +720,24 @@ export class TreeDxGraphBackend implements GraphBackend {
 	async buildContextPack(request: SdkContextPackRequest) {
 		if (this.options.directRepoId) {
 			const build = () =>
-				this.options.client.request({
-					method: 'POST',
-					path: `/api/v1/repos/${segment(this.options.directRepoId!)}/context/build`,
-					body: compactObject({
+				this.options.client.buildContext(compactObject({
+					repoId: this.options.directRepoId,
 						...request,
 						ref: this.options.ref,
-					}),
-				});
+					}));
 			try {
 				return await build();
 			} catch (error) {
 				if (!isGraphNotReadyError(error)) throw error;
-				await this.options.client.graph.refresh(this.options.directRepoId, compactObject({
+				await this.options.client.refreshGraph(compactObject({
+					repoId: this.options.directRepoId,
 					ref: this.options.ref,
 					paths: ['**'],
 				}));
 				return await build();
 			}
 		}
-		return this.options.client.federation.contextBuild({
+		return this.options.client.federatedContext({
 			...request,
 			repoIds: await this.repoIds(),
 			ref: this.options.ref,
@@ -768,7 +765,12 @@ export class TreeDxExecBackend implements ExecBackend {
 		if (!this.workspaceId) {
 			throw new Error('TreeDX exec requires treeDx.workspaceId.');
 		}
-		return this.client.exec.run(this.workspaceId, input);
+		const request = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {};
+		return this.client.exec({
+			workspaceId: this.workspaceId,
+			cmd: String(request.cmd ?? request.command ?? ''),
+			...(request.mode ? { mode: request.mode as 'read_only' | 'verification' | 'write_limited' } : {}),
+		});
 	}
 }
 

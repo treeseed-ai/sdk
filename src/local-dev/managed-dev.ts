@@ -1,6 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, appendFileSync, openSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { buildManagedDevProcessSpec } from './managed-dev-process-spec.ts';
 
 export type TreeseedManagedDevSurface = 'web' | 'api' | 'operations-runner' | string;
 export type TreeseedManagedDevAction = 'start' | 'status' | 'logs' | 'stop' | 'restart';
@@ -17,6 +18,7 @@ export type TreeseedManagedDevProcessSpec = {
 	logPath: string;
 	pidPath: string;
 	instancePath: string;
+	sourceClosureDigest: string | null;
 };
 
 export type TreeseedIntegratedDevPlan = {
@@ -50,6 +52,8 @@ export type TreeseedDevInstance = TreeseedManagedDevProcessSpec & {
 	running: boolean;
 	healthStatus?: Array<{ id: string; ok: boolean; status: number | null; url: string; error?: string }>;
 	startedAt?: string | null;
+	startedSourceClosureDigest: string | null;
+	sourceClosureMatches: boolean;
 };
 
 export type TreeseedManagedDevResult = {
@@ -186,170 +190,9 @@ function persistedInstanceRecord(spec: TreeseedManagedDevProcessSpec, pid: numbe
 		logPath: spec.logPath,
 		pidPath: spec.pidPath,
 		instancePath: spec.instancePath,
+		sourceClosureDigest: spec.sourceClosureDigest,
 		pid,
 		startedAt: new Date().toISOString(),
-	};
-}
-
-function scriptCommand(tenantRoot: string, script: string, args: string[] = []) {
-	return {
-		command: 'npm',
-		args: ['run', script, '--', ...args],
-		cwd: tenantRoot,
-	};
-}
-
-function apiCommand(tenantRoot: string, script: 'api' | 'runner') {
-	return {
-		command: 'npm',
-		args: ['-w', 'packages/api', 'run', script === 'api' ? 'dev:api' : 'dev:runner'],
-		cwd: tenantRoot,
-	};
-}
-
-function localApiEnvironment(apiPort: number) {
-	const apiBaseUrl = `http://127.0.0.1:${apiPort}`;
-	return {
-		TREESEED_DATABASE_URL: 'postgresql://treeseed:treeseed-local-dev@127.0.0.1:54329/treeseed_api',
-		TREESEED_API_BASE_URL: apiBaseUrl,
-		TREESEED_CAPACITY_ACCEPTANCE_API_URL: apiBaseUrl,
-		TREESEED_CAPACITY_ACCEPTANCE_ADMIN_TOKEN: 'tsk_local_treeseed_acceptance_admin',
-		TREESEED_CAPACITY_ACCEPTANCE_TEAM_ID: 'd8a613c2-bbdb-4474-9c96-31e985beafd4',
-		TREESEED_CAPACITY_ACCEPTANCE_PROJECT_ID: '90764af2-5a13-42b9-a2fa-fb3af5882323',
-		TREESEED_CAPACITY_ACCEPTANCE_PROVIDER_ID: 'ff48ce97-6959-46b5-be9f-9b7062161fe3',
-		TREESEED_CAPACITY_ACCEPTANCE_AGENT_CLASS_ID: 'planning',
-		TREESEED_CAPACITY_ACCEPTANCE_ENVIRONMENT: 'local',
-		TREESEED_CAPACITY_PROVIDER_API_KEY: 'tsp_local_treeseed_demo_capacity_provider',
-		TREESEED_API_PROVIDER_AUTH: 'market-postgres',
-		TREESEED_API_AUTH_SECRET: 'treeseed-api-dev-secret',
-		TREESEED_API_WEB_SERVICE_ID: 'web',
-		TREESEED_API_WEB_SERVICE_SECRET: 'treeseed-web-service-dev-secret',
-		TREESEED_API_WEB_ASSERTION_SECRET: 'treeseed-web-assertion-dev-secret',
-		TREESEED_TREEDX_URL: 'http://127.0.0.1:4000',
-		TREESEED_TREEDX_JWT_ISSUER: 'https://api.treeseed.local/treedx',
-		TREESEED_TREEDX_JWT_AUDIENCE: 'treedx-local',
-		TREESEED_TREEDX_JWT_HS256_SECRET: 'treeseed-local-treedx-jwt-secret',
-		TREESEED_TREEDX_PROXY_ACTOR_ID: 'treeseed-api',
-		TREESEED_TREEDX_PROXY_TENANT_ID: 'treeseed-control-plane',
-		TREESEED_SMTP_HOST: '127.0.0.1',
-		TREESEED_SMTP_PORT: '1025',
-		TREESEED_SMTP_USERNAME: '',
-		TREESEED_SMTP_PASSWORD: '',
-		TREESEED_SMTP_FROM: 'TreeSeed Local <noreply@treeseed.local>',
-		TREESEED_SMTP_REPLY_TO: 'noreply@treeseed.local',
-		TREESEED_MAILPIT_SMTP_HOST: '127.0.0.1',
-		TREESEED_MAILPIT_SMTP_PORT: '1025',
-		TREESEED_MAILPIT_UI_URL: 'http://127.0.0.1:8025',
-		TREESEED_PLATFORM_RUNNER_ID: 'treeseed-ops-local-1',
-		TREESEED_PLATFORM_RUNNER_SECRET: 'treeseed-platform-runner-dev-secret',
-		TREESEED_PLATFORM_RUNNER_ENVIRONMENT: 'local',
-		TREESEED_ENVIRONMENT: 'local',
-		TREESEED_API_ENVIRONMENT: 'local',
-		TREESEED_LOCAL_DEV_MODE: '1',
-	};
-}
-
-function localWebEnvironment(apiPort: number) {
-	const apiBaseUrl = `http://127.0.0.1:${apiPort}`;
-	return {
-		TREESEED_MARKET_API_BASE_URL: apiBaseUrl,
-		TREESEED_CENTRAL_MARKET_API_BASE_URL: apiBaseUrl,
-		TREESEED_API_BASE_URL: apiBaseUrl,
-		TREESEED_CAPACITY_ACCEPTANCE_API_URL: apiBaseUrl,
-		TREESEED_CAPACITY_ACCEPTANCE_ADMIN_TOKEN: 'tsk_local_treeseed_acceptance_admin',
-		TREESEED_CAPACITY_ACCEPTANCE_TEAM_ID: 'd8a613c2-bbdb-4474-9c96-31e985beafd4',
-		TREESEED_CAPACITY_ACCEPTANCE_PROJECT_ID: '90764af2-5a13-42b9-a2fa-fb3af5882323',
-		TREESEED_CAPACITY_ACCEPTANCE_PROVIDER_ID: 'ff48ce97-6959-46b5-be9f-9b7062161fe3',
-		TREESEED_CAPACITY_ACCEPTANCE_AGENT_CLASS_ID: 'planning',
-		TREESEED_CAPACITY_ACCEPTANCE_ENVIRONMENT: 'local',
-		TREESEED_CAPACITY_PROVIDER_API_KEY: 'tsp_local_treeseed_demo_capacity_provider',
-		TREESEED_API_WEB_SERVICE_ID: 'web',
-		TREESEED_API_WEB_SERVICE_SECRET: 'treeseed-web-service-dev-secret',
-		TREESEED_API_WEB_ASSERTION_SECRET: 'treeseed-web-assertion-dev-secret',
-		TREESEED_SMTP_HOST: '127.0.0.1',
-		TREESEED_SMTP_PORT: '1025',
-		TREESEED_SMTP_USERNAME: '',
-		TREESEED_SMTP_PASSWORD: '',
-		TREESEED_SMTP_FROM: 'TreeSeed Local <noreply@treeseed.local>',
-		TREESEED_SMTP_REPLY_TO: 'noreply@treeseed.local',
-		TREESEED_MAILPIT_SMTP_HOST: '127.0.0.1',
-		TREESEED_MAILPIT_SMTP_PORT: '1025',
-		TREESEED_MAILPIT_UI_URL: 'http://127.0.0.1:8025',
-		TREESEED_ENVIRONMENT: 'local',
-		TREESEED_LOCAL_DEV_MODE: '1',
-	};
-}
-
-function processSpec(input: {
-	tenantRoot: string;
-	stateDir: string;
-	logDir: string;
-	surface: string;
-	options: TreeseedManagedDevOptions;
-}): TreeseedManagedDevProcessSpec {
-	const host = input.options.webHost ?? '127.0.0.1';
-	const webPort = input.options.webPort ?? 4321;
-	const apiHost = input.options.apiHost ?? '0.0.0.0';
-	const apiPort = input.options.apiPort ?? 3000;
-	const id = input.surface === 'operations-runner' ? 'operations-runner' : input.surface;
-	const logPath = resolve(input.logDir, `${id}.log`);
-	const pidPath = resolve(input.stateDir, 'pids', `${id}.pid`);
-	const instancePath = resolve(input.stateDir, 'instances', `${id}.json`);
-	const env = Object.fromEntries(
-		Object.entries(input.options.env ?? {})
-			.filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
-	);
-	if (input.surface === 'api') {
-		const command = apiCommand(input.tenantRoot, 'api');
-		return {
-			id,
-			surface: input.surface,
-			...command,
-			env: { ...localApiEnvironment(apiPort), ...env, HOST: apiHost, PORT: String(apiPort) },
-			port: apiPort,
-			health: [{ id: 'api', kind: 'http', url: `http://${apiHost}:${apiPort}/healthz` }],
-			logPath,
-			pidPath,
-			instancePath,
-		};
-	}
-	if (input.surface === 'operations-runner') {
-		const runnerPort = Number(env.TREESEED_OPERATIONS_RUNNER_PORT ?? 3001);
-		const command = apiCommand(input.tenantRoot, 'runner');
-		return {
-			id,
-			surface: input.surface,
-			...command,
-			env: { ...localApiEnvironment(apiPort), ...env, PORT: String(runnerPort) },
-			port: runnerPort,
-			health: [{ id: 'operations-runner', kind: 'http', url: `http://127.0.0.1:${runnerPort}/readyz` }],
-			logPath,
-			pidPath,
-			instancePath,
-		};
-	}
-	const webRuntime = input.options.webRuntime ?? 'local';
-	const tenantAstroCommand = `./packages/sdk/scripts/tenant-astro-command.${'ts'}`;
-	const webArgs = webRuntime === 'provider'
-		? ['--host', host, '--port', String(webPort)]
-		: ['dev', '--host', host, '--port', String(webPort)];
-	const command = webRuntime === 'provider'
-		? scriptCommand(input.tenantRoot, 'build:web', [])
-		: {
-			command: process.execPath,
-			args: ['--import', 'tsx', tenantAstroCommand, ...webArgs],
-			cwd: input.tenantRoot,
-		};
-	return {
-		id: 'web',
-		surface: 'web',
-		...command,
-		env: { ...localWebEnvironment(apiPort), ...env },
-		port: webPort,
-		health: [{ id: 'web', kind: 'http', url: `http://${host}:${webPort}` }],
-		logPath,
-		pidPath,
-		instancePath,
 	};
 }
 
@@ -365,18 +208,23 @@ export function createTreeseedIntegratedDevPlan(options: TreeseedManagedDevOptio
 		worktreeRoot: tenantRoot,
 		stateDir,
 		logDir,
-		processes: surfaces.map((surface) => processSpec({ tenantRoot, stateDir, logDir, surface, options })),
+		processes: surfaces.map((surface) => buildManagedDevProcessSpec({ tenantRoot, stateDir, logDir, surface, options })),
 	};
 }
 
 function instanceFromSpec(spec: TreeseedManagedDevProcessSpec): TreeseedDevInstance {
 	const pid = existsSync(spec.pidPath) ? Number(readFileSync(spec.pidPath, 'utf8').trim()) : null;
 	const record = readJson(spec.instancePath);
+	const startedSourceClosureDigest = typeof record?.sourceClosureDigest === 'string'
+		? record.sourceClosureDigest
+		: null;
 	return {
 		...spec,
 		pid: Number.isFinite(pid) ? pid : null,
 		running: Number.isFinite(pid) ? processGroupAlive(pid as number) : false,
 		startedAt: typeof record?.startedAt === 'string' ? record.startedAt : null,
+		startedSourceClosureDigest,
+		sourceClosureMatches: spec.sourceClosureDigest === startedSourceClosureDigest,
 	};
 }
 
@@ -444,7 +292,7 @@ async function stopSpec(spec: TreeseedManagedDevProcessSpec) {
 async function startSpec(spec: TreeseedManagedDevProcessSpec, force = false, forceConflicts = false) {
 	const existingProcess = instanceFromSpec(spec);
 	const existing = await instanceFromSpecWithHealth(spec);
-	if (existing.running && !force) {
+	if (existing.running && existing.sourceClosureMatches && !force) {
 		return existing;
 	}
 	if (existingProcess.running) {
@@ -488,7 +336,7 @@ export async function startTreeseedManagedDev(options: TreeseedManagedDevOptions
 		await startSpec(spec, options.force === true, options.forceConflicts === true);
 		instances.push(await waitForHealthySpec(spec));
 	}
-	return { ok: instances.every((entry) => entry.running), action: 'start', plan, instances };
+	return { ok: instances.every((entry) => entry.running && entry.sourceClosureMatches), action: 'start', plan, instances };
 }
 
 export async function stopTreeseedManagedDev(options: TreeseedManagedDevOptions = {}): Promise<TreeseedManagedDevResult> {
@@ -527,7 +375,7 @@ export async function runTreeseedManagedDev(options: TreeseedManagedDevOptions):
 	const instances = await Promise.all(plan.processes.map((spec) => instanceFromSpecWithHealth(spec)));
 	const logs = action === 'logs' ? readTreeseedDevLogs(options) : undefined;
 	return {
-		ok: action === 'logs' ? true : instances.every((entry) => entry.running),
+		ok: action === 'logs' ? true : instances.every((entry) => entry.running && entry.sourceClosureMatches),
 		action,
 		plan,
 		instances,

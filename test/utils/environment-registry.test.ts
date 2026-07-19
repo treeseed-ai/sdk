@@ -759,9 +759,6 @@ describe('environment registry overlays', () => {
 		expect(findRegistryEntry(registry, 'TREESEED_RAILWAY_PROJECT_ID')?.scopes).toEqual(
 			findRegistryEntry(registry, 'TREESEED_RAILWAY_PROJECT_ID') ? ['staging', 'prod'] : undefined,
 		);
-		expect(findRegistryEntry(registry, 'TREESEED_WORKER_POOL_SCALER')?.scopes).toEqual(
-			findRegistryEntry(registry, 'TREESEED_WORKER_POOL_SCALER') ? ['staging', 'prod'] : undefined,
-		);
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_GITHUB_TOKEN')?.scopes).toEqual(['local', 'staging', 'prod']);
 	});
 

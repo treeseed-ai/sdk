@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 import {
 	TREESEED_AGENT_TOOL_DEFINITIONS,
 	assertKnownAgentToolIds,
@@ -55,8 +56,17 @@ describe('agent tool registry', () => {
 			const output = execFileSync('find', [root, '-name', '*.mdx'], { encoding: 'utf8' });
 			for (const file of output.split('\n').filter(Boolean)) {
 				const source = readFileSync(file, 'utf8');
-				for (const match of source.matchAll(/^\s+-\s+([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+)$/gmu)) {
-					ids.push(match[1]);
+				const frontmatter = source.match(/^---\n([\s\S]*?)\n---/u)?.[1];
+				const document = frontmatter ? parseYaml(frontmatter) as Record<string, unknown> : {};
+				const profiles = document.activityProfiles && typeof document.activityProfiles === 'object'
+					? document.activityProfiles as Record<string, unknown>
+					: {};
+				for (const profile of Object.values(profiles)) {
+					if (!profile || typeof profile !== 'object') continue;
+					const tools = (profile as Record<string, unknown>).tools;
+					if (!tools || typeof tools !== 'object') continue;
+					const allowed = (tools as Record<string, unknown>).allowed;
+					if (Array.isArray(allowed)) ids.push(...allowed.filter((id): id is string => typeof id === 'string'));
 				}
 			}
 		}

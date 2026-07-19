@@ -6,7 +6,7 @@ import { ContentStore } from '../../src/content-store.ts';
 import { MemoryAgentDatabase } from '../../src/d1-store.ts';
 import { ContentGraphRuntime } from '../../src/graph.ts';
 import { AgentSdk } from '../../src/sdk.ts';
-import { TreeDxApiError, TreeDxClient, type Transport, type TreeDxRequest, type TreeDxResponse } from '../../src/treedx-client.ts';
+import { TreeDxApiError, TreeDxClient } from '../../src/treedx/index.ts';
 import {
 	LocalContentBackend,
 	TreeDxContentBackend,
@@ -19,29 +19,48 @@ import {
 import { buildScopedModelRegistry } from '../../src/model-registry.ts';
 import { sdkFixtureRoot } from '../test-fixture.ts';
 
-class RecordingTransport implements Transport {
-	readonly requests: TreeDxRequest[] = [];
+interface RecordedTreeDxRequest {
+	method: string;
+	path: string;
+	query: Record<string, string>;
+	body?: unknown;
+}
 
-	constructor(private readonly handler: (request: TreeDxRequest) => unknown) {}
+class RecordingTransport {
+	readonly requests: RecordedTreeDxRequest[] = [];
 
-	async request<T = unknown>(request: TreeDxRequest): Promise<TreeDxResponse<T>> {
+	constructor(private readonly handler: (request: RecordedTreeDxRequest) => unknown) {}
+
+	readonly fetch = async (input: string | URL | Request, init?: RequestInit) => {
+		const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
+		const request: RecordedTreeDxRequest = {
+			method: init?.method ?? 'GET',
+			path: url.pathname,
+			query: Object.fromEntries(url.searchParams.entries()),
+			...(typeof init?.body === 'string' ? { body: JSON.parse(init.body) } : {}),
+		};
 		this.requests.push(request);
 		const data = this.handler(request);
 		if (data instanceof TreeDxApiError) {
-			throw data;
+			return new Response(JSON.stringify({
+				error: { code: data.code, message: data.message, details: data.details },
+			}), {
+				status: data.status,
+				headers: { 'content-type': 'application/json' },
+			});
 		}
-		return {
+		return new Response(JSON.stringify(data), {
 			status: 200,
 			headers: { 'content-type': 'application/json' },
-			data: data as T,
-		};
-	}
+		});
+	};
 }
 
 function makeTreeDxClient(transport: RecordingTransport) {
 	return new TreeDxClient({
 		baseUrl: 'http://treedx.test',
-		transport,
+		token: 'test-token',
+		fetch: transport.fetch as typeof fetch,
 	});
 }
 
@@ -73,7 +92,7 @@ function makeBackend(options: {
 	});
 }
 
-function contentHandler(request: TreeDxRequest) {
+function contentHandler(request: RecordedTreeDxRequest) {
 	if (request.method === 'GET' && request.path === '/api/v1/repos') {
 		return {
 			items: [
@@ -273,10 +292,9 @@ describe('TreeDX-backed TreeSeed content repository', () => {
 	});
 
 	it('preserves TreeDxApiError failures from the local TreeDX client', async () => {
-		const error = new TreeDxApiError({
+		const error = new TreeDxApiError('Denied', {
 			status: 403,
 			code: 'permission_denied',
-			message: 'Denied',
 			payload: { error: { code: 'permission_denied', message: 'Denied' } },
 		});
 		const transport = new RecordingTransport((request) => {
@@ -285,7 +303,12 @@ describe('TreeDX-backed TreeSeed content repository', () => {
 		});
 		const backend = makeBackend({ transport });
 
-		await expect(backend.list('page')).rejects.toBe(error);
+		await expect(backend.list('page')).rejects.toMatchObject({
+			name: 'TreeDxApiError',
+			status: 403,
+			code: 'permission_denied',
+			message: 'Denied',
+		});
 	});
 
 	it('routes primary graph and exec operations through generic TreeDX adapters', async () => {
@@ -352,10 +375,9 @@ describe('TreeDX-backed TreeSeed content repository', () => {
 			if (request.path === '/api/v1/repos/repo-scoped/context/build') {
 				contextAttempts += 1;
 				if (contextAttempts === 1) {
-					return new TreeDxApiError({
+					return new TreeDxApiError('Graph is not ready.', {
 						status: 404,
 						code: 'graph_not_ready',
-						message: 'Graph is not ready.',
 					});
 				}
 			}

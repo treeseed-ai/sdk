@@ -71,31 +71,63 @@ describe('live reconciliation acceptance harness', () => {
 			const method = init?.method ?? 'GET';
 			const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : {};
 			calls.push({ method, path: url.pathname, body });
-			if (method === 'POST' && url.pathname === '/v1/provider/check-in') {
-				return Response.json({ ok: true, payload: { id: `${prefix}-session`, capacityProviderId: 'provider_123', status: 'open' } });
+			if (method === 'GET' && url.pathname === '/v1/projects') {
+				return Response.json({ ok: true, payload: [{ id: 'project_123', slug: 'market', teamId: 'team_123' }] });
+			}
+			if (method === 'GET' && url.pathname === '/v1/projects/project_123/treedx-library') {
+				return Response.json({ ok: true, payload: { projectId: 'project_123', repositoryId: 'repo_123' } });
+			}
+			if (method === 'POST' && url.pathname === '/v1/provider/availability-sessions') {
+				return Response.json({ ok: true, payload: { id: `${prefix}-session`, membershipId: 'membership_123', teamId: 'team_123', providerId: 'provider_123', status: 'open', sequence: 1, snapshot: { sequence: 1, availableFrom: '2026-06-08T12:00:00.000Z', pressure: 'idle', maxConcurrentAssignments: 1, activeAssignmentIds: [], executionProviders: [], capabilities: [] }, openedAt: '2026-06-08T12:00:00.000Z', refreshedAt: '2026-06-08T12:00:00.000Z', expiresAt: '2026-06-08T12:01:30.000Z' } });
+			}
+			if (method === 'PUT' && url.pathname === `/v1/provider/availability-sessions/${prefix}-session`) {
+				return Response.json({ ok: true, payload: { id: `${prefix}-session`, membershipId: 'membership_123', teamId: 'team_123', providerId: 'provider_123', status: 'open', sequence: 2, snapshot: { sequence: 2, availableFrom: '2026-06-08T12:00:00.000Z', pressure: 'idle', maxConcurrentAssignments: 1, activeAssignmentIds: [], executionProviders: [], capabilities: [] }, openedAt: '2026-06-08T12:00:00.000Z', refreshedAt: '2026-06-08T12:00:01.000Z', expiresAt: '2026-06-08T12:01:31.000Z' } });
+			}
+			if (method === 'POST' && url.pathname === `/v1/provider/availability-sessions/${prefix}-session/close`) {
+				return Response.json({ ok: true, payload: { id: `${prefix}-session`, membershipId: 'membership_123', teamId: 'team_123', providerId: 'provider_123', status: 'closed', sequence: 3, snapshot: { sequence: 3, availableFrom: '2026-06-08T12:00:00.000Z', pressure: 'idle', maxConcurrentAssignments: 1, activeAssignmentIds: [], executionProviders: [], capabilities: [] }, openedAt: '2026-06-08T12:00:00.000Z', refreshedAt: '2026-06-08T12:00:02.000Z', expiresAt: '2026-06-08T12:01:32.000Z' } });
 			}
 			if (method === 'GET' && url.pathname === '/v1/projects/project_123/agent-classes') {
-				return Response.json({ ok: true, payload: [{ id: 'agent_class_123', slug: 'agent_class_123', status: 'active' }] });
+				return Response.json({ ok: true, payload: { items: [{ id: 'agent_class_123', slug: 'agent_class_123', status: 'active' }], page: { hasMore: false, nextCursor: null } } });
 			}
 			if (method === 'GET' && url.pathname === '/v1/teams/team_123/capacity-grants') {
 				return Response.json({
 					ok: true,
-					payload: [{
+					payload: { items: [{
 						id: 'grant_123',
 						teamId: 'team_123',
 						projectId: 'project_123',
-						capacityProviderId: 'provider_123',
-						laneId: 'provider_123:agent-capacity',
-						state: 'active',
+						providerId: 'provider_123',
+						membershipId: 'membership_123',
+						status: 'active',
 						environment: 'local',
-					}],
+					}], page: { hasMore: false, nextCursor: null } },
 				});
 			}
-			if (method === 'POST' && url.pathname === '/v1/projects/project_123/capacity/reservations') {
-				return Response.json({ ok: true, payload: { id: body.id ?? `${prefix}-reservation`, status: 'reserved' } }, { status: 201 });
+			if (method === 'GET' && url.pathname === '/v1/teams/team_123/capacity-grants/grant_123') {
+				return Response.json({ ok: true, payload: {
+					id: 'grant_123', teamId: 'team_123', projectId: 'project_123', providerId: 'provider_123',
+					membershipId: 'membership_123', status: 'active', environment: 'local',
+				} });
 			}
-			if (method === 'POST' && url.pathname === '/v1/teams/team_123/capacity/assignments') {
-				return Response.json({ ok: true, payload: { id: assignmentId, status: 'pending' } }, { status: 201 });
+			if (method === 'GET' && url.pathname === '/v1/teams/team_123/capacity/allocation-sets') {
+				return Response.json({ ok: true, payload: { items: [
+					{ id: 'allocation_expired', status: 'active', effectiveFrom: '2025-01-01T00:00:00.000Z', effectiveUntil: '2025-02-01T00:00:00.000Z' },
+					{ id: 'allocation_123', status: 'active', effectiveFrom: '2026-01-01T00:00:00.000Z', effectiveUntil: '2099-01-01T00:00:00.000Z' },
+				], page: { hasMore: false, nextCursor: null } } });
+			}
+			if (method === 'GET' && url.pathname === '/v1/teams/team_123/capacity/allocation-sets/allocation_123') {
+				return Response.json({ ok: true, payload: {
+					id: 'allocation_123', status: 'active', effectiveFrom: '2026-01-01T00:00:00.000Z', effectiveUntil: '2099-01-01T00:00:00.000Z',
+				} });
+			}
+			if (method === 'POST' && url.pathname === '/v1/workdays') {
+				return Response.json({ ok: true, payload: { id: body.id, status: 'active' } }, { status: 201 });
+			}
+			if (method === 'POST' && url.pathname === `/v1/workdays/${prefix}-workday/complete`) {
+				return Response.json({ ok: true, payload: { id: `${prefix}-workday`, status: 'completed' } });
+			}
+			if (method === 'POST' && url.pathname === '/v1/teams/team_123/capacity/admissions') {
+				return Response.json({ ok: true, payload: { replayed: false, reservation: { id: body.reservationId }, assignment: { id: assignmentId, status: 'pending' } } }, { status: 201 });
 			}
 			if (method === 'POST' && url.pathname === '/v1/provider/assignments/next') {
 				return Response.json({ ok: true, payload: { id: assignmentId, status: 'leased', leaseState: 'leased' }, leaseToken: 'lease_123' });
@@ -106,9 +138,41 @@ describe('live reconciliation acceptance harness', () => {
 			if (method === 'POST' && url.pathname === `/v1/provider/assignments/${assignmentId}/complete`) {
 				return Response.json({ ok: true, payload: { id: assignmentId, status: 'completed', leaseState: 'released' } });
 			}
+			if (method === 'GET' && url.pathname === `/v1/teams/team_123/capacity/assignments/${assignmentId}`) {
+				return Response.json({ ok: true, payload: {
+					id: assignmentId,
+					status: 'completed',
+					workDayId: `${prefix}-workday`,
+					treedxProxyHandle: { id: 'handle_123', status: 'revoked', revokedAt: '2026-06-08T12:01:00.000Z' },
+					capabilityHandles: { repository: [{ id: 'repository_123', status: 'revoked' }], treeDx: [{ id: 'treedx_123', status: 'revoked' }] },
+					lifecycleOutput: { artifactManifest: {
+						assignmentId,
+						contentReferences: [{ contentPath: 'src/content/notes/acceptance.mdx', ref: 'refs/heads/acceptance', commitSha: 'abc123' }],
+						toolEvents: [
+							{ toolId: 'treeseed.content.create', status: 'completed' },
+							{ toolId: 'treeseed.content.commit', status: 'completed' },
+						],
+					} },
+				} });
+			}
+			if (method === 'POST' && url.pathname === '/v1/dx/projects/project_123/repos/repo_123/files/read') {
+				return Response.json({ ok: true, payload: { files: [{ path: 'src/content/notes/acceptance.mdx', content: '---\ntitle: Acceptance\n---' }] } });
+			}
+			if (method === 'GET' && url.pathname === '/v1/teams/team_123/capacity/reservations') {
+				return Response.json({ ok: true, payload: { items: [{ assignmentId, state: 'consumed' }], page: { hasMore: false, nextCursor: null } } });
+			}
+			if (method === 'GET' && url.pathname === '/v1/teams/team_123/capacity/usage') {
+				return Response.json({ ok: true, payload: { items: [{ assignmentId, accountingMode: 'aggregate' }, { assignmentId, accountingMode: 'informational' }], page: { hasMore: false, nextCursor: null } } });
+			}
+			if (method === 'GET' && url.pathname === '/v1/teams/team_123/capacity/ledger') {
+				return Response.json({ ok: true, payload: { items: [{ assignmentId, settlementKey: 'settlement_123' }], page: { hasMore: false, nextCursor: null } } });
+			}
+			if (method === 'POST' && url.pathname === `/v1/provider/assignments/${assignmentId}/settle`) {
+				return Response.json({ ok: true, payload: { replayed: false, entry: { settlement_key: 'settlement_123' } } }, { status: 201 });
+			}
 			if (method === 'GET' && url.pathname === '/v1/projects/project_123/agent-mode-runs') {
 				expect(url.searchParams.get('assignmentId')).toBe(assignmentId);
-				return Response.json({ ok: true, payload: [{ id: 'mode_run_123', providerAssignmentId: assignmentId }] });
+				return Response.json({ ok: true, payload: { items: [{ id: 'mode_run_123', providerAssignmentId: assignmentId, status: 'succeeded' }], page: { hasMore: false, nextCursor: null } } });
 			}
 			if (method === 'POST' && url.pathname === `/v1/dx/projects/project_123/repos/capacity-proof-${runId}/files/read`) {
 				return Response.json({ error: 'forbidden' }, { status: 403 });
@@ -127,8 +191,9 @@ describe('live reconciliation acceptance harness', () => {
 				TREESEED_CAPACITY_ACCEPTANCE_TEAM_ID: 'team_123',
 				TREESEED_CAPACITY_ACCEPTANCE_PROJECT_ID: 'project_123',
 				TREESEED_CAPACITY_ACCEPTANCE_PROVIDER_ID: 'provider_123',
+				TREESEED_CAPACITY_ACCEPTANCE_MEMBERSHIP_ID: 'membership_123',
 				TREESEED_CAPACITY_ACCEPTANCE_AGENT_CLASS_ID: 'agent_class_123',
-				TREESEED_CAPACITY_PROVIDER_API_KEY: 'provider-key',
+				TREESEED_CAPACITY_ACCEPTANCE_PROVIDER_ACCESS_TOKEN: 'provider-access-token',
 			},
 			runId,
 			fetchImpl,
@@ -136,7 +201,7 @@ describe('live reconciliation acceptance harness', () => {
 		const local = result.providers[0];
 		const proof = local?.scenarioResults.find((entry) => entry.capability === 'capacity-provider-assignment-proof');
 
-		expect(proof?.ok).toBe(true);
+		expect(proof?.ok, JSON.stringify(proof)).toBe(true);
 		expect(proof?.retainedResources[0]).toMatchObject({
 			id: assignmentId,
 			type: 'capacity-runtime-proof',
@@ -147,7 +212,28 @@ describe('live reconciliation acceptance harness', () => {
 			},
 		});
 		expect(calls.map((call) => `${call.method} ${call.path}`)).toContain('POST /v1/provider/assignments/next');
+		expect(calls.find((call) => call.method === 'POST' && call.path === '/v1/workdays')?.body.allocationSetId).toBe('allocation_123');
 		expect(result.ok).toBe(true);
+	});
+
+	it('keeps local cleanup non-creating and does not run a capacity assignment proof', async () => {
+		const fetchImpl = vi.fn(async () => {
+			throw new Error('Local cleanup must not call the capacity control plane.');
+		}) as unknown as typeof fetch;
+		const result = await runTreeseedLiveReconcileTests({
+			cwd: process.cwd(),
+			environment: 'local',
+			mode: 'cleanup',
+			providers: ['local'],
+			runId: '20260608120001',
+			fetchImpl,
+		});
+
+		expect(result.ok).toBe(true);
+		expect(fetchImpl).not.toHaveBeenCalled();
+		expect(result.providers[0]?.scenarioResults).toHaveLength(6);
+		expect(result.providers[0]?.scenarioResults.every((entry) => ['noop', 'delete'].includes(entry.action))).toBe(true);
+		expect(result.providers[0]?.retainedResources).toEqual([]);
 	});
 
 	it('cleans stale Cloudflare live-test Pages projects without deleting the static project', async () => {

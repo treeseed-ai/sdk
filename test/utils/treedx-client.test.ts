@@ -87,6 +87,59 @@ describe('TreeDxClient', () => {
 		expect(JSON.parse(String(calls[3]?.init.body))).toMatchObject({ content: 'hello' });
 	});
 
+	it('lists, registers, and batch-reads repositories through the canonical client', async () => {
+		const repository = {
+			repoId: 'repo_1',
+			name: 'treeseed-market',
+			repositoryName: 'treeseed-market',
+			defaultRef: 'refs/heads/main',
+			status: 'ready',
+		};
+		const { client, calls } = mockClient([
+			{ ok: true, repos: [repository] },
+			{ ok: true, repo: repository },
+			{
+				ok: true,
+				repoId: 'repo_1',
+				ref: 'refs/heads/main',
+				resolvedRef: 'abc',
+				files: [
+					{ path: 'src/content/agents/engineer.mdx', content: 'engineer' },
+					{ path: 'src/content/agents/researcher.mdx', content: 'researcher' },
+				],
+			},
+		]);
+
+		await expect(client.listRepositories()).resolves.toEqual([repository]);
+		await expect(client.registerRepository({
+			name: 'treeseed-market',
+			repositoryName: 'treeseed-market',
+			createIfMissing: true,
+			defaultRef: 'refs/heads/main',
+		})).resolves.toEqual(repository);
+		await expect(client.readRepositoryFiles({
+			repoId: 'repo_1',
+			ref: 'refs/heads/main',
+			paths: [
+				'src/content/agents/engineer.mdx',
+				'src/content/agents/researcher.mdx',
+			],
+		})).resolves.toMatchObject({ files: expect.any(Array) });
+
+		expect(calls.map((call) => call.url)).toEqual([
+			'https://treedx.example.test/api/v1/repos',
+			'https://treedx.example.test/api/v1/repos/register',
+			'https://treedx.example.test/api/v1/repos/repo_1/files/read',
+		]);
+		expect(JSON.parse(String(calls[2]?.init.body))).toMatchObject({
+			ref: 'refs/heads/main',
+			paths: [
+				'src/content/agents/engineer.mdx',
+				'src/content/agents/researcher.mdx',
+			],
+		});
+	});
+
 	it('throws TreeDxApiError for API, non-json, network, and missing repo errors', async () => {
 		const apiClient = new TreeDxClient({
 			baseUrl: 'https://treedx.example.test',

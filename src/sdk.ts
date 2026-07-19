@@ -52,17 +52,12 @@ import type {
 import type {
 	SdkAckMessageRequest,
 	SdkClaimMessageRequest,
-	SdkCloseWorkDayRequest,
 	CreateApprovalRequestRequest,
-	SdkCreateReportRequest,
 	SdkCreateMessageRequest,
-	SdkCreatePrioritySnapshotRequest,
-	SdkCreateTaskRequest,
 	SdkCursorRequest,
 	SdkFollowRequest,
 	SdkGetRequest,
 	SdkGetCursorRequest,
-	SdkClaimTaskRequest,
 	SdkJsonEnvelope,
 	SdkLeaseReleaseRequest,
 	SdkMutationRequest,
@@ -73,22 +68,8 @@ import type {
 	SdkContextPackRequest,
 	SdkGraphDslParseResult,
 	SdkPickRequest,
-	SdkPriorityOverrideRequest,
-	SdkClaimWorkdayManagerLeaseRequest,
-	SdkCreateWorkdayRequest,
-	SdkRecordRepositoryClaimRequest,
-	SdkRecordRunnerScaleDecisionRequest,
-	SdkRecordTaskProgressRequest,
-	SdkRecordWorkerRunnerRequest,
 	SdkRecordRunRequest,
-	SdkRecordScaleDecisionRequest,
-	SdkRecordTaskCreditsRequest,
-	SdkReleaseWorkdayManagerLeaseRequest,
 	SdkSearchRequest,
-	SdkCompleteTaskRequest,
-	SdkStartWorkDayRequest,
-	SdkUpsertWorkPolicyRequest,
-	SdkUpdateWorkDayGraphRequest,
 	SdkUpdateRequest,
 	SdkModelDefinition,
 	SdkModelRegistry,
@@ -99,17 +80,6 @@ import type {
 	SdkDispatchCredentialSource,
 	DecideApprovalRequestRequest,
 	ListApprovalRequestsRequest,
-	PrioritySnapshot,
-	RepositoryClaim,
-	RunnerScaleDecision,
-	ScaleDecision,
-	TaskCreditLedgerEntry,
-	SdkTaskEntity,
-	SdkTaskManagerContext,
-	WorkdayManagerLease,
-	WorkdayPolicy,
-	WorkdayRequest,
-	WorkerRunner,
 	UpsertTeamInboxItemRequest,
 } from './sdk-types.ts';
 import { NodeSqliteD1Database } from './db/node-sqlite.ts';
@@ -584,156 +554,6 @@ export class AgentSdk {
 	async releaseAllLeases() {
 		const count = await this.database.releaseAllLeases();
 		return this.envelope('content_lease', 'update', { count });
-	}
-
-	async startWorkDay(request: SdkStartWorkDayRequest) {
-		const payload = await this.database.startWorkDay(request);
-		return this.envelope('work_day', 'create', payload);
-	}
-
-	async closeWorkDay(request: SdkCloseWorkDayRequest) {
-		const payload = await this.database.closeWorkDay(request);
-		return this.envelope('work_day', 'update', payload);
-	}
-
-	async createReport(request: SdkCreateReportRequest) {
-		const payload = await this.database.createReport(request);
-		return this.envelope('report', 'create', payload);
-	}
-
-	async getWorkPolicy(projectId: string, environment: string = 'local') {
-		const payload = await this.database.getWorkPolicy(projectId, environment);
-		return this.envelope<WorkdayPolicy>('work_day', 'get', payload);
-	}
-
-	async upsertWorkPolicy(request: SdkUpsertWorkPolicyRequest) {
-		const payload = await this.database.upsertWorkPolicy(request);
-		return this.envelope<WorkdayPolicy>('work_day', 'update', payload);
-	}
-
-	async createWorkdayRequest(request: SdkCreateWorkdayRequest) {
-		const payload = await this.database.createWorkdayRequest(request);
-		return this.envelope<WorkdayRequest>('workday_request', 'create', payload);
-	}
-
-	async listWorkdayRequests(projectId: string, environment: string, state?: string | null) {
-		const payload = await this.database.listWorkdayRequests(projectId, environment, state);
-		return this.envelope<WorkdayRequest[]>('workday_request', 'search', payload, { count: payload.length });
-	}
-
-	async createTask(request: SdkCreateTaskRequest) {
-		const payload = await this.database.createTask(request);
-		return this.envelope<SdkTaskEntity>('task', 'create', payload);
-	}
-
-	async claimTask(request: SdkClaimTaskRequest) {
-		const payload = await this.database.claimTask(request);
-		return this.envelope<SdkTaskEntity>('task', 'pick', payload);
-	}
-
-	async recordTaskProgress(request: SdkRecordTaskProgressRequest) {
-		const payload = await this.database.recordTaskProgress(request);
-		return this.envelope<SdkTaskEntity>('task', 'update', payload);
-	}
-
-	async completeTask(request: SdkCompleteTaskRequest) {
-		const payload = await this.database.completeTask(request);
-		return this.envelope<SdkTaskEntity>('task', 'update', payload);
-	}
-
-	async getManagerContext(taskId: string) {
-		const payload = await this.database.getManagerContext(taskId);
-		return this.envelope<SdkTaskManagerContext>('task', 'get', payload);
-	}
-
-	async claimWorkdayManagerLease(request: SdkClaimWorkdayManagerLeaseRequest) {
-		const payload = await this.database.claimWorkdayManagerLease(request);
-		return this.envelope<WorkdayManagerLease>('workday_manager_lease', 'claim', payload);
-	}
-
-	async releaseWorkdayManagerLease(request: SdkReleaseWorkdayManagerLeaseRequest) {
-		const payload = await this.database.releaseWorkdayManagerLease(request);
-		return this.envelope<WorkdayManagerLease>('workday_manager_lease', 'release', payload);
-	}
-
-	async listWorkdayManagerLeases(projectId: string, environment: string) {
-		const payload = await this.database.listWorkdayManagerLeases(projectId, environment);
-		return this.envelope<WorkdayManagerLease[]>('workday_manager_lease', 'search', payload, { count: payload.length });
-	}
-
-	async recordWorkerRunner(request: SdkRecordWorkerRunnerRequest) {
-		const payload = await this.database.recordWorkerRunner(request);
-		return this.envelope<WorkerRunner>('worker_runner', 'update', payload);
-	}
-
-	async listWorkerRunners(projectId: string, environment: string) {
-		const payload = await this.database.listWorkerRunners(projectId, environment);
-		return this.envelope<WorkerRunner[]>('worker_runner', 'search', payload, { count: payload.length });
-	}
-
-	async recordRepositoryClaim(request: SdkRecordRepositoryClaimRequest) {
-		const payload = await this.database.recordRepositoryClaim(request);
-		return this.envelope<RepositoryClaim>('repository_claim', 'update', payload);
-	}
-
-	async listRepositoryClaims(projectId: string, repositoryId?: string | null) {
-		const payload = await this.database.listRepositoryClaims(projectId, repositoryId);
-		return this.envelope<RepositoryClaim[]>('repository_claim', 'search', payload, { count: payload.length });
-	}
-
-	async recordRunnerScaleDecision(request: SdkRecordRunnerScaleDecisionRequest) {
-		const payload = await this.database.recordRunnerScaleDecision(request);
-		return this.envelope<RunnerScaleDecision>('runner_scale_decision', 'create', payload);
-	}
-
-	async listRunnerScaleDecisions(projectId: string, environment: string, workDayId?: string | null) {
-		const payload = await this.database.listRunnerScaleDecisions(projectId, environment, workDayId);
-		return this.envelope<RunnerScaleDecision[]>('runner_scale_decision', 'search', payload, { count: payload.length });
-	}
-
-	async updateWorkDayGraph(request: SdkUpdateWorkDayGraphRequest) {
-		const payload = await this.database.updateWorkDayGraph(request);
-		return this.envelope('work_day', 'update', payload);
-	}
-
-	async listPriorityOverrides(projectId: string) {
-		const payload = await this.database.listPriorityOverrides(projectId);
-		return this.envelope('task', 'search', payload, { count: payload.length });
-	}
-
-	async upsertPriorityOverride(request: SdkPriorityOverrideRequest) {
-		const payload = await this.database.upsertPriorityOverride(request);
-		return this.envelope('task', 'update', payload);
-	}
-
-	async createPrioritySnapshot(request: SdkCreatePrioritySnapshotRequest) {
-		const payload = await this.database.createPrioritySnapshot(request);
-		return this.envelope<PrioritySnapshot>('report', 'create', payload);
-	}
-
-	async getLatestPrioritySnapshot(projectId: string, workDayId?: string | null) {
-		const payload = await this.database.getLatestPrioritySnapshot(projectId, workDayId);
-		return this.envelope<PrioritySnapshot>('report', 'get', payload);
-	}
-
-	async recordTaskCredits(request: SdkRecordTaskCreditsRequest) {
-		const payload = await this.database.recordTaskCredits(request);
-		return this.envelope<TaskCreditLedgerEntry>('report', 'create', payload);
-	}
-
-	async listTaskCredits(workDayId: string) {
-		const payload = await this.database.listTaskCredits(workDayId);
-		return this.envelope<TaskCreditLedgerEntry[]>('report', 'search', payload, { count: payload.length });
-	}
-
-	async recordScaleDecision(request: SdkRecordScaleDecisionRequest) {
-		const payload = await this.database.recordScaleDecision(request);
-		return this.envelope<ScaleDecision>('report', 'create', payload);
-	}
-
-	async getLatestScaleDecision(projectId: string, environment: string, poolName: string) {
-		const payload = await this.database.getLatestScaleDecision(projectId, environment, poolName);
-		return this.envelope<ScaleDecision>('report', 'get', payload);
 	}
 
 	async createApprovalRequest(request: CreateApprovalRequestRequest) {

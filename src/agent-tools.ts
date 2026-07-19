@@ -8,15 +8,17 @@ import {
 
 export type AgentToolExecutionTarget = 'sdk_dispatch' | 'treedx_proxy' | 'treeseed_content' | 'provider_runner';
 export type AgentToolMutability = 'read' | 'content_write' | 'worktree_write' | 'shared_state_write';
-export type AgentToolTelemetryCategory = 'treedx' | 'treeseed' | 'repository' | 'capacity' | 'content';
+export type AgentToolTelemetryCategory = 'treedx' | 'treeseed' | 'repository' | 'capacity' | 'content' | 'research';
 export type AgentToolRequirement =
 	| 'treedx_proxy_handle'
 	| 'assignment_worktree'
 	| 'sdk_dispatch'
+	| 'provider_runner_runtime'
 	| 'provider_runner_git'
 	| 'treedx_writable_workspace'
 	| 'content_access'
-	| 'content_commit';
+	| 'content_commit'
+	| 'research_source_policy';
 
 export interface AgentToolDispatchMapping {
 	namespace: SdkDispatchNamespace;
@@ -114,6 +116,83 @@ const PRESET_CONTENT_TOOLS: AgentToolDefinition[] = createTreeseedContentToolPre
 }));
 
 export const TREESEED_AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
+	{
+		id: 'treeseed.repository.read_file',
+		title: 'Read assignment repository file',
+		description: 'Read one bounded UTF-8 source file from the provider-materialized assignment repository.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				path: { type: 'string', minLength: 1, maxLength: 1024 },
+				maxBytes: { type: 'integer', minimum: 1, maximum: 262144 },
+			},
+			required: ['path'],
+			additionalProperties: false,
+		},
+		outputSchema: GENERIC_RESULT_SCHEMA,
+		executionTarget: 'provider_runner',
+		mutability: 'read',
+		telemetryCategory: 'repository',
+		requirements: ['provider_runner_git'],
+	},
+	{
+		id: 'treeseed.repository.search',
+		title: 'Search assignment repository',
+		description: 'Run a bounded fixed-string search over provider-materialized assignment repository paths.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				query: { type: 'string', minLength: 1, maxLength: 500 },
+				paths: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 1024 }, maxItems: 32 },
+				maxResults: { type: 'integer', minimum: 1, maximum: 200 },
+			},
+			required: ['query'],
+			additionalProperties: false,
+		},
+		outputSchema: GENERIC_RESULT_SCHEMA,
+		executionTarget: 'provider_runner',
+		mutability: 'read',
+		telemetryCategory: 'repository',
+		requirements: ['provider_runner_git'],
+	},
+	{
+		id: 'research.search_sources',
+		title: 'Search governed research sources',
+		description: 'Search the provider-configured research index and return bounded source metadata for citation work.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				query: { type: 'string', minLength: 3, maxLength: 500 },
+				maxResults: { type: 'integer', minimum: 1, maximum: 20 },
+			},
+			required: ['query'],
+			additionalProperties: false,
+		},
+		outputSchema: GENERIC_RESULT_SCHEMA,
+		executionTarget: 'provider_runner',
+		mutability: 'read',
+		telemetryCategory: 'research',
+		requirements: ['provider_runner_runtime', 'research_source_policy'],
+	},
+	{
+		id: 'research.fetch_source',
+		title: 'Fetch governed research source',
+		description: 'Fetch a public HTTPS source through bounded SSRF-resistant research egress and return citation metadata plus a content hash.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				url: { type: 'string', minLength: 8, maxLength: 2048 },
+				maxBytes: { type: 'integer', minimum: 1024, maximum: 1000000 },
+			},
+			required: ['url'],
+			additionalProperties: false,
+		},
+		outputSchema: GENERIC_RESULT_SCHEMA,
+		executionTarget: 'provider_runner',
+		mutability: 'read',
+		telemetryCategory: 'research',
+		requirements: ['provider_runner_runtime', 'research_source_policy'],
+	},
 	{
 		id: 'treedx.build_context',
 		title: 'Build TreeDX context',
@@ -311,6 +390,22 @@ export const TREESEED_AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
 			preferredMode: 'prefer_local',
 			assignmentPreferredMode: 'prefer_local',
 		},
+	},
+	{
+		id: 'treeseed.checkpoint',
+		title: 'Checkpoint assignment worktree',
+		description: 'Create a path-scoped local source commit for the assignment without pushing, merging, tagging, staging, or deploying.',
+		inputSchema: {
+			type: 'object',
+			properties: { message: { type: 'string', minLength: 1 } },
+			required: ['message'],
+			additionalProperties: false,
+		},
+		outputSchema: GENERIC_RESULT_SCHEMA,
+		executionTarget: 'provider_runner',
+		mutability: 'worktree_write',
+		telemetryCategory: 'repository',
+		requirements: ['assignment_worktree', 'provider_runner_git'],
 	},
 	...GENERIC_CONTENT_TOOLS,
 	...PRESET_CONTENT_TOOLS,

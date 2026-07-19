@@ -1,7 +1,5 @@
 import type {
 	NormalizedSeedResource,
-	SeedCapacityLaneResource,
-	SeedCapacityProviderResource,
 	SeedEnvironment,
 	SeedManifest,
 	SeedResourceBase,
@@ -34,12 +32,6 @@ function withMetadata(seed: SeedManifest, resourceKey: string, metadata: Record<
 		...(metadata ?? {}),
 		...ownership(seed, resourceKey),
 	};
-}
-
-function providerLaneEnvironments(provider: SeedCapacityProviderResource, lane: SeedCapacityLaneResource, manifest: SeedManifest) {
-	const providerEnvironments = declaredEnvironments(provider, manifest);
-	const laneEnvironments = lane.environments && lane.environments.length > 0 ? lane.environments : providerEnvironments;
-	return laneEnvironments.filter((environment) => providerEnvironments.includes(environment));
 }
 
 export function normalizeSeedResources(manifest: SeedManifest, selected: SeedEnvironment[]): NormalizedSeedResource[] {
@@ -129,108 +121,6 @@ export function normalizeSeedResources(manifest: SeedManifest, selected: SeedEnv
 				releasePolicy: repository.releasePolicy ?? null,
 				publishPolicy: repository.publishPolicy ?? null,
 				metadata: withMetadata(manifest, repository.key, repository.metadata),
-			},
-		});
-	}
-
-	for (const provider of manifest.resources.capacityProviders) {
-		resources.push({
-			kind: 'capacityProvider',
-			key: provider.key,
-			label: provider.name,
-			environments: selectedEnvironments(provider, manifest, selected),
-			payload: {
-				teamKey: provider.team,
-				name: provider.name,
-				kind: provider.kind ?? null,
-				provider: provider.provider,
-				billingScope: provider.billingScope ?? null,
-					creditBudgetMode: provider.creditBudgetMode ?? 'derived',
-				monthlyCreditBudget: provider.monthlyCreditBudget ?? null,
-				dailyCreditBudget: provider.dailyCreditBudget ?? null,
-				maxConcurrentWorkdays: provider.maxConcurrentWorkdays ?? null,
-				maxConcurrentWorkers: provider.maxConcurrentWorkers ?? null,
-				capacityModel: provider.capacityModel ?? null,
-				registration: provider.registration ?? null,
-				executionProviders: provider.executionProviders ?? [],
-				metadata: withMetadata(manifest, provider.key, provider.metadata),
-			},
-		});
-		for (const lane of provider.lanes ?? []) {
-			resources.push({
-				kind: 'capacityLane',
-				key: lane.key,
-				label: lane.name,
-				parentKey: provider.key,
-				environments: providerLaneEnvironments(provider, lane, manifest).filter((environment) => selected.includes(environment)),
-				payload: {
-					providerKey: provider.key,
-					name: lane.name,
-					businessModel: lane.businessModel ?? null,
-					modelFamily: lane.modelFamily ?? null,
-					modelClass: lane.modelClass ?? null,
-					regionPolicy: lane.regionPolicy ?? null,
-					unit: lane.unit ?? null,
-					scarcityLevel: lane.scarcityLevel ?? null,
-					hardLimits: lane.hardLimits ?? null,
-					routingPolicy: lane.routingPolicy ?? null,
-					metadata: withMetadata(manifest, lane.key, lane.metadata),
-				},
-			});
-		}
-	}
-
-	for (const grant of manifest.resources.capacityGrants) {
-		resources.push({
-			kind: 'capacityGrant',
-			key: grant.key,
-			label: `${grant.provider.replace(/^capacity-provider:/u, '')} -> ${grant.project?.replace(/^project:/u, '') ?? grant.team.replace(/^team:/u, '')}`,
-			environments: selectedEnvironments(grant, manifest, selected),
-			payload: {
-				providerKey: grant.provider,
-				laneKey: grant.lane ?? null,
-				teamKey: grant.team,
-				projectKey: grant.project ?? null,
-				environment: grant.environment ?? null,
-				grantScope: grant.grantScope ?? null,
-				dailyCreditLimit: grant.dailyCreditLimit ?? null,
-				weeklyCreditLimit: grant.weeklyCreditLimit ?? null,
-				monthlyCreditLimit: grant.monthlyCreditLimit ?? null,
-				dailyUsdLimit: grant.dailyUsdLimit ?? null,
-				weeklyQuotaMinutes: grant.weeklyQuotaMinutes ?? null,
-				monthlyProviderUnits: grant.monthlyProviderUnits ?? null,
-				portfolioAllocationPercent: grant.portfolioAllocationPercent ?? null,
-				reservePoolPercent: grant.reservePoolPercent ?? null,
-				maxDailyProjectCredits: grant.maxDailyProjectCredits ?? null,
-				emergencyOverride: grant.emergencyOverride ?? null,
-				priorityWeight: grant.priorityWeight ?? null,
-				overflowPolicy: grant.overflowPolicy ?? null,
-				state: grant.state ?? null,
-				metadata: withMetadata(manifest, grant.key, grant.metadata),
-			},
-		});
-	}
-
-	for (const policy of manifest.resources.workPolicies) {
-		resources.push({
-			kind: 'workPolicy',
-			key: policy.key,
-			label: `${policy.project.replace(/^project:[^/]+\//u, '')}/${policy.environment}`,
-			environments: selectedEnvironments(policy, manifest, selected),
-			payload: {
-				projectKey: policy.project,
-				environment: policy.environment,
-				enabled: policy.enabled ?? true,
-				startCron: policy.startCron ?? '0 9 * * 1-5',
-				durationMinutes: policy.durationMinutes ?? 480,
-				maxRunners: policy.maxRunners ?? 1,
-				maxWorkersPerRunner: policy.maxWorkersPerRunner ?? 4,
-				dailyCreditBudget: policy.dailyCreditBudget ?? null,
-				maxQueuedTasks: policy.maxQueuedTasks ?? null,
-				maxQueuedCredits: policy.maxQueuedCredits ?? null,
-				autoscale: policy.autoscale ?? null,
-				creditWeights: policy.creditWeights ?? null,
-				metadata: withMetadata(manifest, policy.key, policy.metadata),
 			},
 		});
 	}

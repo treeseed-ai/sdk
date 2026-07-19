@@ -1,4 +1,3 @@
-import path from 'node:path';
 import { serializeFrontmatterDocument, parseFrontmatterDocument } from './frontmatter.ts';
 import { buildBuiltinModelRegistry, resolveModelDefinition } from './model-registry.ts';
 import { canonicalizeFrontmatter, normalizeMutationData } from './sdk-fields.ts';
@@ -63,6 +62,8 @@ export interface TreeseedContentRef {
 	id?: string;
 	path?: string;
 	href?: string;
+	subjectId?: string;
+	subjectField?: string;
 }
 
 export interface TreeseedContentDiagnostic {
@@ -89,6 +90,7 @@ export interface RenderTreeseedContentInput {
 	body?: string;
 	relations?: TreeseedContentRelationInput[];
 	placement?: TreeseedContentPlacement;
+	contentRoot?: string;
 	existingFrontmatter?: Record<string, unknown>;
 	registry?: SdkModelRegistry;
 	now?: string;
@@ -170,19 +172,28 @@ function extensionFor(model: string) {
 	return model === 'knowledge' ? 'md' : 'mdx';
 }
 
-function contentPathFor(definition: SdkModelDefinition, slug: string, placement?: TreeseedContentPlacement) {
+function normalizedContentRoot(value?: string) {
+	const root = String(value ?? 'src/content').replace(/\\/gu, '/').replace(/^\.\//u, '').replace(/\/+$/u, '');
+	if (!root || root.startsWith('/') || root.split('/').includes('..')) {
+		throw new Error('contentRoot must be a safe repository-relative path.');
+	}
+	return root;
+}
+
+function contentPathFor(definition: SdkModelDefinition, slug: string, placement?: TreeseedContentPlacement, contentRoot?: string) {
 	const collection = collectionFor(definition);
 	const ext = extensionFor(definition.name);
+	const root = normalizedContentRoot(contentRoot);
 	if (placement?.path) {
 		const safePath = slugifyTreeseedContent(placement.path).replace(/\.(md|mdx)$/iu, '');
 		if (!safePath) throw new Error('placement.path must resolve to a safe content path.');
-		return `src/content/${collection}/${safePath}.${ext}`;
+		return `${root}/${collection}/${safePath}.${ext}`;
 	}
 	if (definition.name === 'knowledge' && placement?.parentPath) {
 		const parent = slugifyTreeseedContent(placement.parentPath).replace(/\/$/u, '');
-		return `src/content/${collection}/${parent ? `${parent}/` : ''}${slug}.${ext}`;
+		return `${root}/${collection}/${parent ? `${parent}/` : ''}${slug}.${ext}`;
 	}
-	return `src/content/${collection}/${slug}.${ext}`;
+	return `${root}/${collection}/${slug}.${ext}`;
 }
 
 function normalizeContentModel(model: string, registry: SdkModelRegistry = buildBuiltinModelRegistry()) {
@@ -242,7 +253,19 @@ export function renderTreeseedContentRecord(input: RenderTreeseedContentInput): 
 	}
 	const body = String(input.body ?? '').trim();
 	const collection = collectionFor(definition);
-	const recordPath = contentPathFor(definition, slug, input.placement);
+	const recordPath = contentPathFor(definition, slug, input.placement, input.contentRoot);
+	const subjectFields = [
+		'about',
+		'relatedObjectives', 'related_objectives',
+		'relatedQuestions', 'related_questions',
+		'relatedProposals', 'related_proposals',
+		'relatedDecisions', 'related_decisions',
+	];
+	const subjectEntry = subjectFields.flatMap((field) => {
+		const value = frontmatter[field];
+		const candidate = Array.isArray(value) ? value[0] : value;
+		return typeof candidate === 'string' && candidate.trim() ? [{ field, id: candidate.trim() }] : [];
+	})[0];
 	const ref: TreeseedContentRef = {
 		model: definition.name,
 		collection,
@@ -250,6 +273,7 @@ export function renderTreeseedContentRecord(input: RenderTreeseedContentInput): 
 		id: typeof frontmatter.id === 'string' ? frontmatter.id : undefined,
 		path: recordPath,
 		href: `/app/work/${collection}/${encodeURIComponent(slug)}`,
+		...(subjectEntry ? { subjectId: subjectEntry.id, subjectField: subjectEntry.field } : {}),
 	};
 	return {
 		model: definition.name,

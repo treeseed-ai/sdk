@@ -176,6 +176,14 @@
       "types": "./dist/agent-capacity.d.ts",
       "default": "./dist/agent-capacity.js"
     },
+    "./agent-capacity/allocation": {
+      "types": "./dist/agent-capacity/allocation.d.ts",
+      "default": "./dist/agent-capacity/allocation.js"
+    },
+    "./capacity-pagination": {
+      "types": "./dist/capacity-pagination.d.ts",
+      "default": "./dist/capacity-pagination.js"
+    },
     "./secrets-capability": {
       "types": "./dist/secrets-capability.d.ts",
       "default": "./dist/secrets-capability.js"
@@ -302,6 +310,11 @@
       "import": "./dist/treedx/client.js",
       "default": "./dist/treedx/client.js"
     },
+    "./treedx/auth": {
+      "types": "./dist/treedx/auth.d.ts",
+      "import": "./dist/treedx/auth.js",
+      "default": "./dist/treedx/auth.js"
+    },
     "./treedx/types": {
       "types": "./dist/treedx/types.d.ts",
       "import": "./dist/treedx/types.js",
@@ -332,13 +345,17 @@
       "types": "./dist/copilot.d.ts",
       "default": "./dist/copilot.js"
     },
-    "./capacity": {
-      "types": "./dist/capacity.d.ts",
-      "default": "./dist/capacity.js"
+    "./capacity-usage": {
+      "types": "./dist/capacity-usage.d.ts",
+      "default": "./dist/capacity-usage.js"
     },
     "./capacity-provider": {
       "types": "./dist/capacity-provider.d.ts",
       "default": "./dist/capacity-provider.js"
+    },
+    "./capacity-provider/contracts": {
+      "types": "./dist/capacity-provider/contracts/index.d.ts",
+      "default": "./dist/capacity-provider/contracts/index.js"
     },
     "./platform-operations": {
       "types": "./dist/platform-operations.d.ts",

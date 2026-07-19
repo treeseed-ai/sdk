@@ -1,5 +1,3 @@
-import type { CapacityProviderRegistrationRequest } from '../capacity-provider.ts';
-
 export type TreeseedFeatureName =
 	| 'docs'
 	| 'books'
@@ -412,7 +410,6 @@ export interface TreeseedDeployConfig {
 		[key: string]: unknown;
 	};
 	processing?: TreeseedProcessingConfig;
-	capacityProviders?: Record<string, CapacityProviderRegistrationRequest>;
 	smtp?: {
 		enabled?: boolean;
 	};

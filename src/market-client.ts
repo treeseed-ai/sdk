@@ -19,6 +19,7 @@ import type {
 	ProjectDeploymentEnvironment,
 	ProjectDeploymentEvent,
 	ProjectDeploymentReadiness,
+	ProjectConnection,
 	ProjectRepositoryTopology,
 	ProjectWebDeploymentAction,
 	TreeDxInstance,
@@ -31,6 +32,7 @@ import type {
 	TreeseedGitHubActionsSecretPublicKeyMetadata,
 } from './secrets-capability.ts';
 import type { TreeseedRepositoryImportPlan } from './project-import.ts';
+import type { CapacityRuntimeDiagnosticsResponse, WorkdayCapacitySummaryPayload } from './agent-capacity.ts';
 import type {
 	AccountDeletionBlocker,
 	AccountIdentity,
@@ -41,6 +43,15 @@ import type {
 	PersonalTheme,
 	PersonalThemeDraft,
 } from './account-contracts.ts';
+import type {
+	ProviderRegistrationRequest,
+	ProviderCredentialIssuanceAuthorization,
+	ProviderTeamCredentialMetadata,
+	ProviderTeamMembership,
+	TeamCapacityRegistrationKeyMetadata,
+	TeamCapacityRegistrationKeyReveal,
+} from './capacity-provider/contracts/index.ts';
+import type { CapacityPage } from './capacity-pagination.ts';
 import {
 	TREESEED_REMOTE_CONTRACT_HEADER,
 	TREESEED_REMOTE_CONTRACT_VERSION,
@@ -743,6 +754,21 @@ export class MarketClient {
 		return this.request<{ ok: true; payload: unknown[] }>('/v1/teams', { requireAuth: true });
 	}
 
+	createTeam(body: { name: string; displayName?: string; metadata?: Record<string, unknown> }) {
+		return this.request<{ ok: true; payload: { id: string; name: string; displayName?: string } }>('/v1/teams', {
+			method: 'POST',
+			body,
+			requireAuth: true,
+		});
+	}
+
+	deleteTeam(teamId: string, confirmation: string) {
+		return this.request<{ ok: boolean; team?: { id: string; name: string }; code?: string; message?: string }>(
+			`/v1/teams/${encodeURIComponent(teamId)}`,
+			{ method: 'DELETE', body: { confirmation }, requireAuth: true },
+		);
+	}
+
 	teamMembers(teamId: string) {
 		return this.request<{ ok: true; payload: unknown[] }>(`/v1/teams/${encodeURIComponent(teamId)}/members`, { requireAuth: true });
 	}
@@ -756,11 +782,39 @@ export class MarketClient {
 		return this.request<{ ok: true; payload: unknown[] }>(`/v1/projects${query}`, { requireAuth: true });
 	}
 
+	createProject(teamId: string, body: { id?: string; slug: string; name: string; description?: string; metadata?: Record<string, unknown> }) {
+		return this.request<{ ok: true; payload: { project?: { id: string; slug: string; teamId: string }; id?: string; slug?: string; teamId?: string } }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/projects`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	deleteProject(projectId: string, confirmation: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown>; job?: Record<string, unknown> }>(
+			`/v1/projects/${encodeURIComponent(projectId)}`,
+			{ method: 'DELETE', body: { confirmation }, requireAuth: true },
+		);
+	}
+
 	projectAccess(projectId: string) {
 		return this.request<{ ok: true; payload: { projectId: string; team: TeamAccessSummary; environments: ProjectEnvironmentAccess[] } }>(
 			`/v1/projects/${encodeURIComponent(projectId)}/access`,
 			{ requireAuth: true },
 		);
+	}
+
+	upsertProjectConnection(projectId: string, body: {
+		mode: string;
+		projectApiBaseUrl?: string | null;
+		executionOwner?: string | null;
+		metadata?: Record<string, unknown>;
+		rotateRunnerToken?: boolean;
+	}) {
+		return this.request<{ ok: true; payload: { connection: ProjectConnection | null; runnerToken: string | null } }>(`/v1/projects/${encodeURIComponent(projectId)}/connection`, {
+			method: 'POST',
+			body,
+			requireAuth: true,
+		});
 	}
 
 	projectHosts(projectId: string) {
@@ -924,29 +978,26 @@ export class MarketClient {
 		);
 	}
 
-	projectTreeDxProxyAudit(projectId: string, options: { assignmentId?: string | null; actorType?: string | null } = {}) {
+	projectTreeDxProxyAudit(projectId: string, options: { assignmentId?: string | null; actorType?: string | null; limit?: number; cursor?: string | null } = {}) {
 		const query = new URLSearchParams();
 		if (options.assignmentId) query.set('assignmentId', options.assignmentId);
 		if (options.actorType) query.set('actorType', options.actorType);
-		return this.request<{ ok: true; payload: unknown[] }>(
+		if (options.limit !== undefined) query.set('limit', String(options.limit));
+		if (options.cursor) query.set('cursor', options.cursor);
+		return this.request<{ ok: true; payload: CapacityPage<Record<string, unknown>> }>(
 			`/v1/projects/${encodeURIComponent(projectId)}/treedx-proxy-audit${query.toString() ? `?${query}` : ''}`,
 			{ requireAuth: true },
 		);
 	}
 
-	createCapacityReservation(projectId: string, body: Record<string, unknown>) {
-		return this.request<{ ok: true; payload: Record<string, unknown> }>(
-			`/v1/projects/${encodeURIComponent(projectId)}/capacity/reservations`,
-			{ method: 'POST', body, requireAuth: true },
-		);
-	}
-
-	projectAgentFallbackOutputs(projectId: string, options: { assignmentId?: string | null; mode?: string | null; status?: string | null } = {}) {
+	projectAgentFallbackOutputs(projectId: string, options: { assignmentId?: string | null; mode?: string | null; status?: string | null; limit?: number; cursor?: string | null } = {}) {
 		const query = new URLSearchParams();
 		if (options.assignmentId) query.set('assignmentId', options.assignmentId);
 		if (options.mode) query.set('mode', options.mode);
 		if (options.status) query.set('status', options.status);
-		return this.request<{ ok: true; payload: unknown[] }>(
+		if (options.limit !== undefined) query.set('limit', String(options.limit));
+		if (options.cursor) query.set('cursor', options.cursor);
+		return this.request<{ ok: true; payload: CapacityPage<Record<string, unknown>> }>(
 			`/v1/projects/${encodeURIComponent(projectId)}/agent-fallback-outputs${query.toString() ? `?${query}` : ''}`,
 			{ requireAuth: true },
 		);
@@ -1092,100 +1143,133 @@ export class MarketClient {
 		);
 	}
 
-	teamCapacity(teamId: string) {
-		return this.request<{ ok: true; payload: Record<string, unknown> }>(
-			`/v1/teams/${encodeURIComponent(teamId)}/capacity`,
+	teamCapacityRegistrationKey(teamId: string) {
+		return this.request<{ ok: true; payload: TeamCapacityRegistrationKeyMetadata }>(`/v1/teams/${encodeURIComponent(teamId)}/capacity-registration-key`, { requireAuth: true });
+	}
+
+	revealTeamCapacityRegistrationKey(teamId: string) {
+		return this.request<{ ok: true; payload: TeamCapacityRegistrationKeyReveal }>(`/v1/teams/${encodeURIComponent(teamId)}/capacity-registration-key/reveal`, { requireAuth: true });
+	}
+
+	rotateTeamCapacityRegistrationKey(teamId: string, idempotencyKey: string) { return this.updateTeamCapacityRegistrationKeyStatus(teamId, 'rotate', idempotencyKey); }
+	enableTeamCapacityRegistrationKey(teamId: string, idempotencyKey: string) { return this.updateTeamCapacityRegistrationKeyStatus(teamId, 'enable', idempotencyKey); }
+	disableTeamCapacityRegistrationKey(teamId: string, idempotencyKey: string) { return this.updateTeamCapacityRegistrationKeyStatus(teamId, 'disable', idempotencyKey); }
+
+	private updateTeamCapacityRegistrationKeyStatus(teamId: string, action: 'rotate' | 'enable' | 'disable', idempotencyKey: string) {
+		return this.request<{ ok: true; payload: TeamCapacityRegistrationKeyMetadata | TeamCapacityRegistrationKeyReveal }>(`/v1/teams/${encodeURIComponent(teamId)}/capacity-registration-key/${action}`, { method: 'POST', requireAuth: true, headers: { 'idempotency-key': idempotencyKey } });
+	}
+
+	capacityProviderRegistrationRequests(teamId: string, filters: { status?: string | null; limit?: number; cursor?: string } = {}) {
+		const query = new URLSearchParams();
+		if (filters.status) query.set('status', filters.status);
+		if (filters.limit !== undefined) query.set('limit', String(filters.limit));
+		if (filters.cursor) query.set('cursor', filters.cursor);
+		return this.request<{ ok: true; payload: CapacityPage<ProviderRegistrationRequest> }>(`/v1/teams/${encodeURIComponent(teamId)}/capacity-provider-requests${query.size ? `?${query}` : ''}`, { requireAuth: true });
+	}
+
+	capacityProviderRegistrationRequest(teamId: string, requestId: string) {
+		return this.request<{ ok: true; payload: ProviderRegistrationRequest }>(`/v1/teams/${encodeURIComponent(teamId)}/capacity-provider-requests/${encodeURIComponent(requestId)}`, { requireAuth: true });
+	}
+
+	reviewCapacityProviderRegistration(teamId: string, requestId: string, action: 'approve' | 'reject' | 'cancel', idempotencyKey: string, body: { reason?: string; teamAlias?: string } = {}) {
+		return this.request<{ ok: true; payload: ProviderRegistrationRequest }>(`/v1/teams/${encodeURIComponent(teamId)}/capacity-provider-requests/${encodeURIComponent(requestId)}/${action}`, { method: 'POST', body, requireAuth: true, headers: { 'idempotency-key': idempotencyKey } });
+	}
+
+	capacityProviderMemberships(teamId: string, filters: { status?: string | null; providerId?: string | null; limit?: number; cursor?: string } = {}) {
+		const query = new URLSearchParams();
+		if (filters.status) query.set('status', filters.status);
+		if (filters.providerId) query.set('providerId', filters.providerId);
+		if (filters.limit !== undefined) query.set('limit', String(filters.limit));
+		if (filters.cursor) query.set('cursor', filters.cursor);
+		return this.request<{ ok: true; payload: CapacityPage<ProviderTeamMembership> }>(`/v1/teams/${encodeURIComponent(teamId)}/capacity-provider-memberships${query.size ? `?${query}` : ''}`, { requireAuth: true });
+	}
+
+	capacityProviderMembership(teamId: string, membershipId: string) {
+		return this.request<{ ok: true; payload: ProviderTeamMembership }>(`/v1/teams/${encodeURIComponent(teamId)}/capacity-provider-memberships/${encodeURIComponent(membershipId)}`, { requireAuth: true });
+	}
+
+	capacityProviderCredentials(teamId: string, membershipId: string, filters: { status?: string | null; limit?: number; cursor?: string } = {}) {
+		const query = new URLSearchParams();
+		if (filters.status) query.set('status', filters.status);
+		if (filters.limit !== undefined) query.set('limit', String(filters.limit));
+		if (filters.cursor) query.set('cursor', filters.cursor);
+		return this.request<{ ok: true; payload: CapacityPage<ProviderTeamCredentialMetadata> }>(`/v1/teams/${encodeURIComponent(teamId)}/capacity-provider-memberships/${encodeURIComponent(membershipId)}/credentials${query.size ? `?${query}` : ''}`, { requireAuth: true });
+	}
+
+	authorizeCapacityProviderCredentialRotation(teamId: string, membershipId: string, idempotencyKey: string) {
+		return this.request<{ ok: true; payload: ProviderCredentialIssuanceAuthorization }>(`/v1/teams/${encodeURIComponent(teamId)}/capacity-provider-memberships/${encodeURIComponent(membershipId)}/credentials/rotate`, { method: 'POST', requireAuth: true, headers: { 'idempotency-key': idempotencyKey } });
+	}
+
+	revokeCapacityProviderCredential(teamId: string, membershipId: string, credentialId: string, idempotencyKey: string) {
+		return this.request<{ ok: true; payload: ProviderTeamCredentialMetadata }>(`/v1/teams/${encodeURIComponent(teamId)}/capacity-provider-memberships/${encodeURIComponent(membershipId)}/credentials/${encodeURIComponent(credentialId)}/revoke`, { method: 'POST', requireAuth: true, headers: { 'idempotency-key': idempotencyKey } });
+	}
+
+	suspendCapacityProviderMembership(teamId: string, membershipId: string, idempotencyKey: string) { return this.updateCapacityProviderMembershipStatus(teamId, membershipId, 'suspend', idempotencyKey); }
+	resumeCapacityProviderMembership(teamId: string, membershipId: string, idempotencyKey: string) { return this.updateCapacityProviderMembershipStatus(teamId, membershipId, 'resume', idempotencyKey); }
+	revokeCapacityProviderMembership(teamId: string, membershipId: string, idempotencyKey: string) { return this.updateCapacityProviderMembershipStatus(teamId, membershipId, 'revoke', idempotencyKey); }
+
+	private updateCapacityProviderMembershipStatus(teamId: string, membershipId: string, action: 'suspend' | 'resume' | 'revoke', idempotencyKey: string) {
+		return this.request<{ ok: true; payload: ProviderTeamMembership }>(`/v1/teams/${encodeURIComponent(teamId)}/capacity-provider-memberships/${encodeURIComponent(membershipId)}/${action}`, { method: 'POST', requireAuth: true, headers: { 'idempotency-key': idempotencyKey } });
+	}
+
+	capacityGrants(teamId: string, page: { limit?: number; cursor?: string } = {}) {
+		const query = new URLSearchParams();
+		if (page.limit !== undefined) query.set('limit', String(page.limit));
+		if (page.cursor) query.set('cursor', page.cursor);
+		return this.request<{ ok: true; payload: { items: unknown[]; page: { limit: number; hasMore: boolean; nextCursor: string | null } } }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity-grants${query.size ? `?${query}` : ''}`,
 			{ requireAuth: true },
 		);
 	}
 
-	teamCapacityProviders(teamId: string) {
-		return this.request<{ ok: true; payload: unknown[] }>(
-			`/v1/teams/${encodeURIComponent(teamId)}/capacity-providers`,
+	capacityGrant(teamId: string, grantId: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity-grants/${encodeURIComponent(grantId)}`,
 			{ requireAuth: true },
 		);
 	}
 
-	launchManagedCapacityProvider(teamId: string, body: Record<string, unknown> = {}) {
-		return this.request<{ ok: true; payload: Record<string, unknown> }>(
-			`/v1/teams/${encodeURIComponent(teamId)}/capacity/providers/managed`,
+	planCapacityGrant(teamId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: boolean; payload: { candidate: Record<string, unknown>; validation: { ok: boolean; diagnostics: unknown[] } } }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity-grants/plan`,
 			{ method: 'POST', body, requireAuth: true },
 		);
 	}
 
-	capacityProvider(providerId: string) {
+	createCapacityGrant(teamId: string, body: Record<string, unknown>, idempotencyKey: string) {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
-			`/v1/capacity/providers/${encodeURIComponent(providerId)}`,
-			{ requireAuth: true },
-		);
-	}
-
-	rotateCapacityProviderApiKey(teamId: string, providerId: string) {
-		return this.request<{ ok: true; payload: Record<string, unknown> }>(
-			`/v1/teams/${encodeURIComponent(teamId)}/capacity-providers/${encodeURIComponent(providerId)}/keys/rotate`,
-			{ method: 'POST', requireAuth: true },
-		);
-	}
-
-	capacityGrants(teamId: string) {
-		return this.request<{ ok: true; payload: unknown[] }>(
 			`/v1/teams/${encodeURIComponent(teamId)}/capacity-grants`,
+			{ method: 'POST', body, requireAuth: true, headers: { 'idempotency-key': idempotencyKey } },
+		);
+	}
+
+	transitionCapacityGrant(teamId: string, grantId: string, action: 'activate' | 'pause' | 'resume' | 'revoke', idempotencyKey: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity-grants/${encodeURIComponent(grantId)}/${action}`,
+			{ method: 'POST', requireAuth: true, headers: { 'idempotency-key': idempotencyKey } },
+		);
+	}
+
+	capacityAllocationSets(teamId: string, page: { limit?: number; cursor?: string } = {}) {
+		const query = new URLSearchParams();
+		if (page.limit !== undefined) query.set('limit', String(page.limit));
+		if (page.cursor) query.set('cursor', page.cursor);
+		return this.request<{ ok: true; payload: { items: unknown[]; page: { limit: number; hasMore: boolean; nextCursor: string | null } } }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/allocation-sets${query.size ? `?${query}` : ''}`,
 			{ requireAuth: true },
 		);
 	}
 
-	updateCapacityProvider(teamId: string, providerId: string, body: Record<string, unknown>) {
-		return this.request<{ ok: true; provider: Record<string, unknown> }>(
-			`/v1/teams/${encodeURIComponent(teamId)}/capacity-providers/${encodeURIComponent(providerId)}`,
-			{ method: 'PATCH', body, requireAuth: true },
-		);
-	}
-
-	createCapacityGrant(teamId: string, body: Record<string, unknown>) {
-		return this.request<{ ok: true; payload: Record<string, unknown> }>(
-			`/v1/teams/${encodeURIComponent(teamId)}/capacity-grants`,
-			{ method: 'POST', body, requireAuth: true },
-		);
-	}
-
-	executionProviders(teamId: string, providerId: string) {
-		return this.request<{ ok: true; payload: unknown[] }>(
-			`/v1/teams/${encodeURIComponent(teamId)}/capacity-providers/${encodeURIComponent(providerId)}/execution-providers`,
-			{ requireAuth: true },
-		);
-	}
-
-	createExecutionProvider(teamId: string, providerId: string, body: Record<string, unknown>) {
-		return this.request<{ ok: true; payload: Record<string, unknown> }>(
-			`/v1/teams/${encodeURIComponent(teamId)}/capacity-providers/${encodeURIComponent(providerId)}/execution-providers`,
-			{ method: 'POST', body, requireAuth: true },
-		);
-	}
-
-	updateExecutionProvider(teamId: string, providerId: string, executionProviderId: string, body: Record<string, unknown>) {
-		return this.request<{ ok: true; payload: Record<string, unknown> }>(
-			`/v1/teams/${encodeURIComponent(teamId)}/capacity-providers/${encodeURIComponent(providerId)}/execution-providers/${encodeURIComponent(executionProviderId)}`,
-			{ method: 'PATCH', body, requireAuth: true },
-		);
-	}
-
-	createExecutionProviderNativeLimit(teamId: string, providerId: string, executionProviderId: string, body: Record<string, unknown>) {
-		return this.request<{ ok: true; payload: Record<string, unknown> }>(
-			`/v1/teams/${encodeURIComponent(teamId)}/capacity-providers/${encodeURIComponent(providerId)}/execution-providers/${encodeURIComponent(executionProviderId)}/native-limits`,
-			{ method: 'POST', body, requireAuth: true },
-		);
-	}
-
-	capacityAllocationSets(teamId: string) {
-		return this.request<{ ok: true; payload: unknown[] }>(
-			`/v1/teams/${encodeURIComponent(teamId)}/capacity/allocation-sets`,
-			{ requireAuth: true },
-		);
-	}
-
-	createCapacityAllocationSet(teamId: string, body: Record<string, unknown>) {
+	createCapacityAllocationSet(teamId: string, body: Record<string, unknown>, idempotencyKey: string) {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
 			`/v1/teams/${encodeURIComponent(teamId)}/capacity/allocation-sets`,
+			{ method: 'POST', body, requireAuth: true, headers: { 'idempotency-key': idempotencyKey } },
+		);
+	}
+
+	planCapacityAllocationSet(teamId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: boolean; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/allocation-sets/plan`,
 			{ method: 'POST', body, requireAuth: true },
 		);
 	}
@@ -1197,40 +1281,100 @@ export class MarketClient {
 		);
 	}
 
-	activateCapacityAllocationSet(teamId: string, allocationSetId: string) {
+	activateCapacityAllocationSet(teamId: string, allocationSetId: string, idempotencyKey: string) {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
 			`/v1/teams/${encodeURIComponent(teamId)}/capacity/allocation-sets/${encodeURIComponent(allocationSetId)}/activate`,
-			{ method: 'POST', requireAuth: true },
+			{ method: 'POST', requireAuth: true, headers: { 'idempotency-key': idempotencyKey } },
 		);
 	}
 
-	providerAvailabilitySessions(teamId: string, options: { providerId?: string | null; status?: string | null } = {}) {
+	supersedeCapacityAllocationSet(teamId: string, allocationSetId: string, body: Record<string, unknown>, idempotencyKey: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/allocation-sets/${encodeURIComponent(allocationSetId)}/supersede`,
+			{ method: 'POST', body, requireAuth: true, headers: { 'idempotency-key': idempotencyKey } },
+		);
+	}
+
+	archiveCapacityAllocationSet(teamId: string, allocationSetId: string, idempotencyKey: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/allocation-sets/${encodeURIComponent(allocationSetId)}/archive`,
+			{ method: 'POST', requireAuth: true, headers: { 'idempotency-key': idempotencyKey } },
+		);
+	}
+
+	explainCapacityAllocationSet(teamId: string, allocationSetId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/allocation-sets/${encodeURIComponent(allocationSetId)}/explain`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	providerAvailabilitySessions(teamId: string, options: { providerId?: string | null; status?: string | null; limit?: number; cursor?: string | null } = {}) {
 		const params = new URLSearchParams();
 		if (options.providerId) params.set('providerId', options.providerId);
 		if (options.status) params.set('status', options.status);
+		if (options.limit !== undefined) params.set('limit', String(options.limit));
+		if (options.cursor) params.set('cursor', options.cursor);
 		const query = params.toString() ? `?${params.toString()}` : '';
-		return this.request<{ ok: true; payload: unknown[] }>(
-			`/v1/teams/${encodeURIComponent(teamId)}/capacity/provider-sessions${query}`,
+		return this.request<{ ok: true; payload: CapacityPage<Record<string, unknown>> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/availability-sessions${query}`,
 			{ requireAuth: true },
 		);
 	}
 
-	providerAssignments(teamId: string, options: { projectId?: string | null; providerId?: string | null; status?: string | null } = {}) {
+	capacityProviderAssignments(teamId: string, options: {
+		projectId?: string | null;
+		providerId?: string | null;
+		status?: string | null;
+		assignmentId?: string | null;
+		workdayId?: string | null;
+		executionProviderId?: string | null;
+		view?: 'lifecycle' | null;
+		limit?: number;
+		cursor?: string | null;
+	} = {}) {
 		const params = new URLSearchParams();
 		if (options.projectId) params.set('projectId', options.projectId);
 		if (options.providerId) params.set('providerId', options.providerId);
 		if (options.status) params.set('status', options.status);
+		if (options.assignmentId) params.set('assignmentId', options.assignmentId);
+		if (options.workdayId) params.set('workdayId', options.workdayId);
+		if (options.executionProviderId) params.set('executionProviderId', options.executionProviderId);
+		if (options.view) params.set('view', options.view);
+		if (options.limit !== undefined) params.set('limit', String(options.limit));
+		if (options.cursor) params.set('cursor', options.cursor);
 		const query = params.toString() ? `?${params.toString()}` : '';
-		return this.request<{ ok: true; payload: unknown[] }>(
+		return this.request<{ ok: true; payload: { items: unknown[]; page: { limit: number; hasMore: boolean; nextCursor: string | null } } }>(
 			`/v1/teams/${encodeURIComponent(teamId)}/capacity/assignments${query}`,
 			{ requireAuth: true },
 		);
 	}
 
-	createProviderAssignment(teamId: string, body: Record<string, unknown>) {
+	executionRuns(teamId: string, options: {
+		projectId?: string | null;
+		providerId?: string | null;
+		status?: string | null;
+		mode?: string | null;
+		assignmentId?: string | null;
+		workdayId?: string | null;
+		executionProviderId?: string | null;
+		limit?: number;
+		cursor?: string | null;
+	} = {}) {
+		const params = new URLSearchParams();
+		for (const [name, value] of Object.entries(options)) {
+			if (value !== undefined && value !== null && value !== '') params.set(name, String(value));
+		}
+		return this.request<{ ok: true; payload: CapacityPage<Record<string, unknown>> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/execution-runs${params.size ? `?${params}` : ''}`,
+			{ requireAuth: true },
+		);
+	}
+
+	admitCapacityAssignment(teamId: string, body: Record<string, unknown>, idempotencyKey: string) {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
-			`/v1/teams/${encodeURIComponent(teamId)}/capacity/assignments`,
-			{ method: 'POST', body, requireAuth: true },
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/admissions`,
+			{ method: 'POST', body, requireAuth: true, headers: { 'idempotency-key': idempotencyKey } },
 		);
 	}
 
@@ -1241,25 +1385,65 @@ export class MarketClient {
 		);
 	}
 
-	projectCapacityPlan(projectId: string, environment?: string | null) {
+	capacityProviderAssignment(teamId: string, assignmentId: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/assignments/${encodeURIComponent(assignmentId)}`,
+			{ requireAuth: true },
+		);
+	}
+
+	capacityReservations(teamId: string, options: { projectId: string; workDayId?: string | null; limit?: number; cursor?: string | null }) {
+		return this.capacityEvidencePage(teamId, 'reservations', options);
+	}
+
+	capacityReservationExplanation(teamId: string, reservationId: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/reservations/${encodeURIComponent(reservationId)}/explanation`,
+			{ requireAuth: true },
+		);
+	}
+
+	capacityUsage(teamId: string, options: { projectId: string; workDayId?: string | null; limit?: number; cursor?: string | null }) {
+		return this.capacityEvidencePage(teamId, 'usage', options);
+	}
+
+	capacityLedger(teamId: string, options: { projectId: string; workDayId?: string | null; limit?: number; cursor?: string | null }) {
+		return this.capacityEvidencePage(teamId, 'ledger', options);
+	}
+
+	private capacityEvidencePage(teamId: string, collection: 'reservations' | 'usage' | 'ledger', options: { projectId: string; workDayId?: string | null; limit?: number; cursor?: string | null }) {
+		const params = new URLSearchParams({ projectId: options.projectId });
+		if (options.workDayId) params.set('workDayId', options.workDayId);
+		if (options.limit !== undefined) params.set('limit', String(options.limit));
+		if (options.cursor) params.set('cursor', options.cursor);
+		return this.request<{ ok: true; payload: CapacityPage<Record<string, unknown>> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/${collection}?${params}`,
+			{ requireAuth: true },
+		);
+	}
+
+	projectCapacityDiagnostics(projectId: string, environment?: string | null) {
 		const query = environment ? `?environment=${encodeURIComponent(environment)}` : '';
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
-			`/v1/projects/${encodeURIComponent(projectId)}/capacity-plan${query}`,
+			`/v1/projects/${encodeURIComponent(projectId)}/capacity-diagnostics${query}`,
 			{ requireAuth: true },
 		);
 	}
 
-	projectAgentClasses(projectId: string) {
-		return this.request<{ ok: true; payload: unknown[] }>(
-			`/v1/projects/${encodeURIComponent(projectId)}/agent-classes`,
+	projectAgentClasses(projectId: string, page: { limit?: number; cursor?: string | null } = {}) {
+		const params = new URLSearchParams();
+		if (page.limit !== undefined) params.set('limit', String(page.limit));
+		if (page.cursor) params.set('cursor', page.cursor);
+		return this.request<{ ok: true; payload: CapacityPage<Record<string, unknown>> }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/agent-classes${params.size ? `?${params}` : ''}`,
 			{ requireAuth: true },
 		);
 	}
 
-	createProjectAgentClass(projectId: string, body: Record<string, unknown>) {
+	createProjectAgentClass(projectId: string, body: Record<string, unknown>, idempotencyKey: string) {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
 			`/v1/projects/${encodeURIComponent(projectId)}/agent-classes`,
-			{ method: 'POST', body, requireAuth: true },
+			{ method: 'POST', body, headers: { 'Idempotency-Key': idempotencyKey }, requireAuth: true },
 		);
 	}
 
@@ -1270,19 +1454,21 @@ export class MarketClient {
 		);
 	}
 
-	updateProjectAgentClass(projectId: string, classId: string, body: Record<string, unknown>) {
+	updateProjectAgentClass(projectId: string, classId: string, body: Record<string, unknown>, idempotencyKey: string) {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
 			`/v1/projects/${encodeURIComponent(projectId)}/agent-classes/${encodeURIComponent(classId)}`,
-			{ method: 'PATCH', body, requireAuth: true },
+			{ method: 'PATCH', body, headers: { 'Idempotency-Key': idempotencyKey }, requireAuth: true },
 		);
 	}
 
-	projectAgentModeRuns(projectId: string, options: { mode?: string | null; assignmentId?: string | null } = {}) {
+	projectAgentModeRuns(projectId: string, options: { mode?: string | null; assignmentId?: string | null; limit?: number; cursor?: string | null } = {}) {
 		const params = new URLSearchParams();
 		if (options.mode) params.set('mode', options.mode);
 		if (options.assignmentId) params.set('assignmentId', options.assignmentId);
+		if (options.limit !== undefined) params.set('limit', String(options.limit));
+		if (options.cursor) params.set('cursor', options.cursor);
 		const query = params.toString() ? `?${params.toString()}` : '';
-		return this.request<{ ok: true; payload: unknown[] }>(
+		return this.request<{ ok: true; payload: CapacityPage<Record<string, unknown>> }>(
 			`/v1/projects/${encodeURIComponent(projectId)}/agent-mode-runs${query}`,
 			{ requireAuth: true },
 		);
@@ -1290,7 +1476,7 @@ export class MarketClient {
 
 	projectCapacityRuntimeDiagnostics(projectId: string, teamId: string) {
 		const query = new URLSearchParams({ teamId });
-		return this.request<{ ok: true; payload: unknown }>(
+		return this.request<{ ok: true; payload: CapacityRuntimeDiagnosticsResponse }>(
 			`/v1/projects/${encodeURIComponent(projectId)}/capacity-runtime-diagnostics?${query.toString()}`,
 			{ requireAuth: true },
 		);
@@ -1306,6 +1492,28 @@ export class MarketClient {
 	createPlanningInputRequest(decisionId: string, body: Record<string, unknown>) {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
 			`/v1/decisions/${encodeURIComponent(decisionId)}/planning-input-requests`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	decisionStructuredEstimates(decisionId: string, status?: string) {
+		const query = status ? `?status=${encodeURIComponent(status)}` : '';
+		return this.request<{ ok: true; payload: Record<string, unknown>[] }>(
+			`/v1/decisions/${encodeURIComponent(decisionId)}/estimates${query}`,
+			{ requireAuth: true },
+		);
+	}
+
+	createStructuredAgentEstimate(decisionId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/decisions/${encodeURIComponent(decisionId)}/estimates`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	acceptStructuredAgentEstimate(estimateId: string, body: Record<string, unknown> = {}) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/structured-agent-estimates/${encodeURIComponent(estimateId)}/accept`,
 			{ method: 'POST', body, requireAuth: true },
 		);
 	}
@@ -1336,6 +1544,21 @@ export class MarketClient {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
 			`/v1/decision-execution-inputs/${encodeURIComponent(inputId)}/request-revision`,
 			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	decisionAssignmentGraphs(decisionId: string, options: { active?: boolean } = {}) {
+		const query = options.active === undefined ? '' : `?active=${String(options.active)}`;
+		return this.request<{ ok: true; payload: Record<string, unknown>[] }>(
+			`/v1/decisions/${encodeURIComponent(decisionId)}/assignment-graphs${query}`,
+			{ requireAuth: true },
+		);
+	}
+
+	decisionAssignmentGraph(graphId: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/decision-assignment-graphs/${encodeURIComponent(graphId)}`,
+			{ requireAuth: true },
 		);
 	}
 
@@ -1389,10 +1612,10 @@ export class MarketClient {
 		);
 	}
 
-	createWorkday(body: Record<string, unknown>) {
+	createWorkday(body: Record<string, unknown>, idempotencyKey: string) {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
 			'/v1/workdays',
-			{ method: 'POST', body, requireAuth: true },
+			{ method: 'POST', body, headers: { 'Idempotency-Key': idempotencyKey }, requireAuth: true },
 		);
 	}
 
@@ -1403,40 +1626,65 @@ export class MarketClient {
 		);
 	}
 
-	startWorkday(workdayId: string) {
+	startWorkday(workdayId: string, idempotencyKey: string) {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
 			`/v1/workdays/${encodeURIComponent(workdayId)}/start`,
-			{ method: 'POST', requireAuth: true },
+			{ method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, requireAuth: true },
 		);
 	}
 
-	pauseWorkday(workdayId: string) {
+	pauseWorkday(workdayId: string, idempotencyKey: string) {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
 			`/v1/workdays/${encodeURIComponent(workdayId)}/pause`,
-			{ method: 'POST', requireAuth: true },
+			{ method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, requireAuth: true },
 		);
 	}
 
-	completeWorkday(workdayId: string) {
+	resumeWorkday(workdayId: string, idempotencyKey: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/workdays/${encodeURIComponent(workdayId)}/resume`,
+			{ method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, requireAuth: true },
+		);
+	}
+
+	cancelWorkday(workdayId: string, idempotencyKey: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/workdays/${encodeURIComponent(workdayId)}/cancel`,
+			{ method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, requireAuth: true },
+		);
+	}
+
+	completeWorkday(workdayId: string, idempotencyKey: string) {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
 			`/v1/workdays/${encodeURIComponent(workdayId)}/complete`,
-			{ method: 'POST', requireAuth: true },
+			{ method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, requireAuth: true },
 		);
 	}
 
-	workdaySummary(workdayId: string) {
-		return this.request<{ ok: true; payload: Record<string, unknown> }>(
-			`/v1/workdays/${encodeURIComponent(workdayId)}/summary`,
+	workdaySummary(workdayId: string, options: {
+		evidence?: 'assignments' | 'mode-runs' | 'reservations' | 'usage-actuals' | 'ledger-entries' | null;
+		limit?: number;
+		cursor?: string | null;
+	} = {}) {
+		const params = new URLSearchParams();
+		if (options.evidence) params.set('evidence', options.evidence);
+		if (options.limit !== undefined) params.set('limit', String(options.limit));
+		if (options.cursor) params.set('cursor', options.cursor);
+		const query = params.toString() ? `?${params.toString()}` : '';
+		return this.request<{ ok: true; payload: WorkdayCapacitySummaryPayload }>(
+			`/v1/workdays/${encodeURIComponent(workdayId)}/summary${query}`,
 			{ requireAuth: true },
 		);
 	}
 
-	workdayRuns(teamId: string, options: { status?: string | null; providerId?: string | null } = {}) {
+	workdayRuns(teamId: string, options: { status?: string | null; providerId?: string | null; limit?: number; cursor?: string | null } = {}) {
 		const params = new URLSearchParams();
 		if (options.status) params.set('status', options.status);
 		if (options.providerId) params.set('providerId', options.providerId);
+		if (options.limit !== undefined) params.set('limit', String(options.limit));
+		if (options.cursor) params.set('cursor', options.cursor);
 		const query = params.toString() ? `?${params.toString()}` : '';
-		return this.request<{ ok: true; payload: unknown[] }>(
+		return this.request<{ ok: true; payload: CapacityPage<Record<string, unknown>> }>(
 			`/v1/teams/${encodeURIComponent(teamId)}/workday-runs${query}`,
 			{ requireAuth: true },
 		);
@@ -1463,9 +1711,54 @@ export class MarketClient {
 		);
 	}
 
-	workdayEvents(teamId: string, runId: string) {
-		return this.request<{ ok: true; payload: unknown[] }>(
-			`/v1/teams/${encodeURIComponent(teamId)}/workday-runs/${encodeURIComponent(runId)}/events`,
+	tickWorkdayRun(teamId: string, runId: string, body: { idempotencyKey: string; now?: string }) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/workday-runs/${encodeURIComponent(runId)}/tick`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	createResearchWorkflow(projectId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/research-workflows`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	researchWorkflow(workflowId: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/research-workflows/${encodeURIComponent(workflowId)}`,
+			{ requireAuth: true },
+		);
+	}
+
+	cancelCapacityAssignment(teamId: string, assignmentId: string, body: { idempotencyKey: string; reason?: string }) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/assignments/${encodeURIComponent(assignmentId)}/cancel`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	requeueCapacityAssignment(teamId: string, assignmentId: string, body: { idempotencyKey: string; reason?: string }) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/assignments/${encodeURIComponent(assignmentId)}/requeue`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	decideCapacityOverrun(teamId: string, reservationId: string, decision: 'approve' | 'reject', body: { idempotencyKey: string }) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/reservations/${encodeURIComponent(reservationId)}/overrun/${decision}`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	workdayEvents(teamId: string, runId: string, page: { limit?: number; cursor?: string | null } = {}) {
+		const params = new URLSearchParams();
+		if (page.limit !== undefined) params.set('limit', String(page.limit));
+		if (page.cursor) params.set('cursor', page.cursor);
+		return this.request<{ ok: true; payload: CapacityPage<Record<string, unknown>> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/workday-runs/${encodeURIComponent(runId)}/events${params.size ? `?${params}` : ''}`,
 			{ requireAuth: true },
 		);
 	}

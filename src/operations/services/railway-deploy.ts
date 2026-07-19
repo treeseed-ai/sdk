@@ -1955,7 +1955,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 					TREESEED_PROVIDER_RUNNER_ID: service.runnerId ?? railwayService.name,
 				} : {}),
 				...(configuredEnvValue(env, 'TREESEED_MARKET_URL') ? { TREESEED_MARKET_URL: configuredEnvValue(env, 'TREESEED_MARKET_URL') } : {}),
-				...(configuredEnvValue(env, 'TREESEED_CAPACITY_PROVIDER_API_KEY') ? { TREESEED_CAPACITY_PROVIDER_API_KEY: configuredEnvValue(env, 'TREESEED_CAPACITY_PROVIDER_API_KEY') } : {}),
+				...(configuredEnvValue(env, 'TREESEED_CAPACITY_PROVIDER_MANIFEST') ? { TREESEED_CAPACITY_PROVIDER_MANIFEST: configuredEnvValue(env, 'TREESEED_CAPACITY_PROVIDER_MANIFEST') } : {}),
 				...(configuredEnvValue(env, 'TREESEED_CODEX_AUTH_JSON_B64') ? { TREESEED_CODEX_AUTH_JSON_B64: configuredEnvValue(env, 'TREESEED_CODEX_AUTH_JSON_B64') } : {}),
 			} : {}),
 		},

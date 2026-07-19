@@ -116,28 +116,6 @@ const railwayRegistryFixtureEntries = `
     sourcePriority:
       - machine-config
       - process-env
-  TREESEED_RAILWAY_WORKER_SERVICE_ID:
-    label: Railway worker service ID
-    group: hosting
-    visibility: system
-    description: Railway worker service identifier.
-    howToGet: Set the Railway worker service ID.
-    sensitivity: plain
-    targets:
-      - github-variable
-    scopes:
-      - staging
-      - prod
-    storage: scoped
-    requirement: optional
-    purposes:
-      - deploy
-      - config
-    validation:
-      kind: nonempty
-    sourcePriority:
-      - machine-config
-      - process-env
 `;
 
 const codexRegistryFixtureEntries = `
@@ -1004,7 +982,6 @@ services:
 		for (const id of [
 			'TREESEED_RAILWAY_PROJECT_ID',
 			'TREESEED_RAILWAY_ENVIRONMENT_ID',
-			'TREESEED_RAILWAY_WORKER_SERVICE_ID',
 		]) {
 			setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', {
 				id,
@@ -1022,10 +999,8 @@ services:
 
 		expect(visibleIds).not.toContain('TREESEED_RAILWAY_PROJECT_ID');
 		expect(visibleIds).not.toContain('TREESEED_RAILWAY_ENVIRONMENT_ID');
-		expect(visibleIds).not.toContain('TREESEED_RAILWAY_WORKER_SERVICE_ID');
 		expect(context.valuesByScope.staging.TREESEED_RAILWAY_PROJECT_ID).toBe('treeseed_railway_project_id-value');
 		expect(context.valuesByScope.staging.TREESEED_RAILWAY_ENVIRONMENT_ID).toBe('treeseed_railway_environment_id-value');
-		expect(context.valuesByScope.staging.TREESEED_RAILWAY_WORKER_SERVICE_ID).toBe('treeseed_railway_worker_service_id-value');
 	});
 
 	it('does not treat one-character Railway token values as configured', () => {

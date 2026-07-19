@@ -383,7 +383,7 @@ const scoped = sdk.scopeForAgent({
 The package also exports:
 
 - workflow helpers such as `TreeseedWorkflowSdk`
-- remote and queue clients such as `RemoteTreeseedClient`, `CloudflareQueuePullClient`, and `CloudflareQueuePushClient`
+- remote clients such as `RemoteTreeseedClient`
 - model registry, field, and filter utilities
 - plugin/runtime types and helpers
 

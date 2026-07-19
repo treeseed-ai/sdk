@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
-	deriveAgentCapacityEnvelopeFromReservation,
 	deriveAgentCapacityEnvelopeFromAssignment,
-	deriveAllocationSetFromCapacityGrants,
 	deriveDecisionExecutionInputFromAssignment,
 	deriveModeRunUsageSettlement,
-	deriveProviderAvailabilitySession,
 	buildExecutionProviderAssignmentExplanation,
 	buildAgentCapacityPlanDraft,
+	activateDecisionAssignmentGraph,
+	advanceDecisionAssignmentGraph,
 	compileDecisionAssignmentGraphFromEstimates,
+	compileEngineeringAssignmentGraph,
+	compileEngineeringRevisionCycle,
 	compileExecutionCapabilityDemand,
 	compileExecutionCapabilitySupply,
 	computeDecisionScopeHash,
@@ -34,121 +35,27 @@ import {
 	validateDeliverableContract,
 	validateDeliverableManifest,
 	validateStructuredAgentEstimate,
+	validateEngineeringWorkflowPromotionConfig,
 } from '../../src/agent-capacity.ts';
 
 describe('agent capacity contracts', () => {
-	it('derives generic capacity records from existing capacity primitives', () => {
-		const grant = {
-			id: 'grant-1',
-			capacityProviderId: 'provider-1',
-			laneId: 'lane-1',
-			grantScope: 'project',
-			teamId: 'team-1',
-			projectId: 'project-1',
-			environment: 'staging',
-			state: 'active',
-			dailyCreditLimit: 12,
-			weeklyCreditLimit: null,
-			monthlyCreditLimit: 120,
-			dailyUsdLimit: null,
-			weeklyQuotaMinutes: null,
-			monthlyProviderUnits: null,
-			portfolioAllocationPercent: 60,
-			priorityWeight: 2,
-			overflowPolicy: 'approval_required',
-			metadata: { source: 'test' },
-			createdAt: '2026-01-01T00:00:00.000Z',
-			updatedAt: '2026-01-01T00:00:00.000Z',
-		} as const;
-
-		const allocationSet = deriveAllocationSetFromCapacityGrants({
-			id: 'allocation-1',
-			teamId: 'team-1',
-			grants: [grant],
-			now: '2026-01-01T00:00:00.000Z',
-		});
-		expect(allocationSet).toMatchObject({
-			id: 'allocation-1',
-			teamId: 'team-1',
-			status: 'draft',
-			slices: [{
-				projectId: 'project-1',
-				capacityProviderId: 'provider-1',
-				percent: 60,
-			}],
-		});
-
-		const session = deriveProviderAvailabilitySession({
-			id: 'session-1',
-			provider: {
-				id: 'provider-1',
-				teamId: 'team-1',
-				ownerTeamId: 'team-1',
-				name: 'Local Provider',
-				kind: 'team_owned',
-				status: 'online',
-				provider: '@treeseed/agent',
-				billingScope: 'team',
-				monthlyCreditBudget: 100,
-				dailyCreditBudget: 10,
-				maxConcurrentWorkdays: 1,
-				maxConcurrentWorkers: 1,
-				capacityModel: {},
-				capabilities: ['agent_execution'],
-				metadata: { lastHealth: { activeWorkers: 0 } },
-				createdAt: '2026-01-01T00:00:00.000Z',
-				updatedAt: '2026-01-01T00:00:00.000Z',
-			},
-			grants: [grant],
-			now: '2026-01-01T00:00:00.000Z',
-		});
-		expect(session).toMatchObject({
-			id: 'session-1',
-			capacityProviderId: 'provider-1',
-			status: 'open',
-			capabilities: ['agent_execution'],
-			grants: [expect.objectContaining({ id: 'grant-1' })],
+	it('validates portable engineering workflow promotion configuration', () => {
+		const valid = {
+			schemaVersion: 1, id: 'engineering-a', projectId: 'project-a', decisionId: 'decision-a',
+			objectiveId: 'objective-a', exactBaseRef: '0123456789abcdef',
+			roles: { tester: 'testing', engineer: 'engineering', reviewer: 'review', technicalWriter: 'technical-writing', releaser: 'release' },
+		};
+		expect(validateEngineeringWorkflowPromotionConfig(valid)).toEqual({ ok: true, diagnostics: [] });
+		expect(validateEngineeringWorkflowPromotionConfig({ ...valid, exactBaseRef: '', includeResearch: true })).toMatchObject({
+			ok: false,
+			diagnostics: expect.arrayContaining([
+				expect.objectContaining({ path: 'exactBaseRef' }),
+				expect.objectContaining({ path: 'roles.researcher' }),
+			]),
 		});
 	});
 
-	it('derives assignment envelopes and mode-run usage settlement snapshots', () => {
-		const envelope = deriveAgentCapacityEnvelopeFromReservation({
-			mode: 'planning',
-			projectAgentClassId: 'class-1',
-			allocationSetId: 'allocation-1',
-			reservation: {
-				id: 'reservation-1',
-				capacityProviderId: 'provider-1',
-				executionProviderId: 'exec-1',
-				laneId: 'lane-1',
-				teamId: 'team-1',
-				projectId: 'project-1',
-				workDayId: 'workday-1',
-				taskId: null,
-				state: 'reserved',
-				reservedCredits: 5,
-				consumedCredits: 0,
-				nativeUnit: 'wall_minute',
-				reservedNativeAmount: 30,
-				consumedNativeAmount: null,
-				reservedProviderUnits: null,
-				consumedProviderUnits: null,
-				reservedUsd: null,
-				consumedUsd: null,
-				expiresAt: null,
-				metadata: {},
-				createdAt: '2026-01-01T00:00:00.000Z',
-				updatedAt: '2026-01-01T00:00:00.000Z',
-			},
-		});
-		expect(envelope).toMatchObject({
-			mode: 'planning',
-			projectAgentClassId: 'class-1',
-			allocationSetId: 'allocation-1',
-			reservationId: 'reservation-1',
-			reservedCredits: 5,
-		});
-
+	it('derives mode-run usage settlement snapshots', () => {
 		const settlement = deriveModeRunUsageSettlement({
 			id: 'usage-1',
 			taskId: null,
@@ -158,7 +65,6 @@ describe('agent capacity contracts', () => {
 			executionProfileId: 'standard-code-model',
 			capacityProviderId: 'provider-1',
 			executionProviderId: 'exec-1',
-			laneId: 'lane-1',
 			businessModel: 'subscription_quota',
 			modelName: 'codex',
 			inputTokens: null,
@@ -179,7 +85,7 @@ describe('agent capacity contracts', () => {
 			createdAt: '2026-01-01T00:00:00.000Z',
 		});
 		expect(settlement).toMatchObject({
-			taskUsageActualId: 'usage-1',
+			capacityUsageActualId: 'usage-1',
 			capacityLedgerEntryId: 'ledger-1',
 			actualCredits: 1.5,
 		});
@@ -429,7 +335,7 @@ describe('agent capacity contracts', () => {
 					branchPrefix: 'agent',
 					providerProfile: {
 						requiredCapabilities: ['planning', 'repo_read'],
-						preferredLanes: [{ provider: 'codex', weight: 80 }],
+						preferredExecutionProviders: [{ provider: 'codex', weight: 80 }],
 						acceptableFallbacks: [],
 						fallbackPolicy: 'fail_if_unavailable',
 					},
@@ -552,30 +458,48 @@ describe('agent capacity contracts', () => {
 				supportsArtifacts: false,
 			},
 			executionProvider: {
+				schemaVersion: 1,
 				id: 'execution-1',
-				kind: 'codex_subscription',
+				providerId: 'provider-1',
+				displayName: 'Codex',
+				adapter: 'codex_subscription',
+				status: 'active',
+				capabilities: ['repo_write'],
 				nativeUnit: 'wall_minute',
 				quotaVisibility: 'exact',
-				maxConcurrentWorkers: 4,
+				maxConcurrentRunners: 4,
+				nativeLimits: [],
 				metadata: {
-					capabilities: ['repo_write'],
 					capabilityAliases: ['large_reasoning_model'],
 				},
-				config: {},
+				createdAt: '2026-01-01T00:00:00.000Z',
+				updatedAt: '2026-01-01T00:00:00.000Z',
 			} as never,
 			availabilitySession: {
 				id: 'session-1',
+				membershipId: 'membership-1',
+				teamId: 'team-1',
+				providerId: 'provider-1',
 				status: 'open',
-				checkedInAt: '2026-01-01T00:00:00.000Z',
-				capabilities: ['verification'],
-				runnerPressure: { pressure: 'busy' },
+				sequence: 1,
+				snapshot: {
+					sequence: 1,
+					availableFrom: '2026-01-01T00:00:00.000Z',
+					pressure: 'busy',
+					maxConcurrentAssignments: 4,
+					activeAssignmentIds: [],
+					executionProviders: [],
+					capabilities: ['verification'],
+				},
+				openedAt: '2026-01-01T00:00:00.000Z',
+				refreshedAt: '2026-01-01T00:00:00.000Z',
+				expiresAt: '2026-01-01T00:05:00.000Z',
 			} as never,
 			providerCapabilities: ['qa_validation'],
 			checkInCapabilities: ['human_review'],
 			grants: [{
 				id: 'grant-1',
-				state: 'active',
-				grantScope: 'project',
+				status: 'active',
 			} as never],
 		});
 
@@ -797,6 +721,7 @@ describe('agent capacity contracts', () => {
 					projectId: 'project-1',
 					projectAgentClassId: 'class-1',
 					mode: 'acting',
+					workGraphNodeId: 'graph-1:node:implementation',
 					agentId: 'implementer',
 					capacity,
 					input: {
@@ -819,12 +744,28 @@ describe('agent capacity contracts', () => {
 			highCredits: 5,
 			capabilityNeeds: ['repo_write'],
 			workUnits: [expect.objectContaining({
+				id: 'plan-1:wu:1',
 				decisionExecutionInputId: 'input-1',
+				workGraphNodeId: 'graph-1:node:implementation',
 				agentId: 'implementer',
 				expectedCredits: 3,
 				highCredits: 5,
 			})],
 		});
+	});
+
+	it('rejects acting capacity-plan work without explicit graph-node provenance', () => {
+		expect(() => buildAgentCapacityPlanDraft({
+			id: 'plan-1', teamId: 'team-1', projectId: 'project-1', decisionId: 'decision-1', scopeHash: 'scope-1',
+			executionInputs: [{
+				id: 'input-1', teamId: 'team-1', projectId: 'project-1', decisionId: 'decision-1',
+				projectAgentClassId: 'class-1', mode: 'acting', status: 'accepted', scopeHash: 'scope-1',
+				input: {
+					teamId: 'team-1', projectId: 'project-1', projectAgentClassId: 'class-1', mode: 'acting',
+					capacity: { teamId: 'team-1', projectId: 'project-1', mode: 'acting' }, input: {},
+				},
+			}],
+		})).toThrow('Acting decision execution input input-1 requires workGraphNodeId provenance.');
 	});
 
 	it('selects kernel modes, validates outputs, and builds proxy request headers', () => {
@@ -922,8 +863,31 @@ describe('agent capacity contracts', () => {
 			} as any,
 		})).toBe(true);
 		expect(hasAcceptedCapacityPlanProvenance({
-			assignment: { synthesizedFrom: 'fixture', metadata: {} } as any,
+			assignment: { synthesizedFrom: 'fallback_queue', metadata: {} } as any,
 		})).toBe(false);
+	});
+
+	it('applies distinct TreeDX proxy read and write path scopes', () => {
+		const handle = {
+			id: 'tdx-path-scope',
+			teamId: 'team-1',
+			projectId: 'project-1',
+			assignmentId: 'assignment-1',
+			scopes: ['project:read', 'project:write'],
+			allowedOperations: ['files:read', 'files:write', 'git:commit'],
+			allowedPaths: ['**'],
+			allowedReadPaths: ['**'],
+			allowedWritePaths: ['src/content/**'],
+		};
+		expect(evaluateTreeDxProxyHandleAccess(handle, {
+			projectId: 'project-1', assignmentId: 'assignment-1', operation: 'files:read', path: 'README.md',
+		})).toMatchObject({ ok: true });
+		expect(evaluateTreeDxProxyHandleAccess(handle, {
+			projectId: 'project-1', assignmentId: 'assignment-1', operation: 'files:write', path: 'README.md',
+		})).toMatchObject({ ok: false, code: 'treedx_proxy_path_denied' });
+		expect(evaluateTreeDxProxyHandleAccess(handle, {
+			projectId: 'project-1', assignmentId: 'assignment-1', operation: 'files:write', path: 'src/content/notes/result.md',
+		})).toMatchObject({ ok: true });
 	});
 
 	it('validates provider assignment capability handles without exposing secrets', () => {
@@ -1000,6 +964,27 @@ describe('agent capacity contracts', () => {
 		} as const;
 
 		expect(validateProviderAssignmentCapabilityHandles({ assignment })).toBeNull();
+		const governedBaseRef = '0123456789abcdef0123456789abcdef01234567';
+		expect(validateProviderAssignmentCapabilityHandles({
+			assignment: {
+				...assignment,
+				decisionInput: { ...assignment.decisionInput, input: { exactBaseRef: governedBaseRef } },
+				capabilityHandles: {
+					...assignment.capabilityHandles,
+					repository: [{ ...assignment.capabilityHandles.repository[0], operations: ['read', 'write'], allowedRefs: ['different-ref'] }],
+				},
+			},
+		})).toMatchObject({ code: 'assignment_repository_ref_scope_invalid', retryable: false });
+		expect(validateProviderAssignmentCapabilityHandles({
+			assignment: {
+				...assignment,
+				decisionInput: { ...assignment.decisionInput, input: { exactBaseRef: governedBaseRef } },
+				capabilityHandles: {
+					...assignment.capabilityHandles,
+					repository: [{ ...assignment.capabilityHandles.repository[0], operations: ['read', 'write'], allowedRefs: [governedBaseRef] }],
+				},
+			},
+		})).toBeNull();
 		expect(validateAgentKernelModeExecutionInput({
 			assignment,
 			now: '2026-01-01T00:00:00.000Z',
@@ -1267,7 +1252,16 @@ describe('agent capacity contracts', () => {
 			}],
 			summary: 'Architecture spec was produced as a linked note.',
 			readyForReview: true,
+			sourceAuthority: {
+				assignmentId: 'assignment-1', modeRunId: 'mode-run-1', baseRef: '0123456789abcdef',
+				effectiveRef: 'fedcba9876543210', checkpointCommit: 'fedcba9876543210',
+			},
 		}).ok).toBe(true);
+		expect(validateDeliverableManifest({
+			id: 'manifest-1', deliverableContractId: 'contract-1', projectId: 'project-1', decisionId: 'decision-1',
+			producedRefs: [{ model: 'note', collection: 'notes', slug: 'architecture/decision-1' }], summary: 'Invalid source lineage.', readyForReview: true,
+			sourceAuthority: { assignmentId: 'assignment-1', modeRunId: 'mode-run-1', baseRef: 'main', effectiveRef: 'fedcba9876543210' },
+		}).diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'deliverable_source_ref_invalid', path: 'sourceAuthority.baseRef' })]));
 	});
 
 	it('compiles deterministic decision assignment graphs from shuffled estimates', () => {
@@ -1343,5 +1337,93 @@ describe('agent capacity contracts', () => {
 				humanInputPolicy: { requiredFrom: 'team-human', teamId: 'team-1' },
 			})],
 		});
+	});
+
+	it('compiles the canonical engineering graph in test-first dependency order', () => {
+		const compiled = compileEngineeringAssignmentGraph({
+			teamId: 'team-1',
+			projectId: 'project-1',
+			decisionId: 'decision-1',
+			exactBaseRef: '0123456789abcdef',
+			roles: {
+				researcher: 'researcher',
+				architect: 'architect',
+				tester: 'tester',
+				engineer: 'engineer',
+				reviewer: 'reviewer',
+				technicalWriter: 'technical-writer',
+				releaser: 'releaser',
+				operations: 'operations-runner',
+			},
+			includeResearch: true,
+			includeArchitecture: true,
+			compiledAt: '2026-01-01T00:00:00.000Z',
+		});
+
+		expect(compiled.diagnostics.filter((entry) => entry.severity === 'error')).toEqual([]);
+		expect(compiled.graph.status).toBe('compiled');
+		expect(compiled.graph.nodes.map((node) => node.metadata?.stage)).toEqual([
+			'research', 'architecture', 'test', 'implementation', 'verification', 'review', 'documentation', 'release', 'operations',
+		]);
+		expect(compiled.graph.edges.map((edge) => [
+			compiled.graph.nodes.find((node) => node.id === edge.fromNodeId)?.metadata?.stage,
+			compiled.graph.nodes.find((node) => node.id === edge.toNodeId)?.metadata?.stage,
+		])).toEqual([
+			['research', 'architecture'], ['architecture', 'test'], ['test', 'implementation'], ['implementation', 'verification'],
+			['verification', 'review'], ['review', 'documentation'], ['documentation', 'release'], ['release', 'operations'],
+		]);
+		expect(compiled.graph.nodes.find((node) => node.metadata?.stage === 'implementation')?.metadata).toMatchObject({
+			exactBaseRef: '0123456789abcdef',
+			requiresFailingTestIntegrationRef: true,
+			testMutationForbidden: true,
+		});
+		expect(compiled.graph.nodes.find((node) => node.metadata?.stage === 'test')?.metadata).toMatchObject({ implementationMutationForbidden: true });
+		expect(compiled.graph.nodes.find((node) => node.metadata?.stage === 'review')?.metadata).toMatchObject({ rejectionCreatesRevision: true });
+		expect(compiled.graph.nodes.find((node) => node.metadata?.stage === 'release')?.metadata).toMatchObject({ hostedReleaseFailClosed: true });
+	});
+
+	it('blocks engineering graphs without an exact source ref', () => {
+		const compiled = compileEngineeringAssignmentGraph({
+			teamId: 'team-1', projectId: 'project-1', decisionId: 'decision-1', exactBaseRef: ' ',
+			roles: { tester: 'tester', engineer: 'engineer', reviewer: 'reviewer', technicalWriter: 'technical-writer', releaser: 'releaser' },
+		});
+
+		expect(compiled.graph.status).toBe('blocked');
+		expect(compiled.diagnostics).toContainEqual(expect.objectContaining({ code: 'engineering_exact_base_ref_required', severity: 'error' }));
+	});
+
+	it('advances approved engineering deliverables and creates explicit review revision cycles', () => {
+		const initial = compileEngineeringAssignmentGraph({
+			teamId: 'team-1', projectId: 'project-1', decisionId: 'decision-1', exactBaseRef: 'abc123',
+			roles: { tester: 'tester', engineer: 'engineer', reviewer: 'reviewer', technicalWriter: 'writer', releaser: 'releaser' },
+		}).graph;
+		const testContract = initial.deliverableContracts[0]!;
+		const advanced = advanceDecisionAssignmentGraph(initial, testContract.id, new Set([testContract.id]));
+		expect(advanced.nodes.map((node) => node.status)).toEqual(['completed', 'ready', 'pending', 'pending', 'pending', 'pending']);
+
+		const reviewContract = initial.deliverableContracts.find((contract) => contract.deliverableType === 'review_decision')!;
+		const revision = compileEngineeringRevisionCycle(initial, reviewContract.id, 'Implementation needs an edge-case correction.');
+		expect(revision).not.toBeNull();
+		expect(revision!.revisionCycle).toBe(1);
+		expect(revision!.graph.nodes.slice(-3).map((node) => [node.metadata?.stage, node.status])).toEqual([
+			['implementation', 'ready'], ['verification', 'pending'], ['review', 'pending'],
+		]);
+		expect(revision!.graph.nodes.find((node) => node.metadata?.stage === 'documentation')?.requiredDeliverableContractIds).toEqual([
+			revision!.newContracts[2]!.id,
+		]);
+		expect(revision!.graph.edges).toContainEqual(expect.objectContaining({
+			fromNodeId: revision!.graph.nodes.at(-1)!.id,
+			toNodeId: revision!.graph.nodes.find((node) => node.metadata?.stage === 'documentation')!.id,
+		}));
+	});
+
+	it('activates only dependency-root graph nodes', () => {
+		const graph = compileEngineeringAssignmentGraph({
+			teamId: 'team-1', projectId: 'project-1', decisionId: 'decision-1', exactBaseRef: 'abc123',
+			roles: { tester: 'tester', engineer: 'engineer', reviewer: 'reviewer', technicalWriter: 'writer', releaser: 'releaser' },
+		}).graph;
+		const activated = activateDecisionAssignmentGraph({ ...graph, nodes: graph.nodes.map((node) => ({ ...node, status: 'pending' })) });
+		expect(activated.status).toBe('ready');
+		expect(activated.nodes.map((node) => node.status)).toEqual(['ready', 'pending', 'pending', 'pending', 'pending', 'pending']);
 	});
 });

@@ -40,5 +40,6 @@ describe('local process reconcile provider', () => {
 		expect(web?.env.TREESEED_MARKET_API_BASE_URL).toBe('http://127.0.0.1:3000');
 		expect(runner?.env.TREESEED_DATABASE_URL).toBe(api?.env.TREESEED_DATABASE_URL);
 		expect(runner?.env.TREESEED_PLATFORM_RUNNER_ENVIRONMENT).toBe('local');
+		expect(runner?.health).toEqual([{ id: 'operations-runner', kind: 'http', url: 'http://127.0.0.1:3001/readyz', timeoutMs: 10_000 }]);
 	});
 });

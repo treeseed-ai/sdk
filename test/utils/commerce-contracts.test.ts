@@ -730,7 +730,7 @@ describe('commerce contracts', () => {
 			vendorId: product.vendorId,
 			sellerTeamId: product.sellerTeamId,
 			capacityProviderId: null,
-			capacityProviderLaneId: null,
+			executionProviderId: null,
 			status: 'approved',
 			accessLevel: 'public_summary',
 			runtimeIsolationLevel: 'external_only',

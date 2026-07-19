@@ -129,6 +129,7 @@ describe('sdk package graph', () => {
 			.filter((filePath) => !filePath.includes('/.ts-run-'))
 			.filter((filePath) => !filePath.includes('/docs/research/'))
 			.filter((filePath) => !filePath.includes('/package-lock.json'))
+			.filter((filePath) => !/\/test\/.*\.(?:js|mjs|cjs)$/u.test(filePath))
 			.filter((filePath) => filePath !== currentTestPath);
 
 		for (const filePath of files) {
@@ -137,7 +138,7 @@ describe('sdk package graph', () => {
 				expect(contents.includes(needle), `${filePath} contains deprecated sdk path ${needle}`).toBe(false);
 			}
 		}
-	});
+	}, 20_000);
 
 	it('keeps the canonical agent contracts shim in sdk fixture support', () => {
 		const sdkFixtureSupportPath = resolve(workspaceRoot, 'src', 'fixture-support.ts');

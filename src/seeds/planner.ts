@@ -118,14 +118,6 @@ function actionKindLabel(action: SeedPlanAction) {
 			return 'repository host';
 		case 'hubRepository':
 			return 'hub repository';
-		case 'capacityProvider':
-			return 'capacity provider';
-		case 'capacityLane':
-			return 'lane';
-		case 'capacityGrant':
-			return 'grant';
-		case 'workPolicy':
-			return 'work policy';
 		case 'catalogArtifact':
 			return 'catalog artifact';
 		default:

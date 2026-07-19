@@ -237,11 +237,6 @@ function seedHostedValues(tenantRoot: string) {
 		setConfigValue(tenantRoot, scope, 'TREESEED_FORM_TOKEN_SECRET', 'form-secret-value', 'secret');
 		setConfigValue(tenantRoot, scope, 'TREESEED_EDITORIAL_PREVIEW_SECRET', 'preview-secret-value', 'secret');
 		setConfigValue(tenantRoot, scope, 'TREESEED_PROJECT_RUNNER_TOKEN', `runner-token-${scope}`, 'secret');
-		setConfigValue(tenantRoot, scope, 'TREESEED_WORKER_POOL_SCALER', 'railway');
-		setConfigValue(tenantRoot, scope, 'TREESEED_AGENT_POOL_MIN_WORKERS', '0');
-		setConfigValue(tenantRoot, scope, 'TREESEED_AGENT_POOL_MAX_WORKERS', '2');
-		setConfigValue(tenantRoot, scope, 'TREESEED_AGENT_POOL_TARGET_QUEUE_DEPTH', '1');
-		setConfigValue(tenantRoot, scope, 'TREESEED_AGENT_POOL_COOLDOWN_SECONDS', '60');
 		setConfigValue(tenantRoot, scope, 'TREESEED_WORKDAY_TIMEZONE', 'America/New_York');
 		setConfigValue(tenantRoot, scope, 'TREESEED_WORKDAY_WINDOWS_JSON', '[]');
 		setConfigValue(tenantRoot, scope, 'TREESEED_WORKDAY_TASK_CREDIT_BUDGET', '20');

@@ -1,20 +1,11 @@
 import type {
-	AgentPoolAutoscalePolicy,
 	ApprovalRequest,
-	CapacityPlan,
-	CapacityReservation,
-	CapacityRoutingDecision,
 	CreateApprovalRequestRequest,
-	CreateCapacityReservationRequest,
-	CreateCapacityRoutingDecisionRequest,
-	CreateTaskEstimateRequest,
 	ProjectDeploymentKind,
 	ProjectDeploymentStatus,
 	ProjectEnvironmentName,
 	ProjectInfrastructureResourceKind,
 	ProjectInfrastructureResourceProvider,
-	RecordCapacityUsageRequest,
-	TaskEstimate,
 	TreeseedHostingKind,
 	TreeseedHostingRegistration,
 } from './sdk-types.ts';
@@ -59,57 +50,12 @@ export interface ControlPlaneDeploymentReport {
 	finishedAt?: string | null;
 }
 
-export interface ControlPlaneAgentPoolHeartbeat {
-	teamId: string;
-	environment: ProjectEnvironmentName;
-	poolName: string;
-	managerId?: string | null;
-	serviceName?: string | null;
-	registrationIdentity?: string | null;
-	serviceBaseUrl?: string | null;
-	autoscale?: AgentPoolAutoscalePolicy;
-	desiredWorkers?: number | null;
-	observedQueueDepth?: number | null;
-	observedActiveLeases?: number | null;
-	metadata?: Record<string, unknown>;
-}
-
-export interface ControlPlaneScaleDecisionReport {
-	environment: ProjectEnvironmentName;
-	poolName: string;
-	workDayId?: string | null;
-	desiredWorkers: number;
-	observedQueueDepth: number;
-	observedActiveLeases: number;
-	reason: string;
-	metadata?: Record<string, unknown>;
-}
-
-export interface ControlPlaneWorkdaySummaryReport {
-	environment: ProjectEnvironmentName;
-	workDayId: string;
-	kind?: string;
-	state?: string | null;
-	startedAt?: string | null;
-	endedAt?: string | null;
-	summary: Record<string, unknown>;
-	metadata?: Record<string, unknown>;
-}
-
 export interface ControlPlaneReporter {
 	readonly kind: ControlPlaneReporterKind;
 	readonly enabled: boolean;
 	reportEnvironment(input: ControlPlaneEnvironmentReport): Promise<void>;
 	reportResource(input: ControlPlaneResourceReport): Promise<void>;
 	reportDeployment(input: ControlPlaneDeploymentReport): Promise<void>;
-	registerAgentPoolHeartbeat(input: ControlPlaneAgentPoolHeartbeat): Promise<void>;
-	reportScaleDecision(input: ControlPlaneScaleDecisionReport): Promise<void>;
-	reportWorkdaySummary(input: ControlPlaneWorkdaySummaryReport): Promise<void>;
-	getProjectCapacityPlan(environment?: ProjectEnvironmentName | 'local' | null): Promise<CapacityPlan | null>;
-	createCapacityReservation(input: CreateCapacityReservationRequest): Promise<CapacityReservation | null>;
-	reportCapacityEstimate(input: CreateTaskEstimateRequest): Promise<TaskEstimate | null>;
-	reportCapacityUsage(input: RecordCapacityUsageRequest): Promise<void>;
-	reportCapacityRoutingDecision(input: CreateCapacityRoutingDecisionRequest): Promise<CapacityRoutingDecision | null>;
 	createApprovalRequest(input: CreateApprovalRequestRequest): Promise<ApprovalRequest | null>;
 }
 
@@ -175,14 +121,6 @@ class NoopControlPlaneReporter implements ControlPlaneReporter {
 	async reportEnvironment() {}
 	async reportResource() {}
 	async reportDeployment() {}
-	async registerAgentPoolHeartbeat() {}
-	async reportScaleDecision() {}
-	async reportWorkdaySummary() {}
-	async getProjectCapacityPlan() { return null; }
-	async createCapacityReservation() { return null; }
-	async reportCapacityEstimate() { return null; }
-	async reportCapacityUsage() {}
-	async reportCapacityRoutingDecision() { return null; }
 	async createApprovalRequest() { return null; }
 }
 
@@ -253,55 +191,6 @@ class HttpControlPlaneReporter implements ControlPlaneReporter {
 			...input,
 			status: normalizedStatus,
 		});
-	}
-
-	async registerAgentPoolHeartbeat(input: ControlPlaneAgentPoolHeartbeat) {
-		if (!this.projectId) return;
-		await this.request(
-			'POST',
-			`/v1/projects/${this.projectId}/runner/agent-pools/${encodeURIComponent(input.poolName)}/register`,
-			input as Record<string, unknown>,
-		);
-	}
-
-	async reportScaleDecision(input: ControlPlaneScaleDecisionReport) {
-		if (!this.projectId) return;
-		await this.request(
-			'POST',
-			`/v1/projects/${this.projectId}/runner/agent-pools/${encodeURIComponent(input.poolName)}/scale-decisions`,
-			input as Record<string, unknown>,
-		);
-	}
-
-	async reportWorkdaySummary(input: ControlPlaneWorkdaySummaryReport) {
-		if (!this.projectId) return;
-		await this.request('POST', `/v1/projects/${this.projectId}/runner/workdays`, input as Record<string, unknown>);
-	}
-
-	async getProjectCapacityPlan(environment?: ProjectEnvironmentName | 'local' | null) {
-		if (!this.projectId) return null;
-		const suffix = environment ? `?environment=${encodeURIComponent(environment)}` : '';
-		return this.request<CapacityPlan>('GET', `/v1/projects/${this.projectId}/capacity-plan${suffix}`);
-	}
-
-	async createCapacityReservation(input: CreateCapacityReservationRequest) {
-		if (!this.projectId) return null;
-		return this.request<CapacityReservation>('POST', `/v1/projects/${this.projectId}/runner/capacity/reservations`, input as Record<string, unknown>);
-	}
-
-	async reportCapacityEstimate(input: CreateTaskEstimateRequest) {
-		if (!this.projectId) return null;
-		return this.request<TaskEstimate>('POST', `/v1/projects/${this.projectId}/runner/capacity/estimates`, input as unknown as Record<string, unknown>);
-	}
-
-	async reportCapacityUsage(input: RecordCapacityUsageRequest) {
-		if (!this.projectId) return;
-		await this.request('POST', `/v1/projects/${this.projectId}/runner/capacity/usage`, input as Record<string, unknown>);
-	}
-
-	async reportCapacityRoutingDecision(input: CreateCapacityRoutingDecisionRequest) {
-		if (!this.projectId) return null;
-		return this.request<CapacityRoutingDecision>('POST', `/v1/projects/${this.projectId}/runner/capacity/routing-decisions`, input as Record<string, unknown>);
 	}
 
 	async createApprovalRequest(input: CreateApprovalRequestRequest) {

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { resolveSdkRepoRoot } from './runtime.ts';
 import { validateModelFieldAliases } from './sdk-fields.ts';
+import { assertResearchCitations } from './agent-capacity/validation/research-citation.ts';
 import type {
 	SdkBuiltinModelName,
 	SdkGraphModelConfig,
@@ -21,6 +22,14 @@ function field(
 	options: Omit<SdkModelFieldBinding, 'key'> = {},
 ): SdkModelFieldBinding {
 	return { key, ...options };
+}
+
+function citationsField() {
+	return field('citations', {
+		contentKeys: ['citations'],
+		writeContentKey: 'citations',
+		normalize: (value) => assertResearchCitations(value),
+	});
 }
 
 function deriveFieldLists(fields: Record<string, SdkModelFieldBinding>) {
@@ -82,6 +91,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			}),
 			fields: {
 				title: field('title', { filterable: true, sortable: true, contentKeys: ['title'], writeContentKey: 'title' }),
+				citations: citationsField(),
 				status: field('status', { filterable: true, contentKeys: ['status'], writeContentKey: 'status' }),
 				author: field('author', { filterable: true, contentKeys: ['author'], writeContentKey: 'author' }),
 				tags: field('tags', { filterable: true, comparableAs: 'string_array', contentKeys: ['tags'], writeContentKey: 'tags' }),
@@ -148,6 +158,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			}),
 			fields: {
 				title: field('title', { filterable: true, sortable: true, contentKeys: ['title'], writeContentKey: 'title' }),
+				citations: citationsField(),
 				status: field('status', { filterable: true, contentKeys: ['status'], writeContentKey: 'status' }),
 				tags: field('tags', { filterable: true, comparableAs: 'string_array', contentKeys: ['tags'], writeContentKey: 'tags' }),
 				date: field('date', { filterable: true, sortable: true, comparableAs: 'date', contentKeys: ['date'], writeContentKey: 'date' }),
@@ -187,6 +198,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			}),
 			fields: {
 				title: field('title', { filterable: true, sortable: true, contentKeys: ['title'], writeContentKey: 'title' }),
+				citations: citationsField(),
 				status: field('status', { filterable: true, contentKeys: ['status'], writeContentKey: 'status' }),
 				tags: field('tags', { filterable: true, comparableAs: 'string_array', contentKeys: ['tags'], writeContentKey: 'tags' }),
 				date: field('date', { filterable: true, sortable: true, comparableAs: 'date', contentKeys: ['date'], writeContentKey: 'date' }),
@@ -218,6 +230,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			}),
 			fields: {
 				title: field('title', { filterable: true, sortable: true, contentKeys: ['title'], writeContentKey: 'title' }),
+				citations: citationsField(),
 				slug: field('slug', { filterable: true, contentKeys: ['slug'], writeContentKey: 'slug' }),
 				tags: field('tags', { filterable: true, comparableAs: 'string_array', contentKeys: ['tags'], writeContentKey: 'tags' }),
 				section_label: field('section_label', { aliases: ['sectionLabel'], filterable: true, contentKeys: ['section_label', 'sectionLabel'], writeContentKey: 'section_label' }),
@@ -243,6 +256,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			}),
 			fields: {
 				title: field('title', { filterable: true, sortable: true, contentKeys: ['title'], writeContentKey: 'title' }),
+				citations: citationsField(),
 				tags: field('tags', { filterable: true, comparableAs: 'string_array', contentKeys: ['tags'], writeContentKey: 'tags' }),
 				updated_at: field('updated_at', { aliases: ['updated', 'updatedAt'], filterable: true, sortable: true, comparableAs: 'date', contentKeys: ['updated_at', 'updated', 'updatedAt'], writeContentKey: 'updated_at' }),
 				slug: field('slug', { filterable: true, contentKeys: ['slug'], writeContentKey: 'slug' }),
@@ -348,109 +362,6 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			filterableFields: ['type', 'status', 'related_model', 'related_id', 'priority', 'available_at'],
 			sortableFields: ['priority', 'available_at', 'created_at', 'updated_at'],
 			pickField: 'available_at',
-		},
-		work_day: {
-			name: 'work_day',
-			aliases: ['work_days', 'workday'],
-			storage: 'd1',
-			operations: ['get', 'read', 'search', 'create', 'update'],
-			fields: {
-				id: field('id', { filterable: true, dbColumns: ['id'], writeDbColumn: 'id' }),
-				project_id: field('project_id', { aliases: ['projectId'], filterable: true, dbColumns: ['project_id'], payloadPaths: ['projectId'], writeDbColumn: 'project_id' }),
-				state: field('state', { filterable: true, dbColumns: ['state'], writeDbColumn: 'state' }),
-				started_at: field('started_at', { aliases: ['startedAt'], filterable: true, sortable: true, comparableAs: 'date', dbColumns: ['started_at'], payloadPaths: ['startedAt'], writeDbColumn: 'started_at' }),
-				updated_at: field('updated_at', { aliases: ['updatedAt'], filterable: true, sortable: true, comparableAs: 'date', dbColumns: ['updated_at'], payloadPaths: ['updatedAt'], writeDbColumn: 'updated_at' }),
-			},
-			filterableFields: ['id', 'project_id', 'state', 'started_at', 'updated_at'],
-			sortableFields: ['started_at', 'updated_at'],
-			pickField: 'updated_at',
-		},
-		task: {
-			name: 'task',
-			aliases: ['tasks'],
-			storage: 'd1',
-			operations: ['get', 'read', 'search', 'create', 'update'],
-			fields: {
-				id: field('id', { filterable: true, dbColumns: ['id'], payloadPaths: ['id'], writeDbColumn: 'id' }),
-				work_day_id: field('work_day_id', { aliases: ['workDayId'], filterable: true, dbColumns: ['work_day_id'], payloadPaths: ['workDayId'], writeDbColumn: 'work_day_id' }),
-				agent_id: field('agent_id', { aliases: ['agentId'], filterable: true, dbColumns: ['agent_id'], payloadPaths: ['agentId'], writeDbColumn: 'agent_id' }),
-				type: field('type', { filterable: true, dbColumns: ['type'], payloadPaths: ['type'], writeDbColumn: 'type' }),
-				state: field('state', { filterable: true, dbColumns: ['state'], payloadPaths: ['state'], writeDbColumn: 'state' }),
-				idempotency_key: field('idempotency_key', { aliases: ['idempotencyKey'], filterable: true, dbColumns: ['idempotency_key'], payloadPaths: ['idempotencyKey'], writeDbColumn: 'idempotency_key' }),
-				created_at: field('created_at', { aliases: ['createdAt'], filterable: true, sortable: true, comparableAs: 'date', dbColumns: ['created_at'], payloadPaths: ['createdAt'], writeDbColumn: 'created_at' }),
-				updated_at: field('updated_at', { aliases: ['updatedAt'], filterable: true, sortable: true, comparableAs: 'date', dbColumns: ['updated_at'], payloadPaths: ['updatedAt'], writeDbColumn: 'updated_at' }),
-			},
-			filterableFields: ['id', 'work_day_id', 'agent_id', 'type', 'state', 'idempotency_key', 'created_at', 'updated_at'],
-			sortableFields: ['created_at', 'updated_at'],
-			pickField: 'updated_at',
-		},
-		task_event: {
-			name: 'task_event',
-			aliases: ['task_events'],
-			storage: 'd1',
-			operations: ['get', 'read', 'search', 'create'],
-			fields: {
-				id: field('id', { filterable: true, dbColumns: ['id'], payloadPaths: ['id'], writeDbColumn: 'id' }),
-				task_id: field('task_id', { aliases: ['taskId'], filterable: true, dbColumns: ['task_id'], payloadPaths: ['taskId'], writeDbColumn: 'task_id' }),
-				kind: field('kind', { filterable: true, dbColumns: ['kind'], payloadPaths: ['kind'], writeDbColumn: 'kind' }),
-				created_at: field('created_at', { aliases: ['createdAt'], filterable: true, sortable: true, comparableAs: 'date', dbColumns: ['created_at'], payloadPaths: ['createdAt'], writeDbColumn: 'created_at' }),
-			},
-			filterableFields: ['id', 'task_id', 'kind', 'created_at'],
-			sortableFields: ['created_at'],
-			pickField: 'created_at',
-		},
-		task_output: {
-			name: 'task_output',
-			aliases: ['task_outputs'],
-			storage: 'd1',
-			operations: ['get', 'read', 'search', 'create'],
-			fields: {
-				id: field('id', { filterable: true, dbColumns: ['id'], payloadPaths: ['id'], writeDbColumn: 'id' }),
-				task_id: field('task_id', { aliases: ['taskId'], filterable: true, dbColumns: ['task_id'], payloadPaths: ['taskId'], writeDbColumn: 'task_id' }),
-				output_ref: field('output_ref', { aliases: ['outputRef'], filterable: true, dbColumns: ['output_ref'], payloadPaths: ['outputRef'], writeDbColumn: 'output_ref' }),
-				created_at: field('created_at', { aliases: ['createdAt'], filterable: true, sortable: true, comparableAs: 'date', dbColumns: ['created_at'], payloadPaths: ['createdAt'], writeDbColumn: 'created_at' }),
-				updated_at: field('updated_at', { aliases: ['updatedAt'], filterable: true, sortable: true, comparableAs: 'date', dbColumns: ['updated_at'], payloadPaths: ['updatedAt'], writeDbColumn: 'updated_at' }),
-			},
-			filterableFields: ['id', 'task_id', 'output_ref', 'created_at', 'updated_at'],
-			sortableFields: ['created_at', 'updated_at'],
-			pickField: 'updated_at',
-		},
-		graph_run: {
-			name: 'graph_run',
-			aliases: ['graph_runs'],
-			storage: 'd1',
-			operations: ['get', 'read', 'search', 'create'],
-			fields: {
-				id: field('id', { filterable: true, dbColumns: ['id'], writeDbColumn: 'id' }),
-				work_day_id: field('work_day_id', { aliases: ['workDayId'], filterable: true, dbColumns: ['work_day_id'], payloadPaths: ['workDayId'], writeDbColumn: 'work_day_id' }),
-				corpus_hash: field('corpus_hash', { aliases: ['corpusHash'], filterable: true, dbColumns: ['corpus_hash'], payloadPaths: ['corpusHash'], writeDbColumn: 'corpus_hash' }),
-				graph_version: field('graph_version', { aliases: ['graphVersion'], filterable: true, sortable: true, dbColumns: ['graph_version'], payloadPaths: ['graphVersion'], writeDbColumn: 'graph_version' }),
-				query_json: field('query_json', { aliases: ['queryJson'], dbColumns: ['query_json'], payloadPaths: ['queryJson'], writeDbColumn: 'query_json' }),
-				seed_ids_json: field('seed_ids_json', { aliases: ['seedIdsJson'], dbColumns: ['seed_ids_json'], payloadPaths: ['seedIdsJson'], writeDbColumn: 'seed_ids_json' }),
-				selected_node_ids_json: field('selected_node_ids_json', { aliases: ['selectedNodeIdsJson'], dbColumns: ['selected_node_ids_json'], payloadPaths: ['selectedNodeIdsJson'], writeDbColumn: 'selected_node_ids_json' }),
-				stats_json: field('stats_json', { aliases: ['statsJson'], dbColumns: ['stats_json'], payloadPaths: ['statsJson'], writeDbColumn: 'stats_json' }),
-				snapshot_ref: field('snapshot_ref', { aliases: ['snapshotRef'], filterable: true, dbColumns: ['snapshot_ref'], payloadPaths: ['snapshotRef'], writeDbColumn: 'snapshot_ref' }),
-				created_at: field('created_at', { aliases: ['createdAt'], filterable: true, sortable: true, comparableAs: 'date', dbColumns: ['created_at'], payloadPaths: ['createdAt'], writeDbColumn: 'created_at' }),
-			},
-			filterableFields: ['id', 'work_day_id', 'corpus_hash', 'graph_version', 'snapshot_ref', 'created_at'],
-			sortableFields: ['created_at'],
-			pickField: 'created_at',
-		},
-		report: {
-			name: 'report',
-			aliases: ['reports'],
-			storage: 'd1',
-			operations: ['get', 'read', 'search', 'create', 'update'],
-			fields: {
-				id: field('id', { filterable: true, dbColumns: ['id'], writeDbColumn: 'id' }),
-				work_day_id: field('work_day_id', { aliases: ['workDayId'], filterable: true, dbColumns: ['work_day_id'], payloadPaths: ['workDayId'], writeDbColumn: 'work_day_id' }),
-				kind: field('kind', { filterable: true, dbColumns: ['kind'], writeDbColumn: 'kind' }),
-				sent_at: field('sent_at', { aliases: ['sentAt'], filterable: true, sortable: true, comparableAs: 'date', dbColumns: ['sent_at'], payloadPaths: ['sentAt'], writeDbColumn: 'sent_at' }),
-				created_at: field('created_at', { aliases: ['createdAt'], filterable: true, sortable: true, comparableAs: 'date', dbColumns: ['created_at'], payloadPaths: ['createdAt'], writeDbColumn: 'created_at' }),
-			},
-			filterableFields: ['id', 'work_day_id', 'kind', 'sent_at', 'created_at'],
-			sortableFields: ['sent_at', 'created_at'],
-			pickField: 'created_at',
 		},
 		approval_request: {
 			name: 'approval_request',
@@ -566,61 +477,6 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			filterableFields: ['model', 'item_key', 'claimed_by', 'lease_expires_at'],
 			sortableFields: ['lease_expires_at', 'claimed_at'],
 			pickField: 'lease_expires_at',
-		},
-		workday_manager_lease: {
-			name: 'workday_manager_lease',
-			aliases: ['workday_manager_leases', 'manager_lease', 'manager_leases'],
-			storage: 'd1',
-			operations: ['get', 'read', 'search', 'create', 'update'],
-			fields: {
-				project_id: field('project_id', { aliases: ['projectId'], filterable: true, dbColumns: ['project_id'], writeDbColumn: 'project_id' }),
-				environment: field('environment', { filterable: true, dbColumns: ['environment'], writeDbColumn: 'environment' }),
-				work_day_id: field('work_day_id', { aliases: ['workDayId'], filterable: true, dbColumns: ['work_day_id'], writeDbColumn: 'work_day_id' }),
-				manager_id: field('manager_id', { aliases: ['managerId'], filterable: true, dbColumns: ['manager_id'], writeDbColumn: 'manager_id' }),
-				state: field('state', { filterable: true, dbColumns: ['state'], writeDbColumn: 'state' }),
-				heartbeat_at: field('heartbeat_at', { aliases: ['heartbeatAt'], sortable: true, comparableAs: 'date', dbColumns: ['heartbeat_at'], writeDbColumn: 'heartbeat_at' }),
-				expires_at: field('expires_at', { aliases: ['expiresAt'], sortable: true, comparableAs: 'date', dbColumns: ['expires_at'], writeDbColumn: 'expires_at' }),
-			},
-			filterableFields: ['project_id', 'environment', 'work_day_id', 'manager_id', 'state'],
-			sortableFields: ['heartbeat_at', 'expires_at'],
-			pickField: 'heartbeat_at',
-		},
-		worker_runner: {
-			name: 'worker_runner',
-			aliases: ['worker_runners', 'runner', 'runners'],
-			storage: 'd1',
-			operations: ['get', 'read', 'search', 'create', 'update'],
-			fields: {
-				project_id: field('project_id', { aliases: ['projectId'], filterable: true, dbColumns: ['project_id'], writeDbColumn: 'project_id' }),
-				environment: field('environment', { filterable: true, dbColumns: ['environment'], writeDbColumn: 'environment' }),
-				runner_id: field('runner_id', { aliases: ['runnerId'], filterable: true, sortable: true, dbColumns: ['runner_id'], writeDbColumn: 'runner_id' }),
-				runner_service_name: field('runner_service_name', { aliases: ['runnerServiceName'], filterable: true, dbColumns: ['runner_service_name'], writeDbColumn: 'runner_service_name' }),
-				state: field('state', { filterable: true, dbColumns: ['state'], writeDbColumn: 'state' }),
-				available_capacity: field('available_capacity', { aliases: ['availableCapacity'], sortable: true, comparableAs: 'number', dbColumns: ['available_capacity'], writeDbColumn: 'available_capacity' }),
-				last_heartbeat_at: field('last_heartbeat_at', { aliases: ['lastHeartbeatAt'], sortable: true, comparableAs: 'date', dbColumns: ['last_heartbeat_at'], writeDbColumn: 'last_heartbeat_at' }),
-			},
-			filterableFields: ['project_id', 'environment', 'runner_id', 'runner_service_name', 'state'],
-			sortableFields: ['runner_id', 'available_capacity', 'last_heartbeat_at'],
-			pickField: 'last_heartbeat_at',
-		},
-		repository_claim: {
-			name: 'repository_claim',
-			aliases: ['repository_claims'],
-			storage: 'd1',
-			operations: ['get', 'read', 'search', 'create', 'update'],
-			fields: {
-				id: field('id', { filterable: true, dbColumns: ['id'], writeDbColumn: 'id' }),
-				project_id: field('project_id', { aliases: ['projectId'], filterable: true, dbColumns: ['project_id'], payloadPaths: ['projectId'], writeDbColumn: 'project_id' }),
-				repository_id: field('repository_id', { aliases: ['repositoryId'], filterable: true, dbColumns: ['repository_id'], payloadPaths: ['repositoryId'], writeDbColumn: 'repository_id' }),
-				runner_id: field('runner_id', { aliases: ['runnerId'], filterable: true, dbColumns: ['runner_id'], payloadPaths: ['runnerId'], writeDbColumn: 'runner_id' }),
-				runner_service_name: field('runner_service_name', { aliases: ['runnerServiceName'], filterable: true, dbColumns: ['runner_service_name'], payloadPaths: ['runnerServiceName'], writeDbColumn: 'runner_service_name' }),
-				volume_identity: field('volume_identity', { aliases: ['volumeIdentity'], filterable: true, dbColumns: ['volume_identity'], payloadPaths: ['volumeIdentity'], writeDbColumn: 'volume_identity' }),
-				claim_state: field('claim_state', { aliases: ['claimState'], filterable: true, dbColumns: ['claim_state'], payloadPaths: ['claimState'], writeDbColumn: 'claim_state' }),
-				updated_at: field('updated_at', { aliases: ['updatedAt'], sortable: true, comparableAs: 'date', dbColumns: ['updated_at'], payloadPaths: ['updatedAt'], writeDbColumn: 'updated_at' }),
-			},
-			filterableFields: ['id', 'project_id', 'repository_id', 'runner_id', 'runner_service_name', 'volume_identity', 'claim_state'],
-			sortableFields: ['updated_at'],
-			pickField: 'updated_at',
 		},
 	};
 }

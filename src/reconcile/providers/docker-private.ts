@@ -106,14 +106,13 @@ export function buildDockerImage(input: {
 	};
 }
 
-export function runDockerCompose(input: {
+export function buildDockerComposeArgs(input: {
 	composeFile?: string;
 	composeFiles?: string[];
 	projectName: string;
-	cwd: string;
-	env?: NodeJS.ProcessEnv;
 	profiles?: string[];
 	buildPolicy?: 'never' | 'missing' | 'always';
+	removeVolumes?: boolean;
 	action: 'config' | 'ps' | 'up' | 'down' | 'restart' | 'logs';
 }) {
 	const composeFiles = input.composeFiles?.length ? input.composeFiles : input.composeFile ? [input.composeFile] : [];
@@ -130,16 +129,30 @@ export function runDockerCompose(input: {
 		'-p',
 		input.projectName,
 	];
-	const args = input.action === 'config'
-		? [...base, 'config', '--hash']
+	return input.action === 'config'
+		? [...base, 'config', '--hash', '*']
 		: input.action === 'ps'
 			? [...base, 'ps', '--format', 'json']
 			: input.action === 'up'
 				? [...base, 'up', '-d', ...buildArgs]
 				: input.action === 'down'
-					? [...base, 'down']
+					? [...base, 'down', ...(input.removeVolumes ? ['--volumes', '--remove-orphans'] : [])]
 					: input.action === 'restart'
 						? [...base, 'up', '-d', ...buildArgs, '--force-recreate']
 						: [...base, 'logs', '--tail', '200'];
+}
+
+export function runDockerCompose(input: {
+	composeFile?: string;
+	composeFiles?: string[];
+	projectName: string;
+	cwd: string;
+	env?: NodeJS.ProcessEnv;
+	profiles?: string[];
+	buildPolicy?: 'never' | 'missing' | 'always';
+	removeVolumes?: boolean;
+	action: 'config' | 'ps' | 'up' | 'down' | 'restart' | 'logs';
+}) {
+	const args = buildDockerComposeArgs(input);
 	return runDocker(args, { cwd: input.cwd, env: input.env });
 }

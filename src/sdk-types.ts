@@ -1,4 +1,16 @@
 import type { TreeseedFieldAliasBinding } from './field-aliases.ts';
+import type {
+	CapacityBusinessModel,
+	CapacityLaneUnit,
+	CapacityReservation,
+	NativeUsageObservation,
+} from './agent-capacity/contracts/financial-records.ts';
+import type {
+	CapacityExecutionProvider,
+	CapacityExecutionProviderNativeLimit,
+	CapacityExecutionProviderObservation,
+	CapacityProviderMembershipView,
+} from './capacity-provider/contracts/index.ts';
 
 export const SDK_MODEL_NAMES = [
 	'page',
@@ -16,17 +28,8 @@ export const SDK_MODEL_NAMES = [
 	'agent_run',
 	'agent_cursor',
 	'content_lease',
-	'work_day',
-	'task',
-	'task_event',
-	'task_output',
-	'graph_run',
-	'report',
 	'approval_request',
 	'team_inbox_item',
-	'workday_manager_lease',
-	'worker_runner',
-	'repository_claim',
 ] as const;
 
 export const SDK_OPERATIONS = ['get', 'read', 'search', 'follow', 'pick', 'create', 'update'] as const;
@@ -61,7 +64,6 @@ export const PROJECT_INFRA_RESOURCE_KINDS = [
 	'railway_service',
 	'railway_schedule',
 ] as const;
-export const AGENT_POOL_STATUSES = ['pending', 'active', 'degraded', 'offline'] as const;
 export const TREESEED_DEFAULT_STARTER_TEMPLATE_ID = 'research' as const;
 export const TREESEED_TEMPLATE_ID_ALIASES = {} as const;
 export function normalizeTreeseedTemplateId(templateId: string | null | undefined) {
@@ -122,7 +124,6 @@ export type ProjectWebMonitorCheckStatus = 'passed' | 'warning' | 'failed' | 'sk
 export type ProjectWebMonitorCheckSource = 'market' | 'github' | 'cloudflare' | 'http' | 'sdk' | 'treedx' | 'r2';
 export type ProjectInfrastructureResourceProvider = (typeof PROJECT_INFRA_RESOURCE_PROVIDERS)[number];
 export type ProjectInfrastructureResourceKind = (typeof PROJECT_INFRA_RESOURCE_KINDS)[number];
-export type AgentPoolStatus = (typeof AGENT_POOL_STATUSES)[number];
 export type RemoteJobRequestedByType = 'user' | 'team_api_key' | 'service' | 'runner' | 'system';
 export type TemplateHostRequirementType = (typeof TEMPLATE_HOST_REQUIREMENT_TYPES)[number];
 export type TreeDxInstanceKind = (typeof TREEDX_INSTANCE_KINDS)[number];
@@ -1137,7 +1138,7 @@ export interface CommerceCapacityListing {
 	vendorId: string;
 	sellerTeamId: string;
 	capacityProviderId: string | null;
-	capacityProviderLaneId: string | null;
+	executionProviderId: string | null;
 	status: CommerceCapacityListingStatus;
 	accessLevel: CommerceCapacityAccessLevel;
 	runtimeIsolationLevel: CommerceCapacityRuntimeIsolationLevel;
@@ -1182,7 +1183,7 @@ export interface CommerceCapacityListingInquiry {
 
 export interface CommerceCapacityListingInput {
 	capacityProviderId?: string | null;
-	capacityProviderLaneId?: string | null;
+	executionProviderId?: string | null;
 	accessLevel?: CommerceCapacityAccessLevel;
 	runtimeIsolationLevel?: CommerceCapacityRuntimeIsolationLevel;
 	humanInvolvementLevel?: CommerceCapacityHumanInvolvementLevel;
@@ -2233,271 +2234,7 @@ export interface CreateProjectWebDeploymentResponse {
 	stateUrl: string;
 }
 
-export interface AgentPoolAutoscalePolicy {
-	minWorkers: number;
-	maxWorkers: number;
-	targetQueueDepth: number;
-	cooldownSeconds: number;
-}
-
-export interface AgentPool {
-	id: string;
-	projectId: string;
-	teamId: string;
-	environment: ProjectEnvironmentName;
-	name: string;
-	registrationIdentity: string | null;
-	serviceBaseUrl: string | null;
-	status: AgentPoolStatus;
-	autoscale: AgentPoolAutoscalePolicy;
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface AgentPoolRegistration {
-	id: string;
-	poolId: string;
-	projectId: string;
-	runnerId: string | null;
-	managerId: string | null;
-	serviceName: string | null;
-	heartbeatAt: string;
-	desiredWorkers: number | null;
-	observedQueueDepth: number | null;
-	observedActiveLeases: number | null;
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface AgentPoolScaleDecision {
-	id: string;
-	poolId: string;
-	projectId: string;
-	environment: ProjectEnvironmentName;
-	desiredWorkers: number;
-	observedQueueDepth: number;
-	observedActiveLeases: number;
-	workDayId: string | null;
-	reason: string;
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface WorkdayWindow {
-	days: number[];
-	startTime: string;
-	endTime: string;
-}
-
-export interface WorkdaySchedule {
-	timezone: string;
-	windows: WorkdayWindow[];
-}
-
-export interface TaskCreditWeight {
-	id?: string;
-	taskType?: string | null;
-	agentId?: string | null;
-	handler?: string | null;
-	credits: number;
-}
-
-export interface TaskCreditBudget {
-	dailyLimit: number;
-	used: number;
-	remaining: number;
-	maxQueuedTasks: number;
-	maxQueuedCredits: number;
-}
-
-export interface WorkdayPolicy {
-	projectId: string;
-	environment: ProjectEnvironmentName | 'local';
-	schedule: WorkdaySchedule;
-	enabled: boolean;
-	startCron: string;
-	durationMinutes: number;
-	maxRunners: number;
-	maxWorkersPerRunner: number;
-	dailyCreditBudget: number;
-	closeoutGraceMinutes: number;
-	dailyTaskCreditBudget: number;
-	maxQueuedTasks: number;
-	maxQueuedCredits: number;
-	autoscale: AgentPoolAutoscalePolicy;
-	creditWeights: TaskCreditWeight[];
-	metadata?: Record<string, unknown>;
-}
-
-export type WorkdayRequestType = 'one_off_run' | 'early_close' | 'pause' | 'retry_open';
-export type WorkdayRequestState = 'pending' | 'applied' | 'rejected' | 'cancelled';
-
-export interface WorkdayRequest {
-	id: string;
-	projectId: string;
-	environment: ProjectEnvironmentName | 'local';
-	type: WorkdayRequestType;
-	state: WorkdayRequestState;
-	workDayId: string | null;
-	requestedBy: string | null;
-	reason: string | null;
-	payload: Record<string, unknown>;
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface WorkdayManagerLease {
-	id: string;
-	projectId: string;
-	environment: ProjectEnvironmentName | 'local';
-	workDayId: string | null;
-	managerId: string;
-	state: 'active' | 'released' | 'stale';
-	heartbeatAt: string;
-	expiresAt: string;
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export type WorkerRunnerState = 'active' | 'idle' | 'offline' | 'sleeping' | 'waking' | 'draining' | 'failed';
-
-export interface WorkerRunner {
-	id: string;
-	projectId: string;
-	environment: ProjectEnvironmentName | 'local';
-	runnerId: string;
-	runnerServiceName: string;
-	volumeIdentity: string;
-	state: WorkerRunnerState;
-	maxLocalWorkers: number;
-	activeLocalWorkers: number;
-	availableCapacity: number;
-	lastHeartbeatAt: string | null;
-	claimedRepositoryIds: string[];
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface RepositoryClaim {
-	id: string;
-	projectId: string;
-	repositoryId: string;
-	runnerId: string;
-	runnerServiceName: string;
-	volumeIdentity: string;
-	lastSeenCommit: string | null;
-	lastTaskAt: string | null;
-	claimState: 'active' | 'stale' | 'released';
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface PrioritySnapshotItem {
-	model: string;
-	id: string;
-	slug?: string | null;
-	title?: string | null;
-	priority: number;
-	estimatedCredits: number;
-	reasons: string[];
-	metadata?: Record<string, unknown>;
-}
-
-export interface PrioritySnapshot {
-	id: string;
-	projectId: string;
-	workDayId: string | null;
-	generatedAt: string;
-	items: PrioritySnapshotItem[];
-	metadata?: Record<string, unknown>;
-}
-
-export interface PriorityOverride {
-	id: string;
-	projectId: string;
-	model: string;
-	subjectId: string;
-	priority: number;
-	estimatedCredits: number | null;
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface TaskCreditLedgerEntry {
-	id: string;
-	projectId: string;
-	workDayId: string;
-	taskId: string | null;
-	phase:
-		| 'seed'
-		| 'settle'
-		| 'refund'
-		| 'grant'
-		| 'reserve'
-		| 'consume'
-		| 'release'
-		| 'adjustment'
-		| 'grant_created'
-		| 'reservation_created'
-		| 'reservation_released'
-		| 'task_started'
-		| 'task_completed_estimate_settlement'
-		| 'task_completed_actual_settlement'
-		| 'task_failed_refund'
-		| 'manual_adjustment'
-		| 'monthly_rollover'
-		| 'overrun_hold';
-	credits: number;
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-}
-
-export type CapacityProviderKind = 'treeseed_managed' | 'team_owned' | 'external' | 'hybrid';
-export type CapacityProviderStatus =
-	| 'pending'
-	| 'online'
-	| 'offline'
-	| 'credential_required'
-	| 'registering'
-	| 'active'
-	| 'degraded'
-	| 'draining'
-	| 'paused'
-	| 'configuration_required'
-	| 'rotation_required'
-	| 'disabled'
-	| 'failed';
-export type CapacityProviderBillingScope = 'treeseed' | 'team' | 'external';
-export type CapacityBusinessModel = 'subscription_quota' | 'token_metered' | 'hybrid_usage_based' | 'infrastructure_runtime' | 'custom';
-export type CapacityLaneUnit = 'treeseed_credit' | 'quota_minute' | 'token_usd' | 'github_ai_credit' | 'worker_second' | 'request' | 'custom';
 export type CapacityScarcityLevel = 'low' | 'medium' | 'high';
-export type CapacityGrantScope = 'team' | 'project' | 'workday' | 'overflow_pool';
-export type CapacityGrantState = 'active' | 'paused' | 'expired' | 'disabled';
-export type CapacityOverflowPolicy =
-	| 'deny'
-	| 'hard_grant'
-	| 'soft_grant'
-	| 'weighted_fair_share'
-	| 'approval_required'
-	| 'fallback_lane'
-	| 'platform_subsidy';
-export type CapacityReservationState =
-	| 'reserved'
-	| 'consuming'
-	| 'consumed'
-	| 'released'
-	| 'expired'
-	| 'cancelled'
-	| 'failed'
-	| 'overran_pending_approval';
 export type CapacityEstimatePhase = 'intent' | 'discovery' | 'plan' | 'execution' | 'actual';
 export type CapacityEstimateConfidence = 'low' | 'medium' | 'high';
 export type CapacityApprovalState = 'pending' | 'approved' | 'changes_requested' | 'deferred' | 'rejected' | 'expired' | 'superseded';
@@ -2544,21 +2281,6 @@ export interface TaskClassification {
 	requiresPlanning: boolean;
 	requiresApproval: boolean;
 	features?: Record<string, unknown>;
-}
-
-export interface ExecutionProfile {
-	id: string;
-	providerId?: string | null;
-	laneId?: string | null;
-	modelFamily?: string | null;
-	modelClass?: string | null;
-	contextWindowTokens?: number | null;
-	qualityWeight: number;
-	costMultiplier: number;
-	latencyClass: 'low' | 'medium' | 'high' | string;
-	concurrencyClass?: TaskConcurrencyClass | null;
-	quotaBehavior?: 'api_metered' | 'subscription_limited' | 'compute_bound' | 'attention_bound' | string | null;
-	metadata?: Record<string, unknown>;
 }
 
 export interface AttentionEstimate {
@@ -2764,274 +2486,6 @@ export interface PlanningAdmissionResult {
 	reasons: string[];
 }
 
-export interface CapacityProvider {
-	id: string;
-	teamId: string | null;
-	ownerTeamId: string | null;
-	name: string;
-	kind: CapacityProviderKind;
-	status: CapacityProviderStatus;
-	provider: TeamWebHostProvider | string;
-	billingScope: CapacityProviderBillingScope;
-	monthlyCreditBudget: number;
-	dailyCreditBudget: number;
-	creditBudgetMode?: 'static' | 'hybrid' | 'derived' | string;
-	maxConcurrentWorkdays: number;
-	maxConcurrentWorkers: number;
-	capacityModel: Record<string, unknown>;
-	connectionState?: string | null;
-	lastSeenAt?: string | null;
-	activeKeyPrefix?: string | null;
-	lastRotatedAt?: string | null;
-	rotationRequired?: boolean;
-	capabilities?: unknown[];
-	budgets?: Record<string, unknown>;
-	deployment?: Record<string, unknown> | null;
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface ExecutionProviderNativeLimit {
-	id: string;
-	executionProviderId: string;
-	scope: string;
-	nativeUnit: string;
-	limitAmount: number;
-	reserveBufferPercent: number;
-	resetCadence: string | null;
-	resetAt: string | null;
-	confidence: string;
-	source: string;
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface ExecutionProviderObservation {
-	id: string;
-	executionProviderId: string;
-	observedAt: string;
-	health: string;
-	activeWorkers: number | null;
-	queuedTasks: number | null;
-	throttleState: string | null;
-	nativeRemaining: Record<string, unknown>;
-	resetAt: string | null;
-	confidence: string;
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-}
-
-export interface ExecutionProvider {
-	id: string;
-	teamId: string;
-	capacityProviderId: string | null;
-	name: string;
-	kind: string;
-	status: string;
-	nativeUnit: string;
-	quotaVisibility: string;
-	maxConcurrentWorkers: number;
-	resetCadence: string | null;
-	config: Record<string, unknown>;
-	metadata?: Record<string, unknown>;
-	nativeLimits?: ExecutionProviderNativeLimit[];
-	latestObservation?: ExecutionProviderObservation | null;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface CapacityProviderHost {
-	id: string;
-	capacityProviderId: string;
-	hostId: string;
-	role: string;
-	required: boolean;
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface CapacityProviderLane {
-	id: string;
-	capacityProviderId: string;
-	name: string;
-	businessModel: CapacityBusinessModel;
-	modelFamily: string | null;
-	modelClass: string | null;
-	regionPolicy: string | null;
-	unit: CapacityLaneUnit | string;
-	scarcityLevel: CapacityScarcityLevel;
-	hardLimits: Record<string, unknown>;
-	routingPolicy: Record<string, unknown>;
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface CapacityGrant {
-	id: string;
-	capacityProviderId: string;
-	laneId: string | null;
-	grantScope: CapacityGrantScope;
-	teamId: string;
-	projectId: string | null;
-	environment: ProjectEnvironmentName | 'local' | null;
-	state: CapacityGrantState;
-	dailyCreditLimit: number | null;
-	weeklyCreditLimit: number | null;
-	monthlyCreditLimit: number | null;
-	dailyUsdLimit: number | null;
-	weeklyQuotaMinutes: number | null;
-	monthlyProviderUnits: number | null;
-	portfolioAllocationPercent?: number | null;
-	reservePoolPercent?: number | null;
-	maxDailyProjectCredits?: number | null;
-	emergencyOverride?: boolean;
-	priorityWeight: number;
-	overflowPolicy: CapacityOverflowPolicy;
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface CapacityReservation {
-	id: string;
-	capacityProviderId: string;
-	executionProviderId?: string | null;
-	laneId: string;
-	teamId: string;
-	projectId: string;
-	workDayId: string | null;
-	taskId: string | null;
-	state: CapacityReservationState;
-	reservedCredits: number;
-	consumedCredits: number;
-	nativeUnit?: string | null;
-	reservedNativeAmount?: number | null;
-	consumedNativeAmount?: number | null;
-	reservedProviderUnits: number | null;
-	consumedProviderUnits: number | null;
-	reservedUsd: number | null;
-	consumedUsd: number | null;
-	expiresAt: string | null;
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface CapacityLedgerEntry {
-	id: string;
-	capacityProviderId: string;
-	laneId: string | null;
-	reservationId: string | null;
-	teamId: string;
-	projectId: string | null;
-	workDayId: string | null;
-	taskId: string | null;
-	phase: TaskCreditLedgerEntry['phase'];
-	credits: number;
-	providerUnits: number | null;
-	usd: number | null;
-	source: string;
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-}
-
-export interface CapacityRoutingDecision {
-	id: string;
-	taskId: string | null;
-	workDayId: string | null;
-	projectId: string;
-	selectedProviderId: string;
-	selectedLaneId: string;
-	selectedModel: string | null;
-	decision: string;
-	reason: string;
-	candidates: Record<string, unknown>[];
-	scores: Record<string, unknown>;
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-}
-
-export interface TaskEstimate {
-	id: string;
-	taskId: string | null;
-	workDayId: string | null;
-	projectId: string;
-	estimatePhase: CapacityEstimatePhase;
-	taskSignature: string;
-	executionProfileId: string;
-	confidence: CapacityEstimateConfidence;
-	estimatedCreditsP50: number;
-	estimatedCreditsP90: number;
-	reservedCredits: number;
-	estimatedInputTokensP50: number | null;
-	estimatedInputTokensP90: number | null;
-	estimatedOutputTokensP50: number | null;
-	estimatedOutputTokensP90: number | null;
-	estimatedQuotaMinutesP50: number | null;
-	estimatedQuotaMinutesP90: number | null;
-	features: Record<string, unknown>;
-	createdAt: string;
-}
-
-export interface TaskUsageActual {
-	id: string;
-	taskId: string | null;
-	workDayId: string | null;
-	projectId: string;
-	taskSignature: string;
-	executionProfileId: string;
-	capacityProviderId: string | null;
-	executionProviderId?: string | null;
-	laneId: string | null;
-	businessModel: CapacityBusinessModel | string;
-	modelName: string | null;
-	inputTokens: number | null;
-	outputTokens: number | null;
-	cachedInputTokens: number | null;
-	quotaMinutes: number | null;
-	wallMinutes: number | null;
-	filesOpened: number | null;
-	filesChanged: number | null;
-	diffLinesAdded: number | null;
-	diffLinesRemoved: number | null;
-	testRuns: number | null;
-	retryCount: number | null;
-	actualCredits: number;
-	actualUsd: number | null;
-	creditFormulaVersion?: string | null;
-	actualCreditSource?: string | null;
-	nativeUsage?: NativeUsageObservation | Record<string, unknown> | null;
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-}
-
-export interface NativeUsageObservation {
-	nativeUnit?: string | null;
-	amount?: number | null;
-	wallMinutes?: number | null;
-	quotaMinutes?: number | null;
-	inputTokens?: number | null;
-	outputTokens?: number | null;
-	cachedInputTokens?: number | null;
-	usd?: number | null;
-	filesOpened?: number | null;
-	filesChanged?: number | null;
-	diffLinesAdded?: number | null;
-	diffLinesRemoved?: number | null;
-	testRuns?: number | null;
-	retryCount?: number | null;
-	partial?: boolean | null;
-	interrupted?: boolean | null;
-	source?: string | null;
-	observedAt?: string | null;
-	metadata?: Record<string, unknown> | null;
-	[key: string]: unknown;
-}
-
 export interface CreditConversionProfile {
 	id?: string | null;
 	taskSignature: string;
@@ -3075,6 +2529,9 @@ export interface DerivedCapacityAvailability {
 	derivedAvailableCredits: number | null;
 	confidence: 'low' | 'medium' | 'high' | string;
 	resetAt?: string | null;
+	accountingWindowStartAt?: string | null;
+	accountingWindowEndAt?: string | null;
+	accountingWindowSource?: 'observation' | 'configured_reset' | 'unknown';
 	reasons: string[];
 	metadata?: Record<string, unknown>;
 }
@@ -3097,40 +2554,21 @@ export interface DerivedCapacitySummary {
 	[key: string]: unknown;
 }
 
+export interface NativeReservationDebitAggregate {
+	activeReservedNativeAmount: number;
+	activeConsumedNativeAmount: number;
+}
+
 export interface DerivedCapacityInput {
-	executionProvider: ExecutionProvider;
-	nativeLimit?: ExecutionProviderNativeLimit | null;
-	latestObservation?: ExecutionProviderObservation | null;
+	executionProvider: CapacityExecutionProvider;
+	nativeLimit?: CapacityExecutionProviderNativeLimit | null;
+	latestObservation?: CapacityExecutionProviderObservation | null;
 	activeReservations?: CapacityReservation[];
+	reservationDebits?: NativeReservationDebitAggregate | null;
 	conversionProfile?: CreditConversionProfile | null;
 	scope?: string | null;
 	nativeUnit?: string | null;
 	now?: Date | string | null;
-}
-
-export interface TaskEstimateProfile {
-	taskSignature: string;
-	executionProfileId: string;
-	sampleCount: number;
-	completedSampleCount?: number;
-	interruptedSampleCount?: number;
-	inputTokensP50: number | null;
-	inputTokensP90: number | null;
-	outputTokensP50: number | null;
-	outputTokensP90: number | null;
-	quotaMinutesP50: number | null;
-	quotaMinutesP90: number | null;
-	filesChangedP50: number | null;
-	filesChangedP90: number | null;
-	creditsP50: number | null;
-	creditsP90: number | null;
-	creditsVariance?: number | null;
-	confidenceScore?: number | null;
-	outlierCount?: number;
-	partialCredits?: number | null;
-	firstSampleAt?: string | null;
-	lastSampleAt?: string | null;
-	updatedAt: string;
 }
 
 export interface ApprovalRequest {
@@ -3188,91 +2626,19 @@ export interface UpsertTeamInboxItemRequest {
 	metadata?: Record<string, unknown> | null;
 }
 
-export interface CapacityTaskExecutionEnvelope {
-	providerId?: string | null;
-	laneId?: string | null;
-	model?: string | null;
-	modelClass?: string | null;
-	reservationIds?: string[];
-	maxCredits?: number | null;
-	maxProviderUnits?: number | null;
-	maxUsd?: number | null;
-	allowedFallbacks?: Array<Record<string, unknown>>;
-	approvalBehavior?: 'auto' | 'pause_task' | 'fail_task';
-	pausePolicy?: Record<string, unknown>;
-	metadata?: Record<string, unknown>;
-}
-
-export interface CapacityPlan {
+export interface ProjectCapacityDiagnostics {
 	projectId: string;
 	teamId: string;
 	environment: ProjectEnvironmentName | 'local';
-	providers: CapacityProvider[];
-	lanes: CapacityProviderLane[];
-	grants: CapacityGrant[];
+	providers: CapacityProviderMembershipView[];
+	executionProviders: CapacityExecutionProvider[];
+	grants: import('./agent-capacity/allocation.ts').CapacityGrantV2[];
 	activeReservations: CapacityReservation[];
-	estimateProfiles: TaskEstimateProfile[];
 	derivedCapacity?: DerivedCapacitySummary | null;
 	remaining: {
 		dailyCredits: number | null;
-		weeklyCredits: number | null;
 		monthlyCredits: number | null;
-		weeklyQuotaMinutes: number | null;
-		dailyUsd: number | null;
 	};
-}
-
-export interface ProjectWorkdaySummary {
-	id: string;
-	projectId: string;
-	environment: ProjectEnvironmentName | 'local';
-	workDayId: string;
-	kind: string;
-	state: string | null;
-	startedAt: string | null;
-	endedAt: string | null;
-	summary: Record<string, unknown>;
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface ScaleDecision {
-	id: string;
-	projectId: string;
-	environment: ProjectEnvironmentName | 'local';
-	poolName: string;
-	workDayId: string | null;
-	desiredWorkers: number;
-	observedQueueDepth: number;
-	observedActiveLeases: number;
-	reason: string;
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-}
-
-export interface RunnerScaleDecision {
-	id: string;
-	projectId: string;
-	environment: ProjectEnvironmentName | 'local';
-	workDayId: string | null;
-	runnerId: string | null;
-	runnerServiceName: string | null;
-	action: 'wake' | 'sleep' | 'drain' | 'provision' | 'noop';
-	reason: string;
-	metadata?: Record<string, unknown>;
-	createdAt: string;
-}
-
-export interface WorkerPoolScaleResult {
-	applied: boolean;
-	provider: string;
-	desiredWorkers: number;
-	metadata?: Record<string, unknown>;
-}
-
-export interface WorkerPoolScaler {
-	scale(decision: ScaleDecision): Promise<WorkerPoolScaleResult>;
 }
 
 export interface ProjectCapabilityGrant {
@@ -3395,10 +2761,7 @@ export type TreeseedRuntimeRecordType =
 	| 'agent_run'
 	| 'message'
 	| 'agent_cursor'
-	| 'content_lease'
-	| 'work_day'
-	| 'graph_run'
-	| 'report';
+	| 'content_lease';
 
 export interface TreeseedRecordEnvelope<TPayload, TMeta = Record<string, unknown>> {
 	recordType: TreeseedRuntimeRecordType;
@@ -3592,129 +2955,6 @@ export interface SdkAgentSpec {
 	title?: string;
 	body: string;
 	frontmatter: Record<string, unknown>;
-}
-
-export interface SdkWorkDayEntity {
-	[key: string]: unknown;
-	id: string;
-	projectId: string;
-	state: string;
-	capacityBudget: number;
-	capacityUsed: number;
-	graphVersion: string | null;
-	summaryJson: string | null;
-	startedAt: string;
-	endedAt: string | null;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface SdkGraphRunEntity {
-	[key: string]: unknown;
-	id: string;
-	workDayId: string;
-	corpusHash: string;
-	graphVersion: string;
-	queryJson?: string | null;
-	seedIdsJson?: string | null;
-	selectedNodeIdsJson?: string | null;
-	statsJson: string | null;
-	snapshotRef: string | null;
-	createdAt: string;
-}
-
-export interface SdkReportEntity {
-	[key: string]: unknown;
-	id: string;
-	workDayId: string;
-	kind: string;
-	bodyJson: string;
-	renderedRef: string | null;
-	sentAt: string | null;
-	createdAt: string;
-}
-
-export type SdkTaskState = 'pending' | 'claimed' | 'running' | 'completed' | 'failed';
-
-export interface SdkTaskEntity {
-	[key: string]: unknown;
-	id: string;
-	workDayId: string;
-	agentId: string;
-	type: string;
-	idempotencyKey: string;
-	payloadJson: string;
-	state: SdkTaskState;
-	claimedBy: string | null;
-	claimedAt: string | null;
-	leaseExpiresAt: string | null;
-	attempts: number;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface SdkTaskEventEntity {
-	[key: string]: unknown;
-	id: string;
-	taskId: string;
-	kind: string;
-	dataJson: string;
-	actor: string | null;
-	createdAt: string;
-}
-
-export interface SdkTaskOutputEntity {
-	[key: string]: unknown;
-	id: string;
-	taskId: string;
-	outputJson: string;
-	outputRef: string | null;
-	summaryJson: string | null;
-	actor: string | null;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface SdkCreateTaskRequest {
-	id?: string;
-	workDayId: string;
-	agentId: string;
-	type: string;
-	idempotencyKey: string;
-	payload?: Record<string, unknown>;
-	actor?: string | null;
-}
-
-export interface SdkClaimTaskRequest {
-	id: string;
-	workerId: string;
-	leaseSeconds?: number;
-	actor?: string | null;
-}
-
-export interface SdkRecordTaskProgressRequest {
-	id: string;
-	state?: SdkTaskState;
-	appendEvent?: {
-		kind: string;
-		data?: Record<string, unknown>;
-	};
-	actor?: string | null;
-}
-
-export interface SdkCompleteTaskRequest {
-	id: string;
-	output?: Record<string, unknown>;
-	outputRef?: string | null;
-	summary?: Record<string, unknown>;
-	actor?: string | null;
-}
-
-export interface SdkTaskManagerContext {
-	task: SdkTaskEntity | null;
-	workDay: SdkWorkDayEntity | null;
-	events: SdkTaskEventEntity[];
-	outputs: SdkTaskOutputEntity[];
 }
 
 export interface SdkContentEntry {
@@ -4153,91 +3393,6 @@ export interface SdkLeaseReleaseRequest {
 	leaseToken?: string | null;
 }
 
-export interface SdkStartWorkDayRequest {
-	id?: string;
-	projectId: string;
-	capacityBudget?: number;
-	graphVersion?: string | null;
-	summary?: Record<string, unknown> | null;
-	actor: string;
-}
-
-export interface SdkUpsertWorkPolicyRequest {
-	projectId: string;
-	environment: ProjectEnvironmentName | 'local';
-	schedule: WorkdaySchedule;
-	enabled?: boolean;
-	startCron?: string;
-	durationMinutes?: number;
-	maxRunners?: number;
-	maxWorkersPerRunner?: number;
-	dailyCreditBudget?: number;
-	closeoutGraceMinutes?: number;
-	dailyTaskCreditBudget: number;
-	maxQueuedTasks: number;
-	maxQueuedCredits: number;
-	autoscale: AgentPoolAutoscalePolicy;
-	creditWeights?: TaskCreditWeight[];
-	metadata?: Record<string, unknown> | null;
-}
-
-export interface SdkCreateWorkdayRequest {
-	id?: string;
-	projectId: string;
-	environment: ProjectEnvironmentName | 'local';
-	type: WorkdayRequestType;
-	state?: WorkdayRequestState;
-	workDayId?: string | null;
-	requestedBy?: string | null;
-	reason?: string | null;
-	payload?: Record<string, unknown> | null;
-	metadata?: Record<string, unknown> | null;
-}
-
-export interface SdkClaimWorkdayManagerLeaseRequest {
-	id?: string;
-	projectId: string;
-	environment: ProjectEnvironmentName | 'local';
-	workDayId?: string | null;
-	managerId: string;
-	ttlSeconds: number;
-	staleAfterSeconds?: number;
-	now?: string;
-	metadata?: Record<string, unknown> | null;
-}
-
-export interface SdkReleaseWorkdayManagerLeaseRequest {
-	id: string;
-	managerId: string;
-}
-
-export interface SdkRecordWorkerRunnerRequest {
-	id?: string;
-	projectId: string;
-	environment: ProjectEnvironmentName | 'local';
-	runnerId: string;
-	runnerServiceName: string;
-	volumeIdentity: string;
-	state?: WorkerRunnerState;
-	maxLocalWorkers: number;
-	activeLocalWorkers?: number;
-	claimedRepositoryIds?: string[];
-	metadata?: Record<string, unknown> | null;
-}
-
-export interface SdkRecordRepositoryClaimRequest {
-	id?: string;
-	projectId: string;
-	repositoryId: string;
-	runnerId: string;
-	runnerServiceName: string;
-	volumeIdentity: string;
-	lastSeenCommit?: string | null;
-	lastTaskAt?: string | null;
-	claimState?: RepositoryClaim['claimState'];
-	metadata?: Record<string, unknown> | null;
-}
-
 export interface UpsertProjectHostingRequest {
 	kind: TreeseedHostingKind;
 	registration?: TreeseedHostingRegistration;
@@ -4302,30 +3457,6 @@ export interface CreateProjectDeploymentRequest {
 	completedAt?: string | null;
 }
 
-export interface UpsertAgentPoolRequest {
-	id?: string;
-	teamId: string;
-	environment: ProjectEnvironmentName;
-	name: string;
-	registrationIdentity?: string | null;
-	serviceBaseUrl?: string | null;
-	status?: AgentPoolStatus;
-	autoscale?: Partial<AgentPoolAutoscalePolicy> | null;
-	metadata?: Record<string, unknown> | null;
-}
-
-export interface RecordAgentPoolRegistrationRequest {
-	poolId: string;
-	id?: string;
-	runnerId?: string | null;
-	managerId?: string | null;
-	serviceName?: string | null;
-	heartbeatAt?: string | null;
-	desiredWorkers?: number | null;
-	observedQueueDepth?: number | null;
-	observedActiveLeases?: number | null;
-	metadata?: Record<string, unknown> | null;
-}
 
 export interface CatalogItemFilters {
 	kind?: string;
@@ -4366,231 +3497,13 @@ export interface UpsertTeamStorageLocatorRequest {
 	metadata?: Record<string, unknown> | null;
 }
 
-export interface SdkPriorityOverrideRequest {
-	id?: string;
-	projectId: string;
-	model: string;
-	subjectId: string;
-	priority: number;
-	estimatedCredits?: number | null;
-	metadata?: Record<string, unknown> | null;
-}
-
-export interface SdkCreatePrioritySnapshotRequest {
-	id?: string;
-	projectId: string;
-	workDayId?: string | null;
-	items: PrioritySnapshotItem[];
-	metadata?: Record<string, unknown> | null;
-}
-
-export interface SdkRecordTaskCreditsRequest {
-	id?: string;
-	projectId: string;
-	workDayId: string;
-	taskId?: string | null;
-	phase: TaskCreditLedgerEntry['phase'];
-	credits: number;
-	metadata?: Record<string, unknown> | null;
-}
-
-export interface UpsertCapacityProviderRequest {
-	id?: string;
-	teamId?: string | null;
-	ownerTeamId?: string | null;
-	name: string;
-	kind?: CapacityProviderKind;
-	status?: CapacityProviderStatus;
-	provider: TeamWebHostProvider | string;
-	billingScope?: CapacityProviderBillingScope;
-	monthlyCreditBudget?: number;
-	dailyCreditBudget?: number;
-	maxConcurrentWorkdays?: number;
-	maxConcurrentWorkers?: number;
-	capacityModel?: Record<string, unknown> | null;
-	metadata?: Record<string, unknown> | null;
-}
-
 export interface CreateCapacityProviderRequest {
 	name: string;
 	launchMode: 'self_hosted' | 'managed_market_host' | 'connected_host';
 }
 
-export interface CreateCapacityProviderResponse {
-	ok: true;
-	provider: CapacityProvider;
-	apiKey: {
-		plaintext: string;
-		prefix: string;
-	};
-	selfHosting: Record<string, unknown>;
-}
-
 export interface RenameCapacityProviderRequest {
 	name: string;
-}
-
-export interface CapacityProviderRotateKeyResponse {
-	ok: true;
-	apiKey: {
-		plaintext: string;
-		prefix: string;
-	};
-	requiresRestart: boolean;
-}
-
-export interface UpsertCapacityProviderHostRequest {
-	id?: string;
-	hostId: string;
-	role: string;
-	required?: boolean;
-	metadata?: Record<string, unknown> | null;
-}
-
-export interface UpsertCapacityProviderLaneRequest {
-	id?: string;
-	name: string;
-	businessModel?: CapacityBusinessModel;
-	modelFamily?: string | null;
-	modelClass?: string | null;
-	regionPolicy?: string | null;
-	unit?: CapacityLaneUnit | string;
-	scarcityLevel?: CapacityScarcityLevel;
-	hardLimits?: Record<string, unknown> | null;
-	routingPolicy?: Record<string, unknown> | null;
-	metadata?: Record<string, unknown> | null;
-}
-
-export interface UpsertCapacityGrantRequest {
-	id?: string;
-	capacityProviderId: string;
-	laneId?: string | null;
-	grantScope?: CapacityGrantScope;
-	teamId: string;
-	projectId?: string | null;
-	environment?: ProjectEnvironmentName | 'local' | null;
-	state?: CapacityGrantState;
-	dailyCreditLimit?: number | null;
-	weeklyCreditLimit?: number | null;
-	monthlyCreditLimit?: number | null;
-	dailyUsdLimit?: number | null;
-	weeklyQuotaMinutes?: number | null;
-	monthlyProviderUnits?: number | null;
-	portfolioAllocationPercent?: number | null;
-	reservePoolPercent?: number | null;
-	maxDailyProjectCredits?: number | null;
-	emergencyOverride?: boolean;
-	priorityWeight?: number;
-	overflowPolicy?: CapacityOverflowPolicy;
-	metadata?: Record<string, unknown> | null;
-}
-
-export interface CreateCapacityReservationRequest {
-	id?: string;
-	capacityProviderId: string;
-	executionProviderId?: string | null;
-	laneId: string;
-	teamId: string;
-	projectId: string;
-	workDayId?: string | null;
-	taskId?: string | null;
-	state?: CapacityReservationState;
-	reservedCredits: number;
-	nativeUnit?: string | null;
-	reservedNativeAmount?: number | null;
-	consumedNativeAmount?: number | null;
-	reservedProviderUnits?: number | null;
-	reservedUsd?: number | null;
-	expiresAt?: string | null;
-	metadata?: Record<string, unknown> | null;
-}
-
-export interface RecordCapacityUsageRequest {
-	id?: string;
-	capacityProviderId: string;
-	laneId?: string | null;
-	reservationId?: string | null;
-	teamId: string;
-	projectId?: string | null;
-	workDayId?: string | null;
-	taskId?: string | null;
-	phase?: TaskCreditLedgerEntry['phase'];
-	credits: number;
-	nativeUnit?: string | null;
-	nativeAmount?: number | null;
-	providerUnits?: number | null;
-	usd?: number | null;
-	source?: string;
-	metadata?: Record<string, unknown> | null;
-	usageActual?: Record<string, unknown> | null;
-}
-
-export interface CreateCapacityRoutingDecisionRequest {
-	id?: string;
-	taskId?: string | null;
-	workDayId?: string | null;
-	projectId: string;
-	selectedProviderId: string;
-	selectedLaneId: string;
-	selectedModel?: string | null;
-	decision?: string;
-	reason: string;
-	candidates?: Record<string, unknown>[];
-	scores?: Record<string, unknown>;
-	metadata?: Record<string, unknown> | null;
-}
-
-export interface CreateTaskEstimateRequest {
-	id?: string;
-	taskId?: string | null;
-	workDayId?: string | null;
-	projectId: string;
-	estimatePhase: CapacityEstimatePhase;
-	taskSignature: string;
-	executionProfileId?: string | null;
-	confidence: CapacityEstimateConfidence;
-	estimatedCreditsP50: number;
-	estimatedCreditsP90: number;
-	reservedCredits?: number;
-	estimatedInputTokensP50?: number | null;
-	estimatedInputTokensP90?: number | null;
-	estimatedOutputTokensP50?: number | null;
-	estimatedOutputTokensP90?: number | null;
-	estimatedQuotaMinutesP50?: number | null;
-	estimatedQuotaMinutesP90?: number | null;
-	features?: Record<string, unknown> | null;
-}
-
-export interface CreateTaskUsageActualRequest {
-	id?: string;
-	taskId?: string | null;
-	workDayId?: string | null;
-	projectId: string;
-	taskSignature: string;
-	executionProfileId?: string | null;
-	capacityProviderId?: string | null;
-	executionProviderId?: string | null;
-	laneId?: string | null;
-	businessModel?: CapacityBusinessModel | string;
-	modelName?: string | null;
-	inputTokens?: number | null;
-	outputTokens?: number | null;
-	cachedInputTokens?: number | null;
-	quotaMinutes?: number | null;
-	wallMinutes?: number | null;
-	filesOpened?: number | null;
-	filesChanged?: number | null;
-	diffLinesAdded?: number | null;
-	diffLinesRemoved?: number | null;
-	testRuns?: number | null;
-	retryCount?: number | null;
-	actualCredits?: number | null;
-	actualUsd?: number | null;
-	creditFormulaVersion?: string | null;
-	actualCreditSource?: string | null;
-	actualCreditsOverride?: boolean | null;
-	nativeUsage?: NativeUsageObservation | Record<string, unknown> | null;
-	metadata?: Record<string, unknown> | null;
 }
 
 export interface CreateApprovalRequestRequest {
@@ -4610,104 +3523,6 @@ export interface CreateApprovalRequestRequest {
 	policySnapshot?: Record<string, unknown> | null;
 	expiresAt?: string | null;
 	metadata?: Record<string, unknown> | null;
-}
-
-export interface SdkRecordScaleDecisionRequest {
-	id?: string;
-	projectId: string;
-	environment: ProjectEnvironmentName | 'local';
-	poolName: string;
-	workDayId?: string | null;
-	desiredWorkers: number;
-	observedQueueDepth: number;
-	observedActiveLeases: number;
-	reason: string;
-	metadata?: Record<string, unknown> | null;
-}
-
-export interface SdkRecordRunnerScaleDecisionRequest {
-	id?: string;
-	projectId: string;
-	environment: ProjectEnvironmentName | 'local';
-	workDayId?: string | null;
-	runnerId?: string | null;
-	runnerServiceName?: string | null;
-	action: RunnerScaleDecision['action'];
-	reason: string;
-	metadata?: Record<string, unknown> | null;
-}
-
-export interface SdkUpdateWorkDayGraphRequest {
-	id: string;
-	graphVersion: string;
-	summaryPatch?: Record<string, unknown> | null;
-}
-
-export interface SdkCloseWorkDayRequest {
-	id: string;
-	state?: 'completed' | 'cancelled' | 'failed';
-	summary?: Record<string, unknown> | null;
-	actor: string;
-}
-
-export interface SdkCreateReportRequest {
-	id?: string;
-	workDayId: string;
-	kind: string;
-	body: Record<string, unknown>;
-	renderedRef?: string | null;
-	sentAt?: string | null;
-	actor: string;
-}
-
-export interface SdkQueuePullClientConfig {
-	accountId: string;
-	queueId: string;
-	token: string;
-	apiBaseUrl?: string;
-	fetchImpl?: typeof fetch;
-}
-
-export interface SdkQueuePushClientConfig {
-	accountId: string;
-	queueId: string;
-	token: string;
-	apiBaseUrl?: string;
-	fetchImpl?: typeof fetch;
-}
-
-export interface SdkQueuePullRequest {
-	batchSize?: number;
-	visibilityTimeoutMs?: number;
-}
-
-export interface SdkQueueMessageEnvelope {
-	messageId: string;
-	taskId: string;
-	workDayId: string;
-	agentId: string;
-	taskType: string;
-	idempotencyKey: string;
-	attempt: number;
-	payloadRef: string;
-	graphVersion: string | null;
-	budgetHint: number;
-}
-
-export interface SdkPulledQueueMessage {
-	leaseId: string;
-	attempts: number;
-	body: SdkQueueMessageEnvelope;
-	rawBody: string;
-}
-
-export interface SdkQueuePullResult {
-	messages: SdkPulledQueueMessage[];
-}
-
-export interface SdkQueuePushRequest {
-	message: SdkQueueMessageEnvelope;
-	delaySeconds?: number;
 }
 
 export interface SdkFollowResult<TItem> {

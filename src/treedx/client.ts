@@ -115,6 +115,7 @@ import type {
 	TreeDxWriteFileRequest,
 	TreeDxMetrics,
 	TreeDxReadiness,
+	TreeDxRegisterRepositoryRequest,
 } from './types.ts';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -804,6 +805,16 @@ export class TreeDxClient {
 	getRepository(repoId?: string): Promise<TreeDxRepository> {
 		return this.request<Record<string, unknown>>('GET', `/api/v1/repos/${encodeURIComponent(this.repoId(repoId))}`, undefined, { tokenRequired: true })
 			.then((payload) => firstPayload<TreeDxRepository>(payload, ['repo']));
+	}
+
+	listRepositories(): Promise<TreeDxRepository[]> {
+		return this.request<Record<string, unknown>>('GET', '/api/v1/repos', undefined, { tokenRequired: true })
+			.then((payload) => firstPayload<TreeDxRepository[]>(payload, ['repos', 'repositories', 'items']));
+	}
+
+	registerRepository(input: TreeDxRegisterRepositoryRequest): Promise<TreeDxRepository> {
+		return this.request<Record<string, unknown>>('POST', '/api/v1/repos/register', input, { tokenRequired: true })
+			.then((payload) => firstPayload<TreeDxRepository>(payload, ['repo', 'repository']));
 	}
 
 	createWorkspace(input: TreeDxCreateWorkspaceRequest): Promise<TreeDxWorkspace> {

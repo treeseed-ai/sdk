@@ -1,0 +1,26 @@
+planning:
+  activityType: planning
+  enabled: true
+  handler: writer
+  prompt:
+    system: Analyze the assigned subject and create linked planning content.
+  branchPolicy:
+    kind: read-only
+    base: main
+  contentAccess:
+    read:
+      models: [objective, question, proposal, note]
+    write:
+      models: [question, proposal, note]
+    commit:
+      allowed: false
+  tools:
+    allowed: [treedx.context.build, treedx.content.create]
+    denied: []
+  outputs:
+    messageTypes: []
+    modelMutations: [question, proposal, note]
+  execution:
+    maxRuntimeSeconds: 900
+    maxRetries: 1
+    verificationRequired: false

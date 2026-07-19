@@ -19,14 +19,6 @@ function noopReporter(): ControlPlaneReporter {
 		async reportEnvironment() {},
 		async reportResource() {},
 		async reportDeployment() {},
-		async registerAgentPoolHeartbeat() {},
-		async reportScaleDecision() {},
-		async reportWorkdaySummary() {},
-		async getProjectCapacityPlan() { return null; },
-		async createCapacityReservation() { return null; },
-		async reportCapacityEstimate() { return null; },
-		async reportCapacityUsage() {},
-		async reportCapacityRoutingDecision() { return null; },
 		async createApprovalRequest() { return null; },
 	};
 }
@@ -80,7 +72,6 @@ afterEach(async () => {
 	}
 	tempRoots.clear();
 	delete process.env.TREESEED_API_BASE_URL;
-	delete process.env.TREESEED_WORKER_POOL_SCALER;
 	delete process.env.TREESEED_RAILWAY_DEPLOY_SEQUENTIAL;
 });
 
@@ -483,7 +474,7 @@ services:
 		expect(fetched.some((url) => url.endsWith('/internal/core/agent/healthz'))).toBe(false);
 	});
 
-	it('does not probe root Market worker runner scale readiness after provider migration', async () => {
+	it('does not expose the retired worker-pool scale probe after provider migration', async () => {
 		const tenantRoot = await createTenantFixture(`services:
   workerRunner:
     enabled: true
@@ -501,39 +492,7 @@ services:
 			bootstrapSystems: ['data', 'web'],
 		});
 
-		expect(result.checks.scaleProbe).toMatchObject({
-			ok: true,
-			skipped: true,
-			mocked: true,
-			serviceId: null,
-		});
-	});
-
-	it('uses Treeseed operations runner readiness instead of old worker-runner scale readiness', async () => {
-		const tenantRoot = await createTenantFixture(`services:
-  operationsRunner:
-    enabled: true
-    provider: railway
-    railway:
-      projectName: treeseed-api
-      serviceName: treeseed-api-operations-runner-01
-`);
-		vi.stubGlobal('fetch', vi.fn(async () => new Response('ok', { status: 200 })));
-
-		const result = await monitorProjectPlatform({
-			tenantRoot,
-			scope: 'local',
-			planOnly: true,
-			reporter: noopReporter(),
-			bootstrapSystems: ['agents'],
-		});
-
-		expect(result.checks.scaleProbe).toMatchObject({
-			ok: true,
-			mocked: true,
-			serviceName: 'treeseed-api-operations-runner-01',
-			runnerKind: 'market_operations_runner',
-		});
+		expect(result.checks).not.toHaveProperty('scaleProbe');
 	});
 
 	it('fails publish-content preflight with deploy readiness errors before R2 operations', async () => {

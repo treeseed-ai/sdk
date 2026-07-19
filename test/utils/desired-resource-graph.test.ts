@@ -181,6 +181,7 @@ describe('canonical desired resource graph', () => {
 			provider: 'local',
 			packageId: 'treedx',
 			spec: expect.objectContaining({
+				contentSyncVersion: 2,
 				contentRepositoryAccessMode: 'treedx',
 				siteRepositoryAccessMode: 'filesystem',
 				projectRepositoryAccessMode: 'filesystem',
@@ -191,7 +192,19 @@ describe('canonical desired resource graph', () => {
 			'local-docker-compose:mailpit',
 			'local-docker-compose:treedx',
 			'capacity-provider:local',
+			'local-seed-bootstrap:treeseed',
 		]));
+		expect(graph.resources.find((entry) => entry.id === 'local-seed-bootstrap:treeseed')).toMatchObject({
+			kind: 'local-seed-bootstrap',
+			provider: 'local',
+			packageId: '@treeseed/api',
+			dependencies: ['local-process:api'],
+			spec: expect.objectContaining({
+				seedName: 'treeseed',
+				environments: 'local',
+				manifestDigest: expect.stringMatching(/^sha256:/u),
+			}),
+		});
 		const capacityProvider = graph.resources.find((entry) => entry.id === 'capacity-provider:local');
 		expect(capacityProvider).toMatchObject({
 			kind: 'capacity-provider',
@@ -199,8 +212,14 @@ describe('canonical desired resource graph', () => {
 			packageId: '@treeseed/agent',
 			spec: expect.objectContaining({
 				roles: ['manager', 'runner'],
+				manifestDigest: expect.stringMatching(/^sha256:/u),
+				expectedConnectionCount: expect.any(Number),
 			}),
 		});
+		const capacityProviderCompose = graph.resources.find((entry) => entry.id === 'local-docker-compose:agent-capacity-provider');
+		expect(capacityProviderCompose?.spec).toEqual(expect.objectContaining({
+			manifestDigest: capacityProvider?.spec.manifestDigest,
+		}));
 		expect(capacityProvider?.spec).not.toHaveProperty('healthEndpoint');
 		const mailpit = graph.resources.find((entry) => entry.id === 'local-docker-compose:mailpit');
 		expect(mailpit).toMatchObject({
@@ -287,6 +306,31 @@ describe('canonical desired resource graph', () => {
 				'release-gate:template-release-record:engineering',
 				'release-gate:template-release-record:research',
 			]));
+	});
+
+	it('reconciles first-party starter content into isolated local TreeDX repositories', () => {
+		if (!workspaceRoot) return;
+		const graph = compileTreeseedDesiredResourceGraph({
+			tenantRoot: workspaceRoot,
+			target: { kind: 'persistent', scope: 'local' },
+		});
+		const treeDx = graph.resources.find((entry) => entry.id === 'local-treedx:team-primary');
+		const projects = Array.isArray(treeDx?.spec.projects) ? treeDx.spec.projects : [];
+
+		expect(projects).toEqual(expect.arrayContaining([
+			expect.objectContaining({
+				projectKey: 'template:engineering',
+				slug: 'starter-engineering',
+				repositoryName: 'treeseed-starter-engineering',
+				contentPath: 'template/src/content',
+			}),
+			expect.objectContaining({
+				projectKey: 'template:research',
+				slug: 'starter-research',
+				repositoryName: 'treeseed-starter-research',
+				contentPath: 'template/src/content',
+			}),
+		]));
 	});
 
 	it('orders package release verify gates by declared internal package dependencies', () => {

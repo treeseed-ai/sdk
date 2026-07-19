@@ -338,10 +338,6 @@ function generatedSecret(bytes = 24) {
 	return randomBytes(bytes).toString('hex');
 }
 
-function localTimezoneDefault() {
-	return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-}
-
 function localSmtpHostDefault() {
 	return '127.0.0.1';
 }
@@ -352,10 +348,6 @@ function localSmtpPortDefault() {
 
 function contactEmailDefault(context: TreeseedEnvironmentContext) {
 	return context.deployConfig.contactEmail?.trim() || 'contact@example.com';
-}
-
-function workdayWindowsDefault() {
-	return JSON.stringify([{ days: [1, 2, 3, 4, 5], startTime: '09:00', endTime: '17:00' }]);
 }
 
 function localApiDatabaseUrlDefault(
@@ -633,18 +625,6 @@ const VALUE_RESOLVERS: NamedResolverMap = {
 	githubOwnerDefault: (context) => resolveGitHubOwnerDefault(context),
 	githubRepositoryNameDefault: (context) => resolveGitHubRepositoryNameDefault(context),
 	githubRepositoryVisibilityDefault: () => 'private',
-	agentPoolMinWorkersDefault: () => '0',
-	agentPoolMaxWorkersDefault: () => '2',
-	agentPoolTargetQueueDepthDefault: () => '1',
-	agentPoolCooldownSecondsDefault: () => '60',
-	workdayTimezoneDefault: () => localTimezoneDefault(),
-	workdayWindowsDefault: () => workdayWindowsDefault(),
-	workdayTaskCreditBudgetDefault: () => '20',
-	managerMaxQueuedTasksDefault: () => '5',
-	managerMaxQueuedCreditsDefault: () => '20',
-	managerPriorityModelsDefault: () => 'objective,question,note,page,book,knowledge',
-	taskCreditWeightsDefault: () => '[]',
-	workerPoolScalerDefault: (context) => railwayManagedEnabled(context) ? 'railway' : 'noop',
 };
 
 const PREDICATES: NamedPredicateMap = {

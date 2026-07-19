@@ -42,7 +42,7 @@ import {
 	writeTreeseedMachineConfig,
 } from '../operations/services/config-runtime.ts';
 import { createTreeseedManagedToolEnv, formatTreeseedDependencyFailureDetails, installTreeseedDependencies, resolveTreeseedToolBinary } from '../managed-dependencies.ts';
-import { ControlPlaneClient } from '../control-plane-client.ts';
+import { MarketClient } from '../market-client.ts';
 import { exportTreeseedCodebase } from '../operations/services/export-runtime.ts';
 import {
 	assertDeploymentInitialized,
@@ -349,7 +349,7 @@ function ensureWorkflowWorkspacePackageArtifacts(root: string, helpers: Workflow
 	const packages = [
 		{ name: '@treeseed/sdk', dir: 'packages/sdk', artifacts: ['dist/index.js', 'dist/workflow-support.js', 'dist/plugin-default.js', 'dist/platform/env.yaml'] },
 		{ name: '@treeseed/ui', dir: 'packages/ui', artifacts: ['dist/index.js'] },
-		{ name: '@treeseed/agent', dir: 'packages/agent', artifacts: ['dist/api/index.js', 'dist/services/manager.js', 'dist/provider/runner.js'] },
+		{ name: '@treeseed/agent', dir: 'packages/agent', artifacts: ['dist/api/index.js', 'dist/provider/manager.js', 'dist/provider/runner.js'] },
 		{ name: '@treeseed/core', dir: 'packages/core', artifacts: ['dist/plugin-default.js'] },
 		{ name: '@treeseed/admin', dir: 'packages/admin', artifacts: ['dist/plugin.js'] },
 		{ name: '@treeseed/cli', dir: 'packages/cli', artifacts: ['dist/cli/main.js'] },
@@ -2077,12 +2077,12 @@ async function connectTreeseedMarketProject(
 	const teamSlug = normalizeOptionalString(input.marketTeamSlug) ?? normalizeOptionalString(marketSettings.teamSlug);
 	const projectApiBaseUrl = normalizeOptionalString(input.marketProjectApiBaseUrl) ?? normalizeOptionalString(marketSettings.projectApiBaseUrl);
 
-	const client = new ControlPlaneClient({
-		baseUrl,
+	const client = new MarketClient({
+		profile: { id: hostId, label: 'TreeSeed', baseUrl, kind: 'specialized' },
 		accessToken,
 	});
 
-	const connectionResult = await client.upsertProjectConnection(projectId, {
+	const connectionResult = (await client.upsertProjectConnection(projectId, {
 		mode: 'hybrid',
 		projectApiBaseUrl,
 		executionOwner: 'project_runner',
@@ -2097,7 +2097,7 @@ async function connectTreeseedMarketProject(
 			connectedAt: new Date().toISOString(),
 		},
 		rotateRunnerToken: input.rotateRunnerToken === true,
-	});
+	})).payload;
 
 	const hosts = Array.isArray(remoteSettings.hosts) ? [...remoteSettings.hosts] : [];
 	const updatedHost = {

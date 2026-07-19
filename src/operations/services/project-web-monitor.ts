@@ -19,7 +19,6 @@ import type {
 
 const FORBIDDEN_MONITOR_FIELDS = new Set([
 	'capacityProviderId',
-	'laneId',
 	'grantId',
 	'workerPoolId',
 	'runtimeHostId',

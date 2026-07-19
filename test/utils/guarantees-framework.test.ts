@@ -1601,11 +1601,12 @@ verifiers:
 			workspaceRoot: marketRoot,
 			now: new Date('2026-01-01T00:00:00.000Z'),
 		});
-		expect(report.ok).toBe(false);
-		expect(report.results[0]?.status).toBe('failed');
+		expect(report.ok).toBe(true);
+		expect(report.results[0]?.status).toBe('passed');
 		expect(report.results[0]?.evidence[0]).toContain('fixture-market-package.json');
 		const evidence = JSON.parse(readFileSync(resolve(marketRoot, report.outputRoot, 'evidence', 'fixture-market-package.json'), 'utf8'));
-		expect(evidence.args).toEqual(['-w', '.', 'run', 'verify:market', '--']);
+		expect(evidence.args).toEqual(['run', 'verify:market', '--']);
+		expect(evidence.stdout).toContain('market package script ran');
 	});
 
 	it('executes API acceptance verifiers with local defaults and redacted service-secret evidence', async () => {
@@ -1686,8 +1687,8 @@ verifiers:
 		const active = validGuarantee
 			.replace('status: planned', 'surface: admin-ui\nstatus: active')
 			.replace('todo.project.question.ask-question.api', 'fixture.shared.api')
-			.replace('todo.project.question.ask-question.content', 'fixture.shared.content')
-			.replace('todo.project.question.ask-question.audit', 'fixture.shared.audit')
+			.replace('todo.project.question.ask-question.content', 'fixture.shared.api')
+			.replace('todo.project.question.ask-question.audit', 'fixture.shared.api')
 			.replace('scene:\n  required: true', 'scene:\n  required: false');
 		writeGuarantee(root, active);
 		writeGuarantee(root, active
@@ -1699,12 +1700,6 @@ verifiers:
 ownerPackage: "@treeseed/admin"
 verifiers:
   fixture.shared.api:
-    kind: vitestCase
-    testFile: test/fixture.test.ts
-  fixture.shared.content:
-    kind: vitestCase
-    testFile: test/fixture.test.ts
-  fixture.shared.audit:
     kind: vitestCase
     testFile: test/fixture.test.ts
 `);
@@ -1719,11 +1714,11 @@ verifiers:
 		});
 		expect(report.ok).toBe(true);
 		expect(report.counts.passed).toBe(2);
-		expect(calls.sort()).toEqual(['fixture.shared.api', 'fixture.shared.audit', 'fixture.shared.content']);
+		expect(calls).toEqual(['fixture.shared.api']);
 		expect(report.results[1]?.steps.map((step) => step.summary)).toEqual([
 			'fixture.shared.api passed (cached)',
-			'fixture.shared.content passed (cached)',
-			'fixture.shared.audit passed (cached)',
+			'fixture.shared.api passed (cached)',
+			'fixture.shared.api passed (cached)',
 		]);
 	});
 

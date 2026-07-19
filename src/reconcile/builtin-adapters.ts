@@ -1,10 +1,11 @@
-import { createHmac, randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, statSync } from 'node:fs';
-import { readdir, readFile } from 'node:fs/promises';
 import { dirname, relative, resolve } from 'node:path';
-import { resolveCapacityProviderLaunchPlan } from '../capacity-provider.ts';
-import { TreeDxClient } from '../treedx-client.ts';
+import { TreeDxClient } from '../treedx/client.ts';
+import { mintTreeDxHs256Token } from '../treedx/auth.ts';
+import { observeCapacityProviderRuntimeStatus } from '../capacity-provider/runtime-status.ts';
+import { collectLocalTreeDxSeedFiles, verifyLocalTreeDxSeedFiles } from '../platform/local-treedx-seed.ts';
 import { collectTreeseedEnvironmentContext, resolveTreeseedMachineEnvironmentValues, setTreeseedMachineEnvironmentValue } from '../operations/services/config-runtime.ts';
 import {
 	buildPublicVars,
@@ -88,7 +89,16 @@ import type {
 	TreeseedUnitVerificationResult,
 	TreeseedReconcileUnitType,
 } from './contracts.ts';
-import { loadTreeseedReconcileState } from './state.ts';
+import {
+	localComposeDriftReasons,
+	localComposeReconciledSpecHash,
+	localComposeRequiredPathWarnings,
+	localComposeServiceReady,
+	observeLocalComposeRequiredPaths,
+	parseLocalComposeServices,
+	waitForLocalComposeServices,
+} from './local-compose-state.ts';
+import { desiredUnitSpecHash, loadTreeseedReconcileState } from './state.ts';
 import { createTreeseedReconcileUnitId } from './units.ts';
 import {
 	applyRailwayIacProjectWithPlan,
@@ -869,13 +879,17 @@ function buildLocalDockerComposeAdapter(): TreeseedReconcileAdapter {
 				? runDockerCompose({ composeFiles, projectName, cwd, env, profiles, buildPolicy, action: 'config' })
 				: null;
 			const missingComposeFiles = composeFiles.filter((composeFile) => !existsSync(composeFile));
+			const requiredPaths = observeLocalComposeRequiredPaths(input.unit.spec.requiredHostPaths, input.context.tenantRoot);
+			const requiredPathWarnings = localComposeRequiredPathWarnings(requiredPaths);
+			const prerequisitesAvailable = Boolean(composeFilesExist && docker.available && requiredPathWarnings.length === 0);
 			return {
-				...genericObservedState(input, Boolean(composeFilesExist && docker.available), [
-				...(composeFiles.length > 0 ? [] : ['Compose file is missing: (unset)']),
-				...missingComposeFiles.map((composeFile) => `Compose file is missing: ${composeFile}`),
-				...docker.warnings,
-			]),
-				status: hasContainers ? 'ready' : composeFilesExist && docker.available ? 'pending' : 'error',
+				...genericObservedState(input, prerequisitesAvailable, [
+					...(composeFiles.length > 0 ? [] : ['Compose file is missing: (unset)']),
+					...missingComposeFiles.map((composeFile) => `Compose file is missing: ${composeFile}`),
+					...requiredPathWarnings,
+					...docker.warnings,
+				]),
+				status: prerequisitesAvailable ? (hasContainers ? 'ready' : 'pending') : 'error',
 				live: {
 					...input.unit.spec,
 					composeFile: composeFiles[0] ?? null,
@@ -888,13 +902,27 @@ function buildLocalDockerComposeAdapter(): TreeseedReconcileAdapter {
 					ps,
 					hasContainers,
 					configHash: config?.stdout?.trim() || null,
+					requiredPaths,
 				},
 			};
 		},
 		diff(input) {
 			if (!input.observed.exists) return { action: 'blocked', reasons: input.observed.warnings, before: input.observed.live, after: input.unit.spec };
+			if (input.unit.spec.resetData === true) {
+				return { action: 'update', reasons: ['disposable compose data reset requested'], before: input.observed.live, after: input.unit.spec };
+			}
 			if (input.unit.spec.forceRecreate === true) {
 				return { action: 'update', reasons: ['compose force recreate requested'], before: input.observed.live, after: input.unit.spec };
+			}
+			const driftReasons = localComposeDriftReasons({
+				persistedState: input.persistedState,
+				desiredSpecHash: desiredUnitSpecHash(input.unit),
+				reconciledSpecHash: localComposeReconciledSpecHash(input.unit.spec),
+				configHash: input.observed.live.configHash,
+				requiredPaths: Array.isArray(input.observed.live.requiredPaths) ? input.observed.live.requiredPaths as ReturnType<typeof observeLocalComposeRequiredPaths> : [],
+			});
+			if (driftReasons.length > 0) {
+				return { action: 'update', reasons: driftReasons, before: input.observed.live, after: input.unit.spec };
 			}
 			return input.observed.status === 'ready'
 				? noopDiff()
@@ -903,11 +931,27 @@ function buildLocalDockerComposeAdapter(): TreeseedReconcileAdapter {
 		apply(input) {
 			if (input.diff.action === 'blocked' || input.diff.action === 'noop') return genericResult(input);
 			runLocalComposePrepareCommand(input);
-			ensureLocalComposeDataDir(input);
 			const composeFiles = observedOrResolvedComposeFiles(input);
 			const cwd = String(input.observed.live.cwd ?? input.context.tenantRoot);
 			const projectName = String(input.unit.spec.projectName ?? 'treeseed-capacity-provider');
 			const env = buildLocalComposeLaunchEnv(input);
+			const reset = input.unit.spec.resetData === true
+				? runDockerCompose({
+						composeFiles,
+						projectName,
+						cwd,
+						env,
+						profiles: localComposeProfiles(input),
+						buildPolicy: localComposeBuildPolicy(input),
+						removeVolumes: true,
+						action: 'down',
+					})
+				: null;
+			if (reset && !reset.ok) {
+				throw new Error(reset.stderr.trim() || reset.stdout.trim() || 'docker compose data reset failed');
+			}
+			if (reset) resetLocalComposeDataDir(input);
+			ensureLocalComposeDataDir(input);
 			const result = runDockerCompose({
 				composeFiles,
 				projectName,
@@ -915,16 +959,77 @@ function buildLocalDockerComposeAdapter(): TreeseedReconcileAdapter {
 				env,
 				profiles: localComposeProfiles(input),
 				buildPolicy: localComposeBuildPolicy(input),
-				action: input.unit.spec.forceRecreate === true ? 'restart' : 'up',
+				action: input.diff.action === 'update' ? 'restart' : 'up',
 			});
 			if (!result.ok) {
 				throw new Error(result.stderr.trim() || result.stdout.trim() || 'docker compose up failed');
 			}
-			return genericResult(input, { ...input.observed.live, compose: result });
+			return genericResult(input, {
+				...input.observed.live,
+				reconciledSpecHash: localComposeReconciledSpecHash(input.unit.spec),
+				reset,
+				compose: result,
+			});
 		},
 		async verify(input) {
 			const healthChecks = Array.isArray(input.unit.spec.healthChecks) ? input.unit.spec.healthChecks as Array<Record<string, unknown>> : [];
 			const checks: TreeseedUnitVerificationCheck[] = [];
+			const requiredPaths = Array.isArray(input.observed.live.requiredPaths)
+				? input.observed.live.requiredPaths as ReturnType<typeof observeLocalComposeRequiredPaths>
+				: [];
+			for (const requiredPath of requiredPaths) {
+				checks.push(verificationCheck(`host-path:${requiredPath.path}`, requiredPath.description, 'sdk', {
+					exists: requiredPath.exists,
+					configured: true,
+					ready: requiredPath.valid,
+					verified: requiredPath.valid,
+					expected: requiredPath.kind,
+					observed: requiredPath,
+					issues: requiredPath.valid ? [] : [`Required ${requiredPath.kind} is unavailable: ${requiredPath.path}`],
+				}));
+			}
+			const declaredServices = new Set([
+				...(Array.isArray(input.unit.spec.services) ? input.unit.spec.services.filter((entry): entry is string => typeof entry === 'string') : []),
+				...healthChecks.flatMap((entry) => entry.kind === 'container' && typeof entry.service === 'string' ? [entry.service] : []),
+			]);
+			const initialPs = input.observed.live.ps && typeof input.observed.live.ps === 'object'
+				? input.observed.live.ps as Record<string, unknown>
+				: {};
+			let firstObservation = true;
+			const serviceWait = await waitForLocalComposeServices({
+				serviceNames: [...declaredServices],
+				attempts: typeof input.unit.spec.serviceHealthAttempts === 'number' ? input.unit.spec.serviceHealthAttempts : undefined,
+				intervalMs: typeof input.unit.spec.serviceHealthIntervalMs === 'number' ? input.unit.spec.serviceHealthIntervalMs : undefined,
+				observe: () => {
+					if (firstObservation) {
+						firstObservation = false;
+						return parseLocalComposeServices(initialPs.stdout);
+					}
+					const ps = runDockerCompose({
+						composeFiles: observedOrResolvedComposeFiles(input),
+						projectName: String(input.unit.spec.projectName ?? 'treeseed-capacity-provider'),
+						cwd: String(input.observed.live.cwd ?? input.context.tenantRoot),
+						env: buildLocalComposeLaunchEnv(input),
+						profiles: localComposeProfiles(input),
+						buildPolicy: localComposeBuildPolicy(input),
+						action: 'ps',
+					});
+					return parseLocalComposeServices(ps.stdout);
+				},
+			});
+			const services = serviceWait.observations;
+			for (const service of declaredServices) {
+				const observation = services.find((entry) => entry.service === service);
+				const ready = localComposeServiceReady(observation);
+				checks.push(verificationCheck(`compose-service:${service}`, `Docker Compose service ${service} is running and healthy`, 'cli', {
+					exists: Boolean(observation),
+					configured: true,
+					ready,
+					verified: ready,
+					observed: observation ? { ...observation, verificationAttempts: serviceWait.attempts } : { verificationAttempts: serviceWait.attempts },
+					issues: ready ? [] : [`Docker Compose service ${service} is missing, stopped, starting, or unhealthy.`],
+				}));
+			}
 			for (const healthCheck of healthChecks) {
 				if (healthCheck.kind === 'http' && typeof healthCheck.url === 'string') {
 					const attempts = typeof healthCheck.attempts === 'number' && Number.isFinite(healthCheck.attempts)
@@ -985,6 +1090,17 @@ function ensureLocalComposeDataDir(input: TreeseedReconcileAdapterInput) {
 	const dataDir = typeof input.unit.spec.dataDir === 'string' ? input.unit.spec.dataDir.trim() : '';
 	if (!dataDir) return;
 	mkdirSync(resolve(input.context.tenantRoot, dataDir), { recursive: true });
+}
+
+function resetLocalComposeDataDir(input: TreeseedReconcileAdapterInput) {
+	const dataDir = typeof input.unit.spec.dataDir === 'string' ? input.unit.spec.dataDir.trim() : '';
+	if (!dataDir) return;
+	const tenantRoot = resolve(input.context.tenantRoot);
+	const target = resolve(tenantRoot, dataDir);
+	if (target === tenantRoot || !target.startsWith(`${tenantRoot}/`)) {
+		throw new Error(`Refusing to reset local Compose data outside the tenant root: ${target}`);
+	}
+	rmSync(target, { recursive: true, force: true });
 }
 
 function resolveLocalComposeFiles(input: TreeseedReconcileAdapterInput) {
@@ -1050,27 +1166,11 @@ async function checkHttpHealthWithRetry(url: string, attempts = 90, intervalMs =
 }
 
 function buildLocalComposeLaunchEnv(input: TreeseedReconcileAdapterInput) {
-	const fallback = resolveCapacityProviderLaunchPlan({
-		schemaVersion: 1,
-		provider: {
-			dataDir: '.treeseed/local-capacity-provider/data',
-			environment: 'local',
-		},
-		runtime: {
-			images: {
-				roles: {
-					manager: { image: 'treeseed/agent-manager', tag: 'latest' },
-					runner: { image: 'treeseed/agent-runner', tag: 'latest' },
-				},
-			},
-			api: {
-				hostPort: 4783,
-			},
-		},
-	}).composeEnv;
 	return {
 		...input.context.launchEnv,
-		...fallback,
+		TREESEED_PROVIDER_HOST_DATA_DIR: '.treeseed/local-capacity-provider/data',
+		TREESEED_PROVIDER_ENVIRONMENT: 'local',
+		TREESEED_AGENT_IMAGE_TAG: 'latest',
 		...(typeof input.unit.spec.env === 'object' && input.unit.spec.env ? input.unit.spec.env as Record<string, string> : {}),
 	};
 }
@@ -1402,18 +1502,31 @@ function buildLocalProcessAdapter(): TreeseedReconcileAdapter {
 				env: input.context.launchEnv,
 			});
 			const safeStatus = sanitizeManagedDevObservation(status);
+			const instances = Array.isArray(safeStatus.parsed?.instances)
+				? safeStatus.parsed.instances
+				: [];
+			const sourceClosureDrift = instances.some((instance) => (
+				instance
+				&& typeof instance === 'object'
+				&& 'sourceClosureMatches' in instance
+				&& instance.sourceClosureMatches === false
+			));
 			return {
 				...genericObservedState(input, true, safeStatus.ok ? [] : [safeStatus.output || 'managed dev status failed']),
-				status: safeStatus.ok ? 'ready' : 'pending',
+				status: sourceClosureDrift ? 'drifted' : safeStatus.ok ? 'ready' : 'pending',
 				live: {
 					...input.unit.spec,
 					status: safeStatus,
+					sourceClosureDrift,
 				},
 			};
 		},
 		diff(input) {
 			if (input.unit.spec.action === 'restart') {
 				return { action: 'update', reasons: ['local process restart requested'], before: input.observed.live, after: input.unit.spec };
+			}
+			if (input.observed.live.sourceClosureDrift === true) {
+				return { action: 'update', reasons: ['local process source closure changed'], before: input.observed.live, after: input.unit.spec };
 			}
 			return input.observed.status === 'ready'
 				? noopDiff()
@@ -1426,7 +1539,7 @@ function buildLocalProcessAdapter(): TreeseedReconcileAdapter {
 				: [String(input.unit.spec.processId ?? input.unit.logicalName)];
 			const result = await runManagedDevAction({
 				tenantRoot: input.context.tenantRoot,
-				action: input.unit.spec.action === 'restart' ? 'restart' : 'start',
+				action: input.unit.spec.action === 'restart' || input.diff.action === 'update' ? 'restart' : 'start',
 				surfaces,
 				options: typeof input.unit.spec.options === 'object' && input.unit.spec.options ? input.unit.spec.options as Record<string, unknown> : {},
 				env: input.context.launchEnv,
@@ -1553,6 +1666,42 @@ function buildCapacityProviderAdapter(providerId: 'local' | 'railway'): Treeseed
 					issues: health.ok ? [] : [`Capacity provider health endpoint ${healthEndpoint} did not respond successfully.`],
 				}));
 			}
+			const runtimeStatus = input.unit.spec.runtimeStatus && typeof input.unit.spec.runtimeStatus === 'object'
+				? input.unit.spec.runtimeStatus as Record<string, unknown>
+				: null;
+			if (runtimeStatus && typeof runtimeStatus.path === 'string') {
+				const expectedConnectionCount = typeof input.unit.spec.expectedConnectionCount === 'number'
+					? Math.max(0, Math.floor(input.unit.spec.expectedConnectionCount))
+					: 1;
+				const requireConnected = expectedConnectionCount > 0;
+				const maxAgeSeconds = typeof runtimeStatus.maxAgeSeconds === 'number' && Number.isFinite(runtimeStatus.maxAgeSeconds)
+					? Math.max(1, runtimeStatus.maxAgeSeconds)
+					: 180;
+				const attempts = typeof runtimeStatus.attempts === 'number' && Number.isFinite(runtimeStatus.attempts)
+					? Math.max(1, Math.floor(runtimeStatus.attempts))
+					: 60;
+				const intervalMs = typeof runtimeStatus.intervalMs === 'number' && Number.isFinite(runtimeStatus.intervalMs)
+					? Math.max(100, Math.floor(runtimeStatus.intervalMs))
+					: 500;
+				const statusPath = resolve(input.context.tenantRoot, runtimeStatus.path);
+				let observedStatus = observeCapacityProviderRuntimeStatus(statusPath, maxAgeSeconds, new Date(), requireConnected);
+				const runtimeReady = () => observedStatus.valid && observedStatus.fresh && (!requireConnected || observedStatus.connected);
+				for (let attempt = 1; attempt < attempts && !runtimeReady(); attempt += 1) {
+					await new Promise((resolveWait) => setTimeout(resolveWait, intervalMs));
+					observedStatus = observeCapacityProviderRuntimeStatus(statusPath, maxAgeSeconds, new Date(), requireConnected);
+				}
+				const ready = runtimeReady();
+				checks.push(verificationCheck('capacity-provider-runtime-status', requireConnected
+					? 'Provider manager has a fresh approved connection and published availability session'
+					: 'Provider manager is fresh and ready for provider connections', 'sdk', {
+					exists: observedStatus.exists,
+					configured: true,
+					ready,
+					verified: ready,
+					observed: observedStatus,
+					issues: observedStatus.issues,
+				}));
+			}
 			if (checks.length === 0) {
 				checks.push(verificationCheck('capacity-provider', 'Capacity provider desired topology is observable', 'derived', {
 					exists: input.observed.exists,
@@ -1582,6 +1731,7 @@ interface LocalTreeDxContentProject {
 	contentPath: string;
 	defaultRef?: string;
 	seedPaths?: string[];
+	seedDigest?: string;
 }
 
 function recordValue(value: unknown): Record<string, unknown> {
@@ -1611,13 +1761,10 @@ function localTreeDxProjects(value: unknown): LocalTreeDxContentProject[] {
 				contentPath,
 				defaultRef: nonEmptyString(record.defaultRef) || 'refs/heads/main',
 				seedPaths: Array.isArray(record.seedPaths) ? record.seedPaths.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : [],
+				seedDigest: nonEmptyString(record.seedDigest) || undefined,
 			}];
 		})
 		: [];
-}
-
-function base64urlJson(value: Record<string, unknown>) {
-	return Buffer.from(JSON.stringify(value)).toString('base64url');
 }
 
 function mintLocalTreeDxJwt(auth: Record<string, unknown>) {
@@ -1625,113 +1772,60 @@ function mintLocalTreeDxJwt(auth: Record<string, unknown>) {
 	const issuer = nonEmptyString(auth.TREESEED_TREEDX_JWT_ISSUER);
 	const audience = nonEmptyString(auth.TREESEED_TREEDX_JWT_AUDIENCE);
 	if (!secret || !issuer || !audience) return '';
-	const now = Math.floor(Date.now() / 1000);
 	const actorId = nonEmptyString(auth.TREESEED_TREEDX_PROXY_ACTOR_ID) || 'treeseed-sdk-reconciler';
 	const tenantId = nonEmptyString(auth.TREESEED_TREEDX_PROXY_TENANT_ID) || 'treeseed-control-plane';
-	const payload = {
-		iss: issuer,
-		aud: audience,
-		sub: actorId,
-		jti: randomUUID(),
-		iat: now,
-		nbf: now - 5,
-		exp: now + 3600,
-		treedx_actor_id: actorId,
-		treedx_tenant_id: tenantId,
-		treedx_repo_ids: ['*'],
-		treedx_capabilities: ['*'],
-		treedx_refs: ['*'],
-		treedx_paths: ['**'],
-	};
-	const signingInput = `${base64urlJson({ alg: 'HS256', typ: 'JWT' })}.${base64urlJson(payload)}`;
-	const signature = createHmac('sha256', secret).update(signingInput).digest('base64url');
-	return `${signingInput}.${signature}`;
-}
-
-async function listLocalTreeDxSeedFiles(project: LocalTreeDxContentProject) {
-	const paths = project.seedPaths?.length ? project.seedPaths : [project.contentPath];
-	const files: Array<{ path: string; content: string }> = [];
-	const visit = async (absoluteDir: string, root: string) => {
-		if (!existsSync(absoluteDir)) return;
-		for (const entry of await readdir(absoluteDir, { withFileTypes: true })) {
-			const absolutePath = resolve(absoluteDir, entry.name);
-			if (entry.isDirectory()) {
-				await visit(absolutePath, root);
-			} else if (entry.isFile() && /\.(md|mdx)$/iu.test(entry.name)) {
-				files.push({
-					path: relative(root, absolutePath).replace(/\\/gu, '/'),
-					content: await readFile(absolutePath, 'utf8'),
-				});
-			}
-		}
-	};
-	for (const seedPath of paths) {
-		await visit(resolve(project.localRoot, seedPath), project.localRoot);
-	}
-	return files.sort((left, right) => left.path.localeCompare(right.path));
+	return mintTreeDxHs256Token({ secret, issuer, audience, actorId, tenantId, repoIds: ['*'], capabilities: ['*'], refs: ['*'], paths: ['**'], ttlSeconds: 3600 });
 }
 
 async function ensureLocalTreeDxProjectRepository(client: TreeDxClient, project: LocalTreeDxContentProject) {
-	const repositories = recordValue(await client.repositories.list()).repos;
-	const existing = Array.isArray(repositories)
-		? repositories.find((entry) => recordValue(entry).repositoryName === project.repositoryName || recordValue(entry).name === project.repositoryName)
-		: null;
+	const repositories = await client.listRepositories();
+	const existing = repositories.find((entry) => recordValue(entry).repositoryName === project.repositoryName || recordValue(entry).name === project.repositoryName);
 	const existingRepoId = nonEmptyString(recordValue(existing).repoId);
 	if (existingRepoId) return { repoId: existingRepoId, created: false };
-	const registered = recordValue(await client.repositories.register({
+	const registered = recordValue(await client.registerRepository({
 		name: project.repositoryName,
 		repositoryName: project.repositoryName,
 		createIfMissing: true,
 		defaultRef: project.defaultRef ?? 'refs/heads/main',
 	}));
-	const repo = recordValue(registered.repo);
-	const repoId = nonEmptyString(repo.repoId);
+	const repoId = nonEmptyString(registered.repoId);
 	if (!repoId) throw new Error(`TreeDX did not return a repository id for ${project.repositoryName}.`);
 	return { repoId, created: true };
 }
 
 async function syncLocalTreeDxProjectContent(client: TreeDxClient, project: LocalTreeDxContentProject) {
-	const files = await listLocalTreeDxSeedFiles(project);
+	const files = collectLocalTreeDxSeedFiles(project);
 	const repository = await ensureLocalTreeDxProjectRepository(client, project);
 	if (files.length === 0) {
 		return { project: project.slug, repositoryId: repository.repoId, repositoryName: project.repositoryName, files: 0, committed: false };
 	}
-	const workspace = recordValue(await client.request({
-		method: 'POST',
-		path: `/api/v1/repos/${encodeURIComponent(repository.repoId)}/workspaces`,
-		body: {
+	const workspace = recordValue(await client.createWorkspace({
+			repoId: repository.repoId,
 			baseRef: project.defaultRef ?? 'refs/heads/main',
-			branchName: `refs/heads/treeseed-local-sync/${project.slug}/${Date.now().toString(36)}`,
+			branchName: project.defaultRef ?? 'refs/heads/main',
 			mode: 'writable',
 			allowedPaths: [`${project.contentPath.replace(/\/+$/u, '')}/**`],
 			ttlSeconds: 900,
-		},
 	}));
 	const workspaceId = nonEmptyString(workspace.workspaceId);
 	if (!workspaceId) throw new Error(`TreeDX did not return a workspace id for ${project.slug}.`);
 	try {
 		for (const file of files) {
-			await client.request({
-				method: 'PUT',
-				path: `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/files`,
-				query: { path: file.path },
-				body: { content: file.content, encoding: 'utf8' },
+			await client.writeFile({
+				workspaceId,
+				path: file.path,
+				content: file.content,
+				encoding: 'utf8',
 			});
 		}
-		const commit = recordValue(await client.request({
-			method: 'POST',
-			path: `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/commit`,
-			body: {
+		const commit = recordValue(await client.commit({
+			workspaceId,
 				message: `Sync ${project.slug} knowledge hub seed content`,
 				author: { name: 'TreeSeed Reconciler', email: 'reconciler@treeseed.local' },
-			},
 		}));
-		const graphRefresh = recordValue(await client.request({
-			method: 'POST',
-			path: `/api/v1/repos/${encodeURIComponent(repository.repoId)}/graph/refresh`,
-			body: {
+		const graphRefresh = recordValue(await client.refreshGraph({
+			repoId: repository.repoId,
 				paths: project.seedPaths?.length ? project.seedPaths.map((seedPath) => `${seedPath.replace(/\/+$/u, '')}/**`) : [`${project.contentPath.replace(/\/+$/u, '')}/**`],
-			},
 		}).catch((error) => ({
 			error: error instanceof Error ? error.message : String(error),
 		})));
@@ -1745,7 +1839,7 @@ async function syncLocalTreeDxProjectContent(client: TreeDxClient, project: Loca
 			graphRefresh,
 		};
 	} finally {
-		await client.request({ method: 'POST', path: `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/close`, body: {} }).catch(() => null);
+		await client.closeWorkspace(workspaceId).catch(() => null);
 	}
 }
 
@@ -1761,6 +1855,49 @@ async function ensureLocalTreeDxProjectRepositoryRef(client: TreeDxClient, proje
 	};
 }
 
+function treeDxSeedFileRecord(value: unknown) {
+	const record = recordValue(value);
+	const nested = recordValue(record.file);
+	const path = nonEmptyString(record.path) || nonEmptyString(nested.path);
+	const content = typeof record.content === 'string'
+		? record.content
+		: typeof nested.content === 'string'
+			? nested.content
+			: '';
+	return { path, content };
+}
+
+async function verifyLocalTreeDxProjectContent(
+	client: TreeDxClient,
+	project: LocalTreeDxContentProject,
+	repositoryId: string,
+) {
+	const desiredFiles = collectLocalTreeDxSeedFiles(project);
+	if (desiredFiles.length === 0) {
+		return {
+			verified: true,
+			desiredFileCount: 0,
+			verifiedFileCount: 0,
+			missingPaths: [] as string[],
+			mismatchedPaths: [] as string[],
+		};
+	}
+	const response = await client.readRepositoryFiles({
+		repoId: repositoryId,
+		ref: project.defaultRef ?? 'refs/heads/main',
+		paths: desiredFiles.map((file) => file.path),
+		encoding: 'utf8',
+		parseFrontmatter: false,
+	});
+	const observedFiles = (Array.isArray(response.files) ? response.files : response.file ? [response.file] : [])
+		.map(treeDxSeedFileRecord);
+	return {
+		...verifyLocalTreeDxSeedFiles(desiredFiles, observedFiles),
+		ref: project.defaultRef ?? 'refs/heads/main',
+		seedDigest: project.seedDigest ?? null,
+	};
+}
+
 function buildLocalTreeDxAdapter(): TreeseedReconcileAdapter {
 	return {
 		providerId: 'local',
@@ -1768,24 +1905,64 @@ function buildLocalTreeDxAdapter(): TreeseedReconcileAdapter {
 		supports(unitType, providerId) {
 			return unitType === 'local-treedx' && providerId === 'local';
 		},
-		refresh(input) {
+		async refresh(input) {
+			const baseUrl = nonEmptyString(input.unit.spec.baseUrl);
+			const token = nonEmptyString(input.unit.spec.token) || mintLocalTreeDxJwt(recordValue(input.unit.spec.auth));
+			const projects = localTreeDxProjects(input.unit.spec.projects);
+			let repositories: unknown[] = [];
+			const warnings: string[] = [];
+			if (baseUrl && token) {
+				try {
+					repositories = await new TreeDxClient({ baseUrl, token, timeoutMs: 30_000 }).listRepositories();
+				} catch (error) {
+					warnings.push(`TreeDX repositories could not be observed: ${error instanceof Error ? error.message : String(error)}`);
+				}
+			} else if (projects.length > 0) {
+				warnings.push('TreeDX base URL or reconciliation token is missing.');
+			}
+			const registeredRepositoryNames = repositories.flatMap((entry) => {
+				const record = recordValue(entry);
+				const name = nonEmptyString(record.repositoryName) || nonEmptyString(record.name);
+				return name ? [name] : [];
+			});
+			const allRegistered = projects.every((project) => registeredRepositoryNames.includes(project.repositoryName));
 			return {
-				...genericObservedState(input),
+				...genericObservedState(input, warnings.length === 0, warnings),
+				status: warnings.length > 0 ? 'error' : allRegistered ? 'ready' : 'pending',
 				live: {
 					...input.unit.spec,
 					dependencies: input.unit.dependencies,
+					registeredRepositoryNames,
 				},
 			};
 		},
 		diff(input) {
 			const projects = localTreeDxProjects(input.unit.spec.projects);
 			if (projects.length === 0) return noopDiff();
-			return {
-				action: 'update',
-				reasons: ['local TreeDX project content repositories must be registered and seeded through TreeDX'],
-				before: input.observed.live,
-				after: input.unit.spec,
-			};
+			if (input.observed.status === 'error') {
+				return { action: 'blocked', reasons: input.observed.warnings, before: input.observed.live, after: input.unit.spec };
+			}
+			const registered = Array.isArray(input.observed.live.registeredRepositoryNames)
+				? input.observed.live.registeredRepositoryNames.filter((entry): entry is string => typeof entry === 'string')
+				: [];
+			const missing = projects.filter((project) => !registered.includes(project.repositoryName));
+			if (missing.length > 0) {
+				return {
+					action: 'update',
+					reasons: [`TreeDX repositories are missing: ${missing.map((project) => project.repositoryName).join(', ')}`],
+					before: input.observed.live,
+					after: input.unit.spec,
+				};
+			}
+			if (!input.persistedState?.lastReconciledAt || input.persistedState.desiredSpecHash !== desiredUnitSpecHash(input.unit)) {
+				return {
+					action: 'update',
+					reasons: ['local TreeDX seed content changed or has not been reconciled'],
+					before: input.observed.live,
+					after: input.unit.spec,
+				};
+			}
+			return noopDiff();
 		},
 		async apply(input) {
 			if (input.diff.action === 'noop' || input.diff.action === 'blocked') return genericResult(input);
@@ -1793,13 +1970,16 @@ function buildLocalTreeDxAdapter(): TreeseedReconcileAdapter {
 			const token = nonEmptyString(input.unit.spec.token) || mintLocalTreeDxJwt(recordValue(input.unit.spec.auth));
 			const projects = localTreeDxProjects(input.unit.spec.projects);
 			if (!baseUrl || !token || projects.length === 0) return genericResult(input);
-			const client = new TreeDxClient({ baseUrl, token });
+			const client = new TreeDxClient({ baseUrl, token, timeoutMs: 30_000 });
 			const syncedProjects = [];
 			const syncSeedContent = input.unit.spec.syncSeedContent !== false;
-			for (const project of projects) {
-				syncedProjects.push(syncSeedContent
+			for (const [index, project] of projects.entries()) {
+				input.context.write?.(`Syncing local TreeDX project ${index + 1}/${projects.length} (${project.slug})...`);
+				const synced = syncSeedContent
 					? await syncLocalTreeDxProjectContent(client, project)
-					: await ensureLocalTreeDxProjectRepositoryRef(client, project));
+					: await ensureLocalTreeDxProjectRepositoryRef(client, project);
+				syncedProjects.push(synced);
+				input.context.write?.(`Synced local TreeDX project ${index + 1}/${projects.length} (${project.slug}, ${synced.files} files).`);
 			}
 			return genericResult(input, { ...input.observed.live, syncedProjects });
 		},
@@ -1862,11 +2042,10 @@ function buildLocalTreeDxAdapter(): TreeseedReconcileAdapter {
 			const baseUrl = nonEmptyString(input.unit.spec.baseUrl);
 			const token = nonEmptyString(input.unit.spec.token) || mintLocalTreeDxJwt(recordValue(input.unit.spec.auth));
 			if (baseUrl && token) {
-				const client = new TreeDxClient({ baseUrl, token });
+				const client = new TreeDxClient({ baseUrl, token, timeoutMs: 30_000 });
 				let repositories: unknown[] = [];
 				try {
-					const list = recordValue(await client.repositories.list()).repos;
-					repositories = Array.isArray(list) ? list : [];
+					repositories = await client.listRepositories();
 				} catch {
 					repositories = [];
 				}
@@ -1876,6 +2055,7 @@ function buildLocalTreeDxAdapter(): TreeseedReconcileAdapter {
 						return record.repositoryName === project.repositoryName || record.name === project.repositoryName;
 					});
 					if (repo) {
+						const repositoryId = nonEmptyString(recordValue(repo).repoId);
 						repositoryChecks.push(verificationCheck(`treedx-repo:${project.slug}`, `TreeDX repository ${project.repositoryId} is registered`, 'api', {
 							exists: true,
 							configured: true,
@@ -1883,6 +2063,31 @@ function buildLocalTreeDxAdapter(): TreeseedReconcileAdapter {
 							verified: true,
 							observed: repo,
 						}));
+						if (input.unit.spec.syncSeedContent !== false && repositoryId) {
+							try {
+								const content = await verifyLocalTreeDxProjectContent(client, project, repositoryId);
+								repositoryChecks.push(verificationCheck(`treedx-content:${project.slug}`, `TreeDX repository ${project.repositoryId} exposes the exact desired seed content from ${project.defaultRef ?? 'refs/heads/main'}`, 'api', {
+									exists: content.verifiedFileCount > 0 || content.desiredFileCount === 0,
+									configured: true,
+									ready: content.verified,
+									verified: content.verified,
+									observed: content,
+									issues: content.verified ? [] : [
+										...(content.missingPaths.length ? [`Missing paths: ${content.missingPaths.join(', ')}`] : []),
+										...(content.mismatchedPaths.length ? [`Content differs: ${content.mismatchedPaths.join(', ')}`] : []),
+									],
+								}));
+							} catch (error) {
+								repositoryChecks.push(verificationCheck(`treedx-content:${project.slug}`, `TreeDX repository ${project.repositoryId} exposes the exact desired seed content from ${project.defaultRef ?? 'refs/heads/main'}`, 'api', {
+									exists: false,
+									configured: true,
+									ready: false,
+									verified: false,
+									observed: { repositoryId, ref: project.defaultRef ?? 'refs/heads/main' },
+									issues: [error instanceof Error ? error.message : String(error)],
+								}));
+							}
+						}
 					} else {
 						repositoryChecks.push(verificationCheck(`treedx-repo:${project.slug}`, `TreeDX repository ${project.repositoryId} is registered`, 'api', {
 							exists: false,
@@ -4943,7 +5148,7 @@ function collectRailwayEnvironmentSync(input: TreeseedReconcileAdapterInput, val
 		variables,
 		forService(serviceKey: string, configuredService?: ReturnType<typeof configuredRailwayServices>[number]) {
 			const capacityVariables = capacityProviderVariablesForService(input, scope, values, serviceKey, configuredService);
-			const capacitySecrets = capacityProviderSecretsForService(values, serviceKey);
+			const capacitySecrets: Record<string, string> = {};
 				const serviceVariables = configuredService?.environmentVariables && typeof configuredService.environmentVariables === 'object'
 					? Object.fromEntries(Object.entries(configuredService.environmentVariables)
 						.filter(([, value]) => typeof value === 'string' && value.length > 0))
@@ -5036,38 +5241,6 @@ function capacityProviderRoleForService(serviceKey: string) {
 	if (serviceKey === 'capacityProviderManager') return 'manager';
 	if (serviceKey === 'capacityProviderRunner') return 'runner';
 	return null;
-}
-
-function capacityProviderSecretsForService(values: Record<string, string | undefined>, serviceKey: string): Record<string, string> {
-	if (!capacityProviderRoleForService(serviceKey)) return {};
-	const apiKey = String(values.TREESEED_CAPACITY_PROVIDER_API_KEY ?? '').trim();
-	return apiKey ? { TREESEED_CAPACITY_PROVIDER_API_KEY: apiKey } : {};
-}
-
-function ensureCapacityProviderApiKeyForRailwaySync(input: TreeseedReconcileAdapterInput, scope: string) {
-	const hasCapacityProviderService = configuredRailwayServicesForInput(input, scope as 'local' | 'staging' | 'prod')
-		.some((service) => String(service.key).startsWith('capacityProvider') && service.enabled !== false);
-	if (!hasCapacityProviderService) return null;
-	const values = resolveReconcileEnvironmentValues(input, scope);
-	const existing = String(values.TREESEED_CAPACITY_PROVIDER_API_KEY ?? '').trim();
-	if (existing) return existing;
-	const registry = collectTreeseedEnvironmentContext(input.context.tenantRoot);
-	const entry = registry.entries.find((candidate) => candidate.id === 'TREESEED_CAPACITY_PROVIDER_API_KEY') ?? {
-		id: 'TREESEED_CAPACITY_PROVIDER_API_KEY',
-		label: 'Capacity provider API key',
-		group: 'capacity-provider',
-		description: 'Provider-scoped bearer key used by hosted capacity provider services.',
-		howToGet: 'Generated by Railway reconciliation when capacity provider services are enabled.',
-		sensitivity: 'secret',
-		targets: ['railway-secret'],
-		scopes: ['staging', 'prod'],
-		storage: 'scoped',
-		requirement: 'optional',
-		purposes: ['deploy', 'config'],
-	};
-	const generated = `tscp_${randomBytes(32).toString('base64url')}`;
-	setTreeseedMachineEnvironmentValue(input.context.tenantRoot, scope, entry, generated);
-	return generated;
 }
 
 function ensurePublicTreeDxSecretsForRailwaySync(

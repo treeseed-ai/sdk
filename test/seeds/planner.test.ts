@@ -122,18 +122,6 @@ function canonicalTreeseedSeed(): SeedManifest {
 		...TRESEED_PACKAGES.map(([slug, packageId, docsSiteReadiness, localContentMaterialization]) =>
 			firstPartyProject(slug, packageId, docsSiteReadiness, localContentMaterialization)),
 	];
-	const grantAllocations: Record<string, number> = {
-		market: 50,
-		api: 6,
-		treedx: 10,
-		sdk: 6,
-		ui: 6,
-		cli: 6,
-		core: 6,
-		admin: 6,
-		agent: 4,
-	};
-	const projectSlugs = ['market', ...TRESEED_PACKAGES.map(([slug]) => slug)];
 	return {
 		name: 'treeseed',
 		version: 1,
@@ -150,86 +138,6 @@ function canonicalTreeseedSeed(): SeedManifest {
 				metadata: { visibility: 'private' },
 			}],
 			projects,
-			capacityProviders: [{
-				key: 'capacity-provider:treeseed/local-dev',
-				environments: ['local'],
-				team: 'team:treeseed',
-				name: 'treeseed-local-dev',
-				kind: 'local',
-				provider: 'local',
-				billingScope: 'team',
-				creditBudgetMode: 'derived',
-				maxConcurrentWorkdays: 2,
-				maxConcurrentWorkers: 4,
-				executionProviders: [{
-					id: 'treeseed-local-codex',
-					name: 'Local Codex capacity',
-					kind: 'codex_subscription',
-					nativeUnit: 'wall_minute',
-					quotaVisibility: 'opaque',
-					maxConcurrentWorkers: 4,
-					resetCadence: 'daily',
-					nativeLimits: [{
-						scope: 'daily',
-						nativeUnit: 'wall_minute',
-						limitAmount: 10,
-						reserveBufferPercent: 20,
-						resetCadence: 'daily',
-						confidence: 'estimated',
-						source: 'configured',
-					}],
-				}],
-				registration: {
-					apiKey: {
-						createIfMissing: true,
-						name: 'TreeSeed local provider security code',
-						scopes: ['provider:register', 'provider:heartbeat', 'provider:portfolio:read', 'provider:assignments:read', 'provider:assignments:write', 'provider:usage:report', 'provider:reports:write', 'provider:capabilities:write'],
-					},
-				},
-			}],
-			capacityGrants: projectSlugs.map((slug) => ({
-				key: `capacity-grant:treeseed/local/${slug}`,
-				environments: ['local'],
-				provider: 'capacity-provider:treeseed/local-dev',
-				team: 'team:treeseed',
-				project: `project:treeseed/${slug}`,
-				environment: 'local',
-				grantScope: 'project',
-				portfolioAllocationPercent: grantAllocations[slug] ?? 1,
-				reservePoolPercent: 10,
-				priorityWeight: 1,
-				overflowPolicy: 'soft_grant',
-			})),
-			workPolicies: [
-				...projectSlugs.map((slug) => ({
-					key: `work-policy:treeseed/local/${slug}`,
-					environments: ['local'],
-					project: `project:treeseed/${slug}`,
-					environment: 'local',
-					enabled: true,
-					startCron: '0 9 * * 1-5',
-					durationMinutes: 480,
-					maxRunners: 1,
-					maxWorkersPerRunner: 4,
-					dailyCreditBudget: 5000,
-					maxQueuedTasks: 100,
-					maxQueuedCredits: 10000,
-				})),
-				...['staging', 'prod'].map((environment) => ({
-					key: `work-policy:treeseed/${environment}/market`,
-					environments: [environment],
-					project: 'project:treeseed/market',
-					environment,
-					enabled: true,
-					startCron: '0 9 * * 1-5',
-					durationMinutes: 480,
-					maxRunners: 1,
-					maxWorkersPerRunner: 4,
-					dailyCreditBudget: 2500,
-					maxQueuedTasks: 50,
-					maxQueuedCredits: 5000,
-				})),
-			],
 			repositoryHosts: [
 				{
 					key: 'repository-host:treeseed/knowledge-coop-github',
@@ -285,7 +193,6 @@ function canonicalTreeseedSeed(): SeedManifest {
 				contentKey: `catalog/${slug}/1.0.0/template`,
 				manifestKey: slug === 'market-template' ? 'seeds/treeseed.yaml' : `src/content/templates/${slug}.mdx`,
 			})),
-			agentPools: [],
 		},
 		operationRecipes: [],
 	} as SeedManifest;
@@ -316,61 +223,6 @@ const manifest: SeedManifest = {
 		hubRepositories: [],
 		products: [],
 		catalogArtifacts: [],
-		capacityProviders: [
-			{
-				key: 'capacity-provider:demo/local',
-				environments: ['local'],
-				team: 'team:demo',
-				name: 'demo-local',
-				kind: 'local',
-				provider: 'local',
-				creditBudgetMode: 'derived',
-				executionProviders: [{
-					id: 'demo-local-codex',
-					name: 'Demo local Codex',
-					kind: 'codex_subscription',
-					nativeUnit: 'wall_minute',
-					quotaVisibility: 'opaque',
-					maxConcurrentWorkers: 4,
-					resetCadence: 'daily',
-					nativeLimits: [{
-						scope: 'daily',
-						nativeUnit: 'wall_minute',
-						limitAmount: 480,
-						reserveBufferPercent: 20,
-						resetCadence: 'daily',
-						confidence: 'estimated',
-						source: 'configured',
-					}],
-				}],
-				registration: {
-					apiKey: {
-						createIfMissing: true,
-						name: 'Demo local provider security code',
-						scopes: ['provider:register', 'provider:heartbeat', 'provider:portfolio:read', 'provider:assignments:read', 'provider:assignments:write', 'provider:usage:report', 'provider:reports:write', 'provider:capabilities:write'],
-					},
-				},
-				lanes: [
-					{
-						key: 'lane:demo/local/codex',
-						name: 'local-codex',
-						unit: 'treeseed_credit',
-					},
-				],
-			},
-			{
-				key: 'capacity-provider:demo/prod',
-				environments: ['prod'],
-				team: 'team:demo',
-				name: 'demo-prod',
-				kind: 'managed',
-				provider: 'railway',
-				lanes: [],
-			},
-		],
-		capacityGrants: [],
-		workPolicies: [],
-		agentPools: [],
 	},
 	operationRecipes: [],
 };
@@ -414,7 +266,7 @@ describe('seed planner current-state diffing', () => {
 				environments: ['local'],
 				mode: 'plan',
 			});
-			expect(plan.summary).toMatchObject({ create: 37, update: 0, unchanged: 0, skip: 2 });
+			expect(plan.summary).toMatchObject({ create: 18, update: 0, unchanged: 0, skip: 0 });
 			expect(plan.actions.filter((action) => action.kind === 'project').map((action) => action.key).sort()).toEqual(TREESEED_PROJECT_KEYS);
 			expect(JSON.stringify(plan)).not.toMatch(/project:karyon|repositoryTopology|contentRoot|ghp_/u);
 		} finally {
@@ -431,34 +283,10 @@ describe('seed planner current-state diffing', () => {
 		});
 
 		expect(empty.summary).toMatchObject({
-			create: 3,
+			create: 1,
 			update: 0,
 			unchanged: 0,
-			skip: 1,
-		});
-		expect(empty.actions.find((action) => action.key === 'capacity-provider:demo/local')?.payload.registration).toEqual({
-			apiKey: {
-				createIfMissing: true,
-				name: 'Demo local provider security code',
-				scopes: ['provider:register', 'provider:heartbeat', 'provider:portfolio:read', 'provider:assignments:read', 'provider:assignments:write', 'provider:usage:report', 'provider:reports:write', 'provider:capabilities:write'],
-				expiresAt: undefined,
-			},
-		});
-		expect(empty.actions.find((action) => action.key === 'capacity-provider:demo/local')?.payload).toMatchObject({
-			creditBudgetMode: 'derived',
-			monthlyCreditBudget: null,
-			dailyCreditBudget: null,
-			executionProviders: [{
-				id: 'demo-local-codex',
-				kind: 'codex_subscription',
-				nativeUnit: 'wall_minute',
-				nativeLimits: [{
-					scope: 'daily',
-					nativeUnit: 'wall_minute',
-					limitAmount: 480,
-					reserveBufferPercent: 20,
-				}],
-			}],
+			skip: 0,
 		});
 
 		const matching = createSeedPlan({
@@ -479,10 +307,9 @@ describe('seed planner current-state diffing', () => {
 		expect(matching.summary).toMatchObject({
 			create: 0,
 			update: 0,
-			unchanged: 3,
-			skip: 1,
+			unchanged: 1,
+			skip: 0,
 		});
-		expect(matching.actions.find((action) => action.key === 'capacity-provider:demo/prod')?.action).toBe('skip');
 
 		const changed = createSeedPlan({
 			manifest,
@@ -504,8 +331,8 @@ describe('seed planner current-state diffing', () => {
 		expect(changed.summary).toMatchObject({
 			create: 0,
 			update: 1,
-			unchanged: 2,
-			skip: 1,
+			unchanged: 0,
+			skip: 0,
 		});
 		expect(changed.actions.find((action) => action.key === 'team:demo')?.action).toBe('update');
 	});
@@ -569,10 +396,6 @@ describe('seed planner current-state diffing', () => {
 					contentKey: 'catalog/demo/site-template/1.0.0',
 					manifestKey: 'seeds/demo.yaml',
 				}],
-				capacityProviders: [],
-				capacityGrants: [],
-				workPolicies: [],
-				agentPools: [],
 			},
 		}, diagnostics);
 
@@ -679,10 +502,6 @@ describe('seed planner current-state diffing', () => {
 				hubRepositories: [],
 				products: [],
 				catalogArtifacts: [],
-				capacityProviders: [],
-				capacityGrants: [],
-				workPolicies: [],
-				agentPools: [],
 			},
 		}, diagnostics);
 
@@ -786,10 +605,6 @@ describe('seed planner current-state diffing', () => {
 				hubRepositories: [],
 				products: [],
 				catalogArtifacts: [],
-				capacityProviders: [],
-				capacityGrants: [],
-				workPolicies: [],
-				agentPools: [],
 			},
 		}, diagnostics);
 
@@ -828,10 +643,6 @@ describe('seed planner current-state diffing', () => {
 				hubRepositories: [],
 				products: [],
 				catalogArtifacts: [],
-				capacityProviders: [],
-				capacityGrants: [],
-				workPolicies: [],
-				agentPools: [],
 			},
 			operationRecipes: [{
 				id: 'full-private-team-demo',
@@ -886,10 +697,6 @@ describe('seed planner current-state diffing', () => {
 				hubRepositories: [],
 				products: [],
 				catalogArtifacts: [],
-				capacityProviders: [],
-				capacityGrants: [],
-				workPolicies: [],
-				agentPools: [],
 			},
 			operationRecipes: [{
 				id: 'broken-demo',
@@ -974,10 +781,6 @@ describe('seed planner current-state diffing', () => {
 					contentKey: 'catalog/demo/missing',
 					content: 'inline bytes are not allowed',
 				}],
-				capacityProviders: [],
-				capacityGrants: [],
-				workPolicies: [],
-				agentPools: [],
 			},
 		}, diagnostics);
 
@@ -988,109 +791,4 @@ describe('seed planner current-state diffing', () => {
 		]));
 	});
 
-	it('rejects secret-looking capacity provider registration values', () => {
-		const diagnostics = [];
-		parseSeedManifest({
-			name: 'demo',
-			version: 1,
-			environments: ['local'],
-			resources: {
-				teams: [{ key: 'team:demo', slug: 'demo' }],
-				repositoryHosts: [],
-				projects: [],
-				hubRepositories: [],
-				products: [],
-				catalogArtifacts: [],
-				capacityProviders: [{
-					key: 'capacity-provider:demo/local',
-					team: 'team:demo',
-					name: 'demo-local',
-					provider: 'local',
-					registration: {
-						apiKey: {
-							createIfMissing: true,
-							token: 'tsp_inline-secret',
-						},
-					},
-				}],
-				capacityGrants: [],
-				workPolicies: [],
-				agentPools: [],
-			},
-		}, diagnostics);
-
-		expect(diagnostics.map((diagnostic) => diagnostic.code)).toContain('seed.secret_field');
-	});
-
-	it('rejects legacy provider task scopes in seed registrations', () => {
-		const diagnostics = [];
-		parseSeedManifest({
-			name: 'demo',
-			version: 1,
-			environments: ['local'],
-			resources: {
-				teams: [{ key: 'team:demo', slug: 'demo' }],
-				repositoryHosts: [],
-				projects: [],
-				hubRepositories: [],
-				products: [],
-				catalogArtifacts: [],
-				capacityProviders: [{
-					key: 'capacity-provider:demo/local',
-					team: 'team:demo',
-					name: 'demo-local',
-					provider: 'local',
-					registration: {
-						apiKey: {
-							createIfMissing: true,
-							scopes: [['provider', 'tasks', 'claim'].join(':')],
-						},
-					},
-				}],
-				capacityGrants: [],
-				workPolicies: [],
-				agentPools: [],
-			},
-		}, diagnostics);
-
-		expect(diagnostics.map((diagnostic) => diagnostic.code)).toContain('seed.legacy_provider_task_scope');
-	});
-
-	it('rejects invalid native execution-provider limits', () => {
-		const diagnostics = [];
-		parseSeedManifest({
-			name: 'demo',
-			version: 1,
-			environments: ['local'],
-			resources: {
-				teams: [{ key: 'team:demo', slug: 'demo' }],
-				repositoryHosts: [],
-				projects: [],
-				hubRepositories: [],
-				products: [],
-				catalogArtifacts: [],
-				capacityProviders: [{
-					key: 'capacity-provider:demo/local',
-					team: 'team:demo',
-					name: 'demo-local',
-					provider: 'local',
-					executionProviders: [{
-						name: 'Demo local Codex',
-						kind: 'codex_subscription',
-						nativeUnit: 'wall_minute',
-						nativeLimits: [{
-							scope: 'daily',
-							nativeUnit: 'wall_minute',
-							limitAmount: -1,
-						}],
-					}],
-				}],
-				capacityGrants: [],
-				workPolicies: [],
-				agentPools: [],
-			},
-		}, diagnostics);
-
-		expect(diagnostics.map((diagnostic) => diagnostic.code)).toContain('seed.invalid_number');
-	});
 });

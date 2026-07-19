@@ -936,42 +936,6 @@ function probeR2(
 	}
 }
 
-function probeScaleConfiguration(siteConfig, state) {
-	const marketRunner = state.services?.operationsRunner ?? {};
-	const marketRunnerConfig = siteConfig.services?.operationsRunner ?? {};
-	const scalerKind = String(process.env.TREESEED_WORKER_POOL_SCALER ?? '').trim();
-	if (marketRunnerConfig.provider === 'railway') {
-		const runnerServiceId = marketRunner.serviceId ?? null;
-		const runnerServiceName = marketRunner.serviceName ?? marketRunnerConfig.railway?.serviceName ?? null;
-		return {
-			ok: Boolean(runnerServiceId || runnerServiceName),
-			mocked: true,
-			serviceId: runnerServiceId,
-			serviceName: runnerServiceName,
-			runnerKind: 'market_operations_runner',
-		};
-	}
-	if (scalerKind !== 'railway') {
-		return {
-			ok: true,
-			skipped: true,
-			reason: 'scaler_unconfigured',
-			mocked: true,
-			serviceId: null,
-		};
-	}
-
-	const serviceIdentifier = process.env.TREESEED_RAILWAY_WORKER_SERVICE_ID;
-	const environmentIdentifier = process.env.TREESEED_RAILWAY_ENVIRONMENT_ID;
-	const projectIdentifier = process.env.TREESEED_RAILWAY_PROJECT_ID;
-	return {
-		ok: Boolean(serviceIdentifier && (environmentIdentifier || projectIdentifier)),
-		mocked: true,
-		serviceId: worker.serviceId ?? null,
-		serviceName: worker.serviceName ?? null,
-	};
-}
-
 async function publishContent(
 	options: ProjectPlatformActionOptions,
 	reporter: ControlPlaneReporter,
@@ -1705,7 +1669,6 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 		d1Health: apiSelected && apiMonitorEndpoints.d1Health ? timedPhase(timings, 'monitor:probe-d1-health', () => probeHttp(apiMonitorEndpoints.d1Health, { attempts: 8, delayMs: 10000 })) : Promise.resolve(skippedD1Check),
 		agentHealth: agentsSelected && apiMonitorEndpoints.agentHealth ? timedPhase(timings, 'monitor:probe-agent-health', () => probeHttp(apiMonitorEndpoints.agentHealth, { attempts: 8, delayMs: 10000 })) : Promise.resolve(skippedAgentCheck),
 		r2: options.planOnly ? Promise.resolve({ ok: true, skipped: true, reason: 'plan' }) : timedPhase(timings, 'monitor:probe-r2', () => probeR2(options.tenantRoot, siteConfig, state, target)),
-		scaleProbe: timedPhase(timings, 'monitor:probe-scale', () => probeScaleConfiguration(siteConfig, state)),
 		railwayResources: Promise.resolve(railwayResourcesPromise),
 		readiness: state.readiness,
 		apiMonitor: {
@@ -1722,7 +1685,6 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 		d1Health: await checks.d1Health,
 		agentHealth: await checks.agentHealth,
 		r2: await checks.r2,
-		scaleProbe: await checks.scaleProbe,
 		railwayResources: await checks.railwayResources,
 	};
 	const ok = [
@@ -1732,7 +1694,6 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 		resolvedChecks.d1Health,
 		resolvedChecks.agentHealth,
 		resolvedChecks.r2,
-		resolvedChecks.scaleProbe,
 		resolvedChecks.railwayResources,
 	].every((check) => check?.ok === true || check?.skipped === true);
 	if (!ok) {

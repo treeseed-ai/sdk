@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
 	assertKnownAgentToolIds,
 	findAgentToolDefinition,
@@ -6,6 +6,9 @@ import {
 } from '../../src/agent-tools.ts';
 import {
 	AGENT_OPERATION_NAMES,
+	checkpointAgentWorktree,
+	prepareAgentWorktree,
+	releaseAgentWorktree,
 	createAgentOperationEvent,
 	decideAgentOperationPermission,
 	deniedAgentOperationResult,
@@ -45,6 +48,62 @@ const baseGrant: AgentOperationGrant = {
 };
 
 describe('agent operation tool policy', () => {
+	it('prepares an isolated assignment worktree from the resolved governed commit', async () => {
+		const exec = vi.fn(async (_command: string, args: string[]) => ({ stdout: args[0] === 'rev-parse' ? '0123456789abcdef\n' : '' }));
+		const result = await prepareAgentWorktree({
+			repoRoot: '/repo', worktreeRoot: '/repo/.agent-worktrees/assignment-1', branchName: 'agent/tester/assignment-1',
+			baseRef: '0123456', exists: false,
+		}, { exec });
+		expect(result).toMatchObject({ exactBaseRef: '0123456789abcdef', created: true });
+		expect(exec).toHaveBeenLastCalledWith('git', ['worktree', 'add', '-B', 'agent/tester/assignment-1', '/repo/.agent-worktrees/assignment-1', '0123456789abcdef'], expect.objectContaining({ cwd: '/repo' }));
+	});
+
+	it('releases a registered assignment worktree without allowing primary-repository removal', async () => {
+		const exec = vi.fn(async (_command: string, args: string[]) => ({
+			stdout: args[0] === 'worktree' && args[1] === 'list'
+				? 'worktree /repo\nHEAD abc\n\nworktree /repo/.agent-worktrees/assignment-1\nHEAD def\n'
+				: '',
+		}));
+		await expect(releaseAgentWorktree({ repoRoot: '/repo', worktreeRoot: '/repo' }, { exec }))
+			.rejects.toThrow('cannot remove the repository root');
+		await expect(releaseAgentWorktree({ repoRoot: '/repo', worktreeRoot: '/repo/.agent-worktrees/assignment-1' }, { exec }))
+			.resolves.toMatchObject({ removed: true, reason: 'terminal_assignment' });
+		expect(exec).toHaveBeenCalledWith('git', ['worktree', 'remove', '--force', '/repo/.agent-worktrees/assignment-1'], expect.objectContaining({ cwd: '/repo' }));
+		expect(exec).toHaveBeenCalledWith('git', ['worktree', 'prune'], expect.objectContaining({ cwd: '/repo' }));
+	});
+
+	it('creates a path-scoped local checkpoint without publishing operations', async () => {
+		const { operation: _operation, mode: _mode, changedPaths: _changedPaths, ...request } = baseRequest;
+		const exec = vi.fn(async (_command: string, args: string[]) => ({
+			stdout: args[0] === 'status' ? ' M src/content/knowledge/runtime.mdx\n'
+				: args[0] === 'branch' ? 'agent/task-1\n'
+					: args[0] === 'rev-parse' ? '0123456789abcdef\n' : '',
+		}));
+		const result = await checkpointAgentWorktree({
+			request: { ...request, worktreeRoot: request.worktreeRoot!, message: 'test: checkpoint assignment result' },
+			grant: baseGrant,
+		}, { exec });
+		expect(result).toMatchObject({
+			status: 'completed', changedPaths: ['src/content/knowledge/runtime.mdx'],
+			artifacts: [{ kind: 'source_commit', ref: '0123456789abcdef' }],
+			metadata: { branchName: 'agent/task-1', noChanges: false },
+		});
+		expect(exec.mock.calls.map((call) => call[1][0])).toEqual(['status', 'branch', 'add', 'commit', 'rev-parse']);
+		expect(exec.mock.calls.flatMap((call) => call[1])).not.toContain('push');
+		expect(exec.mock.calls.flatMap((call) => call[1])).not.toContain('merge');
+	});
+
+	it('refuses to checkpoint a changed path outside assignment authority', async () => {
+		const { operation: _operation, mode: _mode, changedPaths: _changedPaths, ...request } = baseRequest;
+		const exec = vi.fn(async () => ({ stdout: ' M src/implementation.ts\n' }));
+		const result = await checkpointAgentWorktree({
+			request: { ...request, worktreeRoot: request.worktreeRoot!, message: 'checkpoint' },
+			grant: baseGrant,
+		}, { exec });
+		expect(result).toMatchObject({ status: 'failed', error: { code: 'operation_path_not_allowed' } });
+		expect(exec).toHaveBeenCalledTimes(1);
+	});
+
 	it('allows requests covered by an active grant', () => {
 		const decision = decideAgentOperationPermission({
 			request: baseRequest,
@@ -57,6 +116,13 @@ describe('agent operation tool policy', () => {
 			code: 'allowed',
 			grant: { id: 'grant-1' },
 		});
+	});
+
+	it('treats the canonical double-star path grant as repository-wide authority', () => {
+		expect(decideAgentOperationPermission({
+			request: { ...baseRequest, allowedPaths: ['**'], changedPaths: ['tests/regression.test.ts'] },
+			grants: [{ ...baseGrant, allowedPaths: ['**'] }],
+		}).code).toBe('allowed');
 	});
 
 	it('returns waiting when no operation grant matches', () => {

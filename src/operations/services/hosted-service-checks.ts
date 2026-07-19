@@ -104,12 +104,8 @@ const RAILWAY_SECRET_KEYS_BY_SERVICE: Record<string, string[]> = {
 		'TREESEED_PLATFORM_RUNNER_SECRET',
 		'TREESEED_CREDENTIAL_SESSION_SECRET',
 	],
-	capacityProviderManager: [
-		'TREESEED_CAPACITY_PROVIDER_API_KEY',
-	],
-	capacityProviderRunner: [
-		'TREESEED_CAPACITY_PROVIDER_API_KEY',
-	],
+	capacityProviderManager: [],
+	capacityProviderRunner: [],
 };
 
 const RAILWAY_VARIABLE_KEYS_BY_SERVICE: Record<string, string[]> = {
@@ -120,11 +116,13 @@ const RAILWAY_VARIABLE_KEYS_BY_SERVICE: Record<string, string[]> = {
 		'TREESEED_MANAGER_ID',
 	],
 	capacityProviderManager: [
+		'TREESEED_CAPACITY_PROVIDER_MANIFEST',
 		'TREESEED_PROVIDER_ENVIRONMENT',
 		'TREESEED_PROVIDER_ROLE',
 		'TREESEED_MARKET_URL',
 	],
 	capacityProviderRunner: [
+		'TREESEED_CAPACITY_PROVIDER_MANIFEST',
 		'TREESEED_PROVIDER_ENVIRONMENT',
 		'TREESEED_PROVIDER_ROLE',
 		'TREESEED_MARKET_URL',

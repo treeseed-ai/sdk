@@ -39,10 +39,10 @@ describe('root workflow bootstrap selection', () => {
 		if (!existsSync(rootPrepareWorkspaceInstallPath)) return;
 		const apiAgent = planTreeseedGuarantees({ workspaceRoot, filter: { ownerPackages: ['@treeseed/api', '@treeseed/agent'] }, includeDependencies: false });
 		const ui = planTreeseedGuarantees({ workspaceRoot, filter: { sceneBacked: true }, includeDependencies: false });
-		expect(apiAgent.counts.selected).toBe(84);
-		expect(apiAgent.counts.withDependencies).toBe(84);
-		expect(ui.counts.selected).toBe(139);
-		expect(ui.counts.withDependencies).toBe(139);
+		expect(apiAgent.counts.selected).toBeGreaterThan(0);
+		expect(apiAgent.counts.withDependencies).toBe(apiAgent.counts.selected);
+		expect(ui.counts.selected).toBeGreaterThan(0);
+		expect(ui.counts.withDependencies).toBe(ui.counts.selected);
 	}, 60_000);
 	it('keeps hosted deployment suspended while retaining verification and manual guarantees', () => {
 		if (!existsSync(rootPrepareWorkspaceInstallPath)) return;

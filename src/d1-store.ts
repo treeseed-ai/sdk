@@ -17,64 +17,29 @@ import { resolveModelDefinition } from './model-registry.ts';
 import type {
 	SdkAckMessageRequest,
 	SdkClaimMessageRequest,
-	SdkCloseWorkDayRequest,
 	ApprovalRequest,
-	SdkCreateReportRequest,
 	CreateApprovalRequestRequest,
 	DecideApprovalRequestRequest,
 	SdkCreateMessageRequest,
-	SdkCreatePrioritySnapshotRequest,
-	SdkCreateTaskRequest,
 	SdkCursorEntity,
 	SdkCursorRequest,
 	SdkFilterCondition,
 	SdkFollowRequest,
-	SdkGraphRunEntity,
 	SdkGetRequest,
 	SdkGetCursorRequest,
-	SdkClaimTaskRequest,
 	SdkLeaseEntity,
 	SdkLeaseReleaseRequest,
 	SdkMessageEntity,
 	SdkMutationRequest,
 	SdkPickRequest,
 	SdkPickResult,
-	SdkPriorityOverrideRequest,
-	SdkClaimWorkdayManagerLeaseRequest,
-	SdkCreateWorkdayRequest,
-	SdkRecordRepositoryClaimRequest,
-	SdkRecordRunnerScaleDecisionRequest,
-	SdkRecordTaskProgressRequest,
-	SdkRecordWorkerRunnerRequest,
 	SdkRecordRunRequest,
-	SdkRecordScaleDecisionRequest,
-	SdkRecordTaskCreditsRequest,
-	SdkReleaseWorkdayManagerLeaseRequest,
-	SdkReportEntity,
 	SdkRunEntity,
 	SdkSearchRequest,
-	SdkCompleteTaskRequest,
-	SdkStartWorkDayRequest,
 	ListApprovalRequestsRequest,
 	SdkSubscriptionEntity,
 	UpsertTeamInboxItemRequest,
-	SdkUpsertWorkPolicyRequest,
-	SdkUpdateWorkDayGraphRequest,
 	SdkUpdateRequest,
-	SdkTaskEntity,
-	SdkTaskEventEntity,
-	SdkTaskManagerContext,
-	SdkTaskOutputEntity,
-	SdkWorkDayEntity,
-	RepositoryClaim,
-	RunnerScaleDecision,
-	ScaleDecision,
-	TaskCreditLedgerEntry,
-	WorkdayManagerLease,
-	WorkdayPolicy,
-	WorkdayRequest,
-	WorkerRunner,
-	PrioritySnapshot,
 } from './sdk-types.ts';
 import { CursorStore } from './stores/cursor-store.ts';
 import { MemoryProjectWorkflowStore, SqliteProjectWorkflowStore } from './stores/project-workflow-store.ts';
@@ -91,13 +56,7 @@ type D1Record =
 	| SdkMessageEntity
 	| SdkRunEntity
 	| SdkCursorEntity
-	| SdkLeaseEntity
-	| SdkWorkDayEntity
-	| SdkTaskEntity
-	| SdkTaskEventEntity
-	| SdkTaskOutputEntity
-	| SdkGraphRunEntity
-	| SdkReportEntity;
+	| SdkLeaseEntity;
 
 export interface AgentDatabase {
 	get(request: SdkGetRequest): Promise<Record<string, unknown> | null>;
@@ -115,36 +74,6 @@ export interface AgentDatabase {
 	releaseLease(request: SdkLeaseReleaseRequest): Promise<void>;
 	tryClaimContentLease(input: TryClaimContentLeaseInput): Promise<string | null>;
 	releaseAllLeases(): Promise<number>;
-	startWorkDay(request: SdkStartWorkDayRequest): Promise<SdkWorkDayEntity | null>;
-	closeWorkDay(request: SdkCloseWorkDayRequest): Promise<SdkWorkDayEntity | null>;
-	createReport(request: SdkCreateReportRequest): Promise<SdkReportEntity | null>;
-	getWorkPolicy(projectId: string, environment?: string): Promise<WorkdayPolicy | null>;
-	upsertWorkPolicy(request: SdkUpsertWorkPolicyRequest): Promise<WorkdayPolicy | null>;
-	createWorkdayRequest(request: SdkCreateWorkdayRequest): Promise<WorkdayRequest | null>;
-	listWorkdayRequests(projectId: string, environment: string, state?: string | null): Promise<WorkdayRequest[]>;
-	createTask(request: SdkCreateTaskRequest): Promise<SdkTaskEntity | null>;
-	claimTask(request: SdkClaimTaskRequest): Promise<SdkTaskEntity | null>;
-	recordTaskProgress(request: SdkRecordTaskProgressRequest): Promise<SdkTaskEntity | null>;
-	completeTask(request: SdkCompleteTaskRequest): Promise<SdkTaskEntity | null>;
-	getManagerContext(taskId: string): Promise<SdkTaskManagerContext>;
-	claimWorkdayManagerLease(request: SdkClaimWorkdayManagerLeaseRequest): Promise<WorkdayManagerLease | null>;
-	releaseWorkdayManagerLease(request: SdkReleaseWorkdayManagerLeaseRequest): Promise<WorkdayManagerLease | null>;
-	listWorkdayManagerLeases(projectId: string, environment: string): Promise<WorkdayManagerLease[]>;
-	recordWorkerRunner(request: SdkRecordWorkerRunnerRequest): Promise<WorkerRunner | null>;
-	listWorkerRunners(projectId: string, environment: string): Promise<WorkerRunner[]>;
-	recordRepositoryClaim(request: SdkRecordRepositoryClaimRequest): Promise<RepositoryClaim | null>;
-	listRepositoryClaims(projectId: string, repositoryId?: string | null): Promise<RepositoryClaim[]>;
-	recordRunnerScaleDecision(request: SdkRecordRunnerScaleDecisionRequest): Promise<RunnerScaleDecision | null>;
-	listRunnerScaleDecisions(projectId: string, environment: string, workDayId?: string | null): Promise<RunnerScaleDecision[]>;
-	updateWorkDayGraph(request: SdkUpdateWorkDayGraphRequest): Promise<SdkWorkDayEntity | null>;
-	listPriorityOverrides(projectId: string): Promise<Record<string, unknown>[]>;
-	upsertPriorityOverride(request: SdkPriorityOverrideRequest): Promise<Record<string, unknown> | null>;
-	createPrioritySnapshot(request: SdkCreatePrioritySnapshotRequest): Promise<PrioritySnapshot | null>;
-	getLatestPrioritySnapshot(projectId: string, workDayId?: string | null): Promise<PrioritySnapshot | null>;
-	recordTaskCredits(request: SdkRecordTaskCreditsRequest): Promise<TaskCreditLedgerEntry | null>;
-	listTaskCredits(workDayId: string): Promise<TaskCreditLedgerEntry[]>;
-	recordScaleDecision(request: SdkRecordScaleDecisionRequest): Promise<ScaleDecision | null>;
-	getLatestScaleDecision(projectId: string, environment: string, poolName: string): Promise<ScaleDecision | null>;
 	createApprovalRequest(request: CreateApprovalRequestRequest): Promise<ApprovalRequest | null>;
 	listApprovalRequests(request: ListApprovalRequestsRequest): Promise<ApprovalRequest[]>;
 	decideApprovalRequest(id: string, request: DecideApprovalRequestRequest): Promise<ApprovalRequest | null>;
@@ -271,22 +200,6 @@ export class MemoryAgentDatabase implements AgentDatabase {
 	private readonly runs = new Map<string, SdkRunEntity>();
 	private readonly contentLeases = new Map<string, ContentLeaseRecord>();
 	private readonly cursors = new Map<string, string>();
-	private readonly workDays = new Map<string, SdkWorkDayEntity>();
-	private readonly graphRuns = new Map<string, SdkGraphRunEntity>();
-	private readonly reports = new Map<string, SdkReportEntity>();
-	private readonly workPolicies = new Map<string, WorkdayPolicy>();
-	private readonly workdayRequests = new Map<string, WorkdayRequest>();
-	private readonly tasks = new Map<string, SdkTaskEntity>();
-	private readonly taskEvents = new Map<string, SdkTaskEventEntity>();
-	private readonly taskOutputs = new Map<string, SdkTaskOutputEntity>();
-	private readonly workdayManagerLeases = new Map<string, WorkdayManagerLease>();
-	private readonly workerRunners = new Map<string, WorkerRunner>();
-	private readonly repositoryClaims = new Map<string, RepositoryClaim>();
-	private readonly runnerScaleDecisions = new Map<string, RunnerScaleDecision>();
-	private readonly priorityOverrides = new Map<string, Record<string, unknown>>();
-	private readonly prioritySnapshots = new Map<string, PrioritySnapshot>();
-	private readonly taskCreditLedger = new Map<string, TaskCreditLedgerEntry>();
-	private readonly scaleDecisions = new Map<string, ScaleDecision>();
 	private readonly approvalRequests = new Map<string, ApprovalRequest>();
 	private readonly teamInboxItems = new Map<string, InboxItem>();
 	private readonly projectWorkflow = new MemoryProjectWorkflowStore();
@@ -348,24 +261,6 @@ export class MemoryAgentDatabase implements AgentDatabase {
 				token: lease.token,
 			}));
 		}
-		if (model === 'work_day') {
-			return [...this.workDays.values()];
-		}
-		if (model === 'task') {
-			return [...this.tasks.values()];
-		}
-		if (model === 'task_event') {
-			return [...this.taskEvents.values()];
-		}
-		if (model === 'task_output') {
-			return [...this.taskOutputs.values()];
-		}
-		if (model === 'graph_run') {
-			return [...this.graphRuns.values()];
-		}
-		if (model === 'report') {
-			return [...this.reports.values()];
-		}
 		throw new Error(`Unsupported D1 model "${model}".`);
 	}
 
@@ -398,24 +293,6 @@ export class MemoryAgentDatabase implements AgentDatabase {
 					token: lease.token,
 				}
 				: null;
-		}
-		if (request.model === 'work_day') {
-			return this.workDays.get(key) ?? null;
-		}
-		if (request.model === 'task') {
-			return this.tasks.get(key) ?? null;
-		}
-		if (request.model === 'task_event') {
-			return this.taskEvents.get(key) ?? null;
-		}
-		if (request.model === 'task_output') {
-			return this.taskOutputs.get(key) ?? null;
-		}
-		if (request.model === 'graph_run') {
-			return this.graphRuns.get(key) ?? null;
-		}
-		if (request.model === 'report') {
-			return this.reports.get(key) ?? null;
 		}
 		return (
 			this.rowsForModel(request.model).find((row) =>
@@ -581,41 +458,6 @@ export class MemoryAgentDatabase implements AgentDatabase {
 					token: String(token ?? lease?.token ?? ''),
 				};
 			}
-			case 'work_day':
-				return this.startWorkDay({
-					id: typeof data.id === 'string' ? data.id : undefined,
-					projectId: String(data.projectId ?? data.project_id ?? ''),
-					capacityBudget: Number(data.capacityBudget ?? data.capacity_budget ?? 0),
-					graphVersion: typeof (data.graphVersion ?? data.graph_version) === 'string' ? String(data.graphVersion ?? data.graph_version) : null,
-					summary: (data.summary as Record<string, unknown> | null | undefined) ?? null,
-					actor: request.actor,
-				});
-			case 'graph_run': {
-				const record: SdkGraphRunEntity = {
-					id: String(data.id ?? crypto.randomUUID()),
-					workDayId: String(data.workDayId ?? data.work_day_id ?? ''),
-					corpusHash: String(data.corpusHash ?? data.corpus_hash ?? ''),
-					graphVersion: String(data.graphVersion ?? data.graph_version ?? ''),
-					queryJson: typeof (data.queryJson ?? data.query_json) === 'string' ? String(data.queryJson ?? data.query_json) : null,
-					seedIdsJson: typeof (data.seedIdsJson ?? data.seed_ids_json) === 'string' ? String(data.seedIdsJson ?? data.seed_ids_json) : null,
-					selectedNodeIdsJson: typeof (data.selectedNodeIdsJson ?? data.selected_node_ids_json) === 'string' ? String(data.selectedNodeIdsJson ?? data.selected_node_ids_json) : null,
-					statsJson: typeof (data.statsJson ?? data.stats_json) === 'string' ? String(data.statsJson ?? data.stats_json) : null,
-					snapshotRef: typeof (data.snapshotRef ?? data.snapshot_ref) === 'string' ? String(data.snapshotRef ?? data.snapshot_ref) : null,
-					createdAt: String(data.createdAt ?? data.created_at ?? nowIso()),
-				};
-				this.graphRuns.set(record.id, record);
-				return record;
-			}
-			case 'report':
-				return this.createReport({
-					id: typeof data.id === 'string' ? data.id : undefined,
-					workDayId: String(data.workDayId ?? data.work_day_id ?? ''),
-					kind: String(data.kind ?? 'workday_summary'),
-					body: ((data.body as Record<string, unknown> | undefined) ?? data) as Record<string, unknown>,
-					renderedRef: typeof (data.renderedRef ?? data.rendered_ref) === 'string' ? String(data.renderedRef ?? data.rendered_ref) : null,
-					sentAt: typeof (data.sentAt ?? data.sent_at) === 'string' ? String(data.sentAt ?? data.sent_at) : null,
-					actor: request.actor,
-				});
 			default:
 				throw new Error(`Unsupported D1 create model "${request.model}".`);
 		}
@@ -687,13 +529,6 @@ export class MemoryAgentDatabase implements AgentDatabase {
 				return this.create({
 					model: 'content_lease',
 					data,
-					actor: request.actor,
-				});
-			case 'work_day':
-				return this.closeWorkDay({
-					id: String(request.id ?? request.key ?? data.id ?? ''),
-					state: (data.state as 'completed' | 'cancelled' | 'failed' | undefined) ?? 'completed',
-					summary: (data.summary as Record<string, unknown> | null | undefined) ?? null,
 					actor: request.actor,
 				});
 			default:
@@ -812,444 +647,6 @@ export class MemoryAgentDatabase implements AgentDatabase {
 		return [...this.contentLeases.values()];
 	}
 
-	async startWorkDay(request: SdkStartWorkDayRequest) {
-		const timestamp = nowIso();
-		const record: SdkWorkDayEntity = {
-			id: request.id ?? crypto.randomUUID(),
-			projectId: request.projectId,
-			state: 'active',
-			capacityBudget: Number(request.capacityBudget ?? 0),
-			capacityUsed: 0,
-			graphVersion: request.graphVersion ?? null,
-			summaryJson: request.summary ? JSON.stringify(request.summary) : null,
-			startedAt: timestamp,
-			endedAt: null,
-			createdAt: timestamp,
-			updatedAt: timestamp,
-		};
-		this.workDays.set(record.id, record);
-		return record;
-	}
-
-	async closeWorkDay(request: SdkCloseWorkDayRequest) {
-		const existing = this.workDays.get(request.id);
-		if (!existing) return null;
-		const next: SdkWorkDayEntity = {
-			...existing,
-			state: request.state ?? 'completed',
-			summaryJson: request.summary ? JSON.stringify(request.summary) : existing.summaryJson,
-			endedAt: nowIso(),
-			updatedAt: nowIso(),
-		};
-		this.workDays.set(next.id, next);
-		return next;
-	}
-
-	async createReport(request: SdkCreateReportRequest) {
-		const record: SdkReportEntity = {
-			id: request.id ?? crypto.randomUUID(),
-			workDayId: request.workDayId,
-			kind: request.kind,
-			bodyJson: JSON.stringify(request.body),
-			renderedRef: request.renderedRef ?? null,
-			sentAt: request.sentAt ?? null,
-			createdAt: nowIso(),
-		};
-		this.reports.set(record.id, record);
-		return record;
-	}
-
-	async getWorkPolicy(projectId: string, environment: string = 'local') {
-		return this.workPolicies.get(`${projectId}:${environment}`) ?? null;
-	}
-
-	async upsertWorkPolicy(request: SdkUpsertWorkPolicyRequest) {
-		const dailyCreditBudget = Number(request.dailyCreditBudget ?? request.dailyTaskCreditBudget ?? 0);
-		const policy: WorkdayPolicy = {
-			projectId: request.projectId,
-			environment: request.environment,
-			schedule: request.schedule,
-			enabled: request.enabled ?? true,
-			startCron: request.startCron ?? '0 9 * * 1-5',
-			durationMinutes: Number(request.durationMinutes ?? 480),
-			maxRunners: Number(request.maxRunners ?? request.autoscale.maxWorkers ?? 1),
-			maxWorkersPerRunner: Number(request.maxWorkersPerRunner ?? 4),
-			dailyCreditBudget,
-			closeoutGraceMinutes: Number(request.closeoutGraceMinutes ?? 15),
-			dailyTaskCreditBudget: dailyCreditBudget,
-			maxQueuedTasks: request.maxQueuedTasks,
-			maxQueuedCredits: request.maxQueuedCredits,
-			autoscale: request.autoscale,
-			creditWeights: request.creditWeights ?? [],
-			metadata: request.metadata ?? {},
-		};
-		this.workPolicies.set(`${request.projectId}:${request.environment}`, policy);
-		return policy;
-	}
-
-	async createWorkdayRequest(request: SdkCreateWorkdayRequest) {
-		const timestamp = nowIso();
-		const record: WorkdayRequest = {
-			id: request.id ?? crypto.randomUUID(),
-			projectId: request.projectId,
-			environment: request.environment,
-			type: request.type,
-			state: request.state ?? 'pending',
-			workDayId: request.workDayId ?? null,
-			requestedBy: request.requestedBy ?? null,
-			reason: request.reason ?? null,
-			payload: request.payload ?? {},
-			metadata: request.metadata ?? {},
-			createdAt: timestamp,
-			updatedAt: timestamp,
-		};
-		this.workdayRequests.set(record.id, record);
-		return record;
-	}
-
-	async listWorkdayRequests(projectId: string, environment: string, state?: string | null) {
-		return [...this.workdayRequests.values()]
-			.filter((entry) => entry.projectId === projectId && entry.environment === environment)
-			.filter((entry) => !state || entry.state === state)
-			.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
-	}
-
-	async createTask(request: SdkCreateTaskRequest) {
-		const timestamp = nowIso();
-		const existing = [...this.tasks.values()].find((entry) => entry.idempotencyKey === request.idempotencyKey);
-		if (existing) return existing;
-		const record: SdkTaskEntity = {
-			id: request.id ?? crypto.randomUUID(),
-			workDayId: request.workDayId,
-			agentId: request.agentId,
-			type: request.type,
-			idempotencyKey: request.idempotencyKey,
-			payloadJson: JSON.stringify(request.payload ?? {}),
-			state: 'pending',
-			claimedBy: null,
-			claimedAt: null,
-			leaseExpiresAt: null,
-			attempts: 0,
-			createdAt: timestamp,
-			updatedAt: timestamp,
-		};
-		this.tasks.set(record.id, record);
-		return record;
-	}
-
-	async claimTask(request: SdkClaimTaskRequest) {
-		const existing = this.tasks.get(request.id);
-		if (!existing) return null;
-		const timestamp = nowIso();
-		const next: SdkTaskEntity = {
-			...existing,
-			state: 'claimed',
-			claimedBy: request.workerId,
-			claimedAt: timestamp,
-			leaseExpiresAt: new Date(Date.now() + ((request.leaseSeconds ?? 300) * 1000)).toISOString(),
-			attempts: existing.attempts + 1,
-			updatedAt: timestamp,
-		};
-		this.tasks.set(next.id, next);
-		return next;
-	}
-
-	async recordTaskProgress(request: SdkRecordTaskProgressRequest) {
-		const existing = this.tasks.get(request.id);
-		if (!existing) return null;
-		const timestamp = nowIso();
-		const next: SdkTaskEntity = {
-			...existing,
-			state: request.state ?? existing.state,
-			updatedAt: timestamp,
-		};
-		this.tasks.set(next.id, next);
-		if (request.appendEvent) {
-			const event: SdkTaskEventEntity = {
-				id: crypto.randomUUID(),
-				taskId: next.id,
-				kind: request.appendEvent.kind,
-				dataJson: JSON.stringify(request.appendEvent.data ?? {}),
-				actor: request.actor ?? null,
-				createdAt: timestamp,
-			};
-			this.taskEvents.set(event.id, event);
-		}
-		return next;
-	}
-
-	async completeTask(request: SdkCompleteTaskRequest) {
-		const existing = this.tasks.get(request.id);
-		if (!existing) return null;
-		const timestamp = nowIso();
-		const next: SdkTaskEntity = {
-			...existing,
-			state: 'completed',
-			updatedAt: timestamp,
-		};
-		this.tasks.set(next.id, next);
-		const output: SdkTaskOutputEntity = {
-			id: crypto.randomUUID(),
-			taskId: next.id,
-			outputJson: JSON.stringify(request.output ?? {}),
-			outputRef: request.outputRef ?? null,
-			summaryJson: request.summary ? JSON.stringify(request.summary) : null,
-			actor: request.actor ?? null,
-			createdAt: timestamp,
-			updatedAt: timestamp,
-		};
-		this.taskOutputs.set(output.id, output);
-		return next;
-	}
-
-	async getManagerContext(taskId: string) {
-		const task = this.tasks.get(taskId) ?? null;
-		const workDay = task ? this.workDays.get(task.workDayId) ?? null : null;
-		const events = [...this.taskEvents.values()].filter((entry) => entry.taskId === taskId);
-		const outputs = [...this.taskOutputs.values()].filter((entry) => entry.taskId === taskId);
-		return { task, workDay, events, outputs };
-	}
-
-	async claimWorkdayManagerLease(request: SdkClaimWorkdayManagerLeaseRequest) {
-		const timestamp = request.now ?? nowIso();
-		const nowMs = Date.parse(timestamp);
-		const staleAfterMs = (request.staleAfterSeconds ?? request.ttlSeconds) * 1000;
-		const existing = [...this.workdayManagerLeases.values()]
-			.find((entry) => entry.projectId === request.projectId && entry.environment === request.environment && entry.state === 'active');
-		if (existing && existing.managerId !== request.managerId) {
-			const heartbeatMs = Date.parse(existing.heartbeatAt);
-			if (Number.isFinite(heartbeatMs) && Number.isFinite(nowMs) && nowMs - heartbeatMs <= staleAfterMs) {
-				return null;
-			}
-		}
-		const id = existing?.id ?? request.id ?? crypto.randomUUID();
-		const record: WorkdayManagerLease = {
-			id,
-			projectId: request.projectId,
-			environment: request.environment,
-			workDayId: request.workDayId ?? existing?.workDayId ?? null,
-			managerId: request.managerId,
-			state: 'active',
-			heartbeatAt: timestamp,
-			expiresAt: new Date(Date.parse(timestamp) + (request.ttlSeconds * 1000)).toISOString(),
-			metadata: request.metadata ?? existing?.metadata ?? {},
-			createdAt: existing?.createdAt ?? timestamp,
-			updatedAt: timestamp,
-		};
-		this.workdayManagerLeases.set(id, record);
-		return record;
-	}
-
-	async releaseWorkdayManagerLease(request: SdkReleaseWorkdayManagerLeaseRequest) {
-		const existing = this.workdayManagerLeases.get(request.id);
-		if (!existing || existing.managerId !== request.managerId) return null;
-		const next = { ...existing, state: 'released' as const, updatedAt: nowIso() };
-		this.workdayManagerLeases.set(next.id, next);
-		return next;
-	}
-
-	async listWorkdayManagerLeases(projectId: string, environment: string) {
-		return [...this.workdayManagerLeases.values()]
-			.filter((entry) => entry.projectId === projectId && entry.environment === environment)
-			.sort((left, right) => right.heartbeatAt.localeCompare(left.heartbeatAt))
-			.slice(0, 10);
-	}
-
-	async recordWorkerRunner(request: SdkRecordWorkerRunnerRequest) {
-		const timestamp = nowIso();
-		const id = request.id ?? `${request.projectId}:${request.environment}:${request.runnerId}`;
-		const activeLocalWorkers = Number(request.activeLocalWorkers ?? 0);
-		const maxLocalWorkers = Number(request.maxLocalWorkers ?? 4);
-		const record: WorkerRunner = {
-			id,
-			projectId: request.projectId,
-			environment: request.environment,
-			runnerId: request.runnerId,
-			runnerServiceName: request.runnerServiceName,
-			volumeIdentity: request.volumeIdentity,
-			state: request.state ?? 'active',
-			maxLocalWorkers,
-			activeLocalWorkers,
-			availableCapacity: Math.max(0, maxLocalWorkers - activeLocalWorkers),
-			lastHeartbeatAt: timestamp,
-			claimedRepositoryIds: request.claimedRepositoryIds ?? [],
-			metadata: request.metadata ?? {},
-			createdAt: this.workerRunners.get(id)?.createdAt ?? timestamp,
-			updatedAt: timestamp,
-		};
-		this.workerRunners.set(id, record);
-		return record;
-	}
-
-	async listWorkerRunners(projectId: string, environment: string) {
-		return [...this.workerRunners.values()]
-			.filter((entry) => entry.projectId === projectId && entry.environment === environment)
-			.sort((left, right) => left.runnerId.localeCompare(right.runnerId));
-	}
-
-	async recordRepositoryClaim(request: SdkRecordRepositoryClaimRequest) {
-		const timestamp = nowIso();
-		const id = request.id ?? `${request.projectId}:${request.repositoryId}:${request.runnerId}`;
-		const record: RepositoryClaim = {
-			id,
-			projectId: request.projectId,
-			repositoryId: request.repositoryId,
-			runnerId: request.runnerId,
-			runnerServiceName: request.runnerServiceName,
-			volumeIdentity: request.volumeIdentity,
-			lastSeenCommit: request.lastSeenCommit ?? null,
-			lastTaskAt: request.lastTaskAt ?? timestamp,
-			claimState: request.claimState ?? 'active',
-			metadata: request.metadata ?? {},
-			createdAt: this.repositoryClaims.get(id)?.createdAt ?? timestamp,
-			updatedAt: timestamp,
-		};
-		this.repositoryClaims.set(id, record);
-		return record;
-	}
-
-	async listRepositoryClaims(projectId: string, repositoryId?: string | null) {
-		return [...this.repositoryClaims.values()]
-			.filter((entry) => entry.projectId === projectId)
-			.filter((entry) => !repositoryId || entry.repositoryId === repositoryId)
-			.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
-	}
-
-	async recordRunnerScaleDecision(request: SdkRecordRunnerScaleDecisionRequest) {
-		const record: RunnerScaleDecision = {
-			id: request.id ?? crypto.randomUUID(),
-			projectId: request.projectId,
-			environment: request.environment,
-			workDayId: request.workDayId ?? null,
-			runnerId: request.runnerId ?? null,
-			runnerServiceName: request.runnerServiceName ?? null,
-			action: request.action,
-			reason: request.reason,
-			metadata: request.metadata ?? {},
-			createdAt: nowIso(),
-		};
-		this.runnerScaleDecisions.set(record.id, record);
-		return record;
-	}
-
-	async listRunnerScaleDecisions(projectId: string, environment: string, workDayId?: string | null) {
-		return [...this.runnerScaleDecisions.values()]
-			.filter((entry) => entry.projectId === projectId && entry.environment === environment)
-			.filter((entry) => !workDayId || entry.workDayId === workDayId)
-			.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
-	}
-
-	async updateWorkDayGraph(request: SdkUpdateWorkDayGraphRequest) {
-		const existing = this.workDays.get(request.id);
-		if (!existing) return null;
-		const summary = {
-			...(existing.summaryJson ? JSON.parse(existing.summaryJson) as Record<string, unknown> : {}),
-			...(request.summaryPatch ?? {}),
-		};
-		const next = {
-			...existing,
-			graphVersion: request.graphVersion,
-			summaryJson: JSON.stringify(summary),
-			updatedAt: nowIso(),
-		};
-		this.workDays.set(next.id, next);
-		return next;
-	}
-
-	async listPriorityOverrides(projectId: string) {
-		return [...this.priorityOverrides.values()].filter((entry) => entry.projectId === projectId);
-	}
-
-	async upsertPriorityOverride(request: SdkPriorityOverrideRequest) {
-		const record = {
-			id: request.id ?? crypto.randomUUID(),
-			projectId: request.projectId,
-			model: request.model,
-			subjectId: request.subjectId,
-			priority: request.priority,
-			estimatedCredits: request.estimatedCredits ?? null,
-			metadata: request.metadata ?? {},
-			createdAt: nowIso(),
-			updatedAt: nowIso(),
-		};
-		this.priorityOverrides.set(record.id, record);
-		return record;
-	}
-
-	async createPrioritySnapshot(request: SdkCreatePrioritySnapshotRequest) {
-		const snapshot: PrioritySnapshot = {
-			id: request.id ?? crypto.randomUUID(),
-			projectId: request.projectId,
-			workDayId: request.workDayId ?? null,
-			generatedAt: nowIso(),
-			items: request.items,
-			metadata: request.metadata ?? {},
-		};
-		this.prioritySnapshots.set(snapshot.id, snapshot);
-		return snapshot;
-	}
-
-	async getLatestPrioritySnapshot(projectId: string, workDayId?: string | null) {
-		return [...this.prioritySnapshots.values()]
-			.filter((entry) => entry.projectId === projectId)
-			.filter((entry) => !workDayId || entry.workDayId === workDayId)
-			.sort((left, right) => right.generatedAt.localeCompare(left.generatedAt))[0] ?? null;
-	}
-
-	async recordTaskCredits(request: SdkRecordTaskCreditsRequest) {
-		const entry: TaskCreditLedgerEntry = {
-			id: request.id ?? crypto.randomUUID(),
-			projectId: request.projectId,
-			workDayId: request.workDayId,
-			taskId: request.taskId ?? null,
-			phase: request.phase,
-			credits: request.credits,
-			metadata: request.metadata ?? {},
-			createdAt: nowIso(),
-		};
-		this.taskCreditLedger.set(entry.id, entry);
-		const workDay = this.workDays.get(request.workDayId);
-		if (workDay) {
-			const delta = request.phase === 'refund' ? -Math.abs(request.credits) : Math.abs(request.credits);
-			this.workDays.set(workDay.id, {
-				...workDay,
-				capacityUsed: Math.max(0, workDay.capacityUsed + delta),
-				updatedAt: nowIso(),
-			});
-		}
-		return entry;
-	}
-
-	async listTaskCredits(workDayId: string) {
-		return [...this.taskCreditLedger.values()]
-			.filter((entry) => entry.workDayId === workDayId)
-			.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
-	}
-
-	async recordScaleDecision(request: SdkRecordScaleDecisionRequest) {
-		const decision: ScaleDecision = {
-			id: request.id ?? crypto.randomUUID(),
-			projectId: request.projectId,
-			environment: request.environment,
-			poolName: request.poolName,
-			workDayId: request.workDayId ?? null,
-			desiredWorkers: request.desiredWorkers,
-			observedQueueDepth: request.observedQueueDepth,
-			observedActiveLeases: request.observedActiveLeases,
-			reason: request.reason,
-			metadata: request.metadata ?? {},
-			createdAt: nowIso(),
-		};
-		this.scaleDecisions.set(decision.id, decision);
-		return decision;
-	}
-
-	async getLatestScaleDecision(projectId: string, environment: string, poolName: string) {
-		return [...this.scaleDecisions.values()]
-			.filter((entry) => entry.projectId === projectId && entry.environment === environment && entry.poolName === poolName)
-			.sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0] ?? null;
-	}
-
 	async createApprovalRequest(request: CreateApprovalRequestRequest) {
 		const existing = request.id ? this.approvalRequests.get(request.id) : null;
 		if (existing && existing.state !== 'pending') return existing;
@@ -1363,12 +760,6 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 		if (request.model === 'content_lease') {
 			return this.leases.getByKey(String(request.id ?? request.key ?? request.slug ?? '')) as Promise<Record<string, unknown> | null>;
 		}
-		if (request.model === 'work_day') {
-			return this.operational.getWorkDay(String(request.id ?? request.key ?? request.slug ?? '')) as Promise<Record<string, unknown> | null>;
-		}
-		if (request.model === 'report') {
-			return this.operational.getReport(String(request.id ?? request.key ?? request.slug ?? '')) as Promise<Record<string, unknown> | null>;
-		}
 		throw new Error(`Unsupported D1 get model "${request.model}".`);
 	}
 
@@ -1393,12 +784,6 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 		}
 		if (request.model === 'content_lease') {
 			return this.leases.search(normalizedRequest) as Promise<Record<string, unknown>[]>;
-		}
-		if (request.model === 'work_day') {
-			return this.operational.searchWorkDays(request.limit) as Promise<Record<string, unknown>[]>;
-		}
-		if (request.model === 'report') {
-			return [] as Record<string, unknown>[];
 		}
 		throw new Error(`Unsupported D1 search model "${request.model}".`);
 	}
@@ -1495,41 +880,6 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 				model: 'content_lease',
 			})) as Record<string, unknown>;
 		}
-		if (request.model === 'work_day') {
-			return (await this.startWorkDay({
-				id: typeof normalizedRequest.data.id === 'string' ? normalizedRequest.data.id : undefined,
-				projectId: String(normalizedRequest.data.projectId ?? normalizedRequest.data.project_id ?? ''),
-				capacityBudget: Number(normalizedRequest.data.capacityBudget ?? normalizedRequest.data.capacity_budget ?? 0),
-				graphVersion: typeof (normalizedRequest.data.graphVersion ?? normalizedRequest.data.graph_version) === 'string' ? String(normalizedRequest.data.graphVersion ?? normalizedRequest.data.graph_version) : null,
-				summary: normalizedRequest.data.summary as Record<string, unknown> | null | undefined,
-				actor: request.actor,
-			})) as Record<string, unknown>;
-		}
-		if (request.model === 'graph_run') {
-			return (await this.operational.createGraphRun({
-				id: String(normalizedRequest.data.id ?? crypto.randomUUID()),
-				workDayId: String(normalizedRequest.data.workDayId ?? normalizedRequest.data.work_day_id ?? ''),
-				corpusHash: String(normalizedRequest.data.corpusHash ?? normalizedRequest.data.corpus_hash ?? ''),
-				graphVersion: String(normalizedRequest.data.graphVersion ?? normalizedRequest.data.graph_version ?? ''),
-				queryJson: typeof (normalizedRequest.data.queryJson ?? normalizedRequest.data.query_json) === 'string' ? String(normalizedRequest.data.queryJson ?? normalizedRequest.data.query_json) : null,
-				seedIdsJson: typeof (normalizedRequest.data.seedIdsJson ?? normalizedRequest.data.seed_ids_json) === 'string' ? String(normalizedRequest.data.seedIdsJson ?? normalizedRequest.data.seed_ids_json) : null,
-				selectedNodeIdsJson: typeof (normalizedRequest.data.selectedNodeIdsJson ?? normalizedRequest.data.selected_node_ids_json) === 'string' ? String(normalizedRequest.data.selectedNodeIdsJson ?? normalizedRequest.data.selected_node_ids_json) : null,
-				statsJson: typeof (normalizedRequest.data.statsJson ?? normalizedRequest.data.stats_json) === 'string' ? String(normalizedRequest.data.statsJson ?? normalizedRequest.data.stats_json) : null,
-				snapshotRef: typeof (normalizedRequest.data.snapshotRef ?? normalizedRequest.data.snapshot_ref) === 'string' ? String(normalizedRequest.data.snapshotRef ?? normalizedRequest.data.snapshot_ref) : null,
-				createdAt: typeof (normalizedRequest.data.createdAt ?? normalizedRequest.data.created_at) === 'string' ? String(normalizedRequest.data.createdAt ?? normalizedRequest.data.created_at) : undefined,
-			})) as Record<string, unknown>;
-		}
-		if (request.model === 'report') {
-			return (await this.createReport({
-				id: typeof normalizedRequest.data.id === 'string' ? normalizedRequest.data.id : undefined,
-				workDayId: String(normalizedRequest.data.workDayId ?? normalizedRequest.data.work_day_id ?? ''),
-				kind: String(normalizedRequest.data.kind ?? 'workday_summary'),
-				body: ((normalizedRequest.data.body as Record<string, unknown> | undefined) ?? normalizedRequest.data) as Record<string, unknown>,
-				renderedRef: typeof (normalizedRequest.data.renderedRef ?? normalizedRequest.data.rendered_ref) === 'string' ? String(normalizedRequest.data.renderedRef ?? normalizedRequest.data.rendered_ref) : null,
-				sentAt: typeof (normalizedRequest.data.sentAt ?? normalizedRequest.data.sent_at) === 'string' ? String(normalizedRequest.data.sentAt ?? normalizedRequest.data.sent_at) : null,
-				actor: request.actor,
-			})) as Record<string, unknown>;
-		}
 		throw new Error(`Unsupported D1 create model "${request.model}".`);
 	}
 
@@ -1553,14 +903,6 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 		}
 		if (request.model === 'content_lease') {
 			return this.leases.update(normalizedRequest) as Promise<Record<string, unknown> | null>;
-		}
-		if (request.model === 'work_day') {
-			return this.closeWorkDay({
-				id: String(request.id ?? request.key ?? normalizedRequest.data.id ?? ''),
-				state: (normalizedRequest.data.state as 'completed' | 'cancelled' | 'failed' | undefined) ?? 'completed',
-				summary: normalizedRequest.data.summary as Record<string, unknown> | null | undefined,
-				actor: request.actor,
-			}) as Promise<Record<string, unknown> | null>;
 		}
 		throw new Error(`Unsupported D1 update model "${request.model}".`);
 	}
@@ -1599,126 +941,6 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 
 	releaseAllLeases() {
 		return this.leases.releaseAll();
-	}
-
-	startWorkDay(request: SdkStartWorkDayRequest) {
-		return this.operational.startWorkDay(request);
-	}
-
-	closeWorkDay(request: SdkCloseWorkDayRequest) {
-		return this.operational.closeWorkDay(request);
-	}
-
-	createReport(request: SdkCreateReportRequest) {
-		return this.operational.createReport(request);
-	}
-
-	getWorkPolicy(projectId: string, environment: string = 'local') {
-		return this.operational.getWorkPolicy(projectId, environment);
-	}
-
-	upsertWorkPolicy(request: SdkUpsertWorkPolicyRequest) {
-		return this.operational.upsertWorkPolicy(request);
-	}
-
-	createWorkdayRequest(request: SdkCreateWorkdayRequest) {
-		return this.operational.createWorkdayRequest(request);
-	}
-
-	listWorkdayRequests(projectId: string, environment: string, state?: string | null) {
-		return this.operational.listWorkdayRequests(projectId, environment, state);
-	}
-
-	createTask(_request: SdkCreateTaskRequest): Promise<SdkTaskEntity | null> {
-		throw new Error('Project runner task lifecycle is not implemented by the SQLite SDK store.');
-	}
-
-	claimTask(_request: SdkClaimTaskRequest): Promise<SdkTaskEntity | null> {
-		throw new Error('Project runner task lifecycle is not implemented by the SQLite SDK store.');
-	}
-
-	recordTaskProgress(_request: SdkRecordTaskProgressRequest): Promise<SdkTaskEntity | null> {
-		throw new Error('Project runner task lifecycle is not implemented by the SQLite SDK store.');
-	}
-
-	completeTask(_request: SdkCompleteTaskRequest): Promise<SdkTaskEntity | null> {
-		throw new Error('Project runner task lifecycle is not implemented by the SQLite SDK store.');
-	}
-
-	getManagerContext(_taskId: string): Promise<SdkTaskManagerContext> {
-		throw new Error('Project runner task lifecycle is not implemented by the SQLite SDK store.');
-	}
-
-	claimWorkdayManagerLease(request: SdkClaimWorkdayManagerLeaseRequest) {
-		return this.operational.claimWorkdayManagerLease(request);
-	}
-
-	releaseWorkdayManagerLease(request: SdkReleaseWorkdayManagerLeaseRequest) {
-		return this.operational.releaseWorkdayManagerLease(request);
-	}
-
-	listWorkdayManagerLeases(projectId: string, environment: string) {
-		return this.operational.listWorkdayManagerLeases(projectId, environment);
-	}
-
-	recordWorkerRunner(request: SdkRecordWorkerRunnerRequest) {
-		return this.operational.recordWorkerRunner(request);
-	}
-
-	listWorkerRunners(projectId: string, environment: string) {
-		return this.operational.listWorkerRunners(projectId, environment);
-	}
-
-	recordRepositoryClaim(request: SdkRecordRepositoryClaimRequest) {
-		return this.operational.recordRepositoryClaim(request);
-	}
-
-	listRepositoryClaims(projectId: string, repositoryId?: string | null) {
-		return this.operational.listRepositoryClaims(projectId, repositoryId);
-	}
-
-	recordRunnerScaleDecision(request: SdkRecordRunnerScaleDecisionRequest) {
-		return this.operational.recordRunnerScaleDecision(request);
-	}
-
-	listRunnerScaleDecisions(projectId: string, environment: string, workDayId?: string | null) {
-		return this.operational.listRunnerScaleDecisions(projectId, environment, workDayId);
-	}
-
-	updateWorkDayGraph(request: SdkUpdateWorkDayGraphRequest) {
-		return this.operational.updateWorkDayGraph(request);
-	}
-
-	listPriorityOverrides(projectId: string) {
-		return this.operational.listPriorityOverrides(projectId);
-	}
-
-	upsertPriorityOverride(request: SdkPriorityOverrideRequest) {
-		return this.operational.upsertPriorityOverride(request);
-	}
-
-	createPrioritySnapshot(request: SdkCreatePrioritySnapshotRequest) {
-		return this.operational.createPrioritySnapshot(request);
-	}
-
-	getLatestPrioritySnapshot(projectId: string, workDayId?: string | null) {
-		return this.operational.getLatestPrioritySnapshot(projectId, workDayId);
-	}
-
-	recordTaskCredits(request: SdkRecordTaskCreditsRequest) {
-		return this.operational.recordTaskCredits(request);
-	}
-
-	listTaskCredits(workDayId: string) {
-		return this.operational.listTaskCredits(workDayId);
-	}
-
-	recordScaleDecision(request: SdkRecordScaleDecisionRequest) {
-		return this.operational.recordScaleDecision(request);
-	}
-
-	getLatestScaleDecision(projectId: string, environment: string, poolName: string) {
-		return this.operational.getLatestScaleDecision(projectId, environment, poolName);
 	}
 
 	createApprovalRequest(request: CreateApprovalRequestRequest) {

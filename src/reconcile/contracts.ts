@@ -47,6 +47,7 @@ export type TreeseedReconcileUnitType =
 	| 'local-docker-compose'
 	| 'local-treedx'
 	| 'local-content-materialization'
+	| 'local-seed-bootstrap'
 	| 'local-process'
 	| 'capacity-provider'
 	| 'branch-preview'

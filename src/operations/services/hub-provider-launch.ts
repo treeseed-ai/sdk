@@ -922,10 +922,6 @@ export async function validateKnowledgeHubProviderLaunchPrerequisites(
 	const values = collectTreeseedConfigSeedValues(tenantRoot, 'prod', process.env, valuesOverlay);
 	const requiredConfig = [
 		['TREESEED_BETTER_AUTH_SECRET'],
-		['TREESEED_AGENT_POOL_MIN_WORKERS'],
-		['TREESEED_AGENT_POOL_MAX_WORKERS'],
-		['TREESEED_AGENT_POOL_TARGET_QUEUE_DEPTH'],
-		['TREESEED_AGENT_POOL_COOLDOWN_SECONDS'],
 		['TREESEED_API_WEB_SERVICE_ID'],
 		['TREESEED_API_WEB_SERVICE_SECRET'],
 		['TREESEED_API_WEB_ASSERTION_SECRET'],

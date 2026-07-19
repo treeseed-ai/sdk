@@ -238,10 +238,11 @@ describe('managed dependencies', () => {
 			},
 		});
 
-		expect(result.npmInstalls[0]?.status).toBe('installed');
-		expect(calls.find((call) => call.args.includes('install'))?.args.slice(-6)).toEqual([
-			'install', '--ignore-scripts', '--prefer-offline', '--workspaces=false', '--no-audit', '--no-fund',
-		]);
+		expect(result.npmInstalls[0]).toMatchObject({
+			status: 'failed',
+			detail: expect.stringContaining('workspace dependency graph was not mutated'),
+		});
+		expect(calls.some((call) => call.args.includes('install'))).toBe(false);
 	});
 
 	it('skips npm install during managed npm lifecycle recursion', async () => {

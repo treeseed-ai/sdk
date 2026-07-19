@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-	assertCapacityProviderPortfolioManifest,
 	buildManagedTreeDxInstance,
 	buildProjectRepositoryTopology,
 	isTreeDxCanonicalContent,
@@ -64,34 +63,4 @@ describe('TreeDX market integration contracts', () => {
 		expect(normalized.projectRepository?.accessMode).toBe('filesystem');
 	});
 
-	it('validates capacity provider repository topology access modes', () => {
-		const topology = normalizeProjectRepositoryTopology({
-			contentRepository: {
-				accessMode: 'treedx',
-				contentPath: 'src/content',
-				treeDx: { instanceId: 'treedx_team', libraryId: 'team/project' },
-			},
-			siteRepository: { accessMode: 'filesystem', name: 'site' },
-			projectRepository: { accessMode: 'filesystem', name: 'project' },
-		});
-
-		expect(() => assertCapacityProviderPortfolioManifest({
-			team: { id: 'team_123', slug: 'team', name: 'Team' },
-			projects: [{
-				id: 'project_123',
-				slug: 'project',
-				name: 'Project',
-				repository: {
-					provider: 'github',
-					owner: 'team',
-					name: 'project-site',
-					defaultBranch: 'staging',
-					cloneUrl: 'https://github.com/team/project-site',
-				},
-				repositoryTopology: topology,
-				agentSpecs: { root: 'src/content/agents', testsRoot: 'src/content/agent-tests' },
-				workPolicy: { enabled: true },
-			}],
-		})).not.toThrow();
-	});
 });

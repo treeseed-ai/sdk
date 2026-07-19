@@ -6,7 +6,7 @@ import {
 	discoverTreeseedPackageAdapters,
 	type TreeseedPackageAdapter,
 } from '../operations/services/package-adapters.ts';
-import { resolveCapacityProviderLaunchPlan } from '../capacity-provider.ts';
+import { redactCapacityProviderEnv, validateAndDigestCapacityProviderManifest } from '../capacity-provider.ts';
 import { workspaceRoot } from '../operations/services/workspace-tools.ts';
 import {
 	checkedOutTemplateRepositories,
@@ -18,6 +18,7 @@ import {
 	buildProjectLocalContentResources,
 	type TreeseedLocalContentMode,
 } from './local-content-materialization.ts';
+import { localTreeDxSeedDigest } from './local-treedx-seed.ts';
 
 export type TreeseedDesiredEnvironment = 'local' | 'staging' | 'prod';
 
@@ -67,6 +68,7 @@ export type TreeseedDesiredResourceKind =
 	| 'local-docker-compose'
 	| 'local-treedx'
 	| 'local-content-materialization'
+	| 'local-seed-bootstrap'
 	| 'capacity-provider'
 	| 'branch-preview'
 	| 'branch-preview-cleanup'
@@ -296,18 +298,41 @@ function localTreeDxContentProjects(tenantRoot: string) {
 		const checkoutPath = typeof repository.checkoutPath === 'string' && repository.checkoutPath.trim()
 			? repository.checkoutPath.trim()
 			: '.';
+		const seedPaths = [
+			`${contentPath.replace(/\/+$/u, '')}/objectives`,
+			`${contentPath.replace(/\/+$/u, '')}/agents`,
+		];
+		const localRoot = checkoutPath === '.' ? tenantRoot : resolvePath(tenantRoot, checkoutPath);
 		return [{
 			projectKey: typeof project.key === 'string' ? project.key : `project:treeseed/${slug}`,
 			slug,
 			repositoryName: safeTreeDxRepositoryName(`treeseed-${slug}`),
 			repositoryId: safeTreeDxRepositoryName(`treeseed-${slug}`),
-			localRoot: checkoutPath === '.' ? tenantRoot : resolvePath(tenantRoot, checkoutPath),
+			localRoot,
 			contentPath,
 			defaultRef: 'refs/heads/main',
-			seedPaths: [
-				`${contentPath.replace(/\/+$/u, '')}/objectives`,
-				`${contentPath.replace(/\/+$/u, '')}/agents`,
-			],
+			seedPaths,
+			seedDigest: localTreeDxSeedDigest({ localRoot, contentPath, seedPaths }),
+		}];
+	});
+}
+
+function localTreeDxTemplateContentProjects(tenantRoot: string, templates: TreeseedTemplateUnit[]) {
+	return templates.flatMap((template) => {
+		const localRoot = resolvePath(tenantRoot, template.path);
+		const contentPath = 'template/src/content';
+		if (!existsSync(resolvePath(localRoot, contentPath))) return [];
+		const slug = `starter-${safeTreeDxRepositoryName(template.id)}`;
+		return [{
+			projectKey: `template:${template.id}`,
+			slug,
+			repositoryName: safeTreeDxRepositoryName(`treeseed-${slug}`),
+			repositoryId: safeTreeDxRepositoryName(`treeseed-${slug}`),
+			localRoot,
+			contentPath,
+			defaultRef: 'refs/heads/main',
+			seedPaths: [contentPath],
+			seedDigest: localTreeDxSeedDigest({ localRoot, contentPath, seedPaths: [contentPath] }),
 		}];
 	});
 }
@@ -617,38 +642,27 @@ function templateResources(templates: TreeseedTemplateUnit[], environment: Trees
 	}));
 }
 
-function localDevelopmentResources(tenantRoot: string, environment: TreeseedDesiredEnvironment, localContent: TreeseedLocalContentMode): TreeseedDesiredResource[] {
+function localDevelopmentResources(tenantRoot: string, environment: TreeseedDesiredEnvironment, localContent: TreeseedLocalContentMode, templates: TreeseedTemplateUnit[], capacityConfigPath?: string): TreeseedDesiredResource[] {
 	if (environment !== 'local') return [];
 	const composeId = 'local-docker-compose:agent-capacity-provider';
 	const treeDxComposeId = 'local-docker-compose:treedx';
 	const apiPostgresComposeId = 'local-docker-compose:api-postgres';
 	const mailpitComposeId = 'local-docker-compose:mailpit';
 	const capacityProviderDataDir = resolvePath(tenantRoot, '.treeseed/local-capacity-provider/data');
+	const capacityProviderManifest = capacityConfigPath ? resolvePath(tenantRoot, capacityConfigPath) : resolvePath(tenantRoot, 'treeseed.capacity-provider.yaml');
+	const capacityProviderManifestState = existsSync(capacityProviderManifest)
+		? validateAndDigestCapacityProviderManifest(parseYaml(readFileSync(capacityProviderManifest, 'utf8')))
+		: null;
+	const capacityProviderManifestDigest = capacityProviderManifestState?.digest ?? null;
+	const capacityProviderConnectionCount = capacityProviderManifestState?.manifest.connections.length ?? 0;
+	const localSeedPath = resolvePath(tenantRoot, 'seeds/treeseed.yaml');
+	const localSeedModulePath = resolvePath(tenantRoot, 'packages/api/src/market/seeds/apply.ts');
 	const localGitCommonDir = resolveLocalGitCommonDir(tenantRoot);
 	const hostCodexAuthFile = [
 		process.env.TREESEED_CODEX_AUTH_FILE,
 		process.env.CODEX_AUTH_FILE,
 		process.env.HOME ? resolvePath(process.env.HOME, '.codex/auth.json') : '',
 	].find((candidate) => candidate && existsSync(candidate)) ?? '';
-	const capacityPlan = resolveCapacityProviderLaunchPlan({
-		schemaVersion: 1,
-			provider: {
-				dataDir: capacityProviderDataDir,
-				environment: 'local',
-				market: {
-					url: 'http://host.docker.internal:3000',
-					id: 'local',
-				},
-			},
-		runtime: {
-			images: {
-				roles: {
-					manager: { image: 'treeseed/agent-manager', tag: 'latest' },
-					runner: { image: 'treeseed/agent-runner', tag: 'latest' },
-				},
-			},
-		},
-	} as any);
 	const localTreeDxApiEnv = {
 		TREESEED_TREEDX_JWT_ISSUER: 'https://api.treeseed.local/treedx',
 		TREESEED_TREEDX_JWT_AUDIENCE: 'treedx-local',
@@ -662,8 +676,8 @@ function localDevelopmentResources(tenantRoot: string, environment: TreeseedDesi
 		...localTreeDxApiEnv,
 	};
 	const localCapacityProviderEnv = {
-		...capacityPlan.composeEnv,
 		...localCapacityProviderTreeDxEnv,
+		TREESEED_CAPACITY_PROVIDER_MANIFEST: capacityProviderManifest,
 		TREESEED_PROVIDER_HOST_DATA_DIR: capacityProviderDataDir,
 		...(hostCodexAuthFile ? {
 			TREESEED_HOST_CODEX_AUTH_FILE: hostCodexAuthFile,
@@ -678,10 +692,9 @@ function localDevelopmentResources(tenantRoot: string, environment: TreeseedDesi
 		} : {}),
 		TREESEED_PROVIDER_CONTAINER_UID: String(process.getuid?.() ?? 1000),
 		TREESEED_PROVIDER_CONTAINER_GID: String(process.getgid?.() ?? 1000),
-		TREESEED_CAPACITY_PROVIDER_API_KEY: 'tsp_local_treeseed_demo_capacity_provider',
-		TREESEED_CAPACITY_PROVIDER_ID: 'treeseed-local-dev',
-		TREESEED_CAPACITY_PROVIDER_TEAM_ID: 'treeseed',
-		TREESEED_MANAGEMENT_API_URL: 'http://host.docker.internal:3000',
+		TREESEED_MARKET_URL: 'http://host.docker.internal:3000',
+		TREESEED_MARKET_PROFILE_LOCAL_URL: 'http://host.docker.internal:3000',
+		TREESEED_MARKET_PROFILE_LOCAL_AUDIENCE: 'http://127.0.0.1:3000',
 	};
 	return [
 		{
@@ -749,6 +762,7 @@ function localDevelopmentResources(tenantRoot: string, environment: TreeseedDesi
 			logicalName: 'local TreeDX team content repository plane',
 			dependencies: [treeDxComposeId],
 			spec: {
+				contentSyncVersion: 2,
 				mode: 'private-team',
 				contentRepositoryAccessMode: 'treedx',
 				siteRepositoryAccessMode: 'filesystem',
@@ -757,7 +771,10 @@ function localDevelopmentResources(tenantRoot: string, environment: TreeseedDesi
 				dataDir: '.treeseed/local-treedx/data',
 				healthEndpoint: 'http://127.0.0.1:4000/api/v1/health',
 				auth: localTreeDxApiEnv,
-				projects: localTreeDxContentProjects(tenantRoot),
+				projects: [
+					...localTreeDxContentProjects(tenantRoot),
+					...localTreeDxTemplateContentProjects(tenantRoot, templates),
+				],
 			},
 			source: { type: 'package-adapter', id: 'treedx' },
 		},
@@ -800,6 +817,14 @@ function localDevelopmentResources(tenantRoot: string, environment: TreeseedDesi
 				mode: 'local',
 				roles: ['manager', 'runner'],
 				volumePolicy: 'shared-local',
+				manifestDigest: capacityProviderManifestDigest,
+				expectedConnectionCount: capacityProviderConnectionCount,
+				runtimeStatus: {
+					path: '.treeseed/local-capacity-provider/data/runtime/manager.json',
+					maxAgeSeconds: 180,
+					attempts: 60,
+					intervalMs: 500,
+				},
 			},
 			source: { type: 'package-adapter', id: '@treeseed/agent' },
 		},
@@ -821,15 +846,21 @@ function localDevelopmentResources(tenantRoot: string, environment: TreeseedDesi
 				projectName: 'treeseed-capacity-provider',
 				cwd: '.',
 				dataDir: '.treeseed/local-capacity-provider/data',
+				manifestDigest: capacityProviderManifestDigest,
 				buildPolicy: 'missing',
 				devMode: 'typescript',
-				redactedEnv: capacityPlan.redactedEnv,
+				requiredHostPaths: [{
+					path: capacityProviderManifest,
+					kind: 'file',
+					description: 'Capacity provider manifest',
+				}],
+				redactedEnv: redactCapacityProviderEnv(localCapacityProviderEnv),
 				envKeys: Object.keys(localCapacityProviderEnv).sort(),
 				env: localCapacityProviderEnv,
-				services: ['agent-manager', 'agent-runner'],
+				services: ['manager', 'runner'],
 				volumes: [{ name: 'treeseed-capacity-provider-data', mountPath: '/data', sharedLocalOnly: true }],
 				healthChecks: [
-					{ id: 'compose-services', kind: 'container', service: 'agent-manager' },
+					{ id: 'compose-services', kind: 'container', service: 'manager' },
 				],
 			},
 			source: { type: 'package-adapter', id: '@treeseed/agent' },
@@ -865,6 +896,25 @@ function localDevelopmentResources(tenantRoot: string, environment: TreeseedDesi
 			},
 			source: { type: 'package-adapter' as const, id },
 		})),
+		...(existsSync(localSeedPath) && existsSync(localSeedModulePath) ? [{
+			id: 'local-seed-bootstrap:treeseed',
+			kind: 'local-seed-bootstrap' as const,
+			provider: 'local',
+			environment,
+			packageId: '@treeseed/api',
+			serviceId: 'seed-bootstrap',
+			logicalName: 'local Treeseed seed bootstrap',
+			dependencies: ['local-process:api'],
+			spec: {
+				seedName: 'treeseed',
+				environments: 'local',
+				manifestPath: localSeedPath,
+				manifestDigest: hashJson(readFileSync(localSeedPath, 'utf8')),
+				applyModulePath: localSeedModulePath,
+				compiledApplyModulePath: resolvePath(tenantRoot, 'packages/api/dist/market/seeds/apply.js'),
+			},
+			source: { type: 'package-adapter' as const, id: '@treeseed/api' },
+		}] : []),
 		...buildProjectLocalContentResources({ tenantRoot, environment, localContent }),
 	];
 }
@@ -1131,10 +1181,12 @@ export function compileTreeseedDesiredResourceGraph({
 	tenantRoot = workspaceRoot(),
 	target,
 	localContent = 'auto',
+	capacityConfigPath,
 }: {
 	tenantRoot?: string;
 	target: TreeseedReconcileTarget;
 	localContent?: TreeseedLocalContentMode;
+	capacityConfigPath?: string;
 }): TreeseedDesiredResourceGraph {
 	const environment = environmentFromTarget(target);
 	const derived = deriveTreeseedDesiredUnits({ tenantRoot, target });
@@ -1145,7 +1197,7 @@ export function compileTreeseedDesiredResourceGraph({
 		...derived.units.map((unit) => resourceFromUnit(unit, environment)),
 		...packageAdapters.flatMap((adapter) => packageResources(adapter, environment)),
 		...templateResources(templates, environment),
-		...localDevelopmentResources(tenantRoot, environment, localContent),
+		...localDevelopmentResources(tenantRoot, environment, localContent, templates, capacityConfigPath),
 		...branchPreviewResources(target, environment),
 		...releaseGateResources(packages, templates, environment),
 	];

@@ -1,0 +1,14 @@
+schemaVersion: 2
+id: grant-team-a-engineering
+membershipId: membership-team-a
+teamId: team-a
+providerId: provider-example
+projectId: project-engineering
+environment: staging
+status: planned
+executionProviderIds: [codex-primary]
+laneIds: []
+capabilities: [engineering]
+allowedModes: [planning, acting]
+dailyCreditLimit: 100
+maxConcurrentAssignments: 2

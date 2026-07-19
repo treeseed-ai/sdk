@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
 	compileTreeseedLiveAcceptanceScenarios,
@@ -6,6 +8,7 @@ import {
 } from '../../src/reconcile/index.ts';
 
 const providers: TreeseedLiveReconcileProvider[] = ['railway', 'cloudflare', 'github', 'local'];
+const reconcileRoot = fileURLToPath(new URL('../../src/reconcile/', import.meta.url));
 
 describe('live acceptance scenario contract', () => {
 	it('declares one scenario for every provider capability', () => {
@@ -63,5 +66,26 @@ describe('live acceptance scenario contract', () => {
 			expect(scenario.expectedActions, scenario.id).toEqual(['noop']);
 			expect(scenario.cleanupRequired, scenario.id).toBe(false);
 		}
+	});
+
+	it('keeps every live-acceptance production module focused and provider lifecycles out of the coordinator', () => {
+		const modules = readdirSync(reconcileRoot)
+			.filter((name) => /^live-acceptance(?:-[a-z-]+)?\.ts$/u.test(name))
+			.sort();
+		expect(modules).toEqual(expect.arrayContaining([
+			'live-acceptance-cloudflare.ts',
+			'live-acceptance-github.ts',
+			'live-acceptance-local.ts',
+			'live-acceptance-railway.ts',
+			'live-acceptance.ts',
+		]));
+		for (const module of modules) {
+			const source = readFileSync(`${reconcileRoot}/${module}`, 'utf8');
+			expect(source.split(/\r?\n/u).length, `${module} line count`).toBeLessThanOrEqual(500);
+			expect(source, `${module} compiler suppression`).not.toMatch(/@ts-(?:check|ignore|nocheck)|eslint-disable/iu);
+		}
+
+		const coordinator = readFileSync(`${reconcileRoot}/live-acceptance.ts`, 'utf8');
+		expect(coordinator).not.toMatch(/function run(?:Railway|Cloudflare|GitHub|Local)(?:Acceptance|Cleanup)/u);
 	});
 });

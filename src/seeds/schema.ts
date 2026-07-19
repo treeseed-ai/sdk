@@ -6,15 +6,10 @@ import {
 	SEED_LOCAL_CONTENT_MATERIALIZATIONS,
 	SEED_PROJECT_TOPOLOGIES,
 	type SeedCatalogArtifactResource,
-	type SeedCapacityGrantResource,
-	type SeedCapacityLaneResource,
-	type SeedCapacityProviderResource,
 	type SeedContentPublishTargetKind,
 	type SeedContentRuntimeSource,
 	type SeedDiagnostic,
 	type SeedEnvironment,
-	type SeedExecutionProviderNativeLimitResource,
-	type SeedExecutionProviderResource,
 	type SeedHubRepositoryResource,
 	type SeedLocalContentMaterialization,
 	type SeedManifest,
@@ -34,7 +29,6 @@ import {
 	type SeedRepositoryHostResource,
 	type SeedResourceBase,
 	type SeedTeamResource,
-	type SeedWorkPolicyResource,
 } from './types.js';
 
 const RESOURCE_BUCKETS = [
@@ -44,32 +38,21 @@ const RESOURCE_BUCKETS = [
 	'hubRepositories',
 	'products',
 	'catalogArtifacts',
-	'capacityProviders',
-	'capacityGrants',
-	'workPolicies',
-	'agentPools',
 ] as const;
 
-const SUPPORTED_BUCKETS = new Set(['teams', 'repositoryHosts', 'projects', 'hubRepositories', 'products', 'catalogArtifacts', 'capacityProviders', 'capacityGrants', 'workPolicies']);
+const SUPPORTED_BUCKETS = new Set(['teams', 'repositoryHosts', 'projects', 'hubRepositories', 'products', 'catalogArtifacts']);
 const ALLOWED_ENVIRONMENTS = new Set<string>(SEED_ENVIRONMENTS);
 const ALLOWED_PROJECT_TOPOLOGIES = new Set<string>(SEED_PROJECT_TOPOLOGIES);
 const ALLOWED_CONTENT_RUNTIME_SOURCES = new Set<string>(SEED_CONTENT_RUNTIME_SOURCES);
 const ALLOWED_LOCAL_CONTENT_MATERIALIZATIONS = new Set<string>(SEED_LOCAL_CONTENT_MATERIALIZATIONS);
 const ALLOWED_CONTENT_PUBLISH_TARGETS = new Set<string>(SEED_CONTENT_PUBLISH_TARGETS);
-const LEGACY_PROVIDER_TASK_SCOPE_PREFIX = 'provider:tasks:';
 const ALLOWED_RECIPE_CHANNELS = new Set<string>(['cli', 'ui', 'api', 'provider-runtime', 'system-check']);
 const ALLOWED_RECIPE_OPERATIONS = new Set<string>([
 	'navigate',
 	'seed.apply',
 	'seed.plan',
 	'verify.treedx',
-	'capacity-provider.create',
-	'capacity.up',
-	'capacity.status',
-	'capacity.allocate.portfolio',
-	'capacity.allocate.project',
 	'project.create',
-	'provider-runtime.launch',
 	'work.start',
 	'work.review-decision',
 	'knowledge.inspect-artifacts',
@@ -436,211 +419,6 @@ function parseCatalogArtifact(value: unknown, path: string, diagnostics: SeedDia
 		metadata: objectField(value, 'metadata', path, diagnostics),
 	};
 }
-
-function parseLane(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedCapacityLaneResource | null {
-	if (!isRecord(value)) {
-		diagnostics.push(errorDiagnostic('seed.invalid_resource', 'Expected lane resource to be an object.', path));
-		return null;
-	}
-	return {
-		...keyBase(value, path, diagnostics),
-		name: requireString(value, 'name', path, diagnostics),
-		businessModel: asString(value.businessModel) || undefined,
-		modelFamily: asString(value.modelFamily) || undefined,
-		modelClass: asString(value.modelClass) || undefined,
-		regionPolicy: asString(value.regionPolicy) || undefined,
-		unit: asString(value.unit) || undefined,
-		scarcityLevel: asString(value.scarcityLevel) || undefined,
-		hardLimits: objectField(value, 'hardLimits', path, diagnostics),
-		routingPolicy: objectField(value, 'routingPolicy', path, diagnostics),
-		metadata: objectField(value, 'metadata', path, diagnostics),
-	};
-}
-
-function parseProviderRegistration(value: unknown, path: string, diagnostics: SeedDiagnostic[]) {
-	if (value === undefined) return undefined;
-	if (!isRecord(value)) {
-		diagnostics.push(errorDiagnostic('seed.invalid_object', 'Expected registration to be an object.', path));
-		return undefined;
-	}
-	const apiKeyValue = value.apiKey;
-	if (apiKeyValue === undefined) return {};
-	if (!isRecord(apiKeyValue)) {
-		diagnostics.push(errorDiagnostic('seed.invalid_object', 'Expected registration.apiKey to be an object.', `${path}.apiKey`));
-		return {};
-	}
-	if (apiKeyValue.createIfMissing !== undefined && typeof apiKeyValue.createIfMissing !== 'boolean') {
-		diagnostics.push(errorDiagnostic('seed.invalid_boolean', 'Expected registration.apiKey.createIfMissing to be a boolean.', `${path}.apiKey.createIfMissing`));
-	}
-	const scopes = stringArrayField(apiKeyValue, 'scopes', `${path}.apiKey`, diagnostics);
-	scopes?.forEach((scope, index) => {
-		if (scope.startsWith(LEGACY_PROVIDER_TASK_SCOPE_PREFIX)) {
-			diagnostics.push(errorDiagnostic(
-				'seed.legacy_provider_task_scope',
-				`Legacy provider task scope ${scope} is not supported; use provider assignment scopes instead.`,
-				`${path}.apiKey.scopes[${index}]`,
-			));
-		}
-	});
-	return {
-		apiKey: {
-			createIfMissing: typeof apiKeyValue.createIfMissing === 'boolean' ? apiKeyValue.createIfMissing : undefined,
-			name: asString(apiKeyValue.name) || undefined,
-			plaintextKey: asString(apiKeyValue.plaintextKey) || undefined,
-			scopes,
-			expiresAt: asString(apiKeyValue.expiresAt) || undefined,
-		},
-	};
-}
-
-function parseNativeLimit(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedExecutionProviderNativeLimitResource | null {
-	if (!isRecord(value)) {
-		diagnostics.push(errorDiagnostic('seed.invalid_resource', 'Expected native limit to be an object.', path));
-		return null;
-	}
-	const limitAmount = nonNegativeNumberField(value, 'limitAmount', path, diagnostics);
-	if (limitAmount === undefined) {
-		diagnostics.push(errorDiagnostic('seed.missing_field', 'Missing required field: limitAmount.', `${path}.limitAmount`));
-	}
-	return {
-		id: asString(value.id) || undefined,
-		scope: asString(value.scope) || undefined,
-		limitScope: asString(value.limitScope) || undefined,
-		nativeUnit: asString(value.nativeUnit) || undefined,
-		limitAmount: limitAmount ?? 0,
-		reserveBufferPercent: nonNegativeNumberField(value, 'reserveBufferPercent', path, diagnostics),
-		resetCadence: asString(value.resetCadence) || undefined,
-		resetAt: asString(value.resetAt) || undefined,
-		confidence: asString(value.confidence) || undefined,
-		source: asString(value.source) || undefined,
-		metadata: objectField(value, 'metadata', path, diagnostics),
-	};
-}
-
-function parseExecutionProvider(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedExecutionProviderResource | null {
-	if (!isRecord(value)) {
-		diagnostics.push(errorDiagnostic('seed.invalid_resource', 'Expected execution provider resource to be an object.', path));
-		return null;
-	}
-	const limitsValue = value.nativeLimits;
-	const nativeLimits = limitsValue === undefined
-		? []
-		: Array.isArray(limitsValue)
-			? limitsValue.map((limit, index) => parseNativeLimit(limit, `${path}.nativeLimits[${index}]`, diagnostics)).filter((limit): limit is SeedExecutionProviderNativeLimitResource => Boolean(limit))
-			: (diagnostics.push(errorDiagnostic('seed.invalid_native_limits', 'Expected nativeLimits to be an array.', `${path}.nativeLimits`)), []);
-	return {
-		id: asString(value.id) || undefined,
-		name: requireString(value, 'name', path, diagnostics),
-		kind: requireString(value, 'kind', path, diagnostics),
-		status: asString(value.status) || undefined,
-		nativeUnit: requireString(value, 'nativeUnit', path, diagnostics),
-		quotaVisibility: asString(value.quotaVisibility) || undefined,
-		maxConcurrentWorkers: nonNegativeNumberField(value, 'maxConcurrentWorkers', path, diagnostics),
-		resetCadence: asString(value.resetCadence) || undefined,
-		config: objectField(value, 'config', path, diagnostics),
-		metadata: objectField(value, 'metadata', path, diagnostics),
-		nativeLimits,
-	};
-}
-
-function parseProvider(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedCapacityProviderResource | null {
-	if (!isRecord(value)) {
-		diagnostics.push(errorDiagnostic('seed.invalid_resource', 'Expected capacity provider resource to be an object.', path));
-		return null;
-	}
-	const lanesValue = value.lanes;
-	const lanes = lanesValue === undefined
-		? []
-		: Array.isArray(lanesValue)
-			? lanesValue.map((lane, index) => parseLane(lane, `${path}.lanes[${index}]`, diagnostics)).filter((lane): lane is SeedCapacityLaneResource => Boolean(lane))
-			: (diagnostics.push(errorDiagnostic('seed.invalid_lanes', 'Expected lanes to be an array.', `${path}.lanes`)), []);
-	const executionProvidersValue = value.executionProviders;
-	const executionProviders = executionProvidersValue === undefined
-		? []
-		: Array.isArray(executionProvidersValue)
-			? executionProvidersValue.map((entry, index) => parseExecutionProvider(entry, `${path}.executionProviders[${index}]`, diagnostics)).filter((entry): entry is SeedExecutionProviderResource => Boolean(entry))
-			: (diagnostics.push(errorDiagnostic('seed.invalid_execution_providers', 'Expected executionProviders to be an array.', `${path}.executionProviders`)), []);
-	return {
-		...keyBase(value, path, diagnostics),
-		team: requireString(value, 'team', path, diagnostics),
-		name: requireString(value, 'name', path, diagnostics),
-		kind: asString(value.kind) || undefined,
-		provider: requireString(value, 'provider', path, diagnostics),
-		billingScope: asString(value.billingScope) || undefined,
-		creditBudgetMode: asString(value.creditBudgetMode) || undefined,
-		monthlyCreditBudget: numberField(value, 'monthlyCreditBudget', path, diagnostics),
-		dailyCreditBudget: numberField(value, 'dailyCreditBudget', path, diagnostics),
-		maxConcurrentWorkdays: numberField(value, 'maxConcurrentWorkdays', path, diagnostics),
-		maxConcurrentWorkers: numberField(value, 'maxConcurrentWorkers', path, diagnostics),
-		capacityModel: objectField(value, 'capacityModel', path, diagnostics),
-		registration: parseProviderRegistration(value.registration, `${path}.registration`, diagnostics),
-		metadata: objectField(value, 'metadata', path, diagnostics),
-		lanes,
-		executionProviders,
-	};
-}
-
-function parseGrant(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedCapacityGrantResource | null {
-	if (!isRecord(value)) {
-		diagnostics.push(errorDiagnostic('seed.invalid_resource', 'Expected capacity grant resource to be an object.', path));
-		return null;
-	}
-	const environment = asString(value.environment);
-	if (environment && !ALLOWED_ENVIRONMENTS.has(environment)) {
-		diagnostics.push(errorDiagnostic('seed.unknown_environment', `Unknown grant environment: ${environment}.`, `${path}.environment`));
-	}
-	return {
-		...keyBase(value, path, diagnostics),
-		provider: requireString(value, 'provider', path, diagnostics),
-		lane: asString(value.lane) || undefined,
-		team: requireString(value, 'team', path, diagnostics),
-		project: asString(value.project) || undefined,
-		environment: environment && ALLOWED_ENVIRONMENTS.has(environment) ? environment as SeedEnvironment : undefined,
-		grantScope: asString(value.grantScope) || undefined,
-		dailyCreditLimit: numberField(value, 'dailyCreditLimit', path, diagnostics),
-		weeklyCreditLimit: numberField(value, 'weeklyCreditLimit', path, diagnostics),
-		monthlyCreditLimit: numberField(value, 'monthlyCreditLimit', path, diagnostics),
-		dailyUsdLimit: numberField(value, 'dailyUsdLimit', path, diagnostics),
-		weeklyQuotaMinutes: numberField(value, 'weeklyQuotaMinutes', path, diagnostics),
-		monthlyProviderUnits: numberField(value, 'monthlyProviderUnits', path, diagnostics),
-		portfolioAllocationPercent: numberField(value, 'portfolioAllocationPercent', path, diagnostics),
-		reservePoolPercent: numberField(value, 'reservePoolPercent', path, diagnostics),
-		maxDailyProjectCredits: numberField(value, 'maxDailyProjectCredits', path, diagnostics),
-		emergencyOverride: typeof value.emergencyOverride === 'boolean' ? value.emergencyOverride : undefined,
-		priorityWeight: numberField(value, 'priorityWeight', path, diagnostics),
-		overflowPolicy: asString(value.overflowPolicy) || undefined,
-		state: asString(value.state) || undefined,
-		metadata: objectField(value, 'metadata', path, diagnostics),
-	};
-}
-
-function parseWorkPolicy(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedWorkPolicyResource | null {
-	if (!isRecord(value)) {
-		diagnostics.push(errorDiagnostic('seed.invalid_resource', 'Expected work policy resource to be an object.', path));
-		return null;
-	}
-	const environment = requireString(value, 'environment', path, diagnostics);
-	if (environment && !ALLOWED_ENVIRONMENTS.has(environment)) {
-		diagnostics.push(errorDiagnostic('seed.unknown_environment', `Unknown work policy environment: ${environment}.`, `${path}.environment`));
-	}
-	return {
-		...keyBase(value, path, diagnostics),
-		project: requireString(value, 'project', path, diagnostics),
-		environment: ALLOWED_ENVIRONMENTS.has(environment) ? environment as SeedEnvironment : 'local',
-		enabled: typeof value.enabled === 'boolean' ? value.enabled : undefined,
-		startCron: asString(value.startCron) || undefined,
-		durationMinutes: numberField(value, 'durationMinutes', path, diagnostics),
-		maxRunners: numberField(value, 'maxRunners', path, diagnostics),
-		maxWorkersPerRunner: numberField(value, 'maxWorkersPerRunner', path, diagnostics),
-		dailyCreditBudget: numberField(value, 'dailyCreditBudget', path, diagnostics),
-		maxQueuedTasks: numberField(value, 'maxQueuedTasks', path, diagnostics),
-		maxQueuedCredits: numberField(value, 'maxQueuedCredits', path, diagnostics),
-		autoscale: objectField(value, 'autoscale', path, diagnostics),
-		creditWeights: Array.isArray(value.creditWeights) ? value.creditWeights : undefined,
-		metadata: objectField(value, 'metadata', path, diagnostics),
-	};
-}
-
 function parseRecipeCommand(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedOperationRecipeCommand | undefined {
 	if (value === undefined) return undefined;
 	if (!isRecord(value)) {
@@ -791,12 +569,6 @@ function validateResourceKeys(manifest: SeedManifest, diagnostics: SeedDiagnosti
 	manifest.resources.hubRepositories.forEach((repository, index) => visit(repository.key, `resources.hubRepositories[${index}].key`));
 	manifest.resources.products.forEach((product, index) => visit(product.key, `resources.products[${index}].key`));
 	manifest.resources.catalogArtifacts.forEach((artifact, index) => visit(artifact.key, `resources.catalogArtifacts[${index}].key`));
-	manifest.resources.capacityProviders.forEach((provider, providerIndex) => {
-		visit(provider.key, `resources.capacityProviders[${providerIndex}].key`);
-		(provider.lanes ?? []).forEach((lane, laneIndex) => visit(lane.key, `resources.capacityProviders[${providerIndex}].lanes[${laneIndex}].key`));
-	});
-	manifest.resources.capacityGrants.forEach((grant, index) => visit(grant.key, `resources.capacityGrants[${index}].key`));
-	manifest.resources.workPolicies.forEach((policy, index) => visit(policy.key, `resources.workPolicies[${index}].key`));
 }
 
 function validateReferences(manifest: SeedManifest, diagnostics: SeedDiagnostic[]) {
@@ -804,8 +576,6 @@ function validateReferences(manifest: SeedManifest, diagnostics: SeedDiagnostic[
 	const projectKeys = new Set(manifest.resources.projects.map((project) => project.key));
 	const repositoryHostKeys = new Set(manifest.resources.repositoryHosts.map((host) => host.key));
 	const productKeys = new Set(manifest.resources.products.map((product) => product.key));
-	const providerKeys = new Set(manifest.resources.capacityProviders.map((provider) => provider.key));
-	const laneKeys = new Set(manifest.resources.capacityProviders.flatMap((provider) => (provider.lanes ?? []).map((lane) => lane.key)));
 
 	manifest.resources.repositoryHosts.forEach((host, index) => {
 		if (!teamKeys.has(host.team)) diagnostics.push(errorDiagnostic('seed.invalid_reference', `Unknown team reference: ${host.team}.`, `resources.repositoryHosts[${index}].team`));
@@ -823,18 +593,6 @@ function validateReferences(manifest: SeedManifest, diagnostics: SeedDiagnostic[
 	manifest.resources.catalogArtifacts.forEach((artifact, index) => {
 		if (!productKeys.has(artifact.product)) diagnostics.push(errorDiagnostic('seed.invalid_reference', `Unknown product reference: ${artifact.product}.`, `resources.catalogArtifacts[${index}].product`));
 	});
-	manifest.resources.capacityProviders.forEach((provider, index) => {
-		if (!teamKeys.has(provider.team)) diagnostics.push(errorDiagnostic('seed.invalid_reference', `Unknown team reference: ${provider.team}.`, `resources.capacityProviders[${index}].team`));
-	});
-	manifest.resources.capacityGrants.forEach((grant, index) => {
-		if (!teamKeys.has(grant.team)) diagnostics.push(errorDiagnostic('seed.invalid_reference', `Unknown team reference: ${grant.team}.`, `resources.capacityGrants[${index}].team`));
-		if (!providerKeys.has(grant.provider)) diagnostics.push(errorDiagnostic('seed.invalid_reference', `Unknown capacity provider reference: ${grant.provider}.`, `resources.capacityGrants[${index}].provider`));
-		if (grant.lane && !laneKeys.has(grant.lane)) diagnostics.push(errorDiagnostic('seed.invalid_reference', `Unknown capacity lane reference: ${grant.lane}.`, `resources.capacityGrants[${index}].lane`));
-		if (grant.project && !projectKeys.has(grant.project)) diagnostics.push(errorDiagnostic('seed.invalid_reference', `Unknown project reference: ${grant.project}.`, `resources.capacityGrants[${index}].project`));
-	});
-	manifest.resources.workPolicies.forEach((policy, index) => {
-		if (!projectKeys.has(policy.project)) diagnostics.push(errorDiagnostic('seed.invalid_reference', `Unknown project reference: ${policy.project}.`, `resources.workPolicies[${index}].project`));
-	});
 }
 
 function allResourceKeys(manifest: SeedManifest) {
@@ -845,9 +603,6 @@ function allResourceKeys(manifest: SeedManifest) {
 		...manifest.resources.hubRepositories.map((repository) => repository.key),
 		...manifest.resources.products.map((product) => product.key),
 		...manifest.resources.catalogArtifacts.map((artifact) => artifact.key),
-		...manifest.resources.capacityProviders.flatMap((provider) => [provider.key, ...(provider.lanes ?? []).map((lane) => lane.key)]),
-		...manifest.resources.capacityGrants.map((grant) => grant.key),
-		...manifest.resources.workPolicies.map((policy) => policy.key),
 	]);
 }
 
@@ -957,10 +712,6 @@ export function parseSeedManifest(value: unknown, diagnostics: SeedDiagnostic[])
 		hubRepositories: arrayBucket(resourcesValue, 'hubRepositories', diagnostics).map((entry, index) => parseHubRepository(entry, `resources.hubRepositories[${index}]`, diagnostics)).filter((repository): repository is SeedHubRepositoryResource => Boolean(repository)),
 		products: arrayBucket(resourcesValue, 'products', diagnostics).map((entry, index) => parseProduct(entry, `resources.products[${index}]`, diagnostics)).filter((product): product is SeedProductResource => Boolean(product)),
 		catalogArtifacts: arrayBucket(resourcesValue, 'catalogArtifacts', diagnostics).map((entry, index) => parseCatalogArtifact(entry, `resources.catalogArtifacts[${index}]`, diagnostics)).filter((artifact): artifact is SeedCatalogArtifactResource => Boolean(artifact)),
-		capacityProviders: arrayBucket(resourcesValue, 'capacityProviders', diagnostics).map((entry, index) => parseProvider(entry, `resources.capacityProviders[${index}]`, diagnostics)).filter((provider): provider is SeedCapacityProviderResource => Boolean(provider)),
-		capacityGrants: arrayBucket(resourcesValue, 'capacityGrants', diagnostics).map((entry, index) => parseGrant(entry, `resources.capacityGrants[${index}]`, diagnostics)).filter((grant): grant is SeedCapacityGrantResource => Boolean(grant)),
-		workPolicies: arrayBucket(resourcesValue, 'workPolicies', diagnostics).map((entry, index) => parseWorkPolicy(entry, `resources.workPolicies[${index}]`, diagnostics)).filter((policy): policy is SeedWorkPolicyResource => Boolean(policy)),
-		agentPools: arrayBucket(resourcesValue, 'agentPools', diagnostics) as Record<string, unknown>[],
 	};
 
 	const manifest: SeedManifest = {

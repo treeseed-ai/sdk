@@ -8,6 +8,7 @@ import type {
 	TreeseedReconcileSelector,
 	TreeseedReconcileStateRecord,
 	TreeseedReconcileTarget,
+	TreeseedReconcileUnitDiff,
 	TreeseedUnitPostcondition,
 	TreeseedUnitPersistedState,
 	TreeseedUnitVerificationResult,
@@ -402,7 +403,9 @@ export async function reconcileTreeseedTarget({
 		await persistChain;
 	};
 	await runByDependencyLevel(topologicallySortDesiredUnits(planned.units), async (unit) => {
-		const plan = planByUnitId.get(unit.unitId)!;
+		let plan = planByUnitId.get(unit.unitId)!;
+		const adapter = registry.get(plan.unit.unitType, plan.unit.provider);
+		const persisted = ensureTreeseedPersistedUnitState(planned.state, plan.unit);
 		const unitTiming: TreeseedTimingEntry = {
 			name: `apply:${plan.unit.provider}:${plan.unit.unitType}:${plan.unit.logicalName}`,
 			durationMs: 0,
@@ -412,9 +415,66 @@ export async function reconcileTreeseedTarget({
 		};
 		const unitStartMs = performance.now();
 		timingEntries.push(unitTiming);
+		if (!planOnly && plan.unit.dependencies.length > 0) {
+			write?.(`Refreshing ${plan.unit.provider}:${plan.unit.unitType} after dependencies (${plan.unit.logicalName})...`);
+			let observedAfterDependencies;
+			try {
+				const stageStartMs = performance.now();
+				observedAfterDependencies = await Promise.resolve(adapter.refresh({
+					context,
+					unit: plan.unit,
+					persistedState: persisted,
+				}));
+				unitTiming.children?.push({
+					name: `${unitTiming.name}:refresh-after-dependencies`,
+					durationMs: elapsedMs(stageStartMs),
+					status: 'success',
+				});
+			} catch (error) {
+				unitTiming.children?.push({
+					name: `${unitTiming.name}:refresh-after-dependencies`,
+					durationMs: elapsedMs(unitStartMs),
+					status: 'failed',
+				});
+				unitTiming.durationMs = elapsedMs(unitStartMs);
+				unitTiming.status = 'failed';
+				wrapAdapterFailure('refresh', plan.unit.provider, plan.unit.unitType, plan.unit.unitId, error);
+			}
+			let diffAfterDependencies;
+			try {
+				const stageStartMs = performance.now();
+				diffAfterDependencies = await Promise.resolve(adapter.diff({
+					context,
+					unit: plan.unit,
+					persistedState: persisted,
+					observed: observedAfterDependencies as TreeseedObservedUnitState,
+				}));
+				unitTiming.children?.push({
+					name: `${unitTiming.name}:diff-after-dependencies`,
+					durationMs: elapsedMs(stageStartMs),
+					status: 'success',
+				});
+			} catch (error) {
+				unitTiming.children?.push({
+					name: `${unitTiming.name}:diff-after-dependencies`,
+					durationMs: elapsedMs(unitStartMs),
+					status: 'failed',
+				});
+				unitTiming.durationMs = elapsedMs(unitStartMs);
+				unitTiming.status = 'failed';
+				wrapAdapterFailure('diff', plan.unit.provider, plan.unit.unitType, plan.unit.unitId, error);
+			}
+			plan = {
+				...plan,
+				observed: observedAfterDependencies as TreeseedObservedUnitState,
+				diff: diffAfterDependencies as TreeseedReconcileUnitDiff,
+			};
+			planByUnitId.set(plan.unit.unitId, plan);
+			const plannedIndex = planned.plans.findIndex((entry) => entry.unit.unitId === plan.unit.unitId);
+			if (plannedIndex >= 0) planned.plans[plannedIndex] = plan;
+			if (unitTiming.metadata) unitTiming.metadata.action = plan.diff.action;
+		}
 		write?.(`${planOnly ? 'Planning' : 'Applying'} ${plan.unit.provider}:${plan.unit.unitType} (${plan.unit.logicalName})...`);
-		const adapter = registry.get(plan.unit.unitType, plan.unit.provider);
-		const persisted = ensureTreeseedPersistedUnitState(planned.state, plan.unit);
 		try {
 			const stageStartMs = performance.now();
 			await Promise.resolve(adapter.validate?.({

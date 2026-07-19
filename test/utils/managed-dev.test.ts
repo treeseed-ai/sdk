@@ -12,7 +12,10 @@ vi.mock('node:child_process', async (importOriginal) => ({
 }));
 
 describe('managed dev process ownership', () => {
-	afterEach(() => vi.restoreAllMocks());
+	afterEach(() => {
+		vi.clearAllMocks();
+		vi.restoreAllMocks();
+	});
 
 	it('terminates the detached process group when its leader has left child processes behind', async () => {
 		const cwd = mkdtempSync(resolve(tmpdir(), 'treeseed-managed-dev-'));
@@ -67,6 +70,45 @@ describe('managed dev process ownership', () => {
 
 		expect(result.ok).toBe(true);
 		expect(result.instances[0]?.pid).toBe(43122);
+		expect(process.kill).toHaveBeenCalledWith(-43121, 'SIGTERM');
+		expect(spawn).toHaveBeenCalledOnce();
+	});
+
+	it('replaces a healthy API process when its source closure changes', async () => {
+		const cwd = mkdtempSync(resolve(tmpdir(), 'treeseed-managed-dev-source-'));
+		mkdirSync(resolve(cwd, 'packages/api/src'), { recursive: true });
+		writeFileSync(resolve(cwd, 'packages/api/src/server.ts'), 'export const version = 1;\n', 'utf8');
+		const [originalSpec] = createTreeseedIntegratedDevPlan({ cwd, surfaces: 'api' }).processes;
+		mkdirSync(resolve(originalSpec.pidPath, '..'), { recursive: true });
+		mkdirSync(resolve(originalSpec.instancePath, '..'), { recursive: true });
+		writeFileSync(originalSpec.pidPath, '43121', 'utf8');
+		writeFileSync(originalSpec.instancePath, JSON.stringify({
+			pid: 43121,
+			startedAt: '2026-07-14T00:00:00.000Z',
+			sourceClosureDigest: originalSpec.sourceClosureDigest,
+		}), 'utf8');
+		writeFileSync(resolve(cwd, 'packages/api/src/server.ts'), 'export const version = 2;\n', 'utf8');
+
+		let oldGroupAlive = true;
+		vi.spyOn(process, 'kill').mockImplementation(((pid: number, signal?: NodeJS.Signals | number) => {
+			if (pid === -43121 && signal === 0 && oldGroupAlive) return true;
+			if (pid === -43121 && signal === 'SIGTERM') {
+				oldGroupAlive = false;
+				return true;
+			}
+			if (pid === -43122 && signal === 0) return true;
+			throw Object.assign(new Error('missing'), { code: 'ESRCH' });
+		}) as typeof process.kill);
+		vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }));
+		vi.mocked(spawn).mockReturnValue({ pid: 43122, unref: vi.fn() } as never);
+
+		const result = await startTreeseedManagedDev({ cwd, surfaces: 'api' });
+
+		expect(result.ok).toBe(true);
+		expect(result.instances[0]).toMatchObject({
+			pid: 43122,
+			sourceClosureMatches: true,
+		});
 		expect(process.kill).toHaveBeenCalledWith(-43121, 'SIGTERM');
 		expect(spawn).toHaveBeenCalledOnce();
 	});

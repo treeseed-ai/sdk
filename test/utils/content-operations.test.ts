@@ -33,6 +33,7 @@ describe('content operations', () => {
 			related_objectives: ['agent-tooling'],
 		});
 		expect(record.content).toContain('Use model-aware commands.');
+		expect(record.ref).toMatchObject({ subjectId: 'agent-tooling', subjectField: 'related_objectives' });
 	});
 
 	it('validates required title or name fields', () => {
@@ -44,5 +45,14 @@ describe('content operations', () => {
 
 		expect(validateTreeseedContentRecord('note', record.content)).toMatchObject({ ok: true });
 		expect(validateTreeseedContentRecord('note', '---\nstatus: planned\n---\nBody')).toMatchObject({ ok: false });
+	});
+
+	it('renders package content beneath its configured repository-relative root', () => {
+		const record = renderTreeseedContentRecord({
+			model: 'note',
+			title: 'Package planning note',
+			contentRoot: 'docs/src/content',
+		});
+		expect(record.path).toBe('docs/src/content/notes/package-planning-note.mdx');
 	});
 });

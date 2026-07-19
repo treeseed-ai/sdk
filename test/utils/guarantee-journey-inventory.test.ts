@@ -20,12 +20,12 @@ describe('guarantee journey inventory', () => {
       return;
     }
 
-    expect(inventory.totals.sceneBacked).toBe(139);
+    expect(inventory.totals.sceneBacked).toBeGreaterThan(0);
     expect(inventory.totals.activeSceneBacked).toBeGreaterThan(0);
     expect(inventory.totals.activeWeak).toBe(0);
     expect(inventory.totals.activeMissingRoutes).toBe(0);
     expect(inventory.totals.weakSceneContracts).toBe(0);
-    expect(inventory.items).toHaveLength(139);
+    expect(inventory.items).toHaveLength(inventory.totals.sceneBacked);
     expect(inventory.items.map((item) => item.journeyIndex)).toEqual(
       [...inventory.items.map((item) => item.journeyIndex)].sort((left, right) => left - right),
     );

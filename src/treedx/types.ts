@@ -200,9 +200,18 @@ export interface TreeDxMirror {
 export interface TreeDxRepository {
 	repoId: string;
 	name: string;
+	repositoryName?: string;
 	defaultRef: string;
 	status: string;
 	remoteUrl?: string | null;
+}
+
+export interface TreeDxRegisterRepositoryRequest {
+	name: string;
+	repositoryName?: string;
+	createIfMissing?: boolean;
+	defaultRef?: string;
+	metadata?: Record<string, unknown>;
 }
 
 export interface TreeDxRef {

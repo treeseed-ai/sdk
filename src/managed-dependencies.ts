@@ -457,7 +457,6 @@ export function collectInstalledNativeDependencyIssues(tenantRoot: string) {
 
 function collectNativeDependencyRepairs(tenantRoot: string) {
 	const binaryPackage = esbuildPlatformPackage();
-	if (!binaryPackage) return [];
 	try {
 		const lock = JSON.parse(readFileSync(resolve(tenantRoot, 'package-lock.json'), 'utf8')) as {
 			packages?: Record<string, { version?: string; integrity?: string }>;
@@ -465,6 +464,7 @@ function collectNativeDependencyRepairs(tenantRoot: string) {
 		const packages = lock.packages ?? {};
 		const repairs: Array<{ packagePath: string; packageName: string; version: string; integrity?: string; issue: string }> = [];
 		for (const [packagePath, entry] of Object.entries(packages)) {
+			if (!binaryPackage) break;
 			if (packagePath !== 'node_modules/esbuild' && !packagePath.endsWith('/node_modules/esbuild')) continue;
 			if (!existsSync(resolve(tenantRoot, packagePath, 'package.json'))) continue;
 			const binaryPath = `${packagePath.slice(0, -'esbuild'.length)}${binaryPackage}`;
@@ -490,6 +490,35 @@ function collectNativeDependencyRepairs(tenantRoot: string) {
 					integrity: expectedBinary.integrity,
 					issue: `${binaryPath}: native binary ${installedBinary.version ?? '(missing version)'} does not match host ${entry.version ?? '(missing version)'}`,
 				});
+			}
+		}
+		const codexPlatform = osPlatform() === 'linux' && osArch() === 'x64'
+			? {
+				// npm installs the platform artifact through an alias, but the
+				// published package name remains @openai/codex. Packing the alias
+				// name returns E404 and must never trigger a recursive workspace
+				// install as a fallback.
+				packageName: '@openai/codex',
+				packagePath: 'node_modules/@openai/codex-linux-x64',
+				binaryPath: 'vendor/x86_64-unknown-linux-musl/codex/codex',
+			}
+			: null;
+		if (codexPlatform) {
+			const locked = packages[codexPlatform.packagePath];
+			const absoluteBinary = resolve(tenantRoot, codexPlatform.packagePath, codexPlatform.binaryPath);
+			if (locked?.version && existsSync(resolve(tenantRoot, codexPlatform.packagePath, 'package.json'))) {
+				const probe = existsSync(absoluteBinary)
+					? spawnSync(absoluteBinary, ['--version'], { cwd: tenantRoot, stdio: 'pipe', encoding: 'utf8', timeout: 10_000 })
+					: null;
+				if (!probe || probe.status !== 0 || probe.error) {
+					repairs.push({
+						packagePath: codexPlatform.packagePath,
+						packageName: codexPlatform.packageName,
+						version: locked.version,
+						integrity: locked.integrity,
+						issue: `${codexPlatform.packagePath}: Codex native executable failed its --version integrity probe${probe?.status != null ? ` (exit ${probe.status})` : ''}`,
+					});
+				}
 			}
 		}
 		return repairs;
@@ -614,6 +643,13 @@ function runNpmBootstrap(options: Required<Pick<DependencyInstallerOptions, 'env
 				detail: `Hydrated ${repaired} lockfile-pinned native package artifact${repaired === 1 ? '' : 's'} without resolving the workspace dependency graph.`,
 			}];
 		}
+		return [{
+			root: tenantRoot,
+			command: ['npm', 'pack', '<lockfile-pinned-native-dependencies>'],
+			status: 'failed',
+			exitCode: 1,
+			detail: `Native dependency repair failed: ${nativeDependencyIssues.join('; ')}. The workspace dependency graph was not mutated. Re-run trsd install after confirming registry access and lockfile integrity.`,
+		}];
 	}
 	if (!nodeModulesMissing && npmDepsMissing && missingRuntimeTools.length > 0) {
 		return [{

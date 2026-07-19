@@ -1,600 +1,119 @@
-import { describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
 import {
 	CAPACITY_PROVIDER_ENDPOINTS,
-	CAPACITY_PROVIDER_DEPLOYMENT_SERVICE_ROLES,
 	CAPACITY_PROVIDER_ENV_KEYS,
-	CAPACITY_PROVIDER_SCOPES,
-	DEFAULT_CAPACITY_PROVIDER_ROLE_IMAGES,
-	CapacityProviderApiError,
-	MarketProviderClient,
-	TREESEED_REMOTE_CONTRACT_HEADER,
-	TREESEED_REMOTE_CONTRACT_VERSION,
-	assertCapacityProviderRegistrationResponse,
+	ProviderProtocolClient,
 	buildCapacityProviderAuthHeaders,
-	deployCapacityProviderToManagedMarketHost,
-	deployCapacityProviderToRailway,
-	parseCapacityProviderLaunchManifest,
 	redactCapacityProviderEnv,
-	renderCapacityProviderSelfHostInstructions,
-	persistCapacityProviderConnectionToTreeseedConfig,
-	resolveCapacityProviderEnvironment,
-	resolveCapacityProviderLaunchEnvironment,
-	resolveCapacityProviderLaunchPlan,
-	type CapacityProviderDeploymentIntent,
-	type CapacityProviderDeploymentResult,
-	type CapacityProviderPortfolioManifest,
-	type CapacityProviderRegistrationRequest,
-	type CapacityProviderRegistrationResponse,
-	type ProviderReportRequest,
-	type ProviderUsageReport,
-	type ProviderWorkdayRequest,
-} from '../../src/index.ts';
-import {
-	createDefaultTreeseedMachineConfig,
-	unlockTreeseedSecretSessionWithPassphrase,
-	writeTreeseedMachineConfig,
-} from '../../src/workflow-support.ts';
+} from '../../src/capacity-provider.ts';
 
-const apiKey = 'tsp_test_plaintext_secret_123456789';
-
-function jsonResponse(payload: unknown, status = 200) {
-	return new Response(JSON.stringify(payload), {
-		status,
-		headers: {
-			'content-type': 'application/json',
-			[TREESEED_REMOTE_CONTRACT_HEADER]: String(TREESEED_REMOTE_CONTRACT_VERSION),
-		},
-	});
-}
-
-describe('capacity provider SDK contracts', () => {
-	it('serializes provider registration, heartbeat, portfolio, assignment, usage, report, and deployment shapes', () => {
-		const registration: CapacityProviderRegistrationRequest = {
-			marketId: 'prod',
-			runtime: {
-				package: '@treeseed/agent',
-				version: '0.9.0',
-				entrypoint: 'packages/agent/dist/provider/entrypoint.js',
-				roles: ['api', 'manager', 'runner'],
-			},
-			capabilities: [{
-				id: 'codex-docs-work',
-				agents: ['architect', 'engineer', 'reviewer'],
-				operations: ['planning', 'estimating', 'acting', 'reviewing', 'reporting', 'release'],
-				models: ['codex'],
-				repositoryAccess: 'git_worktree',
-				verification: ['local_command'],
-			}],
-			budgets: {
-				dailyCreditBudget: 1000,
-				monthlyCreditBudget: 10000,
-				maxConcurrentWorkdays: 1,
-				maxConcurrentRunners: 4,
-			},
-			health: {
-				dataDirWritable: true,
-				codexReady: true,
-			},
-		};
-		const registrationResponse: CapacityProviderRegistrationResponse = {
-			ok: true,
-			provider: {
-				id: 'cp_123',
-				teamId: 'team_123',
-				name: 'Canonical name from Market UI',
-				status: 'online',
-			},
-			portfolioManifestUrl: '/v1/provider/portfolio',
-			heartbeatIntervalSeconds: 30,
-		};
-		const portfolio: CapacityProviderPortfolioManifest = {
-			team: {
-				id: 'team_123',
-				slug: 'treeseed',
-				name: 'TreeSeed',
-			},
-			projects: [{
-				id: 'proj_123',
-				slug: 'market',
-				name: 'TreeSeed Market',
-				repository: {
-					provider: 'github',
-					role: 'primary',
-					owner: 'treeseed-ai',
-					name: 'market',
-					defaultBranch: 'staging',
-					cloneUrl: 'git@github.com:treeseed-ai/market.git',
-					checkoutPath: '.',
-				},
-				architecture: {
-					topology: 'single_repository_site',
-					rootPath: '.',
-					sitePath: '.',
-					contentPath: 'src/content',
-					contentRuntimeSource: 'r2_published_manifest',
-					localContentMaterialization: 'existing_path',
-					contentPublishTarget: { kind: 'cloudflare_r2', prefix: 'projects/market' },
-				},
-				agentSpecs: {
-					root: 'src/content/agents',
-					testsRoot: 'src/content/agent-tests',
-				},
-				workPolicy: {
-					enabled: true,
-					startCron: '0 9 * * 1-5',
-					durationMinutes: 480,
-					dailyCreditBudget: 1000,
-					maxRunners: 1,
-					maxWorkersPerRunner: 4,
-				},
-			}],
-		};
-		const workday: ProviderWorkdayRequest = {
-			projectId: 'proj_123',
-			environment: 'local',
-			idempotencyKey: 'workday:proj_123:local:today',
-		};
-		const usage: ProviderUsageReport = {
-			assignmentId: 'assignment-1',
-			workDayId: 'wd-1',
-			projectId: 'proj_123',
-			taskSignature: 'docs.update',
-			executionProfileId: 'codex',
-			actualCredits: 12,
-		};
-		const report: ProviderReportRequest = {
-			workDayId: 'wd-1',
-			kind: 'plan',
-			body: { summary: 'ready' },
-		};
-		const deployment: CapacityProviderDeploymentIntent = {
-			teamId: 'team_123',
-			capacityProviderId: 'cp_123',
-			launchMode: 'self_hosted',
-			hostKind: 'local',
-		};
-		const deploymentResult: CapacityProviderDeploymentResult = {
-			id: 'deploy_123',
-			teamId: 'team_123',
-			capacityProviderId: 'cp_123',
-			launchMode: 'self_hosted',
-			hostKind: 'local',
-			status: 'not_deployed',
-			serviceRefs: {},
-			envRefs: {},
-			result: {},
-		};
-
-		expect(registration.runtime.entrypoint).toBe('packages/agent/dist/provider/entrypoint.js');
-		expect(registrationResponse.provider.status).toBe('online');
-		expect(portfolio.projects[0]?.agentSpecs.testsRoot).toBe('src/content/agent-tests');
-		expect(portfolio.projects[0]?.architecture).toMatchObject({
-			topology: 'single_repository_site',
-			sitePath: '.',
-			contentRuntimeSource: 'r2_published_manifest',
-		});
-		expect(workday.environment).toBe('local');
-		expect(usage.assignmentId).toBe('assignment-1');
-		expect(usage.actualCredits).toBe(12);
-		expect(report.body.summary).toBe('ready');
-		expect(deployment.launchMode).toBe('self_hosted');
-		expect(deploymentResult.status).toBe('not_deployed');
-		expect(CAPACITY_PROVIDER_SCOPES).toContain('provider:portfolio:read');
+describe('capacity provider membership protocol', () => {
+	it('exposes only membership-scoped assignment and availability endpoints', () => {
+		expect(CAPACITY_PROVIDER_ENDPOINTS.sessions).toBe('/v1/provider/availability-sessions');
+		expect(CAPACITY_PROVIDER_ENDPOINTS.sessionRefresh('session 1')).toBe('/v1/provider/availability-sessions/session%201');
+		expect(CAPACITY_PROVIDER_ENDPOINTS.assignmentSettle('assignment 1')).toBe('/v1/provider/assignments/assignment%201/settle');
+		expect(CAPACITY_PROVIDER_ENDPOINTS.assignmentUsage('assignment 1')).toBe('/v1/provider/assignments/assignment%201/usage');
+		expect(JSON.stringify(CAPACITY_PROVIDER_ENDPOINTS)).not.toContain('heartbeat');
+		expect(CAPACITY_PROVIDER_ENV_KEYS).toContain('TREESEED_CAPACITY_PROVIDER_MANIFEST');
+		expect(CAPACITY_PROVIDER_ENV_KEYS).not.toContain('TREESEED_CAPACITY_PROVIDER_API_KEY');
 	});
 
-	it('calls provider-authenticated Market endpoints with bearer auth and contract headers', async () => {
-		const calls: Array<{ url: string; method: string; headers: Record<string, string>; body: unknown }> = [];
-		const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
-			const url = String(input);
-			const body = init?.body ? JSON.parse(String(init.body)) : null;
-			calls.push({
-				url,
-				method: String(init?.method ?? 'GET'),
-				headers: Object.fromEntries(new Headers(init?.headers).entries()),
-				body,
-			});
-			const path = new URL(url).pathname;
-			if (path === CAPACITY_PROVIDER_ENDPOINTS.register) {
-				return jsonResponse({
-					ok: true,
-					provider: { id: 'cp_123', teamId: 'team_123', name: 'Local provider', status: 'online' },
-					portfolioManifestUrl: '/v1/provider/portfolio',
-					heartbeatIntervalSeconds: 30,
-					sessionToken: 'tsp_session_plaintext_secret_123456789',
-					sessionExpiresAt: '2026-01-01T01:00:00.000Z',
-				});
-			}
-			if (path === CAPACITY_PROVIDER_ENDPOINTS.heartbeat) return jsonResponse({ ok: true, heartbeatIntervalSeconds: 30 });
-			if (path === CAPACITY_PROVIDER_ENDPOINTS.portfolio) {
-				return jsonResponse({
-					team: { id: 'team_123', slug: 'treeseed', name: 'TreeSeed' },
-					projects: [{
-						id: 'proj_123',
-						slug: 'market',
-						name: 'TreeSeed Market',
-						repository: { provider: 'github', role: 'primary', owner: 'treeseed-ai', name: 'market', defaultBranch: 'staging', cloneUrl: 'git@github.com:treeseed-ai/market.git', checkoutPath: '.' },
-						architecture: { topology: 'single_repository_site', rootPath: '.', sitePath: '.', contentPath: 'src/content', contentRuntimeSource: 'r2_published_manifest', localContentMaterialization: 'existing_path', contentPublishTarget: { kind: 'cloudflare_r2', prefix: 'projects/market' } },
-						agentSpecs: { root: 'src/content/agents', testsRoot: 'src/content/agent-tests' },
-						workPolicy: { enabled: true },
-					}],
-				});
-			}
-			if (path === CAPACITY_PROVIDER_ENDPOINTS.workdays) return jsonResponse({ ok: true, workDay: { id: 'wd-1' } });
-			if (path === CAPACITY_PROVIDER_ENDPOINTS.nextAssignment) return jsonResponse({ ok: true, payload: { id: 'assignment-1' }, assignment: { id: 'assignment-1' }, leaseToken: 'lease-1', leaseSeconds: 300 });
-			if (path.endsWith('/renew')) return jsonResponse({ ok: true, payload: { id: 'assignment-1', status: 'leased' }, assignment: { id: 'assignment-1', status: 'leased' }, leaseToken: 'lease-1', leaseSeconds: 300 });
-			if (path.endsWith('/mode-runs')) return jsonResponse({ ok: true, payload: { id: 'mode-run-1' } });
-			if (path.endsWith('/workflow-operations/verify-private-repo/dispatch')) return jsonResponse({ ok: true, payload: { dispatch: { id: 'workflow-run-1', status: 'dispatched' } } });
-			if (path.endsWith('/complete')) return jsonResponse({ ok: true, payload: { id: 'assignment-1', status: 'completed' }, assignment: { id: 'assignment-1', status: 'completed' } });
-			if (path.endsWith('/return')) return jsonResponse({ ok: true, payload: { id: 'assignment-1', status: 'returned' }, assignment: { id: 'assignment-1', status: 'returned' } });
-			if (path.endsWith('/fail')) return jsonResponse({ ok: true, payload: { id: 'assignment-2', status: 'failed' }, assignment: { id: 'assignment-2', status: 'failed' } });
-			if (path === CAPACITY_PROVIDER_ENDPOINTS.usage) return jsonResponse({ ok: true, usage: { id: 'usage-1' } });
-			if (path === CAPACITY_PROVIDER_ENDPOINTS.reports) return jsonResponse({ ok: true, report: { id: 'report-1' } });
-			return jsonResponse({ error: 'not found' }, 404);
-		});
-		const client = new MarketProviderClient({
-			marketUrl: 'https://market.example.com/',
-			marketId: 'prod',
-			apiKey,
-			fetchImpl: fetchMock as typeof fetch,
-			userAgent: 'treeseed-test',
-		});
-
-		await client.register({
-			runtime: { package: '@treeseed/agent', version: '0.9.0', entrypoint: 'packages/agent/dist/provider/entrypoint.js', roles: ['api'] },
-			capabilities: [],
-			budgets: {},
-			health: {},
-		});
-		await client.heartbeat();
-		await client.portfolio();
-		await client.createWorkday({ projectId: 'proj_123', environment: 'local' });
-		await client.nextAssignment({ runnerId: 'runner-1', capabilities: ['codex-docs-work'] });
-		await client.renewAssignment('assignment-1', { leaseToken: 'lease-1' });
-		await client.createAssignmentModeRun('assignment-1', { status: 'running' });
-		await client.dispatchAssignmentWorkflowOperation('assignment-1', 'verify-private-repo', {
-			leaseToken: 'lease-1',
-			handleId: 'workflow-handle-1',
-			inputs: { planId: 'plan-1' },
-		});
-		await client.completeAssignment('assignment-1', { leaseToken: 'lease-1', output: { ok: true } });
-		await client.returnAssignment('assignment-1', { leaseToken: 'lease-1', reason: 'retry later' });
-		await client.failAssignment('assignment-2', { leaseToken: 'lease-2', reason: 'failed' });
-		await client.reportUsage({ assignmentId: 'assignment-1', actualCredits: 1 });
-		await client.writeReport({ workDayId: 'wd-1', kind: 'summary', body: {} });
-
-		expect(calls.map((call) => `${call.method} ${new URL(call.url).pathname}`)).toEqual([
-			'POST /v1/provider/register',
-			'POST /v1/provider/heartbeat',
-			'GET /v1/provider/portfolio',
-			'POST /v1/provider/workdays',
-			'POST /v1/provider/assignments/next',
-			'POST /v1/provider/assignments/assignment-1/renew',
-			'POST /v1/provider/assignments/assignment-1/mode-runs',
-			'POST /v1/provider/assignments/assignment-1/workflow-operations/verify-private-repo/dispatch',
-			'POST /v1/provider/assignments/assignment-1/complete',
-			'POST /v1/provider/assignments/assignment-1/return',
-			'POST /v1/provider/assignments/assignment-2/fail',
-			'POST /v1/provider/usage',
-			'POST /v1/provider/reports',
-		]);
-		expect(calls[0]?.headers.authorization).toBe(`Bearer ${apiKey}`);
-		for (const call of calls.slice(1)) {
-			expect(call.headers.authorization).toBe('Bearer tsp_session_plaintext_secret_123456789');
-			expect(call.headers[TREESEED_REMOTE_CONTRACT_HEADER]).toBe(String(TREESEED_REMOTE_CONTRACT_VERSION));
-			expect(call.headers.accept).toBe('application/json');
-		}
-		expect(calls[0]?.body).toMatchObject({ marketId: 'prod' });
-		const workflowDispatchCall = calls.find((call) => new URL(call.url).pathname.endsWith('/workflow-operations/verify-private-repo/dispatch'));
-		expect(workflowDispatchCall?.headers.authorization).toBe('Bearer tsp_session_plaintext_secret_123456789');
-		expect(workflowDispatchCall?.body).toEqual({
-			leaseToken: 'lease-1',
-			handleId: 'workflow-handle-1',
-			inputs: { planId: 'plan-1' },
-		});
-		expect(JSON.stringify(workflowDispatchCall)).not.toContain('installationId');
-		expect(JSON.stringify(workflowDispatchCall)).not.toContain('github');
-		expect(JSON.stringify(workflowDispatchCall)).not.toContain('workflowFile');
-	});
-
-	it('rejects malformed responses and converts non-ok responses into API errors', async () => {
-		expect(() => assertCapacityProviderRegistrationResponse({ ok: true })).toThrow(/missing provider/u);
-		const malformedClient = new MarketProviderClient({
-			marketUrl: 'https://market.example.com',
-			marketId: 'prod',
-			apiKey,
-			fetchImpl: (async () => jsonResponse({ ok: true })) as typeof fetch,
-		});
-		await expect(malformedClient.register({
-			runtime: { package: '@treeseed/agent', version: '0.9.0', entrypoint: 'entrypoint.js', roles: ['api'] },
-			capabilities: [],
-			budgets: {},
-			health: {},
-		})).rejects.toThrow(/missing provider/u);
-
-		const failingClient = new MarketProviderClient({
-			marketUrl: 'https://market.example.com',
-			marketId: 'prod',
-			apiKey,
-			fetchImpl: (async () => jsonResponse({ error: 'auth failed' }, 401)) as typeof fetch,
-		});
-		await expect(failingClient.heartbeat()).rejects.toBeInstanceOf(CapacityProviderApiError);
-		await expect(failingClient.heartbeat()).rejects.toThrow('auth failed');
-	});
-
-	it('builds auth headers and renders self-host environment without exposing secrets in display output', () => {
-		expect(buildCapacityProviderAuthHeaders(apiKey)).toEqual({ authorization: `Bearer ${apiKey}` });
-
-		const env = resolveCapacityProviderEnvironment({
-			marketUrl: 'https://api.treeseed.dev/',
-			marketId: 'prod',
-			apiKey,
-			providerHostDataDir: '.treeseed/local-capacity-provider/data',
-			codexAuthJsonB64: 'codex-auth-secret',
-			maxConcurrentRunners: 4,
-		});
-		expect(env).toMatchObject({
-			TREESEED_MARKET_URL: 'https://api.treeseed.dev',
-			TREESEED_MARKET_ID: 'prod',
-			TREESEED_MANAGER_ID: 'prod',
-			TREESEED_CAPACITY_PROVIDER_API_KEY: apiKey,
-			TREESEED_PROVIDER_DATA_DIR: '/data',
-			TREESEED_PROVIDER_ENVIRONMENT: 'local',
-			TREESEED_PROVIDER_HOST_DATA_DIR: '.treeseed/local-capacity-provider/data',
-			TREESEED_CODEX_AUTH_JSON_B64: 'codex-auth-secret',
-			TREESEED_PROVIDER_MAX_CONCURRENT_RUNNERS: '4',
-		});
-		expect(env).not.toHaveProperty('TREESEED_PROVIDER_API_PORT');
-
-		const redacted = redactCapacityProviderEnv(env);
-		expect(redacted.TREESEED_CAPACITY_PROVIDER_API_KEY).not.toContain(apiKey);
-		expect(redacted.TREESEED_CODEX_AUTH_JSON_B64).not.toContain('codex-auth-secret');
-
-		const instructions = renderCapacityProviderSelfHostInstructions({
-			marketUrl: 'https://api.treeseed.dev',
-			marketId: 'prod',
-			apiKey,
-			codexAuthJsonB64: 'codex-auth-secret',
-		});
-		const displayOutput = JSON.stringify({
-			composeFile: instructions.composeFile,
-			commands: instructions.commands,
-			redactedEnv: instructions.redactedEnv,
-			summary: instructions.summary,
-		});
-		expect(displayOutput).not.toContain(apiKey);
-		expect(displayOutput).not.toContain('codex-auth-secret');
-		expect(instructions.commands.join('\n')).not.toContain('env');
-		expect(instructions.composeFile).toBe('packages/agent/compose.capacity-provider.yml');
-	});
-
-	it('resolves capacity provider launch env from process env and explicit overrides without writing files', () => {
-		const launch = resolveCapacityProviderLaunchEnvironment({
-			env: {
-				TREESEED_MARKET_URL: 'https://stored.example.com',
-				TREESEED_MANAGER_ID: 'stored',
-				TREESEED_CAPACITY_PROVIDER_API_KEY: 'stored-secret-key',
-				TREESEED_PROVIDER_HOST_DATA_DIR: '.treeseed/stored/data',
-			},
-			overrides: {
-				TREESEED_MARKET_URL: 'http://127.0.0.1:3000',
-				TREESEED_MANAGER_ID: 'local',
-				TREESEED_CAPACITY_PROVIDER_API_KEY: apiKey,
-				TREESEED_PROVIDER_STARTUP_MODE: 'diagnostic',
-			},
-			diagnostic: true,
-		});
-
-		expect(CAPACITY_PROVIDER_ENV_KEYS).toContain('TREESEED_CAPACITY_PROVIDER_API_KEY');
-		expect(launch.source).toBe('process-env');
-		expect(launch.missing).toEqual([]);
-		expect(launch.diagnostic).toBe(true);
-		expect(launch.env).toMatchObject({
-			TREESEED_MARKET_URL: 'http://127.0.0.1:3000',
-			TREESEED_MANAGER_ID: 'local',
-			TREESEED_CAPACITY_PROVIDER_API_KEY: apiKey,
-			TREESEED_PROVIDER_HOST_DATA_DIR: '.treeseed/stored/data',
-			TREESEED_PROVIDER_DATA_DIR: '/data',
-			TREESEED_PROVIDER_ENVIRONMENT: 'local',
-			TREESEED_PROVIDER_STARTUP_MODE: 'diagnostic',
-		});
-		expect(launch.env).not.toHaveProperty('TREESEED_PROVIDER_API_PORT');
-		expect(JSON.stringify(launch.redactedEnv)).not.toContain(apiKey);
-			expect(() => resolveCapacityProviderLaunchEnvironment({ env: {}, requireConnection: true })).toThrow(/TREESEED_CAPACITY_PROVIDER_API_KEY/u);
-	});
-
-	it('parses launch manifests, resolves role images, and rejects secret-looking extension build args', () => {
-		const manifest = parseCapacityProviderLaunchManifest(`
-schemaVersion: 1
-provider:
-  environment: local
-  dataDir: .treeseed/local-capacity-provider/data
-  market:
-    url: http://127.0.0.1:3000
-    id: local
-runtime:
-  images:
-    tag: 1.2.3
-  runners:
-    maxConcurrent: 2
-extensions:
-  runner:
-    enabled: true
-    baseImage: treeseed/agent-runner:1.2.3
-    image: example/team-agent-runner
-    tag: local
-    buildArgs:
-      SAFE_FLAG: "1"
-`);
-		const plan = resolveCapacityProviderLaunchPlan(manifest);
-		expect(DEFAULT_CAPACITY_PROVIDER_ROLE_IMAGES).toHaveProperty('api');
-		expect(plan.roleImages).toEqual({
-			api: 'treeseed/agent-provider-api:1.2.3',
-			manager: 'treeseed/agent-manager:1.2.3',
-			runner: 'example/team-agent-runner:local',
-		});
-		expect(plan.composeEnv).toMatchObject({
-			TREESEED_AGENT_API_IMAGE: 'treeseed/agent-provider-api:1.2.3',
-			TREESEED_AGENT_MANAGER_IMAGE: 'treeseed/agent-manager:1.2.3',
-			TREESEED_AGENT_RUNNER_IMAGE: 'example/team-agent-runner:local',
-			TREESEED_PROVIDER_HOST_DATA_DIR: '.treeseed/local-capacity-provider/data',
-			TREESEED_PROVIDER_MAX_CONCURRENT_RUNNERS: '2',
-		});
-		expect(JSON.stringify(plan.redactedEnv)).not.toContain('secret');
-		expect(() => parseCapacityProviderLaunchManifest(`
-schemaVersion: 1
-extensions:
-  runner:
-    enabled: true
-    image: example/team-agent-runner
-    buildArgs:
-      API_TOKEN: tscp_secret_local_provider_key
-`)).toThrow(/looks secret-like/u);
-	});
-
-	it('deploys provider roles through SDK primitives with host-secret env refs and redacted output', async () => {
-		const intent: CapacityProviderDeploymentIntent = {
-			teamId: 'team_123',
-			capacityProviderId: 'cp_123',
-			launchMode: 'connected_host',
-			hostKind: 'railway',
-			hostId: 'host_123',
-		};
-		const env = resolveCapacityProviderEnvironment({
-			marketUrl: 'https://api.treeseed.dev',
-			marketId: 'prod',
-			apiKey,
-		});
-		const seen: Array<{ role: string; command: string; env: Record<string, string>; redactedEnv: Record<string, string> }> = [];
-		const railway = await deployCapacityProviderToRailway({
-			intent,
-			env,
-			redactedEnv: redactCapacityProviderEnv(env),
-			imageRef: 'ghcr.io/treeseed-ai/agent:verified',
-			serviceNamePrefix: 'provider-verified',
-			adapter: {
-				async provisionService(spec) {
-					seen.push({ role: spec.role, command: spec.startCommand, env: spec.env, redactedEnv: spec.redactedEnv });
-					return {
-						role: spec.role,
-						serviceName: spec.serviceName,
-						serviceId: `svc_${spec.role}`,
-						status: 'deployed',
-						envRefs: {
-							TREESEED_CAPACITY_PROVIDER_API_KEY: `${spec.serviceName}:secret`,
-						},
-					};
-				},
+	it('refreshes an availability session with the canonical PUT operation', async () => {
+		const calls: Array<{ url: string; init?: RequestInit }> = [];
+		const client = new ProviderProtocolClient({
+			marketUrl: 'https://market.test', accessToken: 'short-lived-token',
+			fetchImpl: async (input, init) => {
+				calls.push({ url: String(input), init });
+				return new Response(JSON.stringify({ ok: true, payload: { id: 'session-a', membershipId: 'membership-a', teamId: 'team-a', providerId: 'provider-a', status: 'open', sequence: 2 } }), { status: 200, headers: { 'content-type': 'application/json' } });
 			},
 		});
-		expect(CAPACITY_PROVIDER_DEPLOYMENT_SERVICE_ROLES).toEqual(['api', 'manager', 'runner']);
-		expect(railway.ok).toBe(true);
-		expect(railway.status).toBe('deployed');
-		expect(Object.keys(railway.serviceRefs)).toEqual(['api', 'manager', 'runner']);
-		expect(railway.roleImageRefs).toEqual({
-			api: 'ghcr.io/treeseed-ai/agent:verified',
-			manager: 'ghcr.io/treeseed-ai/agent:verified',
-			runner: 'ghcr.io/treeseed-ai/agent:verified',
-		});
-		expect(seen.map((entry) => entry.command)).toEqual([
-			'node ./dist/provider/entrypoint.js api',
-			'node ./dist/provider/entrypoint.js manager',
-			'node ./dist/provider/entrypoint.js runner',
-		]);
-		expect(seen.every((entry) => entry.env.TREESEED_CAPACITY_PROVIDER_API_KEY === apiKey)).toBe(true);
-		expect(JSON.stringify(railway)).not.toContain(apiKey);
-		expect(JSON.stringify(seen.map((entry) => entry.redactedEnv))).not.toContain(apiKey);
-
-		const managed = await deployCapacityProviderToManagedMarketHost({
-			intent: { ...intent, launchMode: 'managed_market_host', hostKind: 'managed_market_host' },
-			env,
-		});
-		expect(managed.launchMode).toBe('managed_market_host');
-		expect(JSON.stringify(managed)).not.toContain(apiKey);
+		await client.refreshAvailabilitySession('session-a', { expectedSequence: 1 });
+		expect(calls[0]).toMatchObject({ url: 'https://market.test/v1/provider/availability-sessions/session-a', init: { method: 'PUT' } });
 	});
 
-	it('persists local provider connection values into encrypted Treeseed machine config', () => {
-		const root = mkdtempSync(resolve(tmpdir(), 'treeseed-provider-config-'));
-		const previousHome = process.env.HOME;
-		const previousTransport = process.env.TREESEED_KEY_AGENT_TRANSPORT;
-		try {
-			process.env.HOME = root;
-			process.env.TREESEED_KEY_AGENT_TRANSPORT = 'inline';
-			writeFileSync(resolve(root, 'treeseed.site.yaml'), [
-				'name: Provider Config Test',
-				'slug: provider-config-test',
-				'siteUrl: https://example.com',
-				'contactEmail: ops@example.com',
-				'surfaces:',
-				'  api:',
-				'    enabled: true',
-				'',
-			].join('\n'), 'utf8');
-			writeTreeseedMachineConfig(root, createDefaultTreeseedMachineConfig({
-				tenantRoot: root,
-				deployConfig: {
-					name: 'Provider Config Test',
-					slug: 'provider-config-test',
-					siteUrl: 'https://example.com',
-					surfaces: {
-						api: {
-							enabled: true,
-						},
+	it('requires short-lived membership access authority and redacts secret-shaped values', () => {
+		expect(buildCapacityProviderAuthHeaders('access-token')).toEqual({ authorization: 'Bearer access-token' });
+		expect(() => buildCapacityProviderAuthHeaders('')).toThrow(/membership access token/u);
+		const redacted = redactCapacityProviderEnv({
+			TREESEED_CAPACITY_PROVIDER_MANIFEST: '/config/treeseed.capacity-provider.yaml',
+			TREESEED_TREEDX_TOKEN: 'secret-token-value',
+			TREESEED_CODEX_AUTH_JSON_B64: 'encoded-secret-value',
+		});
+		expect(redacted.TREESEED_CAPACITY_PROVIDER_MANIFEST).toBe('/config/treeseed.capacity-provider.yaml');
+		expect(redacted.TREESEED_TREEDX_TOKEN).not.toContain('secret-token-value');
+		expect(redacted.TREESEED_CODEX_AUTH_JSON_B64).not.toContain('encoded-secret-value');
+	});
+
+	it('sends access-token auth and settlement idempotency through the canonical client', async () => {
+		const calls: Array<{ url: string; init?: RequestInit }> = [];
+		const client = new ProviderProtocolClient({
+			marketUrl: 'https://market.test/',
+			accessToken: 'short-lived-token',
+			fetchImpl: async (input, init) => {
+				calls.push({ url: String(input), init });
+				return new Response(JSON.stringify({ ok: true, payload: {} }), { status: 200, headers: { 'content-type': 'application/json' } });
+			},
+		});
+		await client.reportAssignmentUsage('assignment-a', { usageDimension: 'tokens' }, 'usage-a');
+		await client.settleAssignment('assignment-a', { actualCredits: 2 }, 'settlement-a');
+		expect(calls[0]?.url).toBe('https://market.test/v1/provider/assignments/assignment-a/usage');
+		expect(calls[0]?.init?.headers).toMatchObject({ authorization: 'Bearer short-lived-token', 'idempotency-key': 'usage-a' });
+		expect(calls[1]?.url).toBe('https://market.test/v1/provider/assignments/assignment-a/settle');
+		expect(calls[1]?.init?.headers).toMatchObject({ authorization: 'Bearer short-lived-token', 'idempotency-key': 'settlement-a' });
+	});
+
+	it('uses the same canonical transport for unauthenticated onboarding and membership credential auth', async () => {
+		const calls: Array<{ url: string; init?: RequestInit }> = [];
+		const client = new ProviderProtocolClient({
+			marketUrl: 'https://market.test',
+			fetchImpl: async (input, init) => {
+				calls.push({ url: String(input), init });
+				return new Response(JSON.stringify({ payload: { id: 'registration-a' } }), { status: 200, headers: { 'content-type': 'application/json' } });
+			},
+		});
+		await client.register('broadcast-key', {
+			schemaVersion: 1,
+			displayName: 'Provider',
+			publicJwk: { kty: 'OKP', crv: 'Ed25519', x: 'public-key' },
+			proof: { protected: 'header', payload: 'payload', signature: 'signature' },
+			capabilitySummary: ['research'],
+			supplyOffer: { capabilities: ['research'] },
+		}, 'registration-a');
+		expect(calls[0]?.url).toBe('https://market.test/v1/provider-registrations');
+		expect(calls[0]?.init?.headers).toMatchObject({
+			authorization: 'Treeseed-Registration broadcast-key',
+			'idempotency-key': 'registration-a',
+		});
+	});
+
+	it('requires access authority when an approved runtime method is called', async () => {
+		const client = new ProviderProtocolClient({ marketUrl: 'https://market.test' });
+		await expect(client.nextAssignment()).rejects.toThrow(/membership access token/u);
+	});
+
+	it('fails closed when a successful HTTP response is not a valid protocol envelope', async () => {
+		const client = new ProviderProtocolClient({
+			marketUrl: 'https://market.test',
+			accessToken: 'short-lived-token',
+			fetchImpl: async () => new Response(JSON.stringify({ payload: {} }), { status: 200, headers: { 'content-type': 'application/json' } }),
+		});
+		await expect(client.settleAssignment('assignment-a', { actualCredits: 2 }, 'settlement-a')).rejects.toThrow(/ok response envelope/u);
+	});
+
+	it('keeps the request timeout active while the response body is being consumed', async () => {
+		const client = new ProviderProtocolClient({
+			marketUrl: 'https://market.test',
+			accessToken: 'short-lived-token',
+			requestTimeoutMs: 1_000,
+			fetchImpl: async (_input, init) => {
+				const signal = init?.signal;
+				return new Response(new ReadableStream({
+					start(controller) {
+						signal?.addEventListener('abort', () => controller.error(new DOMException('aborted', 'AbortError')), { once: true });
 					},
-				},
-				tenantConfig: undefined,
-			}));
-			unlockTreeseedSecretSessionWithPassphrase(root, 'test-passphrase', {
-				createIfMissing: true,
-				allowMigration: false,
-			});
-
-			const persisted = persistCapacityProviderConnectionToTreeseedConfig({
-				tenantRoot: root,
-				scope: 'local',
-				marketUrl: 'http://127.0.0.1:3000/',
-				marketId: 'local',
-				apiKey,
-				providerHostDataDir: '.treeseed/local-capacity-provider/data',
-				providerEnvironment: 'local',
-			});
-			const launch = resolveCapacityProviderLaunchEnvironment({
-				tenantRoot: root,
-				scope: 'local',
-				env: {},
-				requireConnection: true,
-			});
-
-			expect(persisted.writtenKeys).toEqual([
-				'TREESEED_MANAGEMENT_API_URL',
-				'TREESEED_MARKET_URL',
-				'TREESEED_MARKET_ID',
-				'TREESEED_MANAGER_ID',
-				'TREESEED_CAPACITY_PROVIDER_ID',
-				'TREESEED_CAPACITY_PROVIDER_TEAM_ID',
-				'TREESEED_CAPACITY_PROVIDER_API_KEY',
-				'TREESEED_PROVIDER_HOST_DATA_DIR',
-				'TREESEED_PROVIDER_ENVIRONMENT',
-			]);
-			expect(launch.env).toMatchObject({
-				TREESEED_MANAGEMENT_API_URL: 'http://127.0.0.1:3000',
-				TREESEED_MARKET_URL: 'http://127.0.0.1:3000',
-				TREESEED_MARKET_ID: 'local',
-				TREESEED_MANAGER_ID: 'local',
-				TREESEED_CAPACITY_PROVIDER_API_KEY: apiKey,
-				TREESEED_PROVIDER_HOST_DATA_DIR: '.treeseed/local-capacity-provider/data',
-				TREESEED_PROVIDER_ENVIRONMENT: 'local',
-			});
-			expect(launch.source).toBe('treeseed-config');
-			expect(JSON.stringify(persisted.redactedEnv)).not.toContain(apiKey);
-		} finally {
-			if (previousHome === undefined) delete process.env.HOME;
-			else process.env.HOME = previousHome;
-			if (previousTransport === undefined) delete process.env.TREESEED_KEY_AGENT_TRANSPORT;
-			else process.env.TREESEED_KEY_AGENT_TRANSPORT = previousTransport;
-			rmSync(root, { recursive: true, force: true });
-		}
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			},
+		});
+		await expect(client.nextAssignment()).rejects.toThrow(/timed out after 1000ms/u);
 	});
 });

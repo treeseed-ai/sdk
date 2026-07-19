@@ -139,6 +139,7 @@ function normalizePath(value: string) {
 function matchesPattern(path: string, pattern: string) {
 	const normalizedPath = normalizePath(path);
 	const normalizedPattern = normalizePath(pattern);
+	if (normalizedPattern === '**' || normalizedPattern === '*') return true;
 	if (normalizedPattern.endsWith('/**')) {
 		const prefix = normalizedPattern.slice(0, -3);
 		return normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`);
@@ -319,3 +320,10 @@ export function createAgentOperationEvent(input: {
 		createdAt: input.createdAt ?? new Date().toISOString(),
 	};
 }
+
+export { checkpointAgentWorktree } from './agent-worktree-checkpoint.ts';
+export type { AgentWorktreeCheckpointExecutor, AgentWorktreeCheckpointInput } from './agent-worktree-checkpoint.ts';
+export { prepareAgentWorktree } from './agent-worktree-prepare.ts';
+export type { PrepareAgentWorktreeExecutor, PrepareAgentWorktreeInput } from './agent-worktree-prepare.ts';
+export { releaseAgentWorktree } from './agent-worktree-release.ts';
+export type { ReleaseAgentWorktreeExecutor, ReleaseAgentWorktreeInput } from './agent-worktree-release.ts';

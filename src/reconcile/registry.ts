@@ -12,6 +12,7 @@ import {
 	createRailwayReconcileAdapters,
 	createReleaseGateReconcileAdapters,
 } from './builtin-adapters.ts';
+import { createLocalSeedBootstrapAdapter } from './local-seed-bootstrap-adapter.ts';
 
 export type TreeseedReconcileRegistry = {
 	adapters: TreeseedReconcileAdapter[];
@@ -61,6 +62,7 @@ export function createTreeseedReconcileRegistry(config: TreeseedDeployConfig): T
 		...createGitHubReconcileAdapters(),
 		...createDockerReconcileAdapters(),
 		...createLocalProcessReconcileAdapters(),
+		createLocalSeedBootstrapAdapter(),
 		...createCapacityProviderReconcileAdapters(),
 		...createCloudflareReconcileAdapters(),
 		...createRailwayReconcileAdapters(),

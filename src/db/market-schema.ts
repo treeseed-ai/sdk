@@ -1,4 +1,5 @@
-import { bigint, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { bigint, check, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from 'drizzle-orm/pg-core';
 
 // Source of truth for the Treeseed Treeseed PostgreSQL control-plane schema.
 // Regenerate the checked-in Market Drizzle SQL with npm run db:generate:market.
@@ -33,86 +34,6 @@ export const runtimeEnvelopes = pgTable('runtime_envelopes', {
 	id: serial('id').primaryKey(),
 	recordType: text('record_type').notNull(),
 	payloadJson: text('payload_json').notNull(),
-	createdAt: text('created_at').notNull(),
-});
-
-export const workDays = pgTable('work_days', {
-	id: text('id').primaryKey(),
-	projectId: text('project_id').notNull(),
-	state: text('state').notNull(),
-	capacityBudget: integer('capacity_budget').notNull().default(0),
-	capacityUsed: integer('capacity_used').notNull().default(0),
-	graphVersion: text('graph_version'),
-	summaryJson: text('summary_json'),
-	startedAt: text('started_at').notNull(),
-	endedAt: text('ended_at'),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-});
-
-export const runtimeTasks = pgTable('runtime_tasks', {
-	id: text('id').primaryKey(),
-	projectId: text('project_id').notNull(),
-	workDayId: text('work_day_id').notNull(),
-	agentId: text('agent_id').notNull(),
-	type: text('type').notNull(),
-	idempotencyKey: text('idempotency_key').notNull().unique(),
-	payloadJson: text('payload_json').notNull(),
-	state: text('state').notNull(),
-	claimedBy: text('claimed_by'),
-	claimedAt: text('claimed_at'),
-	leaseExpiresAt: text('lease_expires_at'),
-	attempts: integer('attempts').notNull().default(0),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	index('idx_runtime_tasks_project_workday_state').on(table.projectId, table.workDayId, table.state, table.createdAt)
-]);
-
-export const runtimeTaskEvents = pgTable('runtime_task_events', {
-	id: text('id').primaryKey(),
-	taskId: text('task_id').notNull(),
-	kind: text('kind').notNull(),
-	dataJson: text('data_json').notNull(),
-	actor: text('actor'),
-	createdAt: text('created_at').notNull(),
-}, (table) => [
-	index('idx_runtime_task_events_task_created').on(table.taskId, table.createdAt)
-]);
-
-export const runtimeTaskOutputs = pgTable('runtime_task_outputs', {
-	id: text('id').primaryKey(),
-	taskId: text('task_id').notNull(),
-	outputJson: text('output_json').notNull(),
-	outputRef: text('output_ref'),
-	summaryJson: text('summary_json'),
-	actor: text('actor'),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	index('idx_runtime_task_outputs_task_created').on(table.taskId, table.createdAt)
-]);
-
-export const graphRuns = pgTable('graph_runs', {
-	id: text('id').primaryKey(),
-	workDayId: text('work_day_id').notNull(),
-	corpusHash: text('corpus_hash').notNull(),
-	graphVersion: text('graph_version').notNull(),
-	queryJson: text('query_json'),
-	seedIdsJson: text('seed_ids_json'),
-	selectedNodeIdsJson: text('selected_node_ids_json'),
-	statsJson: text('stats_json'),
-	snapshotRef: text('snapshot_ref'),
-	createdAt: text('created_at').notNull(),
-});
-
-export const reports = pgTable('reports', {
-	id: text('id').primaryKey(),
-	workDayId: text('work_day_id').notNull(),
-	kind: text('kind').notNull(),
-	bodyJson: text('body_json').notNull(),
-	renderedRef: text('rendered_ref'),
-	sentAt: text('sent_at'),
 	createdAt: text('created_at').notNull(),
 });
 
@@ -1614,7 +1535,7 @@ export const commerceCapacityListings = pgTable('commerce_capacity_listings', {
 	vendorId: text('vendor_id').notNull(),
 	sellerTeamId: text('seller_team_id').notNull(),
 	capacityProviderId: text('capacity_provider_id'),
-	capacityProviderLaneId: text('capacity_provider_lane_id'),
+	executionProviderId: text('execution_provider_id'),
 	status: text('status').notNull().default('draft'),
 	accessLevel: text('access_level').notNull().default('public_summary'),
 	runtimeIsolationLevel: text('runtime_isolation_level').notNull().default('none'),
@@ -1639,7 +1560,7 @@ export const commerceCapacityListings = pgTable('commerce_capacity_listings', {
 	index('idx_commerce_capacity_listings_vendor_status').on(table.vendorId, table.status, table.updatedAt),
 	index('idx_commerce_capacity_listings_seller_status').on(table.sellerTeamId, table.status, table.updatedAt),
 	index('idx_commerce_capacity_listings_provider_status').on(table.capacityProviderId, table.status),
-	index('idx_commerce_capacity_listings_lane_status').on(table.capacityProviderLaneId, table.status),
+	index('idx_commerce_capacity_listings_execution_provider_status').on(table.executionProviderId, table.status),
 	index('idx_commerce_capacity_listings_access_status').on(table.accessLevel, table.status, table.updatedAt)
 ]);
 
@@ -1806,157 +1727,6 @@ export const projectDeploymentEvents = pgTable('project_deployment_events', {
 	index('idx_project_deployment_events_operation').on(table.operationId)
 ]);
 
-export const agentPools = pgTable('agent_pools', {
-	id: text('id').primaryKey(),
-	projectId: text('project_id').notNull(),
-	teamId: text('team_id').notNull(),
-	environment: text('environment').notNull(),
-	name: text('name').notNull(),
-	registrationIdentity: text('registration_identity'),
-	serviceBaseUrl: text('service_base_url'),
-	status: text('status').notNull().default('pending'),
-	minWorkers: integer('min_workers').notNull().default(0),
-	maxWorkers: integer('max_workers').notNull().default(1),
-	targetQueueDepth: integer('target_queue_depth').notNull().default(1),
-	cooldownSeconds: integer('cooldown_seconds').notNull().default(60),
-	metadataJson: text('metadata_json'),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	uniqueIndex('idx_agent_pools_project_environment_name').on(table.projectId, table.environment, table.name)
-]);
-
-export const agentPoolRegistrations = pgTable('agent_pool_registrations', {
-	id: text('id').primaryKey(),
-	poolId: text('pool_id').notNull(),
-	projectId: text('project_id').notNull(),
-	runnerId: text('runner_id'),
-	managerId: text('manager_id'),
-	serviceName: text('service_name'),
-	heartbeatAt: text('heartbeat_at').notNull(),
-	desiredWorkers: integer('desired_workers'),
-	observedQueueDepth: integer('observed_queue_depth'),
-	observedActiveLeases: integer('observed_active_leases'),
-	metadataJson: text('metadata_json'),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	index('idx_agent_pool_registrations_pool_heartbeat').on(table.poolId, table.heartbeatAt)
-]);
-
-export const agentPoolScaleDecisions = pgTable('agent_pool_scale_decisions', {
-	id: text('id').primaryKey(),
-	poolId: text('pool_id').notNull(),
-	projectId: text('project_id').notNull(),
-	environment: text('environment').notNull(),
-	desiredWorkers: integer('desired_workers').notNull(),
-	observedQueueDepth: integer('observed_queue_depth').notNull().default(0),
-	observedActiveLeases: integer('observed_active_leases').notNull().default(0),
-	workDayId: text('work_day_id'),
-	reason: text('reason').notNull(),
-	metadataJson: text('metadata_json').notNull(),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	index('idx_agent_pool_scale_decisions_pool_created').on(table.poolId, table.createdAt)
-]);
-
-export const projectWorkdaySummaries = pgTable('project_workday_summaries', {
-	id: text('id').primaryKey(),
-	projectId: text('project_id').notNull(),
-	environment: text('environment').notNull(),
-	workDayId: text('work_day_id').notNull(),
-	kind: text('kind').notNull(),
-	state: text('state'),
-	startedAt: text('started_at'),
-	endedAt: text('ended_at'),
-	summaryJson: text('summary_json').notNull(),
-	metadataJson: text('metadata_json').notNull(),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	index('idx_project_workday_summaries_project_environment_created').on(table.projectId, table.environment, table.createdAt)
-]);
-
-export const workPolicies = pgTable('work_policies', {
-	projectId: text('project_id'),
-	environment: text('environment'),
-	scheduleJson: text('schedule_json').notNull(),
-	dailyTaskCreditBudget: integer('daily_task_credit_budget').notNull().default(0),
-	maxQueuedTasks: integer('max_queued_tasks').notNull().default(0),
-	maxQueuedCredits: integer('max_queued_credits').notNull().default(0),
-	autoscaleJson: text('autoscale_json').notNull(),
-	creditWeightsJson: text('credit_weights_json').notNull(),
-	metadataJson: text('metadata_json').notNull(),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-	enabled: integer('enabled').notNull().default(1),
-	startCron: text('start_cron').notNull().default('0 9 * * 1-5'),
-	durationMinutes: integer('duration_minutes').notNull().default(480),
-	maxRunners: integer('max_runners').notNull().default(1),
-	maxWorkersPerRunner: integer('max_workers_per_runner').notNull().default(4),
-	dailyCreditBudget: integer('daily_credit_budget').notNull().default(0),
-	closeoutGraceMinutes: integer('closeout_grace_minutes').notNull().default(15),
-}, (table) => [
-	primaryKey({ columns: [table.projectId, table.environment] })
-]);
-
-export const priorityOverrides = pgTable('priority_overrides', {
-	id: text('id').primaryKey(),
-	projectId: text('project_id').notNull(),
-	model: text('model').notNull(),
-	subjectId: text('subject_id').notNull(),
-	priority: real('priority').notNull().default(0),
-	estimatedCredits: real('estimated_credits'),
-	metadataJson: text('metadata_json').notNull(),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	index('idx_priority_overrides_project_priority').on(table.projectId, table.priority, table.updatedAt)
-]);
-
-export const prioritySnapshots = pgTable('priority_snapshots', {
-	id: text('id').primaryKey(),
-	projectId: text('project_id').notNull(),
-	workDayId: text('work_day_id'),
-	snapshotJson: text('snapshot_json').notNull(),
-	metadataJson: text('metadata_json').notNull(),
-	generatedAt: text('generated_at').notNull(),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	index('idx_priority_snapshots_project_generated').on(table.projectId, table.generatedAt)
-]);
-
-export const taskCreditLedger = pgTable('task_credit_ledger', {
-	id: text('id').primaryKey(),
-	projectId: text('project_id').notNull(),
-	workDayId: text('work_day_id').notNull(),
-	taskId: text('task_id'),
-	phase: text('phase').notNull(),
-	credits: real('credits').notNull(),
-	metadataJson: text('metadata_json').notNull(),
-	createdAt: text('created_at').notNull(),
-}, (table) => [
-	index('idx_task_credit_ledger_work_day_created').on(table.workDayId, table.createdAt)
-]);
-
-export const scaleDecisions = pgTable('scale_decisions', {
-	id: text('id').primaryKey(),
-	projectId: text('project_id').notNull(),
-	environment: text('environment').notNull(),
-	poolName: text('pool_name').notNull(),
-	workDayId: text('work_day_id'),
-	desiredWorkers: integer('desired_workers').notNull(),
-	observedQueueDepth: integer('observed_queue_depth').notNull().default(0),
-	observedActiveLeases: integer('observed_active_leases').notNull().default(0),
-	reason: text('reason').notNull(),
-	metadataJson: text('metadata_json').notNull(),
-	createdAt: text('created_at').notNull(),
-}, (table) => [
-	index('idx_scale_decisions_project_environment_pool_created').on(table.projectId, table.environment, table.poolName, table.createdAt)
-]);
-
 export const projectSummarySnapshots = pgTable('project_summary_snapshots', {
 	projectId: text('project_id').primaryKey(),
 	teamId: text('team_id').notNull(),
@@ -2085,97 +1855,376 @@ export const teamInvites = pgTable('team_invites', {
 
 export const capacityProviders = pgTable('capacity_providers', {
 	id: text('id').primaryKey(),
-	teamId: text('team_id'),
-	ownerTeamId: text('owner_team_id'),
-	name: text('name').notNull(),
-	kind: text('kind').notNull(),
-	status: text('status').notNull().default('pending'),
-	provider: text('provider').notNull(),
-	billingScope: text('billing_scope').notNull().default('team'),
-	monthlyCreditBudget: real('monthly_credit_budget').notNull().default(0),
-	dailyCreditBudget: real('daily_credit_budget').notNull().default(0),
-	creditBudgetMode: text('credit_budget_mode').notNull().default('derived'),
-	maxConcurrentWorkdays: integer('max_concurrent_workdays').notNull().default(1),
-	maxConcurrentWorkers: integer('max_concurrent_workers').notNull().default(1),
-	capacityModelJson: text('capacity_model_json').notNull().default('{}'),
+	fingerprint: text('fingerprint').notNull(),
+	publicJwkJson: text('public_jwk_json').notNull(),
+	displayName: text('display_name').notNull(),
+	identityVersion: integer('identity_version').notNull().default(1),
+	status: text('status').notNull().default('active'),
 	metadataJson: text('metadata_json').notNull().default('{}'),
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
+	rotatedAt: text('rotated_at'),
+	revokedAt: text('revoked_at'),
 }, (table) => [
-	index('idx_capacity_providers_team_status').on(table.teamId, table.status, table.provider)
+	uniqueIndex('idx_capacity_providers_fingerprint').on(table.fingerprint),
+	index('idx_capacity_providers_status').on(table.status, table.updatedAt),
+	check('chk_capacity_providers_identity_version', sql`${table.identityVersion} >= 1`),
+	check('chk_capacity_providers_status', sql`${table.status} IN ('active', 'rotating', 'revoked')`)
 ]);
 
-export const capacityProviderHosts = pgTable('capacity_provider_hosts', {
+export const capacityProviderIdentityRotations = pgTable('capacity_provider_identity_rotations', {
 	id: text('id').primaryKey(),
 	capacityProviderId: text('capacity_provider_id').notNull(),
-	hostId: text('host_id').notNull(),
-	role: text('role').notNull(),
-	required: integer('required').notNull().default(1),
+	fromIdentityVersion: integer('from_identity_version').notNull(),
+	toIdentityVersion: integer('to_identity_version').notNull(),
+	oldFingerprint: text('old_fingerprint').notNull(),
+	newFingerprint: text('new_fingerprint').notNull(),
+	idempotencyKey: text('idempotency_key').notNull(),
+	requestDigest: text('request_digest').notNull(),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_capacity_provider_identity_rotations_provider', columns: [table.capacityProviderId], foreignColumns: [capacityProviders.id] }).onDelete('cascade'),
+	uniqueIndex('idx_capacity_provider_identity_rotations_idempotency').on(table.capacityProviderId, table.idempotencyKey),
+	uniqueIndex('idx_capacity_provider_identity_rotations_version').on(table.capacityProviderId, table.toIdentityVersion),
+	check('chk_capacity_provider_identity_rotations_versions', sql`${table.fromIdentityVersion} >= 1 AND ${table.toIdentityVersion} = ${table.fromIdentityVersion} + 1`)
+]);
+
+export const capacityExecutionProviders = pgTable('capacity_execution_providers', {
+	id: text('id').notNull(),
+	capacityProviderId: text('capacity_provider_id').notNull(),
+	displayName: text('display_name').notNull(),
+	adapter: text('adapter').notNull(),
+	status: text('status').notNull().default('active'),
+	capabilitiesJson: text('capabilities_json').notNull().default('[]'),
+	nativeUnit: text('native_unit').notNull(),
+	quotaVisibility: text('quota_visibility').notNull().default('opaque'),
+	maxConcurrentRunners: integer('max_concurrent_runners').notNull(),
+	nativeLimitsJson: text('native_limits_json').notNull().default('[]'),
+	latestObservationJson: text('latest_observation_json'),
 	metadataJson: text('metadata_json').notNull().default('{}'),
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
-	uniqueIndex('idx_capacity_provider_hosts_unique').on(table.capacityProviderId, table.hostId, table.role)
+	primaryKey({ columns: [table.capacityProviderId, table.id] }),
+	foreignKey({ name: 'fk_capacity_execution_providers_provider', columns: [table.capacityProviderId], foreignColumns: [capacityProviders.id] }).onDelete('cascade'),
+	uniqueIndex('idx_capacity_execution_providers_provider_adapter').on(table.capacityProviderId, table.adapter, table.id),
+	index('idx_capacity_execution_providers_provider_status').on(table.capacityProviderId, table.status, table.updatedAt),
+	check('chk_capacity_execution_providers_status', sql`${table.status} IN ('active', 'degraded', 'unavailable', 'revoked')`),
+	check('chk_capacity_execution_providers_concurrency', sql`${table.maxConcurrentRunners} >= 1`)
 ]);
 
 export const capacityProviderLanes = pgTable('capacity_provider_lanes', {
-	id: text('id').primaryKey(),
+	id: text('id').notNull(),
 	capacityProviderId: text('capacity_provider_id').notNull(),
-	name: text('name').notNull(),
-	businessModel: text('business_model').notNull().default('custom'),
-	modelFamily: text('model_family'),
-	modelClass: text('model_class'),
-	regionPolicy: text('region_policy'),
-	unit: text('unit').notNull().default('treeseed_credit'),
-	scarcityLevel: text('scarcity_level').notNull().default('medium'),
-	hardLimitsJson: text('hard_limits_json').notNull().default('{}'),
-	routingPolicyJson: text('routing_policy_json').notNull().default('{}'),
+	executionProviderId: text('execution_provider_id').notNull(),
+	displayName: text('display_name').notNull(),
+	status: text('status').notNull().default('active'),
+	capabilitiesJson: text('capabilities_json').notNull().default('[]'),
+	maxConcurrentRunners: integer('max_concurrent_runners').notNull(),
+	nativeLimitsJson: text('native_limits_json').notNull().default('[]'),
 	metadataJson: text('metadata_json').notNull().default('{}'),
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
-	index('idx_capacity_provider_lanes_provider').on(table.capacityProviderId, table.businessModel, table.scarcityLevel)
+	primaryKey({ columns: [table.capacityProviderId, table.id] }),
+	foreignKey({ name: 'fk_capacity_provider_lanes_provider', columns: [table.capacityProviderId], foreignColumns: [capacityProviders.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_capacity_provider_lanes_execution_provider', columns: [table.capacityProviderId, table.executionProviderId], foreignColumns: [capacityExecutionProviders.capacityProviderId, capacityExecutionProviders.id] }).onDelete('cascade'),
+	uniqueIndex('idx_capacity_provider_lanes_provider_execution_name').on(table.capacityProviderId, table.executionProviderId, table.displayName),
+	index('idx_capacity_provider_lanes_provider_status').on(table.capacityProviderId, table.status, table.updatedAt),
+	check('chk_capacity_provider_lanes_status', sql`${table.status} IN ('active', 'paused', 'degraded', 'revoked')`),
+	check('chk_capacity_provider_lanes_concurrency', sql`${table.maxConcurrentRunners} >= 1`)
+]);
+
+export const teamCapacityRegistrationKeys = pgTable('team_capacity_registration_keys', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	generation: integer('generation').notNull(),
+	keyPrefix: text('key_prefix').notNull(),
+	keyHash: text('key_hash').notNull(),
+	encryptedRevealValue: text('encrypted_reveal_value').notNull(),
+	rotationIdempotencyKey: text('rotation_idempotency_key'),
+	statusIdempotencyKey: text('status_idempotency_key'),
+	statusRequestDigest: text('status_request_digest'),
+	status: text('status').notNull().default('active'),
+	createdById: text('created_by_id'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+	rotatedAt: text('rotated_at'),
+	lastRevealedAt: text('last_revealed_at'),
+}, (table) => [
+	foreignKey({ name: 'fk_team_capacity_registration_keys_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
+	uniqueIndex('idx_team_capacity_registration_keys_generation').on(table.teamId, table.generation),
+	uniqueIndex('idx_team_capacity_registration_keys_prefix').on(table.keyPrefix),
+	uniqueIndex('idx_team_capacity_registration_keys_rotation').on(table.teamId, table.rotationIdempotencyKey),
+	index('idx_team_capacity_registration_keys_current').on(table.teamId, table.status, table.generation),
+	check('chk_team_capacity_registration_keys_generation', sql`${table.generation} >= 1`),
+	check('chk_team_capacity_registration_keys_status', sql`${table.status} IN ('active', 'disabled')`)
+]);
+
+export const capacityProviderRegistrationRequests = pgTable('capacity_provider_registration_requests', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	capacityProviderId: text('capacity_provider_id').notNull(),
+	providerFingerprint: text('provider_fingerprint').notNull(),
+	registrationKeyGeneration: integer('registration_key_generation').notNull(),
+	status: text('status').notNull().default('pending'),
+	capabilitySummaryJson: text('capability_summary_json').notNull().default('[]'),
+	supplyOfferJson: text('supply_offer_json').notNull().default('{}'),
+	proofJti: text('proof_jti').notNull(),
+	idempotencyKey: text('idempotency_key').notNull(),
+	requestDigest: text('request_digest').notNull(),
+	expiresAt: text('expires_at').notNull(),
+	reviewedAt: text('reviewed_at'),
+	reviewedById: text('reviewed_by_id'),
+	rejectionReason: text('rejection_reason'),
+	membershipId: text('membership_id'),
+	transitionAction: text('transition_action'),
+	transitionIdempotencyKey: text('transition_idempotency_key'),
+	transitionRequestDigest: text('transition_request_digest'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_capacity_provider_registration_requests_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_capacity_provider_registration_requests_provider', columns: [table.capacityProviderId], foreignColumns: [capacityProviders.id] }).onDelete('restrict'),
+	uniqueIndex('idx_capacity_provider_registration_request_pending').on(table.teamId, table.capacityProviderId, table.registrationKeyGeneration),
+	uniqueIndex('idx_capacity_provider_registration_request_proof').on(table.providerFingerprint, table.proofJti),
+	uniqueIndex('idx_capacity_provider_registration_request_idempotency').on(table.teamId, table.idempotencyKey),
+	index('idx_capacity_provider_registration_requests_team').on(table.teamId, table.status, table.createdAt),
+	index('idx_capacity_provider_registration_requests_provider').on(table.capacityProviderId, table.status, table.createdAt),
+	check('chk_capacity_provider_registration_requests_generation', sql`${table.registrationKeyGeneration} >= 1`),
+	check('chk_capacity_provider_registration_requests_status', sql`${table.status} IN ('pending', 'approved', 'rejected', 'cancelled', 'expired')`)
+]);
+
+export const capacityProviderTeamMemberships = pgTable('capacity_provider_team_memberships', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	capacityProviderId: text('capacity_provider_id').notNull(),
+	status: text('status').notNull().default('approved'),
+	teamAlias: text('team_alias'),
+	approvedAt: text('approved_at').notNull(),
+	approvedById: text('approved_by_id').notNull(),
+	suspendedAt: text('suspended_at'),
+	revokedAt: text('revoked_at'),
+	revokedById: text('revoked_by_id'),
+	statusIdempotencyKey: text('status_idempotency_key'),
+	statusRequestDigest: text('status_request_digest'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_capacity_provider_team_memberships_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_capacity_provider_team_memberships_provider', columns: [table.capacityProviderId], foreignColumns: [capacityProviders.id] }).onDelete('restrict'),
+	uniqueIndex('idx_capacity_provider_team_memberships_unique').on(table.teamId, table.capacityProviderId),
+	index('idx_capacity_provider_team_memberships_team').on(table.teamId, table.status, table.updatedAt),
+	index('idx_capacity_provider_team_memberships_provider').on(table.capacityProviderId, table.status, table.updatedAt),
+	check('chk_capacity_provider_team_memberships_status', sql`${table.status} IN ('approved', 'suspended', 'revoked')`)
+]);
+
+export const capacityProviderCredentialIssuanceAuthorizations = pgTable('capacity_provider_credential_issuance_authorizations', {
+	id: text('id').primaryKey(),
+	membershipId: text('membership_id').notNull(),
+	teamId: text('team_id').notNull(),
+	capacityProviderId: text('capacity_provider_id').notNull(),
+	generation: integer('generation').notNull(),
+	idempotencyKey: text('idempotency_key').notNull(),
+	status: text('status').notNull().default('pending'),
+	issuedCredentialId: text('issued_credential_id'),
+	createdByType: text('created_by_type').notNull(),
+	createdById: text('created_by_id').notNull(),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_capacity_provider_credential_authorizations_membership', columns: [table.membershipId], foreignColumns: [capacityProviderTeamMemberships.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_capacity_provider_credential_authorizations_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_capacity_provider_credential_authorizations_provider', columns: [table.capacityProviderId], foreignColumns: [capacityProviders.id] }).onDelete('restrict'),
+	uniqueIndex('idx_capacity_provider_credential_authorizations_generation').on(table.membershipId, table.generation),
+	uniqueIndex('idx_capacity_provider_credential_authorizations_idempotency').on(table.membershipId, table.idempotencyKey),
+	index('idx_capacity_provider_credential_authorizations_pending').on(table.membershipId, table.status, table.createdAt),
+	check('chk_capacity_provider_credential_authorizations_generation', sql`${table.generation} >= 1`),
+	check('chk_capacity_provider_credential_authorizations_status', sql`${table.status} IN ('pending', 'issued', 'cancelled')`)
+]);
+
+export const capacityProviderTeamCredentials = pgTable('capacity_provider_team_credentials', {
+	id: text('id').primaryKey(),
+	membershipId: text('membership_id').notNull(),
+	teamId: text('team_id').notNull(),
+	capacityProviderId: text('capacity_provider_id').notNull(),
+	keyPrefix: text('key_prefix').notNull(),
+	keyHash: text('key_hash').notNull(),
+	issuanceAuthorizationId: text('issuance_authorization_id').notNull(),
+	issuanceGeneration: integer('issuance_generation').notNull(),
+	issueIdempotencyKey: text('issue_idempotency_key').notNull(),
+	scopesJson: text('scopes_json').notNull().default('[]'),
+	status: text('status').notNull().default('active'),
+	lastUsedAt: text('last_used_at'),
+	rotatedFromCredentialId: text('rotated_from_credential_id'),
+	expiresAt: text('expires_at'),
+	revealedAt: text('revealed_at'),
+	revokedAt: text('revoked_at'),
+	revokeIdempotencyKey: text('revoke_idempotency_key'),
+	revokeRequestDigest: text('revoke_request_digest'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_capacity_provider_team_credentials_membership', columns: [table.membershipId], foreignColumns: [capacityProviderTeamMemberships.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_capacity_provider_team_credentials_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_capacity_provider_team_credentials_provider', columns: [table.capacityProviderId], foreignColumns: [capacityProviders.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_provider_team_credentials_authorization', columns: [table.issuanceAuthorizationId], foreignColumns: [capacityProviderCredentialIssuanceAuthorizations.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_provider_team_credentials_rotated_from', columns: [table.rotatedFromCredentialId], foreignColumns: [table.id] }).onDelete('set null'),
+	uniqueIndex('idx_capacity_provider_team_credentials_prefix').on(table.keyPrefix),
+	uniqueIndex('idx_capacity_provider_team_credentials_issue').on(table.membershipId, table.issueIdempotencyKey),
+	uniqueIndex('idx_capacity_provider_team_credentials_generation').on(table.membershipId, table.issuanceGeneration),
+	index('idx_capacity_provider_team_credentials_membership').on(table.membershipId, table.status, table.createdAt),
+	check('chk_capacity_provider_team_credentials_status', sql`${table.status} IN ('active', 'rotating', 'revoked')`)
+]);
+
+export const capacityProviderAccessTokens = pgTable('capacity_provider_access_tokens', {
+	id: text('id').primaryKey(),
+	membershipId: text('membership_id').notNull(),
+	credentialId: text('credential_id').notNull(),
+	idempotencyKey: text('idempotency_key').notNull(),
+	tokenPrefix: text('token_prefix').notNull(),
+	tokenHash: text('token_hash').notNull(),
+	scopesJson: text('scopes_json').notNull().default('[]'),
+	status: text('status').notNull().default('active'),
+	issuedAt: text('issued_at').notNull(),
+	expiresAt: text('expires_at').notNull(),
+	lastUsedAt: text('last_used_at'),
+	expiredAt: text('expired_at'),
+	revokedAt: text('revoked_at'),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_capacity_provider_access_tokens_membership', columns: [table.membershipId], foreignColumns: [capacityProviderTeamMemberships.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_capacity_provider_access_tokens_credential', columns: [table.credentialId], foreignColumns: [capacityProviderTeamCredentials.id] }).onDelete('cascade'),
+	uniqueIndex('idx_capacity_provider_access_tokens_prefix').on(table.tokenPrefix),
+	uniqueIndex('idx_capacity_provider_access_tokens_issue').on(table.membershipId, table.idempotencyKey),
+	index('idx_capacity_provider_access_tokens_membership').on(table.membershipId, table.status, table.expiresAt),
+	check('chk_capacity_provider_access_tokens_status', sql`${table.status} IN ('active', 'revoked', 'expired')`)
+]);
+
+export const capacityProviderProofNonces = pgTable('capacity_provider_proof_nonces', {
+	providerFingerprint: text('provider_fingerprint').notNull(),
+	jti: text('jti').notNull(),
+	expiresAt: text('expires_at').notNull(),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	primaryKey({ columns: [table.providerFingerprint, table.jti] }),
+	index('idx_capacity_provider_proof_nonces_expiry').on(table.expiresAt)
+]);
+
+export const capacityProviderRegistrationRateLimits = pgTable('capacity_provider_registration_rate_limits', {
+	dimension: text('dimension').notNull(),
+	bucketKey: text('bucket_key').notNull(),
+	count: integer('count').notNull().default(0),
+	windowStartedAt: text('window_started_at').notNull(),
+	expiresAt: text('expires_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	primaryKey({ columns: [table.dimension, table.bucketKey] }),
+	index('idx_capacity_provider_registration_rate_limits_expiry').on(table.expiresAt),
+	check('chk_capacity_provider_registration_rate_limits_count', sql`${table.count} >= 0`)
+]);
+
+export const capacityAuditEvents = pgTable('capacity_audit_events', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id'),
+	capacityProviderId: text('capacity_provider_id'),
+	membershipId: text('membership_id'),
+	actorType: text('actor_type').notNull(),
+	actorId: text('actor_id'),
+	action: text('action').notNull(),
+	resourceType: text('resource_type').notNull(),
+	resourceId: text('resource_id'),
+	requestId: text('request_id'),
+	idempotencyKey: text('idempotency_key'),
+	beforeFingerprint: text('before_fingerprint'),
+	afterFingerprint: text('after_fingerprint'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	index('idx_capacity_audit_events_team_created').on(table.teamId, table.createdAt),
+	index('idx_capacity_audit_events_provider_created').on(table.capacityProviderId, table.createdAt),
+	index('idx_capacity_audit_events_membership_created').on(table.membershipId, table.createdAt),
+	index('idx_capacity_audit_events_resource').on(table.resourceType, table.resourceId, table.createdAt),
+	uniqueIndex('idx_capacity_audit_events_idempotency').on(table.teamId, table.action, table.resourceType, table.resourceId, table.idempotencyKey)
+]);
+
+export const capacityOperationReceipts = pgTable('capacity_operation_receipts', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	operation: text('operation').notNull(),
+	idempotencyKey: text('idempotency_key').notNull(),
+	requestDigest: text('request_digest').notNull(),
+	resourceType: text('resource_type').notNull(),
+	resourceId: text('resource_id'),
+	responseJson: text('response_json').notNull(),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_capacity_operation_receipts_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
+	uniqueIndex('idx_capacity_operation_receipts_idempotency').on(table.teamId, table.operation, table.idempotencyKey),
+	index('idx_capacity_operation_receipts_resource').on(table.teamId, table.resourceType, table.resourceId, table.createdAt),
 ]);
 
 export const capacityGrants = pgTable('capacity_grants', {
 	id: text('id').primaryKey(),
+	membershipId: text('membership_id').notNull(),
 	capacityProviderId: text('capacity_provider_id').notNull(),
-	laneId: text('lane_id'),
-	grantScope: text('grant_scope').notNull().default('team'),
 	teamId: text('team_id').notNull(),
-	projectId: text('project_id'),
-	environment: text('environment'),
-	state: text('state').notNull().default('active'),
+	projectId: text('project_id').notNull(),
+	environment: text('environment').notNull(),
+	status: text('status').notNull().default('planned'),
+	executionProviderIdsJson: text('execution_provider_ids_json').notNull().default('[]'),
+	laneIdsJson: text('lane_ids_json').notNull().default('[]'),
+	capabilitiesJson: text('capabilities_json').notNull().default('[]'),
+	allowedModesJson: text('allowed_modes_json').notNull().default('[]'),
 	dailyCreditLimit: real('daily_credit_limit'),
-	weeklyCreditLimit: real('weekly_credit_limit'),
 	monthlyCreditLimit: real('monthly_credit_limit'),
-	dailyUsdLimit: real('daily_usd_limit'),
-	weeklyQuotaMinutes: real('weekly_quota_minutes'),
-	monthlyProviderUnits: real('monthly_provider_units'),
-	priorityWeight: real('priority_weight').notNull().default(1),
-	overflowPolicy: text('overflow_policy').notNull().default('soft_grant'),
+	maxConcurrentAssignments: integer('max_concurrent_assignments'),
+	unmetered: integer('unmetered').notNull().default(0),
+	expiresAt: text('expires_at'),
 	metadataJson: text('metadata_json').notNull().default('{}'),
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
-	index('idx_capacity_grants_team_project').on(table.teamId, table.projectId, table.state),
-	index('idx_capacity_grants_provider_lane').on(table.capacityProviderId, table.laneId, table.state)
+	foreignKey({ name: 'fk_capacity_grants_membership', columns: [table.membershipId], foreignColumns: [capacityProviderTeamMemberships.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_capacity_grants_provider', columns: [table.capacityProviderId], foreignColumns: [capacityProviders.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_grants_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_capacity_grants_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('cascade'),
+	index('idx_capacity_grants_team_project').on(table.teamId, table.projectId, table.status),
+	index('idx_capacity_grants_membership').on(table.membershipId, table.status, table.expiresAt),
+	index('idx_capacity_grants_provider').on(table.capacityProviderId, table.status),
+	check('chk_capacity_grants_status', sql`${table.status} IN ('planned', 'active', 'paused', 'revoked', 'expired')`),
+	check('chk_capacity_grants_unmetered', sql`${table.unmetered} IN (0, 1)`),
+	check('chk_capacity_grants_daily_limit', sql`${table.dailyCreditLimit} IS NULL OR ${table.dailyCreditLimit} >= 0`),
+	check('chk_capacity_grants_monthly_limit', sql`${table.monthlyCreditLimit} IS NULL OR ${table.monthlyCreditLimit} >= 0`),
+	check('chk_capacity_grants_concurrency', sql`${table.maxConcurrentAssignments} IS NULL OR ${table.maxConcurrentAssignments} >= 0`)
 ]);
 
 export const capacityReservations = pgTable('capacity_reservations', {
 	id: text('id').primaryKey(),
+	idempotencyKey: text('idempotency_key').notNull(),
+	admissionToken: text('admission_token').notNull(),
+	membershipId: text('membership_id').notNull(),
+	grantId: text('grant_id').notNull(),
 	capacityProviderId: text('capacity_provider_id').notNull(),
 	executionProviderId: text('execution_provider_id'),
-	laneId: text('lane_id').notNull(),
-	allocationSetId: text('allocation_set_id'),
-	projectAgentClassId: text('project_agent_class_id'),
+	laneId: text('lane_id'),
+	allocationSetId: text('allocation_set_id').notNull(),
+	allocationVersion: integer('allocation_version').notNull(),
+	allocationSliceIdsJson: text('allocation_slice_ids_json').notNull().default('[]'),
+	policySnapshotJson: text('policy_snapshot_json').notNull().default('{}'),
+	projectAgentClassId: text('project_agent_class_id').notNull(),
 	assignmentId: text('assignment_id'),
-	mode: text('mode'),
+	mode: text('mode').notNull(),
 	teamId: text('team_id').notNull(),
 	projectId: text('project_id').notNull(),
 	workDayId: text('work_day_id'),
 	taskId: text('task_id'),
 	state: text('state').notNull().default('reserved'),
+	usageReportToken: text('usage_report_token'),
+	settlementToken: text('settlement_token'),
 	reservedCredits: real('reserved_credits').notNull(),
 	consumedCredits: real('consumed_credits').notNull().default(0),
 	nativeUnit: text('native_unit'),
@@ -2190,15 +2239,67 @@ export const capacityReservations = pgTable('capacity_reservations', {
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
+	foreignKey({ name: 'fk_capacity_reservations_membership', columns: [table.membershipId], foreignColumns: [capacityProviderTeamMemberships.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_reservations_grant', columns: [table.grantId], foreignColumns: [capacityGrants.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_reservations_provider', columns: [table.capacityProviderId], foreignColumns: [capacityProviders.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_reservations_execution_provider', columns: [table.capacityProviderId, table.executionProviderId], foreignColumns: [capacityExecutionProviders.capacityProviderId, capacityExecutionProviders.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_reservations_lane', columns: [table.capacityProviderId, table.laneId], foreignColumns: [capacityProviderLanes.capacityProviderId, capacityProviderLanes.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_reservations_allocation', columns: [table.allocationSetId], foreignColumns: [capacityAllocationSets.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_reservations_agent_class', columns: [table.projectAgentClassId], foreignColumns: [projectAgentClasses.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_reservations_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_reservations_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
+	uniqueIndex('idx_capacity_reservations_idempotency').on(table.teamId, table.idempotencyKey),
 	index('idx_capacity_reservations_project_workday_state').on(table.projectId, table.workDayId, table.state, table.createdAt),
-	index('idx_capacity_reservations_provider_state').on(table.capacityProviderId, table.laneId, table.state),
-	index('idx_capacity_reservations_execution_provider_state').on(table.executionProviderId, table.state, table.createdAt)
+	index('idx_capacity_reservations_membership_state').on(table.membershipId, table.state, table.createdAt),
+	index('idx_capacity_reservations_provider_state').on(table.capacityProviderId, table.state, table.createdAt),
+	index('idx_capacity_reservations_execution_provider_state').on(table.executionProviderId, table.state, table.createdAt),
+	index('idx_capacity_reservations_lane_state').on(table.laneId, table.state, table.createdAt),
+	check('chk_capacity_reservations_allocation_version', sql`${table.allocationVersion} >= 1`),
+	check('chk_capacity_reservations_mode', sql`${table.mode} IN ('planning', 'acting')`),
+	check('chk_capacity_reservations_state', sql`${table.state} IN ('reserved', 'consuming', 'consumed', 'released', 'expired', 'failed', 'overran_pending_approval', 'continuation_required')`),
+	check('chk_capacity_reservations_reserved_credits', sql`${table.reservedCredits} > 0`),
+	check('chk_capacity_reservations_consumed_credits', sql`${table.consumedCredits} >= 0`)
+]);
+
+export const capacityAdmissionCounters = pgTable('capacity_admission_counters', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	scope: text('scope').notNull(),
+	scopeId: text('scope_id').notNull(),
+	periodKey: text('period_key').notNull(),
+	hardLimit: real('hard_limit').notNull(),
+	committedAmount: real('committed_amount').notNull().default(0),
+	stateVersion: integer('state_version').notNull().default(1),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_capacity_admission_counters_scope').on(table.teamId, table.scope, table.scopeId, table.periodKey),
+	index('idx_capacity_admission_counters_team').on(table.teamId, table.updatedAt),
+	check('chk_capacity_admission_counter_hard_limit', sql`${table.hardLimit} >= 0`),
+	check('chk_capacity_admission_counter_committed_amount', sql`${table.committedAmount} >= 0 AND ${table.committedAmount} <= ${table.hardLimit}`)
+]);
+
+export const capacityReservationCounterClaims = pgTable('capacity_reservation_counter_claims', {
+	reservationId: text('reservation_id').notNull(),
+	counterId: text('counter_id').notNull(),
+	admissionToken: text('admission_token').notNull(),
+	reservedAmount: real('reserved_amount').notNull(),
+	releasedAmount: real('released_amount').notNull().default(0),
+	releasePolicy: text('release_policy').notNull(),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_capacity_reservation_counter_claim').on(table.reservationId, table.counterId),
+	index('idx_capacity_reservation_counter_counter').on(table.counterId, table.createdAt),
+	check('chk_capacity_reservation_claim_reserved', sql`${table.reservedAmount} >= 0`),
+	check('chk_capacity_reservation_claim_released', sql`${table.releasedAmount} >= 0 AND ${table.releasedAmount} <= ${table.reservedAmount}`)
 ]);
 
 export const capacityLedgerEntries = pgTable('capacity_ledger_entries', {
 	id: text('id').primaryKey(),
+	settlementKey: text('settlement_key').notNull(),
+	membershipId: text('membership_id').notNull(),
 	capacityProviderId: text('capacity_provider_id').notNull(),
-	laneId: text('lane_id'),
 	reservationId: text('reservation_id'),
 	assignmentId: text('assignment_id'),
 	modeRunId: text('mode_run_id'),
@@ -2215,59 +2316,31 @@ export const capacityLedgerEntries = pgTable('capacity_ledger_entries', {
 	metadataJson: text('metadata_json').notNull().default('{}'),
 	createdAt: text('created_at').notNull(),
 }, (table) => [
-	index('idx_capacity_ledger_project_workday_created').on(table.projectId, table.workDayId, table.createdAt)
+	foreignKey({ name: 'fk_capacity_ledger_membership', columns: [table.membershipId], foreignColumns: [capacityProviderTeamMemberships.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_ledger_provider', columns: [table.capacityProviderId], foreignColumns: [capacityProviders.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_ledger_reservation', columns: [table.reservationId], foreignColumns: [capacityReservations.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_ledger_assignment', columns: [table.assignmentId], foreignColumns: [capacityProviderAssignments.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_ledger_mode_run', columns: [table.modeRunId], foreignColumns: [agentModeRuns.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_ledger_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_ledger_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
+	uniqueIndex('idx_capacity_ledger_settlement_key').on(table.settlementKey),
+	uniqueIndex('idx_capacity_ledger_reservation_phase').on(table.reservationId, table.phase),
+	index('idx_capacity_ledger_assignment').on(table.assignmentId, table.createdAt),
+	index('idx_capacity_ledger_project_workday_created').on(table.projectId, table.workDayId, table.createdAt),
+	check('chk_capacity_ledger_credits', sql`${table.credits} >= 0`)
 ]);
 
-export const capacityRoutingDecisions = pgTable('capacity_routing_decisions', {
+export const capacityUsageActuals = pgTable('capacity_usage_actuals', {
 	id: text('id').primaryKey(),
-	taskId: text('task_id'),
-	workDayId: text('work_day_id'),
-	projectId: text('project_id').notNull(),
-	selectedProviderId: text('selected_provider_id').notNull(),
-	selectedLaneId: text('selected_lane_id').notNull(),
-	selectedModel: text('selected_model'),
-	decision: text('decision').notNull().default('selected'),
-	reason: text('reason').notNull(),
-	candidateJson: text('candidate_json').notNull().default('[]'),
-	scoreJson: text('score_json').notNull().default('{}'),
-	metadataJson: text('metadata_json').notNull().default('{}'),
-	createdAt: text('created_at').notNull(),
-}, (table) => [
-	index('idx_capacity_routing_decisions_project_workday').on(table.projectId, table.workDayId, table.createdAt)
-]);
-
-export const taskEstimates = pgTable('task_estimates', {
-	id: text('id').primaryKey(),
-	taskId: text('task_id'),
-	workDayId: text('work_day_id'),
-	projectId: text('project_id').notNull(),
-	estimatePhase: text('estimate_phase').notNull(),
-	taskSignature: text('task_signature').notNull(),
-	confidence: text('confidence').notNull(),
-	estimatedCreditsP50: real('estimated_credits_p50').notNull(),
-	estimatedCreditsP90: real('estimated_credits_p90').notNull(),
-	reservedCredits: real('reserved_credits').notNull(),
-	estimatedInputTokensP50: integer('estimated_input_tokens_p50'),
-	estimatedInputTokensP90: integer('estimated_input_tokens_p90'),
-	estimatedOutputTokensP50: integer('estimated_output_tokens_p50'),
-	estimatedOutputTokensP90: integer('estimated_output_tokens_p90'),
-	estimatedQuotaMinutesP50: real('estimated_quota_minutes_p50'),
-	estimatedQuotaMinutesP90: real('estimated_quota_minutes_p90'),
-	featuresJson: text('features_json').notNull().default('{}'),
-	createdAt: text('created_at').notNull(),
-	executionProfileId: text('execution_profile_id').notNull().default('standard-code-model'),
-}, (table) => [
-	index('idx_task_estimates_project_signature').on(table.projectId, table.taskSignature, table.createdAt),
-	index('idx_task_estimates_project_signature_profile').on(table.projectId, table.taskSignature, table.executionProfileId, table.createdAt)
-]);
-
-export const taskUsageActuals = pgTable('task_usage_actuals', {
-	id: text('id').primaryKey(),
+	idempotencyKey: text('idempotency_key').notNull(),
 	taskId: text('task_id'),
 	workDayId: text('work_day_id'),
 	projectId: text('project_id').notNull(),
 	taskSignature: text('task_signature').notNull(),
 	assignmentId: text('assignment_id'),
+	assignmentAttempt: integer('assignment_attempt').notNull(),
+	usageDimension: text('usage_dimension').notNull(),
+	accountingMode: text('accounting_mode').notNull(),
 	modeRunId: text('mode_run_id'),
 	mode: text('mode'),
 	capacityProviderId: text('capacity_provider_id'),
@@ -2295,43 +2368,33 @@ export const taskUsageActuals = pgTable('task_usage_actuals', {
 	createdAt: text('created_at').notNull(),
 	executionProfileId: text('execution_profile_id').notNull().default('standard-code-model'),
 }, (table) => [
-	index('idx_task_usage_actuals_project_signature').on(table.projectId, table.taskSignature, table.createdAt),
-	index('idx_task_usage_actuals_project_signature_profile').on(table.projectId, table.taskSignature, table.executionProfileId, table.createdAt),
-	index('idx_task_usage_actuals_execution_provider').on(table.executionProviderId, table.createdAt)
-]);
-
-export const nativeUsageObservations = pgTable('native_usage_observations', {
-	id: text('id').primaryKey(),
-	taskUsageActualId: text('task_usage_actual_id'),
-	taskId: text('task_id'),
-	workDayId: text('work_day_id'),
-	projectId: text('project_id').notNull(),
-	taskSignature: text('task_signature').notNull(),
-	executionProfileId: text('execution_profile_id').notNull().default('standard-code-model'),
-	capacityProviderId: text('capacity_provider_id'),
-	executionProviderId: text('execution_provider_id'),
-	nativeUnit: text('native_unit'),
-	nativeUsageJson: text('native_usage_json').notNull().default('{}'),
-	observedAt: text('observed_at').notNull(),
-	source: text('source').notNull().default('provider_report'),
-	formulaVersion: text('formula_version').notNull().default('treeseed.actual-credits.v1'),
-	actualCredits: real('actual_credits').notNull(),
-	metadataJson: text('metadata_json').notNull().default('{}'),
-	createdAt: text('created_at').notNull(),
-}, (table) => [
-	index('idx_native_usage_observations_profile').on(table.projectId, table.taskSignature, table.executionProfileId, table.createdAt),
-	index('idx_native_usage_observations_provider').on(table.executionProviderId, table.createdAt)
+	foreignKey({ name: 'fk_capacity_usage_actuals_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_usage_actuals_assignment', columns: [table.assignmentId], foreignColumns: [capacityProviderAssignments.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_usage_actuals_mode_run', columns: [table.modeRunId], foreignColumns: [agentModeRuns.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_usage_actuals_provider', columns: [table.capacityProviderId], foreignColumns: [capacityProviders.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_usage_actuals_execution_provider', columns: [table.capacityProviderId, table.executionProviderId], foreignColumns: [capacityExecutionProviders.capacityProviderId, capacityExecutionProviders.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_usage_actuals_lane', columns: [table.capacityProviderId, table.laneId], foreignColumns: [capacityProviderLanes.capacityProviderId, capacityProviderLanes.id] }).onDelete('restrict'),
+	uniqueIndex('idx_capacity_usage_actuals_idempotency').on(table.idempotencyKey),
+	uniqueIndex('idx_capacity_usage_actuals_attempt_dimension').on(table.assignmentId, table.assignmentAttempt, table.usageDimension),
+	index('idx_capacity_usage_actuals_project_signature').on(table.projectId, table.taskSignature, table.createdAt),
+	index('idx_capacity_usage_actuals_project_signature_profile').on(table.projectId, table.taskSignature, table.executionProfileId, table.createdAt),
+	index('idx_capacity_usage_actuals_execution_provider').on(table.executionProviderId, table.createdAt),
+	index('idx_capacity_usage_actuals_lane').on(table.laneId, table.createdAt),
+	check('chk_capacity_usage_actuals_credits', sql`${table.actualCredits} >= 0`),
+	check('chk_capacity_usage_actuals_assignment_attempt', sql`${table.assignmentAttempt} >= 0`),
+	check('chk_capacity_usage_actuals_accounting_mode', sql`${table.accountingMode} IN ('informational', 'incremental', 'aggregate')`)
 ]);
 
 export const capacityAllocationSets = pgTable('capacity_allocation_sets', {
 	id: text('id').primaryKey(),
 	teamId: text('team_id').notNull(),
-	version: text('version').notNull(),
+	version: integer('version').notNull(),
 	status: text('status').notNull().default('draft'),
-	effectiveFrom: text('effective_from'),
+	effectiveFrom: text('effective_from').notNull(),
 	effectiveUntil: text('effective_until'),
-	policyJson: text('policy_json').notNull().default('{}'),
+	reservePolicyJson: text('reserve_policy_json').notNull().default('{}'),
 	slicesJson: text('slices_json').notNull().default('[]'),
+	borrowingRulesJson: text('borrowing_rules_json').notNull().default('[]'),
 	metadataJson: text('metadata_json').notNull().default('{}'),
 	createdById: text('created_by_id'),
 	activatedAt: text('activated_at'),
@@ -2339,8 +2402,14 @@ export const capacityAllocationSets = pgTable('capacity_allocation_sets', {
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
-	index('idx_capacity_allocation_sets_team_status').on(table.teamId, table.status, table.version),
-	index('idx_capacity_allocation_sets_team_created').on(table.teamId, table.createdAt)
+	foreignKey({ name: 'fk_capacity_allocation_sets_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_capacity_allocation_sets_superseded_by', columns: [table.supersededById], foreignColumns: [table.id] }).onDelete('restrict'),
+	uniqueIndex('idx_capacity_allocation_sets_team_version').on(table.teamId, table.version),
+	index('idx_capacity_allocation_sets_team_status').on(table.teamId, table.status, table.effectiveFrom),
+	index('idx_capacity_allocation_sets_team_created').on(table.teamId, table.createdAt),
+	check('chk_capacity_allocation_sets_version', sql`${table.version} >= 1`),
+	check('chk_capacity_allocation_sets_status', sql`${table.status} IN ('draft', 'validated', 'active', 'superseded', 'archived')`),
+	check('chk_capacity_allocation_sets_effective_interval', sql`${table.effectiveUntil} IS NULL OR ${table.effectiveUntil} > ${table.effectiveFrom}`)
 ]);
 
 export const projectAgentClasses = pgTable('project_agent_classes', {
@@ -2360,23 +2429,28 @@ export const projectAgentClasses = pgTable('project_agent_classes', {
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
+	foreignKey({ name: 'fk_project_agent_classes_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_project_agent_classes_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('cascade'),
 	uniqueIndex('idx_project_agent_classes_project_slug').on(table.projectId, table.slug),
-	index('idx_project_agent_classes_team_project').on(table.teamId, table.projectId, table.status)
+	index('idx_project_agent_classes_team_project').on(table.teamId, table.projectId, table.status),
+	check('chk_project_agent_classes_status', sql`${table.status} IN ('active', 'paused', 'archived')`)
 ]);
 
-export const providerAvailabilitySessions = pgTable('provider_availability_sessions', {
+export const providerAvailabilitySessions = pgTable('capacity_provider_availability_sessions', {
 	id: text('id').primaryKey(),
+	membershipId: text('membership_id').notNull(),
 	teamId: text('team_id').notNull(),
 	capacityProviderId: text('capacity_provider_id').notNull(),
-	registrationId: text('registration_id'),
 	environment: text('environment'),
 	status: text('status').notNull().default('open'),
-	checkedInAt: text('checked_in_at').notNull(),
-	availableFrom: text('available_from'),
+	sequence: integer('sequence').notNull().default(1),
+	openedAt: text('opened_at').notNull(),
+	refreshedAt: text('refreshed_at').notNull(),
+	expiresAt: text('expires_at').notNull(),
+	availableFrom: text('available_from').notNull(),
 	availableUntil: text('available_until'),
 	executionProvidersJson: text('execution_providers_json').notNull().default('[]'),
 	capabilitiesJson: text('capabilities_json').notNull().default('[]'),
-	grantsJson: text('grants_json').notNull().default('[]'),
 	nativeLimitsJson: text('native_limits_json').notNull().default('{}'),
 	runnerPressureJson: text('runner_pressure_json').notNull().default('{}'),
 	constraintsJson: text('constraints_json').notNull().default('{}'),
@@ -2385,17 +2459,25 @@ export const providerAvailabilitySessions = pgTable('provider_availability_sessi
 	updatedAt: text('updated_at').notNull(),
 	closedAt: text('closed_at'),
 }, (table) => [
-	index('idx_provider_availability_sessions_provider_status').on(table.capacityProviderId, table.status, table.checkedInAt),
-	index('idx_provider_availability_sessions_team_status').on(table.teamId, table.status, table.checkedInAt)
+	foreignKey({ name: 'fk_capacity_provider_availability_sessions_membership', columns: [table.membershipId], foreignColumns: [capacityProviderTeamMemberships.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_capacity_provider_availability_sessions_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_capacity_provider_availability_sessions_provider', columns: [table.capacityProviderId], foreignColumns: [capacityProviders.id] }).onDelete('restrict'),
+	index('idx_capacity_provider_availability_sessions_membership_status').on(table.membershipId, table.status, table.expiresAt),
+	index('idx_capacity_provider_availability_sessions_provider_status').on(table.capacityProviderId, table.status, table.refreshedAt),
+	index('idx_capacity_provider_availability_sessions_team_status').on(table.teamId, table.status, table.refreshedAt),
+	check('chk_capacity_provider_availability_sessions_sequence', sql`${table.sequence} >= 1`),
+	check('chk_capacity_provider_availability_sessions_status', sql`${table.status} IN ('open', 'draining', 'closed', 'expired')`)
 ]);
 
-export const providerAssignments = pgTable('provider_assignments', {
+export const capacityProviderAssignments = pgTable('capacity_provider_assignments', {
 	id: text('id').primaryKey(),
+	membershipId: text('membership_id').notNull(),
 	teamId: text('team_id').notNull(),
 	projectId: text('project_id').notNull(),
 	capacityProviderId: text('capacity_provider_id').notNull(),
 	providerSessionId: text('provider_session_id'),
 	executionProviderId: text('execution_provider_id'),
+	laneId: text('lane_id'),
 	allocationSetId: text('allocation_set_id'),
 	projectAgentClassId: text('project_agent_class_id').notNull(),
 	reservationId: text('reservation_id'),
@@ -2406,6 +2488,7 @@ export const providerAssignments = pgTable('provider_assignments', {
 	leaseState: text('lease_state').notNull().default('unleased'),
 	leaseExpiresAt: text('lease_expires_at'),
 	leaseToken: text('lease_token'),
+	stateVersion: integer('state_version').notNull().default(1),
 	leaseRenewedAt: text('lease_renewed_at'),
 	runnerId: text('runner_id'),
 	agentId: text('agent_id'),
@@ -2434,13 +2517,29 @@ export const providerAssignments = pgTable('provider_assignments', {
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
-	index('idx_provider_assignments_provider_status').on(table.capacityProviderId, table.status, table.leaseExpiresAt),
-	index('idx_provider_assignments_project_mode').on(table.projectId, table.mode, table.status),
-	index('idx_provider_assignments_lease').on(table.capacityProviderId, table.leaseState, table.leaseExpiresAt),
-	index('idx_provider_assignments_runner').on(table.runnerId, table.leaseState),
-	uniqueIndex('idx_provider_assignments_synthesis_key').on(table.teamId, table.synthesisKey),
-	index('idx_provider_assignments_decision').on(table.decisionId, table.status),
-	index('idx_provider_assignments_team_created').on(table.teamId, table.createdAt)
+	foreignKey({ name: 'fk_capacity_provider_assignments_membership', columns: [table.membershipId], foreignColumns: [capacityProviderTeamMemberships.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_provider_assignments_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_provider_assignments_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_provider_assignments_provider', columns: [table.capacityProviderId], foreignColumns: [capacityProviders.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_provider_assignments_session', columns: [table.providerSessionId], foreignColumns: [providerAvailabilitySessions.id] }).onDelete('set null'),
+	foreignKey({ name: 'fk_capacity_provider_assignments_execution_provider', columns: [table.capacityProviderId, table.executionProviderId], foreignColumns: [capacityExecutionProviders.capacityProviderId, capacityExecutionProviders.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_provider_assignments_lane', columns: [table.capacityProviderId, table.laneId], foreignColumns: [capacityProviderLanes.capacityProviderId, capacityProviderLanes.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_provider_assignments_allocation', columns: [table.allocationSetId], foreignColumns: [capacityAllocationSets.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_provider_assignments_agent_class', columns: [table.projectAgentClassId], foreignColumns: [projectAgentClasses.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_provider_assignments_reservation', columns: [table.reservationId], foreignColumns: [capacityReservations.id] }).onDelete('restrict'),
+	index('idx_capacity_provider_assignments_membership_status').on(table.membershipId, table.status, table.leaseExpiresAt),
+	index('idx_capacity_provider_assignments_provider_status').on(table.capacityProviderId, table.status, table.leaseExpiresAt),
+	index('idx_capacity_provider_assignments_lane_status').on(table.laneId, table.status, table.leaseExpiresAt),
+	index('idx_capacity_provider_assignments_project_mode').on(table.projectId, table.mode, table.status),
+	index('idx_capacity_provider_assignments_lease').on(table.capacityProviderId, table.leaseState, table.leaseExpiresAt),
+	index('idx_capacity_provider_assignments_runner').on(table.runnerId, table.leaseState),
+	uniqueIndex('idx_capacity_provider_assignments_synthesis_key').on(table.teamId, table.synthesisKey),
+	index('idx_capacity_provider_assignments_decision').on(table.decisionId, table.status),
+	index('idx_capacity_provider_assignments_team_created').on(table.teamId, table.createdAt),
+	check('chk_capacity_provider_assignments_state_version', sql`${table.stateVersion} >= 1`),
+	check('chk_capacity_provider_assignments_mode', sql`${table.mode} IN ('planning', 'acting')`),
+	check('chk_capacity_provider_assignments_status', sql`${table.status} IN ('pending', 'leased', 'running', 'completed', 'failed', 'returned', 'expired', 'cancelled')`),
+	check('chk_capacity_provider_assignments_lease_state', sql`${table.leaseState} IN ('unleased', 'leased', 'released', 'expired')`)
 ]);
 
 export const agentModeRuns = pgTable('agent_mode_runs', {
@@ -2469,9 +2568,39 @@ export const agentModeRuns = pgTable('agent_mode_runs', {
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
+	foreignKey({ name: 'fk_agent_mode_runs_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_agent_mode_runs_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_agent_mode_runs_assignment', columns: [table.providerAssignmentId], foreignColumns: [capacityProviderAssignments.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_agent_mode_runs_provider', columns: [table.capacityProviderId], foreignColumns: [capacityProviders.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_agent_mode_runs_execution_provider', columns: [table.capacityProviderId, table.executionProviderId], foreignColumns: [capacityExecutionProviders.capacityProviderId, capacityExecutionProviders.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_agent_mode_runs_agent_class', columns: [table.projectAgentClassId], foreignColumns: [projectAgentClasses.id] }).onDelete('restrict'),
 	index('idx_agent_mode_runs_assignment').on(table.providerAssignmentId, table.status),
 	index('idx_agent_mode_runs_project_mode').on(table.projectId, table.mode, table.createdAt),
-	index('idx_agent_mode_runs_provider').on(table.capacityProviderId, table.createdAt)
+	index('idx_agent_mode_runs_provider').on(table.capacityProviderId, table.createdAt),
+	check('chk_agent_mode_runs_mode', sql`${table.mode} IN ('planning', 'acting')`),
+	check('chk_agent_mode_runs_status', sql`${table.status} IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')`)
+]);
+
+export const agentFallbackOutputs = pgTable('agent_fallback_outputs', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id').notNull(),
+	assignmentId: text('assignment_id'),
+	mode: text('mode').notNull(),
+	code: text('code').notNull(),
+	status: text('status').notNull().default('draft'),
+	outputJson: text('output_json').notNull().default('{}'),
+	provenanceJson: text('provenance_json').notNull().default('{}'),
+	quotaJson: text('quota_json').notNull().default('{}'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_agent_fallback_outputs_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_agent_fallback_outputs_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_agent_fallback_outputs_assignment', columns: [table.assignmentId], foreignColumns: [capacityProviderAssignments.id] }).onDelete('restrict'),
+	index('idx_agent_fallback_outputs_project_created').on(table.projectId, table.createdAt),
+	index('idx_agent_fallback_outputs_project_mode_status').on(table.projectId, table.mode, table.status, table.createdAt),
+	index('idx_agent_fallback_outputs_assignment').on(table.assignmentId, table.createdAt)
 ]);
 
 export const decisionPlanningStatuses = pgTable('decision_planning_statuses', {
@@ -2490,8 +2619,12 @@ export const decisionPlanningStatuses = pgTable('decision_planning_statuses', {
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
+	foreignKey({ name: 'fk_decision_planning_statuses_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_decision_planning_statuses_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('cascade'),
 	uniqueIndex('idx_decision_planning_statuses_decision').on(table.decisionId),
-	index('idx_decision_planning_statuses_project').on(table.projectId, table.executionReadiness, table.updatedAt)
+	index('idx_decision_planning_statuses_project').on(table.projectId, table.executionReadiness, table.updatedAt),
+	check('chk_decision_planning_statuses_readiness', sql`${table.executionReadiness} IN ('draft','blocked','ready','stale','waived')`),
+	check('chk_decision_planning_statuses_inputs', sql`${table.planningInputsStatus} IN ('requested','complete','waived','rejected','stale')`)
 ]);
 
 export const planningInputRequests = pgTable('planning_input_requests', {
@@ -2510,8 +2643,13 @@ export const planningInputRequests = pgTable('planning_input_requests', {
 	completedAt: text('completed_at'),
 	staleAt: text('stale_at'),
 }, (table) => [
+	foreignKey({ name: 'fk_planning_input_requests_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_planning_input_requests_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_planning_input_requests_agent_class', columns: [table.projectAgentClassId], foreignColumns: [projectAgentClasses.id] }).onDelete('restrict'),
 	index('idx_planning_input_requests_decision').on(table.decisionId, table.status, table.requestedAt),
-	index('idx_planning_input_requests_project').on(table.projectId, table.status, table.requestedAt)
+	index('idx_planning_input_requests_project').on(table.projectId, table.status, table.requestedAt),
+	check('chk_planning_input_requests_mode', sql`${table.mode} IN ('planning','acting')`),
+	check('chk_planning_input_requests_status', sql`${table.status} IN ('requested','complete','waived','rejected','stale')`)
 ]);
 
 export const decisionExecutionInputs = pgTable('decision_execution_inputs', {
@@ -2519,6 +2657,7 @@ export const decisionExecutionInputs = pgTable('decision_execution_inputs', {
 	teamId: text('team_id').notNull(),
 	projectId: text('project_id').notNull(),
 	decisionId: text('decision_id').notNull(),
+	workGraphNodeId: text('work_graph_node_id'),
 	projectAgentClassId: text('project_agent_class_id').notNull(),
 	mode: text('mode').notNull().default('acting'),
 	status: text('status').notNull().default('proposed'),
@@ -2531,30 +2670,219 @@ export const decisionExecutionInputs = pgTable('decision_execution_inputs', {
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
+	foreignKey({ name: 'fk_decision_execution_inputs_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_decision_execution_inputs_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_decision_execution_inputs_agent_class', columns: [table.projectAgentClassId], foreignColumns: [projectAgentClasses.id] }).onDelete('restrict'),
 	index('idx_decision_execution_inputs_decision').on(table.decisionId, table.status, table.createdAt),
-	index('idx_decision_execution_inputs_project').on(table.projectId, table.status, table.mode, table.createdAt)
+	index('idx_decision_execution_inputs_graph_node').on(table.decisionId, table.workGraphNodeId, table.status),
+	uniqueIndex('idx_decision_execution_inputs_graph_scope').on(table.decisionId, table.workGraphNodeId, table.scopeHash).where(sql`${table.workGraphNodeId} IS NOT NULL`),
+	index('idx_decision_execution_inputs_project').on(table.projectId, table.status, table.mode, table.createdAt),
+	check('chk_decision_execution_inputs_mode', sql`${table.mode} IN ('planning','acting')`),
+	check('chk_decision_execution_inputs_status', sql`${table.status} IN ('proposed','accepted','revision_requested','rejected','stale')`)
+]);
+
+export const structuredAgentEstimates = pgTable('structured_agent_estimates', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id').notNull(),
+	decisionId: text('decision_id'),
+	proposalId: text('proposal_id'),
+	workUnitId: text('work_unit_id'),
+	agentClass: text('agent_class').notNull(),
+	agentId: text('agent_id'),
+	status: text('status').notNull().default('submitted'),
+	estimateJson: text('estimate_json').notNull(),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	acceptedAt: text('accepted_at'),
+	rejectedAt: text('rejected_at'),
+}, (table) => [
+	foreignKey({ name: 'fk_structured_agent_estimates_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_structured_agent_estimates_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('cascade'),
+	index('idx_structured_agent_estimates_decision').on(table.decisionId, table.status, table.createdAt),
+	check('chk_structured_agent_estimates_status', sql`${table.status} IN ('submitted','accepted','rejected','superseded')`)
+]);
+
+export const decisionAssignmentGraphs = pgTable('decision_assignment_graphs', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id').notNull(),
+	decisionId: text('decision_id').notNull(),
+	version: integer('version').notNull(),
+	status: text('status').notNull(),
+	active: integer('active').notNull().default(0),
+	graphJson: text('graph_json').notNull(),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	compiledAt: text('compiled_at'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_decision_assignment_graphs_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_decision_assignment_graphs_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('cascade'),
+	uniqueIndex('idx_decision_assignment_graphs_version').on(table.decisionId, table.version),
+	uniqueIndex('idx_decision_assignment_graphs_one_active').on(table.decisionId).where(sql`${table.active} = 1`),
+	index('idx_decision_assignment_graphs_decision').on(table.decisionId, table.active, table.version),
+	check('chk_decision_assignment_graphs_version', sql`${table.version} >= 1`),
+	check('chk_decision_assignment_graphs_status', sql`${table.status} IN ('draft','compiled','ready','executing','completed','blocked')`),
+	check('chk_decision_assignment_graphs_active', sql`${table.active} IN (0,1)`)
+]);
+
+export const researchWorkflows = pgTable('research_workflows', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id').notNull(),
+	objectiveRef: text('objective_ref').notNull(),
+	questionRef: text('question_ref').notNull(),
+	status: text('status').notNull(),
+	stateVersion: integer('state_version').notNull(),
+	workflowJson: text('workflow_json').notNull(),
+	idempotencyKey: text('idempotency_key').notNull(),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_research_workflows_team', columns: [table.teamId], foreignColumns: [teams.id] }),
+	foreignKey({ name: 'fk_research_workflows_project', columns: [table.projectId], foreignColumns: [projects.id] }),
+	uniqueIndex('idx_research_workflows_idempotency').on(table.projectId, table.idempotencyKey),
+	index('idx_research_workflows_question').on(table.projectId, table.questionRef, table.status, table.updatedAt),
+	check('chk_research_workflows_status', sql`${table.status} IN ('ready','running','completed','blocked','failed')`),
+	check('chk_research_workflows_state_version', sql`${table.stateVersion} >= 1`)
+]);
+
+export const deliverableContracts = pgTable('deliverable_contracts', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id').notNull(),
+	decisionId: text('decision_id').notNull(),
+	deliverableType: text('deliverable_type').notNull(),
+	status: text('status').notNull(),
+	contractJson: text('contract_json').notNull(),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_deliverable_contracts_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_deliverable_contracts_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('cascade'),
+	index('idx_deliverable_contracts_decision').on(table.decisionId, table.status, table.deliverableType),
+	check('chk_deliverable_contracts_status', sql`${table.status} IN ('required','draft','submitted','approved','rejected')`)
+]);
+
+export const deliverableManifests = pgTable('deliverable_manifests', {
+	id: text('id').primaryKey(),
+	deliverableContractId: text('deliverable_contract_id').notNull(),
+	projectId: text('project_id').notNull(),
+	decisionId: text('decision_id').notNull(),
+	readyForReview: integer('ready_for_review').notNull().default(0),
+	manifestJson: text('manifest_json').notNull(),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	submittedAt: text('submitted_at'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_deliverable_manifests_contract', columns: [table.deliverableContractId], foreignColumns: [deliverableContracts.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_deliverable_manifests_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('cascade'),
+	index('idx_deliverable_manifests_contract').on(table.deliverableContractId, table.submittedAt),
+	check('chk_deliverable_manifests_ready', sql`${table.readyForReview} IN (0,1)`)
+]);
+
+export const capacityWorkdayRuns = pgTable('capacity_workday_runs', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	capacityProviderId: text('capacity_provider_id'),
+	scenarioId: text('scenario_id').notNull().default('portfolio-local'),
+	status: text('status').notNull().default('queued'),
+	environment: text('environment').notNull().default('local'),
+	requestedById: text('requested_by_id'),
+	parametersJson: text('parameters_json').notNull().default('{}'),
+	summaryJson: text('summary_json').notNull().default('{}'),
+	metricsJson: text('metrics_json').notNull().default('{}'),
+	expectedJson: text('expected_json').notNull().default('{}'),
+	actualJson: text('actual_json').notNull().default('{}'),
+	reportRefsJson: text('report_refs_json').notNull().default('{}'),
+	errorJson: text('error_json').notNull().default('{}'),
+	startedAt: text('started_at'),
+	completedAt: text('completed_at'),
+	nextEventIndex: integer('next_event_index').notNull().default(0),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_capacity_workday_runs_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	index('idx_capacity_workday_runs_team_status').on(table.teamId, table.status, table.updatedAt),
+	index('idx_capacity_workday_runs_provider').on(table.capacityProviderId, table.updatedAt),
+	check('chk_capacity_workday_runs_status', sql`${table.status} IN ('queued','running','completed','cancelled','failed','degraded')`),
+	check('chk_capacity_workday_runs_next_event', sql`${table.nextEventIndex} >= 0`)
+]);
+
+export const capacityWorkdayEvents = pgTable('capacity_workday_events', {
+	id: text('id').primaryKey(),
+	runId: text('run_id').notNull(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id'),
+	workdayId: text('workday_id'),
+	assignmentId: text('assignment_id'),
+	modeRunId: text('mode_run_id'),
+	eventIndex: integer('event_index').notNull(),
+	eventType: text('event_type').notNull(),
+	status: text('status').notNull().default('recorded'),
+	title: text('title'),
+	message: text('message'),
+	parametersJson: text('parameters_json').notNull().default('{}'),
+	contextJson: text('context_json').notNull().default('{}'),
+	refsJson: text('refs_json').notNull().default('{}'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_capacity_workday_events_run', columns: [table.runId], foreignColumns: [capacityWorkdayRuns.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_workday_events_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_workday_events_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
+	uniqueIndex('idx_capacity_workday_events_run_index').on(table.runId, table.eventIndex),
+	index('idx_capacity_workday_events_project').on(table.projectId, table.createdAt),
+	check('chk_capacity_workday_events_index', sql`${table.eventIndex} >= 0`),
+	check('chk_capacity_workday_events_status', sql`${table.status} IN ('recorded','active','completed','warning','error','failed')`)
+]);
+
+export const capacityWorkdayParticipationCycles = pgTable('capacity_workday_participation_cycles', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id').notNull(),
+	workdayRunId: text('workday_run_id').notNull(),
+	cycleNumber: integer('cycle_number').notNull(),
+	status: text('status').notNull().default('open'),
+	openedAt: text('opened_at').notNull(),
+	coveredAt: text('covered_at'),
+	closedAt: text('closed_at'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_capacity_workday_participation_cycles_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_workday_participation_cycles_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_workday_participation_cycles_run', columns: [table.workdayRunId], foreignColumns: [capacityWorkdayRuns.id] }).onDelete('restrict'),
+	uniqueIndex('idx_capacity_workday_participation_cycles_number').on(table.workdayRunId, table.projectId, table.cycleNumber),
+	index('idx_capacity_workday_participation_cycles_status').on(table.workdayRunId, table.status, table.projectId),
+	check('chk_capacity_workday_participation_cycles_number', sql`${table.cycleNumber} >= 1`),
+	check('chk_capacity_workday_participation_cycles_status', sql`${table.status} IN ('open','covered','closed')`),
 ]);
 
 export const workdayCapacityEnvelopes = pgTable('workday_capacity_envelopes', {
 	id: text('id').primaryKey(),
 	teamId: text('team_id').notNull(),
 	projectId: text('project_id').notNull(),
+	workdayRunId: text('workday_run_id').references(() => capacityWorkdayRuns.id, { onDelete: 'restrict' }),
 	allocationSetId: text('allocation_set_id'),
 	status: text('status').notNull().default('draft'),
 	startedAt: text('started_at'),
 	pausedAt: text('paused_at'),
 	completedAt: text('completed_at'),
 	envelopeJson: text('envelope_json').notNull().default('{}'),
-	modeSplitsJson: text('mode_splits_json').notNull().default('{}'),
-	capsJson: text('caps_json').notNull().default('{}'),
-	reservesJson: text('reserves_json').notNull().default('{}'),
-	borrowingRulesJson: text('borrowing_rules_json').notNull().default('{}'),
 	metadataJson: text('metadata_json').notNull().default('{}'),
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
+	foreignKey({ name: 'fk_workday_capacity_envelopes_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_workday_capacity_envelopes_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_workday_capacity_envelopes_allocation', columns: [table.allocationSetId], foreignColumns: [capacityAllocationSets.id] }).onDelete('restrict'),
+	index('idx_workday_capacity_envelopes_run_status').on(table.workdayRunId, table.status, table.id),
 	index('idx_workday_capacity_envelopes_project_status').on(table.projectId, table.status, table.createdAt),
-	index('idx_workday_capacity_envelopes_team_status').on(table.teamId, table.status, table.createdAt)
+	index('idx_workday_capacity_envelopes_team_status').on(table.teamId, table.status, table.createdAt),
+	check('chk_workday_capacity_envelopes_status', sql`${table.status} IN ('draft','queued','active','paused','completed','cancelled','failed','degraded')`)
 ]);
 
 export const agentCapacityPlans = pgTable('agent_capacity_plans', {
@@ -2582,9 +2910,66 @@ export const agentCapacityPlans = pgTable('agent_capacity_plans', {
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
+	foreignKey({ name: 'fk_agent_capacity_plans_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_agent_capacity_plans_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_agent_capacity_plans_allocation', columns: [table.allocationSetId], foreignColumns: [capacityAllocationSets.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_agent_capacity_plans_workday', columns: [table.workDayId], foreignColumns: [workdayCapacityEnvelopes.id] }).onDelete('restrict'),
 	index('idx_agent_capacity_plans_decision').on(table.decisionId, table.status, table.createdAt),
 	index('idx_agent_capacity_plans_project').on(table.projectId, table.status, table.createdAt),
-	index('idx_agent_capacity_plans_workday').on(table.workDayId, table.status, table.createdAt)
+	index('idx_agent_capacity_plans_workday').on(table.workDayId, table.status, table.createdAt),
+	check('chk_agent_capacity_plans_status', sql`${table.status} IN ('draft','accepted','revision_requested','deferred','scheduled','active','completed','superseded')`),
+	check('chk_agent_capacity_plans_credits', sql`${table.expectedCredits} >= 0 AND ${table.highCredits} >= ${table.expectedCredits}`)
+]);
+
+export const capacityWorkdayDemands = pgTable('capacity_workday_demands', {
+	id: text('id').primaryKey(), teamId: text('team_id').notNull(), projectId: text('project_id').notNull(),
+	workdayRunId: text('workday_run_id').notNull(), workdayId: text('workday_id').notNull(),
+	sourceType: text('source_type').notNull(), sourceId: text('source_id').notNull(), mode: text('mode').notNull(),
+	projectAgentClassId: text('project_agent_class_id').notNull(), agentId: text('agent_id'),
+	handlerId: text('handler_id').notNull(), activityType: text('activity_type').notNull(),
+	decisionId: text('decision_id'), capacityPlanId: text('capacity_plan_id'), status: text('status').notNull().default('pending'),
+	priority: integer('priority').notNull().default(0), requestedCredits: real('requested_credits').notNull(),
+	idempotencyKey: text('idempotency_key').notNull(), claimToken: text('claim_token'), assignmentId: text('assignment_id'),
+	payloadJson: text('payload_json').notNull().default('{}'), metadataJson: text('metadata_json').notNull().default('{}'),
+	availableAt: text('available_at').notNull(), claimedAt: text('claimed_at'), admittedAt: text('admitted_at'),
+	completedAt: text('completed_at'), createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_capacity_workday_demands_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_workday_demands_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_workday_demands_run', columns: [table.workdayRunId], foreignColumns: [capacityWorkdayRuns.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_workday_demands_workday', columns: [table.workdayId], foreignColumns: [workdayCapacityEnvelopes.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_workday_demands_agent_class', columns: [table.projectAgentClassId], foreignColumns: [projectAgentClasses.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_workday_demands_assignment', columns: [table.assignmentId], foreignColumns: [capacityProviderAssignments.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_workday_demands_capacity_plan', columns: [table.capacityPlanId], foreignColumns: [agentCapacityPlans.id] }).onDelete('restrict'),
+	uniqueIndex('idx_capacity_workday_demands_idempotency').on(table.teamId, table.idempotencyKey),
+	uniqueIndex('idx_capacity_workday_demands_assignment').on(table.assignmentId),
+	uniqueIndex('idx_capacity_workday_demands_claim').on(table.claimToken),
+	index('idx_capacity_workday_demands_ready').on(table.teamId, table.status, table.availableAt, table.priority),
+	index('idx_capacity_workday_demands_run').on(table.workdayRunId, table.projectId, table.status, table.createdAt),
+	check('chk_capacity_workday_demands_mode', sql`${table.mode} IN ('planning','acting')`),
+	check('chk_capacity_workday_demands_status', sql`${table.status} IN ('pending','claimed','admitted','completed','blocked','cancelled','superseded')`),
+	check('chk_capacity_workday_demands_source', sql`${table.sourceType} IN ('objective','question','proposal','decision-review','knowledge-gap','release-readiness','idle-intent','planning-input','capacity-plan','assignment-completion','assignment-blockage','workday-summary','handoff','research-workflow')`),
+	check('chk_capacity_workday_demands_credits', sql`${table.requestedCredits} > 0`),
+]);
+
+export const capacityWorkdayParticipationEntries = pgTable('capacity_workday_participation_entries', {
+	id: text('id').primaryKey(), cycleId: text('cycle_id').notNull(), teamId: text('team_id').notNull(),
+	projectId: text('project_id').notNull(), workdayRunId: text('workday_run_id').notNull(), agentId: text('agent_id').notNull(),
+	projectAgentClassId: text('project_agent_class_id').notNull(), status: text('status').notNull().default('pending'),
+	reasonCode: text('reason_code'), demandId: text('demand_id'), assignmentId: text('assignment_id'), coveredAt: text('covered_at'),
+	metadataJson: text('metadata_json').notNull().default('{}'), createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_capacity_workday_participation_entries_cycle', columns: [table.cycleId], foreignColumns: [capacityWorkdayParticipationCycles.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_workday_participation_entries_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_workday_participation_entries_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_workday_participation_entries_run', columns: [table.workdayRunId], foreignColumns: [capacityWorkdayRuns.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_workday_participation_entries_agent_class', columns: [table.projectAgentClassId], foreignColumns: [projectAgentClasses.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_workday_participation_entries_demand', columns: [table.demandId], foreignColumns: [capacityWorkdayDemands.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_workday_participation_entries_assignment', columns: [table.assignmentId], foreignColumns: [capacityProviderAssignments.id] }).onDelete('restrict'),
+	uniqueIndex('idx_capacity_workday_participation_entries_agent').on(table.cycleId, table.agentId),
+	uniqueIndex('idx_capacity_workday_participation_entries_demand').on(table.demandId),
+	index('idx_capacity_workday_participation_entries_status').on(table.workdayRunId, table.projectId, table.status, table.agentId),
+	check('chk_capacity_workday_participation_entries_status', sql`${table.status} IN ('pending','assigned','completed','excluded','blocked')`),
 ]);
 
 export const treeDxProxyHandles = pgTable('treedx_proxy_handles', {
@@ -2598,6 +2983,8 @@ export const treeDxProxyHandles = pgTable('treedx_proxy_handles', {
 	scopesJson: text('scopes_json').notNull().default('[]'),
 	allowedOperationsJson: text('allowed_operations_json').notNull().default('[]'),
 	allowedPathsJson: text('allowed_paths_json').notNull().default('[]'),
+	allowedReadPathsJson: text('allowed_read_paths_json').notNull().default('[]'),
+	allowedWritePathsJson: text('allowed_write_paths_json').notNull().default('[]'),
 	tokenHash: text('token_hash'),
 	expiresAt: text('expires_at'),
 	issuedAt: text('issued_at').notNull(),
@@ -2845,93 +3232,6 @@ export const approvalRequests = pgTable('approval_requests', {
 }, (table) => [
 	index('idx_approval_requests_team_state').on(table.teamId, table.state, table.createdAt),
 	index('idx_approval_requests_project_workday').on(table.projectId, table.workDayId, table.state, table.createdAt)
-]);
-
-export const workdayRequests = pgTable('workday_requests', {
-	id: text('id').primaryKey(),
-	projectId: text('project_id').notNull(),
-	environment: text('environment').notNull(),
-	typeColumn: text('type').notNull(),
-	state: text('state').notNull().default('pending'),
-	workDayId: text('work_day_id'),
-	requestedBy: text('requested_by'),
-	reason: text('reason'),
-	payloadJson: text('payload_json').notNull(),
-	metadataJson: text('metadata_json').notNull(),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	index('idx_workday_requests_project_environment_state').on(table.projectId, table.environment, table.state, table.createdAt)
-]);
-
-export const workdayManagerLeases = pgTable('workday_manager_leases', {
-	id: text('id').primaryKey(),
-	projectId: text('project_id').notNull(),
-	environment: text('environment').notNull(),
-	workDayId: text('work_day_id'),
-	managerId: text('manager_id').notNull(),
-	state: text('state').notNull().default('active'),
-	heartbeatAt: text('heartbeat_at').notNull(),
-	expiresAt: text('expires_at').notNull(),
-	metadataJson: text('metadata_json').notNull(),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	index('idx_workday_manager_leases_active').on(table.projectId, table.environment, table.state, table.heartbeatAt)
-]);
-
-export const workerRunners = pgTable('worker_runners', {
-	id: text('id').primaryKey(),
-	projectId: text('project_id').notNull(),
-	environment: text('environment').notNull(),
-	runnerId: text('runner_id').notNull(),
-	runnerServiceName: text('runner_service_name').notNull(),
-	volumeIdentity: text('volume_identity').notNull(),
-	state: text('state').notNull().default('active'),
-	maxLocalWorkers: integer('max_local_workers').notNull().default(4),
-	activeLocalWorkers: integer('active_local_workers').notNull().default(0),
-	availableCapacity: integer('available_capacity').notNull().default(4),
-	lastHeartbeatAt: text('last_heartbeat_at'),
-	claimedRepositoryIdsJson: text('claimed_repository_ids_json').notNull(),
-	metadataJson: text('metadata_json').notNull(),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	uniqueIndex('idx_worker_runners_identity').on(table.projectId, table.environment, table.runnerId),
-	index('idx_worker_runners_state_capacity').on(table.projectId, table.environment, table.state, table.availableCapacity)
-]);
-
-export const repositoryClaims = pgTable('repository_claims', {
-	id: text('id').primaryKey(),
-	projectId: text('project_id').notNull(),
-	repositoryId: text('repository_id').notNull(),
-	runnerId: text('runner_id').notNull(),
-	runnerServiceName: text('runner_service_name').notNull(),
-	volumeIdentity: text('volume_identity').notNull(),
-	lastSeenCommit: text('last_seen_commit'),
-	lastTaskAt: text('last_task_at'),
-	claimState: text('claim_state').notNull().default('active'),
-	metadataJson: text('metadata_json').notNull(),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	uniqueIndex('idx_repository_claims_runner_repo').on(table.projectId, table.repositoryId, table.runnerId),
-	index('idx_repository_claims_repo_state').on(table.projectId, table.repositoryId, table.claimState, table.updatedAt)
-]);
-
-export const runnerScaleDecisions = pgTable('runner_scale_decisions', {
-	id: text('id').primaryKey(),
-	projectId: text('project_id').notNull(),
-	environment: text('environment').notNull(),
-	workDayId: text('work_day_id'),
-	runnerId: text('runner_id'),
-	runnerServiceName: text('runner_service_name'),
-	action: text('action').notNull(),
-	reason: text('reason').notNull(),
-	metadataJson: text('metadata_json').notNull(),
-	createdAt: text('created_at').notNull(),
-}, (table) => [
-	index('idx_runner_scale_decisions_project_workday').on(table.projectId, table.environment, table.workDayId, table.createdAt)
 ]);
 
 export const repositoryHosts = pgTable('repository_hosts', {
@@ -3201,27 +3501,6 @@ export const providerCredentialSessions = pgTable('provider_credential_sessions'
 	index('idx_provider_credential_sessions_job').on(table.jobId, table.status)
 ]);
 
-export const capacityProviderApiKeys = pgTable('capacity_provider_api_keys', {
-	id: text('id').primaryKey(),
-	capacityProviderId: text('capacity_provider_id').notNull(),
-	teamId: text('team_id').notNull(),
-	name: text('name').notNull(),
-	keyPrefix: text('key_prefix').notNull(),
-	keyHash: text('key_hash').notNull(),
-	scopesJson: text('scopes_json').notNull().default('[]'),
-	status: text('status').notNull().default('active'),
-	lastUsedAt: text('last_used_at'),
-	rotatedFromKeyId: text('rotated_from_key_id'),
-	expiresAt: text('expires_at'),
-	revokedAt: text('revoked_at'),
-	createdById: text('created_by_id'),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	index('idx_capacity_provider_api_keys_provider_status').on(table.capacityProviderId, table.status, table.createdAt),
-	index('idx_capacity_provider_api_keys_prefix').on(table.keyPrefix)
-]);
-
 export const userPreferences = pgTable('user_preferences', {
 	userId: text('user_id').primaryKey(),
 	colorScheme: text('color_scheme').notNull().default('fern'),
@@ -3336,33 +3615,6 @@ export const notificationEmailDeliveries = pgTable('notification_email_deliverie
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [index('idx_notification_email_deliveries_due').on(table.status, table.dueAt)]);
 
-export const taskEstimateProfiles = pgTable('task_estimate_profiles', {
-	taskSignature: text('task_signature'),
-	executionProfileId: text('execution_profile_id').default('standard-code-model'),
-	sampleCount: integer('sample_count').notNull().default(0),
-	completedSampleCount: integer('completed_sample_count').notNull().default(0),
-	interruptedSampleCount: integer('interrupted_sample_count').notNull().default(0),
-	inputTokensP50: integer('input_tokens_p50'),
-	inputTokensP90: integer('input_tokens_p90'),
-	outputTokensP50: integer('output_tokens_p50'),
-	outputTokensP90: integer('output_tokens_p90'),
-	quotaMinutesP50: real('quota_minutes_p50'),
-	quotaMinutesP90: real('quota_minutes_p90'),
-	filesChangedP50: real('files_changed_p50'),
-	filesChangedP90: real('files_changed_p90'),
-	creditsP50: real('credits_p50'),
-	creditsP90: real('credits_p90'),
-	creditsVariance: real('credits_variance'),
-	confidenceScore: real('confidence_score'),
-	outlierCount: integer('outlier_count').notNull().default(0),
-	partialCredits: real('partial_credits'),
-	firstSampleAt: text('first_sample_at'),
-	lastSampleAt: text('last_sample_at'),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	primaryKey({ columns: [table.taskSignature, table.executionProfileId] })
-]);
-
 export const creditConversionProfiles = pgTable('credit_conversion_profiles', {
 	id: text('id').primaryKey(),
 	taskSignature: text('task_signature').notNull(),
@@ -3385,7 +3637,15 @@ export const creditConversionProfiles = pgTable('credit_conversion_profiles', {
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
 	uniqueIndex('idx_credit_conversion_profiles_profile_key').on(table.taskSignature, table.executionProfileId, table.executionProviderKind, table.nativeUnit),
-	index('idx_credit_conversion_profiles_kind_unit').on(table.executionProviderKind, table.nativeUnit, table.updatedAt)
+	index('idx_credit_conversion_profiles_kind_unit').on(table.executionProviderKind, table.nativeUnit, table.updatedAt),
+	check('chk_credit_conversion_profiles_sample_counts', sql`${table.sampleCount} >= 0 AND ${table.completedSampleCount} >= 0 AND ${table.interruptedSampleCount} >= 0 AND ${table.completedSampleCount} + ${table.interruptedSampleCount} <= ${table.sampleCount}`),
+	check('chk_credit_conversion_profiles_native_p50', sql`${table.nativeUnitsPerCreditP50} IS NULL OR ${table.nativeUnitsPerCreditP50} >= 0`),
+	check('chk_credit_conversion_profiles_native_p90', sql`${table.nativeUnitsPerCreditP90} IS NULL OR ${table.nativeUnitsPerCreditP90} >= 0`),
+	check('chk_credit_conversion_profiles_credit_p50', sql`${table.creditsPerNativeUnitP50} IS NULL OR ${table.creditsPerNativeUnitP50} >= 0`),
+	check('chk_credit_conversion_profiles_credit_p90', sql`${table.creditsPerNativeUnitP90} IS NULL OR ${table.creditsPerNativeUnitP90} >= 0`),
+	check('chk_credit_conversion_profiles_actual_p50', sql`${table.actualCreditsP50} IS NULL OR ${table.actualCreditsP50} >= 0`),
+	check('chk_credit_conversion_profiles_actual_p90', sql`${table.actualCreditsP90} IS NULL OR ${table.actualCreditsP90} >= 0`),
+	check('chk_credit_conversion_profiles_confidence', sql`${table.confidence} IN ('low', 'medium', 'high')`)
 ]);
 
 export const seedRuns = pgTable('seed_runs', {
@@ -3480,46 +3740,6 @@ export const messageQueue = pgTable('message_queue', {
 	index('idx_message_queue_related').on(table.relatedModel, table.relatedId, table.createdAt)
 ]);
 
-export const capacityProviderRegistrations = pgTable('capacity_provider_registrations', {
-	id: text('id').primaryKey(),
-	capacityProviderId: text('capacity_provider_id').notNull(),
-	teamId: text('team_id').notNull(),
-	runtimeVersion: text('runtime_version').notNull(),
-	marketId: text('market_id').notNull(),
-	capabilitiesJson: text('capabilities_json').notNull().default('[]'),
-	budgetsJson: text('budgets_json').notNull().default('{}'),
-	healthJson: text('health_json').notNull().default('{}'),
-	status: text('status').notNull().default('online'),
-	registeredAt: text('registered_at').notNull(),
-	lastSeenAt: text('last_seen_at').notNull(),
-	disconnectedAt: text('disconnected_at'),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	index('idx_capacity_provider_registrations_provider_seen').on(table.capacityProviderId, table.lastSeenAt)
-]);
-
-export const capacityProviderDeployments = pgTable('capacity_provider_deployments', {
-	id: text('id').primaryKey(),
-	teamId: text('team_id').notNull(),
-	capacityProviderId: text('capacity_provider_id').notNull(),
-	launchMode: text('launch_mode').notNull(),
-	hostKind: text('host_kind').notNull(),
-	hostId: text('host_id'),
-	status: text('status').notNull(),
-	imageRef: text('image_ref'),
-	serviceRefsJson: text('service_refs_json').notNull().default('{}'),
-	envRefsJson: text('env_refs_json').notNull().default('{}'),
-	resultJson: text('result_json').notNull().default('{}'),
-	errorJson: text('error_json'),
-	createdById: text('created_by_id'),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-	completedAt: text('completed_at'),
-}, (table) => [
-	index('idx_capacity_provider_deployments_provider_created').on(table.capacityProviderId, table.createdAt)
-]);
-
 export const platformOperations = pgTable('platform_operations', {
 	id: text('id').primaryKey(),
 	namespace: text('namespace').notNull(),
@@ -3588,61 +3808,6 @@ export const platformRepositoryClaims = pgTable('platform_repository_claims', {
 	index('idx_platform_repository_claims_runner').on(table.runnerId, table.claimState)
 ]);
 
-export const executionProviders = pgTable('execution_providers', {
-	id: text('id').primaryKey(),
-	teamId: text('team_id').notNull(),
-	capacityProviderId: text('capacity_provider_id'),
-	name: text('name').notNull(),
-	kind: text('kind').notNull(),
-	status: text('status').notNull().default('active'),
-	nativeUnit: text('native_unit').notNull(),
-	quotaVisibility: text('quota_visibility').notNull().default('opaque'),
-	maxConcurrentWorkers: integer('max_concurrent_workers').notNull().default(1),
-	resetCadence: text('reset_cadence'),
-	configJson: text('config_json').notNull().default('{}'),
-	metadataJson: text('metadata_json').notNull().default('{}'),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	index('idx_execution_providers_team_status').on(table.teamId, table.status, table.kind),
-	index('idx_execution_providers_capacity_provider').on(table.capacityProviderId, table.status)
-]);
-
-export const executionProviderNativeLimits = pgTable('execution_provider_native_limits', {
-	id: text('id').primaryKey(),
-	executionProviderId: text('execution_provider_id').notNull(),
-	scope: text('scope').notNull(),
-	nativeUnit: text('native_unit').notNull(),
-	limitAmount: real('limit_amount').notNull(),
-	reserveBufferPercent: real('reserve_buffer_percent').notNull().default(0),
-	resetCadence: text('reset_cadence'),
-	resetAt: text('reset_at'),
-	confidence: text('confidence').notNull().default('estimated'),
-	source: text('source').notNull().default('configured'),
-	metadataJson: text('metadata_json').notNull().default('{}'),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	index('idx_execution_provider_native_limits_provider_scope').on(table.executionProviderId, table.scope, table.nativeUnit)
-]);
-
-export const executionProviderObservations = pgTable('execution_provider_observations', {
-	id: text('id').primaryKey(),
-	executionProviderId: text('execution_provider_id').notNull(),
-	observedAt: text('observed_at').notNull(),
-	health: text('health').notNull().default('unknown'),
-	activeWorkers: integer('active_workers'),
-	queuedTasks: integer('queued_tasks'),
-	throttleState: text('throttle_state'),
-	nativeRemainingJson: text('native_remaining_json').notNull().default('{}'),
-	resetAt: text('reset_at'),
-	confidence: text('confidence').notNull().default('estimated'),
-	metadataJson: text('metadata_json').notNull().default('{}'),
-	createdAt: text('created_at').notNull(),
-}, (table) => [
-	index('idx_execution_provider_observations_provider_observed').on(table.executionProviderId, table.observedAt)
-]);
-
 export const marketAuthCredentials = pgTable('market_auth_credentials', {
 	userId: text('user_id').primaryKey(),
 	email: text('email').notNull().unique(),
@@ -3668,9 +3833,6 @@ export const treeseedMarketSchema = {
 	agentMessages,
 	contactSubmissions,
 	runtimeEnvelopes,
-	workDays,
-	graphRuns,
-	reports,
 	users,
 	userIdentities,
 	userEmailAddresses,
@@ -3752,15 +3914,6 @@ export const treeseedMarketSchema = {
 	projectInfrastructureResources,
 	projectDeployments,
 	projectDeploymentEvents,
-	agentPools,
-	agentPoolRegistrations,
-	agentPoolScaleDecisions,
-	projectWorkdaySummaries,
-	workPolicies,
-	priorityOverrides,
-	prioritySnapshots,
-	taskCreditLedger,
-	scaleDecisions,
 	projectSummarySnapshots,
 	teamInboxItems,
 	betterAuthUser,
@@ -3770,21 +3923,24 @@ export const treeseedMarketSchema = {
 	teamWebHosts,
 	teamInvites,
 	capacityProviders,
-	capacityProviderHosts,
+	capacityExecutionProviders,
 	capacityProviderLanes,
+	teamCapacityRegistrationKeys,
+	capacityProviderRegistrationRequests,
+	capacityProviderTeamMemberships,
+	capacityProviderTeamCredentials,
+	capacityProviderAccessTokens,
+	capacityProviderProofNonces,
+	capacityProviderRegistrationRateLimits,
+	capacityAuditEvents,
+	capacityOperationReceipts,
 	capacityGrants,
 	capacityReservations,
+	capacityAdmissionCounters,
+	capacityReservationCounterClaims,
 	capacityLedgerEntries,
-	capacityRoutingDecisions,
-	taskEstimates,
-	taskUsageActuals,
-	nativeUsageObservations,
+	capacityUsageActuals,
 	approvalRequests,
-	workdayRequests,
-	workdayManagerLeases,
-	workerRunners,
-	repositoryClaims,
-	runnerScaleDecisions,
 	repositoryHosts,
 	hubRepositories,
 	hubContentSources,
@@ -3804,7 +3960,6 @@ export const treeseedMarketSchema = {
 	hubWorkspaceLinks,
 	projectUpdatePlans,
 	providerCredentialSessions,
-	capacityProviderApiKeys,
 	userPreferences,
 	authProviderStates,
 	authReauthenticationGrants,
@@ -3816,27 +3971,34 @@ export const treeseedMarketSchema = {
 	notificationEvents,
 	userNotifications,
 	notificationEmailDeliveries,
-	taskEstimateProfiles,
 	creditConversionProfiles,
 	seedRuns,
 	runtimeRecords,
 	cursorState,
 	leaseState,
 	messageQueue,
-	capacityProviderRegistrations,
-	capacityProviderDeployments,
 	capacityAllocationSets,
 	projectAgentClasses,
 	providerAvailabilitySessions,
-	providerAssignments,
+	decisionPlanningStatuses,
+	planningInputRequests,
+	decisionExecutionInputs,
+	structuredAgentEstimates,
+	decisionAssignmentGraphs,
+	deliverableContracts,
+	deliverableManifests,
+	capacityWorkdayRuns,
+	capacityWorkdayEvents,
+	workdayCapacityEnvelopes,
+	capacityProviderAssignments,
 	agentModeRuns,
+	agentFallbackOutputs,
+	agentCapacityPlans,
+	treeDxProxyHandles,
 	platformOperations,
 	platformOperationEvents,
 	marketOperationRunners,
 	platformRepositoryClaims,
-	executionProviders,
-	executionProviderNativeLimits,
-	executionProviderObservations,
 	marketAuthCredentials,
 	marketAuthPasswordResets,
 };

@@ -205,9 +205,20 @@ export interface AgentActivityExecutionConfig {
 	maxRuntimeSeconds?: number;
 	maxRetries?: number;
 	verificationRequired?: boolean;
+	allowedPaths?: string[];
+	forbiddenPaths?: string[];
+}
+
+export interface AgentActivityPlanningIntent {
+	objective?: string;
+	artifactKind?: string;
+	subjectModel?: string;
+	subjectId?: string | null;
+	includeWorkdayArtifacts?: boolean;
 }
 
 export interface AgentActivityProfile {
+	activityType?: AgentActivityType;
 	enabled: boolean;
 	handler: EngineeringHandlerKind;
 	prompt: AgentActivityPromptConfig;
@@ -215,9 +226,12 @@ export interface AgentActivityProfile {
 	contentAccess?: AgentContentAccessPolicy;
 	tools: AgentToolPolicy;
 	outputs: AgentOutputContract;
+	planningIntent?: AgentActivityPlanningIntent;
 	questionPolicy?: AgentQuestionPolicy;
 	execution?: AgentActivityExecutionConfig;
 }
+
+export type AgentActivityProfilesConfiguration = Partial<Record<AgentActivityType, AgentActivityProfile>>;
 
 export interface AgentCapability {
 	id: string;
@@ -272,10 +286,9 @@ export type AgentProviderFallbackPolicy =
 	| 'fail_if_unavailable'
 	| 'ask_for_approval';
 
-export interface AgentProviderLanePreference {
+export interface AgentExecutionProviderPreference {
 	providerId?: string;
 	provider?: string;
-	laneId?: string;
 	model?: string;
 	modelClass?: string;
 	weight: number;
@@ -285,7 +298,6 @@ export interface AgentProviderLanePreference {
 export interface AgentProviderFallback {
 	providerId?: string;
 	provider?: string;
-	laneId?: string;
 	model?: string;
 	modelClass?: string;
 	maxQualityPenalty?: number;
@@ -293,7 +305,7 @@ export interface AgentProviderFallback {
 
 export interface AgentProviderProfile {
 	requiredCapabilities: string[];
-	preferredLanes: AgentProviderLanePreference[];
+	preferredExecutionProviders: AgentExecutionProviderPreference[];
 	acceptableFallbacks: AgentProviderFallback[];
 	disallowedProviders?: string[];
 	disallowedRegions?: string[];

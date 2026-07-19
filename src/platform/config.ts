@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { parseCapacityProviderLaunchManifest, resolveCapacityProviderLaunchPlan } from '../capacity-provider.ts';
+import { validateAndDigestCapacityProviderManifest } from '../capacity-provider/index.ts';
 import { discoverTreeseedApplications } from '../hosting/apps.ts';
 import { discoverTreeseedPackageAdapters } from '../operations/services/package-adapters.ts';
 import { collectTreeseedEnvironmentContext } from '../operations/services/config-runtime.ts';
@@ -20,47 +20,22 @@ function loadOptionalYaml(filePath: string) {
 	return parseYaml(readFileSync(filePath, 'utf8')) as Record<string, unknown>;
 }
 
-function loadCapacityLaunchFromPackageManifest(tenantRoot: string) {
-	const agentManifestPath = resolve(tenantRoot, 'packages', 'agent', 'treeseed.package.yaml');
-	const manifest = loadOptionalYaml(agentManifestPath);
-	const capacityProvider = manifest?.capacityProvider;
-	if (!capacityProvider || typeof capacityProvider !== 'object' || Array.isArray(capacityProvider)) return null;
-	const local = (capacityProvider as Record<string, any>).local ?? {};
-	const roles = (capacityProvider as Record<string, any>).roles ?? {};
-	const launchManifest = {
-		schemaVersion: 1,
-		provider: {
-			dataDir: local.dataDir ?? '.treeseed/local-capacity-provider/data',
-			environment: 'local',
-		},
-		runtime: {
-			images: {
-				roles: {
-					manager: { image: roles.manager?.image ?? 'treeseed/agent-manager', tag: roles.manager?.tag ?? 'latest' },
-					runner: { image: roles.runner?.image ?? 'treeseed/agent-runner', tag: roles.runner?.tag ?? 'latest' },
-				},
-			},
-		},
-	};
-	const parsed = parseCapacityProviderLaunchManifest(launchManifest);
-	return {
-		path: agentManifestPath,
-		manifest: parsed,
-		plan: resolveCapacityProviderLaunchPlan(parsed),
-	};
-}
-
-function loadCapacityLaunchFromPath(configPath: string | null | undefined) {
+function loadCapacityManifestFromPath(configPath: string | null | undefined) {
 	if (!configPath) return null;
 	const absolutePath = resolve(configPath);
 	if (!existsSync(absolutePath)) {
 		throw new Error(`Capacity launch config was not found: ${absolutePath}`);
 	}
-	const parsed = parseCapacityProviderLaunchManifest(readFileSync(absolutePath, 'utf8'));
+	const parsed = parseYaml(readFileSync(absolutePath, 'utf8'));
+	let validated: ReturnType<typeof validateAndDigestCapacityProviderManifest>;
+	try {
+		validated = validateAndDigestCapacityProviderManifest(parsed);
+	} catch (error) {
+		throw new Error(`Capacity provider manifest is invalid: ${error instanceof Error ? error.message : String(error)}`);
+	}
 	return {
 		path: absolutePath,
-		manifest: parsed,
-		plan: resolveCapacityProviderLaunchPlan(parsed),
+		...validated,
 	};
 }
 
@@ -90,7 +65,7 @@ export function loadTreeseedPlatformConfig(input: TreeseedPlatformConfigInput): 
 	deployConfig: TreeseedDeployConfig;
 	packages: ReturnType<typeof discoverTreeseedPackageAdapters>;
 	applications: ReturnType<typeof discoverTreeseedApplications>;
-	capacityLaunch: ReturnType<typeof loadCapacityLaunchFromPackageManifest>;
+	capacityLaunch: ReturnType<typeof loadCapacityManifestFromPath>;
 	dev: ReturnType<typeof loadTreeseedDevManifest>;
 	envRegistry: ReturnType<typeof collectTreeseedEnvironmentContext> | null;
 } {
@@ -99,7 +74,13 @@ export function loadTreeseedPlatformConfig(input: TreeseedPlatformConfigInput): 
 	const deployConfig = loadTreeseedDeployConfigFromPath(deployConfigPath);
 	const packages = discoverPlatformPackages(tenantRoot);
 	const applications = discoverTreeseedApplications(tenantRoot);
-	const capacityLaunch = loadCapacityLaunchFromPath(input.capacityConfigPath ?? input.env?.TREESEED_CAPACITY_CONFIG_PATH) ?? loadCapacityLaunchFromPackageManifest(tenantRoot);
+	const explicitCapacityConfig = input.capacityConfigPath ?? input.env?.TREESEED_CAPACITY_PROVIDER_MANIFEST ?? input.env?.TREESEED_CAPACITY_CONFIG_PATH;
+	const defaultCapacityConfig = resolve(tenantRoot, 'treeseed.capacity-provider.yaml');
+	const capacityLaunch = explicitCapacityConfig
+		? loadCapacityManifestFromPath(explicitCapacityConfig)
+		: existsSync(defaultCapacityConfig)
+			? loadCapacityManifestFromPath(defaultCapacityConfig)
+			: null;
 	const dev = loadTreeseedDevManifest(tenantRoot);
 	let envRegistry = null;
 	try {

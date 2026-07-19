@@ -1522,6 +1522,10 @@ function packageWorkspaceForOwner(ownerPackage: string) {
 	return `packages/${name}`;
 }
 
+function npmWorkspaceArgs(workspace: string, args: string[]) {
+	return workspace === '.' ? args : ['-w', workspace, ...args];
+}
+
 function relativeEvidencePath(workspaceRoot: string, path: string) {
 	return relative(resolve(workspaceRoot), resolve(path)).replace(/\\/gu, '/');
 }
@@ -1823,7 +1827,7 @@ async function defaultTreeseedGuaranteeVerifierExecutor(input: TreeseedGuarantee
 			outputRoot: input.outputRoot,
 			ref: input.ref,
 			command: 'npm',
-			args: ['-w', workspace, 'exec', '--', 'vitest', 'run', '--config', './vitest.config.ts', definition.testFile, ...(definition.testName ? ['-t', definition.testName] : [])],
+			args: npmWorkspaceArgs(workspace, ['exec', '--', 'vitest', 'run', definition.testFile, ...(definition.testName ? ['-t', definition.testName] : [])]),
 			timeoutSeconds: definition.timeoutSeconds,
 			onProgress: input.onProgress,
 			validateSuccess: validateTreeseedVitestVerifierOutput,
@@ -1838,7 +1842,7 @@ async function defaultTreeseedGuaranteeVerifierExecutor(input: TreeseedGuarantee
 			outputRoot: input.outputRoot,
 			ref: input.ref,
 			command: 'npm',
-			args: ['-w', workspace, 'run', definition.command, '--', ...arrayOrEmpty(definition.args)],
+			args: npmWorkspaceArgs(workspace, ['run', definition.command, '--', ...arrayOrEmpty(definition.args)]),
 			timeoutSeconds: definition.timeoutSeconds,
 			onProgress: input.onProgress,
 		});
@@ -2094,7 +2098,7 @@ async function runGuaranteeSteps(input: {
 				diagnostics.push(missing);
 				continue;
 			}
-			const cacheKey = `${input.environment}:${group.kind}:${ref}`;
+			const cacheKey = `${input.environment}:${ref}`;
 			await addStep({ id: ref, kind: group.kind, ref, status: 'blocked' }, async () => {
 				const cached = input.verifierCache.get(cacheKey);
 				if (cached) return { ...cached, summary: `${cached.summary ?? `${ref} passed.`} (cached)` };

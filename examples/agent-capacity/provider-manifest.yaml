@@ -1,0 +1,22 @@
+schemaVersion: 2
+identity:
+  privateKeyRef: secret://capacity/provider-identity
+  displayName: Example shared provider
+executionProviders:
+  - id: codex-primary
+    adapter: codex
+    nativeLimits:
+      maxConcurrentRunners: 4
+    capabilities: [engineering, research]
+connections:
+  - id: team-a
+    marketProfile: staging
+    teamId: team-a
+    providerId: provider-example
+    membershipId: membership-team-a
+    membershipCredentialRef: secret://capacity/team-a
+    membershipCredentialId: credential-team-a
+    offer:
+      weight: 1
+      maxConcurrentRunners: 2
+      capabilities: [engineering, research]

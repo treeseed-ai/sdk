@@ -1,0 +1,30 @@
+schemaVersion: 2
+id: allocation-team-a-v1
+teamId: team-a
+version: 1
+status: draft
+effectiveFrom: 2026-01-01T00:00:00.000Z
+reservePolicy:
+  percent: 10
+  overflow: deny
+slices:
+  - id: project-engineering
+    scope: project
+    targetId: project-engineering
+    policy: { minPercent: 50, targetPercent: 90, maxPercent: 90, hardCapPercent: 100 }
+  - id: engineering-class
+    scope: agent-class
+    targetId: engineer
+    parentSliceId: project-engineering
+    policy: { minPercent: 50, targetPercent: 100, maxPercent: 100, hardCapPercent: 100 }
+  - id: engineering-planning
+    scope: mode
+    targetId: planning
+    parentSliceId: engineering-class
+    policy: { minPercent: 20, targetPercent: 40, maxPercent: 60, hardCapPercent: 70 }
+  - id: engineering-acting
+    scope: mode
+    targetId: acting
+    parentSliceId: engineering-class
+    policy: { minPercent: 40, targetPercent: 60, maxPercent: 80, hardCapPercent: 90 }
+borrowingRules: []

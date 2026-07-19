@@ -2,6 +2,7 @@ export { TREEDX_CLIENT_OPERATION_MAP, TreeDxClient } from './client.ts';
 export { TreeDxRegistryClient, type TreeDxRegistryClientOptions } from './registry-client.ts';
 export { TreeDxFederatedClient, type TreeDxFederatedClientOptions } from './federated-client.ts';
 export { TreeDxApiError } from './errors.ts';
+export { mintTreeDxHs256Token, type TreeDxHs256TokenInput } from './auth.ts';
 export { resolveAgentTreeDxIntegration, type AgentSdkTreeDxIntegration, type AgentSdkTreeDxOptions } from './sdk-integration.ts';
 export {
 	TreeDxRepositoryAdapter,

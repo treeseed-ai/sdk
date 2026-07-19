@@ -8,10 +8,6 @@ export type SeedResourceKind =
 	| 'repositoryHost'
 	| 'project'
 	| 'hubRepository'
-	| 'capacityProvider'
-	| 'capacityLane'
-	| 'capacityGrant'
-	| 'workPolicy'
 	| 'product'
 	| 'catalogArtifact';
 
@@ -76,10 +72,6 @@ export type SeedManifestResources = {
 	hubRepositories: SeedHubRepositoryResource[];
 	products: SeedProductResource[];
 	catalogArtifacts: SeedCatalogArtifactResource[];
-	capacityProviders: SeedCapacityProviderResource[];
-	capacityGrants: SeedCapacityGrantResource[];
-	workPolicies: SeedWorkPolicyResource[];
-	agentPools: Record<string, unknown>[];
 };
 
 export type SeedTeamResource = SeedResourceBase & {
@@ -172,116 +164,6 @@ export type SeedCatalogArtifactResource = SeedResourceBase & {
 	contentKey: string;
 	manifestKey?: string;
 	publishedAt?: string;
-	metadata?: Record<string, unknown>;
-};
-
-export type SeedCapacityLaneResource = SeedResourceBase & {
-	name: string;
-	businessModel?: string;
-	modelFamily?: string;
-	modelClass?: string;
-	regionPolicy?: string;
-	unit?: string;
-	scarcityLevel?: string;
-	hardLimits?: Record<string, unknown>;
-	routingPolicy?: Record<string, unknown>;
-	metadata?: Record<string, unknown>;
-};
-
-export type SeedCapacityProviderRegistrationApiKey = {
-	createIfMissing?: boolean;
-	name?: string;
-	plaintextKey?: string;
-	scopes?: string[];
-	expiresAt?: string;
-};
-
-export type SeedCapacityProviderRegistration = {
-	apiKey?: SeedCapacityProviderRegistrationApiKey;
-};
-
-export type SeedExecutionProviderNativeLimitResource = {
-	id?: string;
-	scope?: string;
-	limitScope?: string;
-	nativeUnit?: string;
-	limitAmount: number;
-	reserveBufferPercent?: number;
-	resetCadence?: string;
-	resetAt?: string;
-	confidence?: string;
-	source?: string;
-	metadata?: Record<string, unknown>;
-};
-
-export type SeedExecutionProviderResource = {
-	id?: string;
-	name: string;
-	kind: string;
-	status?: string;
-	nativeUnit: string;
-	quotaVisibility?: string;
-	maxConcurrentWorkers?: number;
-	resetCadence?: string;
-	config?: Record<string, unknown>;
-	metadata?: Record<string, unknown>;
-	nativeLimits?: SeedExecutionProviderNativeLimitResource[];
-};
-
-export type SeedCapacityProviderResource = SeedResourceBase & {
-	team: string;
-	name: string;
-	kind?: string;
-	provider: string;
-	billingScope?: string;
-	creditBudgetMode?: 'static' | 'hybrid' | 'derived' | string;
-	monthlyCreditBudget?: number;
-	dailyCreditBudget?: number;
-	maxConcurrentWorkdays?: number;
-	maxConcurrentWorkers?: number;
-	capacityModel?: Record<string, unknown>;
-	registration?: SeedCapacityProviderRegistration;
-	metadata?: Record<string, unknown>;
-	lanes?: SeedCapacityLaneResource[];
-	executionProviders?: SeedExecutionProviderResource[];
-};
-
-export type SeedCapacityGrantResource = SeedResourceBase & {
-	provider: string;
-	lane?: string;
-	team: string;
-	project?: string;
-	environment?: SeedEnvironment;
-	grantScope?: string;
-	dailyCreditLimit?: number;
-	weeklyCreditLimit?: number;
-	monthlyCreditLimit?: number;
-	dailyUsdLimit?: number;
-	weeklyQuotaMinutes?: number;
-	monthlyProviderUnits?: number;
-	portfolioAllocationPercent?: number;
-	reservePoolPercent?: number;
-	maxDailyProjectCredits?: number;
-	emergencyOverride?: boolean;
-	priorityWeight?: number;
-	overflowPolicy?: string;
-	state?: string;
-	metadata?: Record<string, unknown>;
-};
-
-export type SeedWorkPolicyResource = SeedResourceBase & {
-	project: string;
-	environment: SeedEnvironment;
-	enabled?: boolean;
-	startCron?: string;
-	durationMinutes?: number;
-	maxRunners?: number;
-	maxWorkersPerRunner?: number;
-	dailyCreditBudget?: number;
-	maxQueuedTasks?: number;
-	maxQueuedCredits?: number;
-	autoscale?: Record<string, unknown>;
-	creditWeights?: unknown[];
 	metadata?: Record<string, unknown>;
 };
 
