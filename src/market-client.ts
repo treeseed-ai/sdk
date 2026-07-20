@@ -1188,6 +1188,14 @@ export class MarketClient {
 		return this.request<{ ok: true; payload: ProviderTeamMembership }>(`/v1/teams/${encodeURIComponent(teamId)}/capacity-provider-memberships/${encodeURIComponent(membershipId)}`, { requireAuth: true });
 	}
 
+	capacityAuditEvents(teamId: string, filters: { action?: string | null; resourceType?: string | null; providerId?: string | null; membershipId?: string | null; from?: string | null; to?: string | null; limit?: number; cursor?: string } = {}) {
+		const query = new URLSearchParams();
+		for (const [name, value] of Object.entries(filters)) {
+			if (value !== undefined && value !== null && value !== '') query.set(name, String(value));
+		}
+		return this.request<{ ok: true; payload: CapacityPage<Record<string, unknown>> }>(`/v1/teams/${encodeURIComponent(teamId)}/capacity-audit-events${query.size ? `?${query}` : ''}`, { requireAuth: true });
+	}
+
 	capacityProviderCredentials(teamId: string, membershipId: string, filters: { status?: string | null; limit?: number; cursor?: string } = {}) {
 		const query = new URLSearchParams();
 		if (filters.status) query.set('status', filters.status);
