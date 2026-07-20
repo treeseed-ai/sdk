@@ -145,12 +145,20 @@ describe('sdk package graph', () => {
 		expect(existsSync(sdkFixtureSupportPath)).toBe(true);
 		const sdkFixtureSupport = readFileSync(sdkFixtureSupportPath, 'utf8');
 		expect(sdkFixtureSupport.includes("contractsShim?: 'agent-contracts'")).toBe(true);
+		const builtFixtureSupportPath = resolve(workspaceRoot, 'dist', 'fixture-support.js');
+		if (existsSync(builtFixtureSupportPath)) {
+			const builtFixtureSupport = readFileSync(builtFixtureSupportPath, 'utf8');
+			expect(builtFixtureSupport).toContain('./runtime-types.d.ts');
+			expect(builtFixtureSupport).not.toContain('./runtime-types.d.js');
+		}
 
 		const coreRunFixturePath = resolve(workspaceRoot, '..', 'core', 'scripts', 'run-fixture-astro-command.ts');
 		if (existsSync(coreRunFixturePath)) {
 			const coreRunFixture = readFileSync(coreRunFixturePath, 'utf8');
 			expect(coreRunFixture.includes("from '@treeseed/sdk/fixture-support'")).toBe(true);
 			expect(coreRunFixture.includes('buildAgentContractsShimPackage')).toBe(false);
+			expect(coreRunFixture.includes("modes: ['contracts-only']")).toBe(true);
+			expect(coreRunFixture.includes("workspaceDirName: 'agent'")).toBe(false);
 		}
 	});
 

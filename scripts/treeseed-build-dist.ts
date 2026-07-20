@@ -27,7 +27,7 @@ function ensureDir(filePath) {
 
 function rewriteRuntimeSpecifiers(contents, outputFile = null) {
 	let rewritten = contents
-		.replace(/(['"`])(\.[^'"`\n]+)\.(mjs|ts)\1/g, '$1$2.js$1')
+		.replace(/(['"`])(\.[^'"`\n]+?)(?<!\.d)\.(mjs|ts)\1/g, '$1$2.js$1')
 		.replace(/(['"`])\.\.\/src\//g, '$1../');
 
 	if (!outputFile || outputFile.includes(`${resolve(distRoot, 'scripts')}`)) {

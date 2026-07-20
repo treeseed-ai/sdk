@@ -105,7 +105,7 @@ function ensureDir(filePath) {
 }
 
 function rewriteRuntimeSpecifiers(contents) {
-	return contents.replace(/(['"`])(\.[^'"`\n]+)\.(mjs|ts)\1/g, '$1$2.js$1');
+	return contents.replace(/(['"`])(\.[^'"`\n]+?)(?<!\.d)\.(mjs|ts)\1/g, '$1$2.js$1');
 }
 
 function rewriteScriptRuntimeSpecifiers(contents) {
