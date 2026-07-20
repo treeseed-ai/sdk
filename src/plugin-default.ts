@@ -10,7 +10,6 @@ export default defineTreeseedPlugin({
 			execution: [
 				'copilot',
 				'codex',
-				'codex_subscription',
 				'jira',
 				'jira_issue_queue',
 				'human_issue_queue',

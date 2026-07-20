@@ -447,7 +447,7 @@ describe('agent capacity contracts', () => {
 				id: 'codex',
 				kind: 'ai_model',
 				capabilities: ['planning', 'repo_read'],
-				capabilityAliases: ['codex_subscription'],
+				capabilityAliases: ['large_reasoning_model'],
 				nativeUnit: 'token_or_wall_minute',
 				quotaVisibility: 'partial',
 				maxConcurrentAssignments: 2,
@@ -462,7 +462,7 @@ describe('agent capacity contracts', () => {
 				id: 'execution-1',
 				providerId: 'provider-1',
 				displayName: 'Codex',
-				adapter: 'codex_subscription',
+				adapter: 'codex',
 				status: 'active',
 				capabilities: ['repo_write'],
 				nativeUnit: 'wall_minute',
@@ -507,14 +507,14 @@ describe('agent capacity contracts', () => {
 			capacityProviderId: 'provider-1',
 			executionProviderId: 'execution-1',
 			kind: 'ai_model',
-			aliases: ['codex_subscription', 'large_reasoning_model'],
+			aliases: ['large_reasoning_model'],
 			grants: ['grant-1'],
 			pressure: 'busy',
 			maxConcurrentAssignments: 2,
 			nativeUnit: 'token_or_wall_minute',
 			quotaVisibility: 'partial',
 		});
-		expect(supply.capabilities).toEqual(['codex_subscription', 'human_review', 'planning', 'qa_validation', 'repo_read', 'repo_write', 'verification']);
+		expect(supply.capabilities).toEqual(['codex', 'human_review', 'planning', 'qa_validation', 'repo_read', 'repo_write', 'verification']);
 	});
 
 	it('evaluates execution provider eligibility with required capabilities, aliases, preferences, and gates', () => {

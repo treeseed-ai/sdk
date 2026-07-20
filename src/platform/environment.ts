@@ -273,7 +273,7 @@ function formsEnabled(context: TreeseedEnvironmentContext) {
 
 function codexExecutionSelected(context: TreeseedEnvironmentContext) {
 	const execution = context.deployConfig.providers?.agents?.execution ?? 'codex';
-	return execution === 'codex' || execution === 'codex_subscription';
+	return execution === 'codex';
 }
 
 function copilotExecutionSelected(context: TreeseedEnvironmentContext) {
