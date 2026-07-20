@@ -2436,7 +2436,7 @@ async function saveOneRepository(
 				return report;
 			}
 		}
-		if (node.kind === 'project' || (node.kind === 'package' && !canManagePackageJsonVersion(node))) {
+		if (!canManagePackageJsonVersion(node)) {
 			const rebase = pullRebaseFromOrigin(node, options, branch);
 			await finishRepositorySavePublish(node, options, state, report, { branch, rebase });
 			report.commitSha = headCommit(node.path);
@@ -2457,7 +2457,7 @@ async function saveOneRepository(
 				return report;
 			}
 		}
-		if (node.kind === 'project' || (node.kind === 'package' && !canManagePackageJsonVersion(node))) {
+		if (!canManagePackageJsonVersion(node)) {
 			const rebase = pullRebaseFromOrigin(node, options, branch);
 			await finishRepositorySavePublish(node, options, state, report, { branch, rebase });
 			report.commitSha = headCommit(node.path);
@@ -2501,7 +2501,7 @@ async function saveOneRepository(
 				return report;
 			}
 		}
-		if (node.kind === 'project' || (node.kind === 'package' && !canManagePackageJsonVersion(node))) {
+		if (!canManagePackageJsonVersion(node)) {
 			const rebase = pullRebaseFromOrigin(node, options, branch);
 			await finishRepositorySavePublish(node, options, state, report, { branch, rebase });
 			report.commitSha = headCommit(node.path);

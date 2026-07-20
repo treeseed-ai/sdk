@@ -410,6 +410,51 @@ describe('repository save orchestrator helpers', () => {
 		expect(progress.some((line) => line.startsWith('[@treeseed/demo][push] $ git push'))).toBe(true);
 	});
 
+	it('pushes a clean starter repository when its committed head is ahead of origin', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-clean-ahead-template-'));
+		const origin = mkdtempSync(join(tmpdir(), 'treeseed-save-clean-ahead-template-origin-'));
+		git(origin, ['init', '--bare']);
+		git(root, ['init', '-b', 'staging']);
+		git(root, ['config', 'user.email', 'test@example.com']);
+		git(root, ['config', 'user.name', 'Test User']);
+		git(root, ['remote', 'add', 'origin', origin]);
+		writeJson(resolve(root, 'template.config.json'), {
+			id: 'engineering',
+			displayName: 'Engineering',
+			category: 'starter',
+			templateVersion: '1.0.0',
+		});
+		writeFileSync(resolve(root, 'treeseed.template.yaml'), [
+			'id: engineering',
+			'name: Engineering',
+			'category: starter',
+			'versionSource: template.config.json',
+			'',
+		].join('\n'), 'utf8');
+		writeFileSync(resolve(root, 'README.md'), 'initial\n', 'utf8');
+		git(root, ['add', '-A']);
+		git(root, ['commit', '-m', 'chore: initial']);
+		git(root, ['push', '-u', 'origin', 'staging']);
+		writeFileSync(resolve(root, 'README.md'), 'initial\ncompleted locally\n', 'utf8');
+		git(root, ['add', 'README.md']);
+		git(root, ['commit', '-m', 'docs: complete starter']);
+		const aheadHead = git(root, ['rev-parse', 'HEAD']);
+
+		const result = await runRepositorySaveOrchestrator({
+			root,
+			gitRoot: root,
+			branch: 'staging',
+			commitMessageMode: 'fallback',
+			verifyMode: 'skip',
+		});
+
+		expect(result.rootRepo.dirty).toBe(false);
+		expect(result.rootRepo.committed).toBe(false);
+		expect(result.rootRepo.pushed).toBe(true);
+		expect(result.rootRepo.skippedReason).toBe('clean');
+		expect(git(root, ['ls-remote', 'origin', 'refs/heads/staging']).split(/\s+/u)[0]).toBe(aheadHead);
+	});
+
 	it('runs verification for hosted project repositories that declare verify scripts', async () => {
 		vi.stubEnv('TREESEED_SAVE_NPM_INSTALL_MODE', 'skip');
 		try {
