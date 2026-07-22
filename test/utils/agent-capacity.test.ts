@@ -46,6 +46,9 @@ describe('agent capacity contracts', () => {
 			roles: { tester: 'testing', engineer: 'engineering', reviewer: 'review', technicalWriter: 'technical-writing', releaser: 'release' },
 		};
 		expect(validateEngineeringWorkflowPromotionConfig(valid)).toEqual({ ok: true, diagnostics: [] });
+		expect(validateEngineeringWorkflowPromotionConfig({ ...valid, requireRevisionCycle: 'yes' })).toMatchObject({
+			ok: false, diagnostics: [expect.objectContaining({ path: 'requireRevisionCycle' })],
+		});
 		expect(validateEngineeringWorkflowPromotionConfig({ ...valid, exactBaseRef: '', includeResearch: true })).toMatchObject({
 			ok: false,
 			diagnostics: expect.arrayContaining([

@@ -55,6 +55,13 @@ export interface AgentSignal {
 	metadata?: Record<string, unknown>;
 }
 
+export interface AgentControlPlaneReference {
+	kind: string;
+	id: string;
+	status?: string | null;
+	metadata?: Record<string, unknown>;
+}
+
 export interface AgentDiagnosticReference {
 	code: string;
 	message?: string | null;
@@ -87,6 +94,7 @@ export interface AgentArtifactManifest {
 	verification: AgentVerificationResult[];
 	citations: ResearchCitation[];
 	signals: AgentSignal[];
+	controlPlaneReferences?: AgentControlPlaneReference[];
 	usage: ExecutionUsageActual[];
 	diagnostics: AgentDiagnosticReference[];
 	createdAt: string;
@@ -101,6 +109,6 @@ export function validateAgentArtifactManifest(manifest: AgentArtifactManifest) {
 	if (manifest.contentReferences.some((reference) => reference.model === 'note' && (!reference.subjectId || !reference.subjectField))) {
 		return { ok: false as const, reason: 'Completed note receipt is missing its validated subject link.' };
 	}
-	if (manifest.contentReferences.length || manifest.sourceWorktree || manifest.verification.length) return { ok: true as const };
-	return { ok: false as const, reason: 'Completed agent execution did not produce a TreeDX content receipt, source worktree change, or verification result.' };
+	if (manifest.contentReferences.length || manifest.sourceWorktree || manifest.verification.length || manifest.controlPlaneReferences?.length) return { ok: true as const };
+	return { ok: false as const, reason: 'Completed agent execution did not produce a TreeDX content receipt, durable control-plane output, source worktree change, or verification result.' };
 }

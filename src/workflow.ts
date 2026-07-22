@@ -349,6 +349,8 @@ export type TreeseedWorkflowDevInput = {
 	background?: boolean;
 	stdio?: 'inherit' | 'pipe';
 	workspaceLinks?: 'auto' | 'off';
+	plan?: boolean;
+	json?: boolean;
 };
 
 function defaultWrite(output: string, stream: 'stdout' | 'stderr' = 'stdout') {

@@ -44,6 +44,7 @@
     "test:unit:fast": "vitest run --config ./vitest.fast.config.ts",
     "test:guarantees": "vitest run --config ./vitest.guarantees.config.ts",
     "test:guarantees:coverage": "vitest run --config ./vitest.guarantees.config.ts --coverage",
+    "test:capacity-cleanup-live": "node --import tsx ./scripts/test-live-acceptance-cleanup-service.ts",
     "test:workflow:lifecycle": "vitest run --config ./vitest.config.ts test/utils/workflow-lifecycle.test.ts",
     "test:release": "npm run test:unit:fast",
     "test:smoke": "node --import tsx ./scripts/test-smoke.ts",

@@ -374,6 +374,20 @@ describe('hosting graph', () => {
 		expect(plan.units.map((entry) => entry.unit.id)).toEqual(['api']);
 	});
 
+	it('keeps descriptive host adapters fail-closed until canonical reconciliation supplies live evidence', async () => {
+		const plan = await planTreeseedHostingGraph({
+			tenantRoot: createTenant(marketConfig()),
+			environment: 'staging',
+			filter: { serviceIds: ['api'] },
+		});
+		const api = plan.units[0];
+
+		expect(api?.observed.status).toBe('blocked');
+		expect(api?.plan.action).toBe('blocked');
+		expect(api?.verification).toMatchObject({ status: 'blocked', verified: false });
+		expect(api?.observed.state).not.toHaveProperty('applied');
+	});
+
 	it('fails targeted hosting graph requests for unknown services', () => {
 		expect(() => compileTreeseedHostingGraph({
 			tenantRoot: createTenant(marketConfig()),

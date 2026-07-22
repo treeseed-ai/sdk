@@ -170,6 +170,12 @@ export function blocking(provider: TreeseedLiveReconcileProvider, type: string, 
 	};
 }
 
+export function describeLiveAcceptanceError(error: unknown): string {
+	if (!(error instanceof Error)) return String(error);
+	if (!(error instanceof AggregateError) || error.errors.length === 0) return error.message;
+	return `${error.message} [${error.errors.map(describeLiveAcceptanceError).join('; ')}]`;
+}
+
 export async function measuredScenario(
 	input: {
 		provider: TreeseedLiveReconcileProvider;
@@ -243,7 +249,7 @@ export async function measuredScenario(
 	} catch (error) {
 		const completed = new Date();
 		const durationMs = Math.max(1, Math.ceil(performance.now() - startedMs));
-		const reason = error instanceof Error ? error.message : String(error);
+		const reason = describeLiveAcceptanceError(error);
 		emitProgress(input.onProgress, {
 			provider: input.provider,
 			mode: input.mode,

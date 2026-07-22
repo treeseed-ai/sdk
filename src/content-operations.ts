@@ -92,6 +92,7 @@ export interface RenderTreeseedContentInput {
 	placement?: TreeseedContentPlacement;
 	contentRoot?: string;
 	existingFrontmatter?: Record<string, unknown>;
+	existingContent?: string;
 	registry?: SdkModelRegistry;
 	now?: string;
 }
@@ -219,7 +220,18 @@ function frontmatterId(definition: SdkModelDefinition, slug: string) {
 
 export function renderTreeseedContentRecord(input: RenderTreeseedContentInput): RenderedTreeseedContentRecord {
 	const definition = normalizeContentModel(String(input.model), input.registry);
-	const rawTitle = input.title ?? input.fields?.title ?? input.fields?.name;
+	const existingDocument = typeof input.existingContent === 'string'
+		? parseFrontmatterDocument(input.existingContent)
+		: null;
+	const existingFrontmatter = {
+		...(existingDocument?.frontmatter ?? {}),
+		...(input.existingFrontmatter ?? {}),
+	};
+	const rawTitle = input.title
+		?? input.fields?.title
+		?? input.fields?.name
+		?? existingFrontmatter.title
+		?? existingFrontmatter.name;
 	const slug = slugifyTreeseedContent(input.slug ?? rawTitle ?? input.id);
 	if (!slug) throw new Error('A title or safe slug is required.');
 	const now = input.now ?? new Date().toISOString();
@@ -241,7 +253,7 @@ export function renderTreeseedContentRecord(input: RenderTreeseedContentInput): 
 		definition,
 		Object.fromEntries(Object.entries(rawFields).filter(([key]) => modelFieldNames.has(key))),
 	);
-	const frontmatter = canonicalizeFrontmatter(definition, input.existingFrontmatter ?? {}, fields);
+	const frontmatter = canonicalizeFrontmatter(definition, existingFrontmatter, fields);
 	frontmatter.id = input.id ?? (typeof frontmatter.id === 'string' && frontmatter.id.trim() ? frontmatter.id : frontmatterId(definition, slug));
 	if (!frontmatter.slug && definition.fields.slug) frontmatter.slug = slug;
 	for (const relation of input.relations ?? []) {
@@ -251,7 +263,7 @@ export function renderTreeseedContentRecord(input: RenderTreeseedContentInput): 
 		const next = Array.isArray(current) ? current.map(String) : typeof current === 'string' && current ? [current] : [];
 		frontmatter[key] = [...new Set([...next, relation.targetSlug])];
 	}
-	const body = String(input.body ?? '').trim();
+	const body = String(input.body ?? existingDocument?.body ?? '').trim();
 	const collection = collectionFor(definition);
 	const recordPath = contentPathFor(definition, slug, input.placement, input.contentRoot);
 	const subjectFields = [
@@ -321,7 +333,16 @@ export function genericTreeseedContentInputSchema(action: TreeseedContentAction)
 		body: { type: 'string' },
 		query: { type: 'string' },
 		filters: { type: 'array', items: { type: 'object', additionalProperties: true } },
-		relations: { type: 'array', items: { type: 'object', additionalProperties: true } },
+		relations: {
+			type: 'array',
+			minItems: action === 'link' ? 1 : 0,
+			items: {
+				type: 'object',
+				properties: { field: { type: 'string', minLength: 1 }, targetModel: { type: 'string' }, targetSlug: { type: 'string', minLength: 1 } },
+				required: ['field', 'targetSlug'],
+				additionalProperties: false,
+			},
+		},
 		placement: { type: 'object', additionalProperties: true },
 		message: { type: 'string' },
 	};
@@ -331,7 +352,7 @@ export function genericTreeseedContentInputSchema(action: TreeseedContentAction)
 			? ['model']
 			: action === 'describe'
 				? []
-				: ['model'];
+				: action === 'link' ? ['model', 'relations'] : ['model'];
 	return {
 		type: 'object',
 		properties,

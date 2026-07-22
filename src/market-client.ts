@@ -505,12 +505,23 @@ export class MarketClient {
 		});
 		const payload = await response.json().catch(() => ({}));
 		if (!response.ok) {
-			const payloadError = (payload as { error?: unknown }).error;
-			const error = typeof payloadError === 'string'
+			const responsePayload = payload && typeof payload === 'object'
+				? payload as { error?: unknown; message?: unknown; details?: unknown }
+				: {};
+			const payloadError = responsePayload.error;
+			const baseError = typeof payloadError === 'string'
 				? String(payloadError)
 				: payloadError && typeof payloadError === 'object' && typeof (payloadError as { message?: unknown }).message === 'string'
 					? String((payloadError as { message: string }).message)
-					: `Market request failed with ${response.status}.`;
+					: typeof responsePayload.message === 'string'
+						? responsePayload.message
+						: `Market request failed with ${response.status}.`;
+			const operation = responsePayload && 'details' in responsePayload
+				&& responsePayload.details && typeof responsePayload.details === 'object'
+				&& typeof (responsePayload.details as { operation?: unknown }).operation === 'string'
+				? (responsePayload.details as { operation: string }).operation
+				: null;
+			const error = operation ? `${baseError} (operation: ${operation})` : baseError;
 			throw new MarketClientError(error, response.status, payload);
 		}
 		return payload as T;
@@ -769,6 +780,13 @@ export class MarketClient {
 		);
 	}
 
+	teamDeletionBlockers(teamId: string) {
+		return this.request<{ ok: true; payload: Array<Record<string, unknown>> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/deletion-blockers`,
+			{ requireAuth: true },
+		);
+	}
+
 	teamMembers(teamId: string) {
 		return this.request<{ ok: true; payload: unknown[] }>(`/v1/teams/${encodeURIComponent(teamId)}/members`, { requireAuth: true });
 	}
@@ -793,6 +811,13 @@ export class MarketClient {
 		return this.request<{ ok: true; payload: Record<string, unknown>; job?: Record<string, unknown> }>(
 			`/v1/projects/${encodeURIComponent(projectId)}`,
 			{ method: 'DELETE', body: { confirmation }, requireAuth: true },
+		);
+	}
+
+	projectDeletionBlockers(projectId: string) {
+		return this.request<{ ok: true; payload: Array<Record<string, unknown>> }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/deletion-blockers`,
+			{ requireAuth: true },
 		);
 	}
 
@@ -1566,6 +1591,13 @@ export class MarketClient {
 	decisionAssignmentGraph(graphId: string) {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
 			`/v1/decision-assignment-graphs/${encodeURIComponent(graphId)}`,
+			{ requireAuth: true },
+		);
+	}
+
+	deliverableManifest(manifestId: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/deliverable-manifests/${encodeURIComponent(manifestId)}`,
 			{ requireAuth: true },
 		);
 	}

@@ -220,7 +220,6 @@ async function workflowFileCheck(input: {
 	repository: string | null;
 	workflowFile: string;
 	githubClient?: GitHubApiClient | null;
-	mockExternal?: boolean;
 	planOnly?: boolean;
 	treeDxPublish?: boolean;
 }) {
@@ -242,13 +241,13 @@ async function workflowFileCheck(input: {
 			summary: 'GitHub repository is not configured.',
 		});
 	}
-	if (input.mockExternal || input.planOnly) {
+	if (input.planOnly) {
 		return check({
 			key: 'workflow_file',
 			label: 'Workflow file',
-			status: 'passed',
+			status: 'skipped',
 			source: 'github',
-			summary: `${input.workflowFile} is assumed present in mock mode.`,
+			summary: `${input.workflowFile} presence is not inspected during plan.`,
 		});
 	}
 	if (!input.githubClient) {
@@ -288,7 +287,6 @@ async function fetchWithTimeout(fetchImpl: typeof fetch, url: string, timeoutMs:
 async function httpCheck(input: {
 	url: string | null;
 	fetchImpl?: typeof fetch | null;
-	mockExternal?: boolean;
 	planOnly?: boolean;
 	timeoutMs?: number;
 }) {
@@ -301,14 +299,14 @@ async function httpCheck(input: {
 			summary: 'No public URL is available for HTTP probing.',
 		});
 	}
-	if (input.mockExternal || input.planOnly || !input.fetchImpl) {
+	if (input.planOnly || !input.fetchImpl) {
 		return check({
 			key: 'http_response',
 			label: 'HTTP response',
-			status: input.mockExternal ? 'passed' : 'skipped',
+			status: 'skipped',
 			source: 'http',
 			url: input.url,
-			summary: input.mockExternal ? 'Mock HTTP probe passed.' : 'HTTP probe skipped for this monitor run.',
+			summary: 'HTTP probe skipped for this monitor run.',
 		});
 	}
 	try {
@@ -348,7 +346,6 @@ export async function buildProjectWebMonitorResult(input: {
 	workflowResult?: Record<string, any> | null;
 	githubClient?: GitHubApiClient | null;
 	fetchImpl?: typeof fetch | null;
-	mockExternal?: boolean;
 	planOnly?: boolean;
 }) {
 	const repository = repositorySlug(input.repository);
@@ -396,7 +393,6 @@ export async function buildProjectWebMonitorResult(input: {
 			repository,
 			workflowFile,
 			githubClient: input.githubClient,
-			mockExternal: input.mockExternal,
 			planOnly: input.planOnly,
 			treeDxPublish,
 		}),
@@ -418,7 +414,6 @@ export async function buildProjectWebMonitorResult(input: {
 		await httpCheck({
 			url: targetUrl,
 			fetchImpl: input.fetchImpl,
-			mockExternal: input.mockExternal,
 			planOnly: input.planOnly,
 		}),
 		contentRuntimeCheck({ resolution: contentRuntime, hasRuntimeMetadata }),

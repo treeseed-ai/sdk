@@ -361,6 +361,10 @@ export class AgentSdk {
 				cwd: this.repoRoot,
 				env: process.env,
 				transport: 'sdk',
+				// SDK dispatch returns structured output to its caller. Library-owned
+				// workflow progress must never write to process stdout, which may be
+				// carrying a framed protocol such as MCP stdio.
+				write: () => undefined,
 			});
 		}
 		if (this.content instanceof MissingTreeDxContentBackend) {

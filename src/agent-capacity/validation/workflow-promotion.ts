@@ -32,6 +32,9 @@ export function validateEngineeringWorkflowPromotionConfig(
 	}
 	if (input.includeResearch === true && !text(roles.researcher)) diagnostics.push({ code: 'researcher_role_required', path: 'roles.researcher', message: 'includeResearch requires a researcher role.' });
 	if (input.includeArchitecture === true && !text(roles.architect)) diagnostics.push({ code: 'architect_role_required', path: 'roles.architect', message: 'includeArchitecture requires an architect role.' });
+	if (input.requireRevisionCycle != null && typeof input.requireRevisionCycle !== 'boolean') {
+		diagnostics.push({ code: 'revision_cycle_invalid', path: 'requireRevisionCycle', message: 'requireRevisionCycle must be boolean when supplied.' });
+	}
 	for (const [stage, amount] of Object.entries(input.credits ?? {})) {
 		if (!Number.isFinite(amount) || Number(amount) <= 0) diagnostics.push({ code: 'credit_invalid', path: `credits.${stage}`, message: 'Stage credits must be positive finite numbers.' });
 	}

@@ -115,5 +115,11 @@ export {
 	type AgentOperationResult,
 	type AgentOperationStatus,
 } from './operations/agent-tools.ts';
+export {
+	integrateAgentCheckpoint,
+	type AgentCheckpointIntegrationExecutor,
+	type AgentCheckpointIntegrationInput,
+	type AgentCheckpointIntegrationResult,
+} from './operations/agent-checkpoint-integration.ts';
 export { TreeseedWorkflowSdk } from './workflow.ts';
 export type * from './workflow.ts';

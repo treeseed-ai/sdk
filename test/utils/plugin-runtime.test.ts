@@ -61,7 +61,7 @@ ${pluginsYaml}
       verification: ['local'],
       notification: ['sdk_message'],
       research: ['project_graph'],
-      handlers: ['plan', 'research', 'act', 'review', 'report']
+      handlers: ['writer', 'actor', 'estimate', 'releaser', 'reporter']
     },
     deploy: ['cloudflare'],
     dns: ['cloudflare-dns'],

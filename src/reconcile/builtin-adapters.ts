@@ -172,14 +172,6 @@ function isTransientRailwayReconcileError(error: unknown) {
 	return /fetch failed|timed out|etimedout|econnreset|enetunreach|temporarily unavailable|aborted|connectivity issue|rate limit|too many requests|429|5\d\d|operation is already in progress|Problem processing request/iu.test(message);
 }
 
-function syntheticQueueLocator(name: string) {
-	return `queue-name:${name}`;
-}
-
-function isSyntheticQueueLocator(value: unknown) {
-	return typeof value === 'string' && value.startsWith('queue-name:');
-}
-
 function noopObservedState(input: TreeseedReconcileAdapterInput): TreeseedObservedUnitState {
 	return {
 		exists: true,

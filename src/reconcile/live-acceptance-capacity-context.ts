@@ -237,6 +237,15 @@ export interface CapacityAcceptanceProof {
 		exactBaseRef: string;
 		participatingAgents: string[];
 	};
+	starterConcurrency?: {
+		projectIds: string[];
+		assignmentIds: string[];
+		workspaceIds: string[];
+		overlapMs: number;
+		artifactCount: number;
+		usageActualCount: number;
+		ledgerEntryCount: number;
+	};
 	governance?: CapacityGovernanceAcceptanceProof;
 }
 

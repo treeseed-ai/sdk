@@ -82,7 +82,7 @@ export async function provisionLocalCapacityCompetition(input: {
 			runnerPressure: { activeRunners: 0, maxConcurrentRunners: 1 },
 			metadata: { liveAcceptance: true, runId: input.runId },
 			executionProviders: [{
-				id: 'acceptance-deterministic', adapter: 'deterministic_workflow', status: 'available',
+				id: 'codex', adapter: 'codex', status: 'available',
 				capabilities: ['planning', 'repo_read', 'agent_mode_run', 'usage_report'],
 				maxConcurrentRunners: 1, activeRunners: 0, nativeLimits: { availableCredits: 10 }, lanes: [],
 			}],
@@ -97,7 +97,7 @@ export async function provisionLocalCapacityCompetition(input: {
 		}, `${prefix}:agent-class`);
 		await input.adminClient.createCapacityGrant(input.runtime.teamId, {
 			schemaVersion: 2, id: grantId, membershipId: input.runtime.membershipId, providerId: input.runtime.providerId,
-			projectId: project.id, environment: 'local', status: 'planned', executionProviderIds: ['acceptance-deterministic'], laneIds: [],
+			projectId: project.id, environment: 'local', status: 'planned', executionProviderIds: ['codex'], laneIds: [],
 			capabilities: ['planning', 'repo_read', 'agent_mode_run', 'usage_report'], allowedModes: ['planning'],
 			dailyCreditLimit: 10, monthlyCreditLimit: 10, maxConcurrentAssignments: 1,
 			metadata: { liveAcceptance: true, runId: input.runId },
@@ -121,7 +121,7 @@ export async function provisionLocalCapacityCompetition(input: {
 			runnerPressure: { activeRunners: 0, maxConcurrentRunners: 1 },
 			metadata: { liveAcceptance: true, runId: input.runId },
 			executionProviders: [{
-				id: 'acceptance-deterministic', adapter: 'deterministic_workflow', status: 'available',
+				id: 'codex', adapter: 'codex', status: 'available',
 				capabilities: ['planning', 'repo_read', 'agent_mode_run', 'usage_report'],
 				maxConcurrentRunners: 1, activeRunners: 0, nativeLimits: { availableCredits: 10 }, lanes: [],
 			}],
@@ -135,7 +135,7 @@ export async function provisionLocalCapacityCompetition(input: {
 		await input.adminClient.admitCapacityAssignment(input.runtime.teamId, {
 			assignmentId, reservationId: `${assignmentId}-reservation`, projectId: project.id, providerId: input.runtime.providerId,
 			membershipId: input.runtime.membershipId, environment: 'local', providerSessionId: sessionId,
-			projectAgentClassId: agentClassId, executionProviderId: 'acceptance-deterministic', workDayId: workdayId,
+			projectAgentClassId: agentClassId, executionProviderId: 'codex', workDayId: workdayId,
 			requestedCredits: 1, mode: 'planning',
 			capacityEnvelope: { teamId: input.runtime.teamId, projectId: project.id, providerId: input.runtime.providerId, workDayId: workdayId, mode: 'planning', limits: { wallMinutes: 5 }, metadata: { liveAcceptance: true, runId: input.runId } },
 			decisionInput: { kind: 'provider_global_final_slot_competition', runId: input.runId },

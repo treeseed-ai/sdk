@@ -431,7 +431,7 @@ async function runProvider({
 		return report;
 	}
 	const { results, cleanupDrift } = mode === 'cleanup'
-		? await runLocalCleanup(environment, prefix, mode, onProgress)
+		? await runLocalCleanup(environment, prefix, mode, env, fetchImpl, onProgress)
 		: await runLocalAcceptance(environment, prefix, mode, runId, env, fetchImpl, onProgress, capacityAssignmentExecutor);
 	const report = reportForProvider({ provider, mode, runId, prefix, environment, results, cleanupDrift });
 	emitProgress(onProgress, { provider, mode, environment, runId, resourcePrefix: prefix, phase: report.ok ? 'complete' : 'blocked', elapsedMs: Date.now() - started, message: `${provider}: ${report.ok ? 'passed' : 'blocked'} in ${Date.now() - started}ms` });

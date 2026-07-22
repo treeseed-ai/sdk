@@ -2246,7 +2246,7 @@ export const capacityReservations = pgTable('capacity_reservations', {
 	foreignKey({ name: 'fk_capacity_reservations_lane', columns: [table.capacityProviderId, table.laneId], foreignColumns: [capacityProviderLanes.capacityProviderId, capacityProviderLanes.id] }).onDelete('restrict'),
 	foreignKey({ name: 'fk_capacity_reservations_allocation', columns: [table.allocationSetId], foreignColumns: [capacityAllocationSets.id] }).onDelete('restrict'),
 	foreignKey({ name: 'fk_capacity_reservations_agent_class', columns: [table.projectAgentClassId], foreignColumns: [projectAgentClasses.id] }).onDelete('restrict'),
-	foreignKey({ name: 'fk_capacity_reservations_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_reservations_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
 	foreignKey({ name: 'fk_capacity_reservations_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
 	uniqueIndex('idx_capacity_reservations_idempotency').on(table.teamId, table.idempotencyKey),
 	index('idx_capacity_reservations_project_workday_state').on(table.projectId, table.workDayId, table.state, table.createdAt),
@@ -2321,7 +2321,7 @@ export const capacityLedgerEntries = pgTable('capacity_ledger_entries', {
 	foreignKey({ name: 'fk_capacity_ledger_reservation', columns: [table.reservationId], foreignColumns: [capacityReservations.id] }).onDelete('restrict'),
 	foreignKey({ name: 'fk_capacity_ledger_assignment', columns: [table.assignmentId], foreignColumns: [capacityProviderAssignments.id] }).onDelete('restrict'),
 	foreignKey({ name: 'fk_capacity_ledger_mode_run', columns: [table.modeRunId], foreignColumns: [agentModeRuns.id] }).onDelete('restrict'),
-	foreignKey({ name: 'fk_capacity_ledger_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_ledger_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
 	foreignKey({ name: 'fk_capacity_ledger_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
 	uniqueIndex('idx_capacity_ledger_settlement_key').on(table.settlementKey),
 	uniqueIndex('idx_capacity_ledger_reservation_phase').on(table.reservationId, table.phase),
@@ -2368,9 +2368,9 @@ export const capacityUsageActuals = pgTable('capacity_usage_actuals', {
 	createdAt: text('created_at').notNull(),
 	executionProfileId: text('execution_profile_id').notNull().default('standard-code-model'),
 }, (table) => [
-	foreignKey({ name: 'fk_capacity_usage_actuals_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
-	foreignKey({ name: 'fk_capacity_usage_actuals_assignment', columns: [table.assignmentId], foreignColumns: [capacityProviderAssignments.id] }).onDelete('restrict'),
-	foreignKey({ name: 'fk_capacity_usage_actuals_mode_run', columns: [table.modeRunId], foreignColumns: [agentModeRuns.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_usage_actuals_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_capacity_usage_actuals_assignment', columns: [table.assignmentId], foreignColumns: [capacityProviderAssignments.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_capacity_usage_actuals_mode_run', columns: [table.modeRunId], foreignColumns: [agentModeRuns.id] }).onDelete('cascade'),
 	foreignKey({ name: 'fk_capacity_usage_actuals_provider', columns: [table.capacityProviderId], foreignColumns: [capacityProviders.id] }).onDelete('restrict'),
 	foreignKey({ name: 'fk_capacity_usage_actuals_execution_provider', columns: [table.capacityProviderId, table.executionProviderId], foreignColumns: [capacityExecutionProviders.capacityProviderId, capacityExecutionProviders.id] }).onDelete('restrict'),
 	foreignKey({ name: 'fk_capacity_usage_actuals_lane', columns: [table.capacityProviderId, table.laneId], foreignColumns: [capacityProviderLanes.capacityProviderId, capacityProviderLanes.id] }).onDelete('restrict'),
@@ -2518,7 +2518,7 @@ export const capacityProviderAssignments = pgTable('capacity_provider_assignment
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
 	foreignKey({ name: 'fk_capacity_provider_assignments_membership', columns: [table.membershipId], foreignColumns: [capacityProviderTeamMemberships.id] }).onDelete('restrict'),
-	foreignKey({ name: 'fk_capacity_provider_assignments_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_provider_assignments_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
 	foreignKey({ name: 'fk_capacity_provider_assignments_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
 	foreignKey({ name: 'fk_capacity_provider_assignments_provider', columns: [table.capacityProviderId], foreignColumns: [capacityProviders.id] }).onDelete('restrict'),
 	foreignKey({ name: 'fk_capacity_provider_assignments_session', columns: [table.providerSessionId], foreignColumns: [providerAvailabilitySessions.id] }).onDelete('set null'),
@@ -2568,7 +2568,7 @@ export const agentModeRuns = pgTable('agent_mode_runs', {
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
-	foreignKey({ name: 'fk_agent_mode_runs_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_agent_mode_runs_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
 	foreignKey({ name: 'fk_agent_mode_runs_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
 	foreignKey({ name: 'fk_agent_mode_runs_assignment', columns: [table.providerAssignmentId], foreignColumns: [capacityProviderAssignments.id] }).onDelete('restrict'),
 	foreignKey({ name: 'fk_agent_mode_runs_provider', columns: [table.capacityProviderId], foreignColumns: [capacityProviders.id] }).onDelete('restrict'),
@@ -2595,7 +2595,7 @@ export const agentFallbackOutputs = pgTable('agent_fallback_outputs', {
 	metadataJson: text('metadata_json').notNull().default('{}'),
 	createdAt: text('created_at').notNull(),
 }, (table) => [
-	foreignKey({ name: 'fk_agent_fallback_outputs_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_agent_fallback_outputs_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
 	foreignKey({ name: 'fk_agent_fallback_outputs_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
 	foreignKey({ name: 'fk_agent_fallback_outputs_assignment', columns: [table.assignmentId], foreignColumns: [capacityProviderAssignments.id] }).onDelete('restrict'),
 	index('idx_agent_fallback_outputs_project_created').on(table.projectId, table.createdAt),
@@ -2740,7 +2740,7 @@ export const researchWorkflows = pgTable('research_workflows', {
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
-	foreignKey({ name: 'fk_research_workflows_team', columns: [table.teamId], foreignColumns: [teams.id] }),
+	foreignKey({ name: 'fk_research_workflows_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
 	foreignKey({ name: 'fk_research_workflows_project', columns: [table.projectId], foreignColumns: [projects.id] }),
 	uniqueIndex('idx_research_workflows_idempotency').on(table.projectId, table.idempotencyKey),
 	index('idx_research_workflows_question').on(table.projectId, table.questionRef, table.status, table.updatedAt),
@@ -2804,7 +2804,7 @@ export const capacityWorkdayRuns = pgTable('capacity_workday_runs', {
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
-	foreignKey({ name: 'fk_capacity_workday_runs_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_workday_runs_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
 	index('idx_capacity_workday_runs_team_status').on(table.teamId, table.status, table.updatedAt),
 	index('idx_capacity_workday_runs_provider').on(table.capacityProviderId, table.updatedAt),
 	check('chk_capacity_workday_runs_status', sql`${table.status} IN ('queued','running','completed','cancelled','failed','degraded')`),
@@ -2831,7 +2831,7 @@ export const capacityWorkdayEvents = pgTable('capacity_workday_events', {
 	createdAt: text('created_at').notNull(),
 }, (table) => [
 	foreignKey({ name: 'fk_capacity_workday_events_run', columns: [table.runId], foreignColumns: [capacityWorkdayRuns.id] }).onDelete('restrict'),
-	foreignKey({ name: 'fk_capacity_workday_events_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_workday_events_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
 	foreignKey({ name: 'fk_capacity_workday_events_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
 	uniqueIndex('idx_capacity_workday_events_run_index').on(table.runId, table.eventIndex),
 	index('idx_capacity_workday_events_project').on(table.projectId, table.createdAt),
@@ -2852,7 +2852,7 @@ export const capacityWorkdayParticipationCycles = pgTable('capacity_workday_part
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
-	foreignKey({ name: 'fk_capacity_workday_participation_cycles_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_workday_participation_cycles_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
 	foreignKey({ name: 'fk_capacity_workday_participation_cycles_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
 	foreignKey({ name: 'fk_capacity_workday_participation_cycles_run', columns: [table.workdayRunId], foreignColumns: [capacityWorkdayRuns.id] }).onDelete('restrict'),
 	uniqueIndex('idx_capacity_workday_participation_cycles_number').on(table.workdayRunId, table.projectId, table.cycleNumber),
@@ -2876,7 +2876,7 @@ export const workdayCapacityEnvelopes = pgTable('workday_capacity_envelopes', {
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
-	foreignKey({ name: 'fk_workday_capacity_envelopes_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_workday_capacity_envelopes_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
 	foreignKey({ name: 'fk_workday_capacity_envelopes_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
 	foreignKey({ name: 'fk_workday_capacity_envelopes_allocation', columns: [table.allocationSetId], foreignColumns: [capacityAllocationSets.id] }).onDelete('restrict'),
 	index('idx_workday_capacity_envelopes_run_status').on(table.workdayRunId, table.status, table.id),
@@ -2934,7 +2934,7 @@ export const capacityWorkdayDemands = pgTable('capacity_workday_demands', {
 	availableAt: text('available_at').notNull(), claimedAt: text('claimed_at'), admittedAt: text('admitted_at'),
 	completedAt: text('completed_at'), createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(),
 }, (table) => [
-	foreignKey({ name: 'fk_capacity_workday_demands_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_workday_demands_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
 	foreignKey({ name: 'fk_capacity_workday_demands_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
 	foreignKey({ name: 'fk_capacity_workday_demands_run', columns: [table.workdayRunId], foreignColumns: [capacityWorkdayRuns.id] }).onDelete('restrict'),
 	foreignKey({ name: 'fk_capacity_workday_demands_workday', columns: [table.workdayId], foreignColumns: [workdayCapacityEnvelopes.id] }).onDelete('restrict'),
@@ -2960,7 +2960,7 @@ export const capacityWorkdayParticipationEntries = pgTable('capacity_workday_par
 	metadataJson: text('metadata_json').notNull().default('{}'), createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(),
 }, (table) => [
 	foreignKey({ name: 'fk_capacity_workday_participation_entries_cycle', columns: [table.cycleId], foreignColumns: [capacityWorkdayParticipationCycles.id] }).onDelete('restrict'),
-	foreignKey({ name: 'fk_capacity_workday_participation_entries_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('restrict'),
+	foreignKey({ name: 'fk_capacity_workday_participation_entries_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
 	foreignKey({ name: 'fk_capacity_workday_participation_entries_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('restrict'),
 	foreignKey({ name: 'fk_capacity_workday_participation_entries_run', columns: [table.workdayRunId], foreignColumns: [capacityWorkdayRuns.id] }).onDelete('restrict'),
 	foreignKey({ name: 'fk_capacity_workday_participation_entries_agent_class', columns: [table.projectAgentClassId], foreignColumns: [projectAgentClasses.id] }).onDelete('restrict'),

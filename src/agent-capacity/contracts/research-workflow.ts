@@ -48,6 +48,7 @@ export interface ResearchWorkflowRecord {
 	status: ResearchWorkflowStatus;
 	stateVersion: number;
 	minimumIndependentSources: number;
+	maxRevisionCycles: number;
 	nodes: ResearchWorkflowNode[];
 	citations: ResearchCitation[];
 	claims: ResearchClaim[];

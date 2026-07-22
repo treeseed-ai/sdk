@@ -11,6 +11,7 @@ export interface EngineeringWorkflowPromotionConfigV1 {
 	includeResearch?: boolean;
 	includeArchitecture?: boolean;
 	requireLinkedProposal?: boolean;
+	requireRevisionCycle?: boolean;
 	credits?: Partial<Record<'research' | 'architecture' | 'test' | 'implementation' | 'verification' | 'review' | 'documentation' | 'release' | 'operations', number>>;
 	metadata?: Record<string, unknown>;
 }

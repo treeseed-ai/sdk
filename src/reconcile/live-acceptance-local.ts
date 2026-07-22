@@ -8,7 +8,11 @@ import type { RunTreeseedLiveReconcileTestsOptions, TreeseedLiveReconcileEnviron
 import type { LiveAcceptanceEnv } from './live-acceptance-values.ts';
 import { runCapacityProviderAssignmentProof } from './live-acceptance-capacity-proof.ts';
 import type { CapacityAcceptanceProof } from './live-acceptance-capacity-context.ts';
-import { PROVIDER_CAPABILITIES, emitProgress, measuredScenario, node, providerNode, providerPrefixRoot, scenario } from './live-acceptance-runtime.ts';
+import { capacityAcceptanceConfig } from './live-acceptance-capacity-context.ts';
+import { deleteLocalCapacityAcceptanceTeam, isLocalCapacityAcceptanceTeam } from './live-acceptance-capacity-scope.ts';
+import { MarketClient } from '../market-client.ts';
+import { PROVIDER_CAPABILITIES, blocking, emitProgress, measuredScenario, node, providerNode, providerPrefixRoot, scenario } from './live-acceptance-runtime.ts';
+import { cleanupLocalAcceptanceAgentWorktrees } from './live-acceptance-worktree-cleanup.ts';
 
 type LiveProgress = RunTreeseedLiveReconcileTestsOptions['onProgress'];
 type LiveEnv = LiveAcceptanceEnv;
@@ -124,6 +128,7 @@ export async function runLocalAcceptance(
 					ledgerEntryCount: proof.ledgerEntryCount,
 					starterPlanning: proof.starterPlanning,
 					starterEngineering: proof.starterEngineering,
+					starterConcurrency: proof.starterConcurrency,
 					governance: proof.governance,
 				})];
 			},
@@ -148,6 +153,8 @@ export async function runLocalCleanup(
 	environment: TreeseedLiveReconcileEnvironment,
 	prefix: string,
 	mode: TreeseedLiveReconcileMode,
+	env: LiveEnv,
+	fetchImpl: typeof fetch,
 	onProgress?: LiveProgress,
 ) {
 	const tempBase = resolve(process.cwd(), '.treeseed', 'tmp', 'live-acceptance');
@@ -161,22 +168,81 @@ export async function runLocalCleanup(
 		await rm(path, { recursive: true, force: true });
 		destroyedResources.push(node('local', environment, 'local-db', path, { deleted: true }));
 	}
+	const worktreeCleanup = await cleanupLocalAcceptanceAgentWorktrees(process.cwd());
+	for (const removed of worktreeCleanup.removed) {
+		destroyedResources.push(node('local', environment, 'assignment-worktree', removed.worktreeRoot, {
+			deleted: true,
+			repository: removed.repoRoot,
+		}));
+	}
+	for (const failure of worktreeCleanup.failures) {
+		cleanupDrift.push(blocking('local', 'assignment-worktree', `Local assignment-worktree cleanup failed: ${failure}`));
+	}
+	const config = capacityAcceptanceConfig(env, environment);
+	if (config.apiUrl && config.adminToken) {
+		const adminClient = new MarketClient({
+			profile: {
+				id: 'capacity-acceptance-cleanup',
+				label: 'Capacity Acceptance Cleanup',
+				baseUrl: config.apiUrl,
+				kind: 'specialized',
+			},
+			accessToken: config.adminToken,
+			fetchImpl,
+			userAgent: 'treeseed-live-acceptance-cleanup',
+		});
+		try {
+			const teams = await adminClient.teams();
+			const isolatedTeams = (teams.payload as Array<Record<string, unknown>>)
+				.filter((team) => isLocalCapacityAcceptanceTeam(team));
+			for (const team of isolatedTeams) {
+				const id = typeof team.id === 'string' ? team.id : '';
+				const name = typeof team.name === 'string' ? team.name : '';
+				if (!id || !name) continue;
+				await deleteLocalCapacityAcceptanceTeam(adminClient, { id, name });
+				destroyedResources.push(node('local', environment, 'capacity-acceptance-team', id, {
+					deleted: true,
+					name,
+				}));
+			}
+		} catch (error) {
+			cleanupDrift.push(blocking(
+				'local',
+				'capacity-acceptance-team',
+				`Local capacity control-plane cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+			));
+		}
+	} else {
+		cleanupDrift.push(blocking(
+			'local',
+			'capacity-acceptance-team',
+			'Local capacity control-plane cleanup requires an API URL and admin token.',
+		));
+	}
 	const results = PROVIDER_CAPABILITIES.local.map((capability) => scenario({
 		provider: 'local',
 		mode,
 		prefix,
 		capability,
-		ok: true,
+		ok: capability !== 'capacity-provider-assignment-proof' || cleanupDrift.length === 0,
 		phase: 'cleanup',
 		action: capability === 'local-db' && destroyedResources.length ? 'delete' : 'noop',
-		reason: capability === 'local-db' && destroyedResources.length
+		reason: capability === 'capacity-provider-assignment-proof' && cleanupDrift.length > 0
+			? 'Local cleanup could not prove removal of isolated capacity control-plane state.'
+			: capability === 'local-db' && destroyedResources.length
 			? `Local cleanup removed ${destroyedResources.length} isolated live-acceptance director${destroyedResources.length === 1 ? 'y' : 'ies'}.`
 			: 'Local cleanup observed no isolated resource requiring mutation.',
-		destroyedResources: capability === 'local-db' ? destroyedResources : [],
+		destroyedResources: capability === 'local-db' || capability === 'capacity-provider-assignment-proof'
+			? destroyedResources
+			: [],
+		issues: capability === 'capacity-provider-assignment-proof'
+			? cleanupDrift.map((entry) => entry.reason)
+			: [],
 	}));
 	emitProgress(onProgress, {
 		provider: 'local', mode, environment, runId: prefix.slice(prefixRoot.length), resourcePrefix: prefix,
-		phase: 'cleanup', message: `local: cleanup removed ${destroyedResources.length} isolated resource(s)`,
+		phase: cleanupDrift.length === 0 ? 'cleanup' : 'blocked',
+		message: `local: cleanup removed ${destroyedResources.length} isolated resource(s) with ${cleanupDrift.length} blocking drift item(s)`,
 	});
 	return { results, cleanupDrift, destroyedResources };
 }

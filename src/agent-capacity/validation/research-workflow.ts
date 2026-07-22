@@ -10,6 +10,7 @@ export function validateResearchWorkflow(value: ResearchWorkflowRecord) {
 	for (const key of ['id', 'teamId', 'projectId', 'objectiveRef', 'questionRef'] as const) if (!value[key]?.trim()) add('research_workflow_field_required', key, `${key} is required.`);
 	if (!Number.isInteger(value.stateVersion) || value.stateVersion < 1) add('research_workflow_state_version_invalid', 'stateVersion', 'stateVersion must be a positive integer.');
 	if (!Number.isInteger(value.minimumIndependentSources) || value.minimumIndependentSources < 2) add('research_workflow_source_minimum_invalid', 'minimumIndependentSources', 'At least two independent sources are required.');
+	if (!Number.isInteger(value.maxRevisionCycles) || value.maxRevisionCycles < 1 || value.maxRevisionCycles > 10) add('research_workflow_revision_limit_invalid', 'maxRevisionCycles', 'maxRevisionCycles must be an integer from 1 through 10.');
 	if (value.nodes.length !== RESEARCH_WORKFLOW_STAGES.length || value.nodes.some((node, index) => node.stage !== RESEARCH_WORKFLOW_STAGES[index])) add('research_workflow_stage_order_invalid', 'nodes', 'The canonical eleven research stages must occur exactly once in order.');
 	const ids = new Set<string>();
 	for (const [index, node] of value.nodes.entries()) {

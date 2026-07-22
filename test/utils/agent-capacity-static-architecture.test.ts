@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { BUILT_IN_AGENT_EXECUTION_PROVIDER_IDS } from '../../src/types/agents.ts';
 
 const packageRoot = process.cwd();
 const roots = [resolve(packageRoot, 'src/agent-capacity'), resolve(packageRoot, 'src/capacity-provider')];
@@ -29,5 +30,20 @@ describe('portable agent-capacity static architecture', () => {
 			forbiddenImport.lastIndex = 0;
 		}
 		expect(failures).toEqual([]);
+	});
+
+	it('advertises only canonical execution providers and built-in handlers', () => {
+		const source = readFileSync(resolve(packageRoot, 'src/plugin-default.ts'), 'utf8');
+		expect(BUILT_IN_AGENT_EXECUTION_PROVIDER_IDS).toEqual(['codex', 'copilot', 'jira', 'github_issues', 'discord', 'workflow']);
+		expect(source).toContain('execution: [...BUILT_IN_AGENT_EXECUTION_PROVIDER_IDS]');
+		for (const handler of ['writer', 'actor', 'estimate', 'releaser', 'reporter']) {
+			expect(source).toContain(`'${handler}'`);
+		}
+		for (const removed of ['jira_issue_queue', 'human_issue_queue', 'github_issue_queue', 'issue_queue', 'discord_thread', 'workflow_operation', 'deterministic_workflow', 'github_actions_workflow']) {
+			expect(source).not.toContain(`'${removed}'`);
+		}
+		for (const removedHandler of ['plan', 'research', 'act', 'review', 'report']) {
+			expect(source).not.toContain(`'${removedHandler}'`);
+		}
 	});
 });

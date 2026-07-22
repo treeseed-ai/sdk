@@ -15,7 +15,7 @@ const target = {
 };
 
 describe('project web monitor helper', () => {
-	it('normalizes mocked healthy monitor checks', async () => {
+	it('normalizes a recorded healthy workflow while planning external probes', async () => {
 		const result = await buildProjectWebMonitorResult({
 			environment: 'staging',
 			action: 'deploy_web',
@@ -27,16 +27,16 @@ describe('project web monitor helper', () => {
 				conclusion: 'success',
 				runUrl: 'https://github.com/acme/widget/actions/runs/123',
 			},
-			mockExternal: true,
+			planOnly: true,
 		});
 
 		expect(result.status).toBe('healthy');
 		expect(result.checks.map((check) => [check.key, check.status])).toEqual([
 			['latest_workflow', 'passed'],
-			['workflow_file', 'passed'],
+			['workflow_file', 'skipped'],
 			['web_host', 'passed'],
 			['target_url', 'passed'],
-			['http_response', 'passed'],
+			['http_response', 'skipped'],
 			['content_runtime', 'skipped'],
 			['content_publish', 'skipped'],
 			['d1_migration', 'skipped'],
@@ -61,7 +61,7 @@ describe('project web monitor helper', () => {
 				conclusion: 'failure',
 				runUrl: 'https://github.com/acme/widget/actions/runs/456',
 			},
-			mockExternal: true,
+			planOnly: true,
 		});
 
 		expect(result.status).toBe('failed');
@@ -71,7 +71,7 @@ describe('project web monitor helper', () => {
 		});
 	});
 
-	it('normalizes workflow file absence through mocked GitHub API clients', async () => {
+	it('normalizes workflow file absence reported by the GitHub API boundary', async () => {
 		const client = {
 			rest: {
 				repos: {
@@ -111,7 +111,6 @@ describe('project web monitor helper', () => {
 			repository,
 			target,
 			workflowResult: { runId: 1, status: 'completed', conclusion: 'success' },
-			mockExternal: false,
 			fetchImpl: async () => new Response('', { status: 503 }),
 		});
 		expect(warning.status).toBe('degraded');
@@ -123,7 +122,6 @@ describe('project web monitor helper', () => {
 			repository,
 			target,
 			workflowResult: { runId: 1, status: 'completed', conclusion: 'success' },
-			mockExternal: false,
 			fetchImpl: async () => new Response('', { status: 404 }),
 		});
 		expect(failed.status).toBe('failed');
@@ -155,7 +153,7 @@ describe('project web monitor helper', () => {
 				},
 			},
 			workflowResult: { runId: 789, status: 'completed', conclusion: 'success' },
-			mockExternal: true,
+			planOnly: true,
 		});
 
 		expect(result.contentRuntime).toMatchObject({
@@ -204,7 +202,7 @@ describe('project web monitor helper', () => {
 					},
 				},
 			},
-			mockExternal: true,
+			planOnly: true,
 		});
 
 		expect(result.contentRuntime).toMatchObject({

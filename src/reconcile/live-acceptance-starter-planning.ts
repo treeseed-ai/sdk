@@ -4,11 +4,26 @@ import type { CapacityAcceptanceProof } from './live-acceptance-capacity-context
 import type { RunTreeseedLiveReconcileTestsOptions } from './live-acceptance.ts';
 import type { TreeseedCapacityAcceptanceExecutionInput } from './live-acceptance-capacity-executor.ts';
 import { verifyCapacityAcceptanceTerminal } from './live-acceptance-capacity-terminal.ts';
-import { provisionLocalStarterCapacity } from './live-acceptance-starter-runtime.ts';
+import { finalizeLocalStarterAcceptance, provisionLocalStarterCapacity, type LocalStarterCapacityConfig } from './live-acceptance-starter-runtime.ts';
 
 const RESEARCH_AGENT_PATHS = ['researcher', 'reviewer', 'technical-writer', 'reporter']
 	.map((slug) => `template/src/content/agents/${slug}.mdx`);
-const CAPABILITIES = ['planning', 'repo_read', 'agent_mode_run', 'usage_report', 'research', 'review', 'technical-writing', 'reporting'];
+const ROLE_CLASSES = { researcher: 'research', reviewer: 'review', 'technical-writer': 'technical-writing', reporter: 'reporting' } as const;
+export const RESEARCH_STARTER_CAPABILITIES = ['planning', 'repo_read', 'agent_mode_run', 'usage_report', 'research', 'review', 'technical-writing', 'reporting'];
+
+export function researchStarterCapacityConfig(): LocalStarterCapacityConfig {
+	return {
+		starter: 'research', repositoryName: 'treeseed-starter-research', agentPaths: RESEARCH_AGENT_PATHS,
+		capabilities: RESEARCH_STARTER_CAPABILITIES, allowedModes: ['planning'], credits: 64,
+		durationSeconds: 14_400,
+		parameters: { planningOnly: true, metadata: { liveAcceptance: true, starter: 'research' } },
+		projectMetadata: {
+			architecture: { topology: 'single_repository_site', rootPath: 'template', sitePath: 'template', contentPath: 'template/src/content', contentRuntimeSource: 'treedx_snapshot', localContentMaterialization: 'existing_path' },
+			repository: { provider: 'git', owner: 'treeseed-templates', name: 'research', defaultBranch: 'main', checkoutPath: 'starters/research', cloneUrl: 'https://github.com/treeseed-templates/research.git' },
+			agentSpecs: { root: 'template/src/content/agents', testsRoot: 'template/src/content/agent-tests' },
+		},
+	};
+}
 
 function record(value: unknown): Record<string, unknown> {
 	return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -25,25 +40,15 @@ export async function provisionLocalResearchStarterPlanning(input: {
 	const key = `research-starter:${input.runId}`;
 	const starter = await provisionLocalStarterCapacity({
 		...input,
-		config: {
-			starter: 'research', repositoryName: 'treeseed-starter-research', agentPaths: RESEARCH_AGENT_PATHS,
-			capabilities: CAPABILITIES, allowedModes: ['planning'], credits: 64, durationSeconds: 3_600,
-			parameters: { planningOnly: true, metadata: { liveAcceptance: true, starter: 'research' } },
-			projectMetadata: {
-				architecture: { topology: 'single_repository_site', rootPath: 'template', sitePath: 'template', contentPath: 'template/src/content', contentRuntimeSource: 'treedx_snapshot', localContentMaterialization: 'existing_path' },
-				repository: { provider: 'git', owner: 'treeseed-templates', name: 'research', defaultBranch: 'main', checkoutPath: 'starters/research', cloneUrl: 'https://github.com/treeseed-templates/research.git' },
-				agentSpecs: { root: 'template/src/content/agents', testsRoot: 'template/src/content/agent-tests' },
-			},
-		},
+		config: researchStarterCapacityConfig(),
 	});
 	try {
 		const workflowId = `${key}:workflow`;
 		await input.adminClient.createResearchWorkflow(starter.project.id, {
 			id: workflowId, objectiveRef: 'objective:publish-the-first-knowledge-pack',
-			questionRef: 'question:what-should-this-research-map-first', minimumIndependentSources: 2,
+			questionRef: 'question:what-should-this-research-map-first', minimumIndependentSources: 2, maxRevisionCycles: 3,
 			idempotencyKey: `${key}:workflow-create`, metadata: { liveAcceptance: true, runId: input.runId },
 		});
-		await input.adminClient.tickWorkdayRun(input.runtime.teamId, starter.workdayRunId, { idempotencyKey: `${key}:tick` });
 		return {
 			project: starter.project, workflowId,
 			runId: starter.workdayRunId,
@@ -51,7 +56,7 @@ export async function provisionLocalResearchStarterPlanning(input: {
 			cleanup: starter.cleanup,
 		};
 	} catch (error) {
-		await starter.cleanup().catch((cleanupError) => { throw new AggregateError([error, cleanupError], 'Research starter provisioning and cleanup both failed.'); });
+		await starter.cleanup('cancelled').catch((cleanupError) => { throw new AggregateError([error, cleanupError], 'Research starter provisioning and cleanup both failed.'); });
 		throw error;
 	}
 }
@@ -66,6 +71,7 @@ export async function runLocalResearchStarterPlanningAcceptance(input: {
 	executor: NonNullable<RunTreeseedLiveReconcileTestsOptions['capacityAssignmentExecutor']>;
 }): Promise<NonNullable<CapacityAcceptanceProof['starterPlanning']>> {
 	const starter = await provisionLocalResearchStarterPlanning(input);
+	let executionError: unknown;
 	try {
 		let sequence = starter.connection.providerSessionSequence;
 		let assignmentId = '';
@@ -74,7 +80,19 @@ export async function runLocalResearchStarterPlanningAcceptance(input: {
 		let ledgerEntryCount = 0;
 		let completedAssignments = 0;
 		let workflow = (await input.adminClient.researchWorkflow(starter.workflowId)).payload;
+		let activeRole = '';
 		for (let index = 0; index < 64 && workflow.status !== 'completed'; index += 1) {
+			const readyNode = Array.isArray(workflow.nodes) ? workflow.nodes.map(record).find((node) => node.status === 'ready') : null;
+			const requiredRole = String(readyNode?.role ?? '');
+			if (!(requiredRole in ROLE_CLASSES)) throw new Error(`Research starter workflow has no configured role for its ready node: ${JSON.stringify(readyNode)}`);
+			if (requiredRole !== activeRole) {
+				await Promise.all(Object.entries(ROLE_CLASSES).map(([role, classSlug]) => input.adminClient.updateProjectAgentClass(
+					starter.project.id, `${starter.project.id}:${classSlug}`,
+					{ status: role === requiredRole ? 'active' : 'paused', allowedModes: ['planning'] },
+					`research-starter:${input.runId}:stage-role:${index}:${role}`,
+				)));
+				activeRole = requiredRole;
+			}
 			await input.adminClient.tickWorkdayRun(starter.connection.teamId, starter.runId, {
 				idempotencyKey: `research-starter:${input.runId}:tick:${index}`,
 			});
@@ -85,8 +103,8 @@ export async function runLocalResearchStarterPlanningAcceptance(input: {
 				credentialId: starter.connection.credentialId, membershipCredential: starter.connection.membershipCredential,
 				providerAccessToken: starter.connection.providerAccessToken,
 				providerSessionId: starter.connection.providerSessionId, providerSessionSequence: sequence,
-				privateJwk: input.privateJwk, assignmentId: null, executionProviderId: 'acceptance-deterministic',
-				capabilities: CAPABILITIES,
+				privateJwk: input.privateJwk, assignmentId: null, executionProviderId: 'codex',
+				capabilities: RESEARCH_STARTER_CAPABILITIES,
 				activityProfile: { kind: 'research-workflow', subjectModel: 'question', subjectSlug: 'what-should-this-research-map-first' },
 			});
 			sequence = Number((execution as { providerSessionSequence?: number }).providerSessionSequence ?? sequence);
@@ -97,7 +115,7 @@ export async function runLocalResearchStarterPlanningAcceptance(input: {
 				adminClient: input.adminClient,
 				config: { teamId: starter.connection.teamId, projectId: starter.project.id },
 				assignmentId,
-				expectedArtifactCount: researchStage === 'linked-evidence-notes' ? 2 : 1,
+				minimumArtifactCount: researchStage === 'linked-evidence-notes' ? 2 : 1,
 			});
 			artifactCount += terminal.artifactCount;
 			usageActualCount += terminal.usageActualCount;
@@ -120,7 +138,10 @@ export async function runLocalResearchStarterPlanningAcceptance(input: {
 		};
 		if (!proof.agentId || !proof.handlerId) throw new Error('Research starter planning assignment omitted its content-defined agent or handler identity.');
 		return proof;
+	} catch (error) {
+		executionError = error;
+		throw error;
 	} finally {
-		await starter.cleanup();
+		await finalizeLocalStarterAcceptance(starter.cleanup, executionError, 'Research starter');
 	}
 }

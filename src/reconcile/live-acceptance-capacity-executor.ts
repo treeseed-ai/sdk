@@ -2,6 +2,7 @@ import type { CapacityProviderPrivateJwk } from '../capacity-provider.ts';
 
 export interface TreeseedCapacityAcceptanceExecutionResult {
 	assignmentId: string;
+	assignmentIds?: string[];
 	providerSessionSequence?: number;
 	finalSlot?: {
 		twoRunnableConnections: boolean;
@@ -25,6 +26,9 @@ export interface TreeseedCapacityAcceptanceExecutionInput {
 	providerSessionSequence: number;
 	privateJwk: CapacityProviderPrivateJwk;
 	assignmentId?: string | null;
+	assignmentIds?: string[];
+	expectedAssignmentCount?: number;
+	maxConcurrentRunners?: number;
 	repositoryRoot?: string;
 	executionProviderId: string;
 	capabilities?: string[];

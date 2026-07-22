@@ -5617,10 +5617,7 @@ export async function workflowDev(helpers: WorkflowOperationHelpers, input: Tree
 				workflowError('dev', 'unsupported_transport', 'Treeseed dev is not supported over the HTTP workflow API.');
 			}
 			const tenantRoot = resolveProjectRootOrThrow('dev', helpers.cwd());
-			const workspaceLinks = ensureWorkflowWorkspaceLinks(workspaceRoot(tenantRoot), helpers, input.workspaceLinks ?? 'auto');
 			const readiness = ensureLocalReadinessOrThrow('dev', tenantRoot);
-			applyTreeseedEnvironmentToProcess({ tenantRoot, scope: 'local', override: true });
-			assertTreeseedCommandEnvironment({ tenantRoot, scope: 'local', purpose: 'dev' });
 			const args = [packageScriptPath('tenant-dev')];
 			if (input.watch) {
 				args.push('--watch');
@@ -5628,6 +5625,32 @@ export async function workflowDev(helpers: WorkflowOperationHelpers, input: Tree
 			if (input.port !== undefined) {
 				args.push('--port', String(input.port));
 			}
+			const runtime = {
+				mode: process.env.TREESEED_LOCAL_DEV_MODE ?? 'cloudflare',
+				apiBaseUrl: process.env.TREESEED_API_BASE_URL ?? 'http://127.0.0.1:3000',
+				webUrl: 'http://127.0.0.1:8787',
+			};
+			if (input.plan) {
+				return buildWorkflowResult('dev', tenantRoot, {
+					plan: true,
+					watch: input.watch === true,
+					background: input.background === true,
+					command: process.execPath,
+					args,
+					cwd: tenantRoot,
+					pid: null,
+					exitCode: null,
+					runtime,
+					readiness: readiness.readiness.local,
+					workspaceLinks: {
+						mode: input.workspaceLinks ?? 'auto',
+						action: 'planned',
+					},
+				});
+			}
+			const workspaceLinks = ensureWorkflowWorkspaceLinks(workspaceRoot(tenantRoot), helpers, input.workspaceLinks ?? 'auto');
+			applyTreeseedEnvironmentToProcess({ tenantRoot, scope: 'local', override: true });
+			assertTreeseedCommandEnvironment({ tenantRoot, scope: 'local', purpose: 'dev' });
 			const env = resolveTreeseedLaunchEnvironment({
 				tenantRoot,
 				scope: 'local',
@@ -5648,11 +5671,7 @@ export async function workflowDev(helpers: WorkflowOperationHelpers, input: Tree
 					cwd: tenantRoot,
 					pid: child.pid ?? null,
 					exitCode: null,
-					runtime: {
-						mode: process.env.TREESEED_LOCAL_DEV_MODE ?? 'cloudflare',
-						apiBaseUrl: process.env.TREESEED_API_BASE_URL ?? 'http://127.0.0.1:3000',
-						webUrl: 'http://127.0.0.1:8787',
-					},
+					runtime,
 					readiness: readiness.readiness.local,
 					workspaceLinks,
 				});
@@ -5671,11 +5690,7 @@ export async function workflowDev(helpers: WorkflowOperationHelpers, input: Tree
 				cwd: tenantRoot,
 				pid: null,
 				exitCode: result.status ?? 1,
-				runtime: {
-					mode: process.env.TREESEED_LOCAL_DEV_MODE ?? 'cloudflare',
-					apiBaseUrl: process.env.TREESEED_API_BASE_URL ?? 'http://127.0.0.1:3000',
-					webUrl: 'http://127.0.0.1:8787',
-				},
+				runtime,
 				readiness: readiness.readiness.local,
 				workspaceLinks,
 			});

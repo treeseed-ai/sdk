@@ -256,14 +256,33 @@ describe('agent operation tool policy', () => {
 
 	it('validates canonical agent tool ids', () => {
 		expect(listAgentToolIds()).toContain('treeseed.verify');
+		expect(listAgentToolIds()).toContain('treeseed.review_decision');
 		expect(findAgentToolDefinition('treedx.search_workspace')).toMatchObject({
 			id: 'treedx.search_workspace',
 			executionTarget: 'treedx_proxy',
 		});
-		expect(findAgentToolDefinition('treeseed.verify')?.dispatch).toMatchObject({
-			namespace: 'workflow',
-			operation: 'test',
+		const verifyTool = findAgentToolDefinition('treeseed.verify');
+		expect(verifyTool).toMatchObject({
+			executionTarget: 'provider_runner',
+			mutability: 'read',
+			requirements: ['assignment_worktree', 'provider_runner_git'],
+			inputSchema: {
+				required: ['commands'],
+				properties: {
+					commands: {
+						minItems: 1,
+						maxItems: 8,
+						items: {
+							required: ['command', 'args'],
+							properties: {
+								command: { enum: ['node', 'npm'] },
+							},
+						},
+					},
+				},
+			},
 		});
+		expect(verifyTool?.dispatch).toBeUndefined();
 		expect(assertKnownAgentToolIds(['treeseed.verify', 'treeseed.verify', 'missing.tool'])).toEqual({
 			known: ['treeseed.verify'],
 			unknown: ['missing.tool'],

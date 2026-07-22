@@ -56,6 +56,14 @@ export const EXECUTION_PROVIDER_KINDS = [
 	'deterministic_workflow',
 	'local_process',
 ] as const;
+export const BUILT_IN_AGENT_EXECUTION_PROVIDER_IDS = [
+	'codex',
+	'copilot',
+	'jira',
+	'github_issues',
+	'discord',
+	'workflow',
+] as const;
 export const EXECUTION_RUN_STATUSES = [
 	'accepted',
 	'running',
@@ -89,6 +97,7 @@ export type EngineeringHandlerKind = (typeof ENGINEERING_HANDLER_KINDS)[number];
 export type AgentCliAllowTool = (typeof AGENT_CLI_ALLOW_TOOLS)[number];
 export type ExecutionResourceNeedKind = (typeof EXECUTION_RESOURCE_NEED_KINDS)[number] | string;
 export type ExecutionProviderKind = (typeof EXECUTION_PROVIDER_KINDS)[number] | string;
+export type BuiltInAgentExecutionProviderId = (typeof BUILT_IN_AGENT_EXECUTION_PROVIDER_IDS)[number];
 export type ExecutionRunStatus = (typeof EXECUTION_RUN_STATUSES)[number];
 export type ExecutionProviderPressure = (typeof EXECUTION_PROVIDER_PRESSURE_STATES)[number];
 export type ExecutionProviderQuotaVisibility = (typeof EXECUTION_PROVIDER_QUOTA_VISIBILITIES)[number];

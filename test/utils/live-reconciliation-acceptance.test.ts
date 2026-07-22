@@ -147,10 +147,10 @@ describe('live reconciliation acceptance harness', () => {
 					capabilityHandles: { repository: [{ id: 'repository_123', status: 'revoked' }], treeDx: [{ id: 'treedx_123', status: 'revoked' }] },
 					lifecycleOutput: { artifactManifest: {
 						assignmentId,
-						contentReferences: [{ contentPath: 'src/content/notes/acceptance.mdx', ref: 'refs/heads/acceptance', commitSha: 'abc123' }],
+						contentReferences: [{ model: 'note', contentPath: 'src/content/notes/acceptance.mdx', receiptId: 'receipt_123', toolEventId: 'tool_create', ref: 'refs/heads/acceptance', commitSha: 'abc123' }],
 						toolEvents: [
-							{ toolId: 'treeseed.content.create', status: 'completed' },
-							{ toolId: 'treeseed.content.commit', status: 'completed' },
+							{ id: 'tool_create', toolId: 'treeseed.content.create', status: 'completed', derivedEventTypes: ['content_created'] },
+							{ id: 'tool_commit', toolId: 'treedx.commit_workspace', status: 'completed', derivedEventTypes: ['content_committed'] },
 						],
 					} },
 				} });
@@ -214,26 +214,6 @@ describe('live reconciliation acceptance harness', () => {
 		expect(calls.map((call) => `${call.method} ${call.path}`)).toContain('POST /v1/provider/assignments/next');
 		expect(calls.find((call) => call.method === 'POST' && call.path === '/v1/workdays')?.body.allocationSetId).toBe('allocation_123');
 		expect(result.ok).toBe(true);
-	});
-
-	it('keeps local cleanup non-creating and does not run a capacity assignment proof', async () => {
-		const fetchImpl = vi.fn(async () => {
-			throw new Error('Local cleanup must not call the capacity control plane.');
-		}) as unknown as typeof fetch;
-		const result = await runTreeseedLiveReconcileTests({
-			cwd: process.cwd(),
-			environment: 'local',
-			mode: 'cleanup',
-			providers: ['local'],
-			runId: '20260608120001',
-			fetchImpl,
-		});
-
-		expect(result.ok).toBe(true);
-		expect(fetchImpl).not.toHaveBeenCalled();
-		expect(result.providers[0]?.scenarioResults).toHaveLength(6);
-		expect(result.providers[0]?.scenarioResults.every((entry) => ['noop', 'delete'].includes(entry.action))).toBe(true);
-		expect(result.providers[0]?.retainedResources).toEqual([]);
 	});
 
 	it('cleans stale Cloudflare live-test Pages projects without deleting the static project', async () => {

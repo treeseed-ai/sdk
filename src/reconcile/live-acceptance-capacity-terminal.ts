@@ -1,11 +1,36 @@
 import { MarketClient } from '../market-client.ts';
 import { capacityAcceptanceConfig } from './live-acceptance-capacity-context.ts';
 
+function record(value: unknown): Record<string, unknown> {
+	return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+export function hasAuthenticatedCommittedContentReferences(contentReferences: unknown[], toolEvents: unknown[], minimumArtifactCount: number) {
+	const references = contentReferences.map(record);
+	const events = toolEvents.map(record);
+	const uniqueReferences = new Set(references.map((reference) => `${String(reference.model ?? '')}:${String(reference.contentPath ?? '')}`));
+	const eventsById = new Map(events.map((event) => [String(event.id ?? ''), event]));
+	const hasCommit = events.some((event) => event.status === 'completed'
+		&& Array.isArray(event.derivedEventTypes)
+		&& event.derivedEventTypes.includes('content_committed'));
+	return references.length >= minimumArtifactCount
+		&& uniqueReferences.size === references.length
+		&& references.every((reference) => {
+			const receiptId = String(reference.receiptId ?? '');
+			const toolEventId = String(reference.toolEventId ?? '');
+			const event = eventsById.get(toolEventId);
+			return Boolean(receiptId && toolEventId && event?.status === 'completed'
+				&& Array.isArray(event.derivedEventTypes)
+				&& event.derivedEventTypes.includes('content_created'));
+		})
+		&& (references.length === 0 || hasCommit);
+}
+
 export async function verifyCapacityAcceptanceTerminal(input: {
 	adminClient: MarketClient;
 	config: ReturnType<typeof capacityAcceptanceConfig>;
 	assignmentId: string;
-	expectedArtifactCount?: number;
+	minimumArtifactCount?: number;
 }) {
 	const terminal = await input.adminClient.capacityProviderAssignment(input.config.teamId, input.assignmentId).catch((error) => {
 		throw new Error(`Capacity acceptance terminal assignment inspection failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -48,11 +73,9 @@ export async function verifyCapacityAcceptanceTerminal(input: {
 	const completedToolIds = toolEvents
 		.filter((entry) => entry && typeof entry === 'object' && (entry as Record<string, unknown>).status === 'completed')
 		.map((entry) => String((entry as Record<string, unknown>).toolId ?? ''));
-	const expectedArtifactCount = input.expectedArtifactCount ?? 1;
-	if (contentReferences.length !== expectedArtifactCount
-		|| completedToolIds.filter((toolId) => toolId === 'treeseed.content.create').length < expectedArtifactCount
-		|| (expectedArtifactCount > 0 && !completedToolIds.includes('treeseed.content.commit'))) {
-		throw new Error(`Capacity acceptance expected ${expectedArtifactCount} content artifact(s) with completed create and commit receipts, observed ${contentReferences.length} artifact(s) and tools [${completedToolIds.join(', ')}].`);
+	const minimumArtifactCount = input.minimumArtifactCount ?? 1;
+	if (!hasAuthenticatedCommittedContentReferences(contentReferences, toolEvents, minimumArtifactCount)) {
+		throw new Error(`Capacity acceptance required at least ${minimumArtifactCount} unique content artifact(s), each tied to a completed content_created event and an authenticated assignment commit; observed ${contentReferences.length} artifact(s) and tools [${completedToolIds.join(', ')}].`);
 	}
 	const library = (await input.adminClient.projectTreeDxLibrary(input.config.projectId)).payload;
 	if (!library?.repositoryId) throw new Error('Capacity acceptance cannot read back its artifact without the project TreeDX repository binding.');

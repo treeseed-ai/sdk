@@ -5,7 +5,6 @@ import { configuredLiveAcceptanceValue, type LiveAcceptanceEnv } from './live-ac
 import { verifyCapacityAcceptanceTerminal } from './live-acceptance-capacity-terminal.ts';
 import {
 	assertCapacityAcceptancePolicyUnchanged,
-	assertRevokedCapacityProviderAccess,
 	capacityAcceptancePolicyFingerprint,
 } from './live-acceptance-capacity-guards.ts';
 import {
@@ -21,8 +20,9 @@ import {
 } from './live-acceptance-capacity-context.ts';
 import { proveLocalCapacityGovernance } from './live-acceptance-capacity-governance.ts';
 import { provisionLocalCapacityCompetition } from './live-acceptance-capacity-competition.ts';
-import { closeCapacityAcceptanceAvailabilitySession, verifyCapacityAcceptanceCleanup } from './live-acceptance-capacity-cleanup.ts';
+import { cleanupCapacityAssignmentProof } from './live-acceptance-capacity-cleanup.ts';
 import { runLocalAutonomousStarterAcceptances } from './live-acceptance-starters.ts';
+import { createLocalCapacityAcceptanceScope } from './live-acceptance-capacity-scope.ts';
 type LiveEnv = LiveAcceptanceEnv; const configuredValue = configuredLiveAcceptanceValue;
 export async function runCapacityProviderAssignmentProof(input: {
 	provider: TreeseedLiveReconcileProvider;
@@ -57,13 +57,21 @@ export async function runCapacityProviderAssignmentProof(input: {
 		fetchImpl: input.fetchImpl,
 		userAgent: `treeseed-live-acceptance/${input.runId}`,
 	});
+	let cleanupLocalScope: (() => Promise<unknown>) | null = null;
 	if (input.environment === 'local') {
-		Object.assign(config, await resolveLocalCapacityAcceptanceScope(adminClient, config.projectId));
-		await ensureLocalCapacityTreeDxBinding(adminClient, config);
+		if (!config.teamId || !config.projectId) {
+			const scope = await createLocalCapacityAcceptanceScope(adminClient, input.runId);
+			Object.assign(config, scope);
+			cleanupLocalScope = scope.cleanup;
+		} else {
+			Object.assign(config, await resolveLocalCapacityAcceptanceScope(adminClient, config.projectId));
+			await ensureLocalCapacityTreeDxBinding(adminClient, config);
+		}
 	}
 	let cleanupProvisionedProvider: (() => Promise<unknown>) | null = null, cleanupGovernanceProof: (() => Promise<unknown>) | null = null;
-	let cleanupCapacityCompetition: (() => Promise<unknown>) | null = null, governanceProof: CapacityAcceptanceProof['governance'], starterProofs: Pick<CapacityAcceptanceProof, 'starterPlanning' | 'starterEngineering'> | undefined;
+	let cleanupCapacityCompetition: (() => Promise<unknown>) | null = null, governanceProof: CapacityAcceptanceProof['governance'], starterProofs: Pick<CapacityAcceptanceProof, 'starterPlanning' | 'starterEngineering' | 'starterConcurrency'> | undefined;
 	let governanceAcceptance: Awaited<ReturnType<typeof proveLocalCapacityGovernance>> | null = null, provisionedRuntime: Awaited<ReturnType<typeof provisionLocalCapacityAcceptanceProvider>> | null = null;
+	try {
 	if (input.environment === 'local' && (!config.providerId || !config.membershipId || !config.providerAccessToken)) {
 		const provisioned = await provisionLocalCapacityAcceptanceProvider({
 			adminClient, apiUrl: config.apiUrl, teamId: config.teamId, runId: input.runId, fetchImpl: input.fetchImpl,
@@ -87,6 +95,17 @@ export async function runCapacityProviderAssignmentProof(input: {
 		});
 		cleanupGovernanceProof = governanceAcceptance.cleanup;
 	}
+	} catch (error) {
+		const cleanupErrors: unknown[] = [];
+		for (const cleanup of [cleanupGovernanceProof, cleanupProvisionedProvider, cleanupLocalScope]) {
+			if (!cleanup) continue;
+			try { await cleanup(); } catch (cleanupError) { cleanupErrors.push(cleanupError); }
+		}
+		if (cleanupErrors.length > 0) {
+			throw new AggregateError([error, ...cleanupErrors], 'Capacity acceptance preparation and cleanup both failed.');
+		}
+		throw error;
+	}
 	const providerClient = new ProviderProtocolClient({
 		marketUrl: config.apiUrl,
 		accessToken: config.providerAccessToken,
@@ -101,6 +120,7 @@ export async function runCapacityProviderAssignmentProof(input: {
 	let humanPolicyFingerprint = '';
 	const executionThroughAgentRuntime = Boolean(input.capacityAssignmentExecutor && provisionedRuntime);
 	const agentClassId = executionThroughAgentRuntime ? 'testing' : config.agentClassId;
+	let assignmentError: unknown = null;
 	try {
 	let availabilitySession = await providerClient.createAvailabilitySession({
 		id: `${input.prefix}-session`,
@@ -113,7 +133,7 @@ export async function runCapacityProviderAssignmentProof(input: {
 		constraints: { liveAcceptance: true, outboundOnly: true },
 		metadata,
 		executionProviders: [{
-			id: 'acceptance-deterministic', adapter: 'deterministic_workflow', status: 'available',
+			id: 'codex', adapter: 'codex', status: 'available',
 			capabilities: ['planning', 'agent_mode_run', 'repo_read', 'usage_report'],
 			maxConcurrentRunners: 1, activeRunners: 0, nativeLimits: { availableCredits: 30 }, lanes: [],
 		}],
@@ -148,7 +168,7 @@ export async function runCapacityProviderAssignmentProof(input: {
 			projectId: config.projectId,
 			environment: input.environment,
 			status: 'planned',
-			executionProviderIds: ['acceptance-deterministic'],
+			executionProviderIds: ['codex'],
 			laneIds: [],
 			capabilities: ['planning', 'agent_mode_run', 'repo_read', 'usage_report'],
 			allowedModes: ['planning'],
@@ -211,7 +231,7 @@ export async function runCapacityProviderAssignmentProof(input: {
 		constraints: { liveAcceptance: true, outboundOnly: true },
 		metadata,
 		executionProviders: [{
-			id: 'acceptance-deterministic', adapter: 'deterministic_workflow', status: 'available',
+			id: 'codex', adapter: 'codex', status: 'available',
 			capabilities: ['planning', 'agent_mode_run', 'repo_read', 'usage_report'],
 			maxConcurrentRunners: 1, activeRunners: 0, nativeLimits: { availableCredits: 30 }, lanes: [],
 		}],
@@ -227,7 +247,7 @@ export async function runCapacityProviderAssignmentProof(input: {
 			status: 'running',
 			parameters: {
 				projects: [config.projectSlug || config.projectId],
-				durationSeconds: 180,
+				durationSeconds: 1200,
 				allocationSetId: activeAllocation.id,
 				availableCredits: 10,
 				metadata,
@@ -246,7 +266,6 @@ export async function runCapacityProviderAssignmentProof(input: {
 				fetchImpl: input.fetchImpl,
 			})
 			: null;
-		if (competition) governanceAcceptance?.retainAuditTeam();
 		cleanupCapacityCompetition = competition?.cleanup ?? null;
 		const execution = await input.capacityAssignmentExecutor({
 			runId: input.runId,
@@ -262,7 +281,7 @@ export async function runCapacityProviderAssignmentProof(input: {
 			providerSessionSequence: Number(availabilitySession.payload.sequence),
 			privateJwk: provisionedRuntime.privateJwk,
 			assignmentId: null,
-			executionProviderId: 'acceptance-deterministic',
+			executionProviderId: 'codex',
 			...(competition ? { competingConnection: competition.connection } : {}),
 		}).catch((error) => {
 			throw new Error(`Capacity acceptance Agent runtime executor failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -331,7 +350,7 @@ export async function runCapacityProviderAssignmentProof(input: {
 		environment: input.environment,
 		providerSessionId: sessionId,
 		projectAgentClassId: agentClassId,
-		executionProviderId: 'acceptance-deterministic',
+		executionProviderId: 'codex',
 		workDayId,
 		requestedCredits: 1,
 		mode,
@@ -463,36 +482,18 @@ export async function runCapacityProviderAssignmentProof(input: {
 		ledgerEntryCount: 0,
 		governance: governanceProof,
 	};
+	} catch (error) {
+		assignmentError = error;
+		throw error;
 	} finally {
-		const cleanupErrors: string[] = [];
-		const cleanup = async (label: string, operation: () => Promise<unknown>) => {
-			try { await operation(); }
-			catch (error) { cleanupErrors.push(`${label}: ${error instanceof Error ? error.message : String(error)}`); }
-		};
-		if (workdayRunIdForCleanup) await cleanup('complete workday run', () => adminClient.updateWorkdayRun(config.teamId, workdayRunIdForCleanup, { status: 'completed' }));
-		if (workdayIdForCleanup) await cleanup('complete workday', () => adminClient.completeWorkday(workdayIdForCleanup, `capacity-acceptance:${input.runId}:workday-complete`));
-		if (sessionIdForCleanup) await cleanup('close availability session', () => closeCapacityAcceptanceAvailabilitySession({
-			apiUrl: config.apiUrl,
-			runId: input.runId,
-			sessionId: sessionIdForCleanup,
-			fetchImpl: input.fetchImpl,
-			providerClient,
-			provisionedRuntime,
-		}));
-		if (grantIdForCleanup) await cleanup('revoke capacity grant', () => adminClient.transitionCapacityGrant(config.teamId, grantIdForCleanup, 'revoke', `capacity-acceptance:${input.runId}:grant-revoke`));
-		if (cleanupCapacityCompetition) await cleanup('delete capacity competition resources', cleanupCapacityCompetition);
-		if (cleanupProvisionedProvider) await cleanup('revoke provider membership', cleanupProvisionedProvider);
-		if (cleanupGovernanceProof) await cleanup('delete governance acceptance team', cleanupGovernanceProof);
-		if (cleanupProvisionedProvider && completedAssignmentId) {
-			await cleanup('verify revoked provider access', () => assertRevokedCapacityProviderAccess({ providerClient, assignmentId: completedAssignmentId }));
-		}
-		if (!cleanupErrors.length && cleanupProvisionedProvider) {
-			await cleanup('verify terminal cleanup', () => verifyCapacityAcceptanceCleanup({
-				adminClient, teamId: config.teamId, membershipId: config.membershipId, providerId: config.providerId,
-				grantId: grantIdForCleanup, workdayId: workdayIdForCleanup,
-				workdayRunId: workdayRunIdForCleanup, sessionId: sessionIdForCleanup,
-			}));
-		}
-		if (cleanupErrors.length) throw new Error(`Capacity acceptance cleanup failed: ${cleanupErrors.join('; ')}`);
+		await cleanupCapacityAssignmentProof({
+			adminClient, providerClient, apiUrl: config.apiUrl, runId: input.runId,
+			teamId: config.teamId, membershipId: config.membershipId, providerId: config.providerId,
+			grantId: grantIdForCleanup, workdayId: workdayIdForCleanup,
+			workdayRunId: workdayRunIdForCleanup, sessionId: sessionIdForCleanup,
+			completedAssignmentId, provisionedRuntime, cleanupCapacityCompetition,
+			cleanupProvisionedProvider, cleanupGovernanceProof, cleanupLocalScope,
+			assignmentError, fetchImpl: input.fetchImpl,
+		});
 	}
 }

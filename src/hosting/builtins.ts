@@ -25,9 +25,9 @@ function capabilities(ids: TreeseedHostCapability[], environments: TreeseedHosti
 	return ids.map((id) => ({ id, environments }));
 }
 
-function syntheticStatus(input: TreeseedHostAdapterOperationInput): TreeseedHostAdapterOperationResult {
+function reconcilerOwnedStatus(input: TreeseedHostAdapterOperationInput): TreeseedHostAdapterOperationResult {
 	return {
-		status: 'pending',
+		status: 'blocked',
 		locators: {
 			hostId: input.unit.host.id,
 			projectGroupId: input.unit.projectGroup?.id ?? null,
@@ -38,18 +38,18 @@ function syntheticStatus(input: TreeseedHostAdapterOperationInput): TreeseedHost
 			placement: input.unit.placement,
 			planOnly: input.planOnly === true,
 		},
-		warnings: [],
+		warnings: ['This hosting graph is descriptive only. Live provider state and mutation are owned by the canonical reconciliation adapter.'],
 	};
 }
 
-function defaultPlan(input: TreeseedHostAdapterOperationInput & { observed: TreeseedHostAdapterOperationResult }): TreeseedHostingUnitPlan {
+function reconcilerOwnedPlan(input: TreeseedHostAdapterOperationInput & { observed: TreeseedHostAdapterOperationResult }): TreeseedHostingUnitPlan {
 	return {
 		unitId: input.unit.id,
-		action: input.observed.status === 'ready' ? 'noop' : 'create',
-		reasons: input.observed.status === 'ready' ? ['unit already ready'] : ['unit is not yet recorded as ready by the hosting graph'],
+		action: 'blocked',
+		reasons: ['Live provider planning is owned by the canonical reconciliation adapter.'],
 		before: input.observed.state,
 		after: sanitizedUnitConfig(input.unit),
-		warnings: [],
+		warnings: ['Use trsd reconcile plan to inspect authoritative provider state.'],
 	};
 }
 
@@ -104,7 +104,7 @@ function defaultVerify(input: TreeseedHostAdapterOperationInput & { observed: Tr
 	};
 }
 
-function createSyntheticHostAdapter(
+function createReconcilerOwnedHostAdapter(
 	id: string,
 	label: string,
 	capabilityIds: TreeseedHostCapability[],
@@ -114,20 +114,31 @@ function createSyntheticHostAdapter(
 		id,
 		label,
 		capabilities: capabilities(capabilityIds, environments),
-		refresh: syntheticStatus,
-		diff: defaultPlan,
+		refresh: reconcilerOwnedStatus,
+		diff: reconcilerOwnedPlan,
 		apply(input) {
 			return {
-				...syntheticStatus(input),
-				status: input.planOnly ? 'pending' : 'ready',
-				state: {
-					...syntheticStatus(input).state,
-					applied: input.planOnly !== true,
-				},
+				...reconcilerOwnedStatus(input),
+				warnings: ['Provider mutation was not attempted. Use trsd reconcile apply.'],
 			};
 		},
-		verify: defaultVerify,
-		status: syntheticStatus,
+		verify(input) {
+			return {
+				unitId: input.unit.id,
+				status: 'blocked',
+				verified: false,
+				checks: [{
+					key: 'canonical-reconciliation-required',
+					label: 'Canonical reconciliation evidence is required',
+					ok: false,
+					expected: 'authoritative live provider observation',
+					observed: input.observed.status,
+					issues: ['The descriptive hosting graph cannot verify live provider state.'],
+				}],
+				warnings: ['Use trsd reconcile apply or trsd reconcile test-live for provider verification.'],
+			};
+		},
+		status: reconcilerOwnedStatus,
 	};
 }
 
@@ -393,7 +404,7 @@ function observeCloudflarePagesDns(input: TreeseedHostAdapterOperationInput, pro
 }
 
 function createCloudflareHostAdapter(): TreeseedHostAdapter {
-	const base = createSyntheticHostAdapter('cloudflare', 'Cloudflare', [
+	const base = createReconcilerOwnedHostAdapter('cloudflare', 'Cloudflare', [
 		'web-site',
 		'object-store',
 		'database',
@@ -455,7 +466,7 @@ function createCloudflareHostAdapter(): TreeseedHostAdapter {
 			apply(input) {
 				if (!isPagesSite(input)) return base.apply(input);
 				return {
-					...syntheticStatus(input),
+					...reconcilerOwnedStatus(input),
 					status: 'blocked',
 					warnings: [
 						'Cloudflare Pages mutation is reconciler-owned. Use trsd hosting apply or trsd reconcile apply so the Cloudflare reconcile adapter performs apply, refresh, verify, and persist.',
@@ -543,7 +554,7 @@ function createCloudflareHostAdapter(): TreeseedHostAdapter {
 
 export function createDefaultHostAdapters(): Record<string, TreeseedHostAdapter> {
 	return {
-		railway: createSyntheticHostAdapter('railway', 'Railway', [
+		railway: createReconcilerOwnedHostAdapter('railway', 'Railway', [
 			'project',
 			'environment',
 			'container',
@@ -558,19 +569,19 @@ export function createDefaultHostAdapters(): Record<string, TreeseedHostAdapter>
 			'logs',
 		], PROVIDER_ENVIRONMENTS),
 		cloudflare: createCloudflareHostAdapter(),
-		github: createSyntheticHostAdapter('github', 'GitHub', [
+		github: createReconcilerOwnedHostAdapter('github', 'GitHub', [
 			'source-repository',
 			'workflow',
 			'secret',
 			'variable',
 			'health',
 		], PROVIDER_ENVIRONMENTS),
-		smtp: createSyntheticHostAdapter('smtp', 'SMTP', [
+		smtp: createReconcilerOwnedHostAdapter('smtp', 'SMTP', [
 			'email-relay',
 			'secret',
 			'health',
 		], ALL_ENVIRONMENTS),
-		'local-process': createSyntheticHostAdapter('local-process', 'Local process', [
+		'local-process': createReconcilerOwnedHostAdapter('local-process', 'Local process', [
 			'process',
 			'web-site',
 			'container',
@@ -581,7 +592,7 @@ export function createDefaultHostAdapters(): Record<string, TreeseedHostAdapter>
 			'port',
 			'hot-reload',
 		], ['local']),
-		'local-docker': createSyntheticHostAdapter('local-docker', 'Local Docker', [
+		'local-docker': createReconcilerOwnedHostAdapter('local-docker', 'Local Docker', [
 			'container',
 			'volume',
 			'database',

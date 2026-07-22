@@ -102,19 +102,16 @@ export async function proveLocalCapacityGovernance(input: {
 	privateJwk: JsonWebKey;
 	fetchImpl: typeof fetch;
 }) {
-	const teamName = 'capacity-live-acceptance';
-	const existingTeams = await input.adminClient.teams();
-	const existingTeam = (existingTeams.payload as Array<{ id?: string; name?: string }>).find((team) => team.name === teamName);
-	const createdTeam = existingTeam?.id ? null : await input.adminClient.createTeam({
+	const suffix = input.runId.replace(/[^a-z0-9]/giu, '').toLowerCase().slice(-14) || 'run';
+	const teamName = `capacity-live-governance-${suffix}`;
+	const createdTeam = await input.adminClient.createTeam({
 		name: teamName,
-		displayName: 'Capacity live acceptance',
-		metadata: { liveAcceptance: true, purpose: 'durable-capacity-audit-fixture' },
+		displayName: `Capacity governance acceptance ${suffix}`,
+		metadata: { liveAcceptance: true, runId: input.runId, purpose: 'isolated-capacity-governance' },
 	});
-	const secondTeamId = existingTeam?.id ?? createdTeam?.payload.id;
+	const secondTeamId = createdTeam.payload.id;
 	if (!secondTeamId) throw new Error('Capacity governance acceptance could not resolve its durable audit team.');
-	let retainAuditTeam = !createdTeam;
 	const cleanup = async () => {
-		if (retainAuditTeam) return;
 		const deleted = await input.adminClient.deleteTeam(secondTeamId, `DELETE ${teamName}`);
 		if (!deleted.ok) throw new Error(`Capacity governance acceptance could not delete team ${secondTeamId}: ${deleted.message ?? deleted.code ?? 'unknown error'}.`);
 	};
@@ -225,7 +222,6 @@ export async function proveLocalCapacityGovernance(input: {
 		if (!approvedMembershipSurvivedRotation) throw new Error('Registration-key rotation changed an approved provider membership.');
 
 		return {
-			retainAuditTeam: () => { retainAuditTeam = true; },
 			runtime: {
 				teamId: secondTeamId,
 				providerId: sharedRequest.providerId,

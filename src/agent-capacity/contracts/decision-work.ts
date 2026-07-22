@@ -1,4 +1,5 @@
 import type { TreeseedContentRef } from '../../content-operations.ts';
+import type { AgentArtifactManifest } from '../artifacts.ts';
 
 export type AgentPlanningActivityType = 'planning' | 'estimating' | 'reviewing' | 'reporting';
 export type ContentRef = TreeseedContentRef;
@@ -103,6 +104,24 @@ export interface DeliverableManifest {
 
 export interface DeliverableManifestRecord extends DeliverableManifest {
 	createdAt: string;
+}
+
+/** Authenticated, secret-free evidence projected from a completed graph ancestor. */
+export interface GovernedPredecessorEvidence {
+	graphNodeId: string;
+	stage: string | null;
+	deliverableContractId: string;
+	deliverableType: string;
+	contractStatus: 'approved' | 'rejected';
+	deliverableManifest: DeliverableManifestRecord;
+	artifactManifest: AgentArtifactManifest;
+}
+
+/** API-owned review policy projected from the accepted workflow and current graph state. */
+export interface GovernedReviewPolicy {
+	requireRevisionCycle: boolean;
+	completedRevisionCycles: number;
+	requiredDisposition: 'rejected' | null;
 }
 
 export interface DecisionAssignmentGraphNode {

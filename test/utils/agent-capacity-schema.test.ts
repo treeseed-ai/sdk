@@ -109,6 +109,30 @@ describe('agent capacity market schema', () => {
 		expect(baseline).toContain("'research-workflow'");
 	});
 
+	it('deletes team-owned capacity history only at the explicit team aggregate boundary', () => {
+		const baseline = readFileSync(resolve(process.cwd(), 'drizzle/market/0000_market_control_plane.sql'), 'utf8');
+		for (const constraint of [
+			'fk_agent_fallback_outputs_team',
+			'fk_agent_mode_runs_team',
+			'fk_capacity_ledger_team',
+			'fk_capacity_provider_assignments_team',
+			'fk_capacity_reservations_team',
+			'fk_capacity_usage_actuals_assignment',
+			'fk_capacity_usage_actuals_mode_run',
+			'fk_capacity_usage_actuals_project',
+			'fk_capacity_workday_demands_team',
+			'fk_capacity_workday_events_team',
+			'fk_capacity_workday_participation_cycles_team',
+			'fk_capacity_workday_participation_entries_team',
+			'fk_capacity_workday_runs_team',
+			'fk_research_workflows_team',
+			'fk_workday_capacity_envelopes_team',
+		]) {
+			const statement = baseline.split('\n').find((line) => line.includes(`"${constraint}"`));
+			expect(statement, constraint).toContain('ON DELETE cascade');
+		}
+	});
+
 	it('constrains workday and capacity-plan governance provenance', () => {
 		for (const retiredPolicyColumn of ['modeSplitsJson', 'capsJson', 'reservesJson', 'borrowingRulesJson']) {
 			expect(workdayCapacityEnvelopes).not.toHaveProperty(retiredPolicyColumn);
