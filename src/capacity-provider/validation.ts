@@ -20,15 +20,15 @@ export interface CapacityProviderContractValidation {
 	diagnostics: CapacityProviderContractDiagnostic[];
 }
 
-function result(diagnostics: CapacityProviderContractDiagnostic[]): CapacityProviderContractValidation {
+export function result(diagnostics: CapacityProviderContractDiagnostic[]): CapacityProviderContractValidation {
 	return { ok: diagnostics.length === 0, diagnostics };
 }
 
-function add(diagnostics: CapacityProviderContractDiagnostic[], code: string, path: string, message: string) {
+export function add(diagnostics: CapacityProviderContractDiagnostic[], code: string, path: string, message: string) {
 	diagnostics.push({ code, path, message });
 }
 
-function nonEmpty(value: unknown): value is string {
+export function nonEmpty(value: unknown): value is string {
 	return typeof value === 'string' && value.trim().length > 0;
 }
 

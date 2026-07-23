@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 import type { AgentOperationGrant, AgentOperationRequest, AgentOperationResult } from './agent-tools.ts';
 import { decideAgentOperationPermission, deniedAgentOperationResult } from './agent-tools.ts';
 
-const execFileAsync = promisify(execFile);
+export const execFileAsync = promisify(execFile);
 
 export interface AgentWorktreeCheckpointInput {
 	request: Omit<AgentOperationRequest, 'operation' | 'mode' | 'changedPaths'> & {
@@ -17,20 +17,20 @@ export interface AgentWorktreeCheckpointExecutor {
 	exec(command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv }): Promise<{ stdout: string; stderr?: string }>;
 }
 
-function normalizePath(value: string) {
+export function normalizePath(value: string) {
 	return value.replace(/\\/gu, '/').replace(/^\.?\//u, '').replace(/\/+/gu, '/');
 }
 
-function statusPath(line: string) {
+export function statusPath(line: string) {
 	const raw = line.slice(3).trim();
 	return normalizePath((raw.includes(' -> ') ? raw.split(' -> ').pop() : raw) ?? '');
 }
 
-function changedPaths(output: string) {
+export function changedPaths(output: string) {
 	return [...new Set(output.split('\n').filter(Boolean).map(statusPath).filter(Boolean))];
 }
 
-function failed(request: AgentOperationRequest, code: string, message: string): AgentOperationResult {
+export function failed(request: AgentOperationRequest, code: string, message: string): AgentOperationResult {
 	return {
 		operation: 'save', status: 'failed', summary: message, changedPaths: request.changedPaths ?? [], stagedPaths: [],
 		commandsRun: [], artifacts: [], error: { code, message, retryable: false }, metadata: {},

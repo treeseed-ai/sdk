@@ -132,11 +132,11 @@ export interface AgentOperationEvent {
 	createdAt: string;
 }
 
-function normalizePath(value: string) {
+export function normalizePath(value: string) {
 	return value.replace(/\\/gu, '/').replace(/^\.?\//u, '').replace(/\/+/gu, '/');
 }
 
-function matchesPattern(path: string, pattern: string) {
+export function matchesPattern(path: string, pattern: string) {
 	const normalizedPath = normalizePath(path);
 	const normalizedPattern = normalizePath(pattern);
 	if (normalizedPattern === '**' || normalizedPattern === '*') return true;
@@ -150,11 +150,11 @@ function matchesPattern(path: string, pattern: string) {
 	return normalizedPath === normalizedPattern || normalizedPath.startsWith(`${normalizedPattern}/`);
 }
 
-function listMatches(value: string | undefined, allowed: string[] | undefined) {
+export function listMatches(value: string | undefined, allowed: string[] | undefined) {
 	return !allowed?.length || (value !== undefined && allowed.includes(value));
 }
 
-function grantActive(grant: AgentOperationGrant, now: Date) {
+export function grantActive(grant: AgentOperationGrant, now: Date) {
 	if ((grant.state ?? 'active') !== 'active') {
 		return 'operation_grant_inactive' as const;
 	}
@@ -164,7 +164,7 @@ function grantActive(grant: AgentOperationGrant, now: Date) {
 	return null;
 }
 
-function deny(
+export function deny(
 	code: Exclude<AgentOperationPermissionCode, 'allowed'>,
 	summary: string,
 	options: {
@@ -183,7 +183,7 @@ function deny(
 	};
 }
 
-function allow(grant: AgentOperationGrant, metadata: Record<string, unknown> = {}): AgentOperationPermissionDecision {
+export function allow(grant: AgentOperationGrant, metadata: Record<string, unknown> = {}): AgentOperationPermissionDecision {
 	return {
 		allowed: true,
 		status: 'completed',

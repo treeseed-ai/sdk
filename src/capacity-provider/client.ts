@@ -49,29 +49,29 @@ export class CapacityProviderApiError extends Error {
 	}
 }
 
-function normalizeBaseUrl(value: string) {
+export function normalizeBaseUrl(value: string) {
 	const trimmed = value.trim().replace(/\/+$/u, '');
 	if (!trimmed) throw new Error('Capacity provider Market URL is required.');
 	return trimmed;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function requireString(record: Record<string, unknown>, key: string, label: string) {
+export function requireString(record: Record<string, unknown>, key: string, label: string) {
 	const value = record[key];
 	if (typeof value !== 'string' || value.length === 0) throw new Error(`${label} is missing required string field "${key}".`);
 	return value;
 }
 
-function requireNumber(record: Record<string, unknown>, key: string, label: string) {
+export function requireNumber(record: Record<string, unknown>, key: string, label: string) {
 	const value = record[key];
 	if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${label} is missing required numeric field "${key}".`);
 	return value;
 }
 
-function assertAvailabilitySessionEnvelope(value: unknown): asserts value is { ok: true; payload: ProviderAvailabilitySession } {
+export function assertAvailabilitySessionEnvelope(value: unknown): asserts value is { ok: true; payload: ProviderAvailabilitySession } {
 	assertCapacityProviderOkEnvelope(value, 'Capacity provider availability session response');
 	const envelope = value as Record<string, unknown>;
 	if (!isRecord(envelope.payload)) throw new Error('Capacity provider availability session response is missing payload.');

@@ -8,13 +8,13 @@ import type {
 	SdkGraphWhereFilter,
 } from '../sdk-types.ts';
 
-const CLAUSE_KEYWORDS = new Set(['for', 'in', 'via', 'depth', 'where', 'limit', 'budget', 'as']);
-const VALID_STAGES: SdkGraphQueryStage[] = ['plan', 'implement', 'research', 'debug', 'review'];
-const VALID_VIEWS: SdkGraphQueryView[] = ['list', 'brief', 'full', 'map'];
-const VALID_RELATIONS: SdkGraphDslRelation[] = ['related', 'depends_on', 'implements', 'references', 'parent', 'child', 'supersedes'];
-const VALID_WHERE_FIELDS = new Set(['type', 'status', 'audience', 'tag', 'domain']);
+export const CLAUSE_KEYWORDS = new Set(['for', 'in', 'via', 'depth', 'where', 'limit', 'budget', 'as']);
+export const VALID_STAGES: SdkGraphQueryStage[] = ['plan', 'implement', 'research', 'debug', 'review'];
+export const VALID_VIEWS: SdkGraphQueryView[] = ['list', 'brief', 'full', 'map'];
+export const VALID_RELATIONS: SdkGraphDslRelation[] = ['related', 'depends_on', 'implements', 'references', 'parent', 'child', 'supersedes'];
+export const VALID_WHERE_FIELDS = new Set(['type', 'status', 'audience', 'tag', 'domain']);
 
-function tokenize(source: string) {
+export function tokenize(source: string) {
 	const tokens: string[] = [];
 	let current = '';
 	let quote: '"' | "'" | null = null;
@@ -58,7 +58,7 @@ function tokenize(source: string) {
 	return { tokens, error: null };
 }
 
-function nextClauseIndex(tokens: string[], start: number) {
+export function nextClauseIndex(tokens: string[], start: number) {
 	for (let index = start; index < tokens.length; index += 1) {
 		if (CLAUSE_KEYWORDS.has(tokens[index]!)) {
 			return index;
@@ -67,7 +67,7 @@ function nextClauseIndex(tokens: string[], start: number) {
 	return tokens.length;
 }
 
-function nextClauseIndexForClause(tokens: string[], start: number, clause: string) {
+export function nextClauseIndexForClause(tokens: string[], start: number, clause: string) {
 	for (let index = start; index < tokens.length; index += 1) {
 		const token = tokens[index]!;
 		if (!CLAUSE_KEYWORDS.has(token)) {
@@ -81,7 +81,7 @@ function nextClauseIndexForClause(tokens: string[], start: number, clause: strin
 	return tokens.length;
 }
 
-function parseTarget(rawTarget: string): SdkGraphSeed {
+export function parseTarget(rawTarget: string): SdkGraphSeed {
 	if (rawTarget.startsWith('@')) {
 		return { id: 'seed:0', kind: 'id', value: rawTarget.slice(1) };
 	}
@@ -97,7 +97,7 @@ function parseTarget(rawTarget: string): SdkGraphSeed {
 	return { id: 'seed:0', kind: 'query', value: rawTarget };
 }
 
-function parseWhere(expression: string): SdkGraphWhereFilter[] | { error: string } {
+export function parseWhere(expression: string): SdkGraphWhereFilter[] | { error: string } {
 	const equality = expression.match(/^\s*([a-z_]+)\s*=\s*([^)]+?)\s*$/iu);
 	if (equality) {
 		const field = equality[1]!.toLowerCase();

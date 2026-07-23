@@ -299,7 +299,7 @@ await treeDx.metrics();
 Mocked end-to-end TreeDX contract tests prove the SDK can drive the TreeDX repository loop without an agent-side clone when `contentPathMap` is supplied:
 
 ```bash
-npx vitest run --config ./vitest.config.ts test/utils/treedx-e2e-contract.test.ts
+npx vitest run --config ./vitest.config.ts tests/contract/treedx/treedx-e2e-contract.test.ts
 ```
 
 The optional live contract command reports `not configured` and exits

@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 
-const execFileAsync = promisify(execFile);
+export const execFileAsync = promisify(execFile);
 
 export interface ReleaseAgentWorktreeInput {
 	repoRoot: string;
@@ -13,7 +13,7 @@ export interface ReleaseAgentWorktreeExecutor {
 	exec(command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv }): Promise<{ stdout: string; stderr?: string }>;
 }
 
-function registeredWorktrees(porcelain: string) {
+export function registeredWorktrees(porcelain: string) {
 	return porcelain.split(/\r?\n/gu)
 		.filter((line) => line.startsWith('worktree '))
 		.map((line) => resolve(line.slice('worktree '.length).trim()));

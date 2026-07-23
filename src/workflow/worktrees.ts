@@ -24,15 +24,15 @@ export type ManagedWorkflowWorktreeResult = ManagedWorkflowWorktreeMetadata & {
 	resumed: boolean;
 };
 
-const WORKTREE_METADATA_PATH = '.treeseed/worktree.json';
-const WORKTREE_ROOT = '.treeseed/worktrees';
-const MACHINE_CONFIG_PATH = '.treeseed/config/machine.yaml';
+export const WORKTREE_METADATA_PATH = '.treeseed/worktree.json';
+export const WORKTREE_ROOT = '.treeseed/worktrees';
+export const MACHINE_CONFIG_PATH = '.treeseed/config/machine.yaml';
 
-function nowIso() {
+export function nowIso() {
 	return new Date().toISOString();
 }
 
-function runGit(args: string[], { cwd, capture = true, allowFailure = false }: { cwd: string; capture?: boolean; allowFailure?: boolean }) {
+export function runGit(args: string[], { cwd, capture = true, allowFailure = false }: { cwd: string; capture?: boolean; allowFailure?: boolean }) {
 	const mutating = /^(add|commit|checkout|switch|merge|tag|push|fetch|worktree|submodule|reset|clean|restore|branch)$/u.test(args[0] ?? '');
 	const result = runTreeseedGit(args, {
 		cwd,
@@ -44,7 +44,7 @@ function runGit(args: string[], { cwd, capture = true, allowFailure = false }: {
 	return result;
 }
 
-function slugifyBranch(branchName: string) {
+export function slugifyBranch(branchName: string) {
 	return branchName
 		.trim()
 		.toLowerCase()
@@ -53,12 +53,12 @@ function slugifyBranch(branchName: string) {
 		.slice(0, 64) || 'branch';
 }
 
-function worktreeDirectoryName(branchName: string) {
+export function worktreeDirectoryName(branchName: string) {
 	const hash = createHash('sha256').update(branchName).digest('hex').slice(0, 10);
 	return `${slugifyBranch(branchName)}-${hash}`;
 }
 
-function parseWorktreeList(output: string) {
+export function parseWorktreeList(output: string) {
 	const entries: Array<{ worktree: string; branch: string | null }> = [];
 	let current: { worktree: string; branch: string | null } | null = null;
 	for (const line of output.split(/\r?\n/u)) {
@@ -75,23 +75,23 @@ function parseWorktreeList(output: string) {
 	return entries;
 }
 
-function worktreeList(repoDir: string) {
+export function worktreeList(repoDir: string) {
 	return parseWorktreeList(runGit(['worktree', 'list', '--porcelain'], { cwd: repoDir }).stdout ?? '');
 }
 
-function currentBranchName(repoDir: string) {
+export function currentBranchName(repoDir: string) {
 	return runGit(['branch', '--show-current'], { cwd: repoDir, allowFailure: true }).stdout?.trim() || null;
 }
 
-function localBranchExists(repoDir: string, branchName: string) {
+export function localBranchExists(repoDir: string, branchName: string) {
 	return runGit(['show-ref', '--verify', '--quiet', `refs/heads/${branchName}`], { cwd: repoDir, allowFailure: true }).status === 0;
 }
 
-function remoteBranchExists(repoDir: string, branchName: string) {
+export function remoteBranchExists(repoDir: string, branchName: string) {
 	return Boolean(runGit(['ls-remote', '--heads', 'origin', branchName], { cwd: repoDir, allowFailure: true }).stdout?.trim());
 }
 
-function checkoutManagedPackageBranch(repoDir: string, branchName: string) {
+export function checkoutManagedPackageBranch(repoDir: string, branchName: string) {
 	runGit(['fetch', 'origin'], { cwd: repoDir, allowFailure: true });
 	const baseBranch = remoteBranchExists(repoDir, 'staging')
 		? 'staging'
@@ -112,7 +112,7 @@ function checkoutManagedPackageBranch(repoDir: string, branchName: string) {
 	}
 }
 
-function checkoutManagedPackageBranches(worktreePath: string, branchName: string) {
+export function checkoutManagedPackageBranches(worktreePath: string, branchName: string) {
 	const packages = new Map<string, ReturnType<typeof workspacePackages>[number]>();
 	for (const pkg of workspacePackages(worktreePath)) {
 		if (pkg.name?.startsWith('@treeseed/')) {
@@ -135,11 +135,11 @@ function checkoutManagedPackageBranches(worktreePath: string, branchName: string
 	}
 }
 
-function metadataPath(root: string) {
+export function metadataPath(root: string) {
 	return resolve(root, WORKTREE_METADATA_PATH);
 }
 
-function readMetadata(root: string): ManagedWorkflowWorktreeMetadata | null {
+export function readMetadata(root: string): ManagedWorkflowWorktreeMetadata | null {
 	const filePath = metadataPath(root);
 	if (!existsSync(filePath)) return null;
 	try {
@@ -150,13 +150,13 @@ function readMetadata(root: string): ManagedWorkflowWorktreeMetadata | null {
 	}
 }
 
-function writeMetadata(root: string, metadata: ManagedWorkflowWorktreeMetadata) {
+export function writeMetadata(root: string, metadata: ManagedWorkflowWorktreeMetadata) {
 	const filePath = metadataPath(root);
 	mkdirSync(dirname(filePath), { recursive: true });
 	writeFileSync(filePath, `${JSON.stringify(metadata, null, 2)}\n`, 'utf8');
 }
 
-function ensureManagedWorktreeExclude(root: string) {
+export function ensureManagedWorktreeExclude(root: string) {
 	const commonGitDir = runGit(['rev-parse', '--git-common-dir'], { cwd: root }).stdout?.trim();
 	if (!commonGitDir) return;
 	const absolutePath = resolve(root, commonGitDir, 'info', 'exclude');
@@ -172,7 +172,7 @@ function ensureManagedWorktreeExclude(root: string) {
 	);
 }
 
-function ensureManagedWorktreeMachineConfig(primaryRoot: string, worktreePath: string) {
+export function ensureManagedWorktreeMachineConfig(primaryRoot: string, worktreePath: string) {
 	const sourcePath = resolve(primaryRoot, MACHINE_CONFIG_PATH);
 	const targetPath = resolve(worktreePath, MACHINE_CONFIG_PATH);
 	if (!existsSync(sourcePath) || existsSync(targetPath)) return;
@@ -311,7 +311,7 @@ export function removeManagedWorkflowWorktree(root: string, options: { deleteBra
 	};
 }
 
-function removeWorkflowWorktreeDirectory(worktreePath: string) {
+export function removeWorkflowWorktreeDirectory(worktreePath: string) {
 	try {
 		rmSync(worktreePath, { recursive: true, force: true });
 		return;
@@ -331,7 +331,7 @@ function removeWorkflowWorktreeDirectory(worktreePath: string) {
 	}
 }
 
-function repairDockerOwnedWorktreeArtifacts(worktreePath: string) {
+export function repairDockerOwnedWorktreeArtifacts(worktreePath: string) {
 	if (!existsSync(worktreePath) || typeof process.getuid !== 'function' || typeof process.getgid !== 'function') {
 		return { repaired: false, stderr: '' };
 	}

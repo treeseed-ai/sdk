@@ -13,7 +13,7 @@ export interface WorkdayExistingAssignment {
 	metadata?: Record<string, unknown> | null;
 }
 
-function record(value: unknown): Record<string, unknown> {
+export function record(value: unknown): Record<string, unknown> {
 	return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 

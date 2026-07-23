@@ -201,12 +201,12 @@ export interface CapacityAdmissionCounterClaim {
 export { validateCapacityAllocationSetV2, validateCapacityGrantV2 } from './validation/allocation.ts';
 export type { CapacityAllocationDiagnostic, CapacityAllocationValidation } from './validation/allocation.ts';
 
-function timestamp(value: string | null | undefined) {
+export function timestamp(value: string | null | undefined) {
 	const parsed = value ? Date.parse(value) : Number.NaN;
 	return Number.isFinite(parsed) ? parsed : null;
 }
 
-function firstReason(reasons: CapacityAdmissionReasonCode[]): CapacityAdmissionReasonCode {
+export function firstReason(reasons: CapacityAdmissionReasonCode[]): CapacityAdmissionReasonCode {
 	return reasons[0] ?? 'allowed';
 }
 

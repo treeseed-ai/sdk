@@ -5,10 +5,10 @@ import { promisify } from 'node:util';
 import { validateAgentArtifactManifest, type AgentArtifactManifest } from '../agent-capacity/artifacts.ts';
 import type { DecisionAssignmentGraphRecord } from '../agent-capacity/contracts/decision-work.ts';
 
-const execFileAsync = promisify(execFile);
-const PROTECTED_BRANCHES = new Set(['main', 'master', 'staging', 'production']);
+export const execFileAsync = promisify(execFile);
+export const PROTECTED_BRANCHES = new Set(['main', 'master', 'staging', 'production']);
 
-type JsonRecord = Record<string, unknown>;
+export type JsonRecord = Record<string, unknown>;
 
 export interface AgentCheckpointIntegrationExecutor {
 	exec(command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv }): Promise<{ stdout: string; stderr?: string }>;
@@ -42,54 +42,54 @@ export interface AgentCheckpointIntegrationResult {
 	nextOperation: 'treeseed save' | null;
 }
 
-function record(value: unknown): JsonRecord {
+export function record(value: unknown): JsonRecord {
 	return value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : {};
 }
 
-function text(...values: unknown[]) {
+export function text(...values: unknown[]) {
 	for (const value of values) if (typeof value === 'string' && value.trim()) return value.trim();
 	return '';
 }
 
-function array(value: unknown) {
+export function array(value: unknown) {
 	return Array.isArray(value) ? value : [];
 }
 
-function normalizedPath(value: string) {
+export function normalizedPath(value: string) {
 	return value.replace(/\\/gu, '/').replace(/^\.\//u, '').replace(/\/+/gu, '/');
 }
 
-function isInside(root: string, candidate: string) {
+export function isInside(root: string, candidate: string) {
 	const path = relative(root, candidate);
 	return path === '' || (!path.startsWith('..') && !path.startsWith('/'));
 }
 
-function graphNodeStage(node: JsonRecord) {
+export function graphNodeStage(node: JsonRecord) {
 	return text(record(node.metadata).stage);
 }
 
-function revisionCycle(node: JsonRecord) {
+export function revisionCycle(node: JsonRecord) {
 	const value = Number(record(node.metadata).revisionCycle ?? 0);
 	return Number.isInteger(value) && value >= 0 ? value : 0;
 }
 
-function manifestFromAssignment(assignment: JsonRecord) {
+export function manifestFromAssignment(assignment: JsonRecord) {
 	const lifecycle = record(assignment.lifecycleOutput);
 	const direct = record(lifecycle.artifactManifest);
 	const nested = record(record(record(lifecycle.metadata).executionSnapshot).artifactManifest);
 	return Object.keys(direct).length ? direct : nested;
 }
 
-function immutableCommit(value: string) {
+export function immutableCommit(value: string) {
 	return /^[0-9a-f]{40}$/iu.test(value);
 }
 
-function normalizeRemote(value: string) {
+export function normalizeRemote(value: string) {
 	return value.trim().replace(/^git\+/u, '').replace(/\.git\/?$/u, '').replace(/\/$/u, '')
 		.replace(/^git@([^:]+):/u, 'https://$1/').replace(/^ssh:\/\/git@([^/]+)\//u, 'https://$1/');
 }
 
-async function inspectGit(executor: AgentCheckpointIntegrationExecutor, repositoryPath: string, args: string[]) {
+export async function inspectGit(executor: AgentCheckpointIntegrationExecutor, repositoryPath: string, args: string[]) {
 	return (await executor.exec('git', args, { cwd: repositoryPath, env: process.env })).stdout.trim();
 }
 

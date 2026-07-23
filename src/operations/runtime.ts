@@ -12,7 +12,7 @@ import {
 	type TreeseedOperationRequest,
 } from '../operations-types.ts';
 
-function defaultContext(overrides: Partial<TreeseedOperationContext> = {}): TreeseedOperationContext {
+export function defaultContext(overrides: Partial<TreeseedOperationContext> = {}): TreeseedOperationContext {
 	return {
 		cwd: overrides.cwd ?? process.cwd(),
 		env: overrides.env ?? process.env,
@@ -26,7 +26,7 @@ function defaultContext(overrides: Partial<TreeseedOperationContext> = {}): Tree
 	};
 }
 
-function resolveBuiltinProvider(providerId: string): TreeseedOperationProvider {
+export function resolveBuiltinProvider(providerId: string): TreeseedOperationProvider {
 	if (providerId === 'default') {
 		return createDefaultTreeseedOperationsProvider();
 	}

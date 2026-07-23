@@ -193,13 +193,22 @@ function extractRoutePatterns(source: string) {
 	].map((match) => match[1]!).filter(Boolean);
 }
 
+function readComposedModule(entryPath: string) {
+	const implementationRoot = entryPath.replace(/\.ts$/u, '');
+	const implementation = walk(implementationRoot)
+		.filter((path) => path.endsWith('.ts'))
+		.sort()
+		.map((path) => readFileSync(path, 'utf8'));
+	return [readFileSync(entryPath, 'utf8'), ...implementation].join('\n');
+}
+
 function discoverCoreRoutes(projectRoot: string, routes: Map<string, TreeseedSceneVisualAuditRoute>, diagnostics: TreeseedSceneDiagnostic[]) {
 	const sitePath = resolve(projectRoot, 'packages/core/src/site.ts');
 	if (!existsSync(sitePath)) {
 		diagnostics.push(sceneWarningDiagnostic('scene.visual_audit_route_discovery_failed', `Core route registry not found at ${sitePath}.`, 'visualAudit.routeDiscovery.core'));
 		return;
 	}
-	for (const pattern of extractRoutePatterns(readFileSync(sitePath, 'utf8'))) {
+	for (const pattern of extractRoutePatterns(readComposedModule(sitePath))) {
 		const materialized = materializePattern(pattern);
 		if (!materialized) continue;
 		addRoute(routes, { path: materialized.path, source: 'core-route-registry', dynamic: materialized.dynamic });

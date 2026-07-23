@@ -15,7 +15,7 @@ export type TreeseedResolvedWorkflowPaths = {
 	branchRole: TreeseedWorkflowBranchRole;
 };
 
-function safeRepoRoot(cwd: string) {
+export function safeRepoRoot(cwd: string) {
 	try {
 		return repoRoot(cwd);
 	} catch {
@@ -23,11 +23,11 @@ function safeRepoRoot(cwd: string) {
 	}
 }
 
-function repoHasHead(repoDir: string) {
+export function repoHasHead(repoDir: string) {
 	return runTreeseedGitOk(['rev-parse', '--verify', 'HEAD'], { cwd: repoDir, mode: 'read' });
 }
 
-function isInsideUnresolvedManagedWorktree(startCwd: string, tenantRoot: string | null) {
+export function isInsideUnresolvedManagedWorktree(startCwd: string, tenantRoot: string | null) {
 	if (!tenantRoot) return false;
 	const relativePath = relative(tenantRoot, startCwd).replaceAll('\\', '/');
 	return relativePath === '.treeseed/worktrees' || relativePath.startsWith('.treeseed/worktrees/');

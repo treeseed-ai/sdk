@@ -57,7 +57,7 @@ export type TreeseedWorkflowSession = {
 	packageSelection: TreeseedWorkflowPackageSelection;
 };
 
-function hasOriginRemote(repoDir: string) {
+export function hasOriginRemote(repoDir: string) {
 	try {
 		originRemoteUrl(repoDir);
 		return true;
@@ -66,7 +66,7 @@ function hasOriginRemote(repoDir: string) {
 	}
 }
 
-function repoState(root: string, name: string, repoDir: string, kind: TreeseedWorkflowSessionRepo['kind'] = 'package'): TreeseedWorkflowSessionRepo {
+export function repoState(root: string, name: string, repoDir: string, kind: TreeseedWorkflowSessionRepo['kind'] = 'package'): TreeseedWorkflowSessionRepo {
 	const branchName = currentBranch(repoDir) || null;
 	return {
 		name,

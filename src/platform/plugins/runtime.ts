@@ -9,10 +9,10 @@ import { TREESEED_DEFAULT_PLUGIN_PACKAGE } from './constants.ts';
 import type { TreeseedPluginEnvironmentContext } from '../plugin.ts';
 import type { SdkGraphRankingProvider } from '../../sdk-types.ts';
 
-const require = createRequire(import.meta.url);
-const runtimeDir = path.dirname(fileURLToPath(import.meta.url));
+export const require = createRequire(import.meta.url);
+export const runtimeDir = path.dirname(fileURLToPath(import.meta.url));
 
-type LoadedPluginEntry = {
+export type LoadedPluginEntry = {
 	package: string;
 	config: Record<string, unknown>;
 	baseDir: string;
@@ -21,7 +21,7 @@ type LoadedPluginEntry = {
 
 export type LoadedTreeseedPluginEntry = LoadedPluginEntry;
 
-function normalizeLoadedPlugin(moduleExports: unknown, packageName: string) {
+export function normalizeLoadedPlugin(moduleExports: unknown, packageName: string) {
 	const plugin = (moduleExports as { default?: unknown } | undefined)?.default ?? moduleExports;
 	if (!plugin || typeof plugin !== 'object') {
 		throw new Error(`Treeseed plugin "${packageName}" did not export a plugin object.`);
@@ -29,11 +29,11 @@ function normalizeLoadedPlugin(moduleExports: unknown, packageName: string) {
 	return plugin as Record<string, any>;
 }
 
-function isPathLikePluginReference(packageName: string) {
+export function isPathLikePluginReference(packageName: string) {
 	return packageName.startsWith('.') || packageName.startsWith('/') || packageName.startsWith('file:');
 }
 
-function resolveLocalDefaultPluginPath() {
+export function resolveLocalDefaultPluginPath() {
 	const candidates = [
 		path.resolve(runtimeDir, '../../../dist/plugin-default.js'),
 		path.resolve(runtimeDir, '../../../../sdk/dist/plugin-default.js'),
@@ -69,13 +69,13 @@ function resolveLocalDefaultPluginPath() {
 	return null;
 }
 
-function resolveInstalledPluginPath(packageName: string, tenantRoot: string) {
+export function resolveInstalledPluginPath(packageName: string, tenantRoot: string) {
 	return require.resolve(packageName, {
 		paths: [tenantRoot, process.cwd()],
 	});
 }
 
-function parseTreeseedPackageReference(packageName: string) {
+export function parseTreeseedPackageReference(packageName: string) {
 	const match = packageName.match(/^@treeseed\/([^/]+)(?:\/(.+))?$/u);
 	if (!match) return null;
 	return {
@@ -84,7 +84,7 @@ function parseTreeseedPackageReference(packageName: string) {
 	};
 }
 
-function buildWorkspacePluginArtifacts(packageDir: string, packageName: string) {
+export function buildWorkspacePluginArtifacts(packageDir: string, packageName: string) {
 	const packageJsonPath = path.resolve(packageDir, 'package.json');
 	let packageJson: Record<string, any>;
 	try {
@@ -112,7 +112,7 @@ function buildWorkspacePluginArtifacts(packageDir: string, packageName: string) 
 	return true;
 }
 
-function resolveLocalWorkspacePluginPath(packageName: string, tenantRoot: string) {
+export function resolveLocalWorkspacePluginPath(packageName: string, tenantRoot: string) {
 	const parsed = parseTreeseedPackageReference(packageName);
 	if (!parsed) return null;
 
@@ -142,7 +142,7 @@ function resolveLocalWorkspacePluginPath(packageName: string, tenantRoot: string
 	return null;
 }
 
-function loadPluginModule(packageName: string, tenantRoot: string) {
+export function loadPluginModule(packageName: string, tenantRoot: string) {
 	if (packageName === TREESEED_DEFAULT_PLUGIN_PACKAGE) {
 		const localDefaultPluginPath = resolveLocalDefaultPluginPath();
 		const resolvedPath = localDefaultPluginPath ?? resolveInstalledPluginPath(packageName, tenantRoot);
@@ -199,7 +199,7 @@ export function loadTreeseedPlugins(config: TreeseedDeployConfig = loadTreeseedD
 	return plugins;
 }
 
-function collectProvidedIds(plugins: LoadedPluginEntry[]) {
+export function collectProvidedIds(plugins: LoadedPluginEntry[]) {
 	const provided = {
 		forms: new Set<string>(),
 		operations: new Set<string>(),
@@ -247,7 +247,7 @@ function collectProvidedIds(plugins: LoadedPluginEntry[]) {
 	return provided;
 }
 
-function assertSelectedProvider(provided: Set<string>, label: string, id?: string) {
+export function assertSelectedProvider(provided: Set<string>, label: string, id?: string) {
 	if (!id) {
 		throw new Error(`Treeseed plugin runtime is missing selected provider id for ${label}.`);
 	}

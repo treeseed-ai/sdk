@@ -16,9 +16,9 @@ const criticalGuaranteeFiles = [
 export default defineConfig({
   test: {
     include: [
-      'test/utils/guarantee-journey-inventory.test.ts',
-      'test/utils/guarantees-*.test.ts',
-      'test/utils/scenes-*.test.ts',
+      'tests/unit/guarantees/guarantee-journey-inventory.test.ts',
+      'tests/unit/guarantees/guarantees-*.test.ts',
+      'tests/unit/scenes/scenes-*.test.ts',
     ],
     testTimeout: 60_000,
     coverage: {

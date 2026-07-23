@@ -76,7 +76,7 @@ export interface ResolvedHandlerContextPack {
 	warnings: string[];
 }
 
-const VALID_RELATIONS: readonly SdkGraphDslRelation[] = [
+export const VALID_RELATIONS: readonly SdkGraphDslRelation[] = [
 	'related',
 	'depends_on',
 	'implements',
@@ -86,7 +86,7 @@ const VALID_RELATIONS: readonly SdkGraphDslRelation[] = [
 	'supersedes',
 ];
 
-const PURPOSE_TO_STAGE: Partial<Record<string, SdkGraphQueryStage>> = {
+export const PURPOSE_TO_STAGE: Partial<Record<string, SdkGraphQueryStage>> = {
 	plan: 'plan',
 	research: 'research',
 	implement: 'implement',
@@ -94,7 +94,7 @@ const PURPOSE_TO_STAGE: Partial<Record<string, SdkGraphQueryStage>> = {
 	review: 'review',
 };
 
-const FORMAT_TO_VIEW: Partial<Record<string, SdkGraphQueryView>> = {
+export const FORMAT_TO_VIEW: Partial<Record<string, SdkGraphQueryView>> = {
 	summary: 'brief',
 	brief: 'brief',
 	full: 'full',
@@ -103,11 +103,11 @@ const FORMAT_TO_VIEW: Partial<Record<string, SdkGraphQueryView>> = {
 	map: 'map',
 };
 
-function asPositiveInteger(value: unknown) {
+export function asPositiveInteger(value: unknown) {
 	return typeof value === 'number' && Number.isInteger(value) && value > 0;
 }
 
-function normalizeString(value: string) {
+export function normalizeString(value: string) {
 	return value.trim();
 }
 
