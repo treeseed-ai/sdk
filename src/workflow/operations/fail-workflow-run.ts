@@ -131,7 +131,7 @@ export function validateStagingWorkflowContracts(root: string) {
 		return;
 	}
 	const missing: string[] = [];
-	for (const fileName of ['verify.yml', 'deploy.yml']) {
+	for (const fileName of ['verify.yml']) {
 		if (!existsSync(resolve(root, '.github', 'workflows', fileName))) {
 			missing.push(fileName);
 		}

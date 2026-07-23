@@ -5,37 +5,32 @@ import { branchExists, headCommit, PRODUCTION_BRANCH, remoteHeadCommit, remoteBr
 import { type GitHubActionsWorkflowGate } from "../../operations/services/github-actions-verification.ts";
 import { currentBranch, hasMeaningfulChanges, originRemoteUrl, repoRoot } from "../../operations/services/workspace-save.ts";
 import { discoverTreeseedPackageAdapters } from "../../operations/services/package-adapters.ts";
+import { hostedWorkflowForPackage } from "../../operations/services/release-proof-planner.ts";
 import { run } from "../../operations/services/workspace-tools.ts";
 import { checkedOutManagedWorkflowRepos, type TreeseedManagedRepository } from "../../operations/services/managed-repositories.ts";
 import type { TreeseedStageInput } from "../../workflow.ts";
 import { StageCandidateManifest, StageCiMode, StageCleanupMode, StageRepoPlan, StageVerifyMode } from './workflow-close.ts';
 import { workflowFileExists } from './connect-treeseed-market-project.ts';
-import { hostedDeployGate } from './normalize-release-candidate-mode.ts';
 import { TreeseedWorkflowError } from './workflow-write.ts';
 
 export function stagingCandidateWorkflowGates(root: string, manifest: StageCandidateManifest): GitHubActionsWorkflowGate[] {
 	const gates: GitHubActionsWorkflowGate[] = [];
 	const adapters = discoverTreeseedPackageAdapters(root);
-	const add = (name: string, repoPath: string, headSha: string, workflow: string, deploy = false) => {
+	const add = (name: string, repoPath: string, headSha: string, workflow: string) => {
+		if (/^deploy(?:[-.]|$)/u.test(workflow)) return;
 		if (!workflowFileExists(repoPath, workflow)) return;
 		const gate: GitHubActionsWorkflowGate = { name, repoPath, workflow, branch: STAGING_BRANCH, headSha };
-		gates.push(deploy ? hostedDeployGate(gate) : gate);
+		gates.push(gate);
 	};
 	for (const pkg of manifest.packages) {
 		const repoPath = resolve(root, pkg.path);
 		const adapter = adapters.find((candidate) => candidate.id === pkg.name || candidate.name === pkg.name);
 		if (manifest.stagingHeadsBefore[pkg.name] !== pkg.commit) {
-			add(pkg.name, repoPath, pkg.commit, 'verify.yml');
-		}
-		if (manifest.stagingHeadsBefore[pkg.name] !== pkg.commit
-			&& adapter?.capabilities.deploy === true
-			&& existsSync(resolve(repoPath, 'treeseed.site.yaml'))) {
-			add(pkg.name, repoPath, pkg.commit, 'deploy.yml', true);
+			add(pkg.name, repoPath, pkg.commit, adapter ? hostedWorkflowForPackage(adapter) : 'verify.yml');
 		}
 	}
 	const marketRoot = repoRoot(root);
 	add('@treeseed/market', marketRoot, manifest.root.commit, 'verify.yml');
-	add('@treeseed/market', marketRoot, manifest.root.commit, 'deploy.yml', true);
 	return gates;
 }
 
@@ -92,7 +87,7 @@ export function readJsonFile<T>(filePath: string): T | null {
 
 export function stageCandidateAttestationBlockers(root: string) {
 	const manifest = readJsonFile<StageCandidateManifest>(stageCandidateManifestPath(root, 'unused').latest);
-	if (!manifest) return ['No staging candidate manifest is available. Run `trsd stage` and wait for staging verification and deployment workflows.'];
+	if (!manifest) return ['No staging candidate manifest is available. Run `trsd stage` and wait for staging verification workflows.'];
 	const blockers: string[] = [];
 	if (manifest.root.commit !== headCommit(repoRoot(root))) blockers.push('The local Market staging head no longer matches the latest staged candidate.');
 	for (const pkg of manifest.packages) {

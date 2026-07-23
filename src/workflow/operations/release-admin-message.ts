@@ -80,13 +80,7 @@ export function normalizeCiWorkflows(input: TreeseedCiInput) {
 		.filter(Boolean);
 }
 
-export function defaultCiWorkflows(kind: 'root' | 'package', branch: string | null) {
-	if (kind === 'package') {
-		return ['verify.yml'];
-	}
-	if (branch === STAGING_BRANCH || branch === PRODUCTION_BRANCH) {
-		return ['deploy.yml'];
-	}
+export function defaultCiWorkflows(_kind: 'root' | 'package', _branch: string | null) {
 	return ['verify.yml'];
 }
 

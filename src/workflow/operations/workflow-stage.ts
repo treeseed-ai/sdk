@@ -238,7 +238,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					blockers: [],
 					runId: workflowRun.runId, 					mergeDown, 					saveResult, 					verification, 					manifest: typedManifest, 					promotion, 					stagingRefs, 					hostedCi, 					stagingGuarantees: null, 					cleanup, 					workspaceLinks, 					finalBranch: STAGING_BRANCH,
 					summary: ciMode === 'hosted'
-						? `Staging candidate ${typedManifest.candidateId} passed all exact-SHA verification and deployment workflows.`
+						? `Staging candidate ${typedManifest.candidateId} passed all exact-SHA verification workflows.`
 						: `Staging candidate ${typedManifest.candidateId} was promoted asynchronously; hosted verification is pending.`,
 				};
 				completeWorkflowRun(root, workflowRun.runId, payload);

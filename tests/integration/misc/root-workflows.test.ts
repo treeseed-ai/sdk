@@ -56,7 +56,7 @@ describe('root workflow bootstrap selection', () => {
 		expect(existsSync(resolve(workspaceRoot, '.github/workflows/production-release.yml'))).toBe(false);
 		const operations = readSourceModule(resolve(sdkRoot, 'src/workflow/operations.ts'));
 		expect(operations).toContain('function stagingCandidateWorkflowGates');
-		expect(operations).toContain('adapter?.capabilities.deploy === true');
+		expect(operations).toContain("adapter ? hostedWorkflowForPackage(adapter) : 'verify.yml'");
 		expect(operations).toContain('implicit resume skipped stale failed run');
 		expect(operations).toContain('phase=registry-propagation');
 		expect(operations).toContain("attempt === 1 ? '--prefer-offline' : '--prefer-online'");
@@ -68,7 +68,6 @@ describe('root workflow bootstrap selection', () => {
 		expect(operations).toContain("packageName === '@treeseed/api' && pendingPackageReleases.has('@treeseed/cli')");
 		expect(operations).toContain('retryFailedOnce: true');
 		expect(operations).toContain('Retrying failed jobs once for adopted immutable release run');
-		expect(operations).toContain("add(pkg.name, repoPath, pkg.commit, 'verify.yml')");
 		expect(operations).toContain("add('@treeseed/market', marketRoot, manifest.root.commit, 'verify.yml')");
 		expect(operations).not.toContain("'--workflow', 'staging-candidate.yml'");
 	});

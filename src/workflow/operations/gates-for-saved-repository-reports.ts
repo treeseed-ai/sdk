@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { checkoutBranch, STAGING_BRANCH } from "../../operations/services/git-workflow.ts";
+import { checkoutBranch } from "../../operations/services/git-workflow.ts";
 import { currentBranch, repoRoot } from "../../operations/services/workspace-save.ts";
 import { type RepositorySaveReport } from "../../operations/services/repository-save-orchestrator.ts";
 import { discoverTreeseedPackageAdapters } from "../../operations/services/package-adapters.ts";
@@ -8,7 +8,6 @@ import { type WorkspaceLinksMode } from "../../operations/services/workspace-dep
 import { archiveWorkflowRun, classifyWorkflowRunJournal, listInterruptedWorkflowRuns, type TreeseedWorkflowRunJournal } from ".././runs.ts";
 import { checkedOutWorkspacePackageRepos } from ".././session.ts";
 import { TreeseedDiscoveredPackageAdapter, hostedWorkflowsForSavedRepository } from './connect-treeseed-market-project.ts';
-import { hostedDeployGate } from './normalize-release-candidate-mode.ts';
 import { WorkflowOperationHelpers, ensureWorkflowWorkspaceLinks, runGit } from './workflow-write.ts';
 import { WorkflowRepoReport, workflowError } from './run-release-production-guarantees.ts';
 
@@ -23,7 +22,7 @@ export function gatesForSavedRepositoryReports(root: string, reports: Repository
 					name: repo.name, 					repoPath: repo.path, 					workflow, 					branch: String(repo.branch), 					headSha: String(repo.commitSha),
 					...(packageHostedVerifyTimeoutSeconds(adapter) ? { timeoutSeconds: packageHostedVerifyTimeoutSeconds(adapter) } : {}),
 				};
-				return /^deploy(?:[-.]|$)/u.test(workflow) ? hostedDeployGate(gate) : gate;
+				return gate;
 			});
 		});
 }
@@ -45,11 +44,6 @@ export function packageHostedVerifyTimeoutSeconds(adapter: TreeseedDiscoveredPac
 export function gateForSavedRootReport(report: RepositorySaveReport, branch: string | null, scope: string) {
 	if (!branch || scope === 'local' || !report.pushed || !report.commitSha) {
 		return [];
-	}
-	if (branch === STAGING_BRANCH) {
-		return [hostedDeployGate({
-			name: report.name, 			repoPath: report.path, 			workflow: 'deploy.yml', 			branch, 			headSha: report.commitSha,
-		})];
 	}
 	return [{
 		name: report.name,

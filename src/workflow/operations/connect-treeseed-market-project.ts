@@ -268,17 +268,14 @@ export function hostedWorkflowsForSavedRepository(root: string, repo: Repository
 	const addWorkflow = (workflow: string | null | undefined) => {
 		if (!workflow) return;
 		const normalized = workflow.trim().replace(/^\.github\/workflows\//u, '');
+		if (/^deploy(?:[-.]|$)/u.test(normalized)) return;
 		if (normalized && !workflows.includes(normalized)) {
 			workflows.push(normalized);
 		}
 	};
-	if (repo.branch === STAGING_BRANCH && existsSync(resolve(repo.path, 'treeseed.site.yaml')) && workflowFileExists(repo.path, 'deploy.yml')) {
-		addWorkflow('deploy.yml');
-	} else {
-		const fallbackAdapter = adapter ?? new Map(discoverTreeseedPackageAdapters(root).map((entry) => [resolve(entry.dir), entry])).get(resolve(repo.path));
-		const adapterWorkflow = packageHostedVerifyWorkflow(fallbackAdapter);
-		addWorkflow(adapterWorkflow);
-	}
+	const fallbackAdapter = adapter ?? new Map(discoverTreeseedPackageAdapters(root).map((entry) => [resolve(entry.dir), entry])).get(resolve(repo.path));
+	const adapterWorkflow = packageHostedVerifyWorkflow(fallbackAdapter);
+	addWorkflow(adapterWorkflow);
 	if (workflows.length === 0 && workflowFileExists(repo.path, 'verify.yml')) addWorkflow('verify.yml');
 	return workflows;
 }

@@ -15,7 +15,7 @@ import { buildWorkflowResult, createManagedWorkflowRepoReports, createRepoReport
 import { findAutoResumableSaveRun, hostedWorkflowsForSavedRepository, toError } from './connect-treeseed-market-project.ts';
 import { gateForSavedRootReport, gatesForSavedRepositoryReports, rejectImplicitWorkflowResume } from './gates-for-saved-repository-reports.ts';
 import { assertSessionBranchSafety, branchPreviewInitialized, reconcileWorkflowBranchPreview } from './collect-published-release-artifact-checks.ts';
-import { hostedDeployGate, saveHostedEnvironmentForBranch, shouldUseHostedSaveCi, waitForWorkflowGates, worktreePayload } from './normalize-release-candidate-mode.ts';
+import { saveHostedEnvironmentForBranch, shouldUseHostedSaveCi, waitForWorkflowGates, worktreePayload } from './normalize-release-candidate-mode.ts';
 import { createNextSteps } from './release-admin-message.ts';
 import { acquireWorkflowRun, completeWorkflowRun, executeJournalStep, skipJournalStep } from './prepare-fresh-release-run.ts';
 import { reconcileSaveHostedEnvironment } from './reconcile-save-hosted-environment.ts';
@@ -209,7 +209,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 										if (nonRootReportsForWave.length > 0) {
 											helpers.write(`[save][workflow] Waiting for hosted repository gates before saving dependents: ${repositoryNames}.`);
 										} else if (rootReportForWave && !hostedEnvironment) {
-											helpers.write('[save][workflow] Waiting for hosted market deploy gate.');
+											helpers.write('[save][workflow] Waiting for hosted Market verification gate.');
 										}
 										return waitForWorkflowGates('save', gates, 'hosted', {
 											root, 											runId: workflowRun.runId, 											onProgress: (line, stream) => helpers.write(line, stream),
@@ -255,10 +255,10 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 									name: savedRootRepo.name, 									repoPath: savedRootRepo.path, 									workflow: 'verify.yml', 									branch, 									headSha: savedRootRepo.commitSha,
 								}]
 								: []),
-							...((branch === STAGING_BRANCH || effectiveInput.verifyDeployedResources === true) && scope !== 'local' && savedRootRepo.pushed && savedRootRepo.commitSha && branch
-								? [hostedDeployGate({
-									name: savedRootRepo.name, 									repoPath: savedRootRepo.path, 									workflow: 'deploy.yml', 									branch, 									headSha: savedRootRepo.commitSha,
-								})]
+							...(branch === STAGING_BRANCH && scope !== 'local' && savedRootRepo.pushed && savedRootRepo.commitSha && branch
+								? [{
+									name: savedRootRepo.name, 									repoPath: savedRootRepo.path, 									workflow: 'verify.yml', 									branch, 									headSha: savedRootRepo.commitSha,
+								}]
 								: []),
 							...savedPackageReports
 								.filter((repo) => repo.pushed && repo.commitSha && repo.branch)
@@ -267,7 +267,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 										const gate = {
 											name: repo.name, 											repoPath: repo.path, 											workflow, 											branch: String(repo.branch), 											headSha: String(repo.commitSha),
 										};
-										return /^deploy(?:[-.]|$)/u.test(workflow) ? hostedDeployGate(gate) : gate;
+										return gate;
 									});
 								}),
 						], 'hosted', {
