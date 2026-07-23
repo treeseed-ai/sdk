@@ -48,6 +48,8 @@ beforeEach(() => {
 		vi.stubEnv('TREESEED_RELEASE_CANDIDATE_CONFIG_PARITY_MODE', 'skip');
 		vi.stubEnv('TREESEED_WORKFLOW_RELEASE_GATES_MODE', 'skip');
 		vi.stubEnv('TREESEED_WORKFLOW_HOSTED_RECONCILE_MODE', 'skip');
+		vi.stubEnv('TREESEED_RAILWAY_API_TOKEN', '');
+		vi.stubEnv('RAILWAY_API_TOKEN', '');
 		vi.stubEnv('GIT_ALLOW_PROTOCOL', 'file:ssh:https:http:git');
 	});
 
