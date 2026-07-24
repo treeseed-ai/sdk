@@ -1,48 +1,48 @@
-import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../diagnostics.ts';
-import { findBuiltInTreeseedSceneAction, findBuiltInTreeseedSceneAssertion } from '../registry.ts';
+import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
+import { findBuiltInSceneAction, findBuiltInSceneAssertion } from '../support/plugins/registry.ts';
 import {
-	TREESEED_SCENE_BROWSERS,
-	TREESEED_SCENE_ENVIRONMENTS,
-	TREESEED_SCENE_SCHEMA_VERSION,
-	type TreeseedSceneAction,
-	type TreeseedSceneArtifacts,
-	type TreeseedSceneBrowser,
-	type TreeseedSceneChapter,
-	type TreeseedSceneDeviceConfig,
-	type TreeseedSceneDeviceProfile,
-	type TreeseedSceneDiagram,
-	type TreeseedSceneDiagnostic,
-	type TreeseedSceneEnvironment,
-	type TreeseedSceneExpectation,
-	type TreeseedSceneManifest,
-	type TreeseedSceneMode,
-	type TreeseedSceneMotion,
-	type TreeseedSceneOverlay,
-	type TreeseedSceneOverlayVariant,
-	type TreeseedSceneRenderConfig,
-	type TreeseedSceneRenderEvidenceFit,
-	type TreeseedSceneRuntimeConfig,
-	type TreeseedSceneSelector,
-	type TreeseedSceneSetup,
-	type TreeseedSceneTarget,
-	type TreeseedSceneTrainingConfig,
-	type TreeseedSceneVisualAuditConfig,
-	type TreeseedSceneVisualObject,
-	type TreeseedSceneVisualPoint,
-	type TreeseedSceneVisualRegion,
-	type TreeseedSceneVisualSize,
-	type TreeseedSceneVisualStyle,
-	type TreeseedSceneWorkflowStep,
+	SCENE_BROWSERS,
+	SCENE_ENVIRONMENTS,
+	SCENE_SCHEMA_VERSION,
+	type SceneAction,
+	type SceneArtifacts,
+	type SceneBrowser,
+	type SceneChapter,
+	type SceneDeviceConfig,
+	type SceneDeviceProfile,
+	type SceneDiagram,
+	type SceneDiagnostic,
+	type SceneEnvironment,
+	type SceneExpectation,
+	type SceneManifest,
+	type SceneMode,
+	type SceneMotion,
+	type SceneOverlay,
+	type SceneOverlayVariant,
+	type SceneRenderConfig,
+	type SceneRenderEvidenceFit,
+	type SceneRuntimeConfig,
+	type SceneSelector,
+	type SceneSetup,
+	type SceneTarget,
+	type SceneTrainingConfig,
+	type SceneVisualAuditConfig,
+	type SceneVisualObject,
+	type SceneVisualPoint,
+	type SceneVisualRegion,
+	type SceneVisualSize,
+	type SceneVisualStyle,
+	type SceneWorkflowStep,
 } from '../types.ts';
 import { DEVICE_BROWSER_CHROME, DEVICE_ORIENTATIONS, FILESYSTEM_SAFE_SCENE_ID, arrayField, asString, booleanField, isRecord, objectField, optionalString, parseBrowser, parseEnvironment, parseSelector, positiveNumberField, requireString, stringArrayField } from './filesystem-safe-scene-id.ts';
 
-export function parseAction(value: unknown, path: string, diagnostics: TreeseedSceneDiagnostic[]): TreeseedSceneAction | null {
+export function parseAction(value: unknown, path: string, diagnostics: SceneDiagnostic[]): SceneAction | null {
 	if (!isRecord(value)) {
 		diagnostics.push(sceneErrorDiagnostic('scene.invalid_action', 'Expected action to be an object.', path));
 		return null;
 	}
 	const keys = Object.keys(value).filter((key) => value[key] !== undefined);
-	const supported = keys.filter((key) => findBuiltInTreeseedSceneAction(key));
+	const supported = keys.filter((key) => findBuiltInSceneAction(key));
 	if (keys.length !== 1 || supported.length !== 1) {
 		diagnostics.push(sceneErrorDiagnostic('scene.invalid_action', `Expected exactly one supported action key. Supported actions: goto, click, fill, select, keyboard, pause, mailpitConfirmLatest, apiRequest, waitForOperation.`, path));
 		return null;
@@ -94,30 +94,30 @@ export function parseAction(value: unknown, path: string, diagnostics: TreeseedS
 		const optionValue = asString(selectValue.value);
 		const optionLabel = asString(selectValue.label);
 		if (!optionValue && !optionLabel) diagnostics.push(sceneErrorDiagnostic('scene.missing_field', 'Select actions must define value or label.', `${path}.select.value`));
-		return selector ? { select: { ...selector, ...(optionValue ? { value: optionValue } : {}), ...(optionLabel ? { label: optionLabel } : {}) } as TreeseedSceneSelector & { value?: string; label?: string } } : null;
+		return selector ? { select: { ...selector, ...(optionValue ? { value: optionValue } : {}), ...(optionLabel ? { label: optionLabel } : {}) } as SceneSelector & { value?: string; label?: string } } : null;
 	}
 	const fillValue = isRecord(value.fill) ? value.fill : {};
 	const selector = parseSelector(fillValue, `${path}.fill`, diagnostics);
 	const fillText = asString(fillValue.value);
 	if (!fillText) diagnostics.push(sceneErrorDiagnostic('scene.missing_field', 'Missing required field: value.', `${path}.fill.value`));
-	return selector ? { fill: { ...selector, value: fillText } as TreeseedSceneSelector & { value: string } } : null;
+	return selector ? { fill: { ...selector, value: fillText } as SceneSelector & { value: string } } : null;
 }
 
-export function parseExpectation(value: unknown, path: string, diagnostics: TreeseedSceneDiagnostic[]): TreeseedSceneExpectation | undefined {
+export function parseExpectation(value: unknown, path: string, diagnostics: SceneDiagnostic[]): SceneExpectation | undefined {
 	if (value === undefined) return undefined;
 	if (!isRecord(value)) {
 		diagnostics.push(sceneErrorDiagnostic('scene.invalid_expectation', 'Expected expect to be an object.', path));
 		return undefined;
 	}
-	const expectation: TreeseedSceneExpectation = {};
+	const expectation: SceneExpectation = {};
 	for (const key of Object.keys(value)) {
-		if (!findBuiltInTreeseedSceneAssertion(key)) {
+		if (!findBuiltInSceneAssertion(key)) {
 			diagnostics.push(sceneWarningDiagnostic('scene.unknown_expectation', `Unknown expectation key: ${key}.`, `${path}.${key}`));
 		}
 	}
 	if (value.visible !== undefined) {
 		const visible = arrayField(value, 'visible', path, diagnostics) ?? [];
-		expectation.visible = visible.map((entry, index) => parseSelector(entry, `${path}.visible[${index}]`, diagnostics)).filter((entry): entry is TreeseedSceneSelector => Boolean(entry));
+		expectation.visible = visible.map((entry, index) => parseSelector(entry, `${path}.visible[${index}]`, diagnostics)).filter((entry): entry is SceneSelector => Boolean(entry));
 	}
 	if (value.text !== undefined) expectation.text = asString(value.text);
 	if (value.urlIncludes !== undefined) expectation.urlIncludes = asString(value.urlIncludes);
@@ -138,16 +138,16 @@ export function parseExpectation(value: unknown, path: string, diagnostics: Tree
 	return expectation;
 }
 
-export function expectationKeys(expectation: TreeseedSceneExpectation | undefined) {
+export function expectationKeys(expectation: SceneExpectation | undefined) {
 	if (!expectation) return [];
-	return ['visible', 'text', 'urlIncludes', 'operation'].filter((key) => expectation[key as keyof TreeseedSceneExpectation] !== undefined);
+	return ['visible', 'text', 'urlIncludes', 'operation'].filter((key) => expectation[key as keyof SceneExpectation] !== undefined);
 }
 
-export function actionCanOmitExpectation(action: TreeseedSceneAction | null) {
+export function actionCanOmitExpectation(action: SceneAction | null) {
 	return Boolean(action && ('fill' in action || 'select' in action || 'keyboard' in action));
 }
 
-export function parseMode(value: unknown, diagnostics: TreeseedSceneDiagnostic[]): TreeseedSceneMode {
+export function parseMode(value: unknown, diagnostics: SceneDiagnostic[]): SceneMode {
 	const record = isRecord(value) ? value : {};
 	return {
 		test: booleanField(record, 'test', true, 'mode', diagnostics),
@@ -156,7 +156,7 @@ export function parseMode(value: unknown, diagnostics: TreeseedSceneDiagnostic[]
 	};
 }
 
-export function parseTarget(value: unknown, diagnostics: TreeseedSceneDiagnostic[]): TreeseedSceneTarget {
+export function parseTarget(value: unknown, diagnostics: SceneDiagnostic[]): SceneTarget {
 	const record = isRecord(value) ? value : {};
 	if (!isRecord(value)) diagnostics.push(sceneErrorDiagnostic('scene.missing_field', 'Missing required field: target.', 'target'));
 	const viewport = isRecord(record.viewport) ? record.viewport : {};
@@ -172,7 +172,7 @@ export function parseTarget(value: unknown, diagnostics: TreeseedSceneDiagnostic
 	};
 }
 
-export function parseDimensionPair(value: unknown, path: string, diagnostics: TreeseedSceneDiagnostic[], defaults: { width: number; height: number }) {
+export function parseDimensionPair(value: unknown, path: string, diagnostics: SceneDiagnostic[], defaults: { width: number; height: number }) {
 	const record = isRecord(value) ? value : {};
 	if (value !== undefined && !isRecord(value)) diagnostics.push(sceneErrorDiagnostic('scene.invalid_object', `Expected ${path} to be an object.`, path));
 	return {
@@ -181,7 +181,7 @@ export function parseDimensionPair(value: unknown, path: string, diagnostics: Tr
 	};
 }
 
-export function defaultTreeseedSceneDeviceConfig(): TreeseedSceneDeviceConfig {
+export function defaultSceneDeviceConfig(): SceneDeviceConfig {
 	return {
 		defaultProfile: 'desktop',
 		profiles: [
@@ -200,8 +200,8 @@ export function defaultTreeseedSceneDeviceConfig(): TreeseedSceneDeviceConfig {
 	};
 }
 
-export function parseDevices(value: unknown, target: TreeseedSceneTarget, diagnostics: TreeseedSceneDiagnostic[]): TreeseedSceneDeviceConfig {
-	const defaults = defaultTreeseedSceneDeviceConfig();
+export function parseDevices(value: unknown, target: SceneTarget, diagnostics: SceneDiagnostic[]): SceneDeviceConfig {
+	const defaults = defaultSceneDeviceConfig();
 	if (value === undefined) return defaults;
 	if (!isRecord(value)) {
 		diagnostics.push(sceneErrorDiagnostic('scene.invalid_object', 'Expected devices to be an object.', 'devices'));
@@ -211,7 +211,7 @@ export function parseDevices(value: unknown, target: TreeseedSceneTarget, diagno
 		if (!['defaultProfile', 'profiles'].includes(key)) diagnostics.push(sceneWarningDiagnostic('scene.unknown_device_field', `Unknown devices field: ${key}.`, `devices.${key}`));
 	}
 	const entries = arrayField(value, 'profiles', 'devices', diagnostics) ?? [];
-	const profiles: TreeseedSceneDeviceProfile[] = [];
+	const profiles: SceneDeviceProfile[] = [];
 	const seen = new Set<string>();
 	entries.forEach((entry, index) => {
 		const path = `devices.profiles[${index}]`;
@@ -227,13 +227,13 @@ export function parseDevices(value: unknown, target: TreeseedSceneTarget, diagno
 		if (id && seen.has(id)) diagnostics.push(sceneErrorDiagnostic('scene.device_duplicate', `Duplicate device profile id: ${id}.`, `${path}.id`));
 		seen.add(id);
 		const orientationValue = optionalString(entry, 'orientation');
-		const orientation = orientationValue && (DEVICE_ORIENTATIONS as readonly string[]).includes(orientationValue) ? orientationValue as TreeseedSceneDeviceProfile['orientation'] : undefined;
+		const orientation = orientationValue && (DEVICE_ORIENTATIONS as readonly string[]).includes(orientationValue) ? orientationValue as SceneDeviceProfile['orientation'] : undefined;
 		if (orientationValue && !orientation) diagnostics.push(sceneErrorDiagnostic('scene.device_orientation_invalid', `Unknown device orientation: ${orientationValue}.`, `${path}.orientation`));
 		const browserFrame = objectField(entry, 'browserFrame', path, diagnostics);
 		const chromeValue = browserFrame ? optionalString(browserFrame, 'chrome') : undefined;
 		const chrome = chromeValue && (DEVICE_BROWSER_CHROME as readonly string[]).includes(chromeValue) ? chromeValue as 'desktop' | 'tablet' | 'mobile' : undefined;
 		if (chromeValue && !chrome) diagnostics.push(sceneErrorDiagnostic('scene.device_browser_chrome_invalid', `Unknown browser frame chrome: ${chromeValue}.`, `${path}.browserFrame.chrome`));
-		const profile: TreeseedSceneDeviceProfile = {
+		const profile: SceneDeviceProfile = {
 			id,
 			...(optionalString(entry, 'title') ? { title: optionalString(entry, 'title') } : {}),
 			...(orientation ? { orientation } : {}),
@@ -254,9 +254,9 @@ export function parseDevices(value: unknown, target: TreeseedSceneTarget, diagno
 	return { defaultProfile, profiles };
 }
 
-export function parseSetup(value: unknown, targetEnvironment: TreeseedSceneEnvironment, diagnostics: TreeseedSceneDiagnostic[]): TreeseedSceneSetup {
+export function parseSetup(value: unknown, targetEnvironment: SceneEnvironment, diagnostics: SceneDiagnostic[]): SceneSetup {
 	const record = isRecord(value) ? value : {};
-	const setup: TreeseedSceneSetup = {};
+	const setup: SceneSetup = {};
 	const dev = objectField(record, 'dev', 'setup', diagnostics);
 	if (dev) setup.dev = { required: booleanField(dev, 'required', false, 'setup.dev', diagnostics), command: optionalString(dev, 'command'), reuseExisting: booleanField(dev, 'reuseExisting', true, 'setup.dev', diagnostics) };
 	const auth = objectField(record, 'auth', 'setup', diagnostics);
@@ -270,7 +270,7 @@ export function parseSetup(value: unknown, targetEnvironment: TreeseedSceneEnvir
 	return setup;
 }
 
-export function parseArtifacts(value: unknown, diagnostics: TreeseedSceneDiagnostic[]): TreeseedSceneArtifacts {
+export function parseArtifacts(value: unknown, diagnostics: SceneDiagnostic[]): SceneArtifacts {
 	const record = isRecord(value) ? value : {};
 	return {
 		trace: booleanField(record, 'trace', true, 'artifacts', diagnostics),

@@ -1,31 +1,31 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { relative } from 'node:path';
 import type {
-	TreeseedSceneDiagnostic,
-	TreeseedSceneVisualAuditCapture,
-	TreeseedSceneVisualAuditClientError,
-	TreeseedSceneVisualAuditClientErrorIncident,
-	TreeseedSceneVisualAuditFinding,
-	TreeseedSceneVisualAuditFindingOwner,
-	TreeseedSceneVisualAuditFindingSeverity,
-	TreeseedSceneVisualAuditManifest,
-	TreeseedSceneVisualAuditPaths,
-	TreeseedSceneVisualAuditReview,
-	TreeseedSceneVisualAuditReviewCategory,
-	TreeseedSceneVisualAuditReviewDetail,
-	TreeseedSceneVisualAuditRole,
-	TreeseedSceneVisualAuditRootCause,
+	SceneDiagnostic,
+	SceneVisualAuditCapture,
+	SceneVisualAuditClientError,
+	SceneVisualAuditClientErrorIncident,
+	SceneVisualAuditFinding,
+	SceneVisualAuditFindingOwner,
+	SceneVisualAuditFindingSeverity,
+	SceneVisualAuditManifest,
+	SceneVisualAuditPaths,
+	SceneVisualAuditReview,
+	SceneVisualAuditReviewCategory,
+	SceneVisualAuditReviewDetail,
+	SceneVisualAuditRole,
+	SceneVisualAuditRootCause,
 } from '../types.ts';
-import { writeTreeseedSceneVisualAuditContactSheets } from '../visual-audit-contact-sheets.ts';
-import { combinedPriorityQueue, formatTreeseedSceneVisualAuditAgentBrief, formatTreeseedSceneVisualAuditFindingsMarkdown, groupBy, issueSummary, jsonl } from './enrich-client-errors.ts';
+import { writeSceneVisualAuditContactSheets } from '../support/visual-audit/visual-audit-contact-sheets.ts';
+import { combinedPriorityQueue, formatSceneVisualAuditAgentBrief, formatSceneVisualAuditFindingsMarkdown, groupBy, issueSummary, jsonl } from './enrich-client-errors.ts';
 import { expectedFindingNoise } from './incident-title.ts';
 import { OWNERS, finding, guidance, md, priorityBand, priorityScore, recommendedAction, rel } from './severities.ts';
 
 export function formatOwnerBrief(input: {
-	owner: TreeseedSceneVisualAuditFindingOwner;
-	manifest: TreeseedSceneVisualAuditManifest;
-	review: TreeseedSceneVisualAuditReview;
-	paths: TreeseedSceneVisualAuditPaths;
+	owner: SceneVisualAuditFindingOwner;
+	manifest: SceneVisualAuditManifest;
+	review: SceneVisualAuditReview;
+	paths: SceneVisualAuditPaths;
 }) {
 	const rootCauses = input.review.rootCauses.filter((entry) => entry.suspectedOwner === input.owner);
 	const incidents = input.review.incidents.filter((entry) => entry.suspectedOwner === input.owner);
@@ -87,10 +87,10 @@ export function formatOwnerBrief(input: {
 	return `${lines.join('\n')}\n`;
 }
 
-export function writeTreeseedSceneVisualAuditReview(input: {
-	manifest: TreeseedSceneVisualAuditManifest;
-	review: TreeseedSceneVisualAuditReview;
-	paths: TreeseedSceneVisualAuditPaths;
+export function writeSceneVisualAuditReview(input: {
+	manifest: SceneVisualAuditManifest;
+	review: SceneVisualAuditReview;
+	paths: SceneVisualAuditPaths;
 }) {
 	if (!input.paths.reviewRoot || !input.paths.reviewSummaryPath || !input.paths.reviewFindingsPath || !input.paths.reviewAgentBriefPath) return;
 	mkdirSync(input.paths.reviewRoot, { recursive: true });
@@ -118,8 +118,8 @@ export function writeTreeseedSceneVisualAuditReview(input: {
 	writeFileSync(`${input.paths.reviewRoot}/incidents.json`, `${JSON.stringify(input.review.incidents, null, 2)}\n`, 'utf8');
 	writeFileSync(`${input.paths.reviewRoot}/incidents.jsonl`, jsonl(input.review.incidents), 'utf8');
 	writeFileSync(`${input.paths.reviewRoot}/issue-index.json`, `${JSON.stringify(issueIndex, null, 2)}\n`, 'utf8');
-	writeFileSync(input.paths.reviewAgentBriefPath, formatTreeseedSceneVisualAuditAgentBrief(input), 'utf8');
-	writeFileSync(`${input.paths.reviewRoot}/findings.md`, formatTreeseedSceneVisualAuditFindingsMarkdown(input), 'utf8');
+	writeFileSync(input.paths.reviewAgentBriefPath, formatSceneVisualAuditAgentBrief(input), 'utf8');
+	writeFileSync(`${input.paths.reviewRoot}/findings.md`, formatSceneVisualAuditFindingsMarkdown(input), 'utf8');
 	writeFileSync(`${input.paths.reviewRoot}/client-errors.jsonl`, input.review.clientErrors.map((entry) => JSON.stringify(entry)).join('\n') + (input.review.clientErrors.length ? '\n' : ''), 'utf8');
 	const queryRoot = `${input.paths.reviewRoot}/query`;
 	mkdirSync(queryRoot, { recursive: true });
@@ -145,5 +145,5 @@ export function writeTreeseedSceneVisualAuditReview(input: {
 		source: route.source,
 		findings: input.review.findings.filter((finding) => finding.path === route.path).length,
 	})), null, 2)}\n`, 'utf8');
-	writeTreeseedSceneVisualAuditContactSheets(input);
+	writeSceneVisualAuditContactSheets(input);
 }

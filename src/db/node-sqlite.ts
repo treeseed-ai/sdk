@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { drizzle } from 'drizzle-orm/sqlite-proxy';
 import type { D1DatabaseLike, D1PreparedStatementLike } from '../types/cloudflare.ts';
-import { treeseedSchema } from './schema.ts';
+import { Schema } from './schema.ts';
 
 function isDirectoryLike(path: string) {
 	return !/\.(sqlite|sqlite3|db)$/iu.test(path);
@@ -13,7 +13,7 @@ function isInMemorySqlitePath(path: string) {
 	return path === ':memory:';
 }
 
-export function resolveTreeseedSqlitePath(input?: string | null) {
+export function resolveSqlitePath(input?: string | null) {
 	const base = input?.trim() || '.treeseed/generated/environments/local/site-data.sqlite';
 	if (isInMemorySqlitePath(base)) return base;
 	if (!isDirectoryLike(base)) return resolve(base);
@@ -92,7 +92,7 @@ export class NodeSqliteD1Database implements D1DatabaseLike {
 	readonly path: string;
 
 	constructor(path?: string | null) {
-		this.path = resolveTreeseedSqlitePath(path);
+		this.path = resolveSqlitePath(path);
 		const inMemory = isInMemorySqlitePath(this.path);
 		if (!inMemory) mkdirSync(dirname(this.path), { recursive: true });
 		this.client = new DatabaseSync(this.path);
@@ -129,7 +129,7 @@ export class NodeSqliteD1Database implements D1DatabaseLike {
 	}
 }
 
-export function createTreeseedNodeSqliteDrizzle(path?: string | null) {
+export function createNodeSqliteDrizzle(path?: string | null) {
 	const database = new NodeSqliteD1Database(path);
 	return {
 		d1: database,
@@ -147,6 +147,6 @@ export function createTreeseedNodeSqliteDrizzle(path?: string | null) {
 				return { rows: statement.all(...params).map((row) => Object.values(row as Record<string, unknown>)) };
 			}
 			return { rows: statement.all(...params) };
-		}, { schema: treeseedSchema }),
+		}, { schema: Schema }),
 	};
 }

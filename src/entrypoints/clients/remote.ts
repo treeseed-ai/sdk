@@ -1,0 +1,403 @@
+import type {
+	RemoteJob,
+	RemoteJobEvent,
+	SdkDispatchRequest,
+	SdkDispatchResult,
+} from '../models/sdk-types.ts';
+
+export const REMOTE_CONTRACT_VERSION = 1;
+export const REMOTE_CONTRACT_HEADER = 'x-treeseed-remote-contract-version';
+
+export type ApiScope = string;
+
+export interface ApiPrincipal {
+	id: string;
+	displayName?: string;
+	scopes: ApiScope[];
+	roles: string[];
+	permissions: string[];
+	metadata?: Record<string, unknown>;
+}
+
+export interface RemoteHost {
+	id: string;
+	baseUrl: string;
+	label?: string;
+	official?: boolean;
+	priority?: number;
+}
+
+export interface RemotePoolOptions {
+	strategy?: 'active-first' | 'priority';
+	maxAttempts?: number;
+}
+
+export interface RemoteConfig {
+	hosts: RemoteHost[];
+	activeHostId: string;
+	executionMode?: 'prefer-local' | 'prefer-remote' | 'remote-only';
+	auth?: {
+		accessToken?: string;
+		refreshToken?: string;
+		expiresAt?: string;
+		principal?: ApiPrincipal | null;
+	};
+	pool?: RemotePoolOptions;
+}
+
+export interface DeviceCodeStartRequest {
+	clientName?: string;
+	scopes?: ApiScope[];
+}
+
+export interface DeviceCodeStartResponse {
+	ok: true;
+	deviceCode: string;
+	userCode: string;
+	verificationUri: string;
+	verificationUriComplete: string;
+	intervalSeconds: number;
+	expiresAt: string;
+	expiresInSeconds: number;
+}
+
+export type DeviceCodePollResponse =
+	| {
+			ok: true;
+			status: 'pending';
+			intervalSeconds: number;
+	  }
+	| {
+			ok: true;
+			status: 'approved';
+			accessToken: string;
+			refreshToken: string;
+			tokenType: 'Bearer';
+			expiresAt: string;
+			expiresInSeconds: number;
+			principal: ApiPrincipal;
+	  }
+	| {
+			ok: false;
+			status: 'expired' | 'invalid' | 'already_used';
+			error: string;
+	  };
+
+export interface DeviceCodePollRequest {
+	deviceCode: string;
+}
+
+export interface DeviceCodeApproveRequest {
+	userCode: string;
+	principalId: string;
+	displayName?: string;
+	scopes?: ApiScope[];
+	metadata?: Record<string, unknown>;
+}
+
+export interface TokenRefreshRequest {
+	refreshToken: string;
+}
+
+export interface TokenRefreshResponse {
+	ok: true;
+	accessToken: string;
+	refreshToken: string;
+	tokenType: 'Bearer';
+	expiresAt: string;
+	expiresInSeconds: number;
+	principal: ApiPrincipal;
+}
+
+export interface RemoteSdkOperationRequest {
+	input?: Record<string, unknown>;
+	repoRoot?: string;
+}
+
+export type RemoteSdkOperationResponse<T = unknown> = T;
+
+export interface RemoteGatewayRequest {
+	method?: 'GET' | 'POST';
+	body?: unknown;
+}
+
+export interface RemoteWorkflowOperationRequest {
+	input?: Record<string, unknown>;
+	cwd?: string;
+	env?: Record<string, string>;
+}
+
+export interface RemoteWorkflowNextStep {
+	operation: string;
+	reason?: string;
+	input?: Record<string, unknown>;
+}
+
+export interface RemoteWorkflowOperationResponse {
+	ok: boolean;
+	operation: string;
+	payload?: Record<string, unknown> | null;
+	nextSteps?: RemoteWorkflowNextStep[];
+}
+
+export interface RemoteJobPullRequest {
+	limit?: number;
+	runnerId?: string;
+}
+
+export interface RemoteJobPullResponse {
+	ok: true;
+	payload: RemoteJob[];
+}
+
+export interface RemoteJobProgressRequest {
+	summary?: string;
+	data?: Record<string, unknown>;
+}
+
+export interface RemoteJobCompletionRequest {
+	output?: unknown;
+}
+
+export interface RemoteJobFailureRequest {
+	code?: string;
+	message: string;
+}
+
+function normalizeBaseUrl(baseUrl: string) {
+	return baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+}
+
+function resolveActiveHost(config: RemoteConfig): RemoteHost {
+	const host = config.hosts.find((entry) => entry.id === config.activeHostId) ?? config.hosts[0];
+	if (!host) {
+		throw new Error('Remote Treeseed configuration is missing a usable host.');
+	}
+	return {
+		...host,
+		baseUrl: normalizeBaseUrl(host.baseUrl),
+	};
+}
+
+export class RemoteClient {
+	readonly config: RemoteConfig;
+	private readonly fetchImpl: typeof fetch;
+
+	constructor(config: RemoteConfig, options: { fetchImpl?: typeof fetch } = {}) {
+		this.config = config;
+		this.fetchImpl = options.fetchImpl ?? fetch;
+	}
+
+	activeHost() {
+		return resolveActiveHost(this.config);
+	}
+
+	async requestJson<T>(
+		path: string,
+		options: {
+			method?: 'GET' | 'POST';
+			body?: unknown;
+			headers?: Record<string, string>;
+			requireAuth?: boolean;
+		} = {},
+	): Promise<T> {
+		const host = this.activeHost();
+		const headers: Record<string, string> = {
+			accept: 'application/json',
+			[REMOTE_CONTRACT_HEADER]: String(REMOTE_CONTRACT_VERSION),
+			...(options.headers ?? {}),
+		};
+		if (options.body !== undefined) {
+			headers['content-type'] = 'application/json';
+		}
+		if (options.requireAuth && this.config.auth?.accessToken) {
+			headers.authorization = `Bearer ${this.config.auth.accessToken}`;
+		}
+
+		const response = await this.fetchImpl(`${host.baseUrl}${path}`, {
+			method: options.method ?? 'GET',
+			headers,
+			body: options.body === undefined ? undefined : JSON.stringify(options.body),
+		});
+
+		const contractVersion = response.headers.get(REMOTE_CONTRACT_HEADER);
+		if (contractVersion && Number(contractVersion) !== REMOTE_CONTRACT_VERSION) {
+			throw new Error(
+				`Remote Treeseed contract mismatch. Client=${REMOTE_CONTRACT_VERSION}, server=${contractVersion}.`,
+			);
+		}
+
+		const payload = await response.json().catch(() => ({})) as T & { error?: string };
+		if (!response.ok) {
+			const message = typeof (payload as { error?: unknown }).error === 'string'
+				? String((payload as { error?: unknown }).error)
+				: `Remote request failed with ${response.status}.`;
+			throw new Error(message);
+		}
+		return payload;
+	}
+}
+
+export class RemoteAuthClient {
+	private readonly client: RemoteClient;
+
+	constructor(client: RemoteClient) {
+		this.client = client;
+	}
+
+	startDeviceFlow(request: DeviceCodeStartRequest) {
+		return this.client.requestJson<DeviceCodeStartResponse>('/auth/device/start', {
+			method: 'POST',
+			body: request,
+		});
+	}
+
+	pollDeviceFlow(request: DeviceCodePollRequest) {
+		return this.client.requestJson<DeviceCodePollResponse>('/auth/device/poll', {
+			method: 'POST',
+			body: request,
+		});
+	}
+
+	refreshAccessToken(request: TokenRefreshRequest) {
+		return this.client.requestJson<TokenRefreshResponse>('/auth/token/refresh', {
+			method: 'POST',
+			body: request,
+		});
+	}
+
+	whoAmI() {
+		return this.client.requestJson<{ ok: true; payload: ApiPrincipal }>('/auth/me', {
+			requireAuth: true,
+		});
+	}
+}
+
+export class RemoteSdkClient {
+	private readonly client: RemoteClient;
+
+	constructor(client: RemoteClient) {
+		this.client = client;
+	}
+
+	execute<T = unknown>(operation: string, request: RemoteSdkOperationRequest) {
+		return this.client.requestJson<RemoteSdkOperationResponse<T>>(`/sdk/${encodeURIComponent(operation)}`, {
+			method: 'POST',
+			body: request,
+			requireAuth: true,
+		});
+	}
+}
+
+export class RemoteOperationsClient {
+	private readonly client: RemoteClient;
+
+	constructor(client: RemoteClient) {
+		this.client = client;
+	}
+
+	execute(operation: string, request: RemoteWorkflowOperationRequest) {
+		return this.client.requestJson<RemoteWorkflowOperationResponse>(`/operations/${encodeURIComponent(operation)}`, {
+			method: 'POST',
+			body: request,
+			requireAuth: true,
+		});
+	}
+}
+
+export class RemoteDispatchClient {
+	private readonly client: RemoteClient;
+
+	constructor(client: RemoteClient) {
+		this.client = client;
+	}
+
+	dispatch(projectId: string, request: SdkDispatchRequest) {
+		return this.client.requestJson<SdkDispatchResult>(`/v1/projects/${encodeURIComponent(projectId)}/dispatch`, {
+			method: 'POST',
+			body: request,
+			requireAuth: true,
+		});
+	}
+}
+
+export class RemoteJobsClient {
+	private readonly client: RemoteClient;
+
+	constructor(client: RemoteClient) {
+		this.client = client;
+	}
+
+	get(jobId: string) {
+		return this.client.requestJson<{ ok: true; payload: RemoteJob }>(`/v1/jobs/${encodeURIComponent(jobId)}`, {
+			requireAuth: true,
+		});
+	}
+
+	cancel(jobId: string) {
+		return this.client.requestJson<{ ok: true; payload: RemoteJob }>(`/v1/jobs/${encodeURIComponent(jobId)}/cancel`, {
+			method: 'POST',
+			requireAuth: true,
+		});
+	}
+
+	events(jobId: string) {
+		return this.client.requestJson<{ ok: true; payload: RemoteJobEvent[] }>(`/v1/jobs/${encodeURIComponent(jobId)}/events`, {
+			requireAuth: true,
+		});
+	}
+}
+
+export class RemoteRunnerClient {
+	private readonly client: RemoteClient;
+
+	constructor(client: RemoteClient) {
+		this.client = client;
+	}
+
+	pull(projectId: string, request: RemoteJobPullRequest = {}) {
+		return this.client.requestJson<RemoteJobPullResponse>(`/v1/projects/${encodeURIComponent(projectId)}/runner/jobs/pull`, {
+			method: 'POST',
+			body: request,
+			requireAuth: true,
+		});
+	}
+
+	progress(jobId: string, request: RemoteJobProgressRequest = {}) {
+		return this.client.requestJson<{ ok: true; payload: RemoteJob }>(`/v1/jobs/${encodeURIComponent(jobId)}/progress`, {
+			method: 'POST',
+			body: request,
+			requireAuth: true,
+		});
+	}
+
+	complete(jobId: string, request: RemoteJobCompletionRequest = {}) {
+		return this.client.requestJson<{ ok: true; payload: RemoteJob }>(`/v1/jobs/${encodeURIComponent(jobId)}/complete`, {
+			method: 'POST',
+			body: request,
+			requireAuth: true,
+		});
+	}
+
+	fail(jobId: string, request: RemoteJobFailureRequest) {
+		return this.client.requestJson<{ ok: true; payload: RemoteJob }>(`/v1/jobs/${encodeURIComponent(jobId)}/fail`, {
+			method: 'POST',
+			body: request,
+			requireAuth: true,
+		});
+	}
+
+	consumeCredentialSession(jobId: string, sessionId: string) {
+		return this.client.requestJson<{ ok: true; payload: {
+			id: string;
+			hostKind: string;
+			hostId: string;
+			purpose: string;
+			provider?: string | null;
+			config: Record<string, string>;
+		} }>(`/v1/jobs/${encodeURIComponent(jobId)}/provider-credential-sessions/${encodeURIComponent(sessionId)}/consume`, {
+			method: 'POST',
+			requireAuth: true,
+		});
+	}
+}

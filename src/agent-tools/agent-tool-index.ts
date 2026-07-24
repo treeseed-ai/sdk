@@ -1,20 +1,20 @@
-import type { SdkDispatchNamespace, SdkDispatchPolicy } from '../sdk-types.ts';
+import type { SdkDispatchNamespace, SdkDispatchPolicy } from '../entrypoints/models/sdk-types.ts';
 import {
-	createTreeseedContentToolPresets,
-	genericTreeseedContentInputSchema,
-	type TreeseedContentAction,
-	type TreeseedContentModel,
-} from '../content-operations.ts';
-import { TREESEED_AGENT_TOOL_DEFINITIONS } from './treeseed-agent-tool-definitions.ts';
+	createContentToolPresets,
+	genericContentInputSchema,
+	type ContentAction,
+	type ContentModel,
+} from '../operations/content-operations.ts';
+import { AGENT_TOOL_DEFINITIONS } from './agent-tool-definitions.ts';
 
-export const AGENT_TOOL_INDEX = new Map(TREESEED_AGENT_TOOL_DEFINITIONS.map((definition) => [definition.id, definition]));
+export const AGENT_TOOL_INDEX = new Map(AGENT_TOOL_DEFINITIONS.map((definition) => [definition.id, definition]));
 
 export function findAgentToolDefinition(id: string | null | undefined) {
 	return id ? AGENT_TOOL_INDEX.get(id) ?? null : null;
 }
 
 export function listAgentToolIds() {
-	return TREESEED_AGENT_TOOL_DEFINITIONS.map((definition) => definition.id);
+	return AGENT_TOOL_DEFINITIONS.map((definition) => definition.id);
 }
 
 export function assertKnownAgentToolIds(ids: string[]) {

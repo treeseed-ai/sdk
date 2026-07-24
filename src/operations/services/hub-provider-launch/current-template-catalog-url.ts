@@ -2,35 +2,35 @@ import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, ex
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import { collectTreeseedReconcileStatus, reconcileTreeseedTarget } from '../../../reconcile/index.ts';
-import { checkTreeseedProviderConnections, collectTreeseedConfigSeedValues, syncTreeseedGitHubEnvironment } from '../config-runtime.ts';
-import { createPersistentDeployTarget, runRemoteD1Migrations, finalizeDeploymentState } from '../deploy.ts';
+import { collectReconcileStatus, reconcileTarget } from '../../../reconcile/index.ts';
+import { checkProviderConnections, collectConfigSeedValues, syncGitHubEnvironment } from '../configuration/config-runtime.ts';
+import { createPersistentDeployTarget, runRemoteD1Migrations, finalizeDeploymentState } from '../hosting/deployment/deploy.ts';
 import {
 	createGitHubRepository,
 	ensureGitHubDeployAutomation,
 	initializeGitHubRepositoryWorkingTree,
 	resolveGitHubRemoteUrls,
 	resolveDefaultGitHubOwner,
-} from '../github-automation.ts';
-import { configuredRailwayServices, deployRailwayService, ensureRailwayScheduledJobs, validateRailwayDeployPrerequisites, verifyRailwayScheduledJobs } from '../railway-deploy.ts';
-import { loadCliDeployConfig } from '../runtime-tools.ts';
-import { templateCatalogRoot } from '../runtime-paths.ts';
-import { scaffoldTemplateProject } from '../template-registry.ts';
-import { applyProjectLaunchHostBindingConfig } from '../template-host-bindings.ts';
-import { runTreeseedGit } from '../git-runner.ts';
+} from '../repositories/github-automation.ts';
+import { configuredRailwayServices, deployRailwayService, ensureRailwayScheduledJobs, validateRailwayDeployPrerequisites, verifyRailwayScheduledJobs } from '../hosting/railway/railway-deploy.ts';
+import { loadCliDeployConfig } from '../agents/runtime-tools.ts';
+import { templateCatalogRoot } from '../runtime/runtime-paths.ts';
+import { scaffoldTemplateProject } from '../support/template-registry.ts';
+import { applyProjectLaunchHostBindingConfig } from '../hosting/deployment/template-host-bindings.ts';
+import { runRepositoryGit } from '../operations/git-runner.ts';
 import {
 	ProjectLaunchSecretSyncError,
 	syncProjectLaunchHostBindingSecrets,
 	type ProjectLaunchSecretSyncResult,
-} from '../template-secret-sync.ts';
-import { buildKnowledgePackMarketPackage, buildTemplateMarketPackage, importKnowledgePack } from '../market-packaging.ts';
-import { resolveTreeseedToolBinary } from '../../../managed-dependencies.ts';
-import { TREESEED_DEFAULT_STARTER_TEMPLATE_ID } from '../../../sdk-types.ts';
+} from '../configuration/template-secret-sync.ts';
+import { buildKnowledgePackMarketPackage, buildTemplateMarketPackage, importKnowledgePack } from '../support/market-packaging.ts';
+import { resolveToolBinary } from '../../../entrypoints/runtime/managed-dependencies.ts';
+import { DEFAULT_STARTER_TEMPLATE_ID } from '../../../entrypoints/models/sdk-types.ts';
 import type {
 	ProjectLaunchConfigWritePlanItem,
 	ProjectLaunchResolvedHostBinding,
 	ProjectLaunchSecretDeploymentPlanItem,
-} from '../../../template-launch-requirements.ts';
+} from '../../../entrypoints/templates/template-launch-requirements.ts';
 import { KnowledgeHubProviderLaunchInput, slugify, writeText } from './knowledge-hub-provider-launch-failure-phase.ts';
 
 export function currentTemplateCatalogUrl() {
@@ -235,9 +235,9 @@ This hub is live and ready for the first team release cycle.
 
 export function ensureHostedProjectFiles(projectRoot: string) {
 	const sdkApiPackage = ['@treeseed', 'sdk/api'].join('/');
-	writeText(resolve(projectRoot, 'src/api/server.ts'), `import { createRailwayTreeseedApiServer } from '${sdkApiPackage}';
+	writeText(resolve(projectRoot, 'src/api/server.ts'), `import { createRailwayApiServer } from '${sdkApiPackage}';
 
-const server = await createRailwayTreeseedApiServer();
+const server = await createRailwayApiServer();
 console.log(\`Treeseed project API listening on \${server.url}\`);
 `);
 }

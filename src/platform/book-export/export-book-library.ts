@@ -12,26 +12,26 @@ import {
 import path, { dirname, extname, relative, resolve } from 'node:path';
 import { runDefaultAction, setLogLevel, type CliOptions, type PackResult } from 'repomix';
 import { parse as parseYaml } from 'yaml';
-import type { TreeseedBookDefinition, TreeseedTenantConfig } from '../contracts.ts';
-import { buildTenantBookRuntime } from '../books-data.ts';
-import { loadTreeseedManifest } from '../tenant-config.ts';
+import type { BookDefinition, TenantConfig } from '../support/contracts.ts';
+import { buildTenantBookRuntime } from '../content/books-data.ts';
+import { loadManifest } from '../configuration/tenant-config.ts';
 import { BOOK_EXPORT_PACKAGE_VERSION, loadTenant } from './book-export-package-version.ts';
 import type {
-	TreeseedBookExportManifest,
-	TreeseedBookLibraryPackageResult,
-	TreeseedBookPackageResult,
+	BookExportManifest,
+	BookLibraryPackageResult,
+	BookPackageResult,
 } from './book-export-package-version.ts';
 import { booksOutputRoot, buildBookIndexPayload, exportBookPackage, renderLibraryMarkdown, sidecarIndexPath } from './stage-manifest.ts';
 
-export async function exportBookLibrary(options: { projectRoot?: string } = {}): Promise<TreeseedBookLibraryPackageResult> {
+export async function exportBookLibrary(options: { projectRoot?: string } = {}): Promise<BookLibraryPackageResult> {
 	const { projectRoot, tenantConfig, runtime } = loadTenant(resolve(options.projectRoot ?? process.cwd()));
-	const memberPackages: TreeseedBookPackageResult[] = [];
+	const memberPackages: BookPackageResult[] = [];
 	for (const book of runtime.BOOKS) {
 		memberPackages.push(await exportBookPackage(book.id ?? book.slug, { projectRoot }));
 	}
 
 	const files = memberPackages.flatMap((entry) => entry.manifest.files);
-	const manifest: TreeseedBookExportManifest = {
+	const manifest: BookExportManifest = {
 		packageKind: 'library',
 		packageVersion: BOOK_EXPORT_PACKAGE_VERSION,
 		packageId: 'library:books',
@@ -41,12 +41,12 @@ export async function exportBookLibrary(options: { projectRoot?: string } = {}):
 		book: {
 			id: 'library',
 			slug: 'library',
-			title: runtime.TREESEED_LIBRARY_DOWNLOAD.downloadTitle,
+			title: runtime.LIBRARY_DOWNLOAD.downloadTitle,
 			order: 0,
 			basePath: '/books/',
-			downloadFileName: runtime.TREESEED_LIBRARY_DOWNLOAD.downloadFileName,
-			downloadHref: runtime.TREESEED_LIBRARY_DOWNLOAD.downloadHref,
-			downloadTitle: runtime.TREESEED_LIBRARY_DOWNLOAD.downloadTitle,
+			downloadFileName: runtime.LIBRARY_DOWNLOAD.downloadFileName,
+			downloadHref: runtime.LIBRARY_DOWNLOAD.downloadHref,
+			downloadTitle: runtime.LIBRARY_DOWNLOAD.downloadTitle,
 			resolvedRoots: Array.from(new Set(memberPackages.flatMap((entry) => entry.includedRoots))).sort((left, right) => left.localeCompare(right)),
 		},
 		files,
@@ -63,7 +63,7 @@ export async function exportBookLibrary(options: { projectRoot?: string } = {}):
 		})),
 	};
 
-	const markdownPath = resolve(booksOutputRoot(projectRoot), runtime.TREESEED_LIBRARY_DOWNLOAD.downloadFileName);
+	const markdownPath = resolve(booksOutputRoot(projectRoot), runtime.LIBRARY_DOWNLOAD.downloadFileName);
 	const indexPath = sidecarIndexPath(markdownPath);
 	mkdirSync(dirname(markdownPath), { recursive: true });
 	writeFileSync(markdownPath, renderLibraryMarkdown(manifest, memberPackages), 'utf8');

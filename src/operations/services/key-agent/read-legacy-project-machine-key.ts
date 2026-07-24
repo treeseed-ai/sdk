@@ -3,8 +3,8 @@ import { accessSync, chmodSync, constants as fsConstants, existsSync, lstatSync,
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { createConnection, createServer, type Server } from 'node:net';
-import { TRESEED_KEY_AGENT_IDLE_TIMEOUT_MS, TreeseedKeyAgentCommand, TreeseedKeyAgentError, TreeseedKeyAgentResponse, TreeseedKeyAgentSessionState, detectSocketKind, ensureParent, unwrapMachineKey } from './treseed-machine-key-passphrase-env.ts';
-import { clearPidFile, createStatus, getTreeseedKeyAgentPaths, inspectTreeseedKeyAgentDiagnostics, maybeExpireSession, readWrappedMachineKeyFile, replaceWrappedMachineKey, requestTreeseedKeyAgentOverSocket, writePidFile } from './read-wrapped-machine-key-file.ts';
+import { TRESEED_KEY_AGENT_IDLE_TIMEOUT_MS, KeyAgentCommand, KeyAgentError, KeyAgentResponse, KeyAgentSessionState, detectSocketKind, ensureParent, unwrapMachineKey } from './treseed-machine-key-passphrase-env.ts';
+import { clearPidFile, createStatus, getKeyAgentPaths, inspectKeyAgentDiagnostics, maybeExpireSession, readWrappedMachineKeyFile, replaceWrappedMachineKey, requestKeyAgentOverSocket, writePidFile } from './read-wrapped-machine-key-file.ts';
 
 export function readLegacyProjectMachineKey(legacyKeyPath: string) {
 	if (!existsSync(legacyKeyPath)) {
@@ -17,14 +17,14 @@ export function readLegacyProjectMachineKey(legacyKeyPath: string) {
 	}
 }
 
-export function unwrapOrProvisionMachineKey(command: Extract<TreeseedKeyAgentCommand, { command: 'unlock' }>) {
+export function unwrapOrProvisionMachineKey(command: Extract<KeyAgentCommand, { command: 'unlock' }>) {
 	const wrapped = readWrappedMachineKeyFile(command.keyPath);
 	if (wrapped.wrapped) {
 		return unwrapMachineKey(wrapped.wrapped, command.passphrase);
 	}
 	if (wrapped.plaintextLegacy) {
 		if (!command.allowMigration) {
-			throw new TreeseedKeyAgentError(
+			throw new KeyAgentError(
 				'wrapped_key_migration_required',
 				'The Treeseed machine key is still stored in the legacy plaintext format. Run a migration or unlock interactively to wrap it first.',
 				{ keyPath: command.keyPath },
@@ -34,7 +34,7 @@ export function unwrapOrProvisionMachineKey(command: Extract<TreeseedKeyAgentCom
 		return wrapped.plaintextLegacy;
 	}
 	if (!command.createIfMissing) {
-		throw new TreeseedKeyAgentError(
+		throw new KeyAgentError(
 			'wrapped_key_missing',
 			'No wrapped Treeseed machine key exists yet. Create one by unlocking interactively or with a startup passphrase.',
 			{ keyPath: command.keyPath },
@@ -45,13 +45,13 @@ export function unwrapOrProvisionMachineKey(command: Extract<TreeseedKeyAgentCom
 	return machineKey;
 }
 
-export function ok(response: Omit<TreeseedKeyAgentResponse, 'ok'> = {}): TreeseedKeyAgentResponse {
+export function ok(response: Omit<KeyAgentResponse, 'ok'> = {}): KeyAgentResponse {
 	return { ok: true, ...response };
 }
 
-export function fail(error: unknown, command: TreeseedKeyAgentCommand): TreeseedKeyAgentResponse {
+export function fail(error: unknown, command: KeyAgentCommand): KeyAgentResponse {
 	const wrappedState = command.keyPath ? readWrappedMachineKeyFile(command.keyPath) : { wrapped: null, migrationRequired: false };
-	if (error instanceof TreeseedKeyAgentError) {
+	if (error instanceof KeyAgentError) {
 		return {
 			ok: false,
 			code: error.code,
@@ -85,9 +85,9 @@ export function fail(error: unknown, command: TreeseedKeyAgentCommand): Treeseed
 	};
 }
 
-export function handleTreeseedKeyAgentCommand(
-	command: TreeseedKeyAgentCommand,
-	session: TreeseedKeyAgentSessionState,
+export function handleKeyAgentCommand(
+	command: KeyAgentCommand,
+	session: KeyAgentSessionState,
 ) {
 	maybeExpireSession(session);
 	if (command.command === 'health') {
@@ -104,7 +104,7 @@ export function handleTreeseedKeyAgentCommand(
 	}
 	if (command.command === 'touch') {
 		if (!session.machineKey) {
-			return fail(new TreeseedKeyAgentError('locked', 'Treeseed secret session is locked.'), command);
+			return fail(new KeyAgentError('locked', 'Treeseed secret session is locked.'), command);
 		}
 		session.lastTouchedAt = Date.now();
 		return ok({ status: createStatus(command, session) });
@@ -120,7 +120,7 @@ export function handleTreeseedKeyAgentCommand(
 		}
 	}
 	if (!session.machineKey) {
-		return fail(new TreeseedKeyAgentError('locked', 'Treeseed secret session is locked.'), command);
+		return fail(new KeyAgentError('locked', 'Treeseed secret session is locked.'), command);
 	}
 	session.lastTouchedAt = Date.now();
 	return ok({
@@ -129,16 +129,16 @@ export function handleTreeseedKeyAgentCommand(
 	});
 }
 
-export async function requestTreeseedKeyAgent(command: TreeseedKeyAgentCommand): Promise<TreeseedKeyAgentResponse> {
-	const diagnostics = await inspectTreeseedKeyAgentDiagnostics(command.socketPath);
+export async function requestKeyAgent(command: KeyAgentCommand): Promise<KeyAgentResponse> {
+	const diagnostics = await inspectKeyAgentDiagnostics(command.socketPath);
 	if (!diagnostics.healthOk && command.command !== 'health') {
-		throw new TreeseedKeyAgentError('daemon_unavailable', diagnostics.lastError ?? 'Treeseed key-agent is not running.', { diagnostics });
+		throw new KeyAgentError('daemon_unavailable', diagnostics.lastError ?? 'Treeseed key-agent is not running.', { diagnostics });
 	}
-	return requestTreeseedKeyAgentOverSocket(command);
+	return requestKeyAgentOverSocket(command);
 }
 
 export async function socketAlreadyServed(socketPath: string) {
-	const diagnostics = await inspectTreeseedKeyAgentDiagnostics(socketPath);
+	const diagnostics = await inspectKeyAgentDiagnostics(socketPath);
 	return diagnostics.socketConnectable && diagnostics.healthOk;
 }
 
@@ -152,7 +152,7 @@ export async function removeStaleSocket(socketPath: string) {
 		clearPidFile(socketPath);
 		return true;
 	}
-	const diagnostics = await inspectTreeseedKeyAgentDiagnostics(socketPath);
+	const diagnostics = await inspectKeyAgentDiagnostics(socketPath);
 	if (diagnostics.socketConnectable && diagnostics.healthOk) {
 		return false;
 	}
@@ -161,19 +161,19 @@ export async function removeStaleSocket(socketPath: string) {
 	return true;
 }
 
-export async function startTreeseedKeyAgentServer(options: {
+export async function startKeyAgentServer(options: {
 	keyPath: string;
 	socketPath?: string;
 	idleTimeoutMs?: number;
 }) {
-	const socketPath = options.socketPath ?? getTreeseedKeyAgentPaths().socketPath;
+	const socketPath = options.socketPath ?? getKeyAgentPaths().socketPath;
 	const canStart = await removeStaleSocket(socketPath);
 	if (!canStart) {
 		return;
 	}
 	ensureParent(socketPath);
 
-	const session: TreeseedKeyAgentSessionState = {
+	const session: KeyAgentSessionState = {
 		machineKey: null,
 		lastTouchedAt: 0,
 		idleTimeoutMs: options.idleTimeoutMs ?? TRESEED_KEY_AGENT_IDLE_TIMEOUT_MS,
@@ -199,10 +199,10 @@ export async function startTreeseedKeyAgentServer(options: {
 			}
 			const line = requestBuffer.slice(0, newlineIndex).trim();
 			requestBuffer = '';
-			let response: TreeseedKeyAgentResponse;
+			let response: KeyAgentResponse;
 			try {
-				const parsed = JSON.parse(line) as TreeseedKeyAgentCommand;
-				response = handleTreeseedKeyAgentCommand(parsed, session);
+				const parsed = JSON.parse(line) as KeyAgentCommand;
+				response = handleKeyAgentCommand(parsed, session);
 			} catch (error) {
 				response = fail(error, {
 					command: 'status',
@@ -243,12 +243,12 @@ export async function startTreeseedKeyAgentServer(options: {
 	server.close();
 }
 
-export function assertTreeseedKeyAgentResponse(response: TreeseedKeyAgentResponse, fallback = 'Treeseed secret session request failed.') {
+export function assertKeyAgentResponse(response: KeyAgentResponse, fallback = 'Treeseed secret session request failed.') {
 	if (response.ok) {
 		return response;
 	}
-	throw new TreeseedKeyAgentError(
-		(response.code as TreeseedKeyAgentError['code']) ?? 'unlock_failed',
+	throw new KeyAgentError(
+		(response.code as KeyAgentError['code']) ?? 'unlock_failed',
 		response.message ?? fallback,
 		{
 			status: response.status,

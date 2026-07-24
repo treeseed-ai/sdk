@@ -1,49 +1,49 @@
 import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, relative, resolve } from 'node:path';
-import { RemoteTreeseedAuthClient, RemoteTreeseedClient } from '../../../remote.ts';
-import { classifyTreeseedGitMode, runTreeseedGitText } from '../../../operations/services/git-runner.ts';
+import { RemoteAuthClient, RemoteClient } from '../../../entrypoints/clients/remote.ts';
+import { classifyGitMode, runGitText } from '../../services/operations/git-runner.ts';
 import {
-	findTreeseedOperation,
+	findOperation,
 	TRESEED_OPERATION_SPECS,
-} from '../../../operations-registry.ts';
+} from '../../operations-registry.ts';
 import type {
-	TreeseedOperationContext,
-	TreeseedOperationImplementation,
-	TreeseedOperationMetadata,
-	TreeseedOperationProvider,
-	TreeseedOperationResult,
-} from '../../../operations-types.ts';
+	OperationContext,
+	OperationImplementation,
+	OperationMetadata,
+	OperationProvider,
+	OperationResult,
+} from '../../operations-types.ts';
 import {
-	clearTreeseedRemoteSession,
-	inspectTreeseedKeyAgentStatus,
-	lockTreeseedSecretSession,
-	migrateTreeseedMachineKeyToWrapped,
-	resolveTreeseedLaunchEnvironment,
-	resolveTreeseedRemoteConfig,
-	rotateTreeseedMachineKey,
-	rotateTreeseedMachineKeyPassphrase,
-	setTreeseedRemoteSession,
-	TREESEED_MACHINE_KEY_PASSPHRASE_ENV,
-	TreeseedKeyAgentError,
-	unlockTreeseedSecretSessionFromEnv,
-} from '../../../operations/services/config-runtime.ts';
+	clearRemoteSession,
+	inspectKeyAgentStatus,
+	lockSecretSession,
+	migrateMachineKeyToWrapped,
+	resolveLaunchEnvironment,
+	resolveRemoteConfig,
+	rotateMachineKey,
+	rotateMachineKeyPassphrase,
+	setRemoteSession,
+	MACHINE_KEY_PASSPHRASE_ENV,
+	KeyAgentError,
+	unlockSecretSessionFromEnv,
+} from '../../services/configuration/config-runtime.ts';
 import {
 	createPersistentDeployTarget,
 	deployTargetLabel,
 	ensureGeneratedWranglerConfig,
 	finalizeDeploymentState,
 	loadDeployState,
-} from '../../../operations/services/deploy.ts';
+} from '../../services/hosting/deployment/deploy.ts';
 import {
 	PRODUCTION_BRANCH,
 	STAGING_BRANCH,
-} from '../../../operations/services/git-workflow.ts';
+} from '../../services/operations/git-workflow.ts';
 import {
 	loadCliDeployConfig,
 	packageScriptPath,
 	resolveWranglerBin,
-} from '../../../operations/services/runtime-tools.ts';
+} from '../../services/agents/runtime-tools.ts';
 import {
 	scaffoldTemplateProject,
 	listTemplateProducts,
@@ -53,10 +53,10 @@ import {
 	serializeTemplateRegistryEntry,
 	syncTemplateProject,
 	validateTemplateProduct,
-} from '../../../operations/services/template-registry.ts';
-import { applyProjectLaunchHostBindingConfig } from '../../../operations/services/template-host-bindings.ts';
-import { validateKnowledgeHubProviderLaunchPrerequisites } from '../../../operations/services/hub-provider-launch.ts';
-import { publishProjectContent } from '../../../operations/services/project-platform.ts';
+} from '../../services/support/template-registry.ts';
+import { applyProjectLaunchHostBindingConfig } from '../../services/hosting/deployment/template-host-bindings.ts';
+import { validateKnowledgeHubProviderLaunchPrerequisites } from '../../services/capacity/providers/hub-provider-launch.ts';
+import { publishProjectContent } from '../../services/projects/projects-core/project-platform.ts';
 import {
 	createKnowledgeHubRepositories,
 	executeKnowledgeHubLaunch,
@@ -65,25 +65,25 @@ import {
 	type KnowledgeHubLaunchIntent,
 	type KnowledgeHubRepositoryPlan,
 	type RepositoryHost,
-} from '../../../operations/services/hub-launch.ts';
+} from '../../services/support/hub-launch.ts';
 import {
 	collectCliPreflight,
 	formatCliPreflightReport,
-} from '../../../operations/services/workspace-preflight.ts';
-import { repoRoot } from '../../../operations/services/workspace-save.ts';
-import { TREESEED_DEFAULT_STARTER_TEMPLATE_ID } from '../../../sdk-types.ts';
+} from '../../services/treedx/workspaces/workspace-preflight.ts';
+import { repoRoot } from '../../services/treedx/workspaces/workspace-save.ts';
+import { DEFAULT_STARTER_TEMPLATE_ID } from '../../../entrypoints/models/sdk-types.ts';
 import {
 	parseProjectLaunchHostBindingSpecs,
 	resolveProjectLaunchHostBindings,
-} from '../../../template-launch-requirements.ts';
-import { run } from '../../../operations/services/workspace-tools.ts';
-import { resolveTreeseedWorkflowState } from '../../../workflow-state.ts';
-import { TreeseedWorkflowError, TreeseedWorkflowSdk } from '../../../workflow.ts';
+} from '../../../entrypoints/templates/template-launch-requirements.ts';
+import { run } from '../../services/treedx/workspaces/workspace-tools.ts';
+import { resolveWorkflowState } from '../../workflow-state.ts';
+import { WorkflowError, WorkflowSdk } from '../../workflow.ts';
 import {
-	collectTreeseedToolStatus,
-	formatTreeseedDependencyReport,
-	installTreeseedDependencies,
-} from '../../../managed-dependencies.ts';
+	collectToolStatus,
+	formatDependencyReport,
+	installDependencies,
+} from '../../../entrypoints/runtime/managed-dependencies.ts';
 import { BaseOperation, contextEnv, failureResult, operationResult, withTemporaryProcessEnv } from './run-git.ts';
 
 export class PreflightOperation extends BaseOperation<{ requireAuth?: boolean }> {
@@ -91,7 +91,7 @@ export class PreflightOperation extends BaseOperation<{ requireAuth?: boolean }>
 		super(name);
 	}
 
-	async execute(input: { requireAuth?: boolean; launch?: boolean; managedLaunch?: boolean }, context: TreeseedOperationContext) {
+	async execute(input: { requireAuth?: boolean; launch?: boolean; managedLaunch?: boolean }, context: OperationContext) {
 		const report = collectCliPreflight({
 			cwd: context.cwd,
 			requireAuth: input.requireAuth ?? this.requireAuth,
@@ -129,12 +129,12 @@ export class PreflightOperation extends BaseOperation<{ requireAuth?: boolean }>
 }
 
 export class InitOperation extends BaseOperation {
-	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+	async execute(input: Record<string, unknown>, context: OperationContext) {
 		const directory = String(input.directory ?? input.target ?? '').trim();
 		if (!directory) {
 			return failureResult(this.metadata, 'Init requires a target directory.');
 		}
-		const templateId = String(input.template ?? TREESEED_DEFAULT_STARTER_TEMPLATE_ID);
+		const templateId = String(input.template ?? DEFAULT_STARTER_TEMPLATE_ID);
 		const writeWarning = (message: string) => context.write?.(message, 'stderr');
 		const templateOptions = {
 			cwd: context.cwd,
@@ -265,7 +265,7 @@ export class InitOperation extends BaseOperation {
 }
 
 export class TemplateOperation extends BaseOperation {
-	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+	async execute(input: Record<string, unknown>, context: OperationContext) {
 		const action = String(input.action ?? 'list');
 		const target = typeof input.id === 'string' ? input.id : typeof input.target === 'string' ? input.target : undefined;
 		const writeWarning = (message: string) => context.write?.(message, 'stderr');
@@ -296,7 +296,7 @@ export class TemplateOperation extends BaseOperation {
 }
 
 export class SyncTemplateOperation extends BaseOperation {
-	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+	async execute(input: Record<string, unknown>, context: OperationContext) {
 		const changed = await syncTemplateProject(context.cwd, {
 			check: input.check === true,
 			writeWarning: (message) => context.write?.(message, 'stderr'),
@@ -312,14 +312,14 @@ export class SyncTemplateOperation extends BaseOperation {
 }
 
 export class HubPlanLaunchOperation extends BaseOperation {
-	async execute(input: Record<string, unknown>, _context: TreeseedOperationContext) {
+	async execute(input: Record<string, unknown>, _context: OperationContext) {
 		const intent = (input.intent && typeof input.intent === 'object' ? input.intent : input) as KnowledgeHubLaunchIntent;
 		return operationResult(this.metadata, planKnowledgeHubLaunch(intent));
 	}
 }
 
 export class HubValidateLaunchOperation extends BaseOperation {
-	async execute(input: Record<string, unknown>, _context: TreeseedOperationContext) {
+	async execute(input: Record<string, unknown>, _context: OperationContext) {
 		try {
 			const intent = (input.intent && typeof input.intent === 'object' ? input.intent : input) as KnowledgeHubLaunchIntent;
 			const plan = planKnowledgeHubLaunch(intent);
@@ -341,7 +341,7 @@ export class HubValidateLaunchOperation extends BaseOperation {
 }
 
 export class HubExecuteLaunchOperation extends BaseOperation {
-	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+	async execute(input: Record<string, unknown>, context: OperationContext) {
 		const intent = (input.intent && typeof input.intent === 'object' ? input.intent : input) as KnowledgeHubLaunchIntent;
 		const result = await withTemporaryProcessEnv(contextEnv(context), () => executeKnowledgeHubLaunch(intent, {
 			onPhase: async (phase) => {

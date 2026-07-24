@@ -3,7 +3,7 @@ import type {
 	ProjectLaunchHostBindingInput,
 	TemplateHostRequirement,
 	TemplateLaunchRequirements,
-} from '../../../sdk-types.ts';
+} from '../../../entrypoints/models/sdk-types.ts';
 import {
 	executePlatformRepositoryOperation,
 	type PlatformRepositoryDescriptor,
@@ -14,13 +14,13 @@ import {
 	syncProjectLaunchHostBindingSecrets,
 	type ProjectLaunchSecretSyncProgressEvent,
 	type ProjectLaunchSecretSyncResult,
-} from '../template-secret-sync.ts';
+} from '../configuration/template-secret-sync.ts';
 import {
 	resolveProjectLaunchHostBindings,
 	type ProjectLaunchHostInventoryRecord,
 	type ProjectLaunchResolvedHostBinding,
 	type ResolveProjectLaunchHostBindingsResult,
-} from '../../../template-launch-requirements.ts';
+} from '../../../entrypoints/templates/template-launch-requirements.ts';
 import { ExecuteProjectHostBindingOperationInput, PlanProjectHostBindingOperationOptions, PlanProjectHostBindingOperationResult, ProjectHostBindingsView, ProjectHostOperationDiagnostic, ProjectHostOperationStatus, bindingChanged, bindingMode, hostRequirementInputSet, mergeInventory, mergeTeamHostInventory, requirementByKey } from './project-host-operation-kind.ts';
 
 export function requirementDiagnostics(requirement: TemplateHostRequirement, binding?: ProjectLaunchResolvedHostBinding): ProjectHostOperationDiagnostic[] {

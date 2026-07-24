@@ -1,6 +1,6 @@
-export const TREESEED_DEFAULT_PLUGIN_PACKAGE = '@treeseed/sdk/plugin-default';
+export const DEFAULT_PLUGIN_PACKAGE = '@treeseed/sdk/plugin-default';
 
-export const TREESEED_DEFAULT_PROVIDER_SELECTIONS = {
+export const DEFAULT_PROVIDER_SELECTIONS = {
 	forms: 'store_only',
 	operations: 'default',
 	agents: {
@@ -22,9 +22,9 @@ export const TREESEED_DEFAULT_PROVIDER_SELECTIONS = {
 	site: 'default',
 };
 
-export const TREESEED_DEFAULT_PLUGIN_REFERENCES = [
+export const DEFAULT_PLUGIN_REFERENCES = [
 	{
-		package: TREESEED_DEFAULT_PLUGIN_PACKAGE,
+		package: DEFAULT_PLUGIN_PACKAGE,
 		enabled: true,
 	},
 ];

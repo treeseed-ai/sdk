@@ -1,4 +1,4 @@
-import type { ResearchSourcePolicy } from '../contracts/research-source-policy.ts';
+import type { ResearchSourcePolicy } from '../contracts/support/research-source-policy.ts';
 
 export interface ResearchSourcePolicyDiagnostic {
 	code: string;

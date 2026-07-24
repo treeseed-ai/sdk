@@ -1,7 +1,7 @@
 import type {
 	EngineeringWorkflowPromotionConfigV1,
 	EngineeringWorkflowPromotionValidation,
-} from '../contracts/workflow-promotion.ts';
+} from '../contracts/operations/workflow-promotion.ts';
 
 const REQUIRED_ROLES = ['tester', 'engineer', 'reviewer', 'technicalWriter', 'releaser'] as const;
 

@@ -9,12 +9,12 @@ import {
 	type TemplateConfigWriteTarget,
 	type TemplateSecretTarget,
 	type TemplateSecretSensitivity,
-} from '../../../sdk-types.ts';
+} from '../../../entrypoints/models/sdk-types.ts';
 import type {
 	ProjectLaunchConfigWritePlanItem,
 	ProjectLaunchResolvedHostBinding,
 	ProjectLaunchSecretDeploymentPlanItem,
-} from '../../../template-launch-requirements.ts';
+} from '../../../entrypoints/templates/template-launch-requirements.ts';
 import { ApplyProjectLaunchHostBindingConfigOptions, MutableRecord, ProjectLaunchHostBindingConfigApplyResult, ProjectLaunchHostBindingConfigAuditDiagnostic, ProjectLaunchHostBindingConfigAuditResult, ProjectLaunchHostBindingConfigWriteSummary, ProjectLaunchHostBindingEnvironmentWriteSummary, assertTarget, ensureDir, getPath, readStructuredFile, selectedHostValue, selectedResourceValue, setDotPath, writeStructuredFile } from './mutable-record.ts';
 
 export function resolveWriteValue(

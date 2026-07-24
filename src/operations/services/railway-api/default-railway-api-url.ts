@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { IacClient } from 'railway';
-import { connectRailwayServiceSourceWithCli, runRailwayCliJson } from '../railway-cli.ts';
-import { resolveTreeseedRailwayApiToken } from '../../../service-credentials.ts';
+import { connectRailwayServiceSourceWithCli, runRailwayCliJson } from '../hosting/railway/railway-cli.ts';
+import { resolveRailwayCredential } from '../../../configuration/service-credentials.ts';
 
 
 export const DEFAULT_RAILWAY_API_URL = 'https://backboard.railway.com/graphql/v2';
@@ -170,7 +170,7 @@ export function isUsableRailwayToken(value: string | undefined | null) {
 }
 
 export function resolveRailwayApiToken(env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env) {
-	const token = resolveTreeseedRailwayApiToken(env);
+	const token = resolveRailwayCredential(env);
 	return isUsableRailwayToken(token) ? token : '';
 }
 
@@ -214,17 +214,17 @@ export function parseRetryAfterMs(value: string | null) {
 }
 
 export function markRailwayTransientError(error: Error, options: { retryAfterMs?: number | null; rateLimited?: boolean } = {}) {
-	const tagged = error as Error & { treeseedTransient?: boolean; treeseedRetryAfterMs?: number; treeseedRateLimited?: boolean };
-	tagged.treeseedTransient = true;
-	if (options.rateLimited) tagged.treeseedRateLimited = true;
+	const tagged = error as Error & { Transient?: boolean; RetryAfterMs?: number; RateLimited?: boolean };
+	tagged.Transient = true;
+	if (options.rateLimited) tagged.RateLimited = true;
 	if (typeof options.retryAfterMs === 'number' && Number.isFinite(options.retryAfterMs) && options.retryAfterMs >= 0) {
-		tagged.treeseedRetryAfterMs = options.retryAfterMs;
+		tagged.RetryAfterMs = options.retryAfterMs;
 	}
 	return tagged;
 }
 
 export function isTransientRailwayRequestError(error: unknown) {
-	if (error && typeof error === 'object' && (error as { treeseedTransient?: boolean }).treeseedTransient === true) {
+	if (error && typeof error === 'object' && (error as { Transient?: boolean }).Transient === true) {
 		return true;
 	}
 	const message = error instanceof Error ? error.message : String(error ?? '');

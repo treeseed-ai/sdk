@@ -1,49 +1,49 @@
 import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, relative, resolve } from 'node:path';
-import { RemoteTreeseedAuthClient, RemoteTreeseedClient } from '../../../remote.ts';
-import { classifyTreeseedGitMode, runTreeseedGitText } from '../../../operations/services/git-runner.ts';
+import { RemoteAuthClient, RemoteClient } from '../../../entrypoints/clients/remote.ts';
+import { classifyGitMode, runGitText } from '../../services/operations/git-runner.ts';
 import {
-	findTreeseedOperation,
+	findOperation,
 	TRESEED_OPERATION_SPECS,
-} from '../../../operations-registry.ts';
+} from '../../operations-registry.ts';
 import type {
-	TreeseedOperationContext,
-	TreeseedOperationImplementation,
-	TreeseedOperationMetadata,
-	TreeseedOperationProvider,
-	TreeseedOperationResult,
-} from '../../../operations-types.ts';
+	OperationContext,
+	OperationImplementation,
+	OperationMetadata,
+	OperationProvider,
+	OperationResult,
+} from '../../operations-types.ts';
 import {
-	clearTreeseedRemoteSession,
-	inspectTreeseedKeyAgentStatus,
-	lockTreeseedSecretSession,
-	migrateTreeseedMachineKeyToWrapped,
-	resolveTreeseedLaunchEnvironment,
-	resolveTreeseedRemoteConfig,
-	rotateTreeseedMachineKey,
-	rotateTreeseedMachineKeyPassphrase,
-	setTreeseedRemoteSession,
-	TREESEED_MACHINE_KEY_PASSPHRASE_ENV,
-	TreeseedKeyAgentError,
-	unlockTreeseedSecretSessionFromEnv,
-} from '../../../operations/services/config-runtime.ts';
+	clearRemoteSession,
+	inspectKeyAgentStatus,
+	lockSecretSession,
+	migrateMachineKeyToWrapped,
+	resolveLaunchEnvironment,
+	resolveRemoteConfig,
+	rotateMachineKey,
+	rotateMachineKeyPassphrase,
+	setRemoteSession,
+	MACHINE_KEY_PASSPHRASE_ENV,
+	KeyAgentError,
+	unlockSecretSessionFromEnv,
+} from '../../services/configuration/config-runtime.ts';
 import {
 	createPersistentDeployTarget,
 	deployTargetLabel,
 	ensureGeneratedWranglerConfig,
 	finalizeDeploymentState,
 	loadDeployState,
-} from '../../../operations/services/deploy.ts';
+} from '../../services/hosting/deployment/deploy.ts';
 import {
 	PRODUCTION_BRANCH,
 	STAGING_BRANCH,
-} from '../../../operations/services/git-workflow.ts';
+} from '../../services/operations/git-workflow.ts';
 import {
 	loadCliDeployConfig,
 	packageScriptPath,
 	resolveWranglerBin,
-} from '../../../operations/services/runtime-tools.ts';
+} from '../../services/agents/runtime-tools.ts';
 import {
 	scaffoldTemplateProject,
 	listTemplateProducts,
@@ -53,10 +53,10 @@ import {
 	serializeTemplateRegistryEntry,
 	syncTemplateProject,
 	validateTemplateProduct,
-} from '../../../operations/services/template-registry.ts';
-import { applyProjectLaunchHostBindingConfig } from '../../../operations/services/template-host-bindings.ts';
-import { validateKnowledgeHubProviderLaunchPrerequisites } from '../../../operations/services/hub-provider-launch.ts';
-import { publishProjectContent } from '../../../operations/services/project-platform.ts';
+} from '../../services/support/template-registry.ts';
+import { applyProjectLaunchHostBindingConfig } from '../../services/hosting/deployment/template-host-bindings.ts';
+import { validateKnowledgeHubProviderLaunchPrerequisites } from '../../services/capacity/providers/hub-provider-launch.ts';
+import { publishProjectContent } from '../../services/projects/projects-core/project-platform.ts';
 import {
 	createKnowledgeHubRepositories,
 	executeKnowledgeHubLaunch,
@@ -65,41 +65,41 @@ import {
 	type KnowledgeHubLaunchIntent,
 	type KnowledgeHubRepositoryPlan,
 	type RepositoryHost,
-} from '../../../operations/services/hub-launch.ts';
+} from '../../services/support/hub-launch.ts';
 import {
 	collectCliPreflight,
 	formatCliPreflightReport,
-} from '../../../operations/services/workspace-preflight.ts';
-import { repoRoot } from '../../../operations/services/workspace-save.ts';
-import { TREESEED_DEFAULT_STARTER_TEMPLATE_ID } from '../../../sdk-types.ts';
+} from '../../services/treedx/workspaces/workspace-preflight.ts';
+import { repoRoot } from '../../services/treedx/workspaces/workspace-save.ts';
+import { DEFAULT_STARTER_TEMPLATE_ID } from '../../../entrypoints/models/sdk-types.ts';
 import {
 	parseProjectLaunchHostBindingSpecs,
 	resolveProjectLaunchHostBindings,
-} from '../../../template-launch-requirements.ts';
-import { run } from '../../../operations/services/workspace-tools.ts';
-import { resolveTreeseedWorkflowState } from '../../../workflow-state.ts';
-import { TreeseedWorkflowError, TreeseedWorkflowSdk } from '../../../workflow.ts';
+} from '../../../entrypoints/templates/template-launch-requirements.ts';
+import { run } from '../../services/treedx/workspaces/workspace-tools.ts';
+import { resolveWorkflowState } from '../../workflow-state.ts';
+import { WorkflowError, WorkflowSdk } from '../../workflow.ts';
 import {
-	collectTreeseedToolStatus,
-	formatTreeseedDependencyReport,
-	installTreeseedDependencies,
-} from '../../../managed-dependencies.ts';
+	collectToolStatus,
+	formatDependencyReport,
+	installDependencies,
+} from '../../../entrypoints/runtime/managed-dependencies.ts';
 
 
 export function runGit(args: string[], options: { cwd: string; capture?: boolean; timeoutMs?: number; maxBuffer?: number }) {
-	return runTreeseedGitText(args, {
+	return runGitText(args, {
 		cwd: options.cwd,
-		mode: classifyTreeseedGitMode(args),
+		mode: classifyGitMode(args),
 		timeoutMs: options.timeoutMs,
 		maxBuffer: options.maxBuffer,
 	});
 }
 
 export function operationResult<TPayload>(
-	metadata: TreeseedOperationMetadata,
+	metadata: OperationMetadata,
 	payload: TPayload,
-	options: Partial<TreeseedOperationResult<TPayload>> = {},
-): TreeseedOperationResult<TPayload> {
+	options: Partial<OperationResult<TPayload>> = {},
+): OperationResult<TPayload> {
 	return {
 		operation: metadata.id,
 		ok: options.ok ?? true,
@@ -114,10 +114,10 @@ export function operationResult<TPayload>(
 }
 
 export function failureResult(
-	metadata: TreeseedOperationMetadata,
+	metadata: OperationMetadata,
 	message: string,
-	options: Partial<TreeseedOperationResult> = {},
-): TreeseedOperationResult {
+	options: Partial<OperationResult> = {},
+): OperationResult {
 	return operationResult(metadata, null, {
 		ok: false,
 		exitCode: options.exitCode ?? 1,
@@ -126,7 +126,7 @@ export function failureResult(
 	});
 }
 
-export function contextEnv(context: TreeseedOperationContext) {
+export function contextEnv(context: OperationContext) {
 	return { ...process.env, ...(context.env ?? {}) };
 }
 
@@ -153,18 +153,18 @@ export async function withTemporaryProcessEnv<T>(env: Record<string, string | un
 	}
 }
 
-export function operationEnv(context: TreeseedOperationContext) {
+export function operationEnv(context: OperationContext) {
 	const tenantConfigPath = resolve(context.cwd, 'treeseed.site.yaml');
 	return existsSync(tenantConfigPath)
-		? resolveTreeseedLaunchEnvironment({ tenantRoot: context.cwd, scope: 'local', baseEnv: contextEnv(context) })
+		? resolveLaunchEnvironment({ tenantRoot: context.cwd, scope: 'local', baseEnv: contextEnv(context) })
 		: contextEnv(context);
 }
 
 export function runNodeScript(
-	metadata: TreeseedOperationMetadata,
+	metadata: OperationMetadata,
 	scriptName: string,
 	args: string[],
-	context: TreeseedOperationContext,
+	context: OperationContext,
 ) {
 	if (context.spawn) {
 		const result = context.spawn(process.execPath, [packageScriptPath(scriptName), ...args], {
@@ -201,12 +201,12 @@ export function runNodeScript(
 	});
 }
 
-export function copyTreeseedOperationalState(sourceRoot: string, targetRoot: string) {
-	const sourceTreeseedRoot = resolve(sourceRoot, '.treeseed');
-	if (!existsSync(sourceTreeseedRoot)) {
+export function copyOperationalState(sourceRoot: string, targetRoot: string) {
+	const stateRoot = resolve(sourceRoot, '.treeseed');
+	if (!existsSync(stateRoot)) {
 		return;
 	}
-	copyDirectory(sourceTreeseedRoot, resolve(targetRoot, '.treeseed'));
+	copyDirectory(stateRoot, resolve(targetRoot, '.treeseed'));
 }
 
 export function copyDirectory(sourceDir: string, targetDir: string) {
@@ -242,7 +242,7 @@ export function prepareContentPublishRoot(tenantRoot: string, contentRepositoryR
 	copyFileIfExists(resolve(tenantRoot, 'treeseed.site.yaml'), resolve(tempRoot, 'treeseed.site.yaml'));
 	copyFileIfExists(resolve(tenantRoot, 'package.json'), resolve(tempRoot, 'package.json'));
 	copyFileIfExists(resolve(tenantRoot, 'src', 'manifest.yaml'), resolve(tempRoot, 'src', 'manifest.yaml'));
-	copyTreeseedOperationalState(tenantRoot, tempRoot);
+	copyOperationalState(tenantRoot, tempRoot);
 	const contentSource = resolve(contentRepositoryRoot, 'src', 'content');
 	if (existsSync(contentSource)) {
 		copyDirectory(contentSource, resolve(tempRoot, 'src', 'content'));
@@ -267,31 +267,31 @@ export function workflowInputForOperation(name: string, input: Record<string, un
 	}
 }
 
-export abstract class BaseOperation<TInput extends Record<string, unknown> = Record<string, unknown>> implements TreeseedOperationImplementation<TInput> {
-	readonly metadata: TreeseedOperationMetadata;
+export abstract class BaseOperation<TInput extends Record<string, unknown> = Record<string, unknown>> implements OperationImplementation<TInput> {
+	readonly metadata: OperationMetadata;
 
 	constructor(name: string) {
-		const metadata = findTreeseedOperation(name);
+		const metadata = findOperation(name);
 		if (!metadata) {
 			throw new Error(`Unknown operation metadata for "${name}".`);
 		}
 		this.metadata = metadata;
 	}
 
-	abstract execute(input: TInput, context: TreeseedOperationContext): Promise<TreeseedOperationResult>;
+	abstract execute(input: TInput, context: OperationContext): Promise<OperationResult>;
 }
 
 export class WorkflowOperation extends BaseOperation {
-	private readonly workflowName: Parameters<TreeseedWorkflowSdk['execute']>[0];
+	private readonly workflowName: Parameters<WorkflowSdk['execute']>[0];
 
-	constructor(name: string, workflowName?: Parameters<TreeseedWorkflowSdk['execute']>[0]) {
+	constructor(name: string, workflowName?: Parameters<WorkflowSdk['execute']>[0]) {
 		super(name);
-		this.workflowName = workflowName ?? (name === 'switch' ? 'switch' : name as Parameters<TreeseedWorkflowSdk['execute']>[0]);
+		this.workflowName = workflowName ?? (name === 'switch' ? 'switch' : name as Parameters<WorkflowSdk['execute']>[0]);
 	}
 
-	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+	async execute(input: Record<string, unknown>, context: OperationContext) {
 		try {
-			const workflow = new TreeseedWorkflowSdk({
+			const workflow = new WorkflowSdk({
 				cwd: context.cwd,
 				env: context.env,
 				write: context.write,
@@ -301,7 +301,7 @@ export class WorkflowOperation extends BaseOperation {
 			});
 			return await workflow.execute(this.workflowName, workflowInputForOperation(this.metadata.name, input));
 		} catch (error) {
-			if (error instanceof TreeseedWorkflowError) {
+			if (error instanceof WorkflowError) {
 				return failureResult(this.metadata, error.message, {
 					exitCode: error.exitCode ?? 1,
 					meta: {
@@ -320,7 +320,7 @@ export class ScriptOperation extends BaseOperation {
 		super(name);
 	}
 
-	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+	async execute(input: Record<string, unknown>, context: OperationContext) {
 		const args = Array.isArray(input.args) ? input.args.map(String) : [];
 		return runNodeScript(this.metadata, this.scriptName, [...this.extraArgs, ...args], context);
 	}

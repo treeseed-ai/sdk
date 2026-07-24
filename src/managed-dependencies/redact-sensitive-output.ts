@@ -6,8 +6,8 @@ import { platform as osPlatform, arch as osArch } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { withTreeseedServiceCredentialEnv } from '../service-credentials.ts';
-import { NPM_PACKAGES, NPM_TOOLS, TreeseedManagedToolName, cleanCommandPathOutput, require } from './dependency-runtime.ts';
+import { withServiceCredentialEnv } from '../configuration/service-credentials.ts';
+import { NPM_PACKAGES, NPM_TOOLS, ManagedToolName, cleanCommandPathOutput, require } from './dependency-runtime.ts';
 import { collectNativeDependencyRepairs } from './collect-native-dependency-repairs.ts';
 
 export function redactSensitiveOutput(output: string) {
@@ -113,7 +113,7 @@ export function resolvePackageRoot(packageName: string) {
 	return dirname(resolvePackageJsonPath(packageName));
 }
 
-export function findNpmTool(name: TreeseedManagedToolName) {
+export function findNpmTool(name: ManagedToolName) {
 	return NPM_TOOLS.find((tool) => tool.name === name) ?? null;
 }
 

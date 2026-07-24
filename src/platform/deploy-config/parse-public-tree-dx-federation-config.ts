@@ -1,29 +1,29 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import type { TreeseedFieldAliasRegistry } from '../../field-aliases.ts';
-import { normalizeAliasedRecord } from '../../field-aliases.ts';
+import type { FieldAliasRegistry } from '../../entrypoints/models/field-aliases.ts';
+import { normalizeAliasedRecord } from '../../entrypoints/models/field-aliases.ts';
 import type {
-	TreeseedDeployConfig,
-	TreeseedExportConfig,
-	TreeseedHubConfig,
-	TreeseedLocalRuntimeConfig,
-	TreeseedManagedServiceConfig,
-	TreeseedManagedServicesConfig,
-	TreeseedPlatformSurfacesConfig,
-	TreeseedProcessingConfig,
-	TreeseedPluginReference,
-	TreeseedProviderSelections,
-	TreeseedRuntimeConfig,
-	TreeseedWebCachePolicyConfig,
-	TreeseedWebSourcePageCacheConfig,
-} from '../contracts.ts';
-import { resolveTreeseedTenantRoot } from '../tenant-config.ts';
+	DeployConfig,
+	ExportConfig,
+	HubConfig,
+	LocalRuntimeConfig,
+	ManagedServiceConfig,
+	ManagedServicesConfig,
+	PlatformSurfacesConfig,
+	ProcessingConfig,
+	PluginReference,
+	ProviderSelections,
+	RuntimeConfig,
+	WebCachePolicyConfig,
+	WebSourcePageCacheConfig,
+} from '../support/contracts.ts';
+import { resolveTenantRoot } from '../configuration/tenant-config.ts';
 import {
-	TREESEED_DEFAULT_PLUGIN_REFERENCES,
-	TREESEED_DEFAULT_PROVIDER_SELECTIONS,
+	DEFAULT_PLUGIN_REFERENCES,
+	DEFAULT_PROVIDER_SELECTIONS,
 } from '../plugins/constants.ts';
-import { TREESEED_DEFAULT_SOURCE_PAGE_PURGE_PATHS, optionalBoolean, optionalEnum, optionalNonNegativeNumber, optionalPositiveNumber, optionalRecord, optionalString, optionalStringArray, processingFieldAliases, webCachePolicyFieldAliases, webSurfaceCacheFieldAliases } from './deploy-config-field-aliases.ts';
+import { DEFAULT_SOURCE_PAGE_PURGE_PATHS, optionalBoolean, optionalEnum, optionalNonNegativeNumber, optionalPositiveNumber, optionalRecord, optionalString, optionalStringArray, processingFieldAliases, webCachePolicyFieldAliases, webSurfaceCacheFieldAliases } from './deploy-config-field-aliases.ts';
 import { parseLocalRuntimeConfig, parseManagedServiceConfig, parseServiceEnvironmentConfig } from './normalize-planes-from-legacy-hosting.ts';
 
 export function parsePublicTreeDxFederationConfig(value: unknown) {
@@ -49,7 +49,7 @@ export function parsePublicTreeDxFederationConfig(value: unknown) {
 	};
 }
 
-export function parseManagedServicesConfig(value: unknown): TreeseedManagedServicesConfig | undefined {
+export function parseManagedServicesConfig(value: unknown): ManagedServicesConfig | undefined {
 	const record = optionalRecord(value, 'services');
 	if (!record) {
 		return undefined;
@@ -62,7 +62,7 @@ export function parseManagedServicesConfig(value: unknown): TreeseedManagedServi
 	);
 }
 
-export function parseProcessingConfig(value: unknown, services: TreeseedManagedServicesConfig | undefined): TreeseedProcessingConfig {
+export function parseProcessingConfig(value: unknown, services: ManagedServicesConfig | undefined): ProcessingConfig {
 	const record = normalizeAliasedRecord(
 		processingFieldAliases,
 		(optionalRecord(value, 'processing') ?? {}) as Record<string, unknown>,
@@ -111,7 +111,7 @@ export function parseConnectionsConfig(value: unknown) {
 	};
 }
 
-export function inferManagedRuntimeFromServices(services: TreeseedManagedServicesConfig | undefined) {
+export function inferManagedRuntimeFromServices(services: ManagedServicesConfig | undefined) {
 	return Object.values(services ?? {}).some((service) =>
 		service && service.enabled !== false && (service.provider ?? 'railway') === 'railway',
 	);
@@ -159,7 +159,7 @@ export function parseWebSurfaceCacheConfig(value: unknown, label: string) {
 
 	return {
 		sourcePages: parseWebCachePolicyRecord(record.sourcePages, `${label}.sourcePages`, {
-			paths: TREESEED_DEFAULT_SOURCE_PAGE_PURGE_PATHS,
+			paths: DEFAULT_SOURCE_PAGE_PURGE_PATHS,
 		}),
 		contentPages: parseWebCachePolicyRecord(record.contentPages, `${label}.contentPages`),
 		r2PublishedObjects: parseWebCachePolicyRecord(record.r2PublishedObjects, `${label}.r2PublishedObjects`),
@@ -187,7 +187,7 @@ export function parseWebCachePolicyRecord(
 			`${label}.staleWhileRevalidateSeconds`,
 		),
 		staleIfErrorSeconds: optionalNonNegativeNumber(record.staleIfErrorSeconds, `${label}.staleIfErrorSeconds`),
-	} as TreeseedWebCachePolicyConfig & { paths?: string[] };
+	} as WebCachePolicyConfig & { paths?: string[] };
 
 	if (options.paths) {
 		parsed.paths = [...new Set(optionalStringArray(record.paths, `${label}.paths`) ?? options.paths)];
@@ -196,7 +196,7 @@ export function parseWebCachePolicyRecord(
 	return parsed;
 }
 
-export function parsePlatformSurfacesConfig(value: unknown): TreeseedPlatformSurfacesConfig | undefined {
+export function parsePlatformSurfacesConfig(value: unknown): PlatformSurfacesConfig | undefined {
 	const record = optionalRecord(value, 'surfaces');
 	if (!record) {
 		return undefined;
@@ -210,7 +210,7 @@ export function parsePlatformSurfacesConfig(value: unknown): TreeseedPlatformSur
 	);
 }
 
-export function parseExportConfig(value: unknown): TreeseedExportConfig | undefined {
+export function parseExportConfig(value: unknown): ExportConfig | undefined {
 	const record = optionalRecord(value, 'export');
 	if (!record) {
 		return undefined;

@@ -4,15 +4,15 @@ import { resolve } from 'node:path';
 import { mkdtempSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-	inspectTreeseedSceneRun,
-	resumeTreeseedScene,
-	runTreeseedScene,
-	validateTreeseedScene,
-	type TreeseedSceneBrowserAdapter,
-	type TreeseedSceneBrowserLaunchInput,
-	type TreeseedSceneBrowserSession,
-	type TreeseedSceneLocator,
-	type TreeseedScenePage,
+	inspectSceneRun,
+	resumeScene,
+	runScene,
+	validateScene,
+	type SceneBrowserAdapter,
+	type SceneBrowserLaunchInput,
+	type SceneBrowserSession,
+	type SceneLocator,
+	type ScenePage,
 } from '../../../src/scenes/index.ts';
 
 function workspace() {
@@ -25,7 +25,7 @@ function writeScene(root: string, name: string, source: string) {
 	writeFileSync(resolve(root, 'scenes', `${name}.yaml`), source, 'utf8');
 }
 
-class FakeLocator implements TreeseedSceneLocator {
+class FakeLocator implements SceneLocator {
 	constructor(private readonly visible = true) {}
 	async waitFor() {}
 	async click() {}
@@ -33,7 +33,7 @@ class FakeLocator implements TreeseedSceneLocator {
 	async isVisible() { return this.visible; }
 }
 
-class FakePage implements TreeseedScenePage {
+class FakePage implements ScenePage {
 	currentUrl = 'about:blank';
 	visible = true;
 	keyboard = { press: async () => {} };
@@ -47,10 +47,10 @@ class FakePage implements TreeseedScenePage {
 	on() {}
 }
 
-class FakeAdapter implements TreeseedSceneBrowserAdapter {
+class FakeAdapter implements SceneBrowserAdapter {
 	page = new FakePage();
-	launches: TreeseedSceneBrowserLaunchInput[] = [];
-	async launch(input: TreeseedSceneBrowserLaunchInput): Promise<TreeseedSceneBrowserSession> {
+	launches: SceneBrowserLaunchInput[] = [];
+	async launch(input: SceneBrowserLaunchInput): Promise<SceneBrowserSession> {
 		this.launches.push(input);
 		return { page: this.page, close: async () => {} };
 	}
@@ -116,7 +116,7 @@ workflow:
     expect:
       urlIncludes: example.test
 `);
-		const valid = validateTreeseedScene({ projectRoot: root, scene: 'defaults' });
+		const valid = validateScene({ projectRoot: root, scene: 'defaults' });
 		expect(valid.ok).toBe(true);
 		expect(valid.scene?.runtime.mode).toBe('acceptance');
 		expect(valid.scene?.runtime.timeouts.stepSeconds).toBe(120);
@@ -139,7 +139,7 @@ workflow:
     expect:
       urlIncludes: example.test
 `);
-		const invalid = validateTreeseedScene({ projectRoot: root, scene: 'bad-runtime' });
+		const invalid = validateScene({ projectRoot: root, scene: 'bad-runtime' });
 		expect(invalid.diagnostics.map((entry) => entry.code)).toContain('scene.invalid_runtime_mode');
 		expect(invalid.diagnostics.map((entry) => entry.code)).toContain('scene.invalid_number');
 	});
@@ -148,7 +148,7 @@ workflow:
 		const root = workspace();
 		writeScene(root, 'long-demo', longScene());
 		const events: string[] = [];
-		const report = await runTreeseedScene({
+		const report = await runScene({
 			projectRoot: root,
 			scene: 'long-demo',
 			browserAdapter: new FakeAdapter(),
@@ -168,7 +168,7 @@ workflow:
 		expect(events).toContain('scene.run.finished');
 		expect(existsSync(report.progressPath!)).toBe(true);
 		expect(readFileSync(report.progressPath!, 'utf8')).toContain('checkpoint.written');
-		const inspected = inspectTreeseedSceneRun({ projectRoot: root, run: report.artifacts!.runRoot, stepId: 'open' });
+		const inspected = inspectSceneRun({ projectRoot: root, run: report.artifacts!.runRoot, stepId: 'open' });
 		expect(inspected.ok).toBe(true);
 		expect(inspected.selectedStep?.id).toBe('open');
 	});
@@ -183,10 +183,10 @@ workflow:
         prompt: Continue?
     demoOnly: true
 `));
-		const blocked = await runTreeseedScene({ projectRoot: root, scene: 'manual', browserAdapter: new FakeAdapter(), sleep: async () => {} });
+		const blocked = await runScene({ projectRoot: root, scene: 'manual', browserAdapter: new FakeAdapter(), sleep: async () => {} });
 		expect(blocked.ok).toBe(false);
 		expect(blocked.diagnostics.some((entry) => entry.code === 'scene.manual_pause_requires_tty')).toBe(true);
-		const passed = await runTreeseedScene({
+		const passed = await runScene({
 			projectRoot: root,
 			scene: 'manual',
 			browserAdapter: new FakeAdapter(),
@@ -200,8 +200,8 @@ workflow:
 	it('resumes from a resumable checkpoint and rejects non-resumable checkpoints', async () => {
 		const root = workspace();
 		writeScene(root, 'long-demo', longScene());
-		const first = await runTreeseedScene({ projectRoot: root, scene: 'long-demo', browserAdapter: new FakeAdapter(), sleep: async () => {}, timestamp: '20260614T120000Z', runId: 'source' });
-		const resumed = await resumeTreeseedScene({
+		const first = await runScene({ projectRoot: root, scene: 'long-demo', browserAdapter: new FakeAdapter(), sleep: async () => {}, timestamp: '20260614T120000Z', runId: 'source' });
+		const resumed = await resumeScene({
 			projectRoot: root,
 			run: first.artifacts!.runRoot,
 			fromCheckpoint: 'open',
@@ -227,8 +227,8 @@ workflow:
     expect:
       urlIncludes: example.test
 `);
-		const second = await runTreeseedScene({ projectRoot: root, scene: 'not-resumable', browserAdapter: new FakeAdapter() });
-		const rejected = await resumeTreeseedScene({ projectRoot: root, run: second.artifacts!.runRoot, fromCheckpoint: 'open', browserAdapter: new FakeAdapter() });
+		const second = await runScene({ projectRoot: root, scene: 'not-resumable', browserAdapter: new FakeAdapter() });
+		const rejected = await resumeScene({ projectRoot: root, run: second.artifacts!.runRoot, fromCheckpoint: 'open', browserAdapter: new FakeAdapter() });
 		expect(rejected.diagnostics[0]?.code).toBe('scene.checkpoint_not_resumable');
 	});
 });

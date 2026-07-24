@@ -1,33 +1,33 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import type { TreeseedFieldAliasRegistry } from '../../field-aliases.ts';
-import { normalizeAliasedRecord } from '../../field-aliases.ts';
+import type { FieldAliasRegistry } from '../../entrypoints/models/field-aliases.ts';
+import { normalizeAliasedRecord } from '../../entrypoints/models/field-aliases.ts';
 import type {
-	TreeseedDeployConfig,
-	TreeseedExportConfig,
-	TreeseedHubConfig,
-	TreeseedLocalRuntimeConfig,
-	TreeseedManagedServiceConfig,
-	TreeseedManagedServicesConfig,
-	TreeseedPlatformSurfacesConfig,
-	TreeseedProcessingConfig,
-	TreeseedPluginReference,
-	TreeseedProviderSelections,
-	TreeseedRuntimeConfig,
-	TreeseedWebCachePolicyConfig,
-	TreeseedWebSourcePageCacheConfig,
-} from '../contracts.ts';
-import { resolveTreeseedTenantRoot } from '../tenant-config.ts';
+	DeployConfig,
+	ExportConfig,
+	HubConfig,
+	LocalRuntimeConfig,
+	ManagedServiceConfig,
+	ManagedServicesConfig,
+	PlatformSurfacesConfig,
+	ProcessingConfig,
+	PluginReference,
+	ProviderSelections,
+	RuntimeConfig,
+	WebCachePolicyConfig,
+	WebSourcePageCacheConfig,
+} from '../support/contracts.ts';
+import { resolveTenantRoot } from '../configuration/tenant-config.ts';
 import {
-	TREESEED_DEFAULT_PLUGIN_REFERENCES,
-	TREESEED_DEFAULT_PROVIDER_SELECTIONS,
+	DEFAULT_PLUGIN_REFERENCES,
+	DEFAULT_PROVIDER_SELECTIONS,
 } from '../plugins/constants.ts';
-import { CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER, TREESEED_DEFAULT_LONG_LIVED_CACHE_POLICY, TREESEED_DEFAULT_SOURCE_PAGE_PURGE_PATHS, cloudflareFieldAliases, cloudflarePagesFieldAliases, cloudflareR2FieldAliases, deployConfigFieldAliases, expectString, optionalBoolean, optionalCloudflareAccountId, optionalPositiveNumber, optionalRecord, optionalString, parseHostingConfig, parsePluginReferences } from './deploy-config-field-aliases.ts';
+import { CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER, DEFAULT_LONG_LIVED_CACHE_POLICY, DEFAULT_SOURCE_PAGE_PURGE_PATHS, cloudflareFieldAliases, cloudflarePagesFieldAliases, cloudflareR2FieldAliases, deployConfigFieldAliases, expectString, optionalBoolean, optionalCloudflareAccountId, optionalPositiveNumber, optionalRecord, optionalString, parseHostingConfig, parsePluginReferences } from './deploy-config-field-aliases.ts';
 import { inferManagedRuntimeFromServices, parseConnectionsConfig, parseExportConfig, parseManagedServicesConfig, parsePlatformSurfacesConfig, parseProcessingConfig, parsePublicTreeDxFederationConfig } from './parse-public-tree-dx-federation-config.ts';
 import { normalizeLegacyHostingFromPlanes, normalizePlanesFromLegacyHosting, parseHubConfig, parseProviderSelections, parseRuntimeConfig } from './normalize-planes-from-legacy-hosting.ts';
 
-export function parseDeployConfig(raw: string): TreeseedDeployConfig {
+export function parseDeployConfig(raw: string): DeployConfig {
 	const parsed = normalizeAliasedRecord(
 		deployConfigFieldAliases,
 		(parseYaml(raw) ?? {}) as Record<string, unknown>,
@@ -88,11 +88,11 @@ export function parseDeployConfig(raw: string): TreeseedDeployConfig {
 			pages: cloudflare.pages === undefined
 				? undefined
 				: {
-					projectName: optionalString(cloudflarePages.projectName) ?? optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME),
-					previewProjectName: optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME)
+					projectName: optionalString(cloudflarePages.projectName) ?? optionalString(process.env.CLOUDFLARE_PAGES_PROJECT_NAME),
+					previewProjectName: optionalString(process.env.CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME)
 						?? optionalString(cloudflarePages.previewProjectName)
 						?? optionalString(cloudflarePages.projectName)
-						?? optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME),
+						?? optionalString(process.env.CLOUDFLARE_PAGES_PROJECT_NAME),
 					productionBranch: optionalString(cloudflarePages.productionBranch) ?? 'main',
 					stagingBranch: optionalString(cloudflarePages.stagingBranch) ?? 'staging',
 					buildCommand: optionalString(cloudflarePages.buildCommand),
@@ -126,12 +126,12 @@ export function parseDeployConfig(raw: string): TreeseedDeployConfig {
 	};
 }
 
-export function resolveTreeseedDeployConfigPath(configPath = 'treeseed.site.yaml') {
-	const tenantRoot = resolveTreeseedTenantRoot();
-	return resolveTreeseedDeployConfigPathFromRoot(tenantRoot, configPath);
+export function resolveDeployConfigPath(configPath = 'treeseed.site.yaml') {
+	const tenantRoot = resolveTenantRoot();
+	return resolveDeployConfigPathFromRoot(tenantRoot, configPath);
 }
 
-export function resolveTreeseedDeployConfigPathFromRoot(tenantRoot: string, configPath = 'treeseed.site.yaml') {
+export function resolveDeployConfigPathFromRoot(tenantRoot: string, configPath = 'treeseed.site.yaml') {
 	const candidate = resolve(tenantRoot, configPath);
 	if (!existsSync(candidate)) {
 		throw new Error(`Unable to resolve Treeseed deploy config at "${candidate}".`);
@@ -139,39 +139,39 @@ export function resolveTreeseedDeployConfigPathFromRoot(tenantRoot: string, conf
 	return candidate;
 }
 
-export function deriveCloudflareWorkerName(config: TreeseedDeployConfig) {
+export function deriveCloudflareWorkerName(config: DeployConfig) {
 	return config.cloudflare.workerName?.trim() || config.slug;
 }
 
-export function resolveLongLivedCachePolicy(configured: TreeseedWebCachePolicyConfig | undefined): Required<TreeseedWebCachePolicyConfig> {
+export function resolveLongLivedCachePolicy(configured: WebCachePolicyConfig | undefined): Required<WebCachePolicyConfig> {
 	return {
-		browserTtlSeconds: configured?.browserTtlSeconds ?? TREESEED_DEFAULT_LONG_LIVED_CACHE_POLICY.browserTtlSeconds,
-		edgeTtlSeconds: configured?.edgeTtlSeconds ?? TREESEED_DEFAULT_LONG_LIVED_CACHE_POLICY.edgeTtlSeconds,
+		browserTtlSeconds: configured?.browserTtlSeconds ?? DEFAULT_LONG_LIVED_CACHE_POLICY.browserTtlSeconds,
+		edgeTtlSeconds: configured?.edgeTtlSeconds ?? DEFAULT_LONG_LIVED_CACHE_POLICY.edgeTtlSeconds,
 		staleWhileRevalidateSeconds:
-			configured?.staleWhileRevalidateSeconds ?? TREESEED_DEFAULT_LONG_LIVED_CACHE_POLICY.staleWhileRevalidateSeconds,
-		staleIfErrorSeconds: configured?.staleIfErrorSeconds ?? TREESEED_DEFAULT_LONG_LIVED_CACHE_POLICY.staleIfErrorSeconds,
+			configured?.staleWhileRevalidateSeconds ?? DEFAULT_LONG_LIVED_CACHE_POLICY.staleWhileRevalidateSeconds,
+		staleIfErrorSeconds: configured?.staleIfErrorSeconds ?? DEFAULT_LONG_LIVED_CACHE_POLICY.staleIfErrorSeconds,
 	};
 }
 
-export function resolveTreeseedWebCachePolicy(config: TreeseedDeployConfig) {
+export function resolveWebCachePolicy(config: DeployConfig) {
 	const cache = config.surfaces?.web?.cache ?? {};
-	const sourcePages = cache.sourcePages as TreeseedWebSourcePageCacheConfig | undefined;
+	const sourcePages = cache.sourcePages as WebSourcePageCacheConfig | undefined;
 	return {
 		sourcePages: {
 			...resolveLongLivedCachePolicy(sourcePages),
-			paths: [...new Set(sourcePages?.paths ?? TREESEED_DEFAULT_SOURCE_PAGE_PURGE_PATHS)],
+			paths: [...new Set(sourcePages?.paths ?? DEFAULT_SOURCE_PAGE_PURGE_PATHS)],
 		},
 		contentPages: resolveLongLivedCachePolicy(cache.contentPages),
 		r2PublishedObjects: resolveLongLivedCachePolicy(cache.r2PublishedObjects),
 	};
 }
 
-export function loadTreeseedDeployConfig(configPath = 'treeseed.site.yaml'): TreeseedDeployConfig {
-	const resolvedConfigPath = resolveTreeseedDeployConfigPath(configPath);
-	return loadTreeseedDeployConfigFromPath(resolvedConfigPath);
+export function loadDeployConfig(configPath = 'treeseed.site.yaml'): DeployConfig {
+	const resolvedConfigPath = resolveDeployConfigPath(configPath);
+	return loadDeployConfigFromPath(resolvedConfigPath);
 }
 
-export function loadTreeseedDeployConfigFromPath(resolvedConfigPath: string): TreeseedDeployConfig {
+export function loadDeployConfigFromPath(resolvedConfigPath: string): DeployConfig {
 	const tenantRoot = dirname(resolvedConfigPath);
 	const parsed = parseDeployConfig(readFileSync(resolvedConfigPath, 'utf8'));
 	const projectRoot = parsed.projectRoot ? resolve(tenantRoot, parsed.projectRoot) : tenantRoot;

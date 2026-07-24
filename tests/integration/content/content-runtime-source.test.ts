@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 import {
 	contentRuntimeMetadataFromTarget,
-	inspectTreeseedContentStructure,
-	resolveTreeseedContentRuntimeSource,
-} from '../../../src/platform/content-runtime-source.ts';
+	inspectContentStructure,
+	resolveContentRuntimeSource,
+} from '../../../src/platform/content/content-runtime-source.ts';
 import type { SeedProjectArchitecture } from '../../../src/seeds/types.ts';
 
 const baseArchitecture: SeedProjectArchitecture = {
@@ -26,7 +26,7 @@ const baseArchitecture: SeedProjectArchitecture = {
 
 describe('project content runtime source planning', () => {
 	it('prefers local content when preview/edit requested and the path is present', () => {
-		const resolution = resolveTreeseedContentRuntimeSource({
+		const resolution = resolveContentRuntimeSource({
 			architecture: baseArchitecture,
 			local: {
 				requestedLocalContentMode: 'preview',
@@ -48,7 +48,7 @@ describe('project content runtime source planning', () => {
 	});
 
 	it('selects TreeDX snapshots for TreeDX-backed runtime content', () => {
-		const resolution = resolveTreeseedContentRuntimeSource({
+		const resolution = resolveContentRuntimeSource({
 			architecture: {
 				...baseArchitecture,
 				contentRuntimeSource: 'treedx_snapshot',
@@ -66,7 +66,7 @@ describe('project content runtime source planning', () => {
 	});
 
 	it('selects R2 published manifests and preview overlays for hosted runtimes', () => {
-		const published = resolveTreeseedContentRuntimeSource({
+		const published = resolveContentRuntimeSource({
 			architecture: baseArchitecture,
 			r2: { revision: 'rev-1' },
 		});
@@ -78,7 +78,7 @@ describe('project content runtime source planning', () => {
 			revision: 'rev-1',
 		});
 
-		const preview = resolveTreeseedContentRuntimeSource({
+		const preview = resolveContentRuntimeSource({
 			architecture: {
 				...baseArchitecture,
 				contentRuntimeSource: 'r2_preview_overlay',
@@ -104,13 +104,13 @@ describe('project content runtime source planning', () => {
 		mkdirSync(join(root, 'docs', 'src', 'content'), { recursive: true });
 		writeFileSync(join(root, 'docs', 'src', 'content', 'intro.mdx'), '# Intro\n', 'utf8');
 
-		expect(inspectTreeseedContentStructure({
+		expect(inspectContentStructure({
 			projectRoot: root,
 			architecture: baseArchitecture,
 		})).toMatchObject({ status: 'ready', relativePath: 'docs/src/content' });
 
 		const missingSiteRoot = mkdtempSync(join(tmpdir(), 'treeseed-content-runtime-missing-'));
-		expect(inspectTreeseedContentStructure({
+		expect(inspectContentStructure({
 			projectRoot: missingSiteRoot,
 			architecture: baseArchitecture,
 		})).toMatchObject({ status: 'site_not_prepared', code: 'site_not_prepared' });
@@ -118,7 +118,7 @@ describe('project content runtime source planning', () => {
 		const unsupportedRoot = mkdtempSync(join(tmpdir(), 'treeseed-content-runtime-unsupported-'));
 		mkdirSync(join(unsupportedRoot, 'docs', 'src', 'content'), { recursive: true });
 		writeFileSync(join(unsupportedRoot, 'docs', 'src', 'content', 'data.json'), '{}\n', 'utf8');
-		expect(inspectTreeseedContentStructure({
+		expect(inspectContentStructure({
 			projectRoot: unsupportedRoot,
 			architecture: baseArchitecture,
 		})).toMatchObject({ status: 'unsupported_structure', code: 'unsupported_content_structure' });

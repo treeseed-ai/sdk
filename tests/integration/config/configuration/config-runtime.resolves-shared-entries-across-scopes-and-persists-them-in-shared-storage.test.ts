@@ -1,0 +1,310 @@
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+
+import { tmpdir } from 'node:os';
+
+import { dirname, join, resolve } from 'node:path';
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import {
+	collectConfigContext,
+	createDefaultMachineConfig,
+	ensureRailwayIgnoreEntries,
+	ensureSecretSessionForConfig,
+	getMachineConfigPaths,
+	inspectKeyAgentStatus,
+	loadMachineConfig,
+	applyEnvironmentToProcess,
+	collectEnvironmentContext,
+	collectPrintEnvReport,
+	resolveLaunchEnvironment,
+	resolveMachineEnvironmentValues,
+	applyConfigValues,
+	setMachineEnvironmentValue,
+	syncRailwayEnvironment,
+	MACHINE_KEY_PASSPHRASE_ENV,
+	unlockSecretSessionFromEnv,
+	validateCommandEnvironment,
+	warnDeprecatedLocalEnvFiles,
+	writeMachineConfig,
+} from '../../../../src/operations/services/configuration/config-runtime.ts';
+
+const railwayRegistryFixtureEntries = `
+  TREESEED_GITHUB_TOKEN:
+    label: GitHub token
+    group: github
+    description: GitHub token.
+    howToGet: Set a GitHub token.
+    sensitivity: secret
+    targets:
+      - github-secret
+    scopes:
+      - staging
+      - prod
+    storage: shared
+    requirement: conditional
+    purposes:
+      - deploy
+      - config
+    validation:
+      kind: nonempty
+      minLength: 8
+    sourcePriority:
+      - machine-config
+      - process-env
+  TREESEED_RAILWAY_API_TOKEN:
+    label: Railway API token
+    group: auth
+    description: Railway API token.
+    howToGet: Set a Railway token.
+    sensitivity: secret
+    targets:
+      - github-secret
+    scopes:
+      - staging
+      - prod
+    storage: shared
+    requirement: conditional
+    purposes:
+      - deploy
+      - config
+    validation:
+      kind: nonempty
+      minLength: 8
+    sourcePriority:
+      - machine-config
+      - process-env
+    relevanceRef: railwayManagedEnabled
+    requiredWhenRef: railwayManagedEnabled
+  TREESEED_RAILWAY_PROJECT_ID:
+    label: Railway project ID
+    group: hosting
+    visibility: system
+    description: Railway project identifier.
+    howToGet: Set the Railway project ID.
+    sensitivity: plain
+    targets:
+      - github-variable
+    scopes:
+      - staging
+      - prod
+    storage: scoped
+    requirement: optional
+    purposes:
+      - deploy
+      - config
+    validation:
+      kind: nonempty
+    sourcePriority:
+      - machine-config
+      - process-env
+  TREESEED_RAILWAY_ENVIRONMENT_ID:
+    label: Railway environment ID
+    group: hosting
+    visibility: system
+    description: Railway environment identifier.
+    howToGet: Set the Railway environment ID.
+    sensitivity: plain
+    targets:
+      - github-variable
+    scopes:
+      - staging
+      - prod
+    storage: scoped
+    requirement: optional
+    purposes:
+      - deploy
+      - config
+    validation:
+      kind: nonempty
+    sourcePriority:
+      - machine-config
+      - process-env
+`;
+
+const codexRegistryFixtureEntries = `
+  TREESEED_CODEX_AUTH_JSON_B64:
+    label: Codex auth JSON bootstrap secret
+    group: auth
+    description: Base64-encoded Codex login auth.json.
+    howToGet: Store a base64-encoded Codex auth.json.
+    sensitivity: secret
+    targets:
+      - railway-secret
+      - github-secret
+    scopes:
+      - staging
+      - prod
+    storage: scoped
+    requirement: optional
+    purposes:
+      - agent-execution
+      - bootstrap
+      - config
+    validation:
+      kind: nonempty
+    relevanceRef: codexExecutionSelected
+  TREESEED_CODEX_APPROVAL_POLICY:
+    label: Codex approval policy
+    group: auth
+    description: Codex approval policy.
+    howToGet: Set the approval policy.
+    sensitivity: plain
+    targets:
+      - railway-var
+      - github-variable
+    scopes:
+      - staging
+      - prod
+    storage: scoped
+    requirement: optional
+    purposes:
+      - agent-execution
+      - config
+    validation:
+      kind: enum
+      values:
+        - never
+        - on_request
+        - always
+    relevanceRef: codexExecutionSelected
+  TREESEED_CODEX_AUTH_OVERWRITE:
+    label: Overwrite Codex auth file
+    group: auth
+    description: Codex auth overwrite flag.
+    howToGet: Set only during auth rotation.
+    sensitivity: plain
+    targets:
+      - railway-var
+      - local-runtime
+    scopes:
+      - staging
+      - prod
+    storage: scoped
+    requirement: optional
+    purposes:
+      - agent-execution
+      - bootstrap
+      - config
+    validation:
+      kind: boolean
+    relevanceRef: codexExecutionSelected
+`;
+
+function createTenantFixture(extraEnvEntries = '') {
+	const tenantRoot = mkdtempSync(join(tmpdir(), 'treeseed-config-runtime-'));
+	mkdirSync(resolve(tenantRoot, 'src'), { recursive: true });
+	writeFileSync(resolve(tenantRoot, 'src', 'manifest.yaml'), 'id: test-site\nsiteConfigPath: ./src/config.yaml\ncontent:\n  pages: ./src/content/pages\n');
+	writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: Test Site
+slug: test-site
+siteUrl: https://market.example.com
+contactEmail: hello@example.com
+cloudflare:
+  accountId: account-123
+services:
+  api:
+    provider: railway
+    enabled: true
+`);
+	writeFileSync(resolve(tenantRoot, 'src', 'env.yaml'), `entries:
+  SHARED_VALUE:
+    label: Shared value
+    group: auth
+    description: Shared test value.
+    howToGet: Set any value.
+    sensitivity: plain
+    targets:
+      - local-runtime
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: shared
+    requirement: optional
+    purposes:
+      - config
+    validation:
+      kind: nonempty
+${extraEnvEntries}
+`);
+	return tenantRoot;
+}
+
+function unlockSecrets(tenantRoot: string) {
+	vi.stubEnv(MACHINE_KEY_PASSPHRASE_ENV, 'test-passphrase');
+	unlockSecretSessionFromEnv(tenantRoot);
+}
+describe('config runtime shared environment values', () => {
+beforeEach(() => {
+		vi.stubEnv('HOME', mkdtempSync(join(tmpdir(), 'treeseed-config-home-')));
+	});
+
+afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+it('resolves shared entries across scopes and persists them in shared storage', () => {
+		const tenantRoot = createTenantFixture(railwayRegistryFixtureEntries);
+		const config = createDefaultMachineConfig({
+			tenantRoot,
+			deployConfig: {
+				name: 'Test Site',
+				slug: 'test-site',
+				siteUrl: 'https://market.example.com',
+				contactEmail: 'hello@example.com',
+				cloudflare: { accountId: 'account-123' },
+				services: { api: { provider: 'railway', enabled: true } },
+			} as any,
+			tenantConfig: { id: 'test-site' } as any,
+		});
+		config.environments.local.values.SHARED_VALUE = 'legacy-local';
+		writeMachineConfig(tenantRoot, config);
+		unlockSecrets(tenantRoot);
+
+		expect(resolveMachineEnvironmentValues(tenantRoot, 'prod').SHARED_VALUE).toBe('legacy-local');
+
+		setMachineEnvironmentValue(tenantRoot, 'staging', {
+			id: 'SHARED_VALUE',
+			sensitivity: 'plain',
+			storage: 'shared',
+		} as any, 'shared-value');
+
+		expect(resolveMachineEnvironmentValues(tenantRoot, 'local').SHARED_VALUE).toBe('shared-value');
+		expect(resolveMachineEnvironmentValues(tenantRoot, 'prod').SHARED_VALUE).toBe('shared-value');
+	});
+
+it('redacts raw secret values from print-env JSON unless secrets are revealed', () => {
+		vi.stubEnv('RAILWAY_API_TOKEN', '');
+		const tenantRoot = createTenantFixture(railwayRegistryFixtureEntries);
+		const config = createDefaultMachineConfig({
+			tenantRoot,
+			deployConfig: {
+				name: 'Test Site',
+				slug: 'test-site',
+				siteUrl: 'https://market.example.com',
+				contactEmail: 'hello@example.com',
+				cloudflare: { accountId: 'account-123' },
+				services: { api: { provider: 'railway', enabled: true } },
+			} as any,
+			tenantConfig: { id: 'test-site' } as any,
+		});
+		writeMachineConfig(tenantRoot, config);
+		unlockSecrets(tenantRoot);
+
+		setMachineEnvironmentValue(tenantRoot, 'staging', {
+			id: 'TREESEED_RAILWAY_API_TOKEN',
+			sensitivity: 'secret',
+			storage: 'shared',
+		} as any, 'railway-secret-token');
+
+		const redacted = collectPrintEnvReport({ tenantRoot, scope: 'staging', env: {}, revealSecrets: false });
+		const redactedEntry = redacted.entries.find((entry) => entry.id === 'TREESEED_RAILWAY_API_TOKEN');
+		expect(redactedEntry?.value).toBe('');
+		expect(redactedEntry?.displayValue).not.toContain('railway-secret-token');
+
+		const revealed = collectPrintEnvReport({ tenantRoot, scope: 'staging', env: {}, revealSecrets: true });
+		const revealedEntry = revealed.entries.find((entry) => entry.id === 'TREESEED_RAILWAY_API_TOKEN');
+		expect(revealedEntry?.value).toBe('railway-secret-token');
+		expect(revealedEntry?.displayValue).toBe('railway-secret-token');
+	});
+});

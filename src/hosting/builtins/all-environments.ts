@@ -1,34 +1,34 @@
 import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
-import { resolveTreeseedLaunchEnvironment } from '../../operations/services/config-runtime.ts';
-import { cloudflareApiRequest, resolveCloudflareZoneIdForHost, resolveConfiguredCloudflareAccountId, runWrangler } from '../../operations/services/deploy.ts';
+import { resolveLaunchEnvironment } from '../../operations/services/configuration/config-runtime.ts';
+import { cloudflareApiRequest, resolveCloudflareZoneIdForHost, resolveConfiguredCloudflareAccountId, runWrangler } from '../../operations/services/hosting/deployment/deploy.ts';
 import type {
-	TreeseedApplicationHostingProfile,
-	TreeseedHostAdapter,
-	TreeseedHostAdapterOperationInput,
-	TreeseedHostAdapterOperationResult,
-	TreeseedHostCapability,
-	TreeseedHostingEnvironment,
-	TreeseedHostingStatus,
-	TreeseedHostingUnit,
-	TreeseedHostingUnitPlan,
-	TreeseedHostingVerification,
-	TreeseedServicePlacement,
-	TreeseedServiceTypeAdapter,
+	ApplicationHostingProfile,
+	HostAdapter,
+	HostAdapterOperationInput,
+	HostAdapterOperationResult,
+	HostCapability,
+	HostingEnvironment,
+	HostingStatus,
+	HostingUnit,
+	HostingUnitPlan,
+	HostingVerification,
+	ServicePlacement,
+	ServiceTypeAdapter,
 } from '../contracts.ts';
 import { serviceType } from './create-cloudflare-host-adapter.ts';
 import { sanitizedUnitConfig } from './create-default-service-type-adapters.ts';
 
-export const ALL_ENVIRONMENTS: TreeseedHostingEnvironment[] = ['local', 'staging', 'prod'];
+export const ALL_ENVIRONMENTS: HostingEnvironment[] = ['local', 'staging', 'prod'];
 
-export const PROVIDER_ENVIRONMENTS: TreeseedHostingEnvironment[] = ['staging', 'prod'];
+export const PROVIDER_ENVIRONMENTS: HostingEnvironment[] = ['staging', 'prod'];
 
-export function capabilities(ids: TreeseedHostCapability[], environments: TreeseedHostingEnvironment[] = ALL_ENVIRONMENTS) {
+export function capabilities(ids: HostCapability[], environments: HostingEnvironment[] = ALL_ENVIRONMENTS) {
 	return ids.map((id) => ({ id, environments }));
 }
 
-export function reconcilerOwnedStatus(input: TreeseedHostAdapterOperationInput): TreeseedHostAdapterOperationResult {
+export function reconcilerOwnedStatus(input: HostAdapterOperationInput): HostAdapterOperationResult {
 	return {
 		status: 'blocked',
 		locators: {
@@ -45,7 +45,7 @@ export function reconcilerOwnedStatus(input: TreeseedHostAdapterOperationInput):
 	};
 }
 
-export function reconcilerOwnedPlan(input: TreeseedHostAdapterOperationInput & { observed: TreeseedHostAdapterOperationResult }): TreeseedHostingUnitPlan {
+export function reconcilerOwnedPlan(input: HostAdapterOperationInput & { observed: HostAdapterOperationResult }): HostingUnitPlan {
 	return {
 		unitId: input.unit.id,
 		action: 'blocked',
@@ -56,12 +56,12 @@ export function reconcilerOwnedPlan(input: TreeseedHostAdapterOperationInput & {
 	};
 }
 
-export function defaultVerify(input: TreeseedHostAdapterOperationInput & { observed: TreeseedHostAdapterOperationResult }): TreeseedHostingVerification {
+export function defaultVerify(input: HostAdapterOperationInput & { observed: HostAdapterOperationResult }): HostingVerification {
 	const hostCapabilities = new Set(input.unit.host.capabilities
 		.filter((capability) => capability.environments.includes(input.environment))
 		.map((capability) => capability.id));
 	const missing = input.unit.requiredCapabilities.filter((capability) => !hostCapabilities.has(capability));
-	const checks: TreeseedHostingVerification['checks'] = [
+	const checks: HostingVerification['checks'] = [
 		{
 			key: 'host-capabilities',
 			label: 'Host supports required capabilities',
@@ -110,9 +110,9 @@ export function defaultVerify(input: TreeseedHostAdapterOperationInput & { obser
 export function createReconcilerOwnedHostAdapter(
 	id: string,
 	label: string,
-	capabilityIds: TreeseedHostCapability[],
-	environments: TreeseedHostingEnvironment[] = ALL_ENVIRONMENTS,
-): TreeseedHostAdapter {
+	capabilityIds: HostCapability[],
+	environments: HostingEnvironment[] = ALL_ENVIRONMENTS,
+): HostAdapter {
 	return {
 		id,
 		label,
@@ -145,47 +145,47 @@ export function createReconcilerOwnedHostAdapter(
 	};
 }
 
-export function unitConfig(input: TreeseedHostAdapterOperationInput): Record<string, any> {
+export function unitConfig(input: HostAdapterOperationInput): Record<string, any> {
 	return input.unit.config && typeof input.unit.config === 'object'
 		? input.unit.config as Record<string, any>
 		: {};
 }
 
-export function cloudflarePagesConfig(input: TreeseedHostAdapterOperationInput): Record<string, any> {
+export function cloudflarePagesConfig(input: HostAdapterOperationInput): Record<string, any> {
 	return unitConfig(input).cloudflare?.pages && typeof unitConfig(input).cloudflare.pages === 'object'
 		? unitConfig(input).cloudflare.pages as Record<string, any>
 		: {};
 }
 
-export function cloudflarePagesProjectName(input: TreeseedHostAdapterOperationInput) {
+export function cloudflarePagesProjectName(input: HostAdapterOperationInput) {
 	const pages = cloudflarePagesConfig(input);
 	return typeof pages.projectName === 'string' && pages.projectName.trim()
 		? pages.projectName.trim()
 		: null;
 }
 
-export function cloudflarePagesBranchName(input: TreeseedHostAdapterOperationInput) {
+export function cloudflarePagesBranchName(input: HostAdapterOperationInput) {
 	const pages = cloudflarePagesConfig(input);
 	const key = input.environment === 'prod' ? 'productionBranch' : 'stagingBranch';
 	const fallback = input.environment === 'prod' ? 'main' : 'staging';
 	return typeof pages[key] === 'string' && pages[key].trim() ? pages[key].trim() : fallback;
 }
 
-export function cloudflarePagesBuildOutputDir(input: TreeseedHostAdapterOperationInput) {
+export function cloudflarePagesBuildOutputDir(input: HostAdapterOperationInput) {
 	const pages = cloudflarePagesConfig(input);
 	return typeof pages.buildOutputDir === 'string' && pages.buildOutputDir.trim()
 		? pages.buildOutputDir.trim()
 		: 'dist';
 }
 
-export function cloudflarePagesBuildCommand(input: TreeseedHostAdapterOperationInput) {
+export function cloudflarePagesBuildCommand(input: HostAdapterOperationInput) {
 	const pages = cloudflarePagesConfig(input);
 	return typeof pages.buildCommand === 'string' && pages.buildCommand.trim()
 		? pages.buildCommand.trim()
 		: null;
 }
 
-export function cloudflarePagesConfigRoot(input: TreeseedHostAdapterOperationInput): string {
+export function cloudflarePagesConfigRoot(input: HostAdapterOperationInput): string {
 	let current = resolve(input.graph.tenantRoot);
 	while (true) {
 		if (existsSync(resolve(current, '.treeseed', 'config', 'machine.yaml'))) {
@@ -199,11 +199,11 @@ export function cloudflarePagesConfigRoot(input: TreeseedHostAdapterOperationInp
 	}
 }
 
-export function cloudflarePagesEnv(input: TreeseedHostAdapterOperationInput): Record<string, string> {
+export function cloudflarePagesEnv(input: HostAdapterOperationInput): Record<string, string> {
 	const configRoot = cloudflarePagesConfigRoot(input);
 	const resolvedValues = input.environment === 'local'
 		? {}
-		: resolveTreeseedLaunchEnvironment({
+		: resolveLaunchEnvironment({
 			tenantRoot: configRoot,
 			scope: input.environment,
 		});
@@ -223,14 +223,14 @@ export function cloudflarePagesEnv(input: TreeseedHostAdapterOperationInput): Re
 	};
 }
 
-export function cloudflarePagesDomain(input: TreeseedHostAdapterOperationInput) {
+export function cloudflarePagesDomain(input: HostAdapterOperationInput) {
 	const config = unitConfig(input);
 	return typeof config.domain === 'string' && config.domain.trim()
 		? config.domain.trim()
 		: null;
 }
 
-export function cloudflarePagesDeploymentUrl(projectName: string, branchName: string, environment: TreeseedHostingEnvironment) {
+export function cloudflarePagesDeploymentUrl(projectName: string, branchName: string, environment: HostingEnvironment) {
 	return environment === 'prod'
 		? `https://${projectName}.pages.dev`
 		: `https://${branchName}.${projectName}.pages.dev`;

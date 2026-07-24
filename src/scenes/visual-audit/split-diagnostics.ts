@@ -1,41 +1,41 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { readTreeseedDevInstance } from '../../local-dev/managed-dev.ts';
-import { resolveTreeseedSceneBaseUrl } from '../base-url.ts';
-import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../diagnostics.ts';
-import { resolveTreeseedSceneDeviceProfile } from '../devices.ts';
-import { prepareTreeseedSceneEnvironment } from '../environment.ts';
-import { validateTreeseedScene } from '../planner.ts';
-import { writeTreeseedSceneVisualAuditReport } from '../visual-audit-report.ts';
+import { readDevInstance } from '../../local-dev/managed-dev.ts';
+import { resolveSceneBaseUrl } from '../support/execution/base-url.ts';
+import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
+import { resolveSceneDeviceProfile } from '../runtime/devices.ts';
+import { prepareSceneEnvironment } from '../configuration/environment.ts';
+import { validateScene } from '../support/execution/planner.ts';
+import { writeSceneVisualAuditReport } from '../support/visual-audit/visual-audit-report.ts';
 import {
-	buildTreeseedSceneVisualAuditReview,
-	isTreeseedSceneVisualAuditIgnoredClientError,
-	writeTreeseedSceneVisualAuditReview,
-} from '../visual-audit-review.ts';
+	buildSceneVisualAuditReview,
+	isSceneVisualAuditIgnoredClientError,
+	writeSceneVisualAuditReview,
+} from '../support/visual-audit/visual-audit-review.ts';
 import {
-	discoverTreeseedSceneVisualAuditRoutes,
-	treeseedSceneVisualAuditRouteFilename,
-} from '../visual-audit-routes.ts';
+	discoverSceneVisualAuditRoutes,
+	SceneVisualAuditRouteFilename,
+} from '../support/visual-audit/visual-audit-routes.ts';
 import {
-	ensureTreeseedSceneVisualAuditRoleFixtures,
-	signInTreeseedSceneVisualAuditRole,
-	validateTreeseedSceneVisualAuditRoles,
-} from '../visual-audit-fixtures.ts';
+	ensureSceneVisualAuditRoleFixtures,
+	signInSceneVisualAuditRole,
+	validateSceneVisualAuditRoles,
+} from '../testing/visual-audit-fixtures.ts';
 import type {
-	TreeseedSceneDeviceProfile,
-	TreeseedSceneVisualAuditClientError,
-	TreeseedSceneDiagnostic,
-	TreeseedSceneVisualAuditCapture,
-	TreeseedSceneVisualAuditManifest,
-	TreeseedSceneVisualAuditOptions,
-	TreeseedSceneVisualAuditPaths,
-	TreeseedSceneVisualAuditReport,
-	TreeseedSceneVisualAuditRole,
+	SceneDeviceProfile,
+	SceneVisualAuditClientError,
+	SceneDiagnostic,
+	SceneVisualAuditCapture,
+	SceneVisualAuditManifest,
+	SceneVisualAuditOptions,
+	SceneVisualAuditPaths,
+	SceneVisualAuditReport,
+	SceneVisualAuditRole,
 } from '../types.ts';
 
 
-export function splitDiagnostics(diagnostics: TreeseedSceneDiagnostic[], severity: 'error' | 'warning') {
+export function splitDiagnostics(diagnostics: SceneDiagnostic[], severity: 'error' | 'warning') {
 	return diagnostics.filter((entry) => entry.severity === severity);
 }
 
@@ -51,7 +51,7 @@ export function pathRootFolder(pathRoot: string) {
 	return pathRoot === '/' ? 'root' : pathRoot.replace(/^\/+|\/+$/gu, '').replace(/[^a-z0-9]+/giu, '-').toLowerCase() || 'root';
 }
 
-export function pathsFor(input: { projectRoot: string; sceneId: string; timestamp: string; auditId: string }): TreeseedSceneVisualAuditPaths {
+export function pathsFor(input: { projectRoot: string; sceneId: string; timestamp: string; auditId: string }): SceneVisualAuditPaths {
 	const auditRoot = join(input.projectRoot, '.treeseed', 'scenes', 'visual-audits', input.sceneId, `${input.timestamp}-${input.auditId}`);
 	return {
 		auditRoot,
@@ -81,7 +81,7 @@ export function httpHealthBaseUrl(instance: unknown) {
 
 export function resolveVisualAuditApiBaseUrl(input: { projectRoot: string; environment: string; webBaseUrl: string }) {
 	if (input.environment !== 'local') return input.webBaseUrl;
-	const apiInstance = readTreeseedDevInstance({ cwd: input.projectRoot, surface: 'api' });
+	const apiInstance = readDevInstance({ cwd: input.projectRoot, surface: 'api' });
 	const managedApi = httpHealthBaseUrl(apiInstance);
 	if (managedApi) return managedApi;
 	const envApi = process.env.TREESEED_API_BASE_URL?.trim() || process.env.TREESEED_MARKET_API_BASE_URL?.trim();
@@ -90,7 +90,7 @@ export function resolveVisualAuditApiBaseUrl(input: { projectRoot: string; envir
 }
 
 export function screenshotPath(input: {
-	paths: TreeseedSceneVisualAuditPaths;
+	paths: SceneVisualAuditPaths;
 	role: string;
 	device: string;
 	pathRoot: string;
@@ -98,7 +98,7 @@ export function screenshotPath(input: {
 	fullPage?: boolean;
 }) {
 	const root = input.fullPage ? join(input.paths.auditRoot, 'full-page') : input.paths.screenshotsRoot;
-	return join(root, input.role, input.device, pathRootFolder(input.pathRoot), treeseedSceneVisualAuditRouteFilename(input.path));
+	return join(root, input.role, input.device, pathRootFolder(input.pathRoot), SceneVisualAuditRouteFilename(input.path));
 }
 
 export async function loadPlaywright() {
@@ -136,13 +136,13 @@ export async function collectDomSummary(page: any) {
 			const className = typeof element.className === 'string' ? element.className.split(/\s+/u).filter(Boolean).slice(0, 3).join('.') : '';
 			return className ? `${element.tagName.toLowerCase()}.${className}` : element.tagName.toLowerCase();
 		};
-		const hasTreeSeedClass = (element: Element) => typeof element.className === 'string' && /\b(ts-|astro-|starlight)/u.test(element.className);
+		const hasClass = (element: Element) => typeof element.className === 'string' && /\b(ts-|astro-|starlight)/u.test(element.className);
 		const links = [...document.querySelectorAll('a')].filter(visible);
 		const buttons = [...document.querySelectorAll('button,[role="button"],input[type="button"],input[type="submit"]')].filter(visible);
 		const inputs = [...document.querySelectorAll('input,textarea,select')].filter(visible);
 		const forms = [...document.querySelectorAll('form')].filter(visible);
 		const defaultStyledLinks = links
-			.filter((entry) => !hasTreeSeedClass(entry) && !entry.closest('.prose,[data-prose],article'))
+			.filter((entry) => !hasClass(entry) && !entry.closest('.prose,[data-prose],article'))
 			.map((entry) => {
 				const style = window.getComputedStyle(entry);
 				const color = style.color;
@@ -154,7 +154,7 @@ export async function collectDomSummary(page: any) {
 			.slice(0, 12)
 			.map(({ entry }) => ({ text: text(entry.textContent).slice(0, 80), href: entry.getAttribute('href'), selectorHint: selectorHint(entry) }));
 		const defaultStyledButtons = buttons
-			.filter((entry) => !hasTreeSeedClass(entry))
+			.filter((entry) => !hasClass(entry))
 			.slice(0, 12)
 			.map((entry) => ({ text: text((entry as HTMLInputElement).value || entry.textContent).slice(0, 80), selectorHint: selectorHint(entry) }));
 		const visibleText = text(document.body?.innerText ?? '');
@@ -198,7 +198,7 @@ export async function collectDomSummary(page: any) {
 export function hasTransientVisualAuditServerError(input: {
 	httpStatus: number | null;
 	dom: Awaited<ReturnType<typeof collectDomSummary>> | null;
-	clientErrors: TreeseedSceneVisualAuditClientError[];
+	clientErrors: SceneVisualAuditClientError[];
 }) {
 	if (input.httpStatus && input.httpStatus >= 500) return true;
 	const visibleErrors = input.dom?.visibleErrorTexts?.join(' ') ?? '';

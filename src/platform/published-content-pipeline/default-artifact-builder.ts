@@ -4,11 +4,11 @@ import { basename, extname, join, relative, resolve } from 'node:path';
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import { toString } from 'mdast-util-to-string';
-import { parseFrontmatterDocument } from '../../frontmatter.ts';
-import type { TreeseedDeployConfig, TreeseedTenantConfig } from '../contracts.ts';
-import { buildTenantBookRuntime } from '../books-data.ts';
-import { exportBookLibrary, exportBookPackage } from '../book-export.ts';
-import { COMMERCE_OFFER_MODES, type CommerceOfferMode } from '../../sdk-types.ts';
+import { parseFrontmatterDocument } from '../../content/frontmatter.ts';
+import type { DeployConfig, TenantConfig } from '../support/contracts.ts';
+import { buildTenantBookRuntime } from '../content/books-data.ts';
+import { exportBookLibrary, exportBookPackage } from '../content/book-export.ts';
+import { COMMERCE_OFFER_MODES, type CommerceOfferMode } from '../../entrypoints/models/sdk-types.ts';
 import {
 	PUBLISHED_CONTENT_MANIFEST_SCHEMA_VERSION,
 	resolvePublishedContentPreviewTtlHours,
@@ -23,8 +23,8 @@ import {
 	type PublishedRuntimePointers,
 	type PublishedManifestTombstone,
 	type PublishedContentVisibility,
-} from '../published-content.ts';
-import type { CatalogIndexEntry } from '../published-content.ts';
+} from '../packages/published-content.ts';
+import type { CatalogIndexEntry } from '../packages/published-content.ts';
 import { ArtifactBuilder, CollectionIndexBuilder, ContentSource, EntryRenderer, PublishedContentPipeline, PublishedContentPipelineContext, RuntimeBundleBuilder, artifactSignature, canonicalArtifactKey, canonicalEntryPath, entrySignature, objectInputForFile, resolveCommerceOfferMode, stableHash } from './resolve-commerce-offer-mode.ts';
 import { DefaultCollectionIndexBuilder, DefaultEntryRenderer, DefaultRuntimeBundleBuilder, FilesystemContentSource, collectGeneratedArtifacts } from './list-markdown-files.ts';
 
@@ -177,7 +177,7 @@ export function changedRuntimePointers(
 	return changed;
 }
 
-export function createFilesystemContentSource(tenantConfig: TreeseedTenantConfig): ContentSource {
+export function createFilesystemContentSource(tenantConfig: TenantConfig): ContentSource {
 	return new FilesystemContentSource(tenantConfig);
 }
 

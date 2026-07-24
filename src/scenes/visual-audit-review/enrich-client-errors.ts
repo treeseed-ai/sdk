@@ -1,28 +1,28 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { relative } from 'node:path';
 import type {
-	TreeseedSceneDiagnostic,
-	TreeseedSceneVisualAuditCapture,
-	TreeseedSceneVisualAuditClientError,
-	TreeseedSceneVisualAuditClientErrorIncident,
-	TreeseedSceneVisualAuditFinding,
-	TreeseedSceneVisualAuditFindingOwner,
-	TreeseedSceneVisualAuditFindingSeverity,
-	TreeseedSceneVisualAuditManifest,
-	TreeseedSceneVisualAuditPaths,
-	TreeseedSceneVisualAuditReview,
-	TreeseedSceneVisualAuditReviewCategory,
-	TreeseedSceneVisualAuditReviewDetail,
-	TreeseedSceneVisualAuditRole,
-	TreeseedSceneVisualAuditRootCause,
+	SceneDiagnostic,
+	SceneVisualAuditCapture,
+	SceneVisualAuditClientError,
+	SceneVisualAuditClientErrorIncident,
+	SceneVisualAuditFinding,
+	SceneVisualAuditFindingOwner,
+	SceneVisualAuditFindingSeverity,
+	SceneVisualAuditManifest,
+	SceneVisualAuditPaths,
+	SceneVisualAuditReview,
+	SceneVisualAuditReviewCategory,
+	SceneVisualAuditReviewDetail,
+	SceneVisualAuditRole,
+	SceneVisualAuditRootCause,
 } from '../types.ts';
-import { writeTreeseedSceneVisualAuditContactSheets } from '../visual-audit-contact-sheets.ts';
-import { CATEGORIES, EnrichedClientError, OWNERS, SEVERITIES, captureFindings, countMap, isTreeseedSceneVisualAuditIgnoredClientError, md, priorityBand, priorityScore, recommendedAction, rel } from './severities.ts';
+import { writeSceneVisualAuditContactSheets } from '../support/visual-audit/visual-audit-contact-sheets.ts';
+import { CATEGORIES, EnrichedClientError, OWNERS, SEVERITIES, captureFindings, countMap, isSceneVisualAuditIgnoredClientError, md, priorityBand, priorityScore, recommendedAction, rel } from './severities.ts';
 import { architectureFindings, buildClientErrorIncidents, buildRootCauses, expectedFindingNoise, filteredFindings, incidentFindings } from './incident-title.ts';
 
-export function enrichClientErrors(captures: TreeseedSceneVisualAuditCapture[]): EnrichedClientError[] {
+export function enrichClientErrors(captures: SceneVisualAuditCapture[]): EnrichedClientError[] {
 	return captures.flatMap((capture) => (capture.clientErrors ?? [])
-		.filter((entry) => !isTreeseedSceneVisualAuditIgnoredClientError(entry))
+		.filter((entry) => !isSceneVisualAuditIgnoredClientError(entry))
 		.map((entry) => ({
 			...entry,
 			path: capture.path,
@@ -31,17 +31,17 @@ export function enrichClientErrors(captures: TreeseedSceneVisualAuditCapture[]):
 			device: capture.device,
 			screenshotPath: capture.screenshotPath,
 			finalUrl: capture.finalUrl,
-		} satisfies TreeseedSceneVisualAuditClientError)));
+		} satisfies SceneVisualAuditClientError)));
 }
 
-export function buildTreeseedSceneVisualAuditReview(input: {
-	manifest: TreeseedSceneVisualAuditManifest;
-	paths: TreeseedSceneVisualAuditPaths;
-	detail?: TreeseedSceneVisualAuditReviewDetail;
+export function buildSceneVisualAuditReview(input: {
+	manifest: SceneVisualAuditManifest;
+	paths: SceneVisualAuditPaths;
+	detail?: SceneVisualAuditReviewDetail;
 	maxFindings?: number;
-}): TreeseedSceneVisualAuditReview {
+}): SceneVisualAuditReview {
 	const detail = input.detail ?? 'standard';
-	const allFindings: TreeseedSceneVisualAuditFinding[] = [];
+	const allFindings: SceneVisualAuditFinding[] = [];
 	const routesById = new Map(input.manifest.routes.map((route) => [route.id, route]));
 	for (const capture of input.manifest.captures) allFindings.push(...captureFindings(capture, allFindings.length, routesById.get(capture.routeId)));
 	const clientErrors = enrichClientErrors(input.manifest.captures);
@@ -63,7 +63,7 @@ export function buildTreeseedSceneVisualAuditReview(input: {
 	}
 	for (const entry of rootCauses) byPriorityBand[priorityBand(entry.priorityScore)] += 1;
 	const generatedAt = new Date().toISOString();
-	const diagnostics: TreeseedSceneDiagnostic[] = [];
+	const diagnostics: SceneDiagnostic[] = [];
 	return {
 		schemaVersion: 'treeseed.scene.visual-audit-review/v1',
 		generatedAt,
@@ -93,7 +93,7 @@ export function buildTreeseedSceneVisualAuditReview(input: {
 	};
 }
 
-export function rootCauseTable(input: { paths: TreeseedSceneVisualAuditPaths; rootCauses: TreeseedSceneVisualAuditRootCause[] }) {
+export function rootCauseTable(input: { paths: SceneVisualAuditPaths; rootCauses: SceneVisualAuditRootCause[] }) {
 	const lines = [
 		'| Rank | Score | Severity | Owner | Count | Root cause | Examples | Screenshot |',
 		'| ---: | ---: | --- | --- | ---: | --- | --- | --- |',
@@ -105,7 +105,7 @@ export function rootCauseTable(input: { paths: TreeseedSceneVisualAuditPaths; ro
 	return lines;
 }
 
-export function issueSummary(entry: TreeseedSceneVisualAuditRootCause | TreeseedSceneVisualAuditClientErrorIncident) {
+export function issueSummary(entry: SceneVisualAuditRootCause | SceneVisualAuditClientErrorIncident) {
 	return {
 		id: entry.id,
 		priorityRank: entry.priorityRank,
@@ -125,7 +125,7 @@ export function issueSummary(entry: TreeseedSceneVisualAuditRootCause | Treeseed
 	};
 }
 
-export function combinedPriorityQueue(review: TreeseedSceneVisualAuditReview) {
+export function combinedPriorityQueue(review: SceneVisualAuditReview) {
 	return [...review.rootCauses.map(issueSummary), ...review.incidents.map(issueSummary)]
 		.sort((a, b) => b.priorityScore - a.priorityScore || a.priorityRank - b.priorityRank);
 }
@@ -145,10 +145,10 @@ export function jsonl<T>(items: T[]) {
 	return items.map((entry) => JSON.stringify(entry)).join('\n') + (items.length ? '\n' : '');
 }
 
-export function formatTreeseedSceneVisualAuditFindingsMarkdown(input: {
-	manifest: TreeseedSceneVisualAuditManifest;
-	review: TreeseedSceneVisualAuditReview;
-	paths: TreeseedSceneVisualAuditPaths;
+export function formatSceneVisualAuditFindingsMarkdown(input: {
+	manifest: SceneVisualAuditManifest;
+	review: SceneVisualAuditReview;
+	paths: SceneVisualAuditPaths;
 }) {
 	const lines = [
 		'# TreeSeed Visual Audit Findings',
@@ -183,10 +183,10 @@ export function formatTreeseedSceneVisualAuditFindingsMarkdown(input: {
 	return `${lines.join('\n')}\n`;
 }
 
-export function formatTreeseedSceneVisualAuditAgentBrief(input: {
-	manifest: TreeseedSceneVisualAuditManifest;
-	review: TreeseedSceneVisualAuditReview;
-	paths: TreeseedSceneVisualAuditPaths;
+export function formatSceneVisualAuditAgentBrief(input: {
+	manifest: SceneVisualAuditManifest;
+	review: SceneVisualAuditReview;
+	paths: SceneVisualAuditPaths;
 }) {
 	const high = input.review.findings.filter((entry) => entry.severity === 'blocking' || entry.severity === 'high');
 	const client = input.review.findings.filter((entry) => entry.category === 'client-error' && !expectedFindingNoise(entry));

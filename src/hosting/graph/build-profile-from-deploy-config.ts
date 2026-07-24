@@ -1,28 +1,28 @@
-import { loadTreeseedDeployConfig } from '../../platform/deploy-config.ts';
-import { loadTreeseedPlugins } from '../../platform/plugins/runtime.ts';
+import { loadDeployConfig } from '../../platform/hosting/deploy-config.ts';
+import { loadPlugins } from '../../platform/plugins/runtime.ts';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { resolveTreeseedMachineEnvironmentValues } from '../../operations/services/config-runtime.ts';
-import { classifyTreeseedGitMode, runTreeseedGitText } from '../../operations/services/git-runner.ts';
-import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName, railwayTreeDxServiceName } from '../../operations/services/railway-source-policy.ts';
-import { createTreeseedCanonicalReconcileReport, type TreeseedCanonicalAction, type TreeseedCanonicalDrift, type TreeseedCanonicalGraphNode, type TreeseedCanonicalPostcondition } from '../../reconcile/index.ts';
-import type { TreeseedRunnableBootstrapSystem } from '../../reconcile/bootstrap-systems.ts';
-import { discoverTreeseedApplications, findTreeseedApplication, type TreeseedDiscoveredApplication } from '../apps.ts';
+import { resolveMachineEnvironmentValues } from '../../operations/services/configuration/config-runtime.ts';
+import { classifyGitMode, runGitText } from '../../operations/services/operations/git-runner.ts';
+import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName, railwayTreeDxServiceName } from '../../operations/services/hosting/railway/railway-source-policy.ts';
+import { createCanonicalReconcileReport, type CanonicalAction, type CanonicalDrift, type CanonicalGraphNode, type CanonicalPostcondition } from '../../reconcile/index.ts';
+import type { RunnableBootstrapSystem } from '../../reconcile/support/bootstrap-systems.ts';
+import { discoverApplications, findApplication, type DiscoveredApplication } from '../apps.ts';
 import type {
-	TreeseedApplicationHostingProfile,
-	TreeseedHostAdapter,
-	TreeseedHostProjectGroup,
-	TreeseedHostingEnvironment,
-	TreeseedHostingGraphFilter,
-	TreeseedHostingGraph,
-	TreeseedHostingGraphInput,
-	TreeseedHostingPlan,
-	TreeseedHostingPlacementSummary,
-	TreeseedHostingUnit,
-	TreeseedServiceInstanceSpec,
-	TreeseedServicePlacement,
-	TreeseedServiceTypeAdapter,
+	ApplicationHostingProfile,
+	HostAdapter,
+	HostProjectGroup,
+	HostingEnvironment,
+	HostingGraphFilter,
+	HostingGraph,
+	HostingGraphInput,
+	HostingPlan,
+	HostingPlacementSummary,
+	HostingUnit,
+	ServiceInstanceSpec,
+	ServicePlacement,
+	ServiceTypeAdapter,
 } from '../contracts.ts';
 import {
 	createDefaultHostAdapters,
@@ -35,10 +35,10 @@ import {
 import { capacityProviderProjectGroupId, capacityProviderProjectGroups, marketProjectGroup, privateTreeDxProjectGroup, publicTreeDxProjectGroup, railwaySourcePolicy } from './railway-source-policy.ts';
 import { assertRailwayResourceNames, defaultRailwayImageRefForService, indexedName, mergeRecord, publicTreeDxNodePool, publicTreeDxSourcePolicy, railwayImageRefEnvForService, serviceKeyPlacement, serviceKeyType } from './railway-service-name-max-length.ts';
 
-export function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): TreeseedApplicationHostingProfile {
+export function buildProfileFromDeployConfig(input: HostingGraphInput): ApplicationHostingProfile {
 	const config = input.deployConfig!;
 	const environment = input.environment;
-	const services: TreeseedServiceInstanceSpec[] = [];
+	const services: ServiceInstanceSpec[] = [];
 	const projectGroups = [
 		marketProjectGroup(environment, config),
 		...capacityProviderProjectGroups(environment, config),
@@ -53,7 +53,7 @@ export function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): 
 	])];
 	let railwayImageRefEnv: Record<string, string> = {};
 	try {
-		railwayImageRefEnv = resolveTreeseedMachineEnvironmentValues(input.configRoot ?? input.tenantRoot, environment, railwayImageRefEnvKeys) as Record<string, string>;
+		railwayImageRefEnv = resolveMachineEnvironmentValues(input.configRoot ?? input.tenantRoot, environment, railwayImageRefEnvKeys) as Record<string, string>;
 	} catch {
 		railwayImageRefEnv = {};
 	}
@@ -138,7 +138,7 @@ export function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): 
 			if (instanceServiceName && (service.provider === 'railway' || service.railway)) {
 				assertRailwayResourceNames(instanceServiceName, volumeMountPath ? `${instanceServiceName}-volume` : null);
 			}
-			const environmentBinding = (bindingEnvironment: TreeseedHostingEnvironment) => {
+			const environmentBinding = (bindingEnvironment: HostingEnvironment) => {
 				const configured = service.environments?.[bindingEnvironment] ?? {};
 				if (!runnerPool) return configured;
 				const configuredName = typeof configured.serviceName === 'string' && configured.serviceName.trim()

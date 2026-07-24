@@ -3,23 +3,23 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, resolve as resolvePath } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import {
-	discoverTreeseedPackageAdapters,
-	type TreeseedPackageAdapter,
-} from '../../operations/services/package-adapters.ts';
-import { redactCapacityProviderEnv, validateAndDigestCapacityProviderManifest } from '../../capacity-provider.ts';
-import { workspaceRoot } from '../../operations/services/workspace-tools.ts';
+	discoverPackageAdapters,
+	type PackageAdapter,
+} from '../../operations/services/reconciliation/package-adapters.ts';
+import { redactCapacityProviderEnv, validateAndDigestCapacityProviderManifest } from '../../capacity/providers/capacity-provider.ts';
+import { workspaceRoot } from '../../operations/services/treedx/workspaces/workspace-tools.ts';
 import {
 	checkedOutTemplateRepositories,
-	type TreeseedTemplateRepositoryManifest,
-} from '../../operations/services/managed-repositories.ts';
-import { deriveTreeseedDesiredUnits } from '../../reconcile/desired-state.ts';
-import type { TreeseedDesiredUnit, TreeseedReconcileSelector, TreeseedReconcileTarget } from '../../reconcile/contracts.ts';
+	type TemplateRepositoryManifest,
+} from '../../operations/services/support/managed-repositories.ts';
+import { deriveDesiredUnits } from '../../reconcile/reconciliation/desired-state.ts';
+import type { DesiredUnit, ReconcileSelector, ReconcileTarget } from '../../reconcile/support/contracts/contracts.ts';
 import {
 	buildProjectLocalContentResources,
-	type TreeseedLocalContentMode,
-} from '../local-content-materialization.ts';
-import { localTreeDxSeedDigest } from '../local-treedx-seed.ts';
-import { INTERNAL_PACKAGE_DEPENDENCY_FIELDS, TreeseedDesiredEnvironment, TreeseedDesiredResource, TreeseedDesiredResourceKind, TreeseedPackageUnit, TreeseedTemplateUnit, stringRecord } from './treeseed-desired-environment.ts';
+	type LocalContentMode,
+} from '../content/local-content-materialization.ts';
+import { localTreeDxSeedDigest } from '../treedx/repositories/local-treedx-seed.ts';
+import { INTERNAL_PACKAGE_DEPENDENCY_FIELDS, DesiredEnvironment, DesiredResource, DesiredResourceKind, PackageUnit, TemplateUnit, stringRecord } from './desired-environment.ts';
 
 export function safeTreeDxRepositoryName(value: string) {
 	return value
@@ -66,7 +66,7 @@ export function localTreeDxContentProjects(tenantRoot: string) {
 	});
 }
 
-export function localTreeDxTemplateContentProjects(tenantRoot: string, templates: TreeseedTemplateUnit[]) {
+export function localTreeDxTemplateContentProjects(tenantRoot: string, templates: TemplateUnit[]) {
 	return templates.flatMap((template) => {
 		const localRoot = resolvePath(tenantRoot, template.path);
 		const contentPath = 'template/src/content';
@@ -86,11 +86,11 @@ export function localTreeDxTemplateContentProjects(tenantRoot: string, templates
 	});
 }
 
-export function releasePhaseForEnvironment(environment: TreeseedDesiredEnvironment) {
+export function releasePhaseForEnvironment(environment: DesiredEnvironment) {
 	return environment === 'prod' ? 'release' : 'stage';
 }
 
-export function internalPackageDependencies(packages: TreeseedPackageUnit[], pkg: TreeseedPackageUnit) {
+export function internalPackageDependencies(packages: PackageUnit[], pkg: PackageUnit) {
 	const packageIds = new Set(packages.map((entry) => entry.id));
 	const packageJsonPath = resolvePath(pkg.path, 'package.json');
 	if (!existsSync(packageJsonPath)) return [];
@@ -112,7 +112,7 @@ export function internalPackageDependencies(packages: TreeseedPackageUnit[], pkg
 	}
 }
 
-export function resourceKindForUnit(unit: TreeseedDesiredUnit): TreeseedDesiredResourceKind {
+export function resourceKindForUnit(unit: DesiredUnit): DesiredResourceKind {
 	if (unit.provider === 'railway') {
 		if (unit.unitType.startsWith('railway-service:')) return 'railway-service';
 		if (unit.unitType === 'custom-domain:api') return 'railway-domain';
@@ -122,19 +122,19 @@ export function resourceKindForUnit(unit: TreeseedDesiredUnit): TreeseedDesiredR
 	return 'cloudflare-resource';
 }
 
-export function serviceIdForUnit(unit: TreeseedDesiredUnit) {
+export function serviceIdForUnit(unit: DesiredUnit) {
 	const serviceKey = unit.metadata.serviceKey;
 	if (typeof serviceKey === 'string' && serviceKey.trim()) return serviceKey;
 	if (unit.unitType.startsWith('railway-service:')) return unit.unitType.slice('railway-service:'.length);
 	return null;
 }
 
-export function packageIdForUnit(unit: TreeseedDesiredUnit) {
+export function packageIdForUnit(unit: DesiredUnit) {
 	const app = unit.metadata.applicationId ?? unit.metadata.packageId;
 	return typeof app === 'string' && app.trim() ? app : null;
 }
 
-export function resourceFromUnit(unit: TreeseedDesiredUnit, environment: TreeseedDesiredEnvironment): TreeseedDesiredResource {
+export function resourceFromUnit(unit: DesiredUnit, environment: DesiredEnvironment): DesiredResource {
 	return {
 		id: unit.unitId,
 		kind: resourceKindForUnit(unit),

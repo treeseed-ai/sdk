@@ -2,11 +2,11 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { runTreeseedGit } from '../operations/services/git-runner.ts';
-import { sortWorkspacePackages, workspacePackages, workspaceRoot } from '../operations/services/workspace-tools.ts';
-import { repoRoot } from '../operations/services/workspace-save.ts';
-import { discoverTreeseedPackageAdapters } from '../operations/services/package-adapters.ts';
-import type { TreeseedWorkflowWorktreeMode } from '../workflow.ts';
+import { runRepositoryGit } from '../operations/services/operations/git-runner.ts';
+import { sortWorkspacePackages, workspacePackages, workspaceRoot } from '../operations/services/treedx/workspaces/workspace-tools.ts';
+import { repoRoot } from '../operations/services/treedx/workspaces/workspace-save.ts';
+import { discoverPackageAdapters } from '../operations/services/reconciliation/package-adapters.ts';
+import type { WorkflowWorktreeMode } from '../operations/workflow.ts';
 
 export type ManagedWorkflowWorktreeMetadata = {
 	schemaVersion: 1;
@@ -34,7 +34,7 @@ export function nowIso() {
 
 export function runGit(args: string[], { cwd, capture = true, allowFailure = false }: { cwd: string; capture?: boolean; allowFailure?: boolean }) {
 	const mutating = /^(add|commit|checkout|switch|merge|tag|push|fetch|worktree|submodule|reset|clean|restore|branch)$/u.test(args[0] ?? '');
-	const result = runTreeseedGit(args, {
+	const result = runRepositoryGit(args, {
 		cwd,
 		mode: mutating ? 'mutate' : 'read',
 		allowFailure,
@@ -119,7 +119,7 @@ export function checkoutManagedPackageBranches(worktreePath: string, branchName:
 			packages.set(pkg.name, pkg);
 		}
 	}
-	for (const adapter of discoverTreeseedPackageAdapters(worktreePath)) {
+	for (const adapter of discoverPackageAdapters(worktreePath)) {
 		if (!adapter.publishTarget && adapter.artifacts.length === 0) continue;
 		if (packages.has(adapter.id)) continue;
 		packages.set(adapter.id, {
@@ -181,7 +181,7 @@ export function ensureManagedWorktreeMachineConfig(primaryRoot: string, worktree
 }
 
 export function effectiveWorkflowWorktreeMode(
-	mode: TreeseedWorkflowWorktreeMode | undefined,
+	mode: WorkflowWorktreeMode | undefined,
 	env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
 ) {
 	const envMode = String(env.TREESEED_WORKTREE_MODE ?? '').trim().toLowerCase();
@@ -225,7 +225,7 @@ export function ensureManagedWorkflowWorktree({
 }: {
 	root: string;
 	branchName: string;
-	mode?: TreeseedWorkflowWorktreeMode;
+	mode?: WorkflowWorktreeMode;
 	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 }): ManagedWorkflowWorktreeResult {
 	const effectiveMode = effectiveWorkflowWorktreeMode(mode, env);

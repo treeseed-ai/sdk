@@ -1,15 +1,15 @@
 import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { dirname, resolve } from 'node:path';
-import type { TreeseedWorkflowMode } from '../session.ts';
-import { TreeseedWorkflowGateCacheEntry, TreeseedWorkflowRunClassification, TreeseedWorkflowRunJournal, nowIso } from './treeseed-workflow-run-command.ts';
+import type { WorkflowMode } from '../session.ts';
+import { WorkflowGateCacheEntry, WorkflowRunClassification, WorkflowRunJournal, nowIso } from './workflow-run-command.ts';
 import { readWorkflowRunJournal, writeWorkflowRunJournal } from './ensure-workflow-exclude-rule.ts';
 import { listWorkflowRunJournals } from './get-cached-successful-workflow-gate.ts';
 
 export function updateWorkflowRunJournal(
 	root: string,
 	runId: string,
-	updater: (journal: TreeseedWorkflowRunJournal) => TreeseedWorkflowRunJournal,
+	updater: (journal: WorkflowRunJournal) => WorkflowRunJournal,
 ) {
 	const current = readWorkflowRunJournal(root, runId);
 	if (!current) {
@@ -52,7 +52,7 @@ export function selectedReleasePackageNames(plan: Record<string, unknown>) {
 	return selected;
 }
 
-export function isReleaseGateOnlyCompletion(journal: TreeseedWorkflowRunJournal) {
+export function isReleaseGateOnlyCompletion(journal: WorkflowRunJournal) {
 	if (journal.command !== 'release') return false;
 	const releaseRoot = journal.steps.find((step) => step.id === 'release-root');
 	if (releaseRoot?.status !== 'completed') return false;
@@ -63,11 +63,11 @@ export function isReleaseGateOnlyCompletion(journal: TreeseedWorkflowRunJournal)
 		|| pendingStep?.id === 'release-back-merge';
 }
 
-export function releaseStepData(journal: TreeseedWorkflowRunJournal, stepId: string) {
+export function releaseStepData(journal: WorkflowRunJournal, stepId: string) {
 	return stringRecord(journal.steps.find((step) => step.id === stepId)?.data);
 }
 
-export function expectedPackageHeadAfterReleaseGate(journal: TreeseedWorkflowRunJournal, packageName: string) {
+export function expectedPackageHeadAfterReleaseGate(journal: WorkflowRunJournal, packageName: string) {
 	const data = releaseStepData(journal, `release-${packageName}`);
 	const backMerge = stringRecord(data?.backMerge);
 	if (typeof backMerge?.commitSha === 'string') return backMerge.commitSha;
@@ -77,12 +77,12 @@ export function expectedPackageHeadAfterReleaseGate(journal: TreeseedWorkflowRun
 	return null;
 }
 
-export function savePartialFailureData(journal: TreeseedWorkflowRunJournal) {
+export function savePartialFailureData(journal: WorkflowRunJournal) {
 	const details = stringRecord(journal.failure?.details);
 	return stringRecord(details?.partialFailure);
 }
 
-export function collectSaveExpectedHeads(journal: TreeseedWorkflowRunJournal) {
+export function collectSaveExpectedHeads(journal: WorkflowRunJournal) {
 	const heads: Record<string, string> = {};
 	const saveData = stringRecord(journal.steps.find((step) => step.id === 'save-repositories')?.data);
 	const partialFailure = savePartialFailureData(journal);
@@ -108,7 +108,7 @@ export function collectSaveExpectedHeads(journal: TreeseedWorkflowRunJournal) {
 	return heads;
 }
 
-export function collectStageExpectedHeads(journal: TreeseedWorkflowRunJournal) {
+export function collectStageExpectedHeads(journal: WorkflowRunJournal) {
 	const heads: Record<string, string> = {};
 	const promotion = stringRecord(journal.steps.find((step) => step.id === 'promote-to-staging')?.data);
 	const results = Array.isArray(promotion?.results) ? promotion.results : [];
@@ -122,14 +122,14 @@ export function collectStageExpectedHeads(journal: TreeseedWorkflowRunJournal) {
 }
 
 export function classifyWorkflowRunJournal(
-	journal: TreeseedWorkflowRunJournal,
+	journal: WorkflowRunJournal,
 	options: {
 		currentBranch?: string | null;
 		currentHeads?: Record<string, string | null | undefined>;
 		acceptedReleaseHeads?: Record<string, string | null | undefined>;
 		now?: string;
 	} = {},
-): TreeseedWorkflowRunClassification {
+): WorkflowRunClassification {
 	const reasons: string[] = [];
 	const now = options.now ?? nowIso();
 	if (journal.classification?.archivedAt) {
@@ -242,7 +242,7 @@ export function classifyWorkflowRunJournals(
 	}));
 }
 
-export function archiveWorkflowRun(root: string, runId: string, classification: TreeseedWorkflowRunClassification) {
+export function archiveWorkflowRun(root: string, runId: string, classification: WorkflowRunClassification) {
 	const archivedAt = nowIso();
 	return updateWorkflowRunJournal(root, runId, (journal) => ({
 		...journal,
@@ -256,7 +256,7 @@ export function archiveWorkflowRun(root: string, runId: string, classification: 
 	}));
 }
 
-export function gateCacheMatches(entry: TreeseedWorkflowGateCacheEntry, gate: {
+export function gateCacheMatches(entry: WorkflowGateCacheEntry, gate: {
 	repository?: string | null;
 	workflow: string;
 	headSha: string;

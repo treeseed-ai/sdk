@@ -1,27 +1,27 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { basename, dirname, relative, resolve } from 'node:path';
-import { runTreeseedGit } from '../git-runner.ts';
+import { runRepositoryGit } from '../operations/git-runner.ts';
 import {
-	normalizeTreeseedTemplateId,
+	normalizeTemplateId,
 	type SdkTemplateCatalogEntry,
 	type SdkTemplateCatalogResponse,
 	type TemplateLaunchRequirements,
-} from '../../../sdk-types.ts';
-import { RemoteTemplateCatalogClient } from '../../../template-catalog.ts';
+} from '../../../entrypoints/models/sdk-types.ts';
+import { RemoteTemplateCatalogClient } from '../../../commerce/catalog/template-catalog.ts';
 import {
 	type ProjectLaunchConfigWritePlanItem,
 	type ProjectLaunchLocalHostBindingSummary,
 	type ProjectLaunchResolvedHostBinding,
 	type ProjectLaunchSecretDeploymentPlanItem,
 	normalizeTemplateLaunchRequirements,
-} from '../../../template-launch-requirements.ts';
-import { preserveProjectLaunchHostBindingConfigOverlay } from '../template-host-bindings.ts';
+} from '../../../entrypoints/templates/template-launch-requirements.ts';
+import { preserveProjectLaunchHostBindingConfigOverlay } from '../hosting/deployment/template-host-bindings.ts';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import {
-	resolveTreeseedTemplateCatalogCachePath,
-	resolveTreeseedTemplateCatalogEndpoint,
-} from '../config-runtime.ts';
+	resolveTemplateCatalogCachePath,
+	resolveTemplateCatalogEndpoint,
+} from '../configuration/config-runtime.ts';
 import {
 	cliPackageVersion,
 	agentPackageVersion,
@@ -29,7 +29,7 @@ import {
 	cliPackageRoot,
 	localTemplateArtifactsRoot,
 	sdkPackageVersion,
-} from '../runtime-paths.ts';
+} from '../runtime/runtime-paths.ts';
 import { ResolvedTemplateDefinition, StarterResolutionInput, TemplateCatalogCache, TemplateCatalogOptions, TemplateProductDefinition, TemplateState, TemplateVariableDefinition, ensureDir, isTextFile, listFiles, loadJsonFile, resolveLocalStarterArtifactRoot } from './template-categories.ts';
 
 export function validateTemplatePlaceholders(definition: ResolvedTemplateDefinition) {
@@ -52,7 +52,7 @@ export function validateTemplatePlaceholders(definition: ResolvedTemplateDefinit
 }
 
 export function normalizeTemplateProduct(remoteProduct: SdkTemplateCatalogEntry): TemplateProductDefinition {
-	const id = normalizeTreeseedTemplateId(remoteProduct.id);
+	const id = normalizeTemplateId(remoteProduct.id);
 	const artifactRoot = resolve(localTemplateArtifactsRoot, id);
 	const source = remoteProduct.fulfillment.source;
 	return {
@@ -73,7 +73,7 @@ export function sanitizeCacheSegment(value: string) {
 }
 
 export function resolveTemplateSourceCacheRoot(product: TemplateProductDefinition, options: TemplateCatalogOptions) {
-	const cachePath = resolveTreeseedTemplateCatalogCachePath(options.cwd ?? process.cwd());
+	const cachePath = resolveTemplateCatalogCachePath(options.cwd ?? process.cwd());
 	const sourceVersion = product.fulfillment.source.kind === 'git'
 		? product.fulfillment.source.ref
 		: product.fulfillment.source.version;
@@ -82,7 +82,7 @@ export function resolveTemplateSourceCacheRoot(product: TemplateProductDefinitio
 
 export function runGit(commandArgs: string[], cwd?: string) {
 	const mutating = /^(add|commit|checkout|switch|merge|tag|push|fetch|worktree|submodule|reset|clean|restore|branch|clone)$/u.test(commandArgs[0] ?? '');
-	const result = runTreeseedGit(commandArgs, {
+	const result = runRepositoryGit(commandArgs, {
 		cwd: cwd ?? process.cwd(),
 		mode: mutating ? 'mutate' : 'read',
 	});
@@ -92,7 +92,7 @@ export function runGit(commandArgs: string[], cwd?: string) {
 }
 
 export function readGitOutput(commandArgs: string[], cwd?: string) {
-	const result = runTreeseedGit(commandArgs, {
+	const result = runRepositoryGit(commandArgs, {
 		cwd: cwd ?? process.cwd(),
 		mode: 'read',
 		allowFailure: true,
@@ -178,8 +178,8 @@ export function writeTemplateCatalogCache(cachePath: string, endpoint: string, r
 export async function loadRemoteTemplateCatalog(options: TemplateCatalogOptions = {}) {
 	const cwd = options.cwd ?? process.cwd();
 	const env = options.env ?? process.env;
-	const endpoint = resolveTreeseedTemplateCatalogEndpoint(cwd, env);
-	const cachePath = resolveTreeseedTemplateCatalogCachePath(cwd);
+	const endpoint = resolveTemplateCatalogEndpoint(cwd, env);
+	const cachePath = resolveTemplateCatalogCachePath(cwd);
 
 	try {
 		const response = await new RemoteTemplateCatalogClient({ endpoint }).listTemplates();

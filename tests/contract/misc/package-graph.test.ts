@@ -14,9 +14,9 @@ const verifyConsumerPackageJsonPaths = [
 ];
 const verifyDriverPaths = [
 	resolve(workspaceRoot, '..', '..', 'scripts', 'verify-driver.ts'),
-	resolve(workspaceRoot, '..', 'agent', 'scripts', 'verify-driver.ts'),
-	resolve(workspaceRoot, '..', 'core', 'scripts', 'verify-driver.ts'),
-	resolve(workspaceRoot, '..', 'cli', 'scripts', 'verify-driver.ts'),
+	resolve(workspaceRoot, '..', 'agent', 'scripts', 'support', 'verify-driver.ts'),
+	resolve(workspaceRoot, '..', 'core', 'scripts', 'support', 'verify-driver.ts'),
+	resolve(workspaceRoot, '..', 'cli', 'scripts', 'support', 'verify-driver.ts'),
 ];
 const packageVerifyWorkflowPaths = [
 	resolve(workspaceRoot, '.github', 'workflows', 'verify.yml'),
@@ -141,7 +141,7 @@ describe('sdk package graph', () => {
 	}, 20_000);
 
 	it('keeps the canonical agent contracts shim in sdk fixture support', () => {
-		const sdkFixtureSupportPath = resolve(workspaceRoot, 'src', 'fixture-support.ts');
+		const sdkFixtureSupportPath = resolve(workspaceRoot, 'src', 'testing', 'fixture-support.ts');
 		expect(existsSync(sdkFixtureSupportPath)).toBe(true);
 		const sdkFixtureSupport = readFileSync(sdkFixtureSupportPath, 'utf8');
 		expect(sdkFixtureSupport.includes("contractsShim?: 'agent-contracts'")).toBe(true);
@@ -164,7 +164,7 @@ describe('sdk package graph', () => {
 
 	it('publishes the shared verify executable for package consumers', () => {
 		const packageJson = JSON.parse(readFileSync(sdkPackageJsonPath, 'utf8'));
-		expect(packageJson.bin?.['treeseed-sdk-verify']).toBe('./dist/verification.js');
+		expect(packageJson.bin?.['treeseed-sdk-verify']).toBe('./dist/scripts/verification/verify-driver.js');
 	});
 
 	it('keeps package verify workflows branch-push triggerable for staging saves', () => {
@@ -194,11 +194,7 @@ describe('sdk package graph', () => {
 			const verifyDriverPath = verifyDriverPaths[index + 1];
 			const verifyScript = packageJson.scripts?.verify;
 
-				if (
-					verifyScript === 'tsx ./scripts/verify-driver.ts'
-					|| verifyScript === 'node --import tsx ./scripts/verify-driver.ts'
-					|| verifyScript === 'TMPDIR=/tmp node --import tsx ./scripts/verify-driver.ts'
-				) {
+			if (typeof verifyScript === 'string' && verifyScript.includes('scripts/') && verifyScript.includes('verify-driver.ts')) {
 				expect(
 					existsSync(verifyDriverPath),
 					`${verifyDriverPath} should exist when ${packageJsonPath} uses a package-local verify wrapper`,

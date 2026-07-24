@@ -1,5 +1,5 @@
-import type { TreeseedDeployConfig } from '../contracts.ts';
-import type { CommerceOfferMode } from '../../sdk-types.ts';
+import type { DeployConfig } from '../support/contracts.ts';
+import type { CommerceOfferMode } from '../../entrypoints/models/sdk-types.ts';
 import type { CloudflareRuntime, R2BucketLike } from '../../types/cloudflare.ts';
 
 

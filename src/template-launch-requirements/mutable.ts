@@ -26,12 +26,12 @@ import {
 	type TemplateSecretSensitivity,
 	type TemplateSecretSource,
 	type TemplateSecretTarget,
-} from '../sdk-types.ts';
+} from '../entrypoints/models/sdk-types.ts';
 
 
 export type Mutable<T> = { -readonly [P in keyof T]: T[P] };
 
-export type { TemplateLaunchRequirements } from '.././sdk-types.ts';
+export type { TemplateLaunchRequirements } from '../entrypoints/models/sdk-types.ts';
 
 export interface ProjectLaunchHostInventoryRecord {
 	id: string;

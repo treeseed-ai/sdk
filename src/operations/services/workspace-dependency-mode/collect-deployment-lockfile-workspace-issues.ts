@@ -1,8 +1,8 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { runTreeseedGit } from '../git-runner.ts';
-import { workspacePackages, workspaceRoot } from '../workspace-tools.ts';
+import { runRepositoryGit } from '../operations/git-runner.ts';
+import { workspacePackages, workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
 import { DeploymentLockfileWorkspaceIssue, WorkspaceDependencyModeReport, WorkspaceLinksMode, dependencyNames, pathKey, readJson, rootLockfileAllowsWorkspaceLink, safeLstat, safeReadlink, workspaceLinksEnabled } from './dependency-resolution-mode.ts';
 import { collectPackageLockConsistencyIssues, discoverWorkspaceLinks } from './collect-package-lock-consistency-issues.ts';
 

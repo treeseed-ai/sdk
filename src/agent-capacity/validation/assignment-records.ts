@@ -1,4 +1,4 @@
-import type { AgentModeRun, ProviderAssignment } from '../contracts/assignment-records.ts';
+import type { AgentModeRun, ProviderAssignment } from '../contracts/capacity/assignments/assignment-records.ts';
 
 export interface AssignmentRecordDiagnostic {
 	code: string;

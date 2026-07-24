@@ -5,11 +5,11 @@ import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import yaml from 'yaml';
-import { packageScriptPath } from '../src/operations/services/runtime-tools.ts';
-import { collectCliPreflight, createWranglerCommandEnv, formatCliPreflightReport, writeJsonArtifact } from '../src/operations/services/workspace-preflight.ts';
-import { ensureDeployWorkflow, parseGitHubRepositoryFromRemote } from '../src/operations/services/github-automation.ts';
-import { MERGE_CONFLICT_EXIT_CODE } from '../src/operations/services/workspace-save.ts';
-import { createTempDir, run, workspacePackages, workspaceRoot } from '../src/operations/services/workspace-tools.ts';
+import { packageScriptPath } from '../../src/operations/services/agents/runtime-tools.ts';
+import { collectCliPreflight, createWranglerCommandEnv, formatCliPreflightReport, writeJsonArtifact } from '../../src/operations/services/treedx/workspaces/workspace-preflight.ts';
+import { ensureDeployWorkflow, parseGitHubRepositoryFromRemote } from '../../src/operations/services/repositories/github-automation.ts';
+import { MERGE_CONFLICT_EXIT_CODE } from '../../src/operations/services/treedx/workspaces/workspace-save.ts';
+import { createTempDir, run, workspacePackages, workspaceRoot } from '../../src/operations/services/treedx/workspaces/workspace-tools.ts';
 import { artifactsRoot, cacheEnv, createManualPackageTarball, log, randomPort, root, runCommand, withStep } from './root.ts';
 import { appendSaveMarker, cloneLocalWorkspace, cloneLocalWorkspaceWithBareOrigin, cloneStagingRepository, isProductionLikeTarget, readTenantConfig, resolveRepositorySlug, runDevSession, scaffoldTenant, waitForGitHubWorkflow, waitForUrl, writeWorkspaceStub } from './run-dev-session.ts';
 

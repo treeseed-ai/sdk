@@ -1,26 +1,26 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { runTreeseedGit } from '../git-runner.ts';
+import { runRepositoryGit } from '../operations/git-runner.ts';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
-import { elapsedMs, formatTimingMarkdown, formatTimingSummary, type TreeseedTimingEntry } from '../../../timing.ts';
+import { elapsedMs, formatTimingMarkdown, formatTimingSummary, type TimingEntry } from '../../../entrypoints/runtime/timing.ts';
 import {
 	createControlPlaneReporter,
 	type ControlPlaneDeploymentReport,
 	type ControlPlaneReporter,
-} from '../../../control-plane.ts';
+} from '../../../entrypoints/clients/control-plane.ts';
 import {
 	resolvePublishedContentPreviewTtlHours,
 	resolveTeamScopedContentLocator,
 	signEditorialPreviewToken,
 	type PublishedContentManifest,
 	type PublishedContentObjectPointer,
-} from '../../../platform/published-content.ts';
-import { createPublishedContentPipeline } from '../../../platform/published-content-pipeline.ts';
-import { collectTreeseedReconcileStatus, reconcileTreeseedTarget, resolveTreeseedBootstrapSelection } from '../../../reconcile/index.ts';
-import { loadTreeseedManifest } from '../../../platform/tenant-config.ts';
-import { applyTreeseedEnvironmentToProcess, assertTreeseedCommandEnvironment } from '../config-runtime.ts';
-import { runTreeseedHostingAudit } from '../hosting-audit.ts';
+} from '../../../platform/packages/published-content.ts';
+import { createPublishedContentPipeline } from '../../../platform/packages/published-content-pipeline.ts';
+import { collectReconcileStatus, reconcileTarget, resolveBootstrapSelection } from '../../../reconcile/index.ts';
+import { loadManifest } from '../../../platform/configuration/tenant-config.ts';
+import { applyEnvironmentToProcess, assertCommandEnvironment } from '../configuration/config-runtime.ts';
+import { runHostingAudit } from '../hosting/audit/hosting-audit.ts';
 import {
 	assertDeploymentInitialized,
 	createPersistentDeployTarget,
@@ -32,12 +32,12 @@ import {
 	purgePublishedContentCaches,
 	resolveConfiguredCloudflareAccountId,
 	resolveConfiguredSurfaceBaseUrl,
-	resolveTreeseedResourceIdentity,
+	resolveResourceIdentity,
 	runRemoteD1Migrations,
 	syncCloudflareSecrets,
 	writeDeployState,
-} from '../deploy.ts';
-import { currentManagedBranch, PRODUCTION_BRANCH, STAGING_BRANCH } from '../git-workflow.ts';
+} from '../hosting/deployment/deploy.ts';
+import { currentManagedBranch, PRODUCTION_BRANCH, STAGING_BRANCH } from '../operations/git-workflow.ts';
 import {
 	configuredRailwayServices,
 	deployRailwayService,
@@ -46,12 +46,12 @@ import {
 	validateRailwayServiceConfiguration,
 	verifyRailwayManagedResources,
 	verifyRailwayScheduledJobs,
-} from '../railway-deploy.ts';
-import { loadCliDeployConfig, packageScriptPath } from '../runtime-tools.ts';
-import { resolveTreeseedToolCommand } from '../../../managed-dependencies.ts';
-import type { TreeseedRunnableBootstrapSystem } from '../../../reconcile/index.ts';
-import { runPrefixedCommand, runTreeseedBootstrapDag, sleep, writeTreeseedBootstrapLine, type TreeseedBootstrapDagNode, type TreeseedBootstrapExecution, type TreeseedBootstrapTaskPrefix, type TreeseedBootstrapWriter } from '../bootstrap-runner.ts';
-import { runTenantDeployPreflight } from '../save-deploy-preflight.ts';
+} from '../hosting/railway/railway-deploy.ts';
+import { loadCliDeployConfig, packageScriptPath } from '../agents/runtime-tools.ts';
+import { resolveToolCommand } from '../../../entrypoints/runtime/managed-dependencies.ts';
+import type { RunnableBootstrapSystem } from '../../../reconcile/index.ts';
+import { runPrefixedCommand, runBootstrapDag, sleep, writeBootstrapLine, type BootstrapDagNode, type BootstrapExecution, type BootstrapTaskPrefix, type BootstrapWriter } from '../operations/bootstrap-runner.ts';
+import { runTenantDeployPreflight } from '../hosting/deployment/save-deploy-preflight.ts';
 import { ProjectPlatformScope, runPrefixedWranglerWithRetry, runWrangler } from './project-platform-scope.ts';
 
 export type TenantCloudflareDeployContext = {
@@ -64,7 +64,7 @@ export type TenantCloudflareDeployContext = {
 	pagesProjectName: string | null;
 	pagesBranchName: string | null;
 	env: NodeJS.ProcessEnv | Record<string, string | undefined>;
-	write?: TreeseedBootstrapWriter;
+	write?: BootstrapWriter;
 };
 
 export function prepareTenantCloudflareDeploy({
@@ -79,7 +79,7 @@ export function prepareTenantCloudflareDeploy({
 	scope: ProjectPlatformScope;
 	target?: any;
 	planOnly?: boolean;
-	write?: TreeseedBootstrapWriter;
+	write?: BootstrapWriter;
 	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 }): TenantCloudflareDeployContext {
 	const target = explicitTarget ?? createPersistentDeployTarget(scope === 'local' ? 'staging' : scope);
@@ -121,7 +121,7 @@ export function prepareTenantCloudflareDeploy({
 
 export async function runTenantDataMigration(context: TenantCloudflareDeployContext) {
 	if (context.planOnly) {
-		writeTreeseedBootstrapLine(context.write, {
+		writeBootstrapLine(context.write, {
 			scope: context.scope,
 			system: 'data',
 			task: 'd1-migrate',
@@ -158,10 +158,10 @@ export async function runTenantWebBuild(context: Pick<TenantCloudflareDeployCont
 		stage: 'deploy',
 	};
 	if (context.planOnly) {
-		writeTreeseedBootstrapLine(context.write, prefix, 'Plan: skipped tenant build.');
+		writeBootstrapLine(context.write, prefix, 'Plan: skipped tenant build.');
 		return { planOnly: true };
 	}
-	const result = await runPrefixedCommand(process.execPath, [packageScriptPath('tenant-build')], {
+	const result = await runPrefixedCommand(process.execPath, [packageScriptPath('build/tenant-build')], {
 		cwd: context.tenantRoot,
 		env: context.env,
 		write: context.write,
@@ -182,9 +182,9 @@ export async function runTenantWebPublish(context: TenantCloudflareDeployContext
 	};
 	if (context.planOnly) {
 		if (context.pagesProjectName) {
-			writeTreeseedBootstrapLine(context.write, prefix, `Plan: would deploy ${deployTargetLabel(context.target)} to Pages project ${context.pagesProjectName} from ${resolve(context.tenantRoot, 'dist')}.`);
+			writeBootstrapLine(context.write, prefix, `Plan: would deploy ${deployTargetLabel(context.target)} to Pages project ${context.pagesProjectName} from ${resolve(context.tenantRoot, 'dist')}.`);
 		} else {
-			writeTreeseedBootstrapLine(context.write, prefix, `Plan: would deploy ${deployTargetLabel(context.target)} with generated Wrangler config at ${resolve(context.wranglerPath)}.`);
+			writeBootstrapLine(context.write, prefix, `Plan: would deploy ${deployTargetLabel(context.target)} with generated Wrangler config at ${resolve(context.wranglerPath)}.`);
 		}
 		return { planOnly: true };
 	}
@@ -289,7 +289,7 @@ export async function reportDeployment(
 	await reporter.reportDeployment(input);
 }
 
-export function summarizePostDeployHostingAudit(report: Awaited<ReturnType<typeof runTreeseedHostingAudit>>, phase: 'already_ready' | 'repaired') {
+export function summarizePostDeployHostingAudit(report: Awaited<ReturnType<typeof runHostingAudit>>, phase: 'already_ready' | 'repaired') {
 	const failedChecks = report.checks.filter((check) => check.status === 'failed').length;
 	const repairedChecks = report.checks.filter((check) => check.status === 'repaired').length;
 	return {
@@ -306,7 +306,7 @@ export function summarizePostDeployHostingAudit(report: Awaited<ReturnType<typeo
 	};
 }
 
-export function hostingAuditHostKindsForSystems(systems: TreeseedRunnableBootstrapSystem[]) {
+export function hostingAuditHostKindsForSystems(systems: RunnableBootstrapSystem[]) {
 	const hostKinds = new Set<'repository' | 'web' | 'processing' | 'email'>();
 	for (const system of systems) {
 		if (system === 'github') {

@@ -1,31 +1,31 @@
 export {
-	compileTreeseedDesiredResourceGraph,
-	compileTreeseedDesiredUnitsFromGraph,
+	compileDesiredResourceGraph,
+	compileDesiredUnitsFromGraph,
 	convertDesiredResourceToReconcileUnit,
-	selectTreeseedDesiredResources,
-	type TreeseedDesiredEnvironment,
-	type TreeseedDesiredResource,
-	type TreeseedDesiredResourceEdge,
-	type TreeseedDesiredResourceGraph,
-	type TreeseedDesiredResourceKind,
-	type TreeseedPackageUnit,
-} from '.././platform/desired-state.ts';
+	selectDesiredResources,
+	type DesiredEnvironment,
+	type DesiredResource,
+	type DesiredResourceEdge,
+	type DesiredResourceGraph,
+	type DesiredResourceKind,
+	type PackageUnit,
+} from '../platform/reconciliation/desired-state.ts';
 
 export {
-	loadTreeseedPlatformConfig,
-	type TreeseedPlatformConfigInput,
-} from '.././platform/config.ts';
+	loadPlatformConfig,
+	type PlatformConfigInput,
+} from '../platform/configuration/config.ts';
 
 export {
 	githubRepositoryCredentialEnvName,
 	resolveGitHubCredentialForRepository,
-	type TreeseedGitHubCredentialResolution,
-} from '.././operations/services/github-credentials.ts';
+	type GitHubCredentialResolution,
+} from '../operations/services/configuration/github-credentials.ts';
 
 export {
 	executeKnowledgeHubProviderLaunch,
 	validateKnowledgeHubProviderLaunchPrerequisites,
-} from '.././operations/services/hub-provider-launch.ts';
+} from '../operations/services/capacity/providers/hub-provider-launch.ts';
 
 export {
 	createKnowledgeHubRepositories,
@@ -42,7 +42,7 @@ export {
 	type KnowledgeHubLaunchResult,
 	type KnowledgeHubRepositoryPlan,
 	type RepositoryHost,
-} from '.././operations/services/hub-launch.ts';
+} from '../operations/services/support/hub-launch.ts';
 
 export {
 	deployRailwayServiceInstance,
@@ -64,32 +64,32 @@ export {
 	resolveRailwayWorkspace,
 	resolveRailwayWorkspaceContext,
 	upsertRailwayVariables,
-} from '.././operations/services/railway-api.ts';
+} from '../operations/services/hosting/railway/railway-api.ts';
 
 export {
 	buildKnowledgePackMarketPackage,
 	buildTemplateMarketPackage,
 	importKnowledgePack,
-} from '.././operations/services/market-packaging.ts';
+} from '../operations/services/support/market-packaging.ts';
 
 export {
-	collectTreeseedDependencyStatus,
-	collectTreeseedToolStatus,
-	createTreeseedManagedToolEnv,
-	formatTreeseedDependencyReport,
-	installTreeseedDependencies,
-	resolveTreeseedToolBinary,
-	resolveTreeseedToolCommand,
-	type TreeseedToolStatusResult,
-} from '.././managed-dependencies.ts';
+	collectDependencyStatus,
+	collectToolStatus,
+	createManagedToolEnv,
+	formatDependencyReport,
+	installDependencies,
+	resolveToolBinary,
+	resolveToolCommand,
+	type ToolStatusResult,
+} from '../entrypoints/runtime/managed-dependencies.ts';
 
-export * from '.././service-credentials.ts';
+export * from '../configuration/service-credentials.ts';
 
 export {
 	deriveProjectHostBindingsView,
 	executeProjectHostBindingOperation,
 	planProjectHostBindingOperation,
-} from '.././operations/services/project-host-operations.ts';
+} from '../operations/services/projects/hosting/project-host-operations.ts';
 
 export type {
 	ExecuteProjectHostBindingOperationContext,
@@ -102,15 +102,15 @@ export type {
 	ProjectHostOperationKind,
 	ProjectHostOperationStatus,
 	ProjectHostRequirementBindingView,
-} from '.././operations/services/project-host-operations.ts';
+} from '../operations/services/projects/hosting/project-host-operations.ts';
 
 export {
 	MarketClient,
 	MarketClientError,
-	DEFAULT_TREESEED_MARKET_BASE_URL,
-	TREESEED_CATALOG_MARKET_API_BASE_URLS_ENV,
-	TREESEED_CENTRAL_MARKET_API_BASE_URL_ENV,
-	TREESEED_API_BASE_URL_ENV,
+	DEFAULT_MARKET_BASE_URL,
+	CATALOG_MARKET_API_BASE_URLS_ENV,
+	CENTRAL_MARKET_API_BASE_URL_ENV,
+	API_BASE_URL_ENV,
 	addMarketProfile,
 	clearMarketSession,
 	listIntegratedMarketCatalog,
@@ -125,4 +125,4 @@ export {
 	setMarketSession,
 	verifyArtifactBytes,
 	writeMarketRegistryState,
-} from '.././market-client.ts';
+} from '../entrypoints/clients/market-client.ts';

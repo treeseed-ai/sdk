@@ -1,7 +1,7 @@
-import type { TreeseedDeployConfig } from ".././platform/contracts.ts";
-import { TreeseedWorkflowState, runGit } from './treeseed-branch-role.ts';
+import type { DeployConfig } from "../platform/support/contracts.ts";
+import { WorkflowState, runGit } from './branch-role.ts';
 
-export function safeReleaseHistory(repoDir: string | null): TreeseedWorkflowState['releaseHistory'] {
+export function safeReleaseHistory(repoDir: string | null): WorkflowState['releaseHistory'] {
 	if (!repoDir) {
 		return {
 			stagingAheadMain: null,
@@ -92,7 +92,7 @@ export function capObsoleteWorkflowRuns<T>(
 	};
 }
 
-export function resolveLocalStatusUrl(deployConfig: TreeseedDeployConfig) {
+export function resolveLocalStatusUrl(deployConfig: DeployConfig) {
 	return deployConfig.surfaces?.web?.localBaseUrl
 		?? deployConfig.surfaces?.api?.localBaseUrl
 		?? Object.values(deployConfig.services ?? {})

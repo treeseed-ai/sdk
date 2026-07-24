@@ -1,0 +1,192 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { dirname, resolve } from 'node:path';
+import { collectConfigSeedValues } from '../../configuration/config-runtime.ts';
+import { createTempDir } from './workspace-tools.ts';
+import { resolveToolBinary } from '../../../../entrypoints/runtime/managed-dependencies.ts';
+
+function runCapture(command, args, options = {}) {
+	const result = spawnSync(command, args, {
+		cwd: options.cwd ?? process.cwd(),
+		env: { ...process.env, ...(options.env ?? {}) },
+		stdio: 'pipe',
+		encoding: 'utf8',
+		timeout: options.timeoutMs,
+	});
+
+	return {
+		status: result.status ?? 1,
+		signal: result.signal ?? null,
+		stdout: result.stdout ?? '',
+		stderr: result.stderr ?? '',
+		error: result.error?.message ?? null,
+	};
+}
+
+function locateBinary(candidate) {
+	const managed = resolveToolBinary(candidate);
+	if (managed) {
+		return managed;
+	}
+	const result = runCapture('bash', ['-lc', `command -v ${candidate}`]);
+	return result.status === 0 ? result.stdout.trim() : null;
+}
+
+export function createWranglerCommandEnv(overrides = {}) {
+	const configHome = createTempDir('treeseed-wrangler-config-');
+	const logDir = resolve(configHome, '.wrangler', 'logs');
+	mkdirSync(logDir, { recursive: true });
+	return {
+		XDG_CONFIG_HOME: configHome,
+		WRANGLER_SEND_METRICS: 'false',
+		...overrides,
+	};
+}
+
+function envTokenStatus(keys, label, values = process.env) {
+	const foundKey = keys.find((key) => {
+		const value = values[key];
+		return typeof value === 'string' && value.trim().length > 0;
+	}) ?? null;
+
+	return {
+		ready: Boolean(foundKey),
+		detail: foundKey
+			? `${label} token detected from configured Treeseed environment (${foundKey}).`
+			: `${label} token is not configured. Set ${keys.join(' or ')}.`,
+		source: foundKey ? 'config' : 'missing',
+	};
+}
+
+export function parseGitHubAuthStatus(values = process.env) {
+	return {
+		authenticated: envTokenStatus(['TREESEED_GITHUB_TOKEN'], 'GitHub', values).ready,
+		detail: envTokenStatus(['TREESEED_GITHUB_TOKEN'], 'GitHub', values).detail,
+	};
+}
+
+export function parseWranglerWhoAmI(values = process.env) {
+	return {
+		authenticated: envTokenStatus(['TREESEED_CLOUDFLARE_API_TOKEN'], 'Cloudflare', values).ready,
+		detail: envTokenStatus(['TREESEED_CLOUDFLARE_API_TOKEN'], 'Cloudflare', values).detail,
+	};
+}
+
+export function parseRailwayWhoAmI(values = process.env) {
+	return {
+		authenticated: envTokenStatus(['TREESEED_RAILWAY_API_TOKEN'], 'Railway', values).ready,
+		detail: envTokenStatus(['TREESEED_RAILWAY_API_TOKEN'], 'Railway', values).detail,
+	};
+}
+
+export function parseCopilotSessionStatus(values = process.env) {
+	const status = envTokenStatus(['TREESEED_GITHUB_COPILOT_TOKEN', 'TREESEED_GITHUB_TOKEN'], 'GitHub Copilot', values);
+	return {
+		configured: status.ready,
+		detail: status.ready
+			? 'GitHub Copilot token detected from configured Treeseed environment for Copilot-backed workflows.'
+			: 'GitHub Copilot token is not configured. Set TREESEED_GITHUB_COPILOT_TOKEN for Copilot-backed workflows. TREESEED_GITHUB_TOKEN is accepted as a compatibility fallback.',
+	};
+}
+
+export function collectCliPreflight({ cwd = process.cwd(), requireAuth = false } = {}) {
+	const configuredValues = collectConfigSeedValues(cwd, 'local');
+	const binaries = {
+		git: locateBinary('git'),
+		npm: locateBinary('npm'),
+		gh: locateBinary('gh'),
+		wrangler: locateBinary('wrangler'),
+		railway: locateBinary('railway'),
+		copilot: locateBinary('copilot'),
+	};
+
+	const checks = {
+		commands: Object.fromEntries(
+			Object.entries(binaries).map(([name, path]) => [name, {
+				installed: Boolean(path),
+				path,
+			}]),
+		),
+		auth: {},
+	};
+
+	if (binaries.gh) {
+		checks.auth.gh = parseGitHubAuthStatus(configuredValues);
+	} else {
+		checks.auth.gh = { authenticated: false, detail: 'GitHub CLI is not installed.' };
+	}
+
+	if (binaries.wrangler) {
+		checks.auth.wrangler = parseWranglerWhoAmI(configuredValues);
+	} else {
+		checks.auth.wrangler = { authenticated: false, detail: 'Wrangler CLI is not installed.' };
+	}
+
+	if (binaries.railway) {
+		checks.auth.railway = parseRailwayWhoAmI(configuredValues);
+	} else {
+		checks.auth.railway = { authenticated: false, detail: 'Railway CLI is not installed.' };
+	}
+
+	if (binaries.copilot) {
+		checks.auth.copilot = parseCopilotSessionStatus(configuredValues);
+	} else {
+		checks.auth.copilot = { configured: false, detail: 'Copilot CLI is not installed.' };
+	}
+
+	const missingCommands = Object.entries(checks.commands)
+		.filter(([, value]) => !value.installed)
+		.map(([name]) => name);
+	const failingAuth = [];
+
+	if (requireAuth) {
+		if (!checks.auth.gh?.authenticated) failingAuth.push('gh');
+		if (!checks.auth.wrangler?.authenticated) failingAuth.push('wrangler');
+		if (!checks.auth.railway?.authenticated) failingAuth.push('railway');
+	}
+
+	return {
+		ok: missingCommands.length === 0 && failingAuth.length === 0,
+		requireAuth,
+		missingCommands,
+		failingAuth,
+		checks,
+	};
+}
+
+export function formatCliPreflightReport(report) {
+	const lines = [
+		'Treeseed preflight summary',
+		`Status: ${report.ok ? 'ok' : 'failed'}`,
+		`Require auth: ${report.requireAuth ? 'yes' : 'no'}`,
+		'Commands:',
+	];
+
+	for (const [name, info] of Object.entries(report.checks.commands)) {
+		lines.push(`- ${name}: ${info.installed ? `installed (${info.path})` : 'missing'}`);
+	}
+
+	lines.push('Auth/session:');
+	lines.push(`- gh: ${report.checks.auth.gh?.authenticated ? 'authenticated' : 'not authenticated'}`);
+	lines.push(`  ${report.checks.auth.gh?.detail ?? ''}`.trimEnd());
+	lines.push(`- wrangler: ${report.checks.auth.wrangler?.authenticated ? 'authenticated' : 'not authenticated'}`);
+	lines.push(`  ${report.checks.auth.wrangler?.detail ?? ''}`.trimEnd());
+	lines.push(`- railway: ${report.checks.auth.railway?.authenticated ? 'authenticated' : 'not authenticated'}`);
+	lines.push(`  ${report.checks.auth.railway?.detail ?? ''}`.trimEnd());
+	lines.push(`- copilot: ${report.checks.auth.copilot?.configured ? 'configured' : 'not configured'}`);
+	lines.push(`  ${report.checks.auth.copilot?.detail ?? ''}`.trimEnd());
+
+	if (report.missingCommands.length > 0) {
+		lines.push(`Missing commands: ${report.missingCommands.join(', ')}`);
+	}
+	if (report.failingAuth.length > 0) {
+		lines.push(`Auth failures: ${report.failingAuth.join(', ')}`);
+	}
+
+	return lines.filter(Boolean).join('\n');
+}
+
+export function writeJsonArtifact(filePath, value) {
+	mkdirSync(dirname(filePath), { recursive: true });
+	writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}

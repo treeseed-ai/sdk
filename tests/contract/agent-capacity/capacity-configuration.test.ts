@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { validateCapacityAllocationSetV2, validateCapacityGrantV2 } from '../../../src/agent-capacity/validation/allocation.ts';
 import { validateAgentActivityProfilesConfiguration } from '../../../src/agent-capacity/validation/activity-profile.ts';
 import { validateProjectAgentClassConfiguration } from '../../../src/agent-capacity/validation/configuration.ts';
-import { CAPACITY_CONFIGURATION_DESCRIPTORS, CAPACITY_CONFIGURATION_FAMILIES } from '../../../src/agent-capacity/contracts/configuration.ts';
+import { CAPACITY_CONFIGURATION_DESCRIPTORS, CAPACITY_CONFIGURATION_FAMILIES } from '../../../src/agent-capacity/contracts/configuration/configuration.ts';
 import { validateCapacityProviderManifestV2, validateProviderSupplyOffer } from '../../../src/capacity-provider/validation.ts';
 
 const packageRoot = process.cwd();

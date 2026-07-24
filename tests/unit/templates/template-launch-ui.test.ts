@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { deriveProjectLaunchRequirementsViewModel } from '../../../src/template-launch-ui.ts';
-import { normalizeTemplateLaunchRequirements } from '../../../src/template-launch-requirements.ts';
+import { deriveProjectLaunchRequirementsViewModel } from '../../../src/entrypoints/templates/template-launch-ui.ts';
+import { normalizeTemplateLaunchRequirements } from '../../../src/entrypoints/templates/template-launch-requirements.ts';
 
 describe('template launch requirement UI view model', () => {
 	const launchRequirements = normalizeTemplateLaunchRequirements({

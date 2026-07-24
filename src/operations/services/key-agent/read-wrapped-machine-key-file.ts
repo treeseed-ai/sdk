@@ -3,7 +3,7 @@ import { accessSync, chmodSync, constants as fsConstants, existsSync, lstatSync,
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { createConnection, createServer, type Server } from 'node:net';
-import { KEY_AGENT_REQUEST_TIMEOUT_MS, KEY_AGENT_SOCKET_RELATIVE_PATH, TREESEED_KEY_AGENT_IDLE_TIMEOUT_MS, TreeseedKeyAgentCommand, TreeseedKeyAgentDiagnostics, TreeseedKeyAgentError, TreeseedKeyAgentResponse, TreeseedKeyAgentSessionState, TreeseedKeyAgentStatus, TreeseedWrappedMachineKey, detectSocketKind, ensureParent, isWrappedMachineKeyPayload, pidFilePath, wrapMachineKey } from './treseed-machine-key-passphrase-env.ts';
+import { KEY_AGENT_REQUEST_TIMEOUT_MS, KEY_AGENT_SOCKET_RELATIVE_PATH, KEY_AGENT_IDLE_TIMEOUT_MS, KeyAgentCommand, KeyAgentDiagnostics, KeyAgentError, KeyAgentResponse, KeyAgentSessionState, KeyAgentStatus, WrappedMachineKey, detectSocketKind, ensureParent, isWrappedMachineKeyPayload, pidFilePath, wrapMachineKey } from './treseed-machine-key-passphrase-env.ts';
 import { ok } from './read-legacy-project-machine-key.ts';
 
 export function readWrappedMachineKeyFile(keyPath: string) {
@@ -48,7 +48,7 @@ export function readWrappedMachineKeyFile(keyPath: string) {
 			migrationRequired: true,
 		};
 	} catch {
-		throw new TreeseedKeyAgentError(
+		throw new KeyAgentError(
 			'corrupt_wrapped_key',
 			'Unable to parse the Treeseed machine key file.',
 			{ keyPath },
@@ -56,7 +56,7 @@ export function readWrappedMachineKeyFile(keyPath: string) {
 	}
 }
 
-export function writeWrappedMachineKeyFile(keyPath: string, payload: TreeseedWrappedMachineKey) {
+export function writeWrappedMachineKeyFile(keyPath: string, payload: WrappedMachineKey) {
 	ensureParent(keyPath);
 	writeFileSync(keyPath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
 }
@@ -81,7 +81,7 @@ export function resolveRuntimeRoot() {
 	return resolve(homeRoot, dirname(KEY_AGENT_SOCKET_RELATIVE_PATH));
 }
 
-export function getTreeseedKeyAgentPaths() {
+export function getKeyAgentPaths() {
 	const homeRoot = process.env.HOME && process.env.HOME.trim().length > 0 ? process.env.HOME : homedir();
 	const runtimeRoot = resolveRuntimeRoot();
 	const socketPath = runtimeRoot === resolve(homeRoot, dirname(KEY_AGENT_SOCKET_RELATIVE_PATH))
@@ -140,7 +140,7 @@ export function classifySocketError(error: NodeJS.ErrnoException | Error) {
 	};
 }
 
-export async function requestTreeseedKeyAgentOverSocket(command: TreeseedKeyAgentCommand, timeoutMs = KEY_AGENT_REQUEST_TIMEOUT_MS): Promise<TreeseedKeyAgentResponse> {
+export async function requestKeyAgentOverSocket(command: KeyAgentCommand, timeoutMs = KEY_AGENT_REQUEST_TIMEOUT_MS): Promise<KeyAgentResponse> {
 	return new Promise((resolvePromise, rejectPromise) => {
 		const socket = createConnection(command.socketPath);
 		let responseBuffer = '';
@@ -156,7 +156,7 @@ export async function requestTreeseedKeyAgentOverSocket(command: TreeseedKeyAgen
 		};
 		const timeoutHandle = setTimeout(() => {
 			socket.destroy();
-			rejectPromise(new TreeseedKeyAgentError('daemon_unavailable', 'Timed out waiting for the Treeseed key-agent response.', {
+			rejectPromise(new KeyAgentError('daemon_unavailable', 'Timed out waiting for the Treeseed key-agent response.', {
 				socketPath: command.socketPath,
 			}));
 		}, timeoutMs);
@@ -173,10 +173,10 @@ export async function requestTreeseedKeyAgentOverSocket(command: TreeseedKeyAgen
 			const payload = responseBuffer.slice(0, newlineIndex).trim();
 			socket.end();
 			try {
-				const parsed = JSON.parse(payload || '{}') as TreeseedKeyAgentResponse;
+				const parsed = JSON.parse(payload || '{}') as KeyAgentResponse;
 				finalize(() => resolvePromise(parsed));
 			} catch (error) {
-				finalize(() => rejectPromise(new TreeseedKeyAgentError('protocol_error', 'Treeseed key-agent returned an invalid JSON response.', {
+				finalize(() => rejectPromise(new KeyAgentError('protocol_error', 'Treeseed key-agent returned an invalid JSON response.', {
 					socketPath: command.socketPath,
 					cause: error instanceof Error ? error.message : String(error),
 				})));
@@ -184,14 +184,14 @@ export async function requestTreeseedKeyAgentOverSocket(command: TreeseedKeyAgen
 		});
 		socket.on('error', (error) => {
 			const classified = classifySocketError(error);
-			finalize(() => rejectPromise(new TreeseedKeyAgentError(classified.code, classified.message, {
+			finalize(() => rejectPromise(new KeyAgentError(classified.code, classified.message, {
 				socketPath: command.socketPath,
 				cause: error.message,
 			})));
 		});
 		socket.on('end', () => {
 			if (!settled && responseBuffer.trim().length === 0) {
-				finalize(() => rejectPromise(new TreeseedKeyAgentError('protocol_error', 'Treeseed key-agent closed the connection without returning a response.', {
+				finalize(() => rejectPromise(new KeyAgentError('protocol_error', 'Treeseed key-agent closed the connection without returning a response.', {
 					socketPath: command.socketPath,
 				})));
 			}
@@ -199,9 +199,9 @@ export async function requestTreeseedKeyAgentOverSocket(command: TreeseedKeyAgen
 	});
 }
 
-export async function inspectTreeseedKeyAgentDiagnostics(socketPath: string): Promise<TreeseedKeyAgentDiagnostics> {
+export async function inspectKeyAgentDiagnostics(socketPath: string): Promise<KeyAgentDiagnostics> {
 	const socketKind = detectSocketKind(socketPath);
-	const diagnostics: TreeseedKeyAgentDiagnostics = {
+	const diagnostics: KeyAgentDiagnostics = {
 		socketPath,
 		pidPath: pidFilePath(socketPath),
 		socketPresent: socketKind !== 'missing',
@@ -220,11 +220,11 @@ export async function inspectTreeseedKeyAgentDiagnostics(socketPath: string): Pr
 		return diagnostics;
 	}
 	try {
-		const response = await requestTreeseedKeyAgentOverSocket({
+		const response = await requestKeyAgentOverSocket({
 			command: 'health',
 			keyPath: '',
 			socketPath,
-			idleTimeoutMs: TREESEED_KEY_AGENT_IDLE_TIMEOUT_MS,
+			idleTimeoutMs: KEY_AGENT_IDLE_TIMEOUT_MS,
 		});
 		diagnostics.socketConnectable = true;
 		diagnostics.healthOk = response.ok;
@@ -239,7 +239,7 @@ export async function inspectTreeseedKeyAgentDiagnostics(socketPath: string): Pr
 	}
 }
 
-export function createStatus(command: TreeseedKeyAgentCommand, session: TreeseedKeyAgentSessionState): TreeseedKeyAgentStatus {
+export function createStatus(command: KeyAgentCommand, session: KeyAgentSessionState): KeyAgentStatus {
 	const wrapped = command.keyPath ? readWrappedMachineKeyFile(command.keyPath) : { exists: false, wrapped: null, migrationRequired: false };
 	const idleRemainingMs = session.machineKey
 		? Math.max(0, session.idleTimeoutMs - (Date.now() - session.lastTouchedAt))
@@ -256,7 +256,7 @@ export function createStatus(command: TreeseedKeyAgentCommand, session: Treeseed
 	};
 }
 
-export function maybeExpireSession(session: TreeseedKeyAgentSessionState) {
+export function maybeExpireSession(session: KeyAgentSessionState) {
 	if (!session.machineKey) {
 		return;
 	}

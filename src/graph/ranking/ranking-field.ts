@@ -13,7 +13,7 @@ import type {
 	SdkGraphRankingQueryResult,
 	SdkGraphRankingSearchRequest,
 	SdkGraphSearchResult,
-} from '../../sdk-types.ts';
+} from '../../entrypoints/models/sdk-types.ts';
 import { normalizeText } from '../schema.ts';
 
 

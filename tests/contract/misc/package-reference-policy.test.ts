@@ -14,7 +14,7 @@ import {
 	normalizeGitRemoteForManifest,
 	rewriteInternalDependenciesToStableVersions,
 	rewriteProjectInternalDependenciesToStableVersions,
-} from '../../../src/operations/services/package-reference-policy.ts';
+} from '../../../src/operations/services/packages/package-reference-policy.ts';
 
 describe('package reference policy', () => {
 	it('creates Git dependency specs for local, HTTPS, and SSH remotes', () => {

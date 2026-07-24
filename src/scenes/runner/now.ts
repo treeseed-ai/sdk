@@ -1,13 +1,13 @@
-import { sceneActionKind, sceneExpectationKinds } from ".././schema.ts";
-import { planTreeseedScene, validateTreeseedScene } from ".././planner.ts";
-import { sceneErrorDiagnostic } from ".././diagnostics.ts";
-import { planTreeseedSceneArtifactPaths } from ".././phase0.ts";
-import { extractTreeseedSceneOperationIds } from ".././operations.ts";
-import { collectTreeseedSceneLogs } from ".././logs.ts";
-import { resolveTreeseedScenePlugins } from ".././registry.ts";
-import { createTreeseedSceneTimeline } from ".././timeline.ts";
-import { appendTreeseedSceneJsonl } from ".././artifacts.ts";
-import type { TreeseedSceneBrowserSession, TreeseedSceneDiagnostic, TreeseedSceneObservedError, TreeseedSceneOperationWaitReport, TreeseedSceneRunOptions, TreeseedSceneRunReport, TreeseedSceneRunSetupReport, TreeseedSceneValidationReport, TreeseedScenePlanReport, TreeseedSceneManifest, TreeseedSceneRenderEvidenceFit, TreeseedSceneDeviceProfile, TreeseedSceneVisualAuditRole } from ".././types.ts";
+import { sceneActionKind, sceneExpectationKinds } from "../support/validation/schema.ts";
+import { planScene, validateScene } from "../support/execution/planner.ts";
+import { sceneErrorDiagnostic } from "../support/reporting/diagnostics.ts";
+import { planSceneArtifactPaths } from "../support/execution/phase0.ts";
+import { extractSceneOperationIds } from "../operations/operations.ts";
+import { collectSceneLogs } from "../support/reporting/logs.ts";
+import { resolveScenePlugins } from "../support/plugins/registry.ts";
+import { createSceneTimeline } from "../support/evidence/timeline.ts";
+import { appendSceneJsonl } from "../support/evidence/artifacts.ts";
+import type { SceneBrowserSession, SceneDiagnostic, SceneObservedError, SceneOperationWaitReport, SceneRunOptions, SceneRunReport, SceneRunSetupReport, SceneValidationReport, ScenePlanReport, SceneManifest, SceneRenderEvidenceFit, SceneDeviceProfile, SceneVisualAuditRole } from "../types.ts";
 
 
 export function now() {
@@ -18,24 +18,24 @@ export function duration(start: Date, end: Date) {
 	return Math.max(0, end.getTime() - start.getTime());
 }
 
-export function splitDiagnostics(diagnostics: TreeseedSceneDiagnostic[], severity: 'error' | 'warning') {
+export function splitDiagnostics(diagnostics: SceneDiagnostic[], severity: 'error' | 'warning') {
 	return diagnostics.filter((entry) => entry.severity === severity);
 }
 
-export function renderResolution(scene: TreeseedSceneManifest) {
+export function renderResolution(scene: SceneManifest) {
 	return scene.render.remotion?.output?.resolution ?? { width: 1920, height: 1080 };
 }
 
-export function defaultCaptureViewport(scene: TreeseedSceneManifest) {
+export function defaultCaptureViewport(scene: SceneManifest) {
 	const resolution = renderResolution(scene);
 	if (resolution.width === 1920 && resolution.height === 1080) return { width: 1600, height: 900 };
 	return scene.target.viewport;
 }
 
 export function resolveCapture(input: {
-	scene: TreeseedSceneManifest;
-	device?: TreeseedSceneDeviceProfile | null;
-	runtimeMode: TreeseedSceneManifest['runtime']['mode'];
+	scene: SceneManifest;
+	device?: SceneDeviceProfile | null;
+	runtimeMode: SceneManifest['runtime']['mode'];
 	recording: boolean;
 }) {
 	const remotion = input.scene.render.remotion;
@@ -46,7 +46,7 @@ export function resolveCapture(input: {
 	const videoSize = input.recording
 		? input.device?.video ?? remotion?.capture?.video ?? viewport ?? { width: 1600, height: 900 }
 		: null;
-	const evidenceFit: TreeseedSceneRenderEvidenceFit = remotion?.capture?.evidenceFit ?? 'fixed-browser';
+	const evidenceFit: SceneRenderEvidenceFit = remotion?.capture?.evidenceFit ?? 'fixed-browser';
 	return {
 		viewport,
 		videoSize,
@@ -60,15 +60,15 @@ export function reportFromBlock(input: {
 	sceneId: string | null;
 	runId: string | null;
 	startedAt: Date;
-	environment: TreeseedSceneRunReport['environment'];
-	browser: TreeseedSceneRunReport['browser'];
+	environment: SceneRunReport['environment'];
+	browser: SceneRunReport['browser'];
 	baseUrl?: string | null;
-	device?: TreeseedSceneDeviceProfile | null;
-	diagnostics: TreeseedSceneDiagnostic[];
-	artifacts?: TreeseedSceneRunReport['artifacts'];
-	setup?: TreeseedSceneRunSetupReport | null;
-	operations?: TreeseedSceneOperationWaitReport[];
-}): TreeseedSceneRunReport {
+	device?: SceneDeviceProfile | null;
+	diagnostics: SceneDiagnostic[];
+	artifacts?: SceneRunReport['artifacts'];
+	setup?: SceneRunSetupReport | null;
+	operations?: SceneOperationWaitReport[];
+}): SceneRunReport {
 	const finishedAt = now();
 	return {
 		ok: false,
@@ -107,8 +107,8 @@ export function reportFromBlock(input: {
 }
 
 export function playwrightDiagnostic(error: unknown) {
-	const code = error && typeof error === 'object' && 'treeseedSceneCode' in error
-		? String((error as { treeseedSceneCode?: unknown }).treeseedSceneCode)
+	const code = error && typeof error === 'object' && 'sceneCode' in error
+		? String((error as { sceneCode?: unknown }).sceneCode)
 		: 'scene.playwright_unavailable';
 	const remediation = code === 'scene.playwright_browser_missing'
 		? ' Run `npm -w packages/sdk exec playwright install chromium`.'
@@ -116,8 +116,8 @@ export function playwrightDiagnostic(error: unknown) {
 	return sceneErrorDiagnostic(code, `${error instanceof Error ? error.message : String(error ?? 'Playwright unavailable.')}${remediation}`, 'playwright');
 }
 
-export function validationForInput(input: TreeseedSceneRunOptions): TreeseedSceneValidationReport {
-	if (typeof input.scene === 'string') return validateTreeseedScene({ projectRoot: input.projectRoot, scene: input.scene });
+export function validationForInput(input: SceneRunOptions): SceneValidationReport {
+	if (typeof input.scene === 'string') return validateScene({ projectRoot: input.projectRoot, scene: input.scene });
 	return {
 		ok: true,
 		scenePath: '<normalized-scene>',
@@ -126,9 +126,9 @@ export function validationForInput(input: TreeseedSceneRunOptions): TreeseedScen
 	};
 }
 
-export function planForInput(input: TreeseedSceneRunOptions, validation: TreeseedSceneValidationReport): TreeseedScenePlanReport {
+export function planForInput(input: SceneRunOptions, validation: SceneValidationReport): ScenePlanReport {
 	if (typeof input.scene === 'string') {
-		return planTreeseedScene({
+		return planScene({
 			projectRoot: input.projectRoot,
 			scene: input.scene,
 			environment: input.environment,
@@ -149,7 +149,7 @@ export function planForInput(input: TreeseedSceneRunOptions, validation: Treesee
 	}));
 	const actionIds = [...new Set(workflowSteps.map((step) => step.actionKind))];
 	const assertionIds = [...new Set(workflowSteps.flatMap((step) => step.assertionKinds))];
-	const pluginResolution = resolveTreeseedScenePlugins({ plugins: input.plugins });
+	const pluginResolution = resolveScenePlugins({ plugins: input.plugins });
 	return {
 		ok: pluginResolution.ok,
 		phase: 1,
@@ -172,7 +172,7 @@ export function planForInput(input: TreeseedSceneRunOptions, validation: Treesee
 		enabledPlugins: [],
 		plugins: pluginResolution.summaries,
 		pluginDiagnostics: pluginResolution.diagnostics,
-		artifactPaths: planTreeseedSceneArtifactPaths({
+		artifactPaths: planSceneArtifactPaths({
 			workspaceRoot: input.projectRoot,
 			sceneId: scene.id,
 			runId: input.runId,
@@ -185,7 +185,7 @@ export function planForInput(input: TreeseedSceneRunOptions, validation: Treesee
 	};
 }
 
-export function canContinueAfterFailure(scene: TreeseedSceneManifest, step: { demoOnly?: boolean; continueOnFailure?: boolean }) {
+export function canContinueAfterFailure(scene: SceneManifest, step: { demoOnly?: boolean; continueOnFailure?: boolean }) {
 	return scene.runtime.mode === 'demo'
 		|| scene.runtime.mode === 'training'
 		|| step.demoOnly === true
@@ -193,7 +193,7 @@ export function canContinueAfterFailure(scene: TreeseedSceneManifest, step: { de
 		|| scene.runtime.failure.continueOnFailure === true;
 }
 
-export function sceneWithRunOverrides(scene: TreeseedSceneManifest, input: TreeseedSceneRunOptions): TreeseedSceneManifest {
+export function sceneWithRunOverrides(scene: SceneManifest, input: SceneRunOptions): SceneManifest {
 	if (!input.authRole) return scene;
 	return {
 		...scene,
@@ -202,19 +202,19 @@ export function sceneWithRunOverrides(scene: TreeseedSceneManifest, input: Trees
 			auth: {
 				...(scene.setup.auth ?? {}),
 				required: input.authRole !== 'anonymous',
-				role: (scene.setup.auth?.role ?? input.authRole) as TreeseedSceneVisualAuditRole,
+				role: (scene.setup.auth?.role ?? input.authRole) as SceneVisualAuditRole,
 			},
 		},
 	};
 }
 
 export function appendBlockedSceneLogs(
-	report: TreeseedSceneRunReport,
-	input: TreeseedSceneRunOptions,
-	artifacts: TreeseedSceneRunReport['artifacts'],
-	environmentReport: TreeseedSceneRunSetupReport['environment'],
+	report: SceneRunReport,
+	input: SceneRunOptions,
+	artifacts: SceneRunReport['artifacts'],
+	environmentReport: SceneRunSetupReport['environment'],
 ) {
-	const logReport = (input.logCollector ?? collectTreeseedSceneLogs)({ projectRoot: input.projectRoot, artifacts, environmentReport });
+	const logReport = (input.logCollector ?? collectSceneLogs)({ projectRoot: input.projectRoot, artifacts, environmentReport });
 	report.logs = { ...report.logs, ...logReport.logs };
 	report.diagnostics.push(...logReport.diagnostics);
 	report.warnings = splitDiagnostics(report.diagnostics, 'warning');
@@ -222,36 +222,36 @@ export function appendBlockedSceneLogs(
 }
 
 export function registerScenePageObservers(input: {
-	session: TreeseedSceneBrowserSession;
+	session: SceneBrowserSession;
 	currentStepId: () => string | undefined;
-	consoleErrors: TreeseedSceneObservedError[];
-	networkErrors: TreeseedSceneObservedError[];
+	consoleErrors: SceneObservedError[];
+	networkErrors: SceneObservedError[];
 	linkedOperationIds: string[];
-	artifacts: TreeseedSceneRunReport['artifacts'];
-	timeline: ReturnType<typeof createTreeseedSceneTimeline>;
+	artifacts: SceneRunReport['artifacts'];
+	timeline: ReturnType<typeof createSceneTimeline>;
 }) {
 	input.session.page.on('console', (message) => {
 		if (message.type() !== 'error') return;
 		const stepId = input.currentStepId();
 		const entry = { message: message.text(), timestamp: now().toISOString(), ...(stepId ? { stepId } : {}) };
 		input.consoleErrors.push(entry);
-		appendTreeseedSceneJsonl(input.artifacts.consoleLogPath!, entry);
-		appendTreeseedSceneJsonl(input.artifacts.errorsLogPath!, { kind: 'console', ...entry });
+		appendSceneJsonl(input.artifacts.consoleLogPath!, entry);
+		appendSceneJsonl(input.artifacts.errorsLogPath!, { kind: 'console', ...entry });
 		input.timeline.push('console', entry, stepId);
 	});
 	input.session.page.on('requestfailed', (request) => {
 		const stepId = input.currentStepId();
 		const entry = { message: request.failure()?.errorText ?? 'request failed', timestamp: now().toISOString(), url: request.url(), method: request.method(), ...(stepId ? { stepId } : {}) };
 		input.networkErrors.push(entry);
-		appendTreeseedSceneJsonl(input.artifacts.networkLogPath!, entry);
-		appendTreeseedSceneJsonl(input.artifacts.errorsLogPath!, { kind: 'network', ...entry });
+		appendSceneJsonl(input.artifacts.networkLogPath!, entry);
+		appendSceneJsonl(input.artifacts.errorsLogPath!, { kind: 'network', ...entry });
 		input.timeline.push('network', entry, stepId);
 	});
 	input.session.page.on('response', (response) => {
 		const stepId = input.currentStepId();
 		const status = response.status();
 		response.json?.().then((payload) => {
-			for (const id of extractTreeseedSceneOperationIds(payload)) {
+			for (const id of extractSceneOperationIds(payload)) {
 				if (!input.linkedOperationIds.includes(id)) input.linkedOperationIds.push(id);
 				input.timeline.push('operation.detected', { operationId: id, url: response.url() }, stepId);
 			}
@@ -259,8 +259,8 @@ export function registerScenePageObservers(input: {
 		if (status < 400) return;
 		const entry = { message: `HTTP ${status}`, timestamp: now().toISOString(), url: response.url(), method: response.request().method(), status, ...(stepId ? { stepId } : {}) };
 		input.networkErrors.push(entry);
-		appendTreeseedSceneJsonl(input.artifacts.networkLogPath!, entry);
-		appendTreeseedSceneJsonl(input.artifacts.errorsLogPath!, { kind: 'network', ...entry });
+		appendSceneJsonl(input.artifacts.networkLogPath!, entry);
+		appendSceneJsonl(input.artifacts.errorsLogPath!, { kind: 'network', ...entry });
 		input.timeline.push('network', entry, stepId);
 	});
 }

@@ -1,38 +1,38 @@
-import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../diagnostics.ts';
-import { findBuiltInTreeseedSceneAction, findBuiltInTreeseedSceneAssertion } from '../registry.ts';
+import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
+import { findBuiltInSceneAction, findBuiltInSceneAssertion } from '../support/plugins/registry.ts';
 import {
-	TREESEED_SCENE_BROWSERS,
-	TREESEED_SCENE_ENVIRONMENTS,
-	TREESEED_SCENE_SCHEMA_VERSION,
-	type TreeseedSceneAction,
-	type TreeseedSceneArtifacts,
-	type TreeseedSceneBrowser,
-	type TreeseedSceneChapter,
-	type TreeseedSceneDeviceConfig,
-	type TreeseedSceneDeviceProfile,
-	type TreeseedSceneDiagram,
-	type TreeseedSceneDiagnostic,
-	type TreeseedSceneEnvironment,
-	type TreeseedSceneExpectation,
-	type TreeseedSceneManifest,
-	type TreeseedSceneMode,
-	type TreeseedSceneMotion,
-	type TreeseedSceneOverlay,
-	type TreeseedSceneOverlayVariant,
-	type TreeseedSceneRenderConfig,
-	type TreeseedSceneRenderEvidenceFit,
-	type TreeseedSceneRuntimeConfig,
-	type TreeseedSceneSelector,
-	type TreeseedSceneSetup,
-	type TreeseedSceneTarget,
-	type TreeseedSceneTrainingConfig,
-	type TreeseedSceneVisualAuditConfig,
-	type TreeseedSceneVisualObject,
-	type TreeseedSceneVisualPoint,
-	type TreeseedSceneVisualRegion,
-	type TreeseedSceneVisualSize,
-	type TreeseedSceneVisualStyle,
-	type TreeseedSceneWorkflowStep,
+	SCENE_BROWSERS,
+	SCENE_ENVIRONMENTS,
+	SCENE_SCHEMA_VERSION,
+	type SceneAction,
+	type SceneArtifacts,
+	type SceneBrowser,
+	type SceneChapter,
+	type SceneDeviceConfig,
+	type SceneDeviceProfile,
+	type SceneDiagram,
+	type SceneDiagnostic,
+	type SceneEnvironment,
+	type SceneExpectation,
+	type SceneManifest,
+	type SceneMode,
+	type SceneMotion,
+	type SceneOverlay,
+	type SceneOverlayVariant,
+	type SceneRenderConfig,
+	type SceneRenderEvidenceFit,
+	type SceneRuntimeConfig,
+	type SceneSelector,
+	type SceneSetup,
+	type SceneTarget,
+	type SceneTrainingConfig,
+	type SceneVisualAuditConfig,
+	type SceneVisualObject,
+	type SceneVisualPoint,
+	type SceneVisualRegion,
+	type SceneVisualSize,
+	type SceneVisualStyle,
+	type SceneWorkflowStep,
 } from '../types.ts';
 
 
@@ -80,7 +80,7 @@ export function asString(value: unknown) {
 	return typeof value === 'string' ? value.trim() : '';
 }
 
-export function requireString(record: Record<string, unknown>, field: string, path: string, diagnostics: TreeseedSceneDiagnostic[]) {
+export function requireString(record: Record<string, unknown>, field: string, path: string, diagnostics: SceneDiagnostic[]) {
 	const value = asString(record[field]);
 	if (!value) {
 		diagnostics.push(sceneErrorDiagnostic('scene.missing_field', `Missing required field: ${field}.`, `${path}.${field}`));
@@ -92,7 +92,7 @@ export function optionalString(record: Record<string, unknown>, field: string) {
 	return asString(record[field]) || undefined;
 }
 
-export function booleanField(record: Record<string, unknown>, field: string, defaultValue: boolean, path: string, diagnostics: TreeseedSceneDiagnostic[]) {
+export function booleanField(record: Record<string, unknown>, field: string, defaultValue: boolean, path: string, diagnostics: SceneDiagnostic[]) {
 	const value = record[field];
 	if (value === undefined) return defaultValue;
 	if (typeof value !== 'boolean') {
@@ -102,7 +102,7 @@ export function booleanField(record: Record<string, unknown>, field: string, def
 	return value;
 }
 
-export function positiveNumberField(record: Record<string, unknown>, field: string, defaultValue: number | undefined, path: string, diagnostics: TreeseedSceneDiagnostic[]) {
+export function positiveNumberField(record: Record<string, unknown>, field: string, defaultValue: number | undefined, path: string, diagnostics: SceneDiagnostic[]) {
 	const value = record[field];
 	if (value === undefined) return defaultValue;
 	if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
@@ -112,7 +112,7 @@ export function positiveNumberField(record: Record<string, unknown>, field: stri
 	return value;
 }
 
-export function finiteNumberField(record: Record<string, unknown>, field: string, defaultValue: number | undefined, path: string, diagnostics: TreeseedSceneDiagnostic[]) {
+export function finiteNumberField(record: Record<string, unknown>, field: string, defaultValue: number | undefined, path: string, diagnostics: SceneDiagnostic[]) {
 	const value = record[field];
 	if (value === undefined) return defaultValue;
 	if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -122,7 +122,7 @@ export function finiteNumberField(record: Record<string, unknown>, field: string
 	return value;
 }
 
-export function nullablePositiveNumberField(record: Record<string, unknown>, field: string, defaultValue: number | null, path: string, diagnostics: TreeseedSceneDiagnostic[]) {
+export function nullablePositiveNumberField(record: Record<string, unknown>, field: string, defaultValue: number | null, path: string, diagnostics: SceneDiagnostic[]) {
 	const value = record[field];
 	if (value === undefined) return defaultValue;
 	if (value === null) return null;
@@ -133,7 +133,7 @@ export function nullablePositiveNumberField(record: Record<string, unknown>, fie
 	return value;
 }
 
-export function objectField(record: Record<string, unknown>, field: string, path: string, diagnostics: TreeseedSceneDiagnostic[]) {
+export function objectField(record: Record<string, unknown>, field: string, path: string, diagnostics: SceneDiagnostic[]) {
 	const value = record[field];
 	if (value === undefined) return undefined;
 	if (!isRecord(value)) {
@@ -143,7 +143,7 @@ export function objectField(record: Record<string, unknown>, field: string, path
 	return value;
 }
 
-export function arrayField(record: Record<string, unknown>, field: string, path: string, diagnostics: TreeseedSceneDiagnostic[]) {
+export function arrayField(record: Record<string, unknown>, field: string, path: string, diagnostics: SceneDiagnostic[]) {
 	const value = record[field];
 	if (value === undefined) return undefined;
 	if (!Array.isArray(value)) {
@@ -153,7 +153,7 @@ export function arrayField(record: Record<string, unknown>, field: string, path:
 	return value;
 }
 
-export function stringArrayField(record: Record<string, unknown>, field: string, path: string, diagnostics: TreeseedSceneDiagnostic[]) {
+export function stringArrayField(record: Record<string, unknown>, field: string, path: string, diagnostics: SceneDiagnostic[]) {
 	const value = arrayField(record, field, path, diagnostics);
 	if (!value) return [];
 	const strings: string[] = [];
@@ -168,7 +168,7 @@ export function stringArrayField(record: Record<string, unknown>, field: string,
 	return strings;
 }
 
-export function stateRefArray(record: Record<string, unknown>, field: string, path: string, diagnostics: TreeseedSceneDiagnostic[]) {
+export function stateRefArray(record: Record<string, unknown>, field: string, path: string, diagnostics: SceneDiagnostic[]) {
 	const value = arrayField(record, field, path, diagnostics);
 	if (!value) return undefined;
 	const refs: Array<{ key: string; kind: string }> = [];
@@ -183,7 +183,7 @@ export function stateRefArray(record: Record<string, unknown>, field: string, pa
 	return refs;
 }
 
-export function parseJourney(record: Record<string, unknown>, diagnostics: TreeseedSceneDiagnostic[]) {
+export function parseJourney(record: Record<string, unknown>, diagnostics: SceneDiagnostic[]) {
 	const journey = objectField(record, 'journey', 'manifest', diagnostics);
 	if (!journey) return undefined;
 	const kind = optionalString(journey, 'kind');
@@ -198,7 +198,7 @@ export function parseJourney(record: Record<string, unknown>, diagnostics: Trees
 	};
 }
 
-export function enumArrayField<T extends readonly string[]>(record: Record<string, unknown>, field: string, allowed: T, defaultValue: T[number][], path: string, diagnostics: TreeseedSceneDiagnostic[]) {
+export function enumArrayField<T extends readonly string[]>(record: Record<string, unknown>, field: string, allowed: T, defaultValue: T[number][], path: string, diagnostics: SceneDiagnostic[]) {
 	const value = record[field];
 	if (value === undefined) return defaultValue;
 	if (!Array.isArray(value)) {
@@ -217,25 +217,25 @@ export function enumArrayField<T extends readonly string[]>(record: Record<strin
 	return result.length > 0 ? [...new Set(result)] : defaultValue;
 }
 
-export function parseEnvironment(value: unknown, path: string, diagnostics: TreeseedSceneDiagnostic[], defaultValue: TreeseedSceneEnvironment): TreeseedSceneEnvironment {
+export function parseEnvironment(value: unknown, path: string, diagnostics: SceneDiagnostic[], defaultValue: SceneEnvironment): SceneEnvironment {
 	const environment = asString(value) || defaultValue;
-	if (!(TREESEED_SCENE_ENVIRONMENTS as readonly string[]).includes(environment)) {
+	if (!(SCENE_ENVIRONMENTS as readonly string[]).includes(environment)) {
 		diagnostics.push(sceneErrorDiagnostic('scene.invalid_environment', `Unknown environment: ${environment}.`, path));
 		return defaultValue;
 	}
-	return environment as TreeseedSceneEnvironment;
+	return environment as SceneEnvironment;
 }
 
-export function parseBrowser(value: unknown, path: string, diagnostics: TreeseedSceneDiagnostic[]): TreeseedSceneBrowser {
+export function parseBrowser(value: unknown, path: string, diagnostics: SceneDiagnostic[]): SceneBrowser {
 	const browser = asString(value) || 'chromium';
-	if (!(TREESEED_SCENE_BROWSERS as readonly string[]).includes(browser)) {
+	if (!(SCENE_BROWSERS as readonly string[]).includes(browser)) {
 		diagnostics.push(sceneErrorDiagnostic('scene.invalid_browser', `Unknown browser: ${browser}.`, path));
 		return 'chromium';
 	}
-	return browser as TreeseedSceneBrowser;
+	return browser as SceneBrowser;
 }
 
-export function parseSelector(value: unknown, path: string, diagnostics: TreeseedSceneDiagnostic[]): TreeseedSceneSelector | null {
+export function parseSelector(value: unknown, path: string, diagnostics: SceneDiagnostic[]): SceneSelector | null {
 	if (!isRecord(value)) {
 		diagnostics.push(sceneErrorDiagnostic('scene.invalid_selector', 'Expected selector to be an object.', path));
 		return null;

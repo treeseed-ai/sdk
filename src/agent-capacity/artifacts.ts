@@ -1,5 +1,5 @@
 import type { ExecutionUsageActual } from '../types/agents.ts';
-import type { ResearchCitation } from './contracts/research-citation.ts';
+import type { ResearchCitation } from './contracts/support/research-citation.ts';
 import { validateResearchCitations } from './validation/research-citation.ts';
 
 export interface AgentToolEventReference {

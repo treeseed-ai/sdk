@@ -1,13 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { loadCliDeployConfig } from '../runtime-tools.ts';
-import { resolveTreeseedMachineEnvironmentValues } from '../config-runtime.ts';
-import { createPersistentDeployTarget, resolveTreeseedResourceIdentity } from '../deploy.ts';
-import { classifyTreeseedGitMode, runTreeseedGitText } from '../git-runner.ts';
-import { discoverTreeseedApplications } from '../../../hosting/apps.ts';
-import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName, railwayTreeDxServiceName } from '../railway-source-policy.ts';
-import { runPrefixedCommand, sleep, type TreeseedBootstrapTaskPrefix, type TreeseedBootstrapWriter } from '../bootstrap-runner.ts';
+import { loadCliDeployConfig } from '../agents/runtime-tools.ts';
+import { resolveMachineEnvironmentValues } from '../configuration/config-runtime.ts';
+import { createPersistentDeployTarget, resolveResourceIdentity } from '../hosting/deployment/deploy.ts';
+import { classifyGitMode, runGitText } from '../operations/git-runner.ts';
+import { discoverApplications } from '../../../hosting/apps.ts';
+import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName, railwayTreeDxServiceName } from '../hosting/railway/railway-source-policy.ts';
+import { runPrefixedCommand, sleep, type BootstrapTaskPrefix, type BootstrapWriter } from '../operations/bootstrap-runner.ts';
 import {
 	ensureRailwayEnvironment,
 	ensureRailwayProject,
@@ -27,8 +27,8 @@ import {
 	resolveRailwayWorkspace,
 	resolveRailwayWorkspaceContext,
 	upsertRailwayVariables,
-} from '../railway-api.ts';
-import { elapsedMs, formatDurationMs, type TreeseedTimingEntry } from '../../../timing.ts';
+} from '../hosting/railway/railway-api.ts';
+import { elapsedMs, formatDurationMs, type TimingEntry } from '../../../entrypoints/runtime/timing.ts';
 import { PUBLIC_TREEDX_NODE_SERVICE_KEY_PREFIX, envValue, resolveRailwayEnvironmentForScope } from './normalize-scope.ts';
 
 export function configuredPublicTreeDxRailwayServices({ tenantRoot, scope, deployConfig, identity, hostingKind, application, imageRefEnv, workspaceRoot, identityOnly = false }) {
@@ -62,7 +62,7 @@ export function configuredPublicTreeDxRailwayServices({ tenantRoot, scope, deplo
 			? configuredSource.repository
 			: typeof configuredSource.repo === 'string'
 				? configuredSource.repo
-				: readTreeseedPackageRepository(treeDxRoot) ?? 'treeseed-ai/treedx';
+				: readPackageRepositorySlug(treeDxRoot) ?? 'treeseed-ai/treedx';
 	const sourceBranch = typeof railway.sourceBranch === 'string'
 		? railway.sourceBranch
 		: typeof configuredSource.branch === 'string'
@@ -180,7 +180,7 @@ export function configuredPublicTreeDxRailwayServices({ tenantRoot, scope, deplo
 		});
 	}
 
-export function readTreeseedPackageRepository(packageRoot) {
+export function readPackageRepositorySlug(packageRoot) {
 	const manifestPath = resolve(packageRoot, 'treeseed.package.yaml');
 	if (!existsSync(manifestPath)) return null;
 	try {
@@ -196,9 +196,9 @@ export function readTreeseedPackageRepository(packageRoot) {
 
 export function headCommitSafe(cwd) {
 	try {
-		return runTreeseedGitText(['rev-parse', 'HEAD'], {
+		return runGitText(['rev-parse', 'HEAD'], {
 			cwd,
-			mode: classifyTreeseedGitMode(['rev-parse', 'HEAD']),
+			mode: classifyGitMode(['rev-parse', 'HEAD']),
 		}).trim();
 	} catch {
 		return null;
@@ -219,8 +219,8 @@ export function resolveRailwayServiceSourcePolicy({ tenantRoot, scope, serviceKe
 				: null;
 	const serviceName = effectiveServiceName ?? service.railway?.serviceName ?? null;
 	const packageRepository = configuredRepo
-		?? readTreeseedPackageRepository(serviceRoot)
-		?? readTreeseedPackageRepository(tenantRoot)
+		?? readPackageRepositorySlug(serviceRoot)
+		?? readPackageRepositorySlug(tenantRoot)
 		?? apiRailwayDefaultSourceRepo({ key: serviceKey, serviceName });
 	const dockerfilePath = service.railway?.dockerfilePath ?? apiRailwayDefaultDockerfilePath({ key: serviceKey, serviceName });
 	const apiPackageSourceEligible = ['api', 'operationsRunner'].includes(serviceKey);

@@ -2,28 +2,28 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve, sep } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { TREESEED_GUARANTEE_VERIFIERS_SCHEMA_VERSION, TreeseedGuaranteeDiagnostic, TreeseedGuaranteeFilter, TreeseedGuaranteeManifest, TreeseedGuaranteePlanEntry, TreeseedGuaranteeRegistryReport, TreeseedGuaranteeVerifierDefinition, TreeseedGuaranteeVerifierKind, TreeseedGuaranteeVerifierRegistry, TreeseedLoadedGuarantee, TreeseedLoadedGuaranteeVerifierRegistry } from './treeseed-guarantee-schema-version.ts';
-import { KNOWN_VERIFIER_KINDS, TAXONOMY_PATTERN, arrayOrEmpty, diagnostic, isRecord, normalizeTreeseedGuaranteeTaxonomy, numberValue, readYamlFile, stringArray, stringValue } from './treeseed-guarantee-journey-audit-item.ts';
-import { loadTreeseedGuaranteeManifest, nearestPackageRoot, ownerPackageFromRoot, walkFiles } from './walk-files.ts';
-import { validateTreeseedGuaranteeRegistry } from './build-treeseed-guarantee-dependency-graph.ts';
+import { GUARANTEE_VERIFIERS_SCHEMA_VERSION, GuaranteeDiagnostic, GuaranteeFilter, GuaranteeManifest, GuaranteePlanEntry, GuaranteeRegistryReport, GuaranteeVerifierDefinition, GuaranteeVerifierKind, GuaranteeVerifierRegistry, LoadedGuarantee, LoadedGuaranteeVerifierRegistry } from './guarantee-schema-version.ts';
+import { KNOWN_VERIFIER_KINDS, TAXONOMY_PATTERN, arrayOrEmpty, diagnostic, isRecord, normalizeGuaranteeTaxonomy, numberValue, readYamlFile, stringArray, stringValue } from './guarantee-journey-audit-item.ts';
+import { loadGuaranteeManifest, nearestPackageRoot, ownerPackageFromRoot, walkFiles } from './walk-files.ts';
+import { validateGuaranteeRegistry } from './build-guarantee-dependency-graph.ts';
 
-export function parseVerifierRegistry(value: unknown, diagnostics: TreeseedGuaranteeDiagnostic[], sourcePath: string): TreeseedGuaranteeVerifierRegistry | null {
+export function parseVerifierRegistry(value: unknown, diagnostics: GuaranteeDiagnostic[], sourcePath: string): GuaranteeVerifierRegistry | null {
 	if (!isRecord(value)) {
 		diagnostics.push(diagnostic('error', 'guarantee_verifiers.invalid_manifest', 'Verifier registry must be an object.', 'manifest', sourcePath));
 		return null;
 	}
 	const schemaVersion = stringValue(value.schemaVersion);
 	const ownerPackage = stringValue(value.ownerPackage);
-	if (schemaVersion !== TREESEED_GUARANTEE_VERIFIERS_SCHEMA_VERSION) diagnostics.push(diagnostic('error', 'guarantee_verifiers.unsupported_schema_version', `Unsupported verifier schema version "${schemaVersion}".`, 'schemaVersion', sourcePath));
+	if (schemaVersion !== GUARANTEE_VERIFIERS_SCHEMA_VERSION) diagnostics.push(diagnostic('error', 'guarantee_verifiers.unsupported_schema_version', `Unsupported verifier schema version "${schemaVersion}".`, 'schemaVersion', sourcePath));
 	if (!ownerPackage) diagnostics.push(diagnostic('error', 'guarantee_verifiers.missing_owner_package', 'Verifier registry ownerPackage is required.', 'ownerPackage', sourcePath));
 	const rawVerifiers = isRecord(value.verifiers) ? value.verifiers : {};
-	const verifiers: Record<string, TreeseedGuaranteeVerifierDefinition> = {};
+	const verifiers: Record<string, GuaranteeVerifierDefinition> = {};
 	for (const [id, entry] of Object.entries(rawVerifiers)) {
 		if (!isRecord(entry)) {
 			diagnostics.push(diagnostic('error', 'guarantee_verifiers.invalid_entry', `Verifier "${id}" must be an object.`, `verifiers.${id}`, sourcePath));
 			continue;
 		}
-		const kind = stringValue(entry.kind) as TreeseedGuaranteeVerifierKind;
+		const kind = stringValue(entry.kind) as GuaranteeVerifierKind;
 		verifiers[id] = {
 			kind,
 			...(typeof entry.ownerPackage === 'string' ? { ownerPackage: entry.ownerPackage } : {}),
@@ -42,17 +42,17 @@ export function parseVerifierRegistry(value: unknown, diagnostics: TreeseedGuara
 		if (verifiers[id].kind && !KNOWN_VERIFIER_KINDS.has(verifiers[id].kind)) diagnostics.push(diagnostic('error', 'guarantee_verifiers.invalid_kind', `Verifier "${id}" has unsupported kind "${verifiers[id].kind}".`, `verifiers.${id}.kind`, sourcePath));
 	}
 	return {
-		schemaVersion: TREESEED_GUARANTEE_VERIFIERS_SCHEMA_VERSION,
+		schemaVersion: GUARANTEE_VERIFIERS_SCHEMA_VERSION,
 		ownerPackage,
 		verifiers,
 	};
 }
 
-export function loadVerifierRegistry(workspaceRoot: string, path: string): TreeseedLoadedGuaranteeVerifierRegistry {
+export function loadVerifierRegistry(workspaceRoot: string, path: string): LoadedGuaranteeVerifierRegistry {
 	const sourcePath = resolve(path);
 	const packageRoot = nearestPackageRoot(workspaceRoot, sourcePath);
 	const ownerPackage = ownerPackageFromRoot(packageRoot);
-	const diagnostics: TreeseedGuaranteeDiagnostic[] = [];
+	const diagnostics: GuaranteeDiagnostic[] = [];
 	const value = readYamlFile(sourcePath, diagnostics);
 	const registry = value ? parseVerifierRegistry(value, diagnostics, sourcePath) : null;
 	if (registry && registry.ownerPackage !== ownerPackage) {
@@ -61,24 +61,24 @@ export function loadVerifierRegistry(workspaceRoot: string, path: string): Trees
 	return { sourcePath, ownerPackage, registry, diagnostics };
 }
 
-export function loadTreeseedGuaranteeVerifierRegistry(input: { workspaceRoot: string; path: string }): TreeseedLoadedGuaranteeVerifierRegistry {
+export function loadGuaranteeVerifierRegistry(input: { workspaceRoot: string; path: string }): LoadedGuaranteeVerifierRegistry {
 	return loadVerifierRegistry(resolve(input.workspaceRoot), input.path);
 }
 
-export function discoverTreeseedGuarantees(input: { workspaceRoot: string; filter?: TreeseedGuaranteeFilter } = { workspaceRoot: process.cwd() }): TreeseedGuaranteeRegistryReport {
+export function discoverGuarantees(input: { workspaceRoot: string; filter?: GuaranteeFilter } = { workspaceRoot: process.cwd() }): GuaranteeRegistryReport {
 	const workspaceRoot = resolve(input.workspaceRoot);
 	const guaranteePaths = walkFiles(workspaceRoot, (filePath) => filePath.endsWith('.guarantee.yaml'));
 	const verifierPaths = walkFiles(workspaceRoot, (filePath) => filePath.endsWith('.verifiers.yaml'));
-	const guarantees = guaranteePaths.map((path) => loadTreeseedGuaranteeManifest({ workspaceRoot, path }));
+	const guarantees = guaranteePaths.map((path) => loadGuaranteeManifest({ workspaceRoot, path }));
 	const verifierRegistries = verifierPaths.map((path) => loadVerifierRegistry(workspaceRoot, path));
-	return validateTreeseedGuaranteeRegistry({ workspaceRoot, guarantees, verifierRegistries, filter: input.filter });
+	return validateGuaranteeRegistry({ workspaceRoot, guarantees, verifierRegistries, filter: input.filter });
 }
 
-export function validateTreeseedGuarantee(input: { workspaceRoot: string; path: string }) {
-	return loadTreeseedGuaranteeManifest(input);
+export function validateGuarantee(input: { workspaceRoot: string; path: string }) {
+	return loadGuaranteeManifest(input);
 }
 
-export function allVerifierRefs(manifest: TreeseedGuaranteeManifest) {
+export function allVerifierRefs(manifest: GuaranteeManifest) {
 	return [
 		...arrayOrEmpty(manifest.api?.verifierRefs),
 		...arrayOrEmpty(manifest.content?.verifierRefs),
@@ -87,7 +87,7 @@ export function allVerifierRefs(manifest: TreeseedGuaranteeManifest) {
 	];
 }
 
-export function selectedByFilter(manifest: TreeseedGuaranteeManifest, filter: TreeseedGuaranteeFilter = {}) {
+export function selectedByFilter(manifest: GuaranteeManifest, filter: GuaranteeFilter = {}) {
 	if (filter.gate && !manifest.gates.includes(filter.gate)) return false;
 	if (filter.type && manifest.type !== filter.type) return false;
 	if (filter.subtype && manifest.subtype !== filter.subtype) return false;
@@ -100,34 +100,34 @@ export function selectedByFilter(manifest: TreeseedGuaranteeManifest, filter: Tr
 	return true;
 }
 
-export function sortGuaranteeEntries(a: TreeseedLoadedGuarantee & { manifest: TreeseedGuaranteeManifest }, b: TreeseedLoadedGuarantee & { manifest: TreeseedGuaranteeManifest }) {
+export function sortGuaranteeEntries(a: LoadedGuarantee & { manifest: GuaranteeManifest }, b: LoadedGuarantee & { manifest: GuaranteeManifest }) {
 	return (a.manifest.journeyIndex ?? 99999) - (b.manifest.journeyIndex ?? 99999) || a.manifest.id.localeCompare(b.manifest.id);
 }
 
-export function validateFilter(filter: TreeseedGuaranteeFilter | undefined, diagnostics: TreeseedGuaranteeDiagnostic[]) {
+export function validateFilter(filter: GuaranteeFilter | undefined, diagnostics: GuaranteeDiagnostic[]) {
 	for (const field of ['type', 'subtype'] as const) {
 		const value = filter?.[field];
-		if (value && !TAXONOMY_PATTERN.test(value)) diagnostics.push(diagnostic('error', `guarantee_filter.invalid_${field}`, `Filter ${field} must be lowercase kebab-case. Try "${normalizeTreeseedGuaranteeTaxonomy(value)}".`, field));
+		if (value && !TAXONOMY_PATTERN.test(value)) diagnostics.push(diagnostic('error', `guarantee_filter.invalid_${field}`, `Filter ${field} must be lowercase kebab-case. Try "${normalizeGuaranteeTaxonomy(value)}".`, field));
 	}
 }
 
-export type TreeseedGuaranteeDependencyReason = TreeseedGuaranteePlanEntry['dependencyReason'][number];
+export type GuaranteeDependencyReason = GuaranteePlanEntry['dependencyReason'][number];
 
-export type TreeseedGuaranteeDependencyGraphMeta = {
+export type GuaranteeDependencyGraphMeta = {
 	dependsOn: string[];
 	dependencyOf: string[];
-	dependencyReason: TreeseedGuaranteeDependencyReason[];
+	dependencyReason: GuaranteeDependencyReason[];
 	dependencyDepth: number;
 	executionOrder: number;
 	producesState: string[];
 	consumesState: string[];
 };
 
-export type TreeseedGuaranteeDependencyGraph = {
-	entries: Array<TreeseedLoadedGuarantee & { manifest: TreeseedGuaranteeManifest }>;
+export type GuaranteeDependencyGraph = {
+	entries: Array<LoadedGuarantee & { manifest: GuaranteeManifest }>;
 	selectedIds: Set<string>;
-	meta: Map<string, TreeseedGuaranteeDependencyGraphMeta>;
-	diagnostics: TreeseedGuaranteeDiagnostic[];
+	meta: Map<string, GuaranteeDependencyGraphMeta>;
+	diagnostics: GuaranteeDiagnostic[];
 };
 
 export function readSceneYaml(scenePath: string) {
@@ -139,7 +139,7 @@ export function readSceneYaml(scenePath: string) {
 	}
 }
 
-export function sceneManifestPathForGuarantee(entry: TreeseedLoadedGuarantee & { manifest: TreeseedGuaranteeManifest }) {
+export function sceneManifestPathForGuarantee(entry: LoadedGuarantee & { manifest: GuaranteeManifest }) {
 	const manifest = entry.manifest.scene?.manifest;
 	if (!manifest) return undefined;
 	return resolve(dirname(entry.sourcePath), manifest);
@@ -162,7 +162,7 @@ export function sceneStateKeys(value: Record<string, unknown> | null, key: 'prod
 	return entries.map((entry) => isRecord(entry) ? stringValue(entry.key) : stringValue(entry)).filter(Boolean);
 }
 
-export function implicitAuthDependencyFor(entry: TreeseedLoadedGuarantee & { manifest: TreeseedGuaranteeManifest }) {
+export function implicitAuthDependencyFor(entry: LoadedGuarantee & { manifest: GuaranteeManifest }) {
 	if (entry.manifest.type === 'user' && entry.manifest.subtype === 'auth') return undefined;
 	const entryRoute = entry.manifest.scene?.entryRoute;
 	const scenePath = sceneManifestPathForGuarantee(entry);
@@ -172,15 +172,15 @@ export function implicitAuthDependencyFor(entry: TreeseedLoadedGuarantee & { man
 }
 
 export function dependencyIdsForGuarantee(input: {
-	entry: TreeseedLoadedGuarantee & { manifest: TreeseedGuaranteeManifest };
-	byId: Map<string, TreeseedLoadedGuarantee & { manifest: TreeseedGuaranteeManifest }>;
-	byJourneyIndex: Map<number, TreeseedLoadedGuarantee & { manifest: TreeseedGuaranteeManifest }>;
-	valid: Array<TreeseedLoadedGuarantee & { manifest: TreeseedGuaranteeManifest }>;
+	entry: LoadedGuarantee & { manifest: GuaranteeManifest };
+	byId: Map<string, LoadedGuarantee & { manifest: GuaranteeManifest }>;
+	byJourneyIndex: Map<number, LoadedGuarantee & { manifest: GuaranteeManifest }>;
+	valid: Array<LoadedGuarantee & { manifest: GuaranteeManifest }>;
 }) {
-	const deps = new Map<string, Set<TreeseedGuaranteeDependencyReason>>();
-	const add = (id: string | undefined, reason: TreeseedGuaranteeDependencyReason) => {
+	const deps = new Map<string, Set<GuaranteeDependencyReason>>();
+	const add = (id: string | undefined, reason: GuaranteeDependencyReason) => {
 		if (!id || id === input.entry.manifest.id || !input.byId.has(id)) return;
-		const reasons = deps.get(id) ?? new Set<TreeseedGuaranteeDependencyReason>();
+		const reasons = deps.get(id) ?? new Set<GuaranteeDependencyReason>();
 		reasons.add(reason);
 		deps.set(id, reasons);
 	};

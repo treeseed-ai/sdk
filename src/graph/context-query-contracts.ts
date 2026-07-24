@@ -4,7 +4,7 @@ import type {
 	SdkGraphDslRelation,
 	SdkGraphQueryStage,
 	SdkGraphQueryView,
-} from '../sdk-types.ts';
+} from '../entrypoints/models/sdk-types.ts';
 
 export type DeclarativeContextQueryPurpose =
 	| 'plan'

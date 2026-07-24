@@ -1,10 +1,10 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { findTreeseedPackageAdapter } from '../../operations/services/package-adapters.ts';
-import { checkedOutTemplateRepositories } from '../../operations/services/managed-repositories.ts';
-import { runTreeseedGitText } from '../../operations/services/git-runner.ts';
-import type { TreeseedReconcileRunContext, TreeseedReconcileSelector, TreeseedReconcileTarget } from '../contracts.ts';
+import { findPackageAdapter } from '../../operations/services/reconciliation/package-adapters.ts';
+import { checkedOutTemplateRepositories } from '../../operations/services/support/managed-repositories.ts';
+import { runGitText } from '../../operations/services/operations/git-runner.ts';
+import type { ReconcileRunContext, ReconcileSelector, ReconcileTarget } from '../support/contracts/contracts.ts';
 
 function requireMatchingStageCandidate(tenantRoot: string, packageId: string, packageDir: string) {
 	const candidatePath = resolve(tenantRoot, '.treeseed/workflow/stage-candidates/latest.json');
@@ -17,8 +17,8 @@ function requireMatchingStageCandidate(tenantRoot: string, packageId: string, pa
 		packages?: Array<{ name?: string; commit?: string; verified?: boolean }>;
 	};
 	const packageProof = candidate.packages?.find((entry) => entry.name === packageId);
-	const packageHead = runTreeseedGitText(['rev-parse', 'HEAD'], { cwd: packageDir, mode: 'read' }).trim();
-	const rootHead = runTreeseedGitText(['rev-parse', 'HEAD'], { cwd: tenantRoot, mode: 'read' }).trim();
+	const packageHead = runGitText(['rev-parse', 'HEAD'], { cwd: packageDir, mode: 'read' }).trim();
+	const rootHead = runGitText(['rev-parse', 'HEAD'], { cwd: tenantRoot, mode: 'read' }).trim();
 	if (candidate.targetBranch !== 'staging'
 		|| candidate.root?.verified !== true
 		|| candidate.root.commit !== rootHead
@@ -40,7 +40,7 @@ export async function runReleaseVerifyCommand(input: {
 	env?: NodeJS.ProcessEnv;
 	onProgress?: (message: string) => void;
 }) {
-	const adapter = findTreeseedPackageAdapter(input.tenantRoot, input.packageId);
+	const adapter = findPackageAdapter(input.tenantRoot, input.packageId);
 	if (!adapter) {
 		throw new Error(`Package ${input.packageId} was not discovered.`);
 	}
@@ -99,7 +99,7 @@ export function runTemplateReleaseVerifyCommand(input: {
 }
 
 function gitText(repoDir: string, args: string[]) {
-	return runTreeseedGitText(args, { cwd: repoDir, mode: 'mutate' }).trim();
+	return runGitText(args, { cwd: repoDir, mode: 'mutate' }).trim();
 }
 
 function gitTextAllowFailure(repoDir: string, args: string[]) {
@@ -160,20 +160,20 @@ export function writeReleaseRecord(input: {
 }
 
 export async function runHostedReconcileGate(input: {
-	parentContext: TreeseedReconcileRunContext;
-	selector: TreeseedReconcileSelector;
-	target: TreeseedReconcileTarget;
+	parentContext: ReconcileRunContext;
+	selector: ReconcileSelector;
+	target: ReconcileTarget;
 	planOnly: boolean;
 }) {
-	const { reconcileTreeseedNestedTarget } = await import('../engine.ts');
-	return reconcileTreeseedNestedTarget(input);
+	const { reconcileNestedTarget } = await import('../support/engine/engine.ts');
+	return reconcileNestedTarget(input);
 }
 
 export async function runHostedVerifyGate(input: {
-	parentContext: TreeseedReconcileRunContext;
-	selector: TreeseedReconcileSelector;
-	target: TreeseedReconcileTarget;
+	parentContext: ReconcileRunContext;
+	selector: ReconcileSelector;
+	target: ReconcileTarget;
 }) {
-	const { verifyTreeseedNestedTarget } = await import('../engine.ts');
-	return verifyTreeseedNestedTarget(input);
+	const { verifyNestedTarget } = await import('../support/engine/engine.ts');
+	return verifyNestedTarget(input);
 }

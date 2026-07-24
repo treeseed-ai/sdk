@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { filesUnderIfExists, resolveTreeseedTestPath, resolveTreeseedTestRoot, treeseedRelativePath } from '../../support/workspace-test-root.ts';
+import { filesUnderIfExists, resolveTestPath, resolveTestRoot, RelativePath } from '../../support/workspace-test-root.ts';
 
-const testRoot = resolveTreeseedTestRoot(import.meta.url);
+const testRoot = resolveTestRoot(import.meta.url);
 
 describe('GitRunner boundary', () => {
 	it('keeps production raw git process calls inside GitRunner', () => {
 		const offenders = [
-			...filesUnderIfExists(resolveTreeseedTestPath(testRoot, 'packages/sdk/src')),
-			...filesUnderIfExists(resolveTreeseedTestPath(testRoot, 'packages/cli/src')),
-			...filesUnderIfExists(resolveTreeseedTestPath(testRoot, 'packages/core/src')),
+			...filesUnderIfExists(resolveTestPath(testRoot, 'packages/sdk/src')),
+			...filesUnderIfExists(resolveTestPath(testRoot, 'packages/cli/src')),
+			...filesUnderIfExists(resolveTestPath(testRoot, 'packages/core/src')),
 		].flatMap((file) => {
-			const path = treeseedRelativePath(testRoot, file);
-			if (path === 'packages/sdk/src/operations/services/git-runner.ts'
+			const path = RelativePath(testRoot, file);
+			if (path === 'packages/sdk/src/operations/services/operations/git-runner.ts'
 				|| path.startsWith('packages/sdk/src/operations/services/git-runner/')) return [];
 			const source = readFileSync(file, 'utf8');
 			const matches = [

@@ -1,0 +1,151 @@
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import path from 'node:path';
+import { parse as parseYaml } from 'yaml';
+import type { BookDefinition, TenantConfig } from '../support/contracts.ts';
+import { getTenantContentRoot } from '../configuration/tenant-config.ts';
+import { RUNTIME_PROJECT_ROOT, RUNTIME_TENANT } from '../tenant/runtime-config.ts';
+
+export interface DocsLibraryDownload {
+	downloadFileName: string;
+	downloadHref: string;
+	downloadTitle: string;
+}
+
+export interface BookRuntime {
+	BOOKS: BookDefinition[];
+	BOOKS_LINK: {
+		label: string;
+		link: string;
+	};
+	LINKS: {
+		home: string;
+	};
+	LIBRARY_DOWNLOAD: DocsLibraryDownload;
+}
+
+function fallbackTenantBookRuntime(options: {
+	docsHomePath?: string;
+	docsLibraryDownload?: DocsLibraryDownload;
+} = {}): BookRuntime {
+	const docsHomePath = options.docsHomePath ?? '/books/';
+	const docsLibraryDownload = options.docsLibraryDownload ?? {
+		downloadFileName: 'treeseed-knowledge.md',
+		downloadHref: '/books/treeseed-knowledge.md',
+		downloadTitle: 'TreeSeed Knowledge Library',
+	};
+
+	return {
+		BOOKS: [],
+		BOOKS_LINK: {
+			label: 'Books',
+			link: docsHomePath,
+		},
+		LINKS: {
+			home: docsHomePath,
+		},
+		LIBRARY_DOWNLOAD: docsLibraryDownload,
+	};
+}
+
+function sortPaths(paths: string[]) {
+	return [...paths].sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' }));
+}
+
+function collectMarkdownFiles(rootPath: string): string[] {
+	if (!existsSync(rootPath)) {
+		return [];
+	}
+	const stats = statSync(rootPath);
+	if (stats.isFile()) {
+		return [rootPath];
+	}
+
+	return sortPaths(
+		readdirSync(rootPath, { withFileTypes: true }).flatMap((entry) => {
+			const fullPath = path.join(rootPath, entry.name);
+			if (entry.isDirectory()) {
+				return collectMarkdownFiles(fullPath);
+			}
+
+			if (entry.isFile() && (entry.name.endsWith('.md') || entry.name.endsWith('.mdx'))) {
+				return [fullPath];
+			}
+
+			return [];
+		}),
+	);
+}
+
+function parseFrontmatter(filePath: string) {
+	const raw = readFileSync(filePath, 'utf8');
+	const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+	if (!match) {
+		throw new Error(`Book content entry is missing frontmatter: ${filePath}`);
+	}
+
+	return parseYaml(match[1]) as Record<string, unknown>;
+}
+
+function inferDocsLibraryDownload(book?: { slug?: string; title?: string }): DocsLibraryDownload {
+	const title = book?.title ? `${book.title} Library` : 'Knowledge Library';
+	return {
+		downloadFileName: 'treeseed-knowledge.md',
+		downloadHref: '/books/treeseed-knowledge.md',
+		downloadTitle: title,
+	};
+}
+
+export function buildTenantBookRuntime(
+	tenantConfig: Pick<TenantConfig, 'content'>,
+	options: {
+		projectRoot?: string;
+		docsHomePath?: string;
+		docsLibraryDownload?: DocsLibraryDownload;
+	} = {},
+): BookRuntime {
+	const projectRoot = options.projectRoot ?? process.cwd();
+	const booksContentRoot = path.resolve(projectRoot, getTenantContentRoot(tenantConfig, 'books'));
+	const books = collectMarkdownFiles(booksContentRoot)
+		.map((filePath) => {
+			const frontmatter = parseFrontmatter(filePath);
+			return {
+				...(frontmatter as BookDefinition),
+				id: path.basename(filePath, path.extname(filePath)),
+			};
+		})
+		.sort((left, right) => left.order - right.order);
+
+	const docsHomePath = options.docsHomePath ?? '/books/';
+	const docsLibraryDownload = options.docsLibraryDownload ?? inferDocsLibraryDownload(tenantConfig);
+
+	return {
+		BOOKS: books,
+		BOOKS_LINK: {
+			label: 'Books',
+			link: docsHomePath,
+		},
+		LINKS: {
+			home: docsHomePath,
+		},
+		LIBRARY_DOWNLOAD: docsLibraryDownload,
+	};
+}
+
+const runtime = (() => {
+	const docsLibraryDownload = {
+		downloadFileName: 'treeseed-knowledge.md',
+		downloadHref: '/books/treeseed-knowledge.md',
+		downloadTitle: 'TreeSeed Knowledge Library',
+	};
+
+	try {
+		return buildTenantBookRuntime(RUNTIME_TENANT, {
+			projectRoot: RUNTIME_PROJECT_ROOT,
+			docsLibraryDownload,
+		});
+	} catch {
+		return fallbackTenantBookRuntime({ docsLibraryDownload });
+	}
+})();
+
+export const { BOOKS, BOOKS_LINK, LINKS, LIBRARY_DOWNLOAD } = runtime;

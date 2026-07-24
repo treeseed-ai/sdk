@@ -9,12 +9,12 @@ import {
 	type TemplateConfigWriteTarget,
 	type TemplateSecretTarget,
 	type TemplateSecretSensitivity,
-} from '../../../sdk-types.ts';
+} from '../../../entrypoints/models/sdk-types.ts';
 import type {
 	ProjectLaunchConfigWritePlanItem,
 	ProjectLaunchResolvedHostBinding,
 	ProjectLaunchSecretDeploymentPlanItem,
-} from '../../../template-launch-requirements.ts';
+} from '../../../entrypoints/templates/template-launch-requirements.ts';
 
 
 export type MutableRecord = Record<string, any>;

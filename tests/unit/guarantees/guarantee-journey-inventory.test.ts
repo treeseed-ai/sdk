@@ -2,10 +2,10 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { loadGuaranteeJourneyInventory, type TreeseedGuaranteeJourneyInventory } from '../../support/guarantee-journey-inventory';
+import { loadGuaranteeJourneyInventory, type GuaranteeJourneyInventory } from '../../support/guarantee-journey-inventory';
 
 describe('guarantee journey inventory', () => {
-	let inventory: TreeseedGuaranteeJourneyInventory;
+	let inventory: GuaranteeJourneyInventory;
 
 	beforeAll(() => {
 		inventory = loadGuaranteeJourneyInventory();

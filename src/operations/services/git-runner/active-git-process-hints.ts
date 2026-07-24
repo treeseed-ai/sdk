@@ -1,9 +1,9 @@
 import { spawnSync, type SpawnSyncOptionsWithStringEncoding } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
-import { TreeseedGitLockDiagnostic, TreeseedGitLockKind, TreeseedGitLockProcessHint, TreeseedGitWorkspaceLockDiagnostics, isWithin, resolveCommonGitDir, resolveGitDir, resolveGitRoot } from './treeseed-git-runner-mode.ts';
+import { GitLockDiagnostic, GitLockKind, GitLockProcessHint, GitWorkspaceLockDiagnostics, isWithin, resolveCommonGitDir, resolveGitDir, resolveGitRoot } from './git-runner-mode.ts';
 
-export function activeGitProcessHints(repoRoot: string, commonGitDir: string | null, gitDir: string | null, lockPath?: string | null): TreeseedGitLockProcessHint[] {
+export function activeGitProcessHints(repoRoot: string, commonGitDir: string | null, gitDir: string | null, lockPath?: string | null): GitLockProcessHint[] {
 	const ps = spawnSync('ps', ['-eo', 'pid=,args='], { encoding: 'utf8', stdio: 'pipe' });
 	return (ps.stdout ?? '').split(/\r?\n/u)
 		.map((line) => line.trim())
@@ -12,7 +12,7 @@ export function activeGitProcessHints(repoRoot: string, commonGitDir: string | n
 			const match = /^(\d+)\s+(.*)$/u.exec(line);
 			return match ? { pid: Number(match[1]), command: match[2] ?? '' } : null;
 		})
-		.filter((entry): entry is TreeseedGitLockProcessHint => entry !== null)
+		.filter((entry): entry is GitLockProcessHint => entry !== null)
 		.filter((entry) => {
 			if (!/(^|[\/\s])git(\s|$)/u.test(entry.command)) return false;
 			return entry.command.includes(repoRoot)
@@ -22,7 +22,7 @@ export function activeGitProcessHints(repoRoot: string, commonGitDir: string | n
 		});
 }
 
-export function absentDiagnostic(cwd: string, kind: TreeseedGitLockKind = 'index'): TreeseedGitLockDiagnostic {
+export function absentDiagnostic(cwd: string, kind: GitLockKind = 'index'): GitLockDiagnostic {
 	const repoRoot = resolveGitRoot(cwd);
 	const commonGitDir = resolveCommonGitDir(cwd);
 	const gitDir = resolveGitDir(cwd);
@@ -44,7 +44,7 @@ export function absentDiagnostic(cwd: string, kind: TreeseedGitLockKind = 'index
 	};
 }
 
-export function classifyGitLockPath(baseGitDir: string, lockPath: string): TreeseedGitLockKind {
+export function classifyGitLockPath(baseGitDir: string, lockPath: string): GitLockKind {
 	const rel = relative(baseGitDir, lockPath).replace(/\\/gu, '/');
 	if (rel === 'index.lock') return 'index';
 	if (rel === 'packed-refs.lock') return 'packed-refs';
@@ -54,7 +54,7 @@ export function classifyGitLockPath(baseGitDir: string, lockPath: string): Trees
 	return 'unknown';
 }
 
-export function staleThresholdMs(kind: TreeseedGitLockKind) {
+export function staleThresholdMs(kind: GitLockKind) {
 	switch (kind) {
 		case 'ref':
 			return 30 * 1000;
@@ -70,7 +70,7 @@ export function staleThresholdMs(kind: TreeseedGitLockKind) {
 	}
 }
 
-export function lockDiagnostic(cwd: string, lockPath: string): TreeseedGitLockDiagnostic {
+export function lockDiagnostic(cwd: string, lockPath: string): GitLockDiagnostic {
 	const repoRoot = resolveGitRoot(cwd);
 	const commonGitDir = resolveCommonGitDir(cwd);
 	const gitDir = resolveGitDir(cwd);
@@ -153,7 +153,7 @@ export function collectLockPaths(commonGitDir: string, gitDir: string): string[]
 	return [...new Set(paths)];
 }
 
-export function inspectGitLocks(cwd: string): TreeseedGitLockDiagnostic[] {
+export function inspectGitLocks(cwd: string): GitLockDiagnostic[] {
 	const commonGitDir = resolveCommonGitDir(cwd);
 	const gitDir = resolveGitDir(cwd);
 	if (!commonGitDir || !gitDir) return [absentDiagnostic(cwd)];
@@ -174,7 +174,7 @@ export function primaryDiagnostic(cwd: string) {
 	return index ?? present ?? diagnostics[0] ?? absentDiagnostic(cwd);
 }
 
-export function inspectIndexLock(cwd: string): TreeseedGitLockDiagnostic {
+export function inspectIndexLock(cwd: string): GitLockDiagnostic {
 	const repoRoot = resolveGitRoot(cwd);
 	const commonGitDir = resolveCommonGitDir(cwd);
 	const gitDir = resolveGitDir(cwd);
@@ -200,11 +200,11 @@ export function waitForIndexLockToClear(cwd: string) {
 	return diagnostic;
 }
 
-export function inspectTreeseedGitLocks(cwd: string): TreeseedGitLockDiagnostic {
+export function inspectRepositoryGitLocks(cwd: string): GitLockDiagnostic {
 	return primaryDiagnostic(cwd);
 }
 
-export function inspectTreeseedGitLockSet(cwd: string): TreeseedGitLockDiagnostic[] {
+export function inspectGitLockSet(cwd: string): GitLockDiagnostic[] {
 	return inspectGitLocks(cwd);
 }
 
@@ -230,7 +230,7 @@ export function workspaceGitRepositories(cwd: string) {
 	return [...repositories];
 }
 
-export function inspectTreeseedWorkspaceGitLocks(cwd: string): TreeseedGitWorkspaceLockDiagnostics {
+export function inspectWorkspaceGitLocks(cwd: string): GitWorkspaceLockDiagnostics {
 	const repositories = workspaceGitRepositories(cwd).map((repo) => ({
 		repoRoot: resolveGitRoot(repo),
 		locks: inspectGitLocks(repo),

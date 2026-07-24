@@ -1,4 +1,4 @@
-import { requireSharedFixtureRoot } from '../../src/fixture-support.ts';
+import { requireSharedFixtureRoot } from '../../src/testing/fixture-support.ts';
 
 process.env.TREESEED_FIXTURE_ID ??= 'treeseed-working-site';
 

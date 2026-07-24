@@ -9,9 +9,9 @@ import {
 	type RailwayIacPlanResponse,
 	type ResourceNode,
 } from 'railway/iac';
-import { railwayGraphqlRequest } from '../../../operations/services/railway-api.ts';
-import { assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService } from '../../../operations/services/railway-source-policy.ts';
-import { TreeseedRailwayIacProjectInput, TreeseedRailwayIacService, TreeseedRailwayObservedService, TreeseedRailwayObservedVolume, TreeseedRailwayPendingVolumeCollision } from './treeseed-railway-iac-service.ts';
+import { railwayGraphqlRequest } from '../../../operations/services/hosting/railway/railway-api.ts';
+import { assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService } from '../../../operations/services/hosting/railway/railway-source-policy.ts';
+import { RailwayIacProjectInput, RailwayIacService, RailwayObservedService, RailwayObservedVolume, RailwayPendingVolumeCollision } from './railway-iac-service.ts';
 
 export async function runRailwayIacWithRateLimitRetry<T>(
 	run: () => Promise<T>,
@@ -76,7 +76,7 @@ export function literalVariable(value: string) {
 	return js(value);
 }
 
-export function validateGeneratedVariables(service: TreeseedRailwayIacService) {
+export function validateGeneratedVariables(service: RailwayIacService) {
 	const keys = [...Object.keys(service.variables ?? {}), ...Object.keys(service.secrets ?? {})];
 	const isTreeDxService = service.serviceName.includes('treedx') || service.key.includes('treedx');
 	return keys.filter((key) => {
@@ -87,7 +87,7 @@ export function validateGeneratedVariables(service: TreeseedRailwayIacService) {
 	});
 }
 
-export function serviceSource(service: TreeseedRailwayIacService) {
+export function serviceSource(service: RailwayIacService) {
 	if (service.imageRef) {
 		return `image(${js(service.imageRef)})`;
 	}
@@ -102,7 +102,7 @@ export function serviceSource(service: TreeseedRailwayIacService) {
 	return 'empty()';
 }
 
-export function buildConfig(service: TreeseedRailwayIacService) {
+export function buildConfig(service: RailwayIacService) {
 	if (service.imageRef) return null;
 	if (service.dockerfilePath) {
 		return {
@@ -119,7 +119,7 @@ export function buildConfig(service: TreeseedRailwayIacService) {
 	return null;
 }
 
-export function deployConfig(service: TreeseedRailwayIacService) {
+export function deployConfig(service: RailwayIacService) {
 	const runtimeMode = String(service.runtimeMode ?? '').trim();
 	const deploy = {
 		...(service.startCommand ? { startCommand: service.startCommand } : {}),
@@ -131,7 +131,7 @@ export function deployConfig(service: TreeseedRailwayIacService) {
 	return Object.keys(deploy).length > 0 ? deploy : null;
 }
 
-export function renderServiceEnv(service: TreeseedRailwayIacService, databaseVariableName: string | null, databaseEnvName: string | null) {
+export function renderServiceEnv(service: RailwayIacService, databaseVariableName: string | null, databaseEnvName: string | null) {
 	const variables = {
 		...(service.variables ?? {}),
 		...(service.secrets ?? {}),
@@ -163,7 +163,7 @@ export function renderPostgresEnv() {
 	]);
 }
 
-export function normalizeIacScope(input: Pick<TreeseedRailwayIacProjectInput, 'scope' | 'environmentName'>) {
+export function normalizeIacScope(input: Pick<RailwayIacProjectInput, 'scope' | 'environmentName'>) {
 	if (input.scope === 'prod' || input.scope === 'staging') return input.scope;
 	const environmentName = String(input.environmentName ?? '').trim().toLowerCase();
 	return environmentName === 'production' || environmentName === 'prod'
@@ -173,7 +173,7 @@ export function normalizeIacScope(input: Pick<TreeseedRailwayIacProjectInput, 's
 			: 'local';
 }
 
-export function activeObservedVolumeInstances(volume: TreeseedRailwayObservedVolume) {
+export function activeObservedVolumeInstances(volume: RailwayObservedVolume) {
 	return volume.instances.filter((instance) => {
 		const state = String(instance.state ?? 'READY').toUpperCase();
 		return instance.isPendingDeletion !== true
@@ -183,7 +183,7 @@ export function activeObservedVolumeInstances(volume: TreeseedRailwayObservedVol
 	});
 }
 
-export function pendingObservedVolumeInstances(volume: TreeseedRailwayObservedVolume) {
+export function pendingObservedVolumeInstances(volume: RailwayObservedVolume) {
 	return volume.instances.filter((instance) => {
 		const state = String(instance.state ?? '').toUpperCase();
 		return instance.isPendingDeletion === true
@@ -194,10 +194,10 @@ export function pendingObservedVolumeInstances(volume: TreeseedRailwayObservedVo
 }
 
 export function findRailwayPendingVolumeNameCollisions(input: {
-	services: TreeseedRailwayIacService[];
-	liveServices?: TreeseedRailwayObservedService[];
-	volumes: TreeseedRailwayObservedVolume[];
-}): TreeseedRailwayPendingVolumeCollision[] {
+	services: RailwayIacService[];
+	liveServices?: RailwayObservedService[];
+	volumes: RailwayObservedVolume[];
+}): RailwayPendingVolumeCollision[] {
 	const serviceIdByName = new Map((input.liveServices ?? []).map((service) => [service.name, service.id]));
 	return input.services.flatMap((service) => {
 		if (!service.volumeMountPath) return [];

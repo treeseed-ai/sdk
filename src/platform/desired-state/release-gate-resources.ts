@@ -3,26 +3,26 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, resolve as resolvePath } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import {
-	discoverTreeseedPackageAdapters,
-	type TreeseedPackageAdapter,
-} from '../../operations/services/package-adapters.ts';
-import { redactCapacityProviderEnv, validateAndDigestCapacityProviderManifest } from '../../capacity-provider.ts';
-import { workspaceRoot } from '../../operations/services/workspace-tools.ts';
+	discoverPackageAdapters,
+	type PackageAdapter,
+} from '../../operations/services/reconciliation/package-adapters.ts';
+import { redactCapacityProviderEnv, validateAndDigestCapacityProviderManifest } from '../../capacity/providers/capacity-provider.ts';
+import { workspaceRoot } from '../../operations/services/treedx/workspaces/workspace-tools.ts';
 import {
 	checkedOutTemplateRepositories,
-	type TreeseedTemplateRepositoryManifest,
-} from '../../operations/services/managed-repositories.ts';
-import { deriveTreeseedDesiredUnits } from '../../reconcile/desired-state.ts';
-import type { TreeseedDesiredUnit, TreeseedReconcileSelector, TreeseedReconcileTarget } from '../../reconcile/contracts.ts';
+	type TemplateRepositoryManifest,
+} from '../../operations/services/support/managed-repositories.ts';
+import { deriveDesiredUnits } from '../../reconcile/reconciliation/desired-state.ts';
+import type { DesiredUnit, ReconcileSelector, ReconcileTarget } from '../../reconcile/support/contracts/contracts.ts';
 import {
 	buildProjectLocalContentResources,
-	type TreeseedLocalContentMode,
-} from '../local-content-materialization.ts';
-import { localTreeDxSeedDigest } from '../local-treedx-seed.ts';
-import { TreeseedDesiredEnvironment, TreeseedDesiredResource, TreeseedPackageUnit, TreeseedTemplateUnit, hashJson, packageUnitRequiredSecretsForGitHubEnvironment } from './treeseed-desired-environment.ts';
+	type LocalContentMode,
+} from '../content/local-content-materialization.ts';
+import { localTreeDxSeedDigest } from '../treedx/repositories/local-treedx-seed.ts';
+import { DesiredEnvironment, DesiredResource, PackageUnit, TemplateUnit, hashJson, packageUnitRequiredSecretsForGitHubEnvironment } from './desired-environment.ts';
 import { internalPackageDependencies, releasePhaseForEnvironment } from './safe-tree-dx-repository-name.ts';
 
-export function releaseGateResources(packages: TreeseedPackageUnit[], templates: TreeseedTemplateUnit[], environment: TreeseedDesiredEnvironment): TreeseedDesiredResource[] {
+export function releaseGateResources(packages: PackageUnit[], templates: TemplateUnit[], environment: DesiredEnvironment): DesiredResource[] {
 	const phase = releasePhaseForEnvironment(environment);
 	const hostedEnvironment = environment === 'prod' ? 'prod' : 'staging';
 	const packageGates = packages.flatMap((pkg) => {
@@ -31,7 +31,7 @@ export function releaseGateResources(packages: TreeseedPackageUnit[], templates:
 			`package-manifest:${pkg.id}`,
 			...internalPackageDependencies(packages, pkg).map((dependencyId) => `release-gate:verify:${dependencyId}`),
 		];
-		const verifyGate: TreeseedDesiredResource = {
+		const verifyGate: DesiredResource = {
 			id: `release-gate:verify:${pkg.id}`,
 			kind: 'release-gate',
 			provider: 'treeseed',
@@ -90,7 +90,7 @@ export function releaseGateResources(packages: TreeseedPackageUnit[], templates:
 		];
 	});
 	const templateGates = templates.flatMap((template) => {
-		const verifyGate: TreeseedDesiredResource = {
+		const verifyGate: DesiredResource = {
 			id: `release-gate:template-verify:${template.id}`,
 			kind: 'release-gate',
 			provider: 'treeseed',
@@ -213,7 +213,7 @@ export function slugBranchName(branchName: string) {
 		.slice(0, 48) || 'preview';
 }
 
-export function branchPreviewResources(target: TreeseedReconcileTarget, environment: TreeseedDesiredEnvironment): TreeseedDesiredResource[] {
+export function branchPreviewResources(target: ReconcileTarget, environment: DesiredEnvironment): DesiredResource[] {
 	if (target.kind !== 'branch') return [];
 	const branchSlug = slugBranchName(target.branchName);
 	const previewId = `branch-preview:${branchSlug}:web`;
@@ -266,7 +266,7 @@ export function branchPreviewResources(target: TreeseedReconcileTarget, environm
 	];
 }
 
-export function resourceMatchesSelector(resource: TreeseedDesiredResource, selector?: TreeseedReconcileSelector) {
+export function resourceMatchesSelector(resource: DesiredResource, selector?: ReconcileSelector) {
 	if (!selector) return true;
 	const has = (values: string[] | undefined, candidates: Array<string | null>) => {
 		const normalized = new Set((values ?? []).map((value) => value.trim()).filter(Boolean));

@@ -4,7 +4,7 @@ import {
 	parseGitHubRepositorySlug,
 	type GitHubApiClient,
 	type GitHubWorkflowProgressEvent,
-} from '../github-api.ts';
+} from '../repositories/github-api.ts';
 import { GitHubActionsWorkflowGate } from './git-hub-actions-workflow-state.ts';
 import { formatCompactedGitHubActionsGateProgress, formatGitHubActionsGateProgress, progressCompactKey } from './inspect-target.ts';
 
@@ -68,7 +68,7 @@ export async function waitForGitHubActionsGate(
 		onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void;
 	} = {},
 ) {
-	const { waitForGitHubWorkflowCompletion } = await import('./github-automation.ts');
+	const { waitForGitHubWorkflowCompletion } = await import('../repositories/github-automation.ts');
 	const reportProgress = createGitHubActionsGateProgressReporter(gate, {
 		operation: options.operation ?? 'workflow',
 		onProgress: options.onProgress,

@@ -21,7 +21,7 @@ export {
 	type PlatformOperationNavigationResult,
 	type PlatformOperationPollOptions,
 	type PlatformOperationPollResult,
-} from '.././platform-operations.ts';
+} from '../operations/platform-operations.ts';
 
 export {
 	PLATFORM_CONTENT_COLLECTIONS,
@@ -45,7 +45,7 @@ export {
 	type PlatformRepositoryVerificationCommand,
 	type PlatformRepositoryVerificationResult,
 	type NormalizedPlatformContentInput,
-} from '.././operations/repository-operations.ts';
+} from '../operations/repository-operations.ts';
 
 export {
 	cancelGitHubWorkflowRun,
@@ -58,62 +58,62 @@ export {
 	type GitHubWorkflowFailureSummaryInput,
 	type GitHubWorkflowFileStatus,
 	type GitHubWorkflowProgressEvent,
-} from '.././operations/services/github-api.ts';
+} from '../operations/services/repositories/github-api.ts';
 
 export {
-	collectTreeseedHostedServiceChecks,
-	type TreeseedHostedServiceCheck,
-	type TreeseedHostedServiceCheckReport,
-	type TreeseedHostedServiceCheckStatus,
-	type TreeseedHostedServiceType,
-	type TreeseedObservedRailwayServiceState,
-} from '.././operations/services/hosted-service-checks.ts';
+	collectHostedServiceChecks,
+	type HostedServiceCheck,
+	type HostedServiceCheckReport,
+	type HostedServiceCheckStatus,
+	type HostedServiceType,
+	type ObservedRailwayServiceState,
+} from '../operations/services/hosting/audit/hosted-service-checks.ts';
 
 export {
 	buildProjectWebMonitorResult,
-} from '.././operations/services/project-web-monitor.ts';
+} from '../operations/services/projects/projects-core/project-web-monitor.ts';
 
 export {
-	inspectTreeseedGitLocks,
-	inspectTreeseedWorkspaceGitLocks,
-	recoverTreeseedGitLocks,
-	runTreeseedGitBatch,
-	runTreeseedGit,
-	type TreeseedGitBatchOperation,
-	type TreeseedGitLockDiagnostic,
-	type TreeseedGitRunnerMode,
-	type TreeseedGitRunnerResult,
-	type TreeseedGitWorkspaceLockDiagnostics,
-} from '.././operations/services/git-runner.ts';
+	inspectRepositoryGitLocks,
+	inspectWorkspaceGitLocks,
+	recoverGitLocks,
+	runGitBatch,
+	runRepositoryGit,
+	type GitBatchOperation,
+	type GitLockDiagnostic,
+	type GitRunnerMode,
+	type GitRunnerResult,
+	type GitWorkspaceLockDiagnostics,
+} from '../operations/services/operations/git-runner.ts';
 
 export {
-	discoverTreeseedPackageAdapters,
-	findTreeseedPackageAdapter,
+	discoverPackageAdapters,
+	findPackageAdapter,
 	packageAdapterPlanSummary,
-	planTreeseedPackageDevelopmentImage,
+	planPackageDevelopmentImage,
 	readMixProjectVersion,
-	runTreeseedPackageImageWorkflow,
-	syncTreeseedPackageWorkflows,
-	validateTreeseedPackageManifests,
-	type TreeseedPackageAdapter,
-	type TreeseedPackageCommand,
-	type TreeseedPackageDevelopmentImagePlan,
-	type TreeseedPackageImageWorkflowOptions,
-	type TreeseedPackageKind,
-	type TreeseedPackageManifestValidation,
-	type TreeseedPackageWorkflowSyncResult,
-	type TreeseedPackageWorkflowTemplateKind,
-} from '.././operations/services/package-adapters.ts';
+	runPackageImageWorkflow,
+	syncPackageWorkflows,
+	validatePackageManifests,
+	type PackageAdapter,
+	type PackageCommand,
+	type PackageDevelopmentImagePlan,
+	type PackageImageWorkflowOptions,
+	type PackageKind,
+	type PackageManifestValidation,
+	type PackageWorkflowSyncResult,
+	type PackageWorkflowTemplateKind,
+} from '../operations/services/reconciliation/package-adapters.ts';
 
 export {
-	createTreeseedIntegratedDevPlan,
-	listTreeseedDevInstances,
-	readTreeseedDevInstance,
-	runTreeseedManagedDev,
-	stopTreeseedDevInstance,
-	type TreeseedManagedDevAction,
-	type TreeseedManagedDevOptions,
-} from '.././local-dev/managed-dev.ts';
+	createIntegratedDevPlan,
+	listDevInstances,
+	readDevInstance,
+	runManagedDev,
+	stopDevInstance,
+	type ManagedDevAction,
+	type ManagedDevOptions,
+} from '../local-dev/managed-dev.ts';
 
 export {
 	AGENT_MESSAGE_KINDS,
@@ -124,44 +124,44 @@ export {
 	WORKSTREAM_STATES,
 	normalizeProjectJobStatus,
 	normalizeRemoteJobStatus,
-} from '.././project-workflow.ts';
+} from '../projects/projects-core/project-workflow.ts';
 
 export {
 	findDispatchCapability,
 	listSdkDispatchCapabilities,
 	listWorkflowDispatchCapabilities,
-} from '.././dispatch.ts';
+} from '../entrypoints/dispatch/dispatch.ts';
 
 export {
 	executeSdkOperation,
 	findSdkOperation,
 	listSdkOperationNames,
-} from '.././sdk-dispatch.ts';
+} from '../entrypoints/models/sdk-dispatch.ts';
 
 export {
 	TRESEED_OPERATION_SPECS,
-	findTreeseedOperation,
-	listTreeseedOperationNames,
-} from '.././operations-registry.ts';
+	findOperation,
+	listOperationNames,
+} from '../operations/operations-registry.ts';
 
-export { TreeseedOperationsSdk } from '.././operations/runtime.ts';
+export { OperationsSdk } from '../operations/runtime/runtime.ts';
 
-export { TreeseedWorkflowSdk } from '.././workflow.ts';
+export { WorkflowSdk } from '../operations/workflow.ts';
 
 export {
-	collectTreeseedReconcileStatus,
-	createTreeseedReconcileRegistry,
-	deriveTreeseedDesiredUnits,
-	destroyTreeseedTargetUnits,
-	planTreeseedReconciliation,
-	refreshTreeseedUnits,
-	reconcileTreeseedTarget,
-} from '.././reconcile/index.ts';
+	collectReconcileStatus,
+	createReconcileRegistry,
+	deriveDesiredUnits,
+	destroyTargetUnits,
+	planReconciliation,
+	refreshUnits,
+	reconcileTarget,
+} from '../reconcile/index.ts';
 
-export { getTreeseedVerifyDriverStatus, runTreeseedVerifyDriver } from '.././verification.ts';
+export { getVerifyDriverStatus, runVerifyDriver } from '../entrypoints/runtime/verification.ts';
 
-export type * from '.././project-workflow.ts';
+export type * from '../projects/projects-core/project-workflow.ts';
 
-export type * from '.././operations-types.ts';
+export type * from '../operations/operations-types.ts';
 
-export type * from '.././workflow.ts';
+export type * from '../operations/workflow.ts';

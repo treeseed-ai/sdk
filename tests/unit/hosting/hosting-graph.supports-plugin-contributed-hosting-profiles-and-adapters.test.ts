@@ -9,14 +9,14 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
-	compileTreeseedHostingGraph,
+	compileHostingGraph,
 	createDefaultHostAdapters,
 	createDefaultServiceTypeAdapters,
-	discoverTreeseedApplications,
-	planTreeseedHostingGraph,
+	discoverApplications,
+	planHostingGraph,
 	serializeHostingPlan,
-	type TreeseedApplicationHostingProfile,
-	type TreeseedHostAdapter,
+	type ApplicationHostingProfile,
+	type HostAdapter,
 } from '../../../src/hosting/index.ts';
 
 function createTenant(configBody: string) {
@@ -259,7 +259,7 @@ plugins:
   }
 };`);
 
-		const graph = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging' });
+		const graph = compileHostingGraph({ tenantRoot, environment: 'staging' });
 
 		expect(graph.hosts.customHost.label).toBe('Custom Host');
 		expect(graph.units.find((unit) => unit.id === 'plugin-api')).toMatchObject({
@@ -279,7 +279,7 @@ it('keeps service type adapters independent from a single host id', () => {
 	});
 
 it('returns a serializable hosting plan with placement-first UI metadata', async () => {
-		const plan = serializeHostingPlan(await planTreeseedHostingGraph({
+		const plan = serializeHostingPlan(await planHostingGraph({
 			tenantRoot: createTenant(marketConfig()),
 			environment: 'staging',
 		}));

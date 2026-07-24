@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
-import { loadTreeseedPlatformConfig } from '../../../platform/config.ts';
-import { resolveTreeseedLaunchEnvironment } from '../config-runtime.ts';
+import { loadPlatformConfig } from '../../../platform/configuration/config.ts';
+import { resolveLaunchEnvironment } from '../configuration/config-runtime.ts';
 import {
 	getRailwayServiceInstance,
 	inspectRailwayServiceDeploymentHealth,
@@ -11,31 +11,31 @@ import {
 	listRailwayVolumes,
 	normalizeRailwayEnvironmentName,
 	resolveRailwayWorkspaceContext,
-} from '../railway-api.ts';
+} from '../hosting/railway/railway-api.ts';
 import {
 	configuredRailwayServices,
-	findStaleTreeseedOperationsRunnerResources,
-	isTreeseedOperationsRunnerResourceName,
+	findStaleOperationsRunnerResources,
+	isOperationsRunnerResourceName,
 	railwayObsoleteAliasCleanupPolicy,
-} from '../railway-deploy.ts';
-import { railwayTreeDxServiceName } from '../railway-source-policy.ts';
-import { discoverTreeseedApplications } from '../../../hosting/apps.ts';
+} from '../hosting/railway/railway-deploy.ts';
+import { railwayTreeDxServiceName } from '../hosting/railway/railway-source-policy.ts';
+import { discoverApplications } from '../../../hosting/apps.ts';
 import {
-	collectTreeseedHostedServiceChecks,
-	type TreeseedHostedServiceCheckReport,
-	type TreeseedHostedServiceTarget,
-	type TreeseedObservedRailwayServiceState,
-} from '../hosted-service-checks.ts';
-import { TreeseedLiveHostedServiceCheckOptions, activeRailwayVolumeInstances, findByName, indexedName, inspectRailwayServiceDeploymentHealthWithRetry, isActiveRailwayVolumeInstance, isRetainedDetachedRailwayVolume, liveCheckErrorMessage, railwayVolumeInstanceStates, selectedServiceKeySet, serviceIsSelected, serviceMatchesAppSelection, treeseedDatabaseDescriptors } from './default-retry-attempts.ts';
+	collectHostedServiceChecks,
+	type HostedServiceCheckReport,
+	type HostedServiceTarget,
+	type ObservedRailwayServiceState,
+} from '../hosting/audit/hosted-service-checks.ts';
+import { LiveHostedServiceCheckOptions, activeRailwayVolumeInstances, findByName, indexedName, inspectRailwayServiceDeploymentHealthWithRetry, isActiveRailwayVolumeInstance, isRetainedDetachedRailwayVolume, liveCheckErrorMessage, railwayVolumeInstanceStates, selectedServiceKeySet, serviceIsSelected, serviceMatchesAppSelection, DatabaseDescriptors } from './default-retry-attempts.ts';
 import { verifyRailwayPostgresTopology } from './verify-railway-postgres-topology.ts';
 
-export async function collectRailwayObservations(options: TreeseedLiveHostedServiceCheckOptions) {
-	const observed: Record<string, TreeseedObservedRailwayServiceState> = {};
+export async function collectRailwayObservations(options: LiveHostedServiceCheckOptions) {
+	const observed: Record<string, ObservedRailwayServiceState> = {};
 	const issues: string[] = [];
 	const inspectedVolumeScopes = new Set<string>();
 	const inspectedRunnerScopes = new Set<string>();
 	const selectedServiceKeys = selectedServiceKeySet(options);
-	const applications = discoverTreeseedApplications(options.tenantRoot);
+	const applications = discoverApplications(options.tenantRoot);
 	const environmentCache = new Map<string, Promise<Awaited<ReturnType<typeof listRailwayEnvironments>>>>();
 	const serviceCache = new Map<string, Promise<Awaited<ReturnType<typeof listRailwayServices>>>>();
 	const volumeCache = new Map<string, Promise<Awaited<ReturnType<typeof listRailwayVolumes>>>>();
@@ -76,7 +76,7 @@ export async function collectRailwayObservations(options: TreeseedLiveHostedServ
 			? railwayObsoleteAliasCleanupPolicy('staging', configuredServices).retainedResourceNames
 			: [];
 		if (selectedServiceKeys.size === 0 || selectedServiceKeys.has('api') || selectedServiceKeys.has('operationsRunner')) {
-			for (const descriptor of treeseedDatabaseDescriptors(options.tenantRoot, options)) {
+			for (const descriptor of DatabaseDescriptors(options.tenantRoot, options)) {
 				await verifyRailwayPostgresTopology({ descriptor, configuredServices, projects, options, issues });
 			}
 		}
@@ -132,14 +132,14 @@ export async function collectRailwayObservations(options: TreeseedLiveHostedServ
 					...configuredSiblingServices
 						.filter((entry) => entry.projectId ? entry.projectId === project.id : entry.projectName === project.name)
 						.map((entry) => entry.serviceName)
-						.filter((name) => Boolean(name) && isTreeseedOperationsRunnerResourceName(name)),
+						.filter((name) => Boolean(name) && isOperationsRunnerResourceName(name)),
 					...retainedObsoleteAliases
-						.filter((name) => isTreeseedOperationsRunnerResourceName(name) && !name.endsWith('-volume')),
+						.filter((name) => isOperationsRunnerResourceName(name) && !name.endsWith('-volume')),
 				]);
 				const desiredRunnerServiceIds = new Set(services
 					.filter((entry) => desiredRunnerNames.has(entry.name))
 					.map((entry) => entry.id));
-				for (const staleService of findStaleTreeseedOperationsRunnerResources(services, desiredRunnerNames)) {
+				for (const staleService of findStaleOperationsRunnerResources(services, desiredRunnerNames)) {
 					issues.push(`${staleService.name}: stale operations runner Railway service remains in project ${project.name}.`);
 				}
 				const volumes = await volumesFor(project.id);
@@ -147,7 +147,7 @@ export async function collectRailwayObservations(options: TreeseedLiveHostedServ
 					...[...desiredRunnerNames].map((name) => `${name}-volume`),
 					...retainedObsoleteAliases.filter((name) => name.endsWith('-volume')),
 				]);
-				for (const staleVolume of findStaleTreeseedOperationsRunnerResources(volumes, desiredRunnerVolumeNames)) {
+				for (const staleVolume of findStaleOperationsRunnerResources(volumes, desiredRunnerVolumeNames)) {
 					const activeInstances = activeRailwayVolumeInstances(staleVolume);
 					const relevant = staleVolume.instances.length === 0 || activeInstances.length > 0;
 					const attachedToDesiredRunner = activeInstances.some((instance) => desiredRunnerServiceIds.has(instance.serviceId ?? ''));
@@ -244,10 +244,10 @@ export async function collectRailwayObservations(options: TreeseedLiveHostedServ
 			};
 		}
 		if (selectedServiceKeys.size === 0) {
-			const deployConfig = loadTreeseedPlatformConfig({ tenantRoot: options.tenantRoot, environment: options.target, env: options.env }).deployConfig;
+			const deployConfig = loadPlatformConfig({ tenantRoot: options.tenantRoot, environment: options.target, env: options.env }).deployConfig;
 			const appConfigs = [
 				...(!options.appId || options.appId === 'web' ? [deployConfig] : []),
-				...discoverTreeseedApplications(options.tenantRoot)
+				...discoverApplications(options.tenantRoot)
 					.filter((application) => application.id === 'api' && (!options.appId || options.appId === 'api'))
 					.map((application) => application.config),
 			];

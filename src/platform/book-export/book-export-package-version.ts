@@ -12,14 +12,14 @@ import {
 import path, { dirname, extname, relative, resolve } from 'node:path';
 import { runDefaultAction, setLogLevel, type CliOptions, type PackResult } from 'repomix';
 import { parse as parseYaml } from 'yaml';
-import type { TreeseedBookDefinition, TreeseedTenantConfig } from '../contracts.ts';
-import { buildTenantBookRuntime } from '../books-data.ts';
-import { loadTreeseedManifest } from '../tenant-config.ts';
+import type { BookDefinition, TenantConfig } from '../support/contracts.ts';
+import { buildTenantBookRuntime } from '../content/books-data.ts';
+import { loadManifest } from '../configuration/tenant-config.ts';
 
 
 export const BOOK_EXPORT_PACKAGE_VERSION = 1;
 
-export type TreeseedBookExportFileEntry = {
+export type BookExportFileEntry = {
 	fileId: string;
 	bookId: string;
 	memberBookId: string;
@@ -35,7 +35,7 @@ export type TreeseedBookExportFileEntry = {
 	markerId: string;
 };
 
-export type TreeseedBookExportMemberSummary = {
+export type BookExportMemberSummary = {
 	bookId: string;
 	slug: string;
 	title: string;
@@ -47,7 +47,7 @@ export type TreeseedBookExportMemberSummary = {
 	indexPath?: string;
 };
 
-export type TreeseedBookExportManifest = {
+export type BookExportManifest = {
 	packageKind: 'book' | 'library';
 	packageVersion: number;
 	packageId: string;
@@ -65,23 +65,23 @@ export type TreeseedBookExportManifest = {
 		downloadTitle: string;
 		resolvedRoots: string[];
 	};
-	files: TreeseedBookExportFileEntry[];
-	members?: TreeseedBookExportMemberSummary[];
+	files: BookExportFileEntry[];
+	members?: BookExportMemberSummary[];
 };
 
-export type TreeseedBookPackageResult = {
-	manifest: TreeseedBookExportManifest;
+export type BookPackageResult = {
+	manifest: BookExportManifest;
 	markdownPath: string;
 	indexPath: string;
 	sourceFileCount: number;
 	includedRoots: string[];
 };
 
-export type TreeseedBookLibraryPackageResult = {
-	manifest: TreeseedBookExportManifest;
+export type BookLibraryPackageResult = {
+	manifest: BookExportManifest;
 	markdownPath: string;
 	indexPath: string;
-	memberPackages: TreeseedBookPackageResult[];
+	memberPackages: BookPackageResult[];
 	sourceFileCount: number;
 	includedRoots: string[];
 };
@@ -127,14 +127,14 @@ export function frontmatterOrder(filePath: string) {
 	return typeof order === 'number' && Number.isFinite(order) ? order : null;
 }
 
-export function contentTypeFor(filePath: string): TreeseedBookExportFileEntry['sourceType'] {
+export function contentTypeFor(filePath: string): BookExportFileEntry['sourceType'] {
 	const extension = extname(filePath).toLowerCase();
 	if (extension === '.md') return 'md';
 	if (extension === '.mdx') return 'mdx';
 	return 'text';
 }
 
-export function inferExportRoots(book: TreeseedBookDefinition, tenantConfig: TreeseedTenantConfig) {
+export function inferExportRoots(book: BookDefinition, tenantConfig: TenantConfig) {
 	const knowledgePrefix = '/knowledge/';
 	const normalizedBasePath = String(book.basePath || '').trim();
 	if (!normalizedBasePath.startsWith(knowledgePrefix)) {
@@ -147,14 +147,14 @@ export function inferExportRoots(book: TreeseedBookDefinition, tenantConfig: Tre
 	return [path.join(tenantConfig.content.docs, relativeKnowledgePath)];
 }
 
-export function resolveBookRoots(book: TreeseedBookDefinition, projectRoot: string, tenantConfig: TreeseedTenantConfig) {
+export function resolveBookRoots(book: BookDefinition, projectRoot: string, tenantConfig: TenantConfig) {
 	const configuredRoots = Array.isArray(book.exportRoots) && book.exportRoots.length > 0
 		? book.exportRoots.map((entry) => resolve(projectRoot, entry))
 		: inferExportRoots(book, tenantConfig).map((entry) => resolve(entry));
 	return configuredRoots;
 }
 
-export function rootKeyFor(book: TreeseedBookDefinition, rootPath: string, projectRoot: string, index: number, total: number) {
+export function rootKeyFor(book: BookDefinition, rootPath: string, projectRoot: string, index: number, total: number) {
 	if (total === 1) {
 		return '';
 	}
@@ -163,7 +163,7 @@ export function rootKeyFor(book: TreeseedBookDefinition, rootPath: string, proje
 	return cleaned || `root-${String(index + 1).padStart(2, '0')}`;
 }
 
-export function orderedBookFiles(book: TreeseedBookDefinition, tenantConfig: TreeseedTenantConfig, projectRoot: string) {
+export function orderedBookFiles(book: BookDefinition, tenantConfig: TenantConfig, projectRoot: string) {
 	const resolvedRoots = resolveBookRoots(book, projectRoot, tenantConfig);
 	const seen = new Set<string>();
 	const files = resolvedRoots.flatMap((rootPath, rootIndex) =>
@@ -212,14 +212,14 @@ export function orderedBookFiles(book: TreeseedBookDefinition, tenantConfig: Tre
 				sourceType: contentTypeFor(file.absolutePath),
 				chunkId: sha1(`chunk:${book.id}:${projectRelativePath}:${index + 1}`),
 				markerId,
-			} satisfies TreeseedBookExportFileEntry;
+			} satisfies BookExportFileEntry;
 		}),
 	};
 }
 
 export function loadTenant(projectRoot = process.cwd()) {
 	const manifestPath = resolve(projectRoot, 'src', 'manifest.yaml');
-	const tenantConfig = loadTreeseedManifest(manifestPath);
+	const tenantConfig = loadManifest(manifestPath);
 	const runtime = buildTenantBookRuntime(tenantConfig, { projectRoot });
 	return {
 		projectRoot,
@@ -228,7 +228,7 @@ export function loadTenant(projectRoot = process.cwd()) {
 	};
 }
 
-export function findBookOrThrow(bookId: string, books: TreeseedBookDefinition[]) {
+export function findBookOrThrow(bookId: string, books: BookDefinition[]) {
 	const book = books.find((entry) => entry.id === bookId || entry.slug === bookId);
 	if (!book) {
 		throw new Error(`Unknown book export target: ${bookId}`);
@@ -236,7 +236,7 @@ export function findBookOrThrow(bookId: string, books: TreeseedBookDefinition[])
 	return book;
 }
 
-export function buildBookManifestFromBook(book: TreeseedBookDefinition, tenantConfig: TreeseedTenantConfig, projectRoot: string): TreeseedBookExportManifest {
+export function buildBookManifestFromBook(book: BookDefinition, tenantConfig: TenantConfig, projectRoot: string): BookExportManifest {
 	const ordered = orderedBookFiles(book, tenantConfig, projectRoot);
 	return {
 		packageKind: 'book',

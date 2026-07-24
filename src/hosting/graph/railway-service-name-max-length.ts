@@ -1,28 +1,28 @@
-import { loadTreeseedDeployConfig } from '../../platform/deploy-config.ts';
-import { loadTreeseedPlugins } from '../../platform/plugins/runtime.ts';
+import { loadDeployConfig } from '../../platform/hosting/deploy-config.ts';
+import { loadPlugins } from '../../platform/plugins/runtime.ts';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { resolveTreeseedMachineEnvironmentValues } from '../../operations/services/config-runtime.ts';
-import { classifyTreeseedGitMode, runTreeseedGitText } from '../../operations/services/git-runner.ts';
-import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName, railwayTreeDxServiceName } from '../../operations/services/railway-source-policy.ts';
-import { createTreeseedCanonicalReconcileReport, type TreeseedCanonicalAction, type TreeseedCanonicalDrift, type TreeseedCanonicalGraphNode, type TreeseedCanonicalPostcondition } from '../../reconcile/index.ts';
-import type { TreeseedRunnableBootstrapSystem } from '../../reconcile/bootstrap-systems.ts';
-import { discoverTreeseedApplications, findTreeseedApplication, type TreeseedDiscoveredApplication } from '../apps.ts';
+import { resolveMachineEnvironmentValues } from '../../operations/services/configuration/config-runtime.ts';
+import { classifyGitMode, runGitText } from '../../operations/services/operations/git-runner.ts';
+import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName, railwayTreeDxServiceName } from '../../operations/services/hosting/railway/railway-source-policy.ts';
+import { createCanonicalReconcileReport, type CanonicalAction, type CanonicalDrift, type CanonicalGraphNode, type CanonicalPostcondition } from '../../reconcile/index.ts';
+import type { RunnableBootstrapSystem } from '../../reconcile/support/bootstrap-systems.ts';
+import { discoverApplications, findApplication, type DiscoveredApplication } from '../apps.ts';
 import type {
-	TreeseedApplicationHostingProfile,
-	TreeseedHostAdapter,
-	TreeseedHostProjectGroup,
-	TreeseedHostingEnvironment,
-	TreeseedHostingGraphFilter,
-	TreeseedHostingGraph,
-	TreeseedHostingGraphInput,
-	TreeseedHostingPlan,
-	TreeseedHostingPlacementSummary,
-	TreeseedHostingUnit,
-	TreeseedServiceInstanceSpec,
-	TreeseedServicePlacement,
-	TreeseedServiceTypeAdapter,
+	ApplicationHostingProfile,
+	HostAdapter,
+	HostProjectGroup,
+	HostingEnvironment,
+	HostingGraphFilter,
+	HostingGraph,
+	HostingGraphInput,
+	HostingPlan,
+	HostingPlacementSummary,
+	HostingUnit,
+	ServiceInstanceSpec,
+	ServicePlacement,
+	ServiceTypeAdapter,
 } from '../contracts.ts';
 import {
 	createDefaultHostAdapters,
@@ -47,13 +47,13 @@ export function assertRailwayResourceNames(serviceName: string, volumeName?: str
 	}
 }
 
-export const ENVIRONMENT_NAMES: Record<TreeseedHostingEnvironment, string> = {
+export const ENVIRONMENT_NAMES: Record<HostingEnvironment, string> = {
 	local: 'local',
 	staging: 'staging',
 	prod: 'production',
 };
 
-export const PLACEMENT_LABELS: Record<TreeseedServicePlacement, string> = {
+export const PLACEMENT_LABELS: Record<ServicePlacement, string> = {
 	web: 'Site Hosting',
 	api: 'API Runtime',
 	database: 'Database',
@@ -74,7 +74,7 @@ export function asPluginRecord<T>(value: unknown): Record<string, T> {
 	return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, T> : {};
 }
 
-export function normalizeEnvironment(value: unknown): TreeseedHostingEnvironment {
+export function normalizeEnvironment(value: unknown): HostingEnvironment {
 	return value === 'prod' || value === 'production'
 		? 'prod'
 		: value === 'staging'
@@ -93,7 +93,7 @@ export function publicTreeDxNodePool(config: Record<string, any>) {
 	return { bootstrapCount, maxNodes };
 }
 
-export function resolvePublicTreeDxRoot(input: TreeseedHostingGraphInput) {
+export function resolvePublicTreeDxRoot(input: HostingGraphInput) {
 	const candidates = [
 		resolve(input.tenantRoot, 'packages', 'treedx'),
 		resolve(input.tenantRoot, '..', 'treedx'),
@@ -102,7 +102,7 @@ export function resolvePublicTreeDxRoot(input: TreeseedHostingGraphInput) {
 	return candidates.find((candidate) => existsSync(resolve(candidate, 'treeseed.package.yaml')) || existsSync(resolve(candidate, '.git'))) ?? candidates[0]!;
 }
 
-export function publicTreeDxSourcePolicy(input: TreeseedHostingGraphInput, config: Record<string, any>, launchEnv: Record<string, string | undefined>) {
+export function publicTreeDxSourcePolicy(input: HostingGraphInput, config: Record<string, any>, launchEnv: Record<string, string | undefined>) {
 	const railway = config.publicTreeDxFederation?.railway ?? {};
 	const configuredSource = railway.source && typeof railway.source === 'object' && !Array.isArray(railway.source)
 		? railway.source
@@ -172,7 +172,7 @@ export function publicTreeDxSourcePolicy(input: TreeseedHostingGraphInput, confi
 	return policy;
 }
 
-export function serviceKeyPlacement(serviceKey: string): TreeseedServicePlacement {
+export function serviceKeyPlacement(serviceKey: string): ServicePlacement {
 	if (serviceKey === 'api') return 'api';
 	if (serviceKey === 'treeseedDatabase') return 'database';
 	if (serviceKey === 'operationsRunner') return 'runner-capacity';
@@ -200,7 +200,7 @@ export function railwayImageRefEnvForService(serviceKey: string) {
 	return null;
 }
 
-export function defaultRailwayImageRefForService(serviceKey: string, environment: TreeseedHostingEnvironment) {
+export function defaultRailwayImageRefForService(serviceKey: string, environment: HostingEnvironment) {
 	return null;
 }
 
@@ -220,16 +220,16 @@ export function readPackageRepository(root: string) {
 
 export function headCommitSafe(root: string) {
 	try {
-		return runTreeseedGitText(['rev-parse', 'HEAD'], {
+		return runGitText(['rev-parse', 'HEAD'], {
 			cwd: root,
-			mode: classifyTreeseedGitMode(['rev-parse', 'HEAD']),
+			mode: classifyGitMode(['rev-parse', 'HEAD']),
 		}).trim();
 	} catch {
 		return null;
 	}
 }
 
-export function resolveRailwayServiceSourceRoot(input: TreeseedHostingGraphInput, serviceKey: string, service: Record<string, any>) {
+export function resolveRailwayServiceSourceRoot(input: HostingGraphInput, serviceKey: string, service: Record<string, any>) {
 	if (String(serviceKey).startsWith('capacityProvider')) {
 		if (service.railway?.rootDir) {
 			return resolve(input.tenantRoot, service.railway.rootDir);

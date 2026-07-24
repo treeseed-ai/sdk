@@ -1,8 +1,8 @@
 import { resolve } from 'node:path';
 
-import { auditTreeseedGuaranteeJourneys } from '../../src/guarantees/index';
+import { auditGuaranteeJourneys } from '../../src/guarantees/index';
 
-export type TreeseedGuaranteeJourneyInventoryItem = {
+export type GuaranteeJourneyInventoryItem = {
   guaranteeId: string;
   journeyIndex: number;
   ownerPackage: string;
@@ -19,7 +19,7 @@ export type TreeseedGuaranteeJourneyInventoryItem = {
   interactiveStepCount: number;
 };
 
-export type TreeseedGuaranteeJourneyInventory = {
+export type GuaranteeJourneyInventory = {
   workspaceRoot: string;
   totals: {
     sceneBacked: number;
@@ -29,7 +29,7 @@ export type TreeseedGuaranteeJourneyInventory = {
     missingRoutes: number;
     weakSceneContracts: number;
   };
-  items: TreeseedGuaranteeJourneyInventoryItem[];
+  items: GuaranteeJourneyInventoryItem[];
 };
 
 function journeyIndexFromGuaranteeId(guaranteeId: string): number {
@@ -37,8 +37,8 @@ function journeyIndexFromGuaranteeId(guaranteeId: string): number {
   return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
 }
 
-export function loadGuaranteeJourneyInventory(workspaceRoot = resolve(process.cwd(), '../..')): TreeseedGuaranteeJourneyInventory {
-  const audit = auditTreeseedGuaranteeJourneys({
+export function loadGuaranteeJourneyInventory(workspaceRoot = resolve(process.cwd(), '../..')): GuaranteeJourneyInventory {
+  const audit = auditGuaranteeJourneys({
     workspaceRoot,
     now: new Date('2026-01-01T00:00:00.000Z'),
   });

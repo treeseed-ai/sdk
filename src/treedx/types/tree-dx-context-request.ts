@@ -11,7 +11,7 @@ import type {
 	SdkGraphSearchOptions,
 	SdkGraphSearchResult,
 	SdkGraphTraversalResult,
-} from '../../sdk-types.ts';
+} from '../../entrypoints/models/sdk-types.ts';
 import type { components, operations, paths } from '../generated/openapi-types.ts';
 import { TreeDxContextBudgetDiagnostics, TreeDxContextMode } from './tree-dx-exec-result.ts';
 import { TreeDxMirror } from './tree-dx-actor.ts';

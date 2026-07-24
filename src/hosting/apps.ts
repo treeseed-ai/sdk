@@ -1,15 +1,15 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { loadTreeseedDeployConfigFromPath } from '../platform/deploy-config.ts';
-import type { TreeseedDeployConfig } from '../platform/contracts.ts';
+import { loadDeployConfigFromPath } from '../platform/hosting/deploy-config.ts';
+import type { DeployConfig } from '../platform/support/contracts.ts';
 
-export interface TreeseedDiscoveredApplication {
+export interface DiscoveredApplication {
 	id: string;
 	label: string;
 	root: string;
 	configPath: string;
 	relativeRoot: string;
-	config: TreeseedDeployConfig;
+	config: DeployConfig;
 	roles: string[];
 }
 
@@ -54,7 +54,7 @@ function workspacePackageRoots(root: string) {
 	return [...roots].sort();
 }
 
-function applicationRoles(config: TreeseedDeployConfig) {
+function applicationRoles(config: DeployConfig) {
 	const roles: string[] = [];
 	if (config.surfaces?.web?.enabled !== false && config.surfaces?.web) roles.push('web');
 	if (config.surfaces?.api?.enabled === true || config.services?.api?.enabled !== false && config.services?.api) roles.push('api');
@@ -63,7 +63,7 @@ function applicationRoles(config: TreeseedDeployConfig) {
 	return [...new Set(roles)];
 }
 
-function inferApplicationId(config: TreeseedDeployConfig, root: string, workspaceRoot: string) {
+function inferApplicationId(config: DeployConfig, root: string, workspaceRoot: string) {
 	const roles = applicationRoles(config);
 	const hasBackendServices = Boolean(config.services?.api || config.services?.operationsRunner || config.services?.treeseedDatabase);
 	if (
@@ -85,9 +85,9 @@ function inferApplicationId(config: TreeseedDeployConfig, root: string, workspac
 	return (configuredId || 'app').replace(/^treeseed-/u, '').replace(/[^a-z0-9-]+/giu, '-').replace(/^-|-$/gu, '') || 'app';
 }
 
-function appFromConfigPath(configPath: string, workspaceRoot: string): TreeseedDiscoveredApplication {
+function appFromConfigPath(configPath: string, workspaceRoot: string): DiscoveredApplication {
 	const root = dirname(configPath);
-	const config = loadTreeseedDeployConfigFromPath(configPath);
+	const config = loadDeployConfigFromPath(configPath);
 	const roles = applicationRoles(config);
 	const id = inferApplicationId(config, root, workspaceRoot);
 	const relativeRoot = root === workspaceRoot ? '.' : root.slice(workspaceRoot.length + 1).replaceAll('\\', '/');
@@ -102,14 +102,14 @@ function appFromConfigPath(configPath: string, workspaceRoot: string): TreeseedD
 	};
 }
 
-export function discoverTreeseedApplications(workspaceRootInput: string): TreeseedDiscoveredApplication[] {
+export function discoverApplications(workspaceRootInput: string): DiscoveredApplication[] {
 	const workspaceRoot = resolve(workspaceRootInput);
 	const candidates = [
 		workspaceRoot,
 		...workspacePackageRoots(workspaceRoot),
 	];
 	const seenIds = new Set<string>();
-	const apps: TreeseedDiscoveredApplication[] = [];
+	const apps: DiscoveredApplication[] = [];
 	for (const root of candidates) {
 		const configPath = resolve(root, 'treeseed.site.yaml');
 		if (!existsSync(configPath)) continue;
@@ -125,6 +125,6 @@ export function discoverTreeseedApplications(workspaceRootInput: string): Treese
 	return apps;
 }
 
-export function findTreeseedApplication(workspaceRoot: string, appId: string) {
-	return discoverTreeseedApplications(workspaceRoot).find((app) => app.id === appId || app.relativeRoot === appId) ?? null;
+export function findApplication(workspaceRoot: string, appId: string) {
+	return discoverApplications(workspaceRoot).find((app) => app.id === appId || app.relativeRoot === appId) ?? null;
 }

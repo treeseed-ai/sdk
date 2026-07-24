@@ -1,21 +1,21 @@
 import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
-import { resolveTreeseedLaunchEnvironment } from '../../operations/services/config-runtime.ts';
-import { cloudflareApiRequest, resolveCloudflareZoneIdForHost, resolveConfiguredCloudflareAccountId, runWrangler } from '../../operations/services/deploy.ts';
+import { resolveLaunchEnvironment } from '../../operations/services/configuration/config-runtime.ts';
+import { cloudflareApiRequest, resolveCloudflareZoneIdForHost, resolveConfiguredCloudflareAccountId, runWrangler } from '../../operations/services/hosting/deployment/deploy.ts';
 import type {
-	TreeseedApplicationHostingProfile,
-	TreeseedHostAdapter,
-	TreeseedHostAdapterOperationInput,
-	TreeseedHostAdapterOperationResult,
-	TreeseedHostCapability,
-	TreeseedHostingEnvironment,
-	TreeseedHostingStatus,
-	TreeseedHostingUnit,
-	TreeseedHostingUnitPlan,
-	TreeseedHostingVerification,
-	TreeseedServicePlacement,
-	TreeseedServiceTypeAdapter,
+	ApplicationHostingProfile,
+	HostAdapter,
+	HostAdapterOperationInput,
+	HostAdapterOperationResult,
+	HostCapability,
+	HostingEnvironment,
+	HostingStatus,
+	HostingUnit,
+	HostingUnitPlan,
+	HostingVerification,
+	ServicePlacement,
+	ServiceTypeAdapter,
 } from '../contracts.ts';
 import { cloudflarePagesEnv } from './all-environments.ts';
 
@@ -76,7 +76,7 @@ try {
 	}
 }
 
-export function cloudflarePagesDnsTarget(projectName: string, branchName: string, environment: TreeseedHostingEnvironment) {
+export function cloudflarePagesDnsTarget(projectName: string, branchName: string, environment: HostingEnvironment) {
 	return environment === 'prod'
 		? `${projectName}.pages.dev`
 		: `${branchName}.${projectName}.pages.dev`;
@@ -89,7 +89,7 @@ export function cloudflarePagesDomainName(domain: any) {
 				: '';
 }
 
-export function listCloudflarePagesDomains(input: TreeseedHostAdapterOperationInput, projectName: string) {
+export function listCloudflarePagesDomains(input: HostAdapterOperationInput, projectName: string) {
 	const env = cloudflarePagesEnv(input);
 	const accountId = String(env.CLOUDFLARE_ACCOUNT_ID ?? '').trim();
 	const token = String(env.CLOUDFLARE_API_TOKEN ?? '').trim();
@@ -111,7 +111,7 @@ export function listCloudflarePagesDomains(input: TreeseedHostAdapterOperationIn
 	return domains;
 }
 
-export function findCloudflarePagesDomain(input: TreeseedHostAdapterOperationInput, projectName: string, domain: string | null) {
+export function findCloudflarePagesDomain(input: HostAdapterOperationInput, projectName: string, domain: string | null) {
 	if (!domain) return null;
 	const env = cloudflarePagesEnv(input);
 	const accountId = String(env.CLOUDFLARE_ACCOUNT_ID ?? '').trim();
@@ -131,7 +131,7 @@ export function cloudflareDnsRecordName(record: any) {
 	return typeof record?.name === 'string' ? record.name : '';
 }
 
-export function listCloudflareDnsRecords(input: TreeseedHostAdapterOperationInput, recordName: string | null) {
+export function listCloudflareDnsRecords(input: HostAdapterOperationInput, recordName: string | null) {
 	const env = cloudflarePagesEnv(input);
 	const zoneId = recordName ? resolveCloudflareZoneIdForHost(input.graph.deployConfig, recordName, env) : null;
 	if (!zoneId || !recordName) return { zoneId, records: [] as any[] };
@@ -145,7 +145,7 @@ export function listCloudflareDnsRecords(input: TreeseedHostAdapterOperationInpu
 	};
 }
 
-export function observeCloudflarePagesProject(input: TreeseedHostAdapterOperationInput, projectName: string) {
+export function observeCloudflarePagesProject(input: HostAdapterOperationInput, projectName: string) {
 	const env = cloudflarePagesEnv(input);
 	const accountId = String(env.CLOUDFLARE_ACCOUNT_ID ?? '').trim();
 	const token = String(env.CLOUDFLARE_API_TOKEN ?? '').trim();
@@ -156,11 +156,11 @@ export function observeCloudflarePagesProject(input: TreeseedHostAdapterOperatio
 	)?.result ?? null;
 }
 
-export function observeCloudflarePagesDomain(input: TreeseedHostAdapterOperationInput, projectName: string, domain: string | null) {
+export function observeCloudflarePagesDomain(input: HostAdapterOperationInput, projectName: string, domain: string | null) {
 	return findCloudflarePagesDomain(input, projectName, domain);
 }
 
-export function observeCloudflarePagesDeployment(input: TreeseedHostAdapterOperationInput, projectName: string, branchName: string) {
+export function observeCloudflarePagesDeployment(input: HostAdapterOperationInput, projectName: string, branchName: string) {
 	const result = runWrangler(['pages', 'deployment', 'list', '--project-name', projectName, '--json'], {
 		cwd: input.graph.tenantRoot,
 		capture: true,
@@ -177,7 +177,7 @@ export function observeCloudflarePagesDeployment(input: TreeseedHostAdapterOpera
 	}
 }
 
-export function observeCloudflarePagesDns(input: TreeseedHostAdapterOperationInput, projectName: string, branchName: string, domain: string | null) {
+export function observeCloudflarePagesDns(input: HostAdapterOperationInput, projectName: string, branchName: string, domain: string | null) {
 	if (!domain) return null;
 	const expectedContent = cloudflarePagesDnsTarget(projectName, branchName, input.environment);
 	const { zoneId, records } = listCloudflareDnsRecords(input, domain);

@@ -1,37 +1,37 @@
 import net from 'node:net';
 import tls from 'node:tls';
 import {
-	getTreeseedEnvironmentSuggestedValues,
-	type TreeseedEnvironmentScope,
-	validateTreeseedEnvironmentValues,
-} from '../../../platform/environment.ts';
+	getEnvironmentSuggestedValues,
+	type EnvironmentScope,
+	validateEnvironmentValues,
+} from '../../../platform/configuration/environment.ts';
 import {
-	collectTreeseedConfigSeedValues,
-	collectTreeseedEnvironmentContext,
-	checkTreeseedProviderConnections,
-} from '../config-runtime.ts';
+	collectConfigSeedValues,
+	collectEnvironmentContext,
+	checkProviderConnections,
+} from '../configuration/config-runtime.ts';
 import {
 	buildProvisioningSummary,
 	createBranchPreviewDeployTarget,
 	createPersistentDeployTarget,
 	loadDeployState,
-} from '../deploy.ts';
+} from '../hosting/deployment/deploy.ts';
 import {
 	currentManagedBranch,
 	PRODUCTION_BRANCH,
 	STAGING_BRANCH,
-} from '../git-workflow.ts';
-import { loadTreeseedPlatformConfig } from '../../../platform/config.ts';
+} from '../operations/git-workflow.ts';
+import { loadPlatformConfig } from '../../../platform/configuration/config.ts';
 import {
-	collectTreeseedReconcileStatus,
-	reconcileTreeseedTarget,
-	type TreeseedRunnableBootstrapSystem,
+	collectReconcileStatus,
+	reconcileTarget,
+	type RunnableBootstrapSystem,
 } from '../../../reconcile/index.ts';
-import type { TreeseedReconcileTarget } from '../../../reconcile/contracts.ts';
-import { TreeseedHostingAuditCheck, TreeseedHostingAuditOptions, TreeseedHostingAuditReport, nonEmptyEnvironmentValues, normalizeAuditValues, normalizeHostKinds, resolveTreeseedHostingAuditTarget, serializeTarget } from './treeseed-hosting-audit-environment.ts';
+import type { ReconcileTarget } from '../../../reconcile/support/contracts/contracts.ts';
+import { HostingAuditCheck, HostingAuditOptions, HostingAuditReport, nonEmptyEnvironmentValues, normalizeAuditValues, normalizeHostKinds, resolveHostingAuditTarget, serializeTarget } from './hosting-audit-environment.ts';
 import { appendManualConfigChecks, appendRegistryConfigChecks, providerConnectionChecks, reconcileStatusChecks, reconcileSystemsForHostKinds } from './required-key-check.ts';
 
-export async function checkSmtpReachability(values: Record<string, string | undefined>): Promise<TreeseedHostingAuditCheck> {
+export async function checkSmtpReachability(values: Record<string, string | undefined>): Promise<HostingAuditCheck> {
 	const host = values.TREESEED_SMTP_HOST;
 	const port = Number(values.TREESEED_SMTP_PORT ?? 0);
 	const secure = /^(true|1|tls|ssl|465)$/iu.test(String(values.TREESEED_SMTP_SECURE ?? ''));
@@ -53,7 +53,7 @@ export async function checkSmtpReachability(values: Record<string, string | unde
 			? tls.connect({ host, port, servername: host, timeout: 5000 })
 			: net.connect({ host, port, timeout: 5000 });
 		let settled = false;
-		const finish = (check: TreeseedHostingAuditCheck) => {
+		const finish = (check: HostingAuditCheck) => {
 			if (settled) return;
 			settled = true;
 			socket.destroy();
@@ -105,7 +105,7 @@ export async function checkSmtpReachability(values: Record<string, string | unde
 	});
 }
 
-export function summarizeReport(checks: TreeseedHostingAuditCheck[]) {
+export function summarizeReport(checks: HostingAuditCheck[]) {
 	const blockers = checks
 		.filter((check) => check.status === 'failed' && check.severity === 'critical')
 		.map((check) => check.detail ? `${check.summary} ${check.detail}` : check.summary);
@@ -141,7 +141,7 @@ export function summarizeReport(checks: TreeseedHostingAuditCheck[]) {
 	return { blockers, warnings, missingConfig, nextActions };
 }
 
-export async function runTreeseedHostingAudit({
+export async function runHostingAudit({
 	tenantRoot,
 	environment = 'current',
 	repair = false,
@@ -151,12 +151,12 @@ export async function runTreeseedHostingAudit({
 	providerConnectionChecks: shouldCheckProviderConnections = true,
 	resourceChecks: shouldCheckResources = true,
 	write,
-}: TreeseedHostingAuditOptions): Promise<TreeseedHostingAuditReport> {
-	const resolved = resolveTreeseedHostingAuditTarget({ tenantRoot, environment });
+}: HostingAuditOptions): Promise<HostingAuditReport> {
+	const resolved = resolveHostingAuditTarget({ tenantRoot, environment });
 	const hostKinds = normalizeHostKinds(requestedHostKinds);
-	const deployConfig = loadTreeseedPlatformConfig({ tenantRoot, environment: resolved.scope, env }).deployConfig;
-	const seedValues = collectTreeseedConfigSeedValues(tenantRoot, resolved.scope, env, valuesOverlay);
-	const suggestedValues = getTreeseedEnvironmentSuggestedValues({
+	const deployConfig = loadPlatformConfig({ tenantRoot, environment: resolved.scope, env }).deployConfig;
+	const seedValues = collectConfigSeedValues(tenantRoot, resolved.scope, env, valuesOverlay);
+	const suggestedValues = getEnvironmentSuggestedValues({
 		scope: resolved.scope,
 		purpose: 'config',
 		deployConfig,
@@ -172,13 +172,13 @@ export async function runTreeseedHostingAudit({
 		...nonEmptyEnvironmentValues(env),
 		...nonEmptyEnvironmentValues(valuesOverlay),
 	});
-	const checks: TreeseedHostingAuditCheck[] = [];
+	const checks: HostingAuditCheck[] = [];
 
 	appendManualConfigChecks(checks, values, hostKinds);
 	appendRegistryConfigChecks({ checks, tenantRoot, scope: resolved.scope, values, hostKinds });
 
 	if (shouldCheckProviderConnections) {
-		const connectionReport = await checkTreeseedProviderConnections({
+		const connectionReport = await checkProviderConnections({
 			tenantRoot,
 			scope: resolved.scope,
 			env: {
@@ -227,7 +227,7 @@ export async function runTreeseedHostingAudit({
 			});
 		}
 		try {
-			const beforeStatus = await collectTreeseedReconcileStatus({
+			const beforeStatus = await collectReconcileStatus({
 				tenantRoot,
 				target: resolved.target,
 				env: values,
@@ -236,7 +236,7 @@ export async function runTreeseedHostingAudit({
 			let repairedIds = new Set<string>();
 			if (repair && beforeStatus.ready !== true) {
 				write?.('[audit][hosting] Repair mode enabled; reconciling platform provider resources.');
-				const repairResult = await reconcileTreeseedTarget({
+				const repairResult = await reconcileTarget({
 					tenantRoot,
 					target: resolved.target,
 					env: values,
@@ -244,7 +244,7 @@ export async function runTreeseedHostingAudit({
 					write,
 				});
 				repaired = repairResult.results.some((result) => result.action !== 'none');
-				const afterStatus = await collectTreeseedReconcileStatus({
+				const afterStatus = await collectReconcileStatus({
 					tenantRoot,
 					target: resolved.target,
 					env: values,

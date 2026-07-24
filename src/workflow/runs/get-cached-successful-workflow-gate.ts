@@ -1,10 +1,10 @@
 import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { dirname, resolve } from 'node:path';
-import type { TreeseedWorkflowMode } from '../session.ts';
+import type { WorkflowMode } from '../session.ts';
 import { archivedWorkflowRunSummary, readWorkflowRunJournal, safeJsonParse, writeWorkflowRunJournal } from './ensure-workflow-exclude-rule.ts';
 import { gateCacheMatches, updateWorkflowRunJournal } from './update-workflow-run-journal.ts';
-import { TreeseedWorkflowExecutionMode, TreeseedWorkflowGateCacheEntry, TreeseedWorkflowLockScope, TreeseedWorkflowRunCommand, TreeseedWorkflowRunJournal, TreeseedWorkflowRunStep, nowIso, workflowRunsRoot } from './treeseed-workflow-run-command.ts';
+import { WorkflowExecutionMode, WorkflowGateCacheEntry, WorkflowLockScope, WorkflowRunCommand, WorkflowRunJournal, WorkflowRunStep, nowIso, workflowRunsRoot } from './workflow-run-command.ts';
 
 export function getCachedSuccessfulWorkflowGate(
 	root: string,
@@ -30,7 +30,7 @@ export function cacheWorkflowGateResult(root: string, runId: string, result: Rec
 	if (!workflow || !headSha) {
 		return null;
 	}
-	const entry: TreeseedWorkflowGateCacheEntry = {
+	const entry: WorkflowGateCacheEntry = {
 		repo: typeof result.repository === 'string' ? result.repository : null,
 		workflow,
 		headSha,
@@ -61,11 +61,11 @@ export function createWorkflowRunJournal(
 	root: string,
 	options: {
 		runId: string;
-		command: TreeseedWorkflowRunCommand;
-		executionMode?: TreeseedWorkflowExecutionMode;
+		command: WorkflowRunCommand;
+		executionMode?: WorkflowExecutionMode;
 		input: Record<string, unknown>;
-		session: TreeseedWorkflowRunJournal['session'];
-		steps: Omit<TreeseedWorkflowRunStep, 'status' | 'completedAt' | 'data'>[];
+		session: WorkflowRunJournal['session'];
+		steps: Omit<WorkflowRunStep, 'status' | 'completedAt' | 'data'>[];
 	},
 ) {
 	const timestamp = nowIso();
@@ -96,10 +96,10 @@ export function createWorkflowRunJournal(
 	});
 }
 
-export function listWorkflowRunJournalsForScope(root: string, scope: TreeseedWorkflowLockScope) {
+export function listWorkflowRunJournalsForScope(root: string, scope: WorkflowLockScope) {
 	const runsDir = workflowRunsRoot(root, null, scope);
 	if (!existsSync(runsDir)) {
-		return [] as TreeseedWorkflowRunJournal[];
+		return [] as WorkflowRunJournal[];
 	}
 	return readdirSync(runsDir)
 		.filter((entry) => entry.endsWith('.json'))
@@ -113,26 +113,26 @@ export function listWorkflowRunJournalsForScope(root: string, scope: TreeseedWor
 			} catch {
 				return null;
 			}
-			return safeJsonParse<TreeseedWorkflowRunJournal>(path);
+			return safeJsonParse<WorkflowRunJournal>(path);
 		})
-		.filter((entry): entry is TreeseedWorkflowRunJournal => entry != null)
+		.filter((entry): entry is WorkflowRunJournal => entry != null)
 		.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
 export function listWorkflowRunJournals(root: string) {
 	const local = listWorkflowRunJournalsForScope(root, 'worktree');
 	const shared = listWorkflowRunJournalsForScope(root, 'shared');
-	const byId = new Map<string, TreeseedWorkflowRunJournal>();
+	const byId = new Map<string, WorkflowRunJournal>();
 	for (const journal of [...local, ...shared]) {
 		byId.set(journal.runId, journal);
 	}
 	return [...byId.values()].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
-export function listRecentWorkflowRunJournalsForScope(root: string, scope: TreeseedWorkflowLockScope, limit: number) {
+export function listRecentWorkflowRunJournalsForScope(root: string, scope: WorkflowLockScope, limit: number) {
 	const runsDir = workflowRunsRoot(root, null, scope);
 	if (!existsSync(runsDir)) {
-		return [] as TreeseedWorkflowRunJournal[];
+		return [] as WorkflowRunJournal[];
 	}
 	return readdirSync(runsDir)
 		.filter((entry) => entry.endsWith('.json'))
@@ -156,15 +156,15 @@ export function listRecentWorkflowRunJournalsForScope(root: string, scope: Trees
 			} catch {
 				return null;
 			}
-			return safeJsonParse<TreeseedWorkflowRunJournal>(entry.path);
+			return safeJsonParse<WorkflowRunJournal>(entry.path);
 		})
-		.filter((entry): entry is TreeseedWorkflowRunJournal => entry != null);
+		.filter((entry): entry is WorkflowRunJournal => entry != null);
 }
 
 export function listRecentWorkflowRunJournals(root: string, limit = 50) {
 	const local = listRecentWorkflowRunJournalsForScope(root, 'worktree', limit);
 	const shared = listRecentWorkflowRunJournalsForScope(root, 'shared', limit);
-	const byId = new Map<string, TreeseedWorkflowRunJournal>();
+	const byId = new Map<string, WorkflowRunJournal>();
 	for (const journal of [...local, ...shared]) {
 		byId.set(journal.runId, journal);
 	}

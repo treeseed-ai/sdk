@@ -2,35 +2,35 @@ import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, ex
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import { collectTreeseedReconcileStatus, reconcileTreeseedTarget } from '../../../reconcile/index.ts';
-import { checkTreeseedProviderConnections, collectTreeseedConfigSeedValues, syncTreeseedGitHubEnvironment } from '../config-runtime.ts';
-import { createPersistentDeployTarget, runRemoteD1Migrations, finalizeDeploymentState } from '../deploy.ts';
+import { collectReconcileStatus, reconcileTarget } from '../../../reconcile/index.ts';
+import { checkProviderConnections, collectConfigSeedValues, syncGitHubEnvironment } from '../configuration/config-runtime.ts';
+import { createPersistentDeployTarget, runRemoteD1Migrations, finalizeDeploymentState } from '../hosting/deployment/deploy.ts';
 import {
 	createGitHubRepository,
 	ensureGitHubDeployAutomation,
 	initializeGitHubRepositoryWorkingTree,
 	resolveGitHubRemoteUrls,
 	resolveDefaultGitHubOwner,
-} from '../github-automation.ts';
-import { configuredRailwayServices, deployRailwayService, ensureRailwayScheduledJobs, validateRailwayDeployPrerequisites, verifyRailwayScheduledJobs } from '../railway-deploy.ts';
-import { loadCliDeployConfig } from '../runtime-tools.ts';
-import { templateCatalogRoot } from '../runtime-paths.ts';
-import { scaffoldTemplateProject } from '../template-registry.ts';
-import { applyProjectLaunchHostBindingConfig } from '../template-host-bindings.ts';
-import { runTreeseedGit } from '../git-runner.ts';
+} from '../repositories/github-automation.ts';
+import { configuredRailwayServices, deployRailwayService, ensureRailwayScheduledJobs, validateRailwayDeployPrerequisites, verifyRailwayScheduledJobs } from '../hosting/railway/railway-deploy.ts';
+import { loadCliDeployConfig } from '../agents/runtime-tools.ts';
+import { templateCatalogRoot } from '../runtime/runtime-paths.ts';
+import { scaffoldTemplateProject } from '../support/template-registry.ts';
+import { applyProjectLaunchHostBindingConfig } from '../hosting/deployment/template-host-bindings.ts';
+import { runRepositoryGit } from '../operations/git-runner.ts';
 import {
 	ProjectLaunchSecretSyncError,
 	syncProjectLaunchHostBindingSecrets,
 	type ProjectLaunchSecretSyncResult,
-} from '../template-secret-sync.ts';
-import { buildKnowledgePackMarketPackage, buildTemplateMarketPackage, importKnowledgePack } from '../market-packaging.ts';
-import { resolveTreeseedToolBinary } from '../../../managed-dependencies.ts';
-import { TREESEED_DEFAULT_STARTER_TEMPLATE_ID } from '../../../sdk-types.ts';
+} from '../configuration/template-secret-sync.ts';
+import { buildKnowledgePackMarketPackage, buildTemplateMarketPackage, importKnowledgePack } from '../support/market-packaging.ts';
+import { resolveToolBinary } from '../../../entrypoints/runtime/managed-dependencies.ts';
+import { DEFAULT_STARTER_TEMPLATE_ID } from '../../../entrypoints/models/sdk-types.ts';
 import type {
 	ProjectLaunchConfigWritePlanItem,
 	ProjectLaunchResolvedHostBinding,
 	ProjectLaunchSecretDeploymentPlanItem,
-} from '../../../template-launch-requirements.ts';
+} from '../../../entrypoints/templates/template-launch-requirements.ts';
 import { KnowledgeHubProviderLaunchInput, KnowledgeHubProviderLaunchPhaseRecord, KnowledgeHubProviderLaunchPhaseReporter, KnowledgeHubProviderLaunchPreflightReport, nowIso, resolveManagedWebUrl, slugify } from './knowledge-hub-provider-launch-failure-phase.ts';
 import { currentTemplateCatalogUrl, seedLaunchContent } from './current-template-catalog-url.ts';
 
@@ -104,7 +104,7 @@ export function loadProjectMetadata(projectId: string, input: KnowledgeHubProvid
 
 export function commandAvailable(command: string) {
 	if (command === 'gh' || command === 'wrangler' || command === 'railway') {
-		return Boolean(resolveTreeseedToolBinary(command));
+		return Boolean(resolveToolBinary(command));
 	}
 	return spawnSync('bash', ['-lc', `command -v ${command}`], { stdio: 'ignore' }).status === 0;
 }
@@ -152,9 +152,9 @@ export function buildCloudflareHostEnvironmentOverlay(input: KnowledgeHubProvide
 	}
 
 	overlay.CLOUDFLARE_ACCOUNT_ID = overlay.CLOUDFLARE_ACCOUNT_ID || '';
-	overlayValue(overlay, 'TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME', overlay.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME || projectSlug);
-	overlayValue(overlay, 'TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME', overlay.TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME || overlay.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME || projectSlug);
-	overlayValue(overlay, 'TREESEED_CONTENT_BUCKET_NAME', overlay.TREESEED_CONTENT_BUCKET_NAME || `${projectSlug}-content`);
+	overlayValue(overlay, 'TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME', overlay.CLOUDFLARE_PAGES_PROJECT_NAME || projectSlug);
+	overlayValue(overlay, 'TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME', overlay.CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME || overlay.CLOUDFLARE_PAGES_PROJECT_NAME || projectSlug);
+	overlayValue(overlay, 'TREESEED_CONTENT_BUCKET_NAME', overlay.CONTENT_BUCKET_NAME || `${projectSlug}-content`);
 	overlayValue(overlay, 'TREESEED_CONTENT_BUCKET_BINDING', overlay.TREESEED_CONTENT_BUCKET_BINDING || 'TREESEED_CONTENT_BUCKET');
 
 	return overlay;
@@ -163,11 +163,11 @@ export function buildCloudflareHostEnvironmentOverlay(input: KnowledgeHubProvide
 export function scaffoldLaunchSource(projectRoot: string, input: KnowledgeHubProviderLaunchInput) {
 	const repositoryName = slugify(input.repoName ?? input.projectSlug, 'project');
 	const templateId = input.sourceKind === 'template'
-		? slugify(input.sourceRef ?? TREESEED_DEFAULT_STARTER_TEMPLATE_ID, TREESEED_DEFAULT_STARTER_TEMPLATE_ID)
-		: TREESEED_DEFAULT_STARTER_TEMPLATE_ID;
+		? slugify(input.sourceRef ?? DEFAULT_STARTER_TEMPLATE_ID, DEFAULT_STARTER_TEMPLATE_ID)
+		: DEFAULT_STARTER_TEMPLATE_ID;
 	const templateCatalogEnv = { TREESEED_TEMPLATE_CATALOG_URL: currentTemplateCatalogUrl() };
 	if (input.sourceKind === 'knowledge_pack') {
-		return scaffoldTemplateProject(TREESEED_DEFAULT_STARTER_TEMPLATE_ID, projectRoot, {
+		return scaffoldTemplateProject(DEFAULT_STARTER_TEMPLATE_ID, projectRoot, {
 			target: input.projectSlug,
 			name: input.projectName,
 			slug: input.projectSlug,
@@ -247,7 +247,7 @@ export async function validateKnowledgeHubProviderLaunchPrerequisites(
 	tenantRoot = process.cwd(),
 	{ valuesOverlay = {} }: { valuesOverlay?: Record<string, string | undefined> } = {},
 ): Promise<KnowledgeHubProviderLaunchPreflightReport> {
-	const values = collectTreeseedConfigSeedValues(tenantRoot, 'prod', process.env, valuesOverlay);
+	const values = collectConfigSeedValues(tenantRoot, 'prod', process.env, valuesOverlay);
 	const requiredConfig = [
 		['TREESEED_BETTER_AUTH_SECRET'],
 		['TREESEED_API_WEB_SERVICE_ID'],
@@ -261,7 +261,7 @@ export async function validateKnowledgeHubProviderLaunchPrerequisites(
 			return typeof value === 'string' && value.trim().length > 0;
 		}))
 		.map((group) => group.join(' or '));
-	const providerChecks = await checkTreeseedProviderConnections({ tenantRoot, scope: 'prod', env: process.env, valuesOverlay });
+	const providerChecks = await checkProviderConnections({ tenantRoot, scope: 'prod', env: process.env, valuesOverlay });
 	const commands = {
 		git: commandAvailable('git'),
 		gh: commandAvailable('gh'),

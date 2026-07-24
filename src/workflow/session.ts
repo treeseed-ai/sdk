@@ -5,56 +5,56 @@ import {
 	gitStatusPorcelain,
 	originRemoteUrl,
 	repoRoot,
-} from '../operations/services/workspace-save.ts';
+} from '../operations/services/treedx/workspaces/workspace-save.ts';
 import {
-	hasCompleteTreeseedPackageCheckout,
+	hasCompletePackageCheckout,
 	publishableWorkspacePackages,
 	sortWorkspacePackages,
 	workspacePackages,
 	workspaceRoot,
-} from '../operations/services/workspace-tools.ts';
-import { discoverTreeseedPackageAdapters } from '../operations/services/package-adapters.ts';
-import { runTreeseedGit } from '../operations/services/git-runner.ts';
+} from '../operations/services/treedx/workspaces/workspace-tools.ts';
+import { discoverPackageAdapters } from '../operations/services/reconciliation/package-adapters.ts';
+import { runRepositoryGit } from '../operations/services/operations/git-runner.ts';
 import {
-	classifyTreeseedBranchRole,
-	type TreeseedWorkflowBranchRole,
-	resolveTreeseedWorkflowPaths,
+	classifyBranchRole,
+	type WorkflowBranchRole,
+	resolveWorkflowPaths,
 } from './policy.ts';
 import {
 	checkedOutManagedWorkflowRepos,
-	type TreeseedManagedRepositoryKind,
-} from '../operations/services/managed-repositories.ts';
+	type ManagedRepositoryKind,
+} from '../operations/services/support/managed-repositories.ts';
 
-export type TreeseedWorkflowMode = 'root-only' | 'recursive-workspace';
+export type WorkflowMode = 'root-only' | 'recursive-workspace';
 
-export type TreeseedWorkflowSessionRepo = {
+export type WorkflowSessionRepo = {
 	name: string;
 	path: string;
 	relativePath: string;
-	kind: TreeseedManagedRepositoryKind | 'package';
+	kind: ManagedRepositoryKind | 'package';
 	branchName: string | null;
-	branchRole: TreeseedWorkflowBranchRole;
+	branchRole: WorkflowBranchRole;
 	dirty: boolean;
 	detached: boolean;
 	hasOriginRemote: boolean;
 };
 
-export type TreeseedWorkflowPackageSelection = {
+export type WorkflowPackageSelection = {
 	changed: string[];
 	dependents: string[];
 	selected: string[];
 };
 
-export type TreeseedWorkflowSession = {
+export type WorkflowSession = {
 	root: string;
 	gitRoot: string;
-	mode: TreeseedWorkflowMode;
+	mode: WorkflowMode;
 	branchName: string | null;
-	branchRole: TreeseedWorkflowBranchRole;
-	rootRepo: TreeseedWorkflowSessionRepo;
-	managedRepos: TreeseedWorkflowSessionRepo[];
-	packageRepos: TreeseedWorkflowSessionRepo[];
-	packageSelection: TreeseedWorkflowPackageSelection;
+	branchRole: WorkflowBranchRole;
+	rootRepo: WorkflowSessionRepo;
+	managedRepos: WorkflowSessionRepo[];
+	packageRepos: WorkflowSessionRepo[];
+	packageSelection: WorkflowPackageSelection;
 };
 
 export function hasOriginRemote(repoDir: string) {
@@ -66,7 +66,7 @@ export function hasOriginRemote(repoDir: string) {
 	}
 }
 
-export function repoState(root: string, name: string, repoDir: string, kind: TreeseedWorkflowSessionRepo['kind'] = 'package'): TreeseedWorkflowSessionRepo {
+export function repoState(root: string, name: string, repoDir: string, kind: WorkflowSessionRepo['kind'] = 'package'): WorkflowSessionRepo {
 	const branchName = currentBranch(repoDir) || null;
 	return {
 		name,
@@ -74,7 +74,7 @@ export function repoState(root: string, name: string, repoDir: string, kind: Tre
 		relativePath: relative(root, repoDir).replaceAll('\\', '/') || '.',
 		kind,
 		branchName,
-		branchRole: classifyTreeseedBranchRole(branchName, repoDir),
+		branchRole: classifyBranchRole(branchName, repoDir),
 		dirty: gitStatusPorcelain(repoDir).length > 0,
 		detached: branchName == null,
 		hasOriginRemote: hasOriginRemote(repoDir),
@@ -88,7 +88,7 @@ export function checkedOutWorkspacePackageRepos(root: string) {
 	} catch {
 		packages = [];
 	}
-	if (!hasCompleteTreeseedPackageCheckout(root) && packages.length === 0) {
+	if (!hasCompletePackageCheckout(root) && packages.length === 0) {
 		return [];
 	}
 	const repos = new Map<string, ReturnType<typeof workspacePackages>[number]>();
@@ -96,7 +96,7 @@ export function checkedOutWorkspacePackageRepos(root: string) {
 		if (!existsSync(resolve(pkg.dir, '.git'))) continue;
 		repos.set(pkg.name, pkg);
 	}
-	for (const adapter of discoverTreeseedPackageAdapters(root)) {
+	for (const adapter of discoverPackageAdapters(root)) {
 		if (!adapter.publishTarget && adapter.artifacts.length === 0) continue;
 		if (repos.has(adapter.id)) continue;
 		if (!existsSync(resolve(adapter.dir, '.git'))) continue;
@@ -110,16 +110,16 @@ export function checkedOutWorkspacePackageRepos(root: string) {
 	return sortWorkspacePackages([...repos.values()]);
 }
 
-export function workflowModeForRoot(root: string): TreeseedWorkflowMode {
-	return hasCompleteTreeseedPackageCheckout(root) ? 'recursive-workspace' : 'root-only';
+export function workflowModeForRoot(root: string): WorkflowMode {
+	return hasCompletePackageCheckout(root) ? 'recursive-workspace' : 'root-only';
 }
 
-export function collectReleasePackageSelection(root: string): TreeseedWorkflowPackageSelection {
+export function collectReleasePackageSelection(root: string): WorkflowPackageSelection {
 	const publishableByName = new Map<string, ReturnType<typeof workspacePackages>[number]>();
 	for (const pkg of publishableWorkspacePackages(root).filter((pkg) => pkg.name?.startsWith('@treeseed/'))) {
 		publishableByName.set(pkg.name, pkg);
 	}
-	for (const adapter of discoverTreeseedPackageAdapters(root)) {
+	for (const adapter of discoverPackageAdapters(root)) {
 		if (!adapter.publishTarget && adapter.artifacts.length === 0) continue;
 		if (publishableByName.has(adapter.id)) continue;
 		publishableByName.set(adapter.id, {
@@ -132,13 +132,13 @@ export function collectReleasePackageSelection(root: string): TreeseedWorkflowPa
 	const publishable = sortWorkspacePackages([...publishableByName.values()]);
 	const changedNames = publishable
 		.filter((pkg) => {
-			const remoteMain = runTreeseedGit(['rev-parse', '--verify', 'origin/main'], {
+			const remoteMain = runRepositoryGit(['rev-parse', '--verify', 'origin/main'], {
 				cwd: pkg.dir,
 				mode: 'read',
 				allowFailure: true,
 			});
 			const baseRef = remoteMain.status === 0 ? 'origin/main' : 'main';
-			const diff = runTreeseedGit(['diff', '--quiet', baseRef, 'HEAD'], {
+			const diff = runRepositoryGit(['diff', '--quiet', baseRef, 'HEAD'], {
 				cwd: pkg.dir,
 				mode: 'read',
 				allowFailure: true,
@@ -175,8 +175,8 @@ export function collectReleasePackageSelection(root: string): TreeseedWorkflowPa
 	};
 }
 
-export function resolveTreeseedWorkflowSession(cwd: string): TreeseedWorkflowSession {
-	const resolved = resolveTreeseedWorkflowPaths(cwd);
+export function resolveWorkflowSession(cwd: string): WorkflowSession {
+	const resolved = resolveWorkflowPaths(cwd);
 	const root = workspaceRoot(resolved.cwd);
 	const gitRoot = repoRoot(root);
 	const mode = workflowModeForRoot(root);
@@ -187,7 +187,7 @@ export function resolveTreeseedWorkflowSession(cwd: string): TreeseedWorkflowSes
 		gitRoot,
 		mode,
 		branchName: currentBranch(gitRoot) || null,
-		branchRole: classifyTreeseedBranchRole(currentBranch(gitRoot) || null, gitRoot),
+		branchRole: classifyBranchRole(currentBranch(gitRoot) || null, gitRoot),
 		rootRepo: repoState(root, '@treeseed/market', gitRoot, 'root'),
 		managedRepos,
 		packageRepos,

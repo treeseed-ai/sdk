@@ -1,7 +1,7 @@
 import {
-	TREESEED_REMOTE_CONTRACT_HEADER,
-	TREESEED_REMOTE_CONTRACT_VERSION,
-} from '../remote.ts';
+	REMOTE_CONTRACT_HEADER,
+	REMOTE_CONTRACT_VERSION,
+} from '../entrypoints/clients/remote.ts';
 import { PlatformOperation, PlatformOperationEvent, PlatformOperationExecutor, PlatformOperationExecutorContext, PlatformOperationNavigationResult, PlatformOperationPollOptions, PlatformOperationPollResult, PlatformOperationRunOnceResult, PlatformOperationRunnerCoreOptions, isPlatformOperationTerminal } from './platform-operation-endpoints.ts';
 
 export function nestedRecord(value: unknown, keys: string[]): Record<string, unknown> | null {

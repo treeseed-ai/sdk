@@ -1,10 +1,10 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
-import { run, workspaceRoot } from '../workspace-tools.ts';
-import { collectMergeConflictReport, currentBranch, formatMergeConflictReport, gitStatusPorcelain, repoRoot } from '../workspace-save.ts';
-import { ensureSshPushUrlForOrigin } from '../git-remote-policy.ts';
-import { runTreeseedGit, type TreeseedGitRunnerMode } from '../git-runner.ts';
-import { createTreeseedManagedToolEnv, resolveTreeseedToolBinary } from '../../../managed-dependencies.ts';
+import { run, workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
+import { collectMergeConflictReport, currentBranch, formatMergeConflictReport, gitStatusPorcelain, repoRoot } from '../treedx/workspaces/workspace-save.ts';
+import { ensureSshPushUrlForOrigin } from '../repositories/git-remote-policy.ts';
+import { runRepositoryGit, type GitRunnerMode } from '../operations/git-runner.ts';
+import { createManagedToolEnv, resolveToolBinary } from '../../../entrypoints/runtime/managed-dependencies.ts';
 
 
 export const STAGING_BRANCH = 'staging';
@@ -13,7 +13,7 @@ export const PRODUCTION_BRANCH = 'main';
 
 export const RESERVED_BRANCHES = new Set([STAGING_BRANCH, PRODUCTION_BRANCH]);
 
-export function gitMode(args: string[]): TreeseedGitRunnerMode {
+export function gitMode(args: string[]): GitRunnerMode {
 	const command = args[0] ?? '';
 	return new Set([
 		'add',
@@ -33,7 +33,7 @@ export function gitMode(args: string[]): TreeseedGitRunnerMode {
 }
 
 export function runGit(args: string[], { cwd, capture = false }: { cwd?: string; capture?: boolean } = {}) {
-	const result = runTreeseedGit(args, {
+	const result = runRepositoryGit(args, {
 		cwd: cwd ?? workspaceRoot(),
 		mode: gitMode(args),
 		allowFailure: false,
@@ -42,7 +42,7 @@ export function runGit(args: string[], { cwd, capture = false }: { cwd?: string;
 }
 
 export function runGitAllowFailure(args: string[], { cwd }: { cwd: string }) {
-	return runTreeseedGit(args, {
+	return runRepositoryGit(args, {
 		cwd,
 		mode: gitMode(args),
 		allowFailure: true,

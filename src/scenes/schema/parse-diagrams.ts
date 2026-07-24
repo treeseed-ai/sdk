@@ -1,44 +1,44 @@
-import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../diagnostics.ts';
-import { findBuiltInTreeseedSceneAction, findBuiltInTreeseedSceneAssertion } from '../registry.ts';
+import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
+import { findBuiltInSceneAction, findBuiltInSceneAssertion } from '../support/plugins/registry.ts';
 import {
-	TREESEED_SCENE_BROWSERS,
-	TREESEED_SCENE_ENVIRONMENTS,
-	TREESEED_SCENE_SCHEMA_VERSION,
-	type TreeseedSceneAction,
-	type TreeseedSceneArtifacts,
-	type TreeseedSceneBrowser,
-	type TreeseedSceneChapter,
-	type TreeseedSceneDeviceConfig,
-	type TreeseedSceneDeviceProfile,
-	type TreeseedSceneDiagram,
-	type TreeseedSceneDiagnostic,
-	type TreeseedSceneEnvironment,
-	type TreeseedSceneExpectation,
-	type TreeseedSceneManifest,
-	type TreeseedSceneMode,
-	type TreeseedSceneMotion,
-	type TreeseedSceneOverlay,
-	type TreeseedSceneOverlayVariant,
-	type TreeseedSceneRenderConfig,
-	type TreeseedSceneRenderEvidenceFit,
-	type TreeseedSceneRuntimeConfig,
-	type TreeseedSceneSelector,
-	type TreeseedSceneSetup,
-	type TreeseedSceneTarget,
-	type TreeseedSceneTrainingConfig,
-	type TreeseedSceneVisualAuditConfig,
-	type TreeseedSceneVisualObject,
-	type TreeseedSceneVisualPoint,
-	type TreeseedSceneVisualRegion,
-	type TreeseedSceneVisualSize,
-	type TreeseedSceneVisualStyle,
-	type TreeseedSceneWorkflowStep,
+	SCENE_BROWSERS,
+	SCENE_ENVIRONMENTS,
+	SCENE_SCHEMA_VERSION,
+	type SceneAction,
+	type SceneArtifacts,
+	type SceneBrowser,
+	type SceneChapter,
+	type SceneDeviceConfig,
+	type SceneDeviceProfile,
+	type SceneDiagram,
+	type SceneDiagnostic,
+	type SceneEnvironment,
+	type SceneExpectation,
+	type SceneManifest,
+	type SceneMode,
+	type SceneMotion,
+	type SceneOverlay,
+	type SceneOverlayVariant,
+	type SceneRenderConfig,
+	type SceneRenderEvidenceFit,
+	type SceneRuntimeConfig,
+	type SceneSelector,
+	type SceneSetup,
+	type SceneTarget,
+	type SceneTrainingConfig,
+	type SceneVisualAuditConfig,
+	type SceneVisualObject,
+	type SceneVisualPoint,
+	type SceneVisualRegion,
+	type SceneVisualSize,
+	type SceneVisualStyle,
+	type SceneWorkflowStep,
 } from '../types.ts';
 import { CAPTION_FORMATS, DIAGRAM_PLACEMENTS, EVIDENCE_FITS, FILESYSTEM_SAFE_SCENE_ID, NARRATION_STYLES, TRANSCRIPT_FORMATS, arrayField, asString, booleanField, enumArrayField, isRecord, nullablePositiveNumberField, objectField, optionalString, positiveNumberField, requireString, stringArrayField } from './filesystem-safe-scene-id.ts';
 import { parseMotion, parseVisualObjects, parseVisualStyle } from './parse-workflow.ts';
 
-export function parseDiagrams(value: unknown, stepIds: Set<string>, diagnostics: TreeseedSceneDiagnostic[]) {
-	const diagrams: TreeseedSceneDiagram[] = [];
+export function parseDiagrams(value: unknown, stepIds: Set<string>, diagnostics: SceneDiagnostic[]) {
+	const diagrams: SceneDiagram[] = [];
 	const entries = Array.isArray(value) ? value : [];
 	entries.forEach((entry, index) => {
 		const path = `diagrams[${index}]`;
@@ -51,7 +51,7 @@ export function parseDiagrams(value: unknown, stepIds: Set<string>, diagnostics:
 		if (id && !FILESYSTEM_SAFE_SCENE_ID.test(id)) diagnostics.push(sceneErrorDiagnostic('scene.invalid_id', `Invalid diagram id: ${id}.`, `${path}.id`));
 		if (at && !stepIds.has(at)) diagnostics.push(sceneErrorDiagnostic('scene.unknown_step_reference', `Unknown workflow step reference: ${at}.`, `${path}.at`));
 		const placementValue = optionalString(entry, 'placement') ?? 'interstitial';
-		const placement = (DIAGRAM_PLACEMENTS as readonly string[]).includes(placementValue) ? placementValue as TreeseedSceneDiagram['placement'] : 'interstitial';
+		const placement = (DIAGRAM_PLACEMENTS as readonly string[]).includes(placementValue) ? placementValue as SceneDiagram['placement'] : 'interstitial';
 		if (placementValue && placementValue !== placement) diagnostics.push(sceneErrorDiagnostic('scene.diagram_invalid_placement', `Unknown diagram placement: ${placementValue}.`, `${path}.placement`));
 		const objects = parseVisualObjects(entry.objects, `${path}.objects`, diagnostics);
 		const motion = parseMotion(entry.motion, `${path}.motion`, diagnostics);
@@ -72,7 +72,7 @@ export function parseDiagrams(value: unknown, stepIds: Set<string>, diagnostics:
 	return diagrams;
 }
 
-export function parseRender(value: unknown, diagnostics: TreeseedSceneDiagnostic[]): TreeseedSceneRenderConfig {
+export function parseRender(value: unknown, diagnostics: SceneDiagnostic[]): SceneRenderConfig {
 	const record = isRecord(value) ? value : {};
 	const remotion = objectField(record, 'remotion', 'render', diagnostics);
 	if (!remotion) return {};
@@ -82,7 +82,7 @@ export function parseRender(value: unknown, diagnostics: TreeseedSceneDiagnostic
 	const captureViewport = capture ? objectField(capture, 'viewport', 'render.remotion.capture', diagnostics) : undefined;
 	const captureVideo = capture ? objectField(capture, 'video', 'render.remotion.capture', diagnostics) : undefined;
 	const evidenceFitValue = capture ? optionalString(capture, 'evidenceFit') ?? 'fixed-browser' : 'fixed-browser';
-	const evidenceFit = (EVIDENCE_FITS as readonly string[]).includes(evidenceFitValue) ? evidenceFitValue as TreeseedSceneRenderEvidenceFit : 'fixed-browser';
+	const evidenceFit = (EVIDENCE_FITS as readonly string[]).includes(evidenceFitValue) ? evidenceFitValue as SceneRenderEvidenceFit : 'fixed-browser';
 	if (capture && evidenceFitValue !== evidenceFit) diagnostics.push(sceneErrorDiagnostic('scene.render_capture_fit_invalid', `Unknown scene render evidence fit: ${evidenceFitValue}.`, 'render.remotion.capture.evidenceFit'));
 	const browserFrame = objectField(remotion, 'browserFrame', 'render.remotion', diagnostics);
 	return {
@@ -124,7 +124,7 @@ export function parseRender(value: unknown, diagnostics: TreeseedSceneDiagnostic
 	};
 }
 
-export function parseRuntime(value: unknown, mode: TreeseedSceneMode, diagnostics: TreeseedSceneDiagnostic[]): TreeseedSceneRuntimeConfig {
+export function parseRuntime(value: unknown, mode: SceneMode, diagnostics: SceneDiagnostic[]): SceneRuntimeConfig {
 	const record = isRecord(value) ? value : {};
 	const modeValue = asString(record.mode);
 	let runtimeMode = modeValue || (mode.test ? 'acceptance' : mode.training ? 'training' : mode.demo ? 'demo' : 'acceptance');
@@ -137,7 +137,7 @@ export function parseRuntime(value: unknown, mode: TreeseedSceneMode, diagnostic
 	const progress = objectField(record, 'progress', 'runtime', diagnostics) ?? {};
 	const failure = objectField(record, 'failure', 'runtime', diagnostics) ?? {};
 	return {
-		mode: runtimeMode as TreeseedSceneRuntimeConfig['mode'],
+		mode: runtimeMode as SceneRuntimeConfig['mode'],
 		timeouts: {
 			sceneSeconds: nullablePositiveNumberField(timeouts, 'sceneSeconds', null, 'runtime.timeouts', diagnostics),
 			chapterSeconds: nullablePositiveNumberField(timeouts, 'chapterSeconds', null, 'runtime.timeouts', diagnostics),
@@ -157,7 +157,7 @@ export function parseRuntime(value: unknown, mode: TreeseedSceneMode, diagnostic
 	};
 }
 
-export function defaultTreeseedSceneTrainingConfig(): TreeseedSceneTrainingConfig {
+export function defaultSceneTrainingConfig(): SceneTrainingConfig {
 	return {
 		enabled: true,
 		captions: {
@@ -186,7 +186,7 @@ export function defaultTreeseedSceneTrainingConfig(): TreeseedSceneTrainingConfi
 	};
 }
 
-export function parseTraining(value: unknown, stepIds: Set<string>, diagnostics: TreeseedSceneDiagnostic[]): TreeseedSceneTrainingConfig {
+export function parseTraining(value: unknown, stepIds: Set<string>, diagnostics: SceneDiagnostic[]): SceneTrainingConfig {
 	const record = isRecord(value) ? value : {};
 	for (const key of Object.keys(record)) {
 		if (!['enabled', 'captions', 'transcript', 'narration', 'glossary', 'chapterClips'].includes(key)) diagnostics.push(sceneWarningDiagnostic('scene.unknown_training_field', `Unknown training field: ${key}.`, `training.${key}`));
@@ -197,7 +197,7 @@ export function parseTraining(value: unknown, stepIds: Set<string>, diagnostics:
 	const glossary = objectField(record, 'glossary', 'training', diagnostics) ?? {};
 	const chapterClips = objectField(record, 'chapterClips', 'training', diagnostics) ?? {};
 	const styleValue = asString(narration.style) || 'instructional';
-	const style = (NARRATION_STYLES as readonly string[]).includes(styleValue) ? styleValue as TreeseedSceneTrainingConfig['narration']['style'] : 'instructional';
+	const style = (NARRATION_STYLES as readonly string[]).includes(styleValue) ? styleValue as SceneTrainingConfig['narration']['style'] : 'instructional';
 	if (styleValue !== style) diagnostics.push(sceneErrorDiagnostic('scene.training_invalid_config', `Unknown narration style: ${styleValue}.`, 'training.narration.style'));
 	const terms = (arrayField(glossary, 'terms', 'training.glossary', diagnostics) ?? []).map((entry, index) => {
 		const path = `training.glossary.terms[${index}]`;
@@ -246,7 +246,7 @@ export function parseTraining(value: unknown, stepIds: Set<string>, diagnostics:
 	};
 }
 
-export function defaultTreeseedSceneVisualAuditConfig(): TreeseedSceneVisualAuditConfig {
+export function defaultSceneVisualAuditConfig(): SceneVisualAuditConfig {
 	return {
 		enabled: true,
 		roles: ['anonymous', 'owner', 'admin', 'member'],

@@ -7,27 +7,27 @@ import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 
 import {
-	auditTreeseedGuaranteeJourneys,
+	auditGuaranteeJourneys,
 	assertPathInsideWorkspace,
-	discoverTreeseedGuarantees,
-	exportTreeseedGuaranteesCsv,
-	exportTreeseedGuaranteesJson,
-	exportTreeseedGuaranteesMarkdown,
+	discoverGuarantees,
+	exportGuaranteesCsv,
+	exportGuaranteesJson,
+	exportGuaranteesMarkdown,
 	browserForGuaranteeDevice,
-	createTreeseedGuaranteeStatusReport,
+	createGuaranteeStatusReport,
 	fileExists,
-	loadTreeseedGuaranteeVerifierRegistry,
-	normalizeTreeseedGuaranteeTaxonomy,
-	planTreeseedGuarantees,
-	resolveTreeseedGuaranteeVerifierRefs,
-	runTreeseedGuarantees,
+	loadGuaranteeVerifierRegistry,
+	normalizeGuaranteeTaxonomy,
+	planGuarantees,
+	resolveGuaranteeVerifierRefs,
+	runGuarantees,
 	sceneAuthRoleForGuarantee,
 	sceneDeviceRunsForGuarantee,
-	validateTreeseedVitestVerifierOutput,
-	validateTreeseedGuarantee,
+	validateVitestVerifierOutput,
+	validateGuarantee,
 	validateGuaranteeSceneJourneyContract,
-	writeTreeseedGuaranteesExport,
-	writeTreeseedGuaranteeRunReport,
+	writeGuaranteesExport,
+	writeGuaranteeRunReport,
 } from '../../../src/guarantees/index.ts';
 
 function workspaceFixture(name: string) {
@@ -94,20 +94,20 @@ it('validates path guards and invalid guarantee locations', () => {
 		expect(assertPathInsideWorkspace(root, resolve(root, 'inside.txt'))).toBe(resolve(root, 'inside.txt'));
 		expect(() => assertPathInsideWorkspace(root, resolve(root, '..', 'outside.txt'))).toThrow('outside workspace');
 		writeGuarantee(root, validGuarantee, 'packages/admin/ask-question.guarantee.yaml');
-		const report = discoverTreeseedGuarantees({ workspaceRoot: root });
+		const report = discoverGuarantees({ workspaceRoot: root });
 		expect(report.diagnostics.map((entry) => entry.code)).toContain('guarantee.invalid_path');
 	});
 
 it('covers empty discovery, verifier shape, todo resolution, defaults, and registry-less report writing', () => {
 		const root = workspaceFixture('helper-branches');
-		const missing = discoverTreeseedGuarantees({ workspaceRoot: resolve(root, 'missing-workspace') });
+		const missing = discoverGuarantees({ workspaceRoot: resolve(root, 'missing-workspace') });
 		expect(missing).toMatchObject({ ok: true, counts: { total: 0, valid: 0, errors: 0, warnings: 0 } });
 
 		const verifiersPath = resolve(root, 'packages/admin/guarantees/not-object.verifiers.yaml');
 		writeFileSync(verifiersPath, '[]\n');
-		expect(loadTreeseedGuaranteeVerifierRegistry({ workspaceRoot: root, path: verifiersPath }).diagnostics.map((entry) => entry.code)).toContain('guarantee_verifiers.invalid_manifest');
+		expect(loadGuaranteeVerifierRegistry({ workspaceRoot: root, path: verifiersPath }).diagnostics.map((entry) => entry.code)).toContain('guarantee_verifiers.invalid_manifest');
 
-		const activeTodo = resolveTreeseedGuaranteeVerifierRefs({
+		const activeTodo = resolveGuaranteeVerifierRefs({
 			refs: ['todo.active.case', 'todo.active.case', 'missing.case'],
 			verifierRegistries: [],
 			status: 'active',
@@ -127,7 +127,7 @@ it('covers empty discovery, verifier shape, todo resolution, defaults, and regis
 		expect(sceneDeviceRunsForGuarantee([])).toEqual([{ id: 'desktop_chromium', device: 'desktop_chromium', browser: 'chromium' }]);
 
 		const outputRoot = resolve(root, '.treeseed/guarantees/manual-report');
-		const writeResult = writeTreeseedGuaranteeRunReport({
+		const writeResult = writeGuaranteeRunReport({
 			report: {
 				ok: true,
 				runId: 'manual-report',
@@ -211,7 +211,7 @@ workflow:
     expect:
       text: Paid
 `);
-		const registry = discoverTreeseedGuarantees({ workspaceRoot: root, filter: { gate: 'security', subtype: 'quote', ownerPackage: '@treeseed/api', status: 'deprecated', journeyIndexes: [999] } });
+		const registry = discoverGuarantees({ workspaceRoot: root, filter: { gate: 'security', subtype: 'quote', ownerPackage: '@treeseed/api', status: 'deprecated', journeyIndexes: [999] } });
 		expect(registry.diagnostics.map((entry) => entry.code)).toEqual(expect.arrayContaining([
 			'guarantee.release_missing_evidence',
 			'guarantee.release_todo_verifier',
@@ -219,7 +219,7 @@ workflow:
 			'guarantee.scene_missing',
 			'guarantee.missing_verifier_ref',
 		]));
-		const unresolved = await runTreeseedGuarantees({
+		const unresolved = await runGuarantees({
 			workspaceRoot: root,
 			filter: { ids: ['guarantee.billing.payment.missing-scene.050'] },
 			now: new Date('2026-01-01T00:00:00.000Z'),
@@ -268,7 +268,7 @@ workflow:
     expect:
       text: Paid
 `);
-		const sceneRun = await runTreeseedGuarantees({
+		const sceneRun = await runGuarantees({
 			workspaceRoot: sceneRoot,
 			filter: { ids: ['guarantee.billing.payment.scene-step.051'] },
 			sceneExecutor: async ({ device }) => ({
@@ -296,7 +296,7 @@ it('filters by type and subtype and expands dependencies', () => {
 			.replace('journeyIndex: 38', 'journeyIndex: 39')
 			.replace('id: guarantee.project.question.edit-question.038', 'id: guarantee.project.question.edit-question.039')
 			.replace('guarantees: []', 'guarantees: [guarantee.project.question.ask-question.038]'), 'packages/admin/guarantees/project/question/edit-question.guarantee.yaml');
-		const plan = planTreeseedGuarantees({ workspaceRoot: root, filter: { ids: ['guarantee.project.question.edit-question.039'] } });
+		const plan = planGuarantees({ workspaceRoot: root, filter: { ids: ['guarantee.project.question.edit-question.039'] } });
 		expect(plan.ok).toBe(true);
 		expect(plan.counts.selected).toBe(1);
 		expect(plan.counts.withDependencies).toBe(2);

@@ -1,10 +1,10 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
-import { run, workspaceRoot } from '../workspace-tools.ts';
-import { collectMergeConflictReport, currentBranch, formatMergeConflictReport, gitStatusPorcelain, repoRoot } from '../workspace-save.ts';
-import { ensureSshPushUrlForOrigin } from '../git-remote-policy.ts';
-import { runTreeseedGit, type TreeseedGitRunnerMode } from '../git-runner.ts';
-import { createTreeseedManagedToolEnv, resolveTreeseedToolBinary } from '../../../managed-dependencies.ts';
+import { run, workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
+import { collectMergeConflictReport, currentBranch, formatMergeConflictReport, gitStatusPorcelain, repoRoot } from '../treedx/workspaces/workspace-save.ts';
+import { ensureSshPushUrlForOrigin } from '../repositories/git-remote-policy.ts';
+import { runRepositoryGit, type GitRunnerMode } from '../operations/git-runner.ts';
+import { createManagedToolEnv, resolveToolBinary } from '../../../entrypoints/runtime/managed-dependencies.ts';
 import { assertCleanWorktree, branchExists, checkoutBranch, fetchOrigin, remoteBranchExists, remoteHeadCommit } from './inspect-detached-head-repair.ts';
 import { PRODUCTION_BRANCH, STAGING_BRANCH, ensureWritableOrigin, headCommit, runGit, runGitAllowFailure } from './staging-branch.ts';
 

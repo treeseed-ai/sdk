@@ -1,17 +1,17 @@
-export { AgentSdk, ScopedAgentSdk } from '.././sdk.ts';
+export { AgentSdk, ScopedAgentSdk } from '../entrypoints/models/sdk.ts';
 
-export * from '.././content-operations.ts';
+export * from '../operations/content-operations.ts';
 
 export type {
 	AgentSdkContentRepositoryOptions,
 	AgentSdkTreeDxOptions,
-	TreeSeedTreeDxContentPathRule,
-	TreeSeedTreeDxRepositoryHint,
-} from '.././sdk.ts';
+	TreeDxContentPathRule,
+	TreeDxRepositoryHint,
+} from '../entrypoints/models/sdk.ts';
 
-export { ContentGraphRuntime } from '.././graph.ts';
+export { ContentGraphRuntime } from '../treedx/graph/graph.ts';
 
-export * from '.././treedx/index.ts';
+export * from '../treedx/index.ts';
 
 export {
 	createTreeDxClientFromAgentOptions,
@@ -24,7 +24,7 @@ export {
 	TreeDxExecBackend,
 	TreeDxGraphBackend,
 	TreeDxPortfolioResolver,
-} from '.././treedx-backends.ts';
+} from '../treedx/repositories/treedx-backends.ts';
 
 export type {
 	ContentBackend,
@@ -32,7 +32,7 @@ export type {
 	GraphBackend,
 	ResolvedTreeDxOptions,
 	TreeDxRepositoryCandidate,
-} from '.././treedx-backends.ts';
+} from '../treedx/repositories/treedx-backends.ts';
 
 export {
 	BUILTIN_MODEL_REGISTRY,
@@ -42,17 +42,17 @@ export {
 	buildScopedModelRegistry,
 	mergeModelRegistries,
 	resolveModelDefinition,
-} from '.././model-registry.ts';
+} from '../entrypoints/models/model-registry.ts';
 
-export { normalizeAgentCliOptions, buildCopilotAllowToolArgs } from '.././cli-tools.ts';
+export { normalizeAgentCliOptions, buildCopilotAllowToolArgs } from '../agents/cli-tools.ts';
 
 export type {
-	TreeseedCopilotTaskInput,
-	TreeseedCopilotTaskResult,
-} from '.././copilot.ts';
+	CopilotTaskInput,
+	CopilotTaskResult,
+} from '../agents/copilot.ts';
 
-export async function runTreeseedCopilotTask(input: import('../copilot.ts').TreeseedCopilotTaskInput): Promise<import('../copilot.ts').TreeseedCopilotTaskResult> {
-	const { runTreeseedCopilotTask: run } = await import('../copilot.ts');
+export async function runCopilotTask(input: import('../agents/copilot.ts').CopilotTaskInput): Promise<import('../agents/copilot.ts').CopilotTaskResult> {
+	const { runCopilotTask: run } = await import('../agents/copilot.ts');
 	return run(input);
 }
 
@@ -75,10 +75,10 @@ export {
 	type AgentOperationRequest,
 	type AgentOperationResult,
 	type AgentOperationStatus,
-} from '.././operations/agent-tools.ts';
+} from '../operations/agents/agent-tools.ts';
 
 export {
-	TREESEED_AGENT_TOOL_DEFINITIONS,
+	AGENT_TOOL_DEFINITIONS,
 	assertKnownAgentToolIds,
 	findAgentToolDefinition,
 	listAgentToolIds,
@@ -87,4 +87,4 @@ export {
 	type AgentToolExecutionTarget,
 	type AgentToolMutability,
 	type AgentToolTelemetryCategory,
-} from '.././agent-tools.ts';
+} from '../agents/agent-tools.ts';

@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
-	createTreeseedContentToolPresets,
-	genericTreeseedContentInputSchema,
-	renderTreeseedContentRecord,
-	validateTreeseedContentRecord,
-} from '../../../src/content-operations.ts';
+	createContentToolPresets,
+	genericContentInputSchema,
+	renderContentRecord,
+	validateContentRecord,
+} from '../../../src/operations/content-operations.ts';
 
 describe('content operations', () => {
 	it('requires a structured non-empty relation for content link tools', () => {
-		const schema = genericTreeseedContentInputSchema('link') as {
+		const schema = genericContentInputSchema('link') as {
 			required: string[];
 			properties: { relations: { minItems: number; items: { required: string[]; additionalProperties: boolean } } };
 		};
@@ -20,7 +20,7 @@ describe('content operations', () => {
 	});
 
 	it('generates model-specific presets from content-backed models', () => {
-		const ids = createTreeseedContentToolPresets().map((preset) => preset.id);
+		const ids = createContentToolPresets().map((preset) => preset.id);
 		expect(ids).toContain('treeseed.questions.create');
 		expect(ids).toContain('treeseed.proposals.create');
 		expect(ids).toContain('treeseed.notes.create');
@@ -29,7 +29,7 @@ describe('content operations', () => {
 	});
 
 	it('renders canonical content with SDK field aliases', () => {
-		const record = renderTreeseedContentRecord({
+		const record = renderContentRecord({
 			model: 'question',
 			title: 'How should agent content tools work?',
 			fields: {
@@ -50,18 +50,18 @@ describe('content operations', () => {
 	});
 
 	it('validates required title or name fields', () => {
-		const record = renderTreeseedContentRecord({
+		const record = renderContentRecord({
 			model: 'note',
 			title: 'Linked observation',
 			body: 'A note body.',
 		});
 
-		expect(validateTreeseedContentRecord('note', record.content)).toMatchObject({ ok: true });
-		expect(validateTreeseedContentRecord('note', '---\nstatus: planned\n---\nBody')).toMatchObject({ ok: false });
+		expect(validateContentRecord('note', record.content)).toMatchObject({ ok: true });
+		expect(validateContentRecord('note', '---\nstatus: planned\n---\nBody')).toMatchObject({ ok: false });
 	});
 
 	it('renders package content beneath its configured repository-relative root', () => {
-		const record = renderTreeseedContentRecord({
+		const record = renderContentRecord({
 			model: 'note',
 			title: 'Package planning note',
 			contentRoot: 'docs/src/content',
@@ -70,13 +70,13 @@ describe('content operations', () => {
 	});
 
 	it('preserves existing linked frontmatter and body during partial updates', () => {
-		const existing = renderTreeseedContentRecord({
+		const existing = renderContentRecord({
 			model: 'note',
 			title: 'Linked observation',
 			fields: { relatedObjectives: ['core'], author: 'tester' },
 			body: 'Existing body.',
 		});
-		const updated = renderTreeseedContentRecord({
+		const updated = renderContentRecord({
 			model: 'note',
 			title: 'Linked observation',
 			existingContent: existing.content,
@@ -93,13 +93,13 @@ describe('content operations', () => {
 	});
 
 	it('adds a relation without replacing existing linked content', () => {
-		const existing = renderTreeseedContentRecord({
+		const existing = renderContentRecord({
 			model: 'note',
 			title: 'Linked observation',
 			fields: { author: 'tester' },
 			body: 'Existing body.',
 		});
-		const linked = renderTreeseedContentRecord({
+		const linked = renderContentRecord({
 			model: 'note',
 			title: 'Linked observation',
 			existingContent: existing.content,

@@ -1,28 +1,28 @@
-import { loadTreeseedDeployConfig } from '../../platform/deploy-config.ts';
-import { loadTreeseedPlugins } from '../../platform/plugins/runtime.ts';
+import { loadDeployConfig } from '../../platform/hosting/deploy-config.ts';
+import { loadPlugins } from '../../platform/plugins/runtime.ts';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { resolveTreeseedMachineEnvironmentValues } from '../../operations/services/config-runtime.ts';
-import { classifyTreeseedGitMode, runTreeseedGitText } from '../../operations/services/git-runner.ts';
-import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName, railwayTreeDxServiceName } from '../../operations/services/railway-source-policy.ts';
-import { createTreeseedCanonicalReconcileReport, type TreeseedCanonicalAction, type TreeseedCanonicalDrift, type TreeseedCanonicalGraphNode, type TreeseedCanonicalPostcondition } from '../../reconcile/index.ts';
-import type { TreeseedRunnableBootstrapSystem } from '../../reconcile/bootstrap-systems.ts';
-import { discoverTreeseedApplications, findTreeseedApplication, type TreeseedDiscoveredApplication } from '../apps.ts';
+import { resolveMachineEnvironmentValues } from '../../operations/services/configuration/config-runtime.ts';
+import { classifyGitMode, runGitText } from '../../operations/services/operations/git-runner.ts';
+import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName, railwayTreeDxServiceName } from '../../operations/services/hosting/railway/railway-source-policy.ts';
+import { createCanonicalReconcileReport, type CanonicalAction, type CanonicalDrift, type CanonicalGraphNode, type CanonicalPostcondition } from '../../reconcile/index.ts';
+import type { RunnableBootstrapSystem } from '../../reconcile/support/bootstrap-systems.ts';
+import { discoverApplications, findApplication, type DiscoveredApplication } from '../apps.ts';
 import type {
-	TreeseedApplicationHostingProfile,
-	TreeseedHostAdapter,
-	TreeseedHostProjectGroup,
-	TreeseedHostingEnvironment,
-	TreeseedHostingGraphFilter,
-	TreeseedHostingGraph,
-	TreeseedHostingGraphInput,
-	TreeseedHostingPlan,
-	TreeseedHostingPlacementSummary,
-	TreeseedHostingUnit,
-	TreeseedServiceInstanceSpec,
-	TreeseedServicePlacement,
-	TreeseedServiceTypeAdapter,
+	ApplicationHostingProfile,
+	HostAdapter,
+	HostProjectGroup,
+	HostingEnvironment,
+	HostingGraphFilter,
+	HostingGraph,
+	HostingGraphInput,
+	HostingPlan,
+	HostingPlacementSummary,
+	HostingUnit,
+	ServiceInstanceSpec,
+	ServicePlacement,
+	ServiceTypeAdapter,
 } from '../contracts.ts';
 import {
 	createDefaultHostAdapters,
@@ -34,7 +34,7 @@ import {
 } from '../builtins.ts';
 import { asPluginRecord, headCommitSafe, readPackageRepository, resolveRailwayServiceSourceRoot } from './railway-service-name-max-length.ts';
 
-export function railwaySourcePolicy(input: TreeseedHostingGraphInput, serviceKey: string, service: Record<string, any>, imageRef: string | null) {
+export function railwaySourcePolicy(input: HostingGraphInput, serviceKey: string, service: Record<string, any>, imageRef: string | null) {
 	const configuredSource = service.railway?.source && typeof service.railway.source === 'object' && !Array.isArray(service.railway.source)
 		? service.railway.source
 		: {};
@@ -115,25 +115,25 @@ export function railwaySourcePolicy(input: TreeseedHostingGraphInput, serviceKey
 	return policy;
 }
 
-export function collectPluginHostingContributions(input: TreeseedHostingGraphInput) {
-	const plugins = loadTreeseedPlugins(input.deployConfig);
+export function collectPluginHostingContributions(input: HostingGraphInput) {
+	const plugins = loadPlugins(input.deployConfig);
 	const context = {
 		projectRoot: input.tenantRoot,
 		tenantConfig: undefined,
 		deployConfig: input.deployConfig,
 		pluginConfig: {},
 	};
-	const hostAdapters: Record<string, TreeseedHostAdapter> = {};
-	const serviceTypeAdapters: Record<string, TreeseedServiceTypeAdapter> = {};
-	const profiles: TreeseedApplicationHostingProfile[] = [];
+	const hostAdapters: Record<string, HostAdapter> = {};
+	const serviceTypeAdapters: Record<string, ServiceTypeAdapter> = {};
+	const profiles: ApplicationHostingProfile[] = [];
 
 	for (const entry of plugins) {
 		const pluginContext = { ...context, pluginConfig: entry.config ?? {} };
 		const contribution = entry.plugin.hosting;
 		const resolved = typeof contribution === 'function' ? contribution(pluginContext) : contribution;
 		if (!resolved || typeof resolved !== 'object') continue;
-		Object.assign(hostAdapters, asPluginRecord<TreeseedHostAdapter>(resolved.hostAdapters));
-		Object.assign(serviceTypeAdapters, asPluginRecord<TreeseedServiceTypeAdapter>(resolved.serviceTypeAdapters));
+		Object.assign(hostAdapters, asPluginRecord<HostAdapter>(resolved.hostAdapters));
+		Object.assign(serviceTypeAdapters, asPluginRecord<ServiceTypeAdapter>(resolved.serviceTypeAdapters));
 		const contributedProfiles = Array.isArray(resolved.profiles) ? resolved.profiles : [];
 		profiles.push(...contributedProfiles.filter(Boolean));
 	}
@@ -145,7 +145,7 @@ export function collectPluginHostingContributions(input: TreeseedHostingGraphInp
 	};
 }
 
-export function marketProjectGroup(environment: TreeseedHostingEnvironment, config: Record<string, any>): TreeseedHostProjectGroup {
+export function marketProjectGroup(environment: HostingEnvironment, config: Record<string, any>): HostProjectGroup {
 	const apiService = config.services?.api && typeof config.services.api === 'object'
 		? config.services.api as Record<string, any>
 		: null;
@@ -183,7 +183,7 @@ export function capacityProviderProjectGroupId(projectName: string) {
 	return railwayProjectGroupIdForProjectName('capacity-provider', projectName);
 }
 
-export function capacityProviderProjectGroups(environment: TreeseedHostingEnvironment, config: Record<string, any>): TreeseedHostProjectGroup[] {
+export function capacityProviderProjectGroups(environment: HostingEnvironment, config: Record<string, any>): HostProjectGroup[] {
 	const projectNames = new Set<string>();
 	for (const [serviceKey, service] of Object.entries(config.services ?? {})) {
 		if (!String(serviceKey).startsWith('capacityProvider')) continue;
@@ -209,7 +209,7 @@ export function capacityProviderProjectGroups(environment: TreeseedHostingEnviro
 	}));
 }
 
-export function publicTreeDxProjectGroup(environment: TreeseedHostingEnvironment, config: Record<string, any>): TreeseedHostProjectGroup {
+export function publicTreeDxProjectGroup(environment: HostingEnvironment, config: Record<string, any>): HostProjectGroup {
 	const apiProjectName = marketProjectGroup(environment, config).environments.staging?.projectName ?? config.slug ?? 'treeseed-api';
 	return {
 		id: 'public-treedx-federation',
@@ -228,7 +228,7 @@ export function publicTreeDxProjectGroup(environment: TreeseedHostingEnvironment
 	};
 }
 
-export function privateTreeDxProjectGroup(teamId = '{teamId}'): TreeseedHostProjectGroup {
+export function privateTreeDxProjectGroup(teamId = '{teamId}'): HostProjectGroup {
 	return {
 		id: 'private-team-treedx',
 		label: 'Private team TreeDX',

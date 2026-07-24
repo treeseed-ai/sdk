@@ -1,10 +1,10 @@
 import { createServer, type Server } from 'node:http';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { resolveTreeseedMachineEnvironmentValues } from '../../../src/operations/services/config-runtime.ts';
-import { ensureTreeseedSceneVisualAuditRoleFixtures } from '../../../src/scenes/visual-audit-fixtures.ts';
+import { resolveMachineEnvironmentValues } from '../../../src/operations/services/configuration/config-runtime.ts';
+import { ensureSceneVisualAuditRoleFixtures } from '../../../src/scenes/testing/visual-audit-fixtures.ts';
 
-vi.mock('../../../src/operations/services/config-runtime.ts', () => ({
-	resolveTreeseedMachineEnvironmentValues: vi.fn(),
+vi.mock('../../../src/operations/services/configuration/config-runtime.ts', () => ({
+	resolveMachineEnvironmentValues: vi.fn(),
 }));
 
 const servers: Server[] = [];
@@ -65,7 +65,7 @@ function readBody(request: import('node:http').IncomingMessage) {
 describe('scene visual audit fixture config fallbacks', () => {
 	it('uses env service identity, machine-config secrets, and skips unknown roles', async () => {
 		process.env.TREESEED_WEB_SERVICE_ID = ' env-web ';
-		vi.mocked(resolveTreeseedMachineEnvironmentValues).mockReturnValue({
+		vi.mocked(resolveMachineEnvironmentValues).mockReturnValue({
 			TREESEED_WEB_SERVICE_SECRET: ' machine-secret ',
 		} as never);
 		const requests: Array<{ url: string; serviceId?: string; secret?: string; actorKeys: string[] }> = [];
@@ -91,7 +91,7 @@ describe('scene visual audit fixture config fallbacks', () => {
 			response.end(JSON.stringify({ ok: false }));
 		});
 
-		expect(await ensureTreeseedSceneVisualAuditRoleFixtures({
+		expect(await ensureSceneVisualAuditRoleFixtures({
 			baseUrl,
 			roles: ['custom-role', 'owner'],
 			projectRoot: process.cwd(),
@@ -102,11 +102,11 @@ describe('scene visual audit fixture config fallbacks', () => {
 			secret: 'machine-secret',
 			actorKeys: ['owner'],
 		});
-		expect(resolveTreeseedMachineEnvironmentValues).toHaveBeenCalledWith(process.cwd(), 'staging');
+		expect(resolveMachineEnvironmentValues).toHaveBeenCalledWith(process.cwd(), 'staging');
 	});
 
 	it('uses the local development service secret when no configured secret exists', async () => {
-		vi.mocked(resolveTreeseedMachineEnvironmentValues).mockReturnValue({} as never);
+		vi.mocked(resolveMachineEnvironmentValues).mockReturnValue({} as never);
 		let secret: string | undefined;
 		const baseUrl = await listen(async (request, response) => {
 			await readBody(request);
@@ -120,7 +120,7 @@ describe('scene visual audit fixture config fallbacks', () => {
 			response.end(JSON.stringify({ ok: false }));
 		});
 
-		expect(await ensureTreeseedSceneVisualAuditRoleFixtures({ baseUrl, roles: ['admin'], projectRoot: process.cwd(), environment: 'local' })).toEqual([]);
+		expect(await ensureSceneVisualAuditRoleFixtures({ baseUrl, roles: ['admin'], projectRoot: process.cwd(), environment: 'local' })).toEqual([]);
 		expect(secret).toBe('treeseed-web-service-dev-secret');
 	});
 });

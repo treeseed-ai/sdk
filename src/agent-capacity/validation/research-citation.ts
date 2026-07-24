@@ -1,4 +1,4 @@
-import type { ResearchCitation } from '../contracts/research-citation.ts';
+import type { ResearchCitation } from '../contracts/support/research-citation.ts';
 
 export const RESEARCH_CITATION_MAX_EXCERPT_CHARACTERS = 2_000;
 

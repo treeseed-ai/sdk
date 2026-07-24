@@ -1,0 +1,52 @@
+import type { CapacityProviderPrivateJwk } from '../../../capacity/providers/capacity-provider.ts';
+
+export interface CapacityAcceptanceExecutionResult {
+	assignmentId: string;
+	assignmentIds?: string[];
+	providerSessionSequence?: number;
+	finalSlot?: {
+		twoRunnableConnections: boolean;
+		providerGlobalLimit: number;
+		readyDispatches: number;
+		localClaimsAtCapacity: number;
+	};
+}
+
+export interface CapacityAcceptanceExecutionInput {
+	runId: string;
+	apiUrl: string;
+	teamId: string;
+	projectId: string;
+	providerId: string;
+	membershipId: string;
+	credentialId: string;
+	membershipCredential: string;
+	providerAccessToken: string;
+	providerSessionId: string;
+	providerSessionSequence: number;
+	privateJwk: CapacityProviderPrivateJwk;
+	assignmentId?: string | null;
+	assignmentIds?: string[];
+	expectedAssignmentCount?: number;
+	maxConcurrentRunners?: number;
+	repositoryRoot?: string;
+	executionProviderId: string;
+	capabilities?: string[];
+	activityProfile?: {
+		kind: 'research-planning' | 'research-workflow' | 'engineering-workflow';
+		subjectModel: 'objective' | 'question';
+		subjectSlug: string;
+	};
+	competingConnection?: {
+		teamId: string;
+		projectId: string;
+		providerId: string;
+		membershipId: string;
+		credentialId: string;
+		membershipCredential: string;
+		providerAccessToken: string;
+		providerSessionId: string;
+		providerSessionSequence: number;
+		assignmentId: string;
+	};
+}

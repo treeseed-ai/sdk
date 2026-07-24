@@ -1,5 +1,5 @@
-import type { TreeseedDeployConfig } from '../contracts.ts';
-import type { CommerceOfferMode } from '../../sdk-types.ts';
+import type { DeployConfig } from '../support/contracts.ts';
+import type { CommerceOfferMode } from '../../entrypoints/models/sdk-types.ts';
 import type { CloudflareRuntime, R2BucketLike } from '../../types/cloudflare.ts';
 import { EditorialPreviewTokenPayload, HostedContentMode, PUBLISHED_CONTENT_MANIFEST_SCHEMA_VERSION, PublishedArtifactVersion, PublishedCollectionIndex, PublishedContentEntry, PublishedContentManifest, PublishedContentObjectPointer, PublishedContentVisibility, PublishedManifestTombstone, PublishedOverlayManifest, PublishedRuntimePointers, TeamScopedContentLocator, expectRecord, expectString, getNodeCrypto, isRecord, optionalNumber, optionalString } from './published-content-manifest-schema-version.ts';
 
@@ -192,7 +192,7 @@ export function parsePublishedCollectionIndex(value: unknown): PublishedCollecti
 	};
 }
 
-export function resolvePublishedContentBucketBinding(config: Pick<TreeseedDeployConfig, 'cloudflare'>) {
+export function resolvePublishedContentBucketBinding(config: Pick<DeployConfig, 'cloudflare'>) {
 	return config.cloudflare.r2?.binding ?? 'TREESEED_CONTENT_BUCKET';
 }
 
@@ -201,7 +201,7 @@ export function fillTeamTemplate(template: string, teamId: string) {
 }
 
 export function resolvePublishedContentManifestKey(
-	config: Pick<TreeseedDeployConfig, 'cloudflare'> & Partial<Pick<TreeseedDeployConfig, 'slug'>>,
+	config: Pick<DeployConfig, 'cloudflare'> & Partial<Pick<DeployConfig, 'slug'>>,
 	teamId?: string,
 ) {
 	const resolvedTeamId = typeof teamId === 'string' && teamId.trim()
@@ -214,7 +214,7 @@ export function resolvePublishedContentManifestKey(
 }
 
 export function resolvePublishedContentPreviewRoot(
-	config: Pick<TreeseedDeployConfig, 'cloudflare'> & Partial<Pick<TreeseedDeployConfig, 'slug'>>,
+	config: Pick<DeployConfig, 'cloudflare'> & Partial<Pick<DeployConfig, 'slug'>>,
 	teamId?: string,
 ) {
 	const resolvedTeamId = typeof teamId === 'string' && teamId.trim()
@@ -226,12 +226,12 @@ export function resolvePublishedContentPreviewRoot(
 	);
 }
 
-export function resolvePublishedContentPreviewTtlHours(config: Pick<TreeseedDeployConfig, 'cloudflare'>) {
+export function resolvePublishedContentPreviewTtlHours(config: Pick<DeployConfig, 'cloudflare'>) {
 	return config.cloudflare.r2?.previewTtlHours ?? 168;
 }
 
 export function resolveTeamScopedContentLocator(
-	config: Pick<TreeseedDeployConfig, 'cloudflare'>,
+	config: Pick<DeployConfig, 'cloudflare'>,
 	teamId: string,
 	previewId?: string,
 ): TeamScopedContentLocator {
@@ -246,7 +246,7 @@ export function resolveTeamScopedContentLocator(
 	};
 }
 
-export function isTeamScopedR2ContentEnabled(config: Pick<TreeseedDeployConfig, 'providers' | 'cloudflare'>) {
+export function isTeamScopedR2ContentEnabled(config: Pick<DeployConfig, 'providers' | 'cloudflare'>) {
 	return config.providers?.content?.runtime === 'team_scoped_r2_overlay' && Boolean(config.cloudflare.r2?.binding);
 }
 

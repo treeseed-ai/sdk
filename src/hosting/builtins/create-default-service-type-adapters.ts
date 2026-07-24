@@ -1,25 +1,25 @@
 import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
-import { resolveTreeseedLaunchEnvironment } from '../../operations/services/config-runtime.ts';
-import { cloudflareApiRequest, resolveCloudflareZoneIdForHost, resolveConfiguredCloudflareAccountId, runWrangler } from '../../operations/services/deploy.ts';
+import { resolveLaunchEnvironment } from '../../operations/services/configuration/config-runtime.ts';
+import { cloudflareApiRequest, resolveCloudflareZoneIdForHost, resolveConfiguredCloudflareAccountId, runWrangler } from '../../operations/services/hosting/deployment/deploy.ts';
 import type {
-	TreeseedApplicationHostingProfile,
-	TreeseedHostAdapter,
-	TreeseedHostAdapterOperationInput,
-	TreeseedHostAdapterOperationResult,
-	TreeseedHostCapability,
-	TreeseedHostingEnvironment,
-	TreeseedHostingStatus,
-	TreeseedHostingUnit,
-	TreeseedHostingUnitPlan,
-	TreeseedHostingVerification,
-	TreeseedServicePlacement,
-	TreeseedServiceTypeAdapter,
+	ApplicationHostingProfile,
+	HostAdapter,
+	HostAdapterOperationInput,
+	HostAdapterOperationResult,
+	HostCapability,
+	HostingEnvironment,
+	HostingStatus,
+	HostingUnit,
+	HostingUnitPlan,
+	HostingVerification,
+	ServicePlacement,
+	ServiceTypeAdapter,
 } from '../contracts.ts';
 import { serviceType } from './create-cloudflare-host-adapter.ts';
 
-export function createDefaultServiceTypeAdapters(): Record<string, TreeseedServiceTypeAdapter> {
+export function createDefaultServiceTypeAdapters(): Record<string, ServiceTypeAdapter> {
 	return {
 		'web-site': serviceType('web-site', 'Web site', 'web', ['web-site', 'deployment', 'health'], {
 			local: 'local-process',
@@ -94,7 +94,7 @@ export function createDefaultServiceTypeAdapters(): Record<string, TreeseedServi
 	};
 }
 
-export function createDefaultHostingProfiles(): TreeseedApplicationHostingProfile[] {
+export function createDefaultHostingProfiles(): ApplicationHostingProfile[] {
 	return [
 		{
 			id: 'treeseed-managed-public-team',
@@ -134,7 +134,7 @@ export function createDefaultHostingProfiles(): TreeseedApplicationHostingProfil
 	];
 }
 
-export function sanitizedUnitConfig(unit: TreeseedHostingUnit) {
+export function sanitizedUnitConfig(unit: HostingUnit) {
 	return {
 		id: unit.id,
 		label: unit.label,
@@ -169,7 +169,7 @@ export function redactSensitiveConfig(value: unknown): unknown {
 	}));
 }
 
-export function summarizePlacementStatus(statuses: TreeseedHostingStatus[]): TreeseedHostingStatus {
+export function summarizePlacementStatus(statuses: HostingStatus[]): HostingStatus {
 	if (statuses.includes('blocked')) return 'blocked';
 	if (statuses.includes('degraded')) return 'degraded';
 	if (statuses.includes('pending')) return 'pending';

@@ -1,28 +1,28 @@
-import { loadTreeseedDeployConfig } from '../../platform/deploy-config.ts';
-import { loadTreeseedPlugins } from '../../platform/plugins/runtime.ts';
+import { loadDeployConfig } from '../../platform/hosting/deploy-config.ts';
+import { loadPlugins } from '../../platform/plugins/runtime.ts';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { resolveTreeseedMachineEnvironmentValues } from '../../operations/services/config-runtime.ts';
-import { classifyTreeseedGitMode, runTreeseedGitText } from '../../operations/services/git-runner.ts';
-import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName, railwayTreeDxServiceName } from '../../operations/services/railway-source-policy.ts';
-import { createTreeseedCanonicalReconcileReport, type TreeseedCanonicalAction, type TreeseedCanonicalDrift, type TreeseedCanonicalGraphNode, type TreeseedCanonicalPostcondition } from '../../reconcile/index.ts';
-import type { TreeseedRunnableBootstrapSystem } from '../../reconcile/bootstrap-systems.ts';
-import { discoverTreeseedApplications, findTreeseedApplication, type TreeseedDiscoveredApplication } from '../apps.ts';
+import { resolveMachineEnvironmentValues } from '../../operations/services/configuration/config-runtime.ts';
+import { classifyGitMode, runGitText } from '../../operations/services/operations/git-runner.ts';
+import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName, railwayTreeDxServiceName } from '../../operations/services/hosting/railway/railway-source-policy.ts';
+import { createCanonicalReconcileReport, type CanonicalAction, type CanonicalDrift, type CanonicalGraphNode, type CanonicalPostcondition } from '../../reconcile/index.ts';
+import type { RunnableBootstrapSystem } from '../../reconcile/support/bootstrap-systems.ts';
+import { discoverApplications, findApplication, type DiscoveredApplication } from '../apps.ts';
 import type {
-	TreeseedApplicationHostingProfile,
-	TreeseedHostAdapter,
-	TreeseedHostProjectGroup,
-	TreeseedHostingEnvironment,
-	TreeseedHostingGraphFilter,
-	TreeseedHostingGraph,
-	TreeseedHostingGraphInput,
-	TreeseedHostingPlan,
-	TreeseedHostingPlacementSummary,
-	TreeseedHostingUnit,
-	TreeseedServiceInstanceSpec,
-	TreeseedServicePlacement,
-	TreeseedServiceTypeAdapter,
+	ApplicationHostingProfile,
+	HostAdapter,
+	HostProjectGroup,
+	HostingEnvironment,
+	HostingGraphFilter,
+	HostingGraph,
+	HostingGraphInput,
+	HostingPlan,
+	HostingPlacementSummary,
+	HostingUnit,
+	ServiceInstanceSpec,
+	ServicePlacement,
+	ServiceTypeAdapter,
 } from '../contracts.ts';
 import {
 	createDefaultHostAdapters,
@@ -35,7 +35,7 @@ import {
 import { canonicalActionKind, railwayReconcileSystemsForUnits, serializeHostingUnit } from './assert-capability-binding.ts';
 import { ENVIRONMENT_NAMES } from './railway-service-name-max-length.ts';
 
-export function canonicalHostingNode(unit: TreeseedHostingUnit, value?: unknown): TreeseedCanonicalGraphNode {
+export function canonicalHostingNode(unit: HostingUnit, value?: unknown): CanonicalGraphNode {
 	return {
 		id: unit.id,
 		provider: unit.host.id,
@@ -56,7 +56,7 @@ export function canonicalHostingNode(unit: TreeseedHostingUnit, value?: unknown)
 	};
 }
 
-export function canonicalHostingDrift(unit: TreeseedHostingUnit, entries: unknown, fallbackReason: string): TreeseedCanonicalDrift[] {
+export function canonicalHostingDrift(unit: HostingUnit, entries: unknown, fallbackReason: string): CanonicalDrift[] {
 	const rawEntries = Array.isArray(entries) ? entries : [];
 	if (rawEntries.length === 0) return [];
 	return rawEntries.map((entry, index) => ({
@@ -70,7 +70,7 @@ export function canonicalHostingDrift(unit: TreeseedHostingUnit, entries: unknow
 	}));
 }
 
-export function canonicalHostingPostcondition(unit: TreeseedHostingUnit, verification: { verified?: boolean; checks?: unknown[]; issues?: unknown[] }) {
+export function canonicalHostingPostcondition(unit: HostingUnit, verification: { verified?: boolean; checks?: unknown[]; issues?: unknown[] }) {
 	const issues = [
 		...(Array.isArray(verification.issues) ? verification.issues.map(String) : []),
 		...(Array.isArray(verification.checks)
@@ -90,14 +90,14 @@ export function canonicalHostingPostcondition(unit: TreeseedHostingUnit, verific
 		ok: verification.verified === true,
 		issues,
 		observed: verification,
-	} satisfies TreeseedCanonicalPostcondition;
+	} satisfies CanonicalPostcondition;
 }
 
 export function hostingPlanReason(plan: { action?: unknown; reasons?: string[] }, prefix: string) {
 	return plan.reasons?.length ? plan.reasons.join('; ') : `${prefix} ${String(plan.action ?? 'noop')}.`;
 }
 
-export function canonicalHostingReportFromPlan(plan: TreeseedHostingPlan) {
+export function canonicalHostingReportFromPlan(plan: HostingPlan) {
 	const desiredGraph = plan.units.map((entry) => canonicalHostingNode(entry.unit));
 	const observedGraph = plan.units.map((entry) => canonicalHostingNode(entry.unit, entry.observed));
 	const diff = plan.units.flatMap((entry) => [
@@ -111,7 +111,7 @@ export function canonicalHostingReportFromPlan(plan: TreeseedHostingPlan) {
 				type: entry.unit.serviceType.id,
 				expected: serializeHostingUnit(entry.unit),
 				observed: entry.observed,
-			} satisfies TreeseedCanonicalDrift]
+			} satisfies CanonicalDrift]
 			: []),
 		...canonicalHostingDrift(entry.unit, entry.plan.blockedDrift, 'Blocked provider drift.'),
 	]);
@@ -125,8 +125,8 @@ export function canonicalHostingReportFromPlan(plan: TreeseedHostingPlan) {
 		type: entry.unit.serviceType.id,
 		before: entry.observed,
 		after: serializeHostingUnit(entry.unit),
-	} satisfies TreeseedCanonicalAction));
-	return createTreeseedCanonicalReconcileReport({
+	} satisfies CanonicalAction));
+	return createCanonicalReconcileReport({
 		desiredGraph,
 		observedGraph,
 		stateGraph: [],
@@ -154,7 +154,7 @@ export function canonicalHostingReportFromPlan(plan: TreeseedHostingPlan) {
 	});
 }
 
-export function serializeHostingPlan(plan: TreeseedHostingPlan) {
+export function serializeHostingPlan(plan: HostingPlan) {
 	const selectedSystems = railwayReconcileSystemsForUnits(plan.units.map((entry) => entry.unit));
 	const canonical = canonicalHostingReportFromPlan(plan);
 	return {
@@ -164,7 +164,7 @@ export function serializeHostingPlan(plan: TreeseedHostingPlan) {
 		selectedApps: [...new Set(plan.units.map((entry) => entry.unit.application?.id).filter((value): value is string => Boolean(value)))],
 		selectedSystems,
 		skippedSystems: ['web', 'data', 'github']
-			.filter((system) => !selectedSystems.includes(system as TreeseedRunnableBootstrapSystem))
+			.filter((system) => !selectedSystems.includes(system as RunnableBootstrapSystem))
 			.map((system) => ({ system, reason: selectedSystems.length > 0 ? 'Not selected by hosting app filter.' : 'No Railway reconciliation selected.' })),
 		transport: selectedSystems.length > 0
 			? {
@@ -191,6 +191,6 @@ export function serializeHostingPlan(plan: TreeseedHostingPlan) {
 	};
 }
 
-export function hostingEnvironmentLabel(environment: TreeseedHostingEnvironment) {
+export function hostingEnvironmentLabel(environment: HostingEnvironment) {
 	return ENVIRONMENT_NAMES[environment];
 }

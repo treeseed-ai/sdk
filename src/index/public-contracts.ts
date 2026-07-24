@@ -1,9 +1,9 @@
 export {
-	TREESEED_DEFAULT_STARTER_TEMPLATE_ID,
-	TREESEED_TEMPLATE_ID_ALIASES,
-	normalizeTreeseedTemplateId,
+	DEFAULT_STARTER_TEMPLATE_ID,
+	TEMPLATE_ID_ALIASES,
+	normalizeTemplateId,
 	projectConnectionModeFromHosting,
-} from '.././sdk-types.ts';
+} from '../entrypoints/models/sdk-types.ts';
 
 export type {
 	KnowledgeHubProviderLaunchPreflightReport,
@@ -135,8 +135,8 @@ export type {
 		CatalogItemFilters,
 		CatalogItemOfferMode,
 		ProjectEnvironmentName,
-		TreeseedHostingKind,
-		TreeseedHostingRegistration,
+		HostingKind,
+		HostingRegistration,
 		ApprovalRequest,
 		DecideApprovalRequestRequest,
 		ListApprovalRequestsRequest,
@@ -183,4 +183,4 @@ export type {
 	CreateProjectDeploymentRequest,
 	CreateProjectWebDeploymentRequest,
 	CreateProjectWebDeploymentResponse,
-	} from '.././sdk-types.ts';
+	} from '../entrypoints/models/sdk-types.ts';

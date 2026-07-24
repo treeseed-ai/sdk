@@ -5,11 +5,11 @@ import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import yaml from 'yaml';
-import { packageScriptPath } from '../src/operations/services/runtime-tools.ts';
-import { collectCliPreflight, createWranglerCommandEnv, formatCliPreflightReport, writeJsonArtifact } from '../src/operations/services/workspace-preflight.ts';
-import { ensureDeployWorkflow, parseGitHubRepositoryFromRemote } from '../src/operations/services/github-automation.ts';
-import { MERGE_CONFLICT_EXIT_CODE } from '../src/operations/services/workspace-save.ts';
-import { createTempDir, run, workspacePackages, workspaceRoot } from '../src/operations/services/workspace-tools.ts';
+import { packageScriptPath } from '../../src/operations/services/agents/runtime-tools.ts';
+import { collectCliPreflight, createWranglerCommandEnv, formatCliPreflightReport, writeJsonArtifact } from '../../src/operations/services/treedx/workspaces/workspace-preflight.ts';
+import { ensureDeployWorkflow, parseGitHubRepositoryFromRemote } from '../../src/operations/services/repositories/github-automation.ts';
+import { MERGE_CONFLICT_EXIT_CODE } from '../../src/operations/services/treedx/workspaces/workspace-save.ts';
+import { createTempDir, run, workspacePackages, workspaceRoot } from '../../src/operations/services/treedx/workspaces/workspace-tools.ts';
 import { artifactsRoot, cacheEnv, isBindFailureOutput, portFromArgs, root, runBuildSmoke, runCommand, sanitizeFileName, shellEscape, waitForLocalDevReady, waitForRegexOutput } from './root.ts';
 
 async function runDevSession(label, cwd, {
@@ -108,7 +108,7 @@ function installManualPackageTarball(siteRoot, packaged) {
 
 function scaffoldTenant(siteRoot, dependencies, packagedTarballs) {
 	run(process.execPath, [
-		packageScriptPath('scaffold-site'),
+		packageScriptPath('templates/scaffold-site'),
 		siteRoot,
 		'--name',
 		'Treeseed E2E Site',

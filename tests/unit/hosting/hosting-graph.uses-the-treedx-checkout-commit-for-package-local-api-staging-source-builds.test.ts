@@ -9,14 +9,14 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
-	compileTreeseedHostingGraph,
+	compileHostingGraph,
 	createDefaultHostAdapters,
 	createDefaultServiceTypeAdapters,
-	discoverTreeseedApplications,
-	planTreeseedHostingGraph,
+	discoverApplications,
+	planHostingGraph,
 	serializeHostingPlan,
-	type TreeseedApplicationHostingProfile,
-	type TreeseedHostAdapter,
+	type ApplicationHostingProfile,
+	type HostAdapter,
 } from '../../../src/hosting/index.ts';
 
 function createTenant(configBody: string) {
@@ -224,7 +224,7 @@ it('uses the TreeDX checkout commit for package-local API staging source builds'
 		const tenantRoot = createSplitWorkspace();
 		const apiCommit = createGitCommit(resolve(tenantRoot, 'packages', 'api'));
 		const treeDxCommit = createGitCommit(resolve(tenantRoot, 'packages', 'treedx'));
-		const graph = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging', appId: 'api' });
+		const graph = compileHostingGraph({ tenantRoot, environment: 'staging', appId: 'api' });
 		const treeDx = graph.units.find((unit) => unit.id === 'public-treedx-node-01');
 
 		expect(treeDx?.config.sourceRepo).toBe('treeseed-ai/treedx');
@@ -233,7 +233,7 @@ it('uses the TreeDX checkout commit for package-local API staging source builds'
 	});
 
 it('compiles current Market config into user-facing service placements', () => {
-		const graph = compileTreeseedHostingGraph({
+		const graph = compileHostingGraph({
 			tenantRoot: createTenant(marketConfig()),
 			environment: 'staging',
 		});
@@ -259,7 +259,7 @@ it('compiles current Market config into user-facing service placements', () => {
 	});
 
 it('uses local process and local Docker host bindings for local dev fallback', () => {
-		const graph = compileTreeseedHostingGraph({
+		const graph = compileHostingGraph({
 			tenantRoot: createTenant(marketConfig()),
 			environment: 'local',
 		});
@@ -273,7 +273,7 @@ it('uses local process and local Docker host bindings for local dev fallback', (
 
 it('filters hosting graph units by service id', async () => {
 		const tenantRoot = createTenant(marketConfig());
-		const plan = await planTreeseedHostingGraph({
+		const plan = await planHostingGraph({
 			tenantRoot,
 			environment: 'staging',
 			filter: { serviceIds: ['api'] },
@@ -283,7 +283,7 @@ it('filters hosting graph units by service id', async () => {
 	});
 
 it('keeps descriptive host adapters fail-closed until canonical reconciliation supplies live evidence', async () => {
-		const plan = await planTreeseedHostingGraph({
+		const plan = await planHostingGraph({
 			tenantRoot: createTenant(marketConfig()),
 			environment: 'staging',
 			filter: { serviceIds: ['api'] },
@@ -297,7 +297,7 @@ it('keeps descriptive host adapters fail-closed until canonical reconciliation s
 	});
 
 it('fails targeted hosting graph requests for unknown services', () => {
-		expect(() => compileTreeseedHostingGraph({
+		expect(() => compileHostingGraph({
 			tenantRoot: createTenant(marketConfig()),
 			environment: 'staging',
 			filter: { serviceIds: ['missing'] },

@@ -1,23 +1,23 @@
-import { createTreeseedReconcileRegistry } from '../registry.ts';
+import { createReconcileRegistry } from '../support/state/registry.ts';
 import type {
-	TreeseedDesiredUnit,
-	TreeseedObservedUnitState,
-	TreeseedReconcilePlan,
-	TreeseedReconcileResult,
-	TreeseedReconcileRunContext,
-	TreeseedReconcileSelector,
-	TreeseedReconcileStateRecord,
-	TreeseedReconcileTarget,
-	TreeseedReconcileUnitDiff,
-	TreeseedUnitPostcondition,
-	TreeseedUnitPersistedState,
-	TreeseedUnitVerificationResult,
-} from '../contracts.ts';
-import { deriveTreeseedDesiredUnits } from '../desired-state.ts';
-import { ensureTreeseedPersistedUnitState, desiredUnitSpecHash, loadTreeseedReconcileState, updateTreeseedPersistedUnitState, writeTreeseedReconcileState } from '../state.ts';
-import { reverseTopologicallySortedUnits, topologicallySortDesiredUnits } from '../units.ts';
-import { filterTreeseedDesiredUnitsByBootstrapSystems, type TreeseedRunnableBootstrapSystem } from '../bootstrap-systems.ts';
-import { elapsedMs, formatDurationMs, type TreeseedTimingEntry } from '../../timing.ts';
+	DesiredUnit,
+	ObservedUnitState,
+	ReconcilePlan,
+	ReconcileResult,
+	ReconcileRunContext,
+	ReconcileSelector,
+	ReconcileStateRecord,
+	ReconcileTarget,
+	ReconcileUnitDiff,
+	UnitPostcondition,
+	UnitPersistedState,
+	UnitVerificationResult,
+} from '../support/contracts/contracts.ts';
+import { deriveDesiredUnits } from '../reconciliation/desired-state.ts';
+import { ensurePersistedUnitState, desiredUnitSpecHash, loadReconcileState, updatePersistedUnitState, writeReconcileState } from '../support/state/state.ts';
+import { reverseTopologicallySortedUnits, topologicallySortDesiredUnits } from '../support/engine/units.ts';
+import { filterDesiredUnitsByBootstrapSystems, type RunnableBootstrapSystem } from '../support/bootstrap-systems.ts';
+import { elapsedMs, formatDurationMs, type TimingEntry } from '../../entrypoints/runtime/timing.ts';
 
 
 export function nowIso() {
@@ -43,7 +43,7 @@ export function wrapAdapterFailure(
 	throw wrapped;
 }
 
-export function formatVerificationFailure(verification: TreeseedUnitVerificationResult) {
+export function formatVerificationFailure(verification: UnitVerificationResult) {
 	const details = [
 		verification.missing.length > 0 ? `missing: ${verification.missing.join('; ')}` : null,
 		verification.drifted.length > 0 ? `drifted: ${verification.drifted.join('; ')}` : null,
@@ -56,13 +56,13 @@ export function formatVerificationFailure(verification: TreeseedUnitVerification
 
 export function createRunContext(
 	tenantRoot: string,
-	target: TreeseedReconcileTarget,
+	target: ReconcileTarget,
 	launchEnv: NodeJS.ProcessEnv,
 	write?: (line: string) => void,
 	planOnly = false,
 	session?: Map<string, unknown>,
-): TreeseedReconcileRunContext {
-	const { deployConfig } = deriveTreeseedDesiredUnits({ tenantRoot, target, env: launchEnv });
+): ReconcileRunContext {
+	const { deployConfig } = deriveDesiredUnits({ tenantRoot, target, env: launchEnv });
 	return {
 		tenantRoot,
 		target,
@@ -78,7 +78,7 @@ export function normalizeSelectorValues(values: string[] | undefined) {
 	return new Set((values ?? []).map((value) => value.trim()).filter(Boolean));
 }
 
-export function unitSelectorValues(unit: TreeseedDesiredUnit) {
+export function unitSelectorValues(unit: DesiredUnit) {
 	const metadata = unit.metadata ?? {};
 	const spec = unit.spec ?? {};
 	const serviceKey = typeof metadata.serviceKey === 'string' ? metadata.serviceKey : null;
@@ -116,7 +116,7 @@ export function unitSelectorValues(unit: TreeseedDesiredUnit) {
 	};
 }
 
-export function unitMatchesSelector(unit: TreeseedDesiredUnit, selector?: TreeseedReconcileSelector) {
+export function unitMatchesSelector(unit: DesiredUnit, selector?: ReconcileSelector) {
 	if (!selector) return true;
 	const values = unitSelectorValues(unit);
 	const provider = normalizeSelectorValues(selector.provider ?? selector.host);
@@ -141,10 +141,10 @@ export function unitMatchesSelector(unit: TreeseedDesiredUnit, selector?: Treese
 		&& has(packageIds, values.packageIds);
 }
 
-export function includeDependencies(units: TreeseedDesiredUnit[], selected: TreeseedDesiredUnit[]) {
+export function includeDependencies(units: DesiredUnit[], selected: DesiredUnit[]) {
 	const byId = new Map(units.map((unit) => [unit.unitId, unit]));
 	const included = new Map(selected.map((unit) => [unit.unitId, unit]));
-	const visit = (unit: TreeseedDesiredUnit) => {
+	const visit = (unit: DesiredUnit) => {
 		for (const dependencyId of unit.dependencies) {
 			const dependency = byId.get(dependencyId);
 			if (!dependency || included.has(dependency.unitId)) continue;
@@ -156,7 +156,7 @@ export function includeDependencies(units: TreeseedDesiredUnit[], selected: Tree
 	return units.filter((unit) => included.has(unit.unitId));
 }
 
-export function filterUnitsBySelector(units: TreeseedDesiredUnit[], selector?: TreeseedReconcileSelector) {
+export function filterUnitsBySelector(units: DesiredUnit[], selector?: ReconcileSelector) {
 	if (!selector) return units;
 	const selected = units.filter((unit) => unitMatchesSelector(unit, selector));
 	return includeDependencies(units, selected);
@@ -197,11 +197,11 @@ export async function runByDependencyLevel<T>(
 }
 
 export function persistResult(
-	reconcileState: TreeseedReconcileStateRecord,
-	previous: TreeseedUnitPersistedState,
-	result: TreeseedReconcileResult,
+	reconcileState: ReconcileStateRecord,
+	previous: UnitPersistedState,
+	result: ReconcileResult,
 ) {
-	updateTreeseedPersistedUnitState(reconcileState, {
+	updatePersistedUnitState(reconcileState, {
 		...previous,
 		desiredSpecHash: desiredUnitSpecHash(result.unit),
 		lastObservedAt: nowIso(),
@@ -226,19 +226,19 @@ export async function verifyPlanUnits({
 	state,
 	write,
 }: {
-	plans: TreeseedReconcilePlan[];
-	registry: ReturnType<typeof createTreeseedReconcileRegistry>;
-	context: TreeseedReconcileRunContext;
-	state: TreeseedReconcileStateRecord;
+	plans: ReconcilePlan[];
+	registry: ReturnType<typeof createReconcileRegistry>;
+	context: ReconcileRunContext;
+	state: ReconcileStateRecord;
 	write?: (line: string) => void;
 }) {
-	const verificationMap = new Map<string, TreeseedUnitVerificationResult>();
+	const verificationMap = new Map<string, UnitVerificationResult>();
 	context.session.set('treeseed:verification-results', verificationMap);
-	const verificationResults = new Map<string, { postconditions: TreeseedUnitPostcondition[]; verification: TreeseedUnitVerificationResult }>();
+	const verificationResults = new Map<string, { postconditions: UnitPostcondition[]; verification: UnitVerificationResult }>();
 	for (const plan of plans) {
 		write?.(`Verifying ${plan.unit.provider}:${plan.unit.unitType}...`);
 		const adapter = registry.get(plan.unit.unitType, plan.unit.provider);
-		const persisted = ensureTreeseedPersistedUnitState(state, plan.unit);
+		const persisted = ensurePersistedUnitState(state, plan.unit);
 		const postconditions = await Promise.resolve(adapter.requiredPostconditions?.({
 			context,
 			unit: plan.unit,
@@ -258,10 +258,10 @@ export async function verifyPlanUnits({
 		} catch (error) {
 			wrapAdapterFailure('verify', plan.unit.provider, plan.unit.unitType, plan.unit.unitId, error);
 		}
-		verificationMap.set(plan.unit.unitId, verification as TreeseedUnitVerificationResult);
+		verificationMap.set(plan.unit.unitId, verification as UnitVerificationResult);
 		verificationResults.set(plan.unit.unitId, {
 			postconditions,
-			verification: verification as TreeseedUnitVerificationResult,
+			verification: verification as UnitVerificationResult,
 		});
 	}
 	return verificationResults;

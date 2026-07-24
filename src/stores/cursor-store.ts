@@ -4,8 +4,8 @@ import type {
 	SdkGetCursorRequest,
 	SdkSearchRequest,
 	SdkUpdateRequest,
-} from '../sdk-types.ts';
-import { assertExpectedVersion } from '../sdk-version.ts';
+} from '../entrypoints/models/sdk-types.ts';
+import { assertExpectedVersion } from '../packages/sdk-version.ts';
 import { SqliteStoreBase, nowIso, toSqlValue } from './helpers.ts';
 import { createCursorEnvelope, cursorEntityFromEnvelope, TRESEED_ENVELOPE_SCHEMA_VERSION } from './envelopes.ts';
 

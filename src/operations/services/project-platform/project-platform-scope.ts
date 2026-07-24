@@ -1,26 +1,26 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { runTreeseedGit } from '../git-runner.ts';
+import { runRepositoryGit } from '../operations/git-runner.ts';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
-import { elapsedMs, formatTimingMarkdown, formatTimingSummary, type TreeseedTimingEntry } from '../../../timing.ts';
+import { elapsedMs, formatTimingMarkdown, formatTimingSummary, type TimingEntry } from '../../../entrypoints/runtime/timing.ts';
 import {
 	createControlPlaneReporter,
 	type ControlPlaneDeploymentReport,
 	type ControlPlaneReporter,
-} from '../../../control-plane.ts';
+} from '../../../entrypoints/clients/control-plane.ts';
 import {
 	resolvePublishedContentPreviewTtlHours,
 	resolveTeamScopedContentLocator,
 	signEditorialPreviewToken,
 	type PublishedContentManifest,
 	type PublishedContentObjectPointer,
-} from '../../../platform/published-content.ts';
-import { createPublishedContentPipeline } from '../../../platform/published-content-pipeline.ts';
-import { collectTreeseedReconcileStatus, reconcileTreeseedTarget, resolveTreeseedBootstrapSelection } from '../../../reconcile/index.ts';
-import { loadTreeseedManifest } from '../../../platform/tenant-config.ts';
-import { applyTreeseedEnvironmentToProcess, assertTreeseedCommandEnvironment } from '../config-runtime.ts';
-import { runTreeseedHostingAudit } from '../hosting-audit.ts';
+} from '../../../platform/packages/published-content.ts';
+import { createPublishedContentPipeline } from '../../../platform/packages/published-content-pipeline.ts';
+import { collectReconcileStatus, reconcileTarget, resolveBootstrapSelection } from '../../../reconcile/index.ts';
+import { loadManifest } from '../../../platform/configuration/tenant-config.ts';
+import { applyEnvironmentToProcess, assertCommandEnvironment } from '../configuration/config-runtime.ts';
+import { runHostingAudit } from '../hosting/audit/hosting-audit.ts';
 import {
 	assertDeploymentInitialized,
 	createPersistentDeployTarget,
@@ -32,12 +32,12 @@ import {
 	purgePublishedContentCaches,
 	resolveConfiguredCloudflareAccountId,
 	resolveConfiguredSurfaceBaseUrl,
-	resolveTreeseedResourceIdentity,
+	resolveResourceIdentity,
 	runRemoteD1Migrations,
 	syncCloudflareSecrets,
 	writeDeployState,
-} from '../deploy.ts';
-import { currentManagedBranch, PRODUCTION_BRANCH, STAGING_BRANCH } from '../git-workflow.ts';
+} from '../hosting/deployment/deploy.ts';
+import { currentManagedBranch, PRODUCTION_BRANCH, STAGING_BRANCH } from '../operations/git-workflow.ts';
 import {
 	configuredRailwayServices,
 	deployRailwayService,
@@ -46,12 +46,12 @@ import {
 	validateRailwayServiceConfiguration,
 	verifyRailwayManagedResources,
 	verifyRailwayScheduledJobs,
-} from '../railway-deploy.ts';
-import { loadCliDeployConfig, packageScriptPath } from '../runtime-tools.ts';
-import { resolveTreeseedToolCommand } from '../../../managed-dependencies.ts';
-import type { TreeseedRunnableBootstrapSystem } from '../../../reconcile/index.ts';
-import { runPrefixedCommand, runTreeseedBootstrapDag, sleep, writeTreeseedBootstrapLine, type TreeseedBootstrapDagNode, type TreeseedBootstrapExecution, type TreeseedBootstrapTaskPrefix, type TreeseedBootstrapWriter } from '../bootstrap-runner.ts';
-import { runTenantDeployPreflight } from '../save-deploy-preflight.ts';
+} from '../hosting/railway/railway-deploy.ts';
+import { loadCliDeployConfig, packageScriptPath } from '../agents/runtime-tools.ts';
+import { resolveToolCommand } from '../../../entrypoints/runtime/managed-dependencies.ts';
+import type { RunnableBootstrapSystem } from '../../../reconcile/index.ts';
+import { runPrefixedCommand, runBootstrapDag, sleep, writeBootstrapLine, type BootstrapDagNode, type BootstrapExecution, type BootstrapTaskPrefix, type BootstrapWriter } from '../operations/bootstrap-runner.ts';
+import { runTenantDeployPreflight } from '../hosting/deployment/save-deploy-preflight.ts';
 
 
 export type ProjectPlatformScope = 'local' | 'staging' | 'prod';
@@ -68,24 +68,24 @@ export interface ProjectPlatformActionOptions {
 	planOnly?: boolean;
 	reporter?: ControlPlaneReporter;
 	skipProvision?: boolean;
-	bootstrapSystems?: TreeseedRunnableBootstrapSystem[];
-	bootstrapExecution?: TreeseedBootstrapExecution;
-	write?: TreeseedBootstrapWriter;
+	bootstrapSystems?: RunnableBootstrapSystem[];
+	bootstrapExecution?: BootstrapExecution;
+	write?: BootstrapWriter;
 	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 }
 
-export const PROJECT_PLATFORM_BOOTSTRAP_SYSTEMS: TreeseedRunnableBootstrapSystem[] = ['data', 'web', 'api', 'agents'];
+export const PROJECT_PLATFORM_BOOTSTRAP_SYSTEMS: RunnableBootstrapSystem[] = ['data', 'web', 'api', 'agents'];
 
-export const WEB_PLATFORM_BOOTSTRAP_SYSTEMS: TreeseedRunnableBootstrapSystem[] = ['data', 'web'];
+export const WEB_PLATFORM_BOOTSTRAP_SYSTEMS: RunnableBootstrapSystem[] = ['data', 'web'];
 
-export const PROCESSING_PLATFORM_BOOTSTRAP_SYSTEMS: TreeseedRunnableBootstrapSystem[] = ['api', 'agents'];
+export const PROCESSING_PLATFORM_BOOTSTRAP_SYSTEMS: RunnableBootstrapSystem[] = ['api', 'agents'];
 
 export function stableHash(value: Buffer | string) {
 	return createHash('sha256').update(value).digest('hex');
 }
 
-export function recordTiming(timings: TreeseedTimingEntry[], name: string, startMs: number, status = 'success', metadata?: Record<string, unknown>) {
-	const entry: TreeseedTimingEntry = {
+export function recordTiming(timings: TimingEntry[], name: string, startMs: number, status = 'success', metadata?: Record<string, unknown>) {
+	const entry: TimingEntry = {
 		name,
 		durationMs: elapsedMs(startMs),
 		status,
@@ -103,7 +103,7 @@ export function writeWorkflowStatus(message: string) {
 }
 
 export async function timedPhase<T>(
-	timings: TreeseedTimingEntry[],
+	timings: TimingEntry[],
 	name: string,
 	run: () => Promise<T> | T,
 	metadata?: Record<string, unknown>,
@@ -122,7 +122,7 @@ export async function timedPhase<T>(
 	}
 }
 
-export function writeProviderTimingSummary(options: ProjectPlatformActionOptions, timings: TreeseedTimingEntry[]) {
+export function writeProviderTimingSummary(options: ProjectPlatformActionOptions, timings: TimingEntry[]) {
 	const text = formatTimingSummary(timings);
 	options.write?.(text);
 	const summaryPath = String(options.env?.TREESEED_PROVIDER_TIMING_SUMMARY_PATH ?? process.env.TREESEED_PROVIDER_TIMING_SUMMARY_PATH ?? '').trim();
@@ -152,7 +152,7 @@ export function resolveScope(environment: string | null) {
 }
 
 export function currentCommit(tenantRoot: string) {
-	const result = runTreeseedGit(['rev-parse', 'HEAD'], {
+	const result = runRepositoryGit(['rev-parse', 'HEAD'], {
 		cwd: tenantRoot,
 		mode: 'read',
 		allowFailure: true,
@@ -161,7 +161,7 @@ export function currentCommit(tenantRoot: string) {
 }
 
 export function currentRef(tenantRoot: string) {
-	const result = runTreeseedGit(['rev-parse', '--abbrev-ref', 'HEAD'], {
+	const result = runRepositoryGit(['rev-parse', '--abbrev-ref', 'HEAD'], {
 		cwd: tenantRoot,
 		mode: 'read',
 		allowFailure: true,
@@ -197,14 +197,14 @@ export function resolveProjectPlatformBootstrapSystems(
 	if (options.bootstrapSystems && options.bootstrapSystems.length > 0) {
 		return [...options.bootstrapSystems];
 	}
-	const selection = resolveTreeseedBootstrapSelection({
+	const selection = resolveBootstrapSelection({
 		deployConfig: siteConfig,
 		env: { ...process.env, ...(options.env ?? {}) },
 		systems: PROJECT_PLATFORM_BOOTSTRAP_SYSTEMS,
 		skipUnavailable: true,
 	});
 	for (const skipped of selection.skipped) {
-		writeTreeseedBootstrapLine(
+		writeBootstrapLine(
 			options.write,
 			{
 				scope: options.scope,
@@ -220,9 +220,9 @@ export function resolveProjectPlatformBootstrapSystems(
 
 export function runTenantPublishContentPreflight(options: ProjectPlatformActionOptions) {
 	const target = createPersistentDeployTarget(options.scope === 'local' ? 'staging' : options.scope);
-	applyTreeseedEnvironmentToProcess({ tenantRoot: options.tenantRoot, scope: options.scope, override: true });
+	applyEnvironmentToProcess({ tenantRoot: options.tenantRoot, scope: options.scope, override: true });
 	if (options.scope !== 'local') {
-		assertTreeseedCommandEnvironment({
+		assertCommandEnvironment({
 			tenantRoot: options.tenantRoot,
 			scope: options.scope,
 			purpose: 'deploy',
@@ -238,7 +238,7 @@ export function runWrangler(
 	extraEnv: Record<string, string | undefined> = {},
 	options: { capture?: boolean; allowFailure?: boolean } = {},
 ) {
-	const wrangler = resolveTreeseedToolCommand('wrangler');
+	const wrangler = resolveToolCommand('wrangler');
 	if (!wrangler) {
 		throw new Error('Wrangler CLI is unavailable.');
 	}
@@ -275,13 +275,13 @@ export async function runPrefixedWranglerWithRetry(
 		prefix,
 	}: {
 		env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
-		write?: TreeseedBootstrapWriter;
-		prefix: TreeseedBootstrapTaskPrefix;
+		write?: BootstrapWriter;
+		prefix: BootstrapTaskPrefix;
 	},
 ) {
 	let lastOutput = '';
 	for (let attempt = 1; attempt <= WRANGLER_TRANSIENT_MAX_ATTEMPTS; attempt += 1) {
-		const wrangler = resolveTreeseedToolCommand('wrangler');
+		const wrangler = resolveToolCommand('wrangler');
 		if (!wrangler) {
 			throw new Error('Wrangler CLI is unavailable.');
 		}
@@ -300,7 +300,7 @@ export async function runPrefixedWranglerWithRetry(
 			throw new Error(lastOutput || `wrangler ${args.join(' ')} failed`);
 		}
 		const retryDelayMs = wranglerTransientRetryDelayMs(attempt);
-		writeTreeseedBootstrapLine(
+		writeBootstrapLine(
 			write,
 			{ ...prefix, stage: 'retry' },
 			`Wrangler command hit a transient failure; retrying in ${Math.round(retryDelayMs / 1000)}s...`,

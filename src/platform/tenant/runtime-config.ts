@@ -1,14 +1,14 @@
-import type { TreeseedTenantConfig } from '../contracts.ts';
+import type { TenantConfig } from '../support/contracts.ts';
 import { parseSiteConfig } from '../utils/site-config-schema.ts';
 
-declare const __TREESEED_TENANT_CONFIG__: TreeseedTenantConfig | undefined;
-declare const __TREESEED_PROJECT_ROOT__: string | undefined;
+declare const TENANT_CONFIG: TenantConfig | undefined;
+declare const PROJECT_ROOT: string | undefined;
 declare const __TREESEED_SITE_CONFIG__: ReturnType<typeof parseSiteConfig> | undefined;
 
 const injectedTenantConfig =
-	typeof __TREESEED_TENANT_CONFIG__ !== 'undefined' ? __TREESEED_TENANT_CONFIG__ : null;
+	typeof TENANT_CONFIG !== 'undefined' ? TENANT_CONFIG : null;
 const injectedProjectRoot =
-	typeof __TREESEED_PROJECT_ROOT__ !== 'undefined' ? __TREESEED_PROJECT_ROOT__ : null;
+	typeof PROJECT_ROOT !== 'undefined' ? PROJECT_ROOT : null;
 const injectedSiteConfig =
 	typeof __TREESEED_SITE_CONFIG__ !== 'undefined' ? __TREESEED_SITE_CONFIG__ : null;
 
@@ -31,7 +31,7 @@ function resolveRuntimePath(projectRoot: string, path: string) {
 	return pathModule?.resolve(projectRoot, path) ?? `${projectRoot.replace(/\/$/, '')}/${path}`;
 }
 
-function fallbackTenantConfig(projectRoot: string): TreeseedTenantConfig {
+function fallbackTenantConfig(projectRoot: string): TenantConfig {
 	return {
 		id: 'treeseed-runtime',
 		siteConfigPath: resolveRuntimePath(projectRoot, 'treeseed.site.yaml'),

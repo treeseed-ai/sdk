@@ -26,7 +26,7 @@ import {
 	type TemplateSecretSensitivity,
 	type TemplateSecretSource,
 	type TemplateSecretTarget,
-} from '../sdk-types.ts';
+} from '../entrypoints/models/sdk-types.ts';
 import { ProjectLaunchConfigWritePlanItem, ProjectLaunchResolvedHostBinding, ProjectLaunchSecretDeploymentPlanItem, ResolveProjectLaunchHostBindingsOptions, ResolveProjectLaunchHostBindingsResult } from './mutable.ts';
 import { allRequirements } from './normalize-host-requirement.ts';
 import { compatibilityFromBindings, resolveAdHocBinding, resolveHostRequirementBinding, resolveResourceRequirementBinding } from './resolve-host-requirement-binding.ts';

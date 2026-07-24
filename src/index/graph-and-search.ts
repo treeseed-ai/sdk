@@ -1,4 +1,4 @@
-export { parseGraphDsl } from '.././graph/dsl.ts';
+export { parseGraphDsl } from '../graph/dsl.ts';
 
 export {
 	compileDeclarativeContextQuery,
@@ -12,6 +12,6 @@ export {
 	type DeclarativeContextQuerySourceRef,
 	type HandlerContextPackSource,
 	type ResolvedHandlerContextPack,
-} from '.././graph/context-query-contracts.ts';
+} from '../graph/context-query-contracts.ts';
 
-export { createDefaultGraphRankingProvider, DEFAULT_GRAPH_RANKING_PROVIDER } from '.././graph/ranking.ts';
+export { createDefaultGraphRankingProvider, DEFAULT_GRAPH_RANKING_PROVIDER } from '../graph/ranking.ts';

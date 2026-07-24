@@ -1,49 +1,49 @@
 import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, relative, resolve } from 'node:path';
-import { RemoteTreeseedAuthClient, RemoteTreeseedClient } from '../../../remote.ts';
-import { classifyTreeseedGitMode, runTreeseedGitText } from '../../../operations/services/git-runner.ts';
+import { RemoteAuthClient, RemoteClient } from '../../../entrypoints/clients/remote.ts';
+import { classifyGitMode, runGitText } from '../../services/operations/git-runner.ts';
 import {
-	findTreeseedOperation,
+	findOperation,
 	TRESEED_OPERATION_SPECS,
-} from '../../../operations-registry.ts';
+} from '../../operations-registry.ts';
 import type {
-	TreeseedOperationContext,
-	TreeseedOperationImplementation,
-	TreeseedOperationMetadata,
-	TreeseedOperationProvider,
-	TreeseedOperationResult,
-} from '../../../operations-types.ts';
+	OperationContext,
+	OperationImplementation,
+	OperationMetadata,
+	OperationProvider,
+	OperationResult,
+} from '../../operations-types.ts';
 import {
-	clearTreeseedRemoteSession,
-	inspectTreeseedKeyAgentStatus,
-	lockTreeseedSecretSession,
-	migrateTreeseedMachineKeyToWrapped,
-	resolveTreeseedLaunchEnvironment,
-	resolveTreeseedRemoteConfig,
-	rotateTreeseedMachineKey,
-	rotateTreeseedMachineKeyPassphrase,
-	setTreeseedRemoteSession,
-	TREESEED_MACHINE_KEY_PASSPHRASE_ENV,
-	TreeseedKeyAgentError,
-	unlockTreeseedSecretSessionFromEnv,
-} from '../../../operations/services/config-runtime.ts';
+	clearRemoteSession,
+	inspectKeyAgentStatus,
+	lockSecretSession,
+	migrateMachineKeyToWrapped,
+	resolveLaunchEnvironment,
+	resolveRemoteConfig,
+	rotateMachineKey,
+	rotateMachineKeyPassphrase,
+	setRemoteSession,
+	MACHINE_KEY_PASSPHRASE_ENV,
+	KeyAgentError,
+	unlockSecretSessionFromEnv,
+} from '../../services/configuration/config-runtime.ts';
 import {
 	createPersistentDeployTarget,
 	deployTargetLabel,
 	ensureGeneratedWranglerConfig,
 	finalizeDeploymentState,
 	loadDeployState,
-} from '../../../operations/services/deploy.ts';
+} from '../../services/hosting/deployment/deploy.ts';
 import {
 	PRODUCTION_BRANCH,
 	STAGING_BRANCH,
-} from '../../../operations/services/git-workflow.ts';
+} from '../../services/operations/git-workflow.ts';
 import {
 	loadCliDeployConfig,
 	packageScriptPath,
 	resolveWranglerBin,
-} from '../../../operations/services/runtime-tools.ts';
+} from '../../services/agents/runtime-tools.ts';
 import {
 	scaffoldTemplateProject,
 	listTemplateProducts,
@@ -53,10 +53,10 @@ import {
 	serializeTemplateRegistryEntry,
 	syncTemplateProject,
 	validateTemplateProduct,
-} from '../../../operations/services/template-registry.ts';
-import { applyProjectLaunchHostBindingConfig } from '../../../operations/services/template-host-bindings.ts';
-import { validateKnowledgeHubProviderLaunchPrerequisites } from '../../../operations/services/hub-provider-launch.ts';
-import { publishProjectContent } from '../../../operations/services/project-platform.ts';
+} from '../../services/support/template-registry.ts';
+import { applyProjectLaunchHostBindingConfig } from '../../services/hosting/deployment/template-host-bindings.ts';
+import { validateKnowledgeHubProviderLaunchPrerequisites } from '../../services/capacity/providers/hub-provider-launch.ts';
+import { publishProjectContent } from '../../services/projects/projects-core/project-platform.ts';
 import {
 	createKnowledgeHubRepositories,
 	executeKnowledgeHubLaunch,
@@ -65,34 +65,34 @@ import {
 	type KnowledgeHubLaunchIntent,
 	type KnowledgeHubRepositoryPlan,
 	type RepositoryHost,
-} from '../../../operations/services/hub-launch.ts';
+} from '../../services/support/hub-launch.ts';
 import {
 	collectCliPreflight,
 	formatCliPreflightReport,
-} from '../../../operations/services/workspace-preflight.ts';
-import { repoRoot } from '../../../operations/services/workspace-save.ts';
-import { TREESEED_DEFAULT_STARTER_TEMPLATE_ID } from '../../../sdk-types.ts';
+} from '../../services/treedx/workspaces/workspace-preflight.ts';
+import { repoRoot } from '../../services/treedx/workspaces/workspace-save.ts';
+import { DEFAULT_STARTER_TEMPLATE_ID } from '../../../entrypoints/models/sdk-types.ts';
 import {
 	parseProjectLaunchHostBindingSpecs,
 	resolveProjectLaunchHostBindings,
-} from '../../../template-launch-requirements.ts';
-import { run } from '../../../operations/services/workspace-tools.ts';
-import { resolveTreeseedWorkflowState } from '../../../workflow-state.ts';
-import { TreeseedWorkflowError, TreeseedWorkflowSdk } from '../../../workflow.ts';
+} from '../../../entrypoints/templates/template-launch-requirements.ts';
+import { run } from '../../services/treedx/workspaces/workspace-tools.ts';
+import { resolveWorkflowState } from '../../workflow-state.ts';
+import { WorkflowError, WorkflowSdk } from '../../workflow.ts';
 import {
-	collectTreeseedToolStatus,
-	formatTreeseedDependencyReport,
-	installTreeseedDependencies,
-} from '../../../managed-dependencies.ts';
-import { BaseOperation, ScriptOperation, WorkflowOperation, contextEnv, copyTreeseedOperationalState, failureResult, operationResult, providerTempRoot, runGit } from './run-git.ts';
+	collectToolStatus,
+	formatDependencyReport,
+	installDependencies,
+} from '../../../entrypoints/runtime/managed-dependencies.ts';
+import { BaseOperation, ScriptOperation, WorkflowOperation, contextEnv, copyOperationalState, failureResult, operationResult, providerTempRoot, runGit } from './run-git.ts';
 import { HubExecuteLaunchOperation, HubPlanLaunchOperation, HubValidateLaunchOperation, InitOperation, PreflightOperation, SyncTemplateOperation, TemplateOperation } from './preflight-operation.ts';
 import { ContentVerifyPackageOperation, HubExecuteUpdateOperation, HubPlanUpdateOperation, HubResumeLaunchOperation, HubResumeUpdateOperation, HubValidateUpdateOperation, RepositoryHostCreateRepositoriesOperation, RepositoryHostValidateOperation } from './hub-resume-launch-operation.ts';
 import { AuthLoginOperation, AuthLogoutOperation, ContentPublishOperation, DoctorOperation, InstallOperation, ToolsOperation, WorkspaceAttachParentOperation, WorkspacePlanAttachParentOperation, WorkspaceUpdateSubmodulePointersOperation } from './content-publish-operation.ts';
 
 export class AuthWhoAmIOperation extends BaseOperation {
-	async execute(_input: Record<string, unknown>, context: TreeseedOperationContext) {
-		const remoteConfig = resolveTreeseedRemoteConfig(context.cwd, context.env);
-		const client = new RemoteTreeseedAuthClient(new RemoteTreeseedClient(remoteConfig));
+	async execute(_input: Record<string, unknown>, context: OperationContext) {
+		const remoteConfig = resolveRemoteConfig(context.cwd, context.env);
+		const client = new RemoteAuthClient(new RemoteClient(remoteConfig));
 		const response = await client.whoAmI();
 		return operationResult(this.metadata, {
 			hostId: remoteConfig.activeHostId,
@@ -102,23 +102,23 @@ export class AuthWhoAmIOperation extends BaseOperation {
 }
 
 export class SecretsStatusOperation extends BaseOperation {
-	async execute(_input: Record<string, unknown>, context: TreeseedOperationContext) {
+	async execute(_input: Record<string, unknown>, context: OperationContext) {
 		return operationResult(this.metadata, {
-			status: inspectTreeseedKeyAgentStatus(context.cwd),
+			status: inspectKeyAgentStatus(context.cwd),
 		});
 	}
 }
 
 export class SecretsUnlockOperation extends BaseOperation {
-	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+	async execute(input: Record<string, unknown>, context: OperationContext) {
 		try {
-			const status = unlockTreeseedSecretSessionFromEnv(context.cwd, {
+			const status = unlockSecretSessionFromEnv(context.cwd, {
 				allowMigration: input.allowMigration !== false,
 				createIfMissing: input.createIfMissing !== false,
 			});
 			return operationResult(this.metadata, { status });
 		} catch (error) {
-			if (error instanceof TreeseedKeyAgentError) {
+			if (error instanceof KeyAgentError) {
 				return failureResult(this.metadata, error.message, { meta: { code: error.code, details: error.details ?? null } });
 			}
 			throw error;
@@ -127,13 +127,13 @@ export class SecretsUnlockOperation extends BaseOperation {
 }
 
 export class SecretsLockOperation extends BaseOperation {
-	async execute(_input: Record<string, unknown>, context: TreeseedOperationContext) {
+	async execute(_input: Record<string, unknown>, context: OperationContext) {
 		try {
 			return operationResult(this.metadata, {
-				status: lockTreeseedSecretSession(context.cwd),
+				status: lockSecretSession(context.cwd),
 			});
 		} catch (error) {
-			if (error instanceof TreeseedKeyAgentError) {
+			if (error instanceof KeyAgentError) {
 				return failureResult(this.metadata, error.message, { meta: { code: error.code, details: error.details ?? null } });
 			}
 			throw error;
@@ -142,15 +142,15 @@ export class SecretsLockOperation extends BaseOperation {
 }
 
 export class SecretsMigrateKeyOperation extends BaseOperation {
-	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
-		const passphrase = String(input.passphrase ?? context.env?.[TREESEED_MACHINE_KEY_PASSPHRASE_ENV] ?? '').trim();
+	async execute(input: Record<string, unknown>, context: OperationContext) {
+		const passphrase = String(input.passphrase ?? context.env?.[MACHINE_KEY_PASSPHRASE_ENV] ?? '').trim();
 		if (!passphrase) {
-			return failureResult(this.metadata, `Set ${TREESEED_MACHINE_KEY_PASSPHRASE_ENV} or pass { passphrase } when migrating the machine key.`);
+			return failureResult(this.metadata, `Set ${MACHINE_KEY_PASSPHRASE_ENV} or pass { passphrase } when migrating the machine key.`);
 		}
 		try {
-			return operationResult(this.metadata, migrateTreeseedMachineKeyToWrapped(context.cwd, passphrase));
+			return operationResult(this.metadata, migrateMachineKeyToWrapped(context.cwd, passphrase));
 		} catch (error) {
-			if (error instanceof TreeseedKeyAgentError) {
+			if (error instanceof KeyAgentError) {
 				return failureResult(this.metadata, error.message, { meta: { code: error.code, details: error.details ?? null } });
 			}
 			throw error;
@@ -159,15 +159,15 @@ export class SecretsMigrateKeyOperation extends BaseOperation {
 }
 
 export class SecretsRotatePassphraseOperation extends BaseOperation {
-	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
-		const passphrase = String(input.passphrase ?? context.env?.[TREESEED_MACHINE_KEY_PASSPHRASE_ENV] ?? '').trim();
+	async execute(input: Record<string, unknown>, context: OperationContext) {
+		const passphrase = String(input.passphrase ?? context.env?.[MACHINE_KEY_PASSPHRASE_ENV] ?? '').trim();
 		if (!passphrase) {
-			return failureResult(this.metadata, `Set ${TREESEED_MACHINE_KEY_PASSPHRASE_ENV} or pass { passphrase } when rotating the wrapped-key passphrase.`);
+			return failureResult(this.metadata, `Set ${MACHINE_KEY_PASSPHRASE_ENV} or pass { passphrase } when rotating the wrapped-key passphrase.`);
 		}
 		try {
-			return operationResult(this.metadata, rotateTreeseedMachineKeyPassphrase(context.cwd, passphrase));
+			return operationResult(this.metadata, rotateMachineKeyPassphrase(context.cwd, passphrase));
 		} catch (error) {
-			if (error instanceof TreeseedKeyAgentError) {
+			if (error instanceof KeyAgentError) {
 				return failureResult(this.metadata, error.message, { meta: { code: error.code, details: error.details ?? null } });
 			}
 			throw error;
@@ -176,11 +176,11 @@ export class SecretsRotatePassphraseOperation extends BaseOperation {
 }
 
 export class SecretsRotateMachineKeyOperation extends BaseOperation {
-	async execute(_input: Record<string, unknown>, context: TreeseedOperationContext) {
+	async execute(_input: Record<string, unknown>, context: OperationContext) {
 		try {
-			return operationResult(this.metadata, rotateTreeseedMachineKey(context.cwd));
+			return operationResult(this.metadata, rotateMachineKey(context.cwd));
 		} catch (error) {
-			if (error instanceof TreeseedKeyAgentError) {
+			if (error instanceof KeyAgentError) {
 				return failureResult(this.metadata, error.message, { meta: { code: error.code, details: error.details ?? null } });
 			}
 			throw error;
@@ -189,7 +189,7 @@ export class SecretsRotateMachineKeyOperation extends BaseOperation {
 }
 
 export class RollbackOperation extends BaseOperation {
-	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+	async execute(input: Record<string, unknown>, context: OperationContext) {
 		const scope = typeof input.environment === 'string' ? input.environment : null;
 		if (scope !== 'staging' && scope !== 'prod') {
 			return failureResult(this.metadata, 'Rollback requires environment "staging" or "prod".');
@@ -218,12 +218,12 @@ export class RollbackOperation extends BaseOperation {
 		let finalizedState: Record<string, unknown> | null = null;
 		try {
 			runGit(['worktree', 'add', '--detach', tempRoot, rollbackCommit], { cwd: gitRoot, capture: true });
-			copyTreeseedOperationalState(tenantRoot, tempTenantRoot);
+			copyOperationalState(tenantRoot, tempTenantRoot);
 			if (existsSync(currentNodeModules) && !existsSync(resolve(tempTenantRoot, 'node_modules'))) {
 				symlinkSync(currentNodeModules, resolve(tempTenantRoot, 'node_modules'), 'dir');
 			}
 			const { wranglerPath } = ensureGeneratedWranglerConfig(tempTenantRoot, { target });
-			const buildResult = spawnSync(process.execPath, [packageScriptPath('tenant-build')], {
+			const buildResult = spawnSync(process.execPath, [packageScriptPath('build/tenant-build')], {
 				cwd: tempTenantRoot,
 				env: contextEnv(context),
 				stdio: 'inherit',
@@ -264,9 +264,9 @@ export class RollbackOperation extends BaseOperation {
 	}
 }
 
-export class DefaultTreeseedOperationsProvider implements TreeseedOperationProvider {
+export class DefaultOperationsProvider implements OperationProvider {
 	readonly id = 'default';
-	private readonly operations: TreeseedOperationImplementation[];
+	private readonly operations: OperationImplementation[];
 
 	constructor() {
 		this.operations = [
@@ -317,8 +317,8 @@ export class DefaultTreeseedOperationsProvider implements TreeseedOperationProvi
 			new SecretsRotatePassphraseOperation('secrets:rotate-passphrase'),
 			new SecretsRotateMachineKeyOperation('secrets:rotate-machine-key'),
 			new RollbackOperation('rollback'),
-			new ScriptOperation('build', 'tenant-build'),
-			new ScriptOperation('check', 'tenant-check'),
+			new ScriptOperation('build', 'build/tenant-build'),
+			new ScriptOperation('check', 'verification/tenant-check'),
 			new ScriptOperation('preview', 'tenant-astro-command'),
 			new ScriptOperation('lint', 'workspace-lint'),
 			new ScriptOperation('test', 'workspace-test'),
@@ -334,9 +334,9 @@ export class DefaultTreeseedOperationsProvider implements TreeseedOperationProvi
 			new ScriptOperation('release:publish:changed', 'workspace-publish-changed-packages'),
 			new ScriptOperation('astro', 'tenant-astro-command'),
 			new ScriptOperation('d1:migrate:local', 'tenant-d1-migrate-local'),
-			new ScriptOperation('cleanup:markdown', 'cleanup-markdown', ['--write']),
-			new ScriptOperation('cleanup:markdown:check', 'cleanup-markdown', ['--check']),
-			new ScriptOperation('starlight:patch', 'patch-starlight-content-path'),
+			new ScriptOperation('cleanup:markdown', 'maintenance/cleanup-markdown', ['--write']),
+			new ScriptOperation('cleanup:markdown:check', 'maintenance/cleanup-markdown', ['--check']),
+			new ScriptOperation('starlight:patch', 'content/patch-starlight-content-path'),
 		];
 	}
 
@@ -350,8 +350,8 @@ export class DefaultTreeseedOperationsProvider implements TreeseedOperationProvi
 	}
 }
 
-export function createDefaultTreeseedOperationsProvider() {
-	return new DefaultTreeseedOperationsProvider();
+export function createDefaultOperationsProvider() {
+	return new DefaultOperationsProvider();
 }
 
 export function listDefaultOperationMetadata() {

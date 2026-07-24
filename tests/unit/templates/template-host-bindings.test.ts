@@ -3,13 +3,13 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { describe, expect, it } from 'vitest';
-import { resolveTreeseedEnvironmentRegistry } from '../../../src/platform/environment.ts';
-import { applyProjectLaunchHostBindingConfig } from '../../../src/operations/services/template-host-bindings.ts';
+import { resolveEnvironmentRegistry } from '../../../src/platform/configuration/environment.ts';
+import { applyProjectLaunchHostBindingConfig } from '../../../src/operations/services/hosting/deployment/template-host-bindings.ts';
 import type {
 	ProjectLaunchConfigWritePlanItem,
 	ProjectLaunchResolvedHostBinding,
 	ProjectLaunchSecretDeploymentPlanItem,
-} from '../../../src/template-launch-requirements.ts';
+} from '../../../src/entrypoints/templates/template-launch-requirements.ts';
 
 function createProjectRoot() {
 	const root = mkdtempSync(join(tmpdir(), 'treeseed-sdk-host-bindings-'));
@@ -175,7 +175,7 @@ describe('template host binding config writer', () => {
 		expect(JSON.stringify(overlay)).not.toContain('secret-token');
 		expect(result.environmentWrites[0]?.env).toBe('TREESEED_SMTP_PASSWORD');
 
-		const registry = resolveTreeseedEnvironmentRegistry({
+		const registry = resolveEnvironmentRegistry({
 			deployConfig: {
 				name: 'Test Project',
 				slug: 'test-project',

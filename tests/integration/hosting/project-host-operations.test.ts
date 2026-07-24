@@ -7,11 +7,11 @@ import {
 	deriveProjectHostBindingsView,
 	executeProjectHostBindingOperation,
 	planProjectHostBindingOperation,
-} from '../../../src/operations/services/project-host-operations.ts';
+} from '../../../src/operations/services/projects/hosting/project-host-operations.ts';
 import {
 	normalizeTemplateLaunchRequirements,
 	resolveProjectLaunchHostBindings,
-} from '../../../src/template-launch-requirements.ts';
+} from '../../../src/entrypoints/templates/template-launch-requirements.ts';
 
 function launchRequirements() {
 	return normalizeTemplateLaunchRequirements({

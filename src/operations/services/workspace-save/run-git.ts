@@ -1,13 +1,13 @@
 import { existsSync, lstatSync, readFileSync, writeFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
-import { changedWorkspacePackages, publishableWorkspacePackages, sortWorkspacePackages, workspacePackages, workspaceRoot } from '../workspace-tools.ts';
-import { classifyTreeseedGitMode, runTreeseedGitText } from '../git-runner.ts';
+import { changedWorkspacePackages, publishableWorkspacePackages, sortWorkspacePackages, workspacePackages, workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
+import { classifyGitMode, runGitText } from '../operations/git-runner.ts';
 
 
 export function runGit(args, options) {
-	return runTreeseedGitText(args, {
+	return runGitText(args, {
 		cwd: options.cwd,
-		mode: classifyTreeseedGitMode(args),
+		mode: classifyGitMode(args),
 		timeoutMs: options.timeoutMs,
 		maxBuffer: options.maxBuffer,
 	});
@@ -15,7 +15,7 @@ export function runGit(args, options) {
 
 export const MERGE_CONFLICT_EXIT_CODE = 12;
 
-export const TREESEED_PUBLIC_RELEASE_PACKAGE_NAMES = ['@treeseed/sdk', '@treeseed/ui', '@treeseed/core', '@treeseed/admin', '@treeseed/cli', '@treeseed/agent'];
+export const PUBLIC_RELEASE_PACKAGE_NAMES = ['@treeseed/sdk', '@treeseed/ui', '@treeseed/core', '@treeseed/admin', '@treeseed/cli', '@treeseed/agent'];
 
 export function parseSemver(version) {
 	const match = String(version).trim().match(/^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/);
@@ -145,7 +145,7 @@ export function incrementVersion(version, level = 'patch') {
 export function collectPublicPackageReleaseLineState(root = workspaceRoot()) {
 	const publishable = new Set(publishableWorkspacePackages(root).map((pkg) => pkg.name));
 	const packages = sortWorkspacePackages(workspacePackages(root))
-		.filter((pkg) => TREESEED_PUBLIC_RELEASE_PACKAGE_NAMES.includes(pkg.name))
+		.filter((pkg) => PUBLIC_RELEASE_PACKAGE_NAMES.includes(pkg.name))
 		.filter((pkg) => publishable.has(pkg.name))
 		.map((pkg) => {
 			const packageJson = readPackageJson(resolve(pkg.dir, 'package.json'));
@@ -163,7 +163,7 @@ export function collectPublicPackageReleaseLineState(root = workspaceRoot()) {
 	const lines = [...lineMap.values()].sort(compareVersionLines);
 	const highestLine = lines.at(-1) ?? null;
 	return {
-		group: TREESEED_PUBLIC_RELEASE_PACKAGE_NAMES.filter((name) => packages.some((pkg) => pkg.name === name)),
+		group: PUBLIC_RELEASE_PACKAGE_NAMES.filter((name) => packages.some((pkg) => pkg.name === name)),
 		packages,
 		lines: lines.map((line) => line.label),
 		highestLine: highestLine?.label ?? null,

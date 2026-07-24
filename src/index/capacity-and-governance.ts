@@ -1,16 +1,16 @@
-export { createControlPlaneReporter } from '.././control-plane.ts';
+export { createControlPlaneReporter } from '../entrypoints/clients/control-plane.ts';
 
-export * from '.././agent-capacity.ts';
+export * from '../capacity/agents/agent-capacity.ts';
 
-export type * from '.././capacity-provider/contracts/index.ts';
+export type * from '../capacity-provider/contracts/index.ts';
 
-export * from '.././governance.ts';
+export * from '../governance/policy/governance.ts';
 
-export * from '.././secrets-capability.ts';
+export * from '../configuration/secrets-capability.ts';
 
-export * from '.././project-import.ts';
+export * from '../projects/projects-core/project-import.ts';
 
-export * from '.././seeds/index.ts';
+export * from '../seeds/index.ts';
 
 export {
 		CAPACITY_PROVIDER_ENDPOINTS,
@@ -24,7 +24,7 @@ export {
 		isCapacityProviderSecretEnvKey,
 		redactCapacityProviderEnv,
 		redactCapacityProviderSecret,
-	} from '.././capacity-provider.ts';
+	} from '../capacity/providers/capacity-provider.ts';
 
 export {
 	DEFAULT_EXECUTION_PROFILE_ID,
@@ -37,7 +37,7 @@ export {
 	nativeUsageUnit,
 	resolveNativeAccountingWindow,
 	selectCreditConversionProfile,
-} from '.././capacity-usage.ts';
+} from '../capacity/accounting/capacity-usage.ts';
 
 export type {
 	ControlPlaneDeploymentReport,
@@ -45,7 +45,7 @@ export type {
 	ControlPlaneReporter,
 	ControlPlaneReporterKind,
 	ControlPlaneResourceReport,
-} from '.././control-plane.ts';
+} from '../entrypoints/clients/control-plane.ts';
 
 export type {
 	CapacityProviderBudgetCapacity,
@@ -61,10 +61,10 @@ export type {
 	NativeCapacityLimitSource,
 	NativeCapacityUnit,
 	ProviderQuotaVisibility,
-} from '.././capacity-provider.ts';
+} from '../capacity/providers/capacity-provider.ts';
 
 export type {
 	ActualCreditCalculation,
 	ActualCreditCalculationInput,
 	NativeAccountingWindow,
-} from '.././capacity-usage.ts';
+} from '../capacity/accounting/capacity-usage.ts';

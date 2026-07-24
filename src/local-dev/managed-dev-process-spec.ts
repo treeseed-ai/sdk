@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import type { TreeseedManagedDevOptions, TreeseedManagedDevProcessSpec } from './managed-dev.ts';
+import type { ManagedDevOptions, ManagedDevProcessSpec } from './managed-dev.ts';
 import { managedDevSourceClosureDigest } from './source-closure.ts';
 
 function scriptCommand(tenantRoot: string, script: string, args: string[] = []) {
@@ -52,7 +52,7 @@ function localApiEnvironment(apiPort: number) {
 		TREESEED_PLATFORM_RUNNER_ENVIRONMENT: 'local',
 		TREESEED_ENVIRONMENT: 'local',
 		TREESEED_API_ENVIRONMENT: 'local',
-		TREESEED_LOCAL_DEV_MODE: '1',
+		LOCAL_DEV_MODE: '1',
 	};
 }
 
@@ -79,7 +79,7 @@ function localWebEnvironment(apiPort: number) {
 		TREESEED_MAILPIT_SMTP_PORT: '1025',
 		TREESEED_MAILPIT_UI_URL: 'http://127.0.0.1:8025',
 		TREESEED_ENVIRONMENT: 'local',
-		TREESEED_LOCAL_DEV_MODE: '1',
+		LOCAL_DEV_MODE: '1',
 	};
 }
 
@@ -88,8 +88,8 @@ export function buildManagedDevProcessSpec(input: {
 	stateDir: string;
 	logDir: string;
 	surface: string;
-	options: TreeseedManagedDevOptions;
-}): TreeseedManagedDevProcessSpec {
+	options: ManagedDevOptions;
+}): ManagedDevProcessSpec {
 	const host = input.options.webHost ?? '127.0.0.1';
 	const webPort = input.options.webPort ?? 4321;
 	const apiHost = input.options.apiHost ?? '0.0.0.0';

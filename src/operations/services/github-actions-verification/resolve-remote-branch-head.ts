@@ -4,7 +4,7 @@ import {
 	parseGitHubRepositorySlug,
 	type GitHubApiClient,
 	type GitHubWorkflowProgressEvent,
-} from '../github-api.ts';
+} from '../repositories/github-api.ts';
 import { GitHubActionsRepositoryInspection, GitHubActionsVerificationFailure, GitHubActionsVerificationSummary, GitHubActionsVerificationTarget, GitHubActionsWorkflowJob, GitHubActionsWorkflowRunInspection, GitHubActionsWorkflowState, isFailedConclusion, loadWorkflowJobs, normalizeWorkflowRun, workflowStateForRun } from './git-hub-actions-workflow-state.ts';
 
 export async function resolveRemoteBranchHead(

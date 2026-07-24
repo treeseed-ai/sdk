@@ -6,9 +6,9 @@ import { platform as osPlatform, arch as osArch } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { withTreeseedServiceCredentialEnv } from '../service-credentials.ts';
+import { withServiceCredentialEnv } from '../configuration/service-credentials.ts';
 import { collectInstalledNativeDependencyIssues, esbuildPlatformPackage, npmBackedDependenciesAvailable, resolveNpmInstallCommand, resolveNpmToolRuntimeBinary } from './redact-sensitive-output.ts';
-import { DependencyInstallerOptions, NPM_TOOLS, TreeseedNpmInstallReport } from './dependency-runtime.ts';
+import { DependencyInstallerOptions, NPM_TOOLS, NpmInstallReport } from './dependency-runtime.ts';
 
 export function collectNativeDependencyRepairs(tenantRoot: string) {
 	const binaryPackage = esbuildPlatformPackage();
@@ -161,7 +161,7 @@ export function staleNpmGitClonePath(detail: string) {
 	return cloneRoot;
 }
 
-export function runNpmBootstrap(options: Required<Pick<DependencyInstallerOptions, 'env' | 'spawn'>> & Pick<DependencyInstallerOptions, 'tenantRoot' | 'force' | 'write'>): TreeseedNpmInstallReport[] {
+export function runNpmBootstrap(options: Required<Pick<DependencyInstallerOptions, 'env' | 'spawn'>> & Pick<DependencyInstallerOptions, 'tenantRoot' | 'force' | 'write'>): NpmInstallReport[] {
 	const tenantRoot = options.tenantRoot ? resolve(options.tenantRoot) : null;
 	const npmCommand = resolveNpmInstallCommand(options.env);
 	if (!tenantRoot || !existsSync(resolve(tenantRoot, 'package.json'))) {

@@ -1,8 +1,8 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { runTreeseedGit } from '../git-runner.ts';
-import { workspacePackages, workspaceRoot } from '../workspace-tools.ts';
+import { runRepositoryGit } from '../operations/git-runner.ts';
+import { workspacePackages, workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
 import { DeploymentLockfileWorkspaceIssue, INTERNAL_DEPENDENCY_FIELDS, WorkspaceLink, WorkspaceLinksMode, dependencySpec, dependencySpecsMatch, ensureGitInfoExcludes, internalDependencyNames, linkPathFor, normalizedPathValue, operatorWorkspacePackageNames, packageDirName, pathKey, readJson, readMetadata, safeLstat, safeReadlink, workspaceLinksEnabled, writeMetadata } from './dependency-resolution-mode.ts';
 import { inspectWorkspaceDependencyMode } from './collect-deployment-lockfile-workspace-issues.ts';
 
@@ -101,7 +101,7 @@ export function discoverWorkspaceLinks(root = workspaceRoot()) {
 	return links;
 }
 
-export function isInstalledTreeseedPackage(path: string, packageName: string) {
+export function isInstalledPackage(path: string, packageName: string) {
 	try {
 		const packageJson = readJson(resolve(path, 'package.json'));
 		return packageJson.name === packageName;
@@ -134,7 +134,7 @@ export function removeLinkCandidate(link: WorkspaceLink, managedLinks: Set<strin
 		rmSync(link.linkPath, { recursive: true, force: true });
 		return true;
 	}
-	if (isInstalledTreeseedPackage(link.linkPath, link.packageName)) {
+	if (isInstalledPackage(link.linkPath, link.packageName)) {
 		rmSync(link.linkPath, { recursive: true, force: true });
 		return true;
 	}

@@ -9,15 +9,15 @@ import {
 	type RailwayIacPlanResponse,
 	type ResourceNode,
 } from 'railway/iac';
-import { railwayGraphqlRequest } from '../../../operations/services/railway-api.ts';
-import { assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService } from '../../../operations/services/railway-source-policy.ts';
-import { TreeseedRailwayIacProjectInput, TreeseedRailwayIacRenderResult, railwayIacApplyFailure } from './treeseed-railway-iac-service.ts';
+import { railwayGraphqlRequest } from '../../../operations/services/hosting/railway/railway-api.ts';
+import { assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService } from '../../../operations/services/hosting/railway/railway-source-policy.ts';
+import { RailwayIacProjectInput, RailwayIacRenderResult, railwayIacApplyFailure } from './railway-iac-service.ts';
 import { renderRailwayIacProject } from './resolve-railway-iac-volume-bindings.ts';
 import { commitAndVerifyRailwayStagedPatch, planRailwayIacProject, railwayIacClient, railwayPatchForPlan, railwayStagedPatchMatchesPlan, readRailwayStagedPatch } from './validate-railway-iac-change-set.ts';
 import { id, runRailwayIacWithRateLimitRetry } from './run-railway-iac-with-rate-limit-retry.ts';
 
 export async function applyRailwayIacProjectWithPlan(
-	input: TreeseedRailwayIacProjectInput,
+	input: RailwayIacProjectInput,
 	rendered = renderRailwayIacProject(input),
 	planned?: RailwayIacPlanResponse,
 ): Promise<RailwayIacApplyResponse> {
@@ -95,6 +95,6 @@ export async function applyRailwayIacProjectWithPlan(
 	return response;
 }
 
-export function cleanupRailwayIacRender(rendered: Pick<TreeseedRailwayIacRenderResult, 'tempDir'>) {
+export function cleanupRailwayIacRender(rendered: Pick<RailwayIacRenderResult, 'tempDir'>) {
 	rmSync(rendered.tempDir, { recursive: true, force: true });
 }

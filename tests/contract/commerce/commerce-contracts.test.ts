@@ -70,7 +70,7 @@ import {
 	type CommonsProposalVote,
 	type CommonsQuestion,
 	type StripeConnectedAccount,
-} from '../../../src/sdk-types.ts';
+} from '../../../src/entrypoints/models/sdk-types.ts';
 
 describe('commerce contracts', () => {
 	it('defines the clean unreleased offer mode set', () => {

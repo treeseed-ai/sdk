@@ -1,48 +1,48 @@
-import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../diagnostics.ts';
-import { findBuiltInTreeseedSceneAction, findBuiltInTreeseedSceneAssertion } from '../registry.ts';
+import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
+import { findBuiltInSceneAction, findBuiltInSceneAssertion } from '../support/plugins/registry.ts';
 import {
-	TREESEED_SCENE_BROWSERS,
-	TREESEED_SCENE_ENVIRONMENTS,
-	TREESEED_SCENE_SCHEMA_VERSION,
-	type TreeseedSceneAction,
-	type TreeseedSceneArtifacts,
-	type TreeseedSceneBrowser,
-	type TreeseedSceneChapter,
-	type TreeseedSceneDeviceConfig,
-	type TreeseedSceneDeviceProfile,
-	type TreeseedSceneDiagram,
-	type TreeseedSceneDiagnostic,
-	type TreeseedSceneEnvironment,
-	type TreeseedSceneExpectation,
-	type TreeseedSceneManifest,
-	type TreeseedSceneMode,
-	type TreeseedSceneMotion,
-	type TreeseedSceneOverlay,
-	type TreeseedSceneOverlayVariant,
-	type TreeseedSceneRenderConfig,
-	type TreeseedSceneRenderEvidenceFit,
-	type TreeseedSceneRuntimeConfig,
-	type TreeseedSceneSelector,
-	type TreeseedSceneSetup,
-	type TreeseedSceneTarget,
-	type TreeseedSceneTrainingConfig,
-	type TreeseedSceneVisualAuditConfig,
-	type TreeseedSceneVisualObject,
-	type TreeseedSceneVisualPoint,
-	type TreeseedSceneVisualRegion,
-	type TreeseedSceneVisualSize,
-	type TreeseedSceneVisualStyle,
-	type TreeseedSceneWorkflowStep,
+	SCENE_BROWSERS,
+	SCENE_ENVIRONMENTS,
+	SCENE_SCHEMA_VERSION,
+	type SceneAction,
+	type SceneArtifacts,
+	type SceneBrowser,
+	type SceneChapter,
+	type SceneDeviceConfig,
+	type SceneDeviceProfile,
+	type SceneDiagram,
+	type SceneDiagnostic,
+	type SceneEnvironment,
+	type SceneExpectation,
+	type SceneManifest,
+	type SceneMode,
+	type SceneMotion,
+	type SceneOverlay,
+	type SceneOverlayVariant,
+	type SceneRenderConfig,
+	type SceneRenderEvidenceFit,
+	type SceneRuntimeConfig,
+	type SceneSelector,
+	type SceneSetup,
+	type SceneTarget,
+	type SceneTrainingConfig,
+	type SceneVisualAuditConfig,
+	type SceneVisualObject,
+	type SceneVisualPoint,
+	type SceneVisualRegion,
+	type SceneVisualSize,
+	type SceneVisualStyle,
+	type SceneWorkflowStep,
 } from '../types.ts';
 import { FILESYSTEM_SAFE_CHECKPOINT_ID, FILESYSTEM_SAFE_SCENE_ID, MOTION_EASINGS, MOTION_UNITS, OVERLAY_VARIANTS, VISUAL_OBJECT_TYPES, VISUAL_REGIONS, VISUAL_SHADOWS, VISUAL_TONES, VISUAL_UNITS, arrayField, asString, booleanField, finiteNumberField, isRecord, objectField, optionalString, parseSelector, positiveNumberField, requireString } from './filesystem-safe-scene-id.ts';
 import { actionCanOmitExpectation, expectationKeys, parseAction, parseExpectation } from './parse-action.ts';
 
-export function parseWorkflow(value: unknown, diagnostics: TreeseedSceneDiagnostic[]) {
+export function parseWorkflow(value: unknown, diagnostics: SceneDiagnostic[]) {
 	if (!Array.isArray(value)) {
 		diagnostics.push(sceneErrorDiagnostic('scene.missing_field', 'Missing required field: workflow.', 'workflow'));
 		return [];
 	}
-	const steps: TreeseedSceneWorkflowStep[] = [];
+	const steps: SceneWorkflowStep[] = [];
 	const seen = new Set<string>();
 	const checkpointIds = new Set<string>();
 	value.forEach((entry, index) => {
@@ -89,8 +89,8 @@ export function parseWorkflow(value: unknown, diagnostics: TreeseedSceneDiagnost
 	return steps;
 }
 
-export function parseChapters(value: unknown, stepIds: Set<string>, diagnostics: TreeseedSceneDiagnostic[]) {
-	const chapters: TreeseedSceneChapter[] = [];
+export function parseChapters(value: unknown, stepIds: Set<string>, diagnostics: SceneDiagnostic[]) {
+	const chapters: SceneChapter[] = [];
 	const entries = Array.isArray(value) ? value : [];
 	entries.forEach((entry, index) => {
 		const path = `chapters[${index}]`;
@@ -107,7 +107,7 @@ export function parseChapters(value: unknown, stepIds: Set<string>, diagnostics:
 	return chapters;
 }
 
-export function enumValue<T extends readonly string[]>(value: unknown, allowed: T, defaultValue: T[number] | undefined, path: string, code: string, diagnostics: TreeseedSceneDiagnostic[]) {
+export function enumValue<T extends readonly string[]>(value: unknown, allowed: T, defaultValue: T[number] | undefined, path: string, code: string, diagnostics: SceneDiagnostic[]) {
 	const text = asString(value);
 	if (!text) return defaultValue;
 	if ((allowed as readonly string[]).includes(text)) return text as T[number];
@@ -115,7 +115,7 @@ export function enumValue<T extends readonly string[]>(value: unknown, allowed: 
 	return defaultValue;
 }
 
-export function parseVisualPoint(value: unknown, path: string, diagnostics: TreeseedSceneDiagnostic[]): TreeseedSceneVisualPoint | undefined {
+export function parseVisualPoint(value: unknown, path: string, diagnostics: SceneDiagnostic[]): SceneVisualPoint | undefined {
 	if (value === undefined) return undefined;
 	if (!isRecord(value)) {
 		diagnostics.push(sceneErrorDiagnostic('scene.visual_invalid_point', 'Expected visual point to be an object.', path));
@@ -134,7 +134,7 @@ export function parseVisualPoint(value: unknown, path: string, diagnostics: Tree
 	return { x, y, ...(unit ? { unit } : {}) };
 }
 
-export function parseVisualSize(value: unknown, path: string, diagnostics: TreeseedSceneDiagnostic[]): TreeseedSceneVisualSize | undefined {
+export function parseVisualSize(value: unknown, path: string, diagnostics: SceneDiagnostic[]): SceneVisualSize | undefined {
 	if (value === undefined) return undefined;
 	if (!isRecord(value)) {
 		diagnostics.push(sceneErrorDiagnostic('scene.visual_invalid_size', 'Expected visual size to be an object.', path));
@@ -153,7 +153,7 @@ export function parseVisualSize(value: unknown, path: string, diagnostics: Trees
 	return { width, height, ...(unit ? { unit } : {}) };
 }
 
-export function parseVisualStyle(value: unknown, path: string, diagnostics: TreeseedSceneDiagnostic[]): TreeseedSceneVisualStyle | undefined {
+export function parseVisualStyle(value: unknown, path: string, diagnostics: SceneDiagnostic[]): SceneVisualStyle | undefined {
 	if (value === undefined) return undefined;
 	if (!isRecord(value)) {
 		diagnostics.push(sceneErrorDiagnostic('scene.visual_invalid_style', 'Expected visual style to be an object.', path));
@@ -164,8 +164,8 @@ export function parseVisualStyle(value: unknown, path: string, diagnostics: Tree
 	}
 	const opacity = value.opacity === undefined ? undefined : finiteNumberField(value, 'opacity', undefined, path, diagnostics);
 	if (opacity !== undefined && opacity > 1) diagnostics.push(sceneErrorDiagnostic('scene.visual_invalid_opacity', 'Opacity must be between 0 and 1.', `${path}.opacity`));
-	const tone = enumValue(value.tone, VISUAL_TONES, undefined, `${path}.tone`, 'scene.visual_invalid_tone', diagnostics) as TreeseedSceneVisualStyle['tone'] | undefined;
-	const shadow = enumValue(value.shadow, VISUAL_SHADOWS, undefined, `${path}.shadow`, 'scene.visual_invalid_shadow', diagnostics) as TreeseedSceneVisualStyle['shadow'] | undefined;
+	const tone = enumValue(value.tone, VISUAL_TONES, undefined, `${path}.tone`, 'scene.visual_invalid_tone', diagnostics) as SceneVisualStyle['tone'] | undefined;
+	const shadow = enumValue(value.shadow, VISUAL_SHADOWS, undefined, `${path}.shadow`, 'scene.visual_invalid_shadow', diagnostics) as SceneVisualStyle['shadow'] | undefined;
 	return {
 		...(tone ? { tone } : {}),
 		...(optionalString(value, 'background') ? { background: optionalString(value, 'background') } : {}),
@@ -178,7 +178,7 @@ export function parseVisualStyle(value: unknown, path: string, diagnostics: Tree
 	};
 }
 
-export function parseMotion(value: unknown, path: string, diagnostics: TreeseedSceneDiagnostic[]): TreeseedSceneMotion | undefined {
+export function parseMotion(value: unknown, path: string, diagnostics: SceneDiagnostic[]): SceneMotion | undefined {
 	if (value === undefined) return undefined;
 	if (!isRecord(value)) {
 		diagnostics.push(sceneErrorDiagnostic('scene.motion_invalid', 'Expected motion to be an object.', path));
@@ -204,7 +204,7 @@ export function parseMotion(value: unknown, path: string, diagnostics: TreeseedS
 		if (at === null) return null;
 		const position = parseVisualPoint(entry.position, `${framePath}.position`, diagnostics);
 		const size = parseVisualSize(entry.size, `${framePath}.size`, diagnostics);
-		const motionEasing = enumValue(entry.easing, MOTION_EASINGS, undefined, `${framePath}.easing`, 'scene.motion_invalid_easing', diagnostics) as TreeseedSceneMotion['keyframes'][number]['easing'] | undefined;
+		const motionEasing = enumValue(entry.easing, MOTION_EASINGS, undefined, `${framePath}.easing`, 'scene.motion_invalid_easing', diagnostics) as SceneMotion['keyframes'][number]['easing'] | undefined;
 		return {
 			at,
 			...(unit ? { unit } : {}),
@@ -220,10 +220,10 @@ export function parseMotion(value: unknown, path: string, diagnostics: TreeseedS
 	return { keyframes, ...(value.loop !== undefined ? { loop: booleanField(value, 'loop', false, path, diagnostics) } : {}) };
 }
 
-export function parseVisualObjects(value: unknown, path: string, diagnostics: TreeseedSceneDiagnostic[]): TreeseedSceneVisualObject[] | undefined {
+export function parseVisualObjects(value: unknown, path: string, diagnostics: SceneDiagnostic[]): SceneVisualObject[] | undefined {
 	if (value === undefined) return undefined;
 	const entries = arrayField({ objects: value }, 'objects', path.replace(/\.objects$/u, ''), diagnostics) ?? [];
-	const objects: TreeseedSceneVisualObject[] = [];
+	const objects: SceneVisualObject[] = [];
 	const seen = new Set<string>();
 	entries.forEach((entry, index) => {
 		const objectPath = `${path}[${index}]`;
@@ -249,7 +249,7 @@ export function parseVisualObjects(value: unknown, path: string, diagnostics: Tr
 			...(optionalString(entry, 'text') ? { text: optionalString(entry, 'text') } : {}),
 			...(position ? { position } : {}),
 			...(size ? { size } : {}),
-			...(region ? { region: region as TreeseedSceneVisualRegion } : {}),
+			...(region ? { region: region as SceneVisualRegion } : {}),
 			...(style ? { style } : {}),
 			...(motion ? { motion } : {}),
 			...(from ? { from } : {}),
@@ -259,8 +259,8 @@ export function parseVisualObjects(value: unknown, path: string, diagnostics: Tr
 	return objects;
 }
 
-export function parseOverlays(value: unknown, stepIds: Set<string>, diagnostics: TreeseedSceneDiagnostic[]) {
-	const overlays: TreeseedSceneOverlay[] = [];
+export function parseOverlays(value: unknown, stepIds: Set<string>, diagnostics: SceneDiagnostic[]) {
+	const overlays: SceneOverlay[] = [];
 	const entries = Array.isArray(value) ? value : [];
 	entries.forEach((entry, index) => {
 		const path = `overlays[${index}]`;
@@ -273,8 +273,8 @@ export function parseOverlays(value: unknown, stepIds: Set<string>, diagnostics:
 		if (id && !FILESYSTEM_SAFE_SCENE_ID.test(id)) diagnostics.push(sceneErrorDiagnostic('scene.invalid_id', `Invalid overlay id: ${id}.`, `${path}.id`));
 		if (at && !stepIds.has(at)) diagnostics.push(sceneErrorDiagnostic('scene.unknown_step_reference', `Unknown workflow step reference: ${at}.`, `${path}.at`));
 		const anchor = entry.anchor === undefined ? null : parseSelector(entry.anchor, `${path}.anchor`, diagnostics);
-		const variant = enumValue(entry.variant, OVERLAY_VARIANTS, undefined, `${path}.variant`, 'scene.overlay_invalid_variant', diagnostics) as TreeseedSceneOverlayVariant | undefined;
-		const region = enumValue(entry.region, VISUAL_REGIONS, undefined, `${path}.region`, 'scene.visual_invalid_region', diagnostics) as TreeseedSceneVisualRegion | undefined;
+		const variant = enumValue(entry.variant, OVERLAY_VARIANTS, undefined, `${path}.variant`, 'scene.overlay_invalid_variant', diagnostics) as SceneOverlayVariant | undefined;
+		const region = enumValue(entry.region, VISUAL_REGIONS, undefined, `${path}.region`, 'scene.visual_invalid_region', diagnostics) as SceneVisualRegion | undefined;
 		const position = parseVisualPoint(entry.position, `${path}.position`, diagnostics);
 		const size = parseVisualSize(entry.size, `${path}.size`, diagnostics);
 		const style = parseVisualStyle(entry.style, `${path}.style`, diagnostics);

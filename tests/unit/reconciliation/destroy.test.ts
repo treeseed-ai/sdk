@@ -5,14 +5,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	cloudflareDestroyVerification,
 	createPersistentDeployTarget,
-	destroyTreeseedEnvironmentResources,
+	destroyEnvironmentResources,
 	dockerLocalRuntimeResourceOperations,
 	loadDeployState,
 	setDestroyDockerRunnerForTests,
 	shouldDeleteRailwayProjectAfterEnvironmentDestroy,
 	writeDeployState,
-} from '../../../src/operations/services/deploy.ts';
-import { loadCliDeployConfig } from '../../../src/operations/services/runtime-tools.ts';
+} from '../../../src/operations/services/hosting/deployment/deploy.ts';
+import { loadCliDeployConfig } from '../../../src/operations/services/agents/runtime-tools.ts';
 
 function createDestroyFixture() {
 	const tenantRoot = mkdtempSync(join(tmpdir(), 'treeseed-destroy-test-'));
@@ -103,7 +103,7 @@ describe('destroy planning', () => {
 		vi.stubEnv('TREESEED_CLOUDFLARE_ACCOUNT_ID', 'account-123');
 		vi.stubEnv('TREESEED_RAILWAY_API_TOKEN', '');
 
-		const result = await destroyTreeseedEnvironmentResources(tenantRoot, {
+		const result = await destroyEnvironmentResources(tenantRoot, {
 			target: createPersistentDeployTarget('staging'),
 			planOnly: true,
 		});
@@ -122,7 +122,7 @@ describe('destroy planning', () => {
 		vi.stubEnv('TREESEED_CLOUDFLARE_ACCOUNT_ID', 'account-123');
 		vi.stubEnv('TREESEED_RAILWAY_API_TOKEN', '');
 
-		const result = await destroyTreeseedEnvironmentResources(tenantRoot, {
+		const result = await destroyEnvironmentResources(tenantRoot, {
 			target: createPersistentDeployTarget('staging'),
 			planOnly: true,
 			deleteData: true,
@@ -144,7 +144,7 @@ describe('destroy planning', () => {
 		vi.stubEnv('TREESEED_CLOUDFLARE_ACCOUNT_ID', 'account-123');
 		vi.stubEnv('TREESEED_RAILWAY_API_TOKEN', '');
 
-		const result = await destroyTreeseedEnvironmentResources(tenantRoot, {
+		const result = await destroyEnvironmentResources(tenantRoot, {
 			target: createPersistentDeployTarget('prod'),
 			planOnly: true,
 			deleteData: true,
@@ -217,7 +217,7 @@ describe('destroy planning', () => {
 			return { status: 1, stdout: '', stderr: 'unexpected docker call' };
 		});
 
-		const result = await destroyTreeseedEnvironmentResources(tenantRoot, {
+		const result = await destroyEnvironmentResources(tenantRoot, {
 			target: createPersistentDeployTarget('local'),
 			planOnly: true,
 			deleteData: true,

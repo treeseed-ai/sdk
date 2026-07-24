@@ -1,4 +1,4 @@
-export { RemoteTemplateCatalogClient, parseTemplateCatalogResponse } from '.././template-catalog.ts';
+export { RemoteTemplateCatalogClient, parseTemplateCatalogResponse } from '../commerce/catalog/template-catalog.ts';
 
 export {
 	normalizeProjectLaunchHostBindings,
@@ -6,7 +6,7 @@ export {
 	parseProjectLaunchHostBindingSpecs,
 	resolveProjectLaunchHostBindings,
 	validateTemplateLaunchRequirements,
-} from '.././template-launch-requirements.ts';
+} from '../entrypoints/templates/template-launch-requirements.ts';
 
 export type {
 	ParseProjectLaunchHostBindingSpecsOptions,
@@ -18,11 +18,11 @@ export type {
 	ProjectLaunchSecretDeploymentPlanItem,
 	ResolveProjectLaunchHostBindingsOptions,
 	ResolveProjectLaunchHostBindingsResult,
-} from '.././template-launch-requirements.ts';
+} from '../entrypoints/templates/template-launch-requirements.ts';
 
 export {
 	deriveProjectLaunchRequirementsViewModel,
-} from '.././template-launch-ui.ts';
+} from '../entrypoints/templates/template-launch-ui.ts';
 
 export type {
 	DeriveProjectLaunchRequirementsViewModelOptions,
@@ -31,13 +31,13 @@ export type {
 	ProjectLaunchRequirementsViewModel,
 	ProjectLaunchResourceRequirementViewModel,
 	ProjectLaunchSecretRequirementViewModel,
-} from '.././template-launch-ui.ts';
+} from '../entrypoints/templates/template-launch-ui.ts';
 
 export {
 	applyProjectLaunchHostBindingConfig,
 	auditProjectLaunchHostBindingConfig,
 	preserveProjectLaunchHostBindingConfigOverlay,
-} from '.././operations/services/template-host-bindings.ts';
+} from '../operations/services/hosting/deployment/template-host-bindings.ts';
 
 export type {
 	ApplyProjectLaunchHostBindingConfigOptions,
@@ -46,13 +46,13 @@ export type {
 	ProjectLaunchHostBindingConfigApplyResult,
 	ProjectLaunchHostBindingConfigWriteSummary,
 	ProjectLaunchHostBindingEnvironmentWriteSummary,
-} from '.././operations/services/template-host-bindings.ts';
+} from '../operations/services/hosting/deployment/template-host-bindings.ts';
 
 export {
 	ProjectLaunchSecretSyncError,
 	resolveProjectLaunchSecretValueOverlay,
 	syncProjectLaunchHostBindingSecrets,
-} from '.././operations/services/template-secret-sync.ts';
+} from '../operations/services/configuration/template-secret-sync.ts';
 
 export type {
 	ProjectLaunchResolvedSecretValueItem,
@@ -69,4 +69,4 @@ export type {
 	ProjectLaunchSecretValueOverlayResult,
 	ResolveProjectLaunchSecretValueOverlayOptions,
 	SyncProjectLaunchHostBindingSecretsOptions,
-} from '.././operations/services/template-secret-sync.ts';
+} from '../operations/services/configuration/template-secret-sync.ts';

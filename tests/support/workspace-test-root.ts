@@ -2,12 +2,12 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, dirname, extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export type TreeseedTestRoot = {
+export type TestRoot = {
 	root: string;
 	layout: 'workspace' | 'sdk-package';
 };
 
-export function resolveTreeseedTestRoot(metaUrl: string): TreeseedTestRoot {
+export function resolveTestRoot(metaUrl: string): TestRoot {
 	const start = dirname(fileURLToPath(metaUrl));
 	let current = start;
 	for (;;) {
@@ -31,7 +31,7 @@ export function resolveTreeseedTestRoot(metaUrl: string): TreeseedTestRoot {
 	return { root: resolve(start, '..', '..'), layout: 'sdk-package' };
 }
 
-export function resolveTreeseedTestPath(testRoot: TreeseedTestRoot, relativePath: string): string | null {
+export function resolveTestPath(testRoot: TestRoot, relativePath: string): string | null {
 	if (testRoot.layout === 'workspace') {
 		const path = resolve(testRoot.root, relativePath);
 		return existsSync(path) ? path : null;
@@ -43,21 +43,32 @@ export function resolveTreeseedTestPath(testRoot: TreeseedTestRoot, relativePath
 	return null;
 }
 
-export function readTreeseedTestSource(testRoot: TreeseedTestRoot, relativePath: string): string | null {
-	const path = resolveTreeseedTestPath(testRoot, relativePath);
+export function readTestSource(testRoot: TestRoot, relativePath: string): string | null {
+	const path = resolveTestPath(testRoot, relativePath);
 	return path ? readSourceModule(path) : null;
 }
 
 /** Reads a public module entrypoint together with its same-named implementation directory. */
 export function readSourceModule(path: string | URL): string {
 	const absolute = path instanceof URL ? fileURLToPath(path) : path;
-	const source = readFileSync(absolute, 'utf8');
+	const visited = new Set<string>();
+	const readModuleGraph = (modulePath: string): string[] => {
+		if (visited.has(modulePath)) return [];
+		visited.add(modulePath);
+		const source = readFileSync(modulePath, 'utf8');
+		const dependencies: string[] = [];
+		for (const match of source.matchAll(/export\s+(?:\*|\{[^}]*\})\s+from\s+['"](\.{1,2}\/[^'"]+)['"]/gu)) {
+			const specifier = match[1];
+			if (!specifier) continue;
+			const candidate = resolve(dirname(modulePath), specifier.replace(/\.js$/u, '.ts'));
+			if (existsSync(candidate)) dependencies.push(candidate);
+		}
+		return [source, ...dependencies.sort().flatMap(readModuleGraph)];
+	};
 	const extension = extname(absolute);
 	const implementationDir = resolve(dirname(absolute), basename(absolute, extension));
-	const implementation = filesUnderIfExists(implementationDir)
-		.sort()
-		.map((file) => readFileSync(file, 'utf8'));
-	return [source, ...implementation].join('\n');
+	const implementation = filesUnderIfExists(implementationDir).sort().flatMap(readModuleGraph);
+	return [...readModuleGraph(absolute), ...implementation].join('\n');
 }
 
 /** Extracts a named function regardless of declaration order in a composed source module. */
@@ -114,7 +125,7 @@ function isSideBySideBuildArtifact(path: string): boolean {
 	return existsSync(sourcePath);
 }
 
-export function treeseedRelativePath(testRoot: TreeseedTestRoot, path: string): string {
+export function RelativePath(testRoot: TestRoot, path: string): string {
 	if (testRoot.layout === 'workspace') {
 		return relative(testRoot.root, path).replaceAll('\\', '/');
 	}

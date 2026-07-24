@@ -1,7 +1,7 @@
 import {
-	TREESEED_REMOTE_CONTRACT_HEADER,
-	TREESEED_REMOTE_CONTRACT_VERSION,
-} from '../remote.ts';
+	REMOTE_CONTRACT_HEADER,
+	REMOTE_CONTRACT_VERSION,
+} from '../entrypoints/clients/remote.ts';
 
 
 export const PLATFORM_OPERATION_ENDPOINTS = {

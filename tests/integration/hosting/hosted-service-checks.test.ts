@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { collectTreeseedHostedServiceChecks } from '../../../src/operations/services/hosted-service-checks.ts';
+import { collectHostedServiceChecks } from '../../../src/operations/services/hosting/audit/hosted-service-checks.ts';
 
 let roots: string[] = [];
 
@@ -107,7 +107,7 @@ services:
 ${extra}`;
 }
 
-function byId(report: ReturnType<typeof collectTreeseedHostedServiceChecks>, id: string) {
+function byId(report: ReturnType<typeof collectHostedServiceChecks>, id: string) {
 	const found = report.checks.find((check) => check.id === id);
 	if (!found) throw new Error(`Missing check ${id}`);
 	return found;
@@ -138,7 +138,7 @@ surfaces:
     provider: railway
     rootDir: .
 `);
-		const report = collectTreeseedHostedServiceChecks({
+		const report = collectHostedServiceChecks({
 			tenantRoot: root,
 			target: 'staging',
 			appId: 'web',
@@ -172,7 +172,7 @@ surfaces:
       staging:
         domain: ui-staging.treeseed.ai
 `);
-		const report = collectTreeseedHostedServiceChecks({
+		const report = collectHostedServiceChecks({
 			tenantRoot: root,
 			target: 'staging',
 			appId: 'web',
@@ -211,7 +211,7 @@ surfaces:
       staging:
         domain: ui-staging.treeseed.ai
 `);
-		const report = collectTreeseedHostedServiceChecks({
+		const report = collectHostedServiceChecks({
 			tenantRoot: root,
 			target: 'staging',
 			appId: 'ui',
@@ -234,7 +234,7 @@ surfaces:
 
 	it('generates config-driven checks for API, runner, web, and database services', () => {
 		const root = fixtureRoot();
-		const report = collectTreeseedHostedServiceChecks({
+		const report = collectHostedServiceChecks({
 			tenantRoot: root,
 			target: 'staging',
 			now: new Date('2026-06-07T00:00:00.000Z'),
@@ -292,7 +292,7 @@ surfaces:
 
 	it('fails canonical staging API services when live deployment metadata is image-shaped instead of Git-shaped', () => {
 		const root = fixtureRoot();
-		const report = collectTreeseedHostedServiceChecks({
+		const report = collectHostedServiceChecks({
 			tenantRoot: root,
 			target: 'staging',
 			observedRailwayServices: {
@@ -322,7 +322,7 @@ surfaces:
 
 	it('scopes checks to selected service keys', () => {
 		const root = fixtureRoot();
-		const report = collectTreeseedHostedServiceChecks({
+		const report = collectHostedServiceChecks({
 			tenantRoot: root,
 			target: 'staging',
 			serviceKeys: ['api'],
@@ -348,7 +348,7 @@ surfaces:
 
 	it('detects Railway drift and missing required service values without leaking secret values', () => {
 		const root = fixtureRoot();
-		const report = collectTreeseedHostedServiceChecks({
+		const report = collectHostedServiceChecks({
 			tenantRoot: root,
 			target: 'staging',
 			valuesOverlay: {
@@ -375,7 +375,7 @@ surfaces:
 		const root = fixtureRoot(siteConfig()
 			.replace('  operationsRunner:\n    enabled: true', '  operationsRunner:\n    enabled: false')
 			.replace('  api:\n    enabled: true\n    provider: railway', '  api:\n    enabled: true\n    provider: custom-host'));
-		const report = collectTreeseedHostedServiceChecks({ tenantRoot: root, target: 'staging' });
+		const report = collectHostedServiceChecks({ tenantRoot: root, target: 'staging' });
 		expect(report.checks.some((check) => check.serviceKey === 'operationsRunner')).toBe(false);
 		expect(report.checks.some((check) => check.status === 'warning' && check.issues.some((issue) => issue.includes('custom-host')))).toBe(true);
 	});

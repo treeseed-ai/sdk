@@ -2,8 +2,8 @@ import { Buffer } from 'node:buffer';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { Octokit } from 'octokit';
-import { createTreeseedManagedToolEnv, resolveTreeseedToolBinary } from '../../../managed-dependencies.ts';
-import { resolveTreeseedGitHubToken } from '../../../service-credentials.ts';
+import { createManagedToolEnv, resolveToolBinary } from '../../../entrypoints/runtime/managed-dependencies.ts';
+import { resolveGitHubToken } from '../../../configuration/service-credentials.ts';
 import { DEFAULT_GITHUB_API_TIMEOUT_MS, GitHubApiClient, GitHubRepositoryMetadataInput, createGitHubTimeoutFetch, normalizeGitHubApiError, normalizeRepositorySummary, parseGitHubRepositorySlug, resolveGitHubApiToken, withGitHubApiRetries } from './require.ts';
 
 export function createGitHubApiClient({

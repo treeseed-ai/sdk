@@ -9,9 +9,9 @@ import {
 	normalizeTemplateLaunchRequirements,
 	parseProjectLaunchHostBindingSpecs,
 	resolveProjectLaunchHostBindings,
-} from '../../../src/template-launch-requirements.ts';
+} from '../../../src/entrypoints/templates/template-launch-requirements.ts';
 
-import { validateTemplateProduct } from '../../../src/operations/services/template-registry.ts';
+import { validateTemplateProduct } from '../../../src/operations/services/support/template-registry.ts';
 describe('template launch requirements', () => {
 const fixtureCatalogPath = resolve(process.cwd(), 'src/treeseed/template-catalog/catalog.fixture.json');
 

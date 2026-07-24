@@ -1,33 +1,33 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import type { TreeseedFieldAliasRegistry } from '../../field-aliases.ts';
-import { normalizeAliasedRecord } from '../../field-aliases.ts';
+import type { FieldAliasRegistry } from '../../entrypoints/models/field-aliases.ts';
+import { normalizeAliasedRecord } from '../../entrypoints/models/field-aliases.ts';
 import type {
-	TreeseedDeployConfig,
-	TreeseedExportConfig,
-	TreeseedHubConfig,
-	TreeseedLocalRuntimeConfig,
-	TreeseedManagedServiceConfig,
-	TreeseedManagedServicesConfig,
-	TreeseedPlatformSurfacesConfig,
-	TreeseedProcessingConfig,
-	TreeseedPluginReference,
-	TreeseedProviderSelections,
-	TreeseedRuntimeConfig,
-	TreeseedWebCachePolicyConfig,
-	TreeseedWebSourcePageCacheConfig,
-} from '../contracts.ts';
-import { resolveTreeseedTenantRoot } from '../tenant-config.ts';
+	DeployConfig,
+	ExportConfig,
+	HubConfig,
+	LocalRuntimeConfig,
+	ManagedServiceConfig,
+	ManagedServicesConfig,
+	PlatformSurfacesConfig,
+	ProcessingConfig,
+	PluginReference,
+	ProviderSelections,
+	RuntimeConfig,
+	WebCachePolicyConfig,
+	WebSourcePageCacheConfig,
+} from '../support/contracts.ts';
+import { resolveTenantRoot } from '../configuration/tenant-config.ts';
 import {
-	TREESEED_DEFAULT_PLUGIN_REFERENCES,
-	TREESEED_DEFAULT_PROVIDER_SELECTIONS,
+	DEFAULT_PLUGIN_REFERENCES,
+	DEFAULT_PROVIDER_SELECTIONS,
 } from '../plugins/constants.ts';
 import { expectString, hubFieldAliases, localRuntimeFieldAliases, optionalBoolean, optionalEnum, optionalPositiveNumber, optionalRecord, optionalString, optionalStringArray, parseHostingConfig, runtimeFieldAliases } from './deploy-config-field-aliases.ts';
 
 export function normalizePlanesFromLegacyHosting(
 	hosting: ReturnType<typeof parseHostingConfig> | undefined,
-): { hub: TreeseedHubConfig; runtime: TreeseedRuntimeConfig } {
+): { hub: HubConfig; runtime: RuntimeConfig } {
 	if (!hosting) {
 		return {
 			hub: { mode: 'treeseed_hosted' },
@@ -60,7 +60,7 @@ export function normalizePlanesFromLegacyHosting(
 	};
 }
 
-export function normalizeLegacyHostingFromPlanes(hub: TreeseedHubConfig, runtime: TreeseedRuntimeConfig) {
+export function normalizeLegacyHostingFromPlanes(hub: HubConfig, runtime: RuntimeConfig) {
 	if (runtime.mode === 'treeseed_managed' && hub.mode === 'treeseed_hosted') {
 		return {
 			kind: 'hosted_project' as const,
@@ -80,7 +80,7 @@ export function normalizeLegacyHostingFromPlanes(hub: TreeseedHubConfig, runtime
 	};
 }
 
-export function parseHubConfig(value: unknown, fallback: TreeseedHubConfig): TreeseedHubConfig {
+export function parseHubConfig(value: unknown, fallback: HubConfig): HubConfig {
 	const record = normalizeAliasedRecord(
 		hubFieldAliases,
 		(optionalRecord(value, 'hub') ?? {}) as Record<string, unknown>,
@@ -94,7 +94,7 @@ export function parseHubConfig(value: unknown, fallback: TreeseedHubConfig): Tre
 	};
 }
 
-export function parseRuntimeConfig(value: unknown, fallback: TreeseedRuntimeConfig): TreeseedRuntimeConfig {
+export function parseRuntimeConfig(value: unknown, fallback: RuntimeConfig): RuntimeConfig {
 	const record = normalizeAliasedRecord(
 		runtimeFieldAliases,
 		(optionalRecord(value, 'runtime') ?? {}) as Record<string, unknown>,
@@ -114,71 +114,71 @@ export function parseRuntimeConfig(value: unknown, fallback: TreeseedRuntimeConf
 	};
 }
 
-export function parseProviderSelections(value: unknown): TreeseedProviderSelections {
+export function parseProviderSelections(value: unknown): ProviderSelections {
 	const record = optionalRecord(value, 'providers');
 	if (!record) {
-		return structuredClone(TREESEED_DEFAULT_PROVIDER_SELECTIONS);
+		return structuredClone(DEFAULT_PROVIDER_SELECTIONS);
 	}
 
 	const agentProviders = optionalRecord(record.agents, 'providers.agents') ?? {};
 	const contentProviders = optionalRecord(record.content, 'providers.content') ?? {};
 
 	return {
-		forms: expectString(record.forms ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.forms, 'providers.forms'),
-		operations: expectString(record.operations ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.operations, 'providers.operations'),
+		forms: expectString(record.forms ?? DEFAULT_PROVIDER_SELECTIONS.forms, 'providers.forms'),
+		operations: expectString(record.operations ?? DEFAULT_PROVIDER_SELECTIONS.operations, 'providers.operations'),
 		agents: {
 			execution: expectString(
-				agentProviders.execution ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.agents.execution,
+				agentProviders.execution ?? DEFAULT_PROVIDER_SELECTIONS.agents.execution,
 				'providers.agents.execution',
 			),
 			mutation: expectString(
-				agentProviders.mutation ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.agents.mutation,
+				agentProviders.mutation ?? DEFAULT_PROVIDER_SELECTIONS.agents.mutation,
 				'providers.agents.mutation',
 			),
 			repository: expectString(
-				agentProviders.repository ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.agents.repository,
+				agentProviders.repository ?? DEFAULT_PROVIDER_SELECTIONS.agents.repository,
 				'providers.agents.repository',
 			),
 			verification: expectString(
-				agentProviders.verification ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.agents.verification,
+				agentProviders.verification ?? DEFAULT_PROVIDER_SELECTIONS.agents.verification,
 				'providers.agents.verification',
 			),
 			notification: expectString(
-				agentProviders.notification ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.agents.notification,
+				agentProviders.notification ?? DEFAULT_PROVIDER_SELECTIONS.agents.notification,
 				'providers.agents.notification',
 			),
 			research: expectString(
-				agentProviders.research ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.agents.research,
+				agentProviders.research ?? DEFAULT_PROVIDER_SELECTIONS.agents.research,
 				'providers.agents.research',
 			),
 		},
-		deploy: expectString(record.deploy ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.deploy, 'providers.deploy'),
-		dns: expectString(record.dns ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.dns, 'providers.dns'),
+		deploy: expectString(record.deploy ?? DEFAULT_PROVIDER_SELECTIONS.deploy, 'providers.deploy'),
+		dns: expectString(record.dns ?? DEFAULT_PROVIDER_SELECTIONS.dns, 'providers.dns'),
 		content: {
 			runtime: expectString(
-				contentProviders.runtime ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.runtime,
+				contentProviders.runtime ?? DEFAULT_PROVIDER_SELECTIONS.content.runtime,
 				'providers.content.runtime',
 			),
 			publish: expectString(
 				contentProviders.publish
 					?? contentProviders.runtime
-					?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.publish,
+					?? DEFAULT_PROVIDER_SELECTIONS.content.publish,
 				'providers.content.publish',
 			),
 			docs: expectString(
 				contentProviders.docs
 					?? contentProviders.runtime
-					?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.docs
-					?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.runtime,
+					?? DEFAULT_PROVIDER_SELECTIONS.content.docs
+					?? DEFAULT_PROVIDER_SELECTIONS.content.runtime,
 				'providers.content.docs',
 			),
 			serving: optionalEnum(
 				contentProviders.serving,
 				'providers.content.serving',
 				['local_collections', 'published_runtime'] as const,
-			) ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.serving,
+			) ?? DEFAULT_PROVIDER_SELECTIONS.content.serving,
 		},
-		site: expectString(record.site ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.site, 'providers.site'),
+		site: expectString(record.site ?? DEFAULT_PROVIDER_SELECTIONS.site, 'providers.site'),
 	};
 }
 
@@ -197,7 +197,7 @@ export function parseServiceEnvironmentConfig(
 	};
 }
 
-export function parseLocalRuntimeConfig(value: unknown, label: string): TreeseedLocalRuntimeConfig | undefined {
+export function parseLocalRuntimeConfig(value: unknown, label: string): LocalRuntimeConfig | undefined {
 	const record = normalizeAliasedRecord(
 		localRuntimeFieldAliases,
 		(optionalRecord(value, label) ?? {}) as Record<string, unknown>,
@@ -210,7 +210,7 @@ export function parseLocalRuntimeConfig(value: unknown, label: string): Treeseed
 	};
 }
 
-export function parseManagedServiceConfig(value: unknown, label: string): TreeseedManagedServiceConfig | undefined {
+export function parseManagedServiceConfig(value: unknown, label: string): ManagedServiceConfig | undefined {
 	const record = optionalRecord(value, label);
 	if (!record) {
 		return undefined;

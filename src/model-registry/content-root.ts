@@ -1,6 +1,6 @@
 import path from 'node:path';
-import { resolveSdkRepoRoot } from '../runtime.ts';
-import { validateModelFieldAliases } from '../sdk-fields.ts';
+import { resolveSdkRepoRoot } from '../runtime/runtime.ts';
+import { validateModelFieldAliases } from '../entrypoints/models/sdk-fields.ts';
 import { assertResearchCitations } from '../agent-capacity/validation/research-citation.ts';
 import type {
 	SdkBuiltinModelName,
@@ -9,7 +9,7 @@ import type {
 	SdkModelDefinition,
 	SdkModelName,
 	SdkModelRegistry,
-} from '../sdk-types.ts';
+} from '../entrypoints/models/sdk-types.ts';
 
 
 export function contentRoot(repoRoot?: string) {

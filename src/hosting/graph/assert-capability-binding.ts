@@ -1,28 +1,28 @@
-import { loadTreeseedDeployConfig } from '../../platform/deploy-config.ts';
-import { loadTreeseedPlugins } from '../../platform/plugins/runtime.ts';
+import { loadDeployConfig } from '../../platform/hosting/deploy-config.ts';
+import { loadPlugins } from '../../platform/plugins/runtime.ts';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { resolveTreeseedMachineEnvironmentValues } from '../../operations/services/config-runtime.ts';
-import { classifyTreeseedGitMode, runTreeseedGitText } from '../../operations/services/git-runner.ts';
-import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName, railwayTreeDxServiceName } from '../../operations/services/railway-source-policy.ts';
-import { createTreeseedCanonicalReconcileReport, type TreeseedCanonicalAction, type TreeseedCanonicalDrift, type TreeseedCanonicalGraphNode, type TreeseedCanonicalPostcondition } from '../../reconcile/index.ts';
-import type { TreeseedRunnableBootstrapSystem } from '../../reconcile/bootstrap-systems.ts';
-import { discoverTreeseedApplications, findTreeseedApplication, type TreeseedDiscoveredApplication } from '../apps.ts';
+import { resolveMachineEnvironmentValues } from '../../operations/services/configuration/config-runtime.ts';
+import { classifyGitMode, runGitText } from '../../operations/services/operations/git-runner.ts';
+import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName, railwayTreeDxServiceName } from '../../operations/services/hosting/railway/railway-source-policy.ts';
+import { createCanonicalReconcileReport, type CanonicalAction, type CanonicalDrift, type CanonicalGraphNode, type CanonicalPostcondition } from '../../reconcile/index.ts';
+import type { RunnableBootstrapSystem } from '../../reconcile/support/bootstrap-systems.ts';
+import { discoverApplications, findApplication, type DiscoveredApplication } from '../apps.ts';
 import type {
-	TreeseedApplicationHostingProfile,
-	TreeseedHostAdapter,
-	TreeseedHostProjectGroup,
-	TreeseedHostingEnvironment,
-	TreeseedHostingGraphFilter,
-	TreeseedHostingGraph,
-	TreeseedHostingGraphInput,
-	TreeseedHostingPlan,
-	TreeseedHostingPlacementSummary,
-	TreeseedHostingUnit,
-	TreeseedServiceInstanceSpec,
-	TreeseedServicePlacement,
-	TreeseedServiceTypeAdapter,
+	ApplicationHostingProfile,
+	HostAdapter,
+	HostProjectGroup,
+	HostingEnvironment,
+	HostingGraphFilter,
+	HostingGraph,
+	HostingGraphInput,
+	HostingPlan,
+	HostingPlacementSummary,
+	HostingUnit,
+	ServiceInstanceSpec,
+	ServicePlacement,
+	ServiceTypeAdapter,
 } from '../contracts.ts';
 import {
 	createDefaultHostAdapters,
@@ -36,7 +36,7 @@ import { PLACEMENT_LABELS, mergeRecord, normalizeEnvironment } from './railway-s
 import { collectPluginHostingContributions } from './railway-source-policy.ts';
 import { buildProfileFromDeployConfig } from './build-profile-from-deploy-config.ts';
 
-export function assertCapabilityBinding(unit: TreeseedHostingUnit) {
+export function assertCapabilityBinding(unit: HostingUnit) {
 	const hostCapabilities = new Set(unit.host.capabilities
 		.filter((capability) => capability.environments.includes(unit.environment))
 		.map((capability) => capability.id));
@@ -46,9 +46,9 @@ export function assertCapabilityBinding(unit: TreeseedHostingUnit) {
 	}
 }
 
-export function orderUnits(units: TreeseedHostingUnit[]) {
+export function orderUnits(units: HostingUnit[]) {
 	const remaining = new Map(units.map((unit) => [unit.id, unit]));
-	const ordered: TreeseedHostingUnit[] = [];
+	const ordered: HostingUnit[] = [];
 	while (remaining.size > 0) {
 		const ready = [...remaining.values()].filter((unit) =>
 			unit.dependencies.every((dependency) => !remaining.has(dependency) || ordered.some((orderedUnit) => orderedUnit.id === dependency)));
@@ -64,13 +64,13 @@ export function orderUnits(units: TreeseedHostingUnit[]) {
 }
 
 export function createUnit(
-	service: TreeseedServiceInstanceSpec,
-	environment: TreeseedHostingEnvironment,
-	hosts: Record<string, TreeseedHostAdapter>,
-	serviceTypes: Record<string, TreeseedServiceTypeAdapter>,
-	projectGroups: Record<string, TreeseedHostProjectGroup>,
-	application?: Pick<TreeseedDiscoveredApplication, 'id' | 'root' | 'relativeRoot' | 'configPath' | 'roles'>,
-): TreeseedHostingUnit | null {
+	service: ServiceInstanceSpec,
+	environment: HostingEnvironment,
+	hosts: Record<string, HostAdapter>,
+	serviceTypes: Record<string, ServiceTypeAdapter>,
+	projectGroups: Record<string, HostProjectGroup>,
+	application?: Pick<DiscoveredApplication, 'id' | 'root' | 'relativeRoot' | 'configPath' | 'roles'>,
+): HostingUnit | null {
 	const serviceType = serviceTypes[service.serviceType];
 	if (!serviceType) {
 		throw new Error(`Unknown hosting service type "${service.serviceType}" for service "${service.id}".`);
@@ -90,7 +90,7 @@ export function createUnit(
 	const unitId = application && application.relativeRoot !== '.' && service.id === 'web'
 		? application.id
 		: service.id;
-	const unit: TreeseedHostingUnit = {
+	const unit: HostingUnit = {
 		id: unitId,
 		label: service.label,
 		serviceType,
@@ -113,8 +113,8 @@ export function createUnit(
 	return unit;
 }
 
-export function summarizePlacements(units: TreeseedHostingUnit[]): TreeseedHostingPlacementSummary[] {
-	const grouped = new Map<TreeseedServicePlacement, TreeseedHostingUnit[]>();
+export function summarizePlacements(units: HostingUnit[]): HostingPlacementSummary[] {
+	const grouped = new Map<ServicePlacement, HostingUnit[]>();
 	for (const unit of units) {
 		grouped.set(unit.placement, [...(grouped.get(unit.placement) ?? []), unit]);
 	}
@@ -132,7 +132,7 @@ export function normalizeFilterValues(values: string[] | undefined) {
 	return new Set((values ?? []).map((value) => value.trim()).filter(Boolean));
 }
 
-export function filterHostingUnits(units: TreeseedHostingUnit[], filter: TreeseedHostingGraphFilter | undefined) {
+export function filterHostingUnits(units: HostingUnit[], filter: HostingGraphFilter | undefined) {
 	const serviceIds = normalizeFilterValues(filter?.serviceIds);
 	const placements = normalizeFilterValues(filter?.placements as string[] | undefined);
 	const hosts = normalizeFilterValues(filter?.hosts);
@@ -151,12 +151,12 @@ export function filterHostingUnits(units: TreeseedHostingUnit[], filter: Treesee
 		&& (hosts.size === 0 || hosts.has(unit.host.id)));
 }
 
-export function compileSingleTreeseedHostingGraph(
-	input: TreeseedHostingGraphInput,
-	application?: TreeseedDiscoveredApplication,
-): TreeseedHostingGraph {
+export function compileSingleHostingGraph(
+	input: HostingGraphInput,
+	application?: DiscoveredApplication,
+): HostingGraph {
 	const environment = normalizeEnvironment(input.environment);
-	const deployConfig = input.deployConfig ?? loadTreeseedDeployConfig(resolve(input.tenantRoot, 'treeseed.site.yaml'));
+	const deployConfig = input.deployConfig ?? loadDeployConfig(resolve(input.tenantRoot, 'treeseed.site.yaml'));
 	const pluginContributions = collectPluginHostingContributions({ ...input, deployConfig, environment });
 	const hosts = mergeRecord(createDefaultHostAdapters(), pluginContributions.hostAdapters, input.hostAdapters);
 	const serviceTypes = mergeRecord(createDefaultServiceTypeAdapters(), pluginContributions.serviceTypeAdapters, input.serviceTypeAdapters);
@@ -182,7 +182,7 @@ export function compileSingleTreeseedHostingGraph(
 		: undefined;
 	const units = filterHostingUnits(orderUnits(services
 		.map((service) => createUnit(service, environment, hosts, serviceTypes, projectGroups, applicationInfo))
-		.filter((unit): unit is TreeseedHostingUnit => Boolean(unit))), input.filter);
+		.filter((unit): unit is HostingUnit => Boolean(unit))), input.filter);
 
 	return {
 		tenantRoot: input.tenantRoot,
@@ -199,9 +199,9 @@ export function compileSingleTreeseedHostingGraph(
 	};
 }
 
-export function mergeTreeseedHostingGraphs(input: TreeseedHostingGraphInput, applications: TreeseedDiscoveredApplication[]): TreeseedHostingGraph {
+export function mergeHostingGraphs(input: HostingGraphInput, applications: DiscoveredApplication[]): HostingGraph {
 	const environment = normalizeEnvironment(input.environment);
-	const graphs = applications.map((application) => compileSingleTreeseedHostingGraph({
+	const graphs = applications.map((application) => compileSingleHostingGraph({
 		...input,
 		tenantRoot: application.root,
 		configRoot: resolve(input.tenantRoot),
@@ -229,32 +229,32 @@ export function mergeTreeseedHostingGraphs(input: TreeseedHostingGraphInput, app
 	};
 }
 
-export function compileTreeseedHostingGraph(input: TreeseedHostingGraphInput): TreeseedHostingGraph {
+export function compileHostingGraph(input: HostingGraphInput): HostingGraph {
 	if (input.deployConfig) {
-		return compileSingleTreeseedHostingGraph(input);
+		return compileSingleHostingGraph(input);
 	}
 	const tenantRoot = resolve(input.tenantRoot);
 	if (input.appId) {
-		const application = findTreeseedApplication(tenantRoot, input.appId);
+		const application = findApplication(tenantRoot, input.appId);
 		if (!application) {
 			throw new Error(`Unknown Treeseed application "${input.appId}".`);
 		}
-		return compileSingleTreeseedHostingGraph({
+		return compileSingleHostingGraph({
 			...input,
 			tenantRoot: application.root,
 			configRoot: tenantRoot,
 			deployConfig: application.config,
 		}, application);
 	}
-	const applications = discoverTreeseedApplications(tenantRoot);
+	const applications = discoverApplications(tenantRoot);
 	if (applications.length > 1) {
-		return mergeTreeseedHostingGraphs(input, applications);
+		return mergeHostingGraphs(input, applications);
 	}
-	return compileSingleTreeseedHostingGraph(input, applications[0]);
+	return compileSingleHostingGraph(input, applications[0]);
 }
 
-export async function planTreeseedHostingGraph(input: TreeseedHostingGraphInput & { planOnly?: boolean }): Promise<TreeseedHostingPlan> {
-	const graph = compileTreeseedHostingGraph(input);
+export async function planHostingGraph(input: HostingGraphInput & { planOnly?: boolean }): Promise<HostingPlan> {
+	const graph = compileHostingGraph(input);
 	const units = [];
 	for (const unit of graph.units) {
 		const observed = await unit.host.refresh({ environment: graph.environment, unit, graph, planOnly: input.planOnly !== false });
@@ -271,8 +271,8 @@ export async function planTreeseedHostingGraph(input: TreeseedHostingGraphInput 
 	};
 }
 
-export function railwayReconcileSystemsForUnits(units: TreeseedHostingUnit[]): TreeseedRunnableBootstrapSystem[] {
-	const systems = new Set<TreeseedRunnableBootstrapSystem>();
+export function railwayReconcileSystemsForUnits(units: HostingUnit[]): RunnableBootstrapSystem[] {
+	const systems = new Set<RunnableBootstrapSystem>();
 	for (const unit of units) {
 		if (unit.host.id !== 'railway') continue;
 		if (unit.id === 'operationsRunner') {
@@ -292,11 +292,11 @@ export function railwayReconcileSystemsForUnits(units: TreeseedHostingUnit[]): T
 	return [...systems];
 }
 
-export function serializeHostingUnit(unit: TreeseedHostingUnit) {
+export function serializeHostingUnit(unit: HostingUnit) {
 	return sanitizedUnitConfig(unit);
 }
 
-export function canonicalActionKind(value: unknown): TreeseedCanonicalAction['kind'] {
+export function canonicalActionKind(value: unknown): CanonicalAction['kind'] {
 	const allowed = new Set(['noop', 'create', 'update', 'replace', 'delete', 'adopt', 'rename', 'reattach', 'retain', 'taint', 'blocked']);
-	return typeof value === 'string' && allowed.has(value) ? value as TreeseedCanonicalAction['kind'] : 'noop';
+	return typeof value === 'string' && allowed.has(value) ? value as CanonicalAction['kind'] : 'noop';
 }

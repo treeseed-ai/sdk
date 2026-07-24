@@ -1,10 +1,10 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
-import { run, workspaceRoot } from '../workspace-tools.ts';
-import { collectMergeConflictReport, currentBranch, formatMergeConflictReport, gitStatusPorcelain, repoRoot } from '../workspace-save.ts';
-import { ensureSshPushUrlForOrigin } from '../git-remote-policy.ts';
-import { runTreeseedGit, type TreeseedGitRunnerMode } from '../git-runner.ts';
-import { createTreeseedManagedToolEnv, resolveTreeseedToolBinary } from '../../../managed-dependencies.ts';
+import { run, workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
+import { collectMergeConflictReport, currentBranch, formatMergeConflictReport, gitStatusPorcelain, repoRoot } from '../treedx/workspaces/workspace-save.ts';
+import { ensureSshPushUrlForOrigin } from '../repositories/git-remote-policy.ts';
+import { runRepositoryGit, type GitRunnerMode } from '../operations/git-runner.ts';
+import { createManagedToolEnv, resolveToolBinary } from '../../../entrypoints/runtime/managed-dependencies.ts';
 import { assertCleanWorktree, branchExists, checkoutBranch, fetchOrigin, gitWorkflowRoot, remoteBranchExists, remoteHeadCommit } from './inspect-detached-head-repair.ts';
 import { PRODUCTION_BRANCH, RESERVED_BRANCHES, STAGING_BRANCH, abortInProgressMerge, headCommit, repoHasStagedChanges, resolveGeneratedPackageMetadataConflicts, runGit, runGitAllowFailure } from './staging-branch.ts';
 import { pushBranch, syncBranchWithOrigin } from './checkout-task-branch-from-staging.ts';
@@ -157,7 +157,7 @@ export function waitForStagingAutomation(repoDir, env: NodeJS.ProcessEnv = proce
 	}
 
 	try {
-		const gh = resolveTreeseedToolBinary('gh', { env });
+		const gh = resolveToolBinary('gh', { env });
 		if (!gh) {
 			throw new Error('GitHub CLI `gh` is unavailable.');
 		}
@@ -175,7 +175,7 @@ export function waitForStagingAutomation(repoDir, env: NodeJS.ProcessEnv = proce
 				'--json', 'databaseId,status,conclusion',
 			], {
 				cwd: repoDir,
-				env: createTreeseedManagedToolEnv(env),
+				env: createManagedToolEnv(env),
 				capture: true,
 			});
 			const rows = JSON.parse(output || '[]') as Array<{ databaseId?: number; status?: string; conclusion?: string }>;
@@ -188,12 +188,12 @@ export function waitForStagingAutomation(repoDir, env: NodeJS.ProcessEnv = proce
 		if (shouldRetryFailedStagingAutomation(runStatus, runConclusion)) {
 			run(gh, ['run', 'rerun', String(runId), '--failed'], {
 				cwd: repoDir,
-				env: createTreeseedManagedToolEnv(env),
+				env: createManagedToolEnv(env),
 			});
 		}
 		run(gh, ['run', 'watch', String(runId), '--exit-status'], {
 			cwd: repoDir,
-			env: createTreeseedManagedToolEnv(env),
+			env: createManagedToolEnv(env),
 		});
 		return { status: 'completed', branch: STAGING_BRANCH, headSha, runId };
 	} catch (error) {

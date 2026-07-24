@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
-import { loadTreeseedPlatformConfig } from '../../../platform/config.ts';
-import { resolveTreeseedLaunchEnvironment } from '../config-runtime.ts';
+import { loadPlatformConfig } from '../../../platform/configuration/config.ts';
+import { resolveLaunchEnvironment } from '../configuration/config-runtime.ts';
 import {
 	getRailwayServiceInstance,
 	inspectRailwayServiceDeploymentHealth,
@@ -11,28 +11,28 @@ import {
 	listRailwayVolumes,
 	normalizeRailwayEnvironmentName,
 	resolveRailwayWorkspaceContext,
-} from '../railway-api.ts';
+} from '../hosting/railway/railway-api.ts';
 import {
 	configuredRailwayServices,
-	findStaleTreeseedOperationsRunnerResources,
-	isTreeseedOperationsRunnerResourceName,
+	findStaleOperationsRunnerResources,
+	isOperationsRunnerResourceName,
 	railwayObsoleteAliasCleanupPolicy,
-} from '../railway-deploy.ts';
-import { railwayTreeDxServiceName } from '../railway-source-policy.ts';
-import { discoverTreeseedApplications } from '../../../hosting/apps.ts';
+} from '../hosting/railway/railway-deploy.ts';
+import { railwayTreeDxServiceName } from '../hosting/railway/railway-source-policy.ts';
+import { discoverApplications } from '../../../hosting/apps.ts';
 import {
-	collectTreeseedHostedServiceChecks,
-	type TreeseedHostedServiceCheckReport,
-	type TreeseedHostedServiceTarget,
-	type TreeseedObservedRailwayServiceState,
-} from '../hosted-service-checks.ts';
-import { TreeseedLiveHostedServiceCheckOptions, activeRailwayVolumeInstances, findByName, railwayVolumeInstanceStates, treeseedDatabaseDescriptors } from './default-retry-attempts.ts';
+	collectHostedServiceChecks,
+	type HostedServiceCheckReport,
+	type HostedServiceTarget,
+	type ObservedRailwayServiceState,
+} from '../hosting/audit/hosted-service-checks.ts';
+import { LiveHostedServiceCheckOptions, activeRailwayVolumeInstances, findByName, railwayVolumeInstanceStates, DatabaseDescriptors } from './default-retry-attempts.ts';
 
 export async function verifyRailwayPostgresTopology(input: {
-	descriptor: ReturnType<typeof treeseedDatabaseDescriptors>[number];
+	descriptor: ReturnType<typeof DatabaseDescriptors>[number];
 	configuredServices: ReturnType<typeof configuredRailwayServices>;
 	projects: Awaited<ReturnType<typeof listRailwayProjects>>;
-	options: TreeseedLiveHostedServiceCheckOptions;
+	options: LiveHostedServiceCheckOptions;
 	issues: string[];
 }) {
 	const descriptorRoot = resolve(input.descriptor.applicationRoot);
@@ -89,10 +89,10 @@ export async function verifyRailwayPostgresTopology(input: {
 	}
 }
 
-export function resolveLiveProviderEnv(options: TreeseedLiveHostedServiceCheckOptions) {
+export function resolveLiveProviderEnv(options: LiveHostedServiceCheckOptions) {
 	let launchValues: Record<string, string | undefined> = {};
 	try {
-		launchValues = resolveTreeseedLaunchEnvironment({
+		launchValues = resolveLaunchEnvironment({
 			tenantRoot: options.tenantRoot,
 			scope: options.target,
 			baseEnv: { ...process.env, ...(options.env ?? {}) },

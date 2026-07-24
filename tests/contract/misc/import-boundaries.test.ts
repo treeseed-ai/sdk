@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { filesUnderIfExists, resolveTreeseedTestPath, resolveTreeseedTestRoot, treeseedRelativePath } from '../../support/workspace-test-root.ts';
+import { filesUnderIfExists, resolveTestPath, resolveTestRoot, RelativePath } from '../../support/workspace-test-root.ts';
 
-const testRoot = resolveTreeseedTestRoot(import.meta.url);
+const testRoot = resolveTestRoot(import.meta.url);
 
 describe('reconciliation import boundaries', () => {
 	it('keeps CLI out of direct provider mutation modules', () => {
-		const cliSrc = resolveTreeseedTestPath(testRoot, 'packages/cli/src');
+		const cliSrc = resolveTestPath(testRoot, 'packages/cli/src');
 		if (!cliSrc) return;
 		const blocked = [
 			'operations/services/deploy',
@@ -20,7 +20,7 @@ describe('reconciliation import boundaries', () => {
 				const source = readFileSync(file, 'utf8');
 				return blocked
 					.filter((pattern) => source.includes(pattern))
-					.map((pattern) => `${treeseedRelativePath(testRoot, file)} imports ${pattern}`);
+					.map((pattern) => `${RelativePath(testRoot, file)} imports ${pattern}`);
 			});
 		expect(offenders).toEqual([]);
 	});
@@ -35,12 +35,12 @@ describe('reconciliation import boundaries', () => {
 			'runWorkflowHostedResourceVerification',
 		];
 		const allowed = new Set([
-			'packages/sdk/src/operations/services/github-api.ts',
-			'packages/sdk/src/operations/services/railway-api.ts',
+			'packages/sdk/src/operations/services/repositories/github-api.ts',
+			'packages/sdk/src/operations/services/hosting/railway/railway-api.ts',
 			'packages/sdk/src/hosting/graph.ts',
-			'packages/sdk/src/reconcile/builtin-adapters.ts',
-			'packages/sdk/src/reconcile/live-acceptance.ts',
-			'packages/sdk/src/reconcile/live-acceptance-railway.ts',
+			'packages/sdk/src/reconcile/reconciliation/builtin-adapters.ts',
+			'packages/sdk/src/reconcile/support/acceptance/live-acceptance.ts',
+			'packages/sdk/src/reconcile/hosting/live-acceptance-railway.ts',
 		]);
 		const allowedPrefixes = [
 			'packages/sdk/src/operations/services/github-api/',
@@ -48,15 +48,15 @@ describe('reconciliation import boundaries', () => {
 			'packages/sdk/src/hosting/graph/',
 			'packages/sdk/src/reconcile/builtin-adapters/',
 		];
-		const offenders = filesUnderIfExists(resolveTreeseedTestPath(testRoot, 'packages/sdk/src'))
-			.filter((file) => !treeseedRelativePath(testRoot, file).startsWith('packages/sdk/src/reconcile/providers/'))
-			.filter((file) => !allowed.has(treeseedRelativePath(testRoot, file)))
-			.filter((file) => !allowedPrefixes.some((prefix) => treeseedRelativePath(testRoot, file).startsWith(prefix)))
+		const offenders = filesUnderIfExists(resolveTestPath(testRoot, 'packages/sdk/src'))
+			.filter((file) => !RelativePath(testRoot, file).startsWith('packages/sdk/src/reconcile/providers/'))
+			.filter((file) => !allowed.has(RelativePath(testRoot, file)))
+			.filter((file) => !allowedPrefixes.some((prefix) => RelativePath(testRoot, file).startsWith(prefix)))
 			.flatMap((file) => {
 				const source = readFileSync(file, 'utf8');
 				return blocked
 					.filter((pattern) => source.includes(pattern))
-					.map((pattern) => `${treeseedRelativePath(testRoot, file)} references ${pattern}`);
+					.map((pattern) => `${RelativePath(testRoot, file)} references ${pattern}`);
 			});
 		expect(offenders).toEqual([]);
 	});

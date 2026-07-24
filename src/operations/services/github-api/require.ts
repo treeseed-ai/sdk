@@ -2,8 +2,8 @@ import { Buffer } from 'node:buffer';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { Octokit } from 'octokit';
-import { createTreeseedManagedToolEnv, resolveTreeseedToolBinary } from '../../../managed-dependencies.ts';
-import { resolveTreeseedGitHubToken } from '../../../service-credentials.ts';
+import { createManagedToolEnv, resolveToolBinary } from '../../../entrypoints/runtime/managed-dependencies.ts';
+import { resolveGitHubToken } from '../../../configuration/service-credentials.ts';
 import { sleep } from './get-latest-git-hub-workflow-run.ts';
 
 export const require = createRequire(import.meta.url);
@@ -149,7 +149,7 @@ export function configuredEnvValue(env: NodeJS.ProcessEnv | Record<string, strin
 }
 
 export function resolveGitHubApiToken(env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env) {
-	return resolveTreeseedGitHubToken(env);
+	return resolveGitHubToken(env);
 }
 
 export function parseGitHubRepositorySlug(value: string) {

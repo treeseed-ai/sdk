@@ -3,26 +3,26 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, resolve as resolvePath } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import {
-	discoverTreeseedPackageAdapters,
-	type TreeseedPackageAdapter,
-} from '../../operations/services/package-adapters.ts';
-import { redactCapacityProviderEnv, validateAndDigestCapacityProviderManifest } from '../../capacity-provider.ts';
-import { workspaceRoot } from '../../operations/services/workspace-tools.ts';
+	discoverPackageAdapters,
+	type PackageAdapter,
+} from '../../operations/services/reconciliation/package-adapters.ts';
+import { redactCapacityProviderEnv, validateAndDigestCapacityProviderManifest } from '../../capacity/providers/capacity-provider.ts';
+import { workspaceRoot } from '../../operations/services/treedx/workspaces/workspace-tools.ts';
 import {
 	checkedOutTemplateRepositories,
-	type TreeseedTemplateRepositoryManifest,
-} from '../../operations/services/managed-repositories.ts';
-import { deriveTreeseedDesiredUnits } from '../../reconcile/desired-state.ts';
-import type { TreeseedDesiredUnit, TreeseedReconcileSelector, TreeseedReconcileTarget } from '../../reconcile/contracts.ts';
+	type TemplateRepositoryManifest,
+} from '../../operations/services/support/managed-repositories.ts';
+import { deriveDesiredUnits } from '../../reconcile/reconciliation/desired-state.ts';
+import type { DesiredUnit, ReconcileSelector, ReconcileTarget } from '../../reconcile/support/contracts/contracts.ts';
 import {
 	buildProjectLocalContentResources,
-	type TreeseedLocalContentMode,
-} from '../local-content-materialization.ts';
-import { localTreeDxSeedDigest } from '../local-treedx-seed.ts';
-import { TreeseedDesiredEnvironment, TreeseedDesiredResource, TreeseedTemplateUnit, hashJson, resolveLocalGitCommonDir } from './treeseed-desired-environment.ts';
+	type LocalContentMode,
+} from '../content/local-content-materialization.ts';
+import { localTreeDxSeedDigest } from '../treedx/repositories/local-treedx-seed.ts';
+import { DesiredEnvironment, DesiredResource, TemplateUnit, hashJson, resolveLocalGitCommonDir } from './desired-environment.ts';
 import { localTreeDxContentProjects, localTreeDxTemplateContentProjects } from './safe-tree-dx-repository-name.ts';
 
-export function localDevelopmentResources(tenantRoot: string, environment: TreeseedDesiredEnvironment, localContent: TreeseedLocalContentMode, templates: TreeseedTemplateUnit[], capacityConfigPath?: string): TreeseedDesiredResource[] {
+export function localDevelopmentResources(tenantRoot: string, environment: DesiredEnvironment, localContent: LocalContentMode, templates: TemplateUnit[], capacityConfigPath?: string): DesiredResource[] {
 	if (environment !== 'local') return [];
 	const composeId = 'local-docker-compose:agent-capacity-provider';
 	const treeDxComposeId = 'local-docker-compose:treedx';

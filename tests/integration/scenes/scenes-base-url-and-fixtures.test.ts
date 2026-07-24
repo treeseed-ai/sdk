@@ -3,14 +3,14 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { resolveTreeseedSceneApiBaseUrl, resolveTreeseedSceneBaseUrl } from '../../../src/scenes/base-url.ts';
+import { resolveSceneApiBaseUrl, resolveSceneBaseUrl } from '../../../src/scenes/support/execution/base-url.ts';
 import {
-	ensureTreeseedSceneVisualAuditRoleFixtures,
-	signInTreeseedSceneVisualAuditRole,
-	TREESEED_VISUAL_AUDIT_PASSWORD,
-	treeseedSceneVisualAuditUserForRole,
-	validateTreeseedSceneVisualAuditRoles,
-} from '../../../src/scenes/visual-audit-fixtures.ts';
+	ensureSceneVisualAuditRoleFixtures,
+	signInSceneVisualAuditRole,
+	VISUAL_AUDIT_PASSWORD,
+	SceneVisualAuditUserForRole,
+	validateSceneVisualAuditRoles,
+} from '../../../src/scenes/testing/visual-audit-fixtures.ts';
 
 const servers: Server[] = [];
 
@@ -60,10 +60,10 @@ function readBody(request: import('node:http').IncomingMessage) {
 describe('scene base URL resolution critical coverage', () => {
 	it('resolves explicit, environment report, hosted default, hosted config, and unresolved local base URLs', () => {
 		const root = mkdtempSync(resolve(tmpdir(), 'treeseed-sdk-base-url-'));
-		expect(resolveTreeseedSceneBaseUrl({ projectRoot: root, scene: scene('http://example.test'), environment: 'local' })).toMatchObject({ ok: true, baseUrl: 'http://example.test' });
-		expect(resolveTreeseedSceneBaseUrl({ projectRoot: root, scene: scene(), environment: 'local', environmentReport: { ok: true, phase: 3, dev: { baseUrl: 'http://127.0.0.1:4321' }, diagnostics: [] } as never })).toMatchObject({ ok: true, baseUrl: 'http://127.0.0.1:4321' });
-		expect(resolveTreeseedSceneBaseUrl({ projectRoot: root, scene: scene(), environment: 'staging' })).toMatchObject({ ok: true, baseUrl: 'https://preview.treeseed.dev' });
-		expect(resolveTreeseedSceneBaseUrl({ projectRoot: root, scene: scene(), environment: 'prod' })).toMatchObject({ ok: true, baseUrl: 'https://treeseed.dev' });
+		expect(resolveSceneBaseUrl({ projectRoot: root, scene: scene('http://example.test'), environment: 'local' })).toMatchObject({ ok: true, baseUrl: 'http://example.test' });
+		expect(resolveSceneBaseUrl({ projectRoot: root, scene: scene(), environment: 'local', environmentReport: { ok: true, phase: 3, dev: { baseUrl: 'http://127.0.0.1:4321' }, diagnostics: [] } as never })).toMatchObject({ ok: true, baseUrl: 'http://127.0.0.1:4321' });
+		expect(resolveSceneBaseUrl({ projectRoot: root, scene: scene(), environment: 'staging' })).toMatchObject({ ok: true, baseUrl: 'https://preview.treeseed.dev' });
+		expect(resolveSceneBaseUrl({ projectRoot: root, scene: scene(), environment: 'prod' })).toMatchObject({ ok: true, baseUrl: 'https://treeseed.dev' });
 
 		writeFileSync(resolve(root, 'treeseed.site.yaml'), `name: Test Site
 slug: test-site
@@ -89,10 +89,10 @@ connections:
       staging:
         domain: api-staging.example.test
 `);
-		expect(resolveTreeseedSceneBaseUrl({ projectRoot: root, scene: scene(), environment: 'staging' })).toMatchObject({ baseUrl: 'https://preview.treeseed.dev' });
-		expect(resolveTreeseedSceneBaseUrl({ projectRoot: root, scene: scene(), environment: 'prod' })).toMatchObject({ baseUrl: 'https://treeseed.dev' });
+		expect(resolveSceneBaseUrl({ projectRoot: root, scene: scene(), environment: 'staging' })).toMatchObject({ baseUrl: 'https://preview.treeseed.dev' });
+		expect(resolveSceneBaseUrl({ projectRoot: root, scene: scene(), environment: 'prod' })).toMatchObject({ baseUrl: 'https://treeseed.dev' });
 
-		const local = resolveTreeseedSceneBaseUrl({ projectRoot: root, scene: scene(), environment: 'local' });
+		const local = resolveSceneBaseUrl({ projectRoot: root, scene: scene(), environment: 'local' });
 		expect(local.ok).toBe(false);
 		expect(local.diagnostics[0]?.code).toBe('scene.local_dev_not_running');
 	});
@@ -100,15 +100,15 @@ connections:
 	it('resolves API base URLs from env, hosted config, managed defaults, and web fallback', () => {
 		const root = mkdtempSync(resolve(tmpdir(), 'treeseed-sdk-api-url-'));
 		process.env.TREESEED_API_BASE_URL = 'http://127.0.0.1:3000/';
-		expect(resolveTreeseedSceneApiBaseUrl({ projectRoot: root, environment: 'local', webBaseUrl: 'http://127.0.0.1:4321' })).toBe('http://127.0.0.1:3000');
+		expect(resolveSceneApiBaseUrl({ projectRoot: root, environment: 'local', webBaseUrl: 'http://127.0.0.1:4321' })).toBe('http://127.0.0.1:3000');
 		delete process.env.TREESEED_API_BASE_URL;
 		process.env.TREESEED_MARKET_API_BASE_URL = 'http://127.0.0.1:3001/';
-		expect(resolveTreeseedSceneApiBaseUrl({ projectRoot: root, environment: 'local', webBaseUrl: 'http://127.0.0.1:4321' })).toMatch(/^http:\/\/127\.0\.0\.1:300[01]$/u);
+		expect(resolveSceneApiBaseUrl({ projectRoot: root, environment: 'local', webBaseUrl: 'http://127.0.0.1:4321' })).toMatch(/^http:\/\/127\.0\.0\.1:300[01]$/u);
 		delete process.env.TREESEED_MARKET_API_BASE_URL;
-		expect(resolveTreeseedSceneApiBaseUrl({ projectRoot: root, environment: 'local', webBaseUrl: 'http://127.0.0.1:4321' })).toMatch(/^http:\/\/127\.0\.0\.1:(3000|4321)$/u);
-		expect(resolveTreeseedSceneApiBaseUrl({ projectRoot: root, environment: 'unknown', webBaseUrl: 'https://web.example.test' })).toBe('https://web.example.test');
-		expect(resolveTreeseedSceneApiBaseUrl({ projectRoot: root, environment: 'staging', webBaseUrl: 'https://web.example.test' })).toBe('https://api.preview.treeseed.dev');
-		expect(resolveTreeseedSceneApiBaseUrl({ projectRoot: root, environment: 'prod', webBaseUrl: 'https://web.example.test' })).toBe('https://api.treeseed.dev');
+		expect(resolveSceneApiBaseUrl({ projectRoot: root, environment: 'local', webBaseUrl: 'http://127.0.0.1:4321' })).toMatch(/^http:\/\/127\.0\.0\.1:(3000|4321)$/u);
+		expect(resolveSceneApiBaseUrl({ projectRoot: root, environment: 'unknown', webBaseUrl: 'https://web.example.test' })).toBe('https://web.example.test');
+		expect(resolveSceneApiBaseUrl({ projectRoot: root, environment: 'staging', webBaseUrl: 'https://web.example.test' })).toBe('https://api.preview.treeseed.dev');
+		expect(resolveSceneApiBaseUrl({ projectRoot: root, environment: 'prod', webBaseUrl: 'https://web.example.test' })).toBe('https://api.treeseed.dev');
 
 		mkdirSync(resolve(root, 'packages/api'), { recursive: true });
 		writeFileSync(resolve(root, 'packages/api/treeseed.site.yaml'), `schemaVersion: treeseed.site/v1
@@ -123,16 +123,16 @@ surfaces:
       prod:
         domain: prod-api.example.test
 `);
-		expect(['https://api-service.example.test', 'https://api.preview.treeseed.dev']).toContain(resolveTreeseedSceneApiBaseUrl({ projectRoot: root, environment: 'staging', webBaseUrl: 'https://web.example.test' }));
-		expect(['https://prod-api.example.test', 'https://api.treeseed.dev']).toContain(resolveTreeseedSceneApiBaseUrl({ projectRoot: root, environment: 'prod', webBaseUrl: 'https://web.example.test' }));
+		expect(['https://api-service.example.test', 'https://api.preview.treeseed.dev']).toContain(resolveSceneApiBaseUrl({ projectRoot: root, environment: 'staging', webBaseUrl: 'https://web.example.test' }));
+		expect(['https://prod-api.example.test', 'https://api.treeseed.dev']).toContain(resolveSceneApiBaseUrl({ projectRoot: root, environment: 'prod', webBaseUrl: 'https://web.example.test' }));
 	});
 });
 
 describe('scene visual audit fixture critical coverage', () => {
 	it('validates built-in roles and unknown role diagnostics', () => {
-		expect(treeseedSceneVisualAuditUserForRole('owner')).toMatchObject({ email: 'visual.owner@treeseed.io', password: TREESEED_VISUAL_AUDIT_PASSWORD });
-		expect(treeseedSceneVisualAuditUserForRole('anonymous')).toBeNull();
-		expect(validateTreeseedSceneVisualAuditRoles(['anonymous', 'owner', 'custom-role' as never]).map((entry) => entry.code)).toEqual(['scene.visual_audit_role_unknown']);
+		expect(SceneVisualAuditUserForRole('owner')).toMatchObject({ email: 'visual.owner@treeseed.io', password: VISUAL_AUDIT_PASSWORD });
+		expect(SceneVisualAuditUserForRole('anonymous')).toBeNull();
+		expect(validateSceneVisualAuditRoles(['anonymous', 'owner', 'custom-role' as never]).map((entry) => entry.code)).toEqual(['scene.visual_audit_role_unknown']);
 	});
 
 	it('seeds and signs in visual audit fixtures through local API responses', async () => {
@@ -152,7 +152,7 @@ describe('scene visual audit fixture critical coverage', () => {
 			response.statusCode = 404;
 			response.end(JSON.stringify({ ok: false }));
 		});
-		const diagnostics = await ensureTreeseedSceneVisualAuditRoleFixtures({ baseUrl, roles: ['owner', 'owner', 'anonymous'], environment: 'local' });
+		const diagnostics = await ensureSceneVisualAuditRoleFixtures({ baseUrl, roles: ['owner', 'owner', 'anonymous'], environment: 'local' });
 		expect(diagnostics).toEqual([]);
 		expect(requests.some((entry) => entry.url === '/v1/acceptance/seed')).toBe(true);
 
@@ -163,7 +163,7 @@ describe('scene visual audit fixture critical coverage', () => {
 			waitForLoadState: vi.fn(async () => undefined),
 			url: () => `${baseUrl}/app/`,
 		};
-		expect(await signInTreeseedSceneVisualAuditRole({ page, baseUrl, role: 'owner' })).toEqual([]);
+		expect(await signInSceneVisualAuditRole({ page, baseUrl, role: 'owner' })).toEqual([]);
 		expect(cookies).toHaveLength(1);
 	});
 
@@ -172,7 +172,7 @@ describe('scene visual audit fixture critical coverage', () => {
 			response.statusCode = 503;
 			response.end('unavailable');
 		});
-		const seedDiagnostics = await ensureTreeseedSceneVisualAuditRoleFixtures({ baseUrl: failedSeedBaseUrl, roles: ['owner'], environment: 'local' });
+		const seedDiagnostics = await ensureSceneVisualAuditRoleFixtures({ baseUrl: failedSeedBaseUrl, roles: ['owner'], environment: 'local' });
 		expect(seedDiagnostics.some((entry) => entry.code === 'scene.visual_audit_fixture_unavailable')).toBe(true);
 
 		const confirmationBaseUrl = await listen(async (request, response) => {
@@ -193,10 +193,10 @@ describe('scene visual audit fixture critical coverage', () => {
 			response.statusCode = 404;
 			response.end(JSON.stringify({ ok: false }));
 		});
-		const confirmationDiagnostics = await ensureTreeseedSceneVisualAuditRoleFixtures({ baseUrl: confirmationBaseUrl, roles: ['owner'], environment: 'local' });
+		const confirmationDiagnostics = await ensureSceneVisualAuditRoleFixtures({ baseUrl: confirmationBaseUrl, roles: ['owner'], environment: 'local' });
 		expect(confirmationDiagnostics.some((entry) => entry.message.includes('requires email confirmation'))).toBe(true);
 
-		expect((await signInTreeseedSceneVisualAuditRole({ page: {}, baseUrl: confirmationBaseUrl, role: 'custom' as never })).map((entry) => entry.code)).toEqual(['scene.visual_audit_role_unknown']);
+		expect((await signInSceneVisualAuditRole({ page: {}, baseUrl: confirmationBaseUrl, role: 'custom' as never })).map((entry) => entry.code)).toEqual(['scene.visual_audit_role_unknown']);
 
 		const locator = {
 			first: () => locator,
@@ -211,7 +211,7 @@ describe('scene visual audit fixture critical coverage', () => {
 			getByRole: vi.fn(() => ({ click: vi.fn(async () => undefined) })),
 			url: () => `${confirmationBaseUrl}/auth/sign-in`,
 		};
-		const loginDiagnostics = await signInTreeseedSceneVisualAuditRole({ page, baseUrl: confirmationBaseUrl, role: 'owner' });
+		const loginDiagnostics = await signInSceneVisualAuditRole({ page, baseUrl: confirmationBaseUrl, role: 'owner' });
 		expect(loginDiagnostics[0]?.code).toBe('scene.visual_audit_role_login_failed');
 	}, 15_000);
 
@@ -220,7 +220,7 @@ describe('scene visual audit fixture critical coverage', () => {
 			response.statusCode = 500;
 			response.end('should not be called');
 		});
-		expect(await ensureTreeseedSceneVisualAuditRoleFixtures({ baseUrl: anonymousBaseUrl, roles: ['anonymous'], environment: 'local' })).toEqual([]);
+		expect(await ensureSceneVisualAuditRoleFixtures({ baseUrl: anonymousBaseUrl, roles: ['anonymous'], environment: 'local' })).toEqual([]);
 
 		const requests: Array<{ url: string; body: string }> = [];
 		const setupBaseUrl = await listen(async (request, response) => {
@@ -247,7 +247,7 @@ describe('scene visual audit fixture critical coverage', () => {
 			response.statusCode = 404;
 			response.end(JSON.stringify({ ok: false }));
 		});
-		expect(await ensureTreeseedSceneVisualAuditRoleFixtures({ baseUrl: setupBaseUrl, roles: ['admin'], environment: 'local' })).toEqual([]);
+		expect(await ensureSceneVisualAuditRoleFixtures({ baseUrl: setupBaseUrl, roles: ['admin'], environment: 'local' })).toEqual([]);
 		expect(requests.some((entry) => entry.url === '/v1/auth/web/confirm-email' && entry.body.includes('confirm-token'))).toBe(true);
 
 		const apiBaseUrl = await listen(async (request, response) => {
@@ -266,7 +266,7 @@ describe('scene visual audit fixture critical coverage', () => {
 			waitForLoadState: vi.fn(async () => undefined),
 			url: () => `${setupBaseUrl}/app/`,
 		};
-		expect(await signInTreeseedSceneVisualAuditRole({ page: apiPage, baseUrl: setupBaseUrl, apiBaseUrl, role: 'admin' })).toEqual([]);
+		expect(await signInSceneVisualAuditRole({ page: apiPage, baseUrl: setupBaseUrl, apiBaseUrl, role: 'admin' })).toEqual([]);
 		expect(cookies).toHaveLength(1);
 
 		const locator = {
@@ -290,7 +290,7 @@ describe('scene visual audit fixture critical coverage', () => {
 			}) })),
 			url: () => currentUrl,
 		};
-		expect(await signInTreeseedSceneVisualAuditRole({ page: formPage, baseUrl: setupBaseUrl, apiBaseUrl: `${setupBaseUrl}/missing-api`, role: 'member' })).toEqual([]);
+		expect(await signInSceneVisualAuditRole({ page: formPage, baseUrl: setupBaseUrl, apiBaseUrl: `${setupBaseUrl}/missing-api`, role: 'member' })).toEqual([]);
 	});
 
 	it('covers visual-audit retry, service-header, no-token, and already-signed-in branches', async () => {
@@ -324,7 +324,7 @@ describe('scene visual audit fixture critical coverage', () => {
 			response.statusCode = 404;
 			response.end(JSON.stringify({ ok: false }));
 		});
-		const diagnostics = await ensureTreeseedSceneVisualAuditRoleFixtures({
+		const diagnostics = await ensureSceneVisualAuditRoleFixtures({
 			baseUrl,
 			roles: ['member'],
 			environment: 'staging',
@@ -344,7 +344,7 @@ describe('scene visual audit fixture critical coverage', () => {
 			waitForLoadState: vi.fn(async () => undefined),
 			url: () => currentUrl,
 		};
-		expect(await signInTreeseedSceneVisualAuditRole({ page: alreadySignedInPage, baseUrl, role: 'owner' })).toEqual([]);
+		expect(await signInSceneVisualAuditRole({ page: alreadySignedInPage, baseUrl, role: 'owner' })).toEqual([]);
 
 		const noTokenApiBaseUrl = await listen(async (request, response) => {
 			response.setHeader('content-type', 'application/json');
@@ -372,7 +372,7 @@ describe('scene visual audit fixture critical coverage', () => {
 			url: () => currentUrl,
 		};
 		currentUrl = `${baseUrl}/auth/sign-in`;
-		expect(await signInTreeseedSceneVisualAuditRole({ page: noTokenPage, baseUrl, apiBaseUrl: noTokenApiBaseUrl, role: 'admin' })).toEqual([]);
+		expect(await signInSceneVisualAuditRole({ page: noTokenPage, baseUrl, apiBaseUrl: noTokenApiBaseUrl, role: 'admin' })).toEqual([]);
 	});
 
 	it('recovers fixture setup when signup fails but the seeded user can sign in afterward', async () => {
@@ -405,7 +405,7 @@ describe('scene visual audit fixture critical coverage', () => {
 			response.end(JSON.stringify({ ok: false }));
 		});
 
-		expect(await ensureTreeseedSceneVisualAuditRoleFixtures({ baseUrl, roles: ['owner'], environment: 'local' })).toEqual([]);
+		expect(await ensureSceneVisualAuditRoleFixtures({ baseUrl, roles: ['owner'], environment: 'local' })).toEqual([]);
 		expect(signInAttempts).toBe(2);
 		expect(signupAttempts).toBe(1);
 	});
@@ -413,7 +413,7 @@ describe('scene visual audit fixture critical coverage', () => {
 	it('reports non-Error fixture and browser failures after bounded retries', async () => {
 		vi.useFakeTimers();
 		vi.stubGlobal('fetch', vi.fn(async () => Promise.reject('fixture network unavailable')));
-		const fixturePromise = ensureTreeseedSceneVisualAuditRoleFixtures({
+		const fixturePromise = ensureSceneVisualAuditRoleFixtures({
 			baseUrl: 'http://fixture-unavailable.test',
 			roles: ['owner'],
 			environment: 'local',
@@ -428,7 +428,7 @@ describe('scene visual audit fixture critical coverage', () => {
 			waitForLoadState: async () => undefined,
 			url: () => 'http://fixture-unavailable.test/auth/sign-in',
 		};
-		const loginPromise = signInTreeseedSceneVisualAuditRole({
+		const loginPromise = signInSceneVisualAuditRole({
 			page,
 			baseUrl: 'http://fixture-unavailable.test',
 			role: 'owner',

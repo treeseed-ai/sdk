@@ -9,14 +9,14 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
-	compileTreeseedHostingGraph,
+	compileHostingGraph,
 	createDefaultHostAdapters,
 	createDefaultServiceTypeAdapters,
-	discoverTreeseedApplications,
-	planTreeseedHostingGraph,
+	discoverApplications,
+	planHostingGraph,
 	serializeHostingPlan,
-	type TreeseedApplicationHostingProfile,
-	type TreeseedHostAdapter,
+	type ApplicationHostingProfile,
+	type HostAdapter,
 } from '../../../src/hosting/index.ts';
 
 function createTenant(configBody: string) {
@@ -222,8 +222,8 @@ ${extra}`;
 describe('hosting graph', () => {
 it('keeps public TreeDX in the API-owned Railway project while isolating staging and production by environment', () => {
 		const tenantRoot = createTenant(marketConfig());
-		const staging = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging' });
-		const prod = compileTreeseedHostingGraph({
+		const staging = compileHostingGraph({ tenantRoot, environment: 'staging' });
+		const prod = compileHostingGraph({
 			tenantRoot,
 			environment: 'prod',
 			env: {
@@ -274,7 +274,7 @@ it('keeps public TreeDX in the API-owned Railway project while isolating staging
 	});
 
 it('models private TreeDX as a transferable per-team project group', () => {
-		const graph = compileTreeseedHostingGraph({
+		const graph = compileHostingGraph({
 			tenantRoot: createTenant(marketConfig()),
 			environment: 'staging',
 		});
@@ -290,7 +290,7 @@ it('models private TreeDX as a transferable per-team project group', () => {
 
 it('allows alternate hosts when they satisfy the same service type capabilities', () => {
 		const tenantRoot = createTenant(marketConfig());
-		const profile: TreeseedApplicationHostingProfile = {
+		const profile: ApplicationHostingProfile = {
 			id: 'alternate-host',
 			label: 'Alternate host',
 			services: [{
@@ -310,7 +310,7 @@ it('allows alternate hosts when they satisfy the same service type capabilities'
 			},
 		};
 
-		const graph = compileTreeseedHostingGraph({
+		const graph = compileHostingGraph({
 			tenantRoot,
 			environment: 'staging',
 			hostAdapters,

@@ -8,7 +8,7 @@ import type {
 	SdkGraphNodeType,
 	SdkModelDefinition,
 	SdkModelRegistry,
-} from '../sdk-types.ts';
+} from '../entrypoints/models/sdk-types.ts';
 
 export const GRAPH_SNAPSHOT_VERSION = 1;
 

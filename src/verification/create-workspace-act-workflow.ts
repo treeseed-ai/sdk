@@ -3,17 +3,17 @@ import * as childProcess from 'node:child_process';
 import { basename, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { createTreeseedManagedToolEnv, resolveTreeseedToolBinary } from '../managed-dependencies.ts';
-import { LocalWorkspaceContext, PackageManifest, TreeseedVerifyDriver, TreeseedVerifyDriverOptions, TreeseedVerifyDriverStatus, check, createActArgs, readPackageManifest } from './treeseed-verify-driver.ts';
+import { createManagedToolEnv, resolveToolBinary } from '../entrypoints/runtime/managed-dependencies.ts';
+import { LocalWorkspaceContext, PackageManifest, VerifyDriver, VerifyDriverOptions, VerifyDriverStatus, check, createActArgs, readPackageManifest } from './verify-driver.ts';
 
 export function createWorkspaceActWorkflow(options: {
 	workspaceRoot: string;
 	packageRoot: string;
 	eventName: string;
-	localTreeseedSiblingDependencies: string[];
+	localSiblingDependencies: string[];
 }) {
 	const relativePackageRoot = relative(options.workspaceRoot, options.packageRoot).replace(/\\/g, '/');
-	const siblingLinkCommands = options.localTreeseedSiblingDependencies
+	const siblingLinkCommands = options.localSiblingDependencies
 		.map((packageName) => {
 			const [, packageShortName] = packageName.split('/');
 			const packageDir = `packages/${packageShortName}`;
@@ -44,7 +44,7 @@ export function createWorkspaceActWorkflow(options: {
 		'  done',
 		'}',
 	].join('\n');
-	const siblingPreparationCommands = options.localTreeseedSiblingDependencies
+	const siblingPreparationCommands = options.localSiblingDependencies
 		.map((packageName) => {
 			const packageDir = `packages/${packageName.split('/')[1]}`;
 			const manifest = readPackageManifest(resolve(options.workspaceRoot, packageDir, 'package.json'));
@@ -172,8 +172,8 @@ export function resolveLocalWorkspaceContext(packageRoot: string, extraSiblingDe
 		return {
 			workspaceRoot: null,
 			currentPackageName,
-			localTreeseedPackageNames: [],
-			localTreeseedSiblingDependencies: [],
+			localPackageNames: [],
+			localSiblingDependencies: [],
 		};
 	}
 
@@ -189,58 +189,58 @@ export function resolveLocalWorkspaceContext(packageRoot: string, extraSiblingDe
 		return {
 			workspaceRoot: null,
 			currentPackageName,
-			localTreeseedPackageNames: [],
-			localTreeseedSiblingDependencies: [],
+			localPackageNames: [],
+			localSiblingDependencies: [],
 		};
 	}
 
-	const localTreeseedPackageNames = localPackages
+	const localPackageNames = localPackages
 		.map((entry) => entry.manifest.name as string)
 		.filter((name) => name.startsWith('@treeseed/'))
 		.sort();
-	const localTreeseedPackageSet = new Set(localTreeseedPackageNames);
+	const localPackageSet = new Set(localPackageNames);
 	const declaredDependencies = {
 		...(currentPackage.manifest.dependencies ?? {}),
 		...(currentPackage.manifest.devDependencies ?? {}),
 		...(currentPackage.manifest.peerDependencies ?? {}),
 	};
-	const declaredLocalTreeseedSiblingDependencies = Object.keys(declaredDependencies)
+	const declaredLocalSiblingDependencies = Object.keys(declaredDependencies)
 		.filter((name) => name.startsWith('@treeseed/'))
-		.filter((name) => localTreeseedPackageSet.has(name))
+		.filter((name) => localPackageSet.has(name))
 		.sort();
-	const extraLocalTreeseedSiblingDependencies = extraSiblingDependencies
+	const extraLocalSiblingDependencies = extraSiblingDependencies
 		.filter((name) => name.startsWith('@treeseed/'))
-		.filter((name) => localTreeseedPackageSet.has(name))
+		.filter((name) => localPackageSet.has(name))
 		.sort();
-	const localTreeseedSiblingDependencies = [
-		...declaredLocalTreeseedSiblingDependencies,
-		...extraLocalTreeseedSiblingDependencies.filter((name) => !declaredLocalTreeseedSiblingDependencies.includes(name)),
+	const localSiblingDependencies = [
+		...declaredLocalSiblingDependencies,
+		...extraLocalSiblingDependencies.filter((name) => !declaredLocalSiblingDependencies.includes(name)),
 	];
 
 	return {
 		workspaceRoot: workspace.workspaceRoot,
 		currentPackageName: currentPackage.manifest.name ?? currentPackageName,
-		localTreeseedPackageNames,
-		localTreeseedSiblingDependencies,
+		localPackageNames,
+		localSiblingDependencies,
 	};
 }
 
-export function getTreeseedVerifyDriverStatus(options: TreeseedVerifyDriverOptions = {}): TreeseedVerifyDriverStatus {
+export function getVerifyDriverStatus(options: VerifyDriverOptions = {}): VerifyDriverStatus {
 	const packageRoot = resolve(options.packageRoot ?? process.cwd());
 	const workflowPath = resolve(packageRoot, '.github', 'workflows', 'verify.yml');
-	const driver = options.driver ?? (process.env.TREESEED_VERIFY_DRIVER as TreeseedVerifyDriver | undefined) ?? 'auto';
+	const driver = options.driver ?? (process.env.TREESEED_VERIFY_DRIVER as VerifyDriver | undefined) ?? 'auto';
 	const eventName = options.eventName ?? process.env.TREESEED_VERIFY_EVENT ?? 'workflow_dispatch';
 	const inGitHubActions = process.env.GITHUB_ACTIONS === 'true';
 	const workflowPresent = existsSync(workflowPath);
-	const workspace = resolveLocalWorkspaceContext(packageRoot, options.localTreeseedExtraSiblingDependencies ?? []);
+	const workspace = resolveLocalWorkspaceContext(packageRoot, options.localExtraSiblingDependencies ?? []);
 	const checkCommand = options.checkCommand ?? check;
-	const gh = options.checkCommand ? 'gh' : (resolveTreeseedToolBinary('gh') ?? 'gh');
+	const gh = options.checkCommand ? 'gh' : (resolveToolBinary('gh') ?? 'gh');
 	const ghAct = checkCommand(gh, ['act', '--version'], packageRoot);
 	const docker = checkCommand('docker', ['info'], packageRoot);
 	const prefersDirectForLocalWorkspace =
 		!inGitHubActions &&
 		driver === 'auto' &&
-		workspace.localTreeseedSiblingDependencies.length > 0;
+		workspace.localSiblingDependencies.length > 0;
 
 	return {
 		packageRoot,
@@ -254,8 +254,8 @@ export function getTreeseedVerifyDriverStatus(options: TreeseedVerifyDriverOptio
 		canUseAct: workflowPresent && ghAct.ok && docker.ok,
 		workspaceRoot: workspace.workspaceRoot,
 		currentPackageName: workspace.currentPackageName,
-		localTreeseedPackageNames: workspace.localTreeseedPackageNames,
-		localTreeseedSiblingDependencies: workspace.localTreeseedSiblingDependencies,
+		localPackageNames: workspace.localPackageNames,
+		localSiblingDependencies: workspace.localSiblingDependencies,
 		prefersDirectForLocalWorkspace,
 	};
 }

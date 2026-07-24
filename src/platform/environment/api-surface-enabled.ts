@@ -1,20 +1,20 @@
 import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { runTreeseedGit } from '../../operations/services/git-runner.ts';
+import { runRepositoryGit } from '../../operations/services/operations/git-runner.ts';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
-import { discoverTreeseedApplications } from '../../hosting/apps.ts';
-import { githubRepositoryCredentialEnvName } from '../../operations/services/github-credentials.ts';
-import { discoverTreeseedPackageAdapters } from '../../operations/services/package-adapters.ts';
-import type { TreeseedDeployConfig, TreeseedTenantConfig } from '../contracts.ts';
-import { loadTreeseedDeployConfig } from '../deploy-config.ts';
-import { loadTreeseedPlugins, type LoadedTreeseedPluginEntry } from '../plugins.ts';
-import { loadTreeseedManifest } from '../tenant-config.ts';
-import { TreeseedEnvironmentContext, TreeseedEnvironmentScope, managedServiceEnabled, webSurfaceEnabled, workflowPlaneAllows } from './treeseed-environment-scopes.ts';
+import { discoverApplications } from '../../hosting/apps.ts';
+import { githubRepositoryCredentialEnvName } from '../../operations/services/configuration/github-credentials.ts';
+import { discoverPackageAdapters } from '../../operations/services/reconciliation/package-adapters.ts';
+import type { DeployConfig, TenantConfig } from '../support/contracts.ts';
+import { loadDeployConfig } from '../hosting/deploy-config.ts';
+import { loadPlugins, type LoadedPluginRegistration } from '../support/plugins.ts';
+import { loadManifest } from '../configuration/tenant-config.ts';
+import { EnvironmentContext, EnvironmentScope, managedServiceEnabled, webSurfaceEnabled, workflowPlaneAllows } from './environment-scopes.ts';
 
-export function apiSurfaceEnabled(context: TreeseedEnvironmentContext) {
+export function apiSurfaceEnabled(context: EnvironmentContext) {
 	if (!workflowPlaneAllows('processing')) {
 		return false;
 	}
@@ -23,7 +23,7 @@ export function apiSurfaceEnabled(context: TreeseedEnvironmentContext) {
 	return (apiSurfaceExplicitlyEnabled || apiServiceConfigured) && managedServiceEnabled(context, 'api');
 }
 
-export function processingPlaneEnabled(context: TreeseedEnvironmentContext) {
+export function processingPlaneEnabled(context: EnvironmentContext) {
 	if (!workflowPlaneAllows('processing')) {
 		return false;
 	}
@@ -38,20 +38,20 @@ export function processingPlaneEnabled(context: TreeseedEnvironmentContext) {
 	);
 }
 
-export function formsEnabled(context: TreeseedEnvironmentContext) {
+export function formsEnabled(context: EnvironmentContext) {
 	return webSurfaceEnabled(context) && (context.deployConfig.providers?.forms ?? 'store_only') !== 'none';
 }
 
-export function codexExecutionSelected(context: TreeseedEnvironmentContext) {
+export function codexExecutionSelected(context: EnvironmentContext) {
 	const execution = context.deployConfig.providers?.agents?.execution ?? 'codex';
 	return execution === 'codex';
 }
 
-export function copilotExecutionSelected(context: TreeseedEnvironmentContext) {
+export function copilotExecutionSelected(context: EnvironmentContext) {
 	return context.deployConfig.providers?.agents?.execution === 'github_copilot';
 }
 
-export function railwayManagedEnabled(context: TreeseedEnvironmentContext) {
+export function railwayManagedEnabled(context: EnvironmentContext) {
 	if (!workflowPlaneAllows('processing')) {
 		return false;
 	}
@@ -69,39 +69,39 @@ export function railwayManagedEnabled(context: TreeseedEnvironmentContext) {
 	);
 }
 
-export function resolveHubMode(context: TreeseedEnvironmentContext) {
+export function resolveHubMode(context: EnvironmentContext) {
 	return context.deployConfig.hub?.mode ?? 'treeseed_hosted';
 }
 
-export function resolveRuntimeMode(context: TreeseedEnvironmentContext) {
+export function resolveRuntimeMode(context: EnvironmentContext) {
 	return context.deployConfig.runtime?.mode ?? 'none';
 }
 
-export function resolveRuntimeRegistration(context: TreeseedEnvironmentContext) {
+export function resolveRuntimeRegistration(context: EnvironmentContext) {
 	return context.deployConfig.runtime?.registration ?? 'none';
 }
 
-export function resolveHostingKind(context: TreeseedEnvironmentContext) {
+export function resolveHostingKind(context: EnvironmentContext) {
 	return context.deployConfig.hosting?.kind ?? 'self_hosted_project';
 }
 
-export function resolveHostingRegistration(context: TreeseedEnvironmentContext) {
+export function resolveHostingRegistration(context: EnvironmentContext) {
 	return context.deployConfig.hosting?.registration ?? 'none';
 }
 
-export function marketControlPlaneEnabled(context: TreeseedEnvironmentContext) {
+export function marketControlPlaneEnabled(context: EnvironmentContext) {
 	return resolveHostingKind(context) === 'treeseed_control_plane';
 }
 
-export function hostedProjectEnabled(context: TreeseedEnvironmentContext) {
+export function hostedProjectEnabled(context: EnvironmentContext) {
 	return resolveHostingKind(context) === 'hosted_project';
 }
 
-export function selfHostedProjectEnabled(context: TreeseedEnvironmentContext) {
+export function selfHostedProjectEnabled(context: EnvironmentContext) {
 	return resolveHostingKind(context) === 'self_hosted_project';
 }
 
-export function projectRegistrationEnabled(context: TreeseedEnvironmentContext) {
+export function projectRegistrationEnabled(context: EnvironmentContext) {
 	return resolveRuntimeRegistration(context) === 'optional' || resolveRuntimeRegistration(context) === 'required';
 }
 
@@ -117,13 +117,13 @@ export function localSmtpPortDefault() {
 	return '1025';
 }
 
-export function contactEmailDefault(context: TreeseedEnvironmentContext) {
+export function contactEmailDefault(context: EnvironmentContext) {
 	return context.deployConfig.contactEmail?.trim() || 'contact@example.com';
 }
 
 export function localApiDatabaseUrlDefault(
-	_context: TreeseedEnvironmentContext,
-	_scope: TreeseedEnvironmentScope,
+	_context: EnvironmentContext,
+	_scope: EnvironmentScope,
 	values: Record<string, string | undefined> = {},
 ) {
 	const port = values.TREESEED_MARKET_LOCAL_POSTGRES_PORT?.trim()
@@ -180,7 +180,7 @@ export function deriveApiDomainFromProjectDomain(domain: string | undefined) {
 	return `api.${segments.slice(1).join('.')}`;
 }
 
-export function projectDomainsDefault(context: TreeseedEnvironmentContext, scope: TreeseedEnvironmentScope) {
+export function projectDomainsDefault(context: EnvironmentContext, scope: EnvironmentScope) {
 	if (scope === 'staging') {
 		return context.deployConfig.surfaces?.web?.environments?.staging?.domain
 			?? primaryHostFromUrl(context.deployConfig.surfaces?.web?.environments?.staging?.baseUrl)
@@ -196,8 +196,8 @@ export function projectDomainsDefault(context: TreeseedEnvironmentContext, scope
 }
 
 export function resolveConfiguredApiBaseUrl(
-	context: TreeseedEnvironmentContext,
-	scope: TreeseedEnvironmentScope,
+	context: EnvironmentContext,
+	scope: EnvironmentScope,
 	values: Record<string, string | undefined> = {},
 ) {
 	const localBaseUrl = context.deployConfig.services?.api?.environments?.local?.baseUrl
@@ -241,20 +241,20 @@ export function resolveApiWebServiceId(
 	return values.TREESEED_WEB_SERVICE_ID?.trim() || 'web';
 }
 
-export function resolvePagesProjectName(context: TreeseedEnvironmentContext) {
+export function resolvePagesProjectName(context: EnvironmentContext) {
 	return context.deployConfig.slug;
 }
 
 export function resolvePagesPreviewProjectName(
-	context: TreeseedEnvironmentContext,
-	_scope: TreeseedEnvironmentScope,
+	context: EnvironmentContext,
+	_scope: EnvironmentScope,
 	values: Record<string, string | undefined> = {},
 ) {
-	return values.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME?.trim()
+	return values.CLOUDFLARE_PAGES_PROJECT_NAME?.trim()
 		|| context.deployConfig.cloudflare.pages?.projectName?.trim()
 		|| context.deployConfig.slug;
 }
 
-export function resolveContentBucketName(context: TreeseedEnvironmentContext) {
+export function resolveContentBucketName(context: EnvironmentContext) {
 	return `${context.deployConfig.slug}-content`;
 }

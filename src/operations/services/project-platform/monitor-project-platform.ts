@@ -1,26 +1,26 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { runTreeseedGit } from '../git-runner.ts';
+import { runRepositoryGit } from '../operations/git-runner.ts';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
-import { elapsedMs, formatTimingMarkdown, formatTimingSummary, type TreeseedTimingEntry } from '../../../timing.ts';
+import { elapsedMs, formatTimingMarkdown, formatTimingSummary, type TimingEntry } from '../../../entrypoints/runtime/timing.ts';
 import {
 	createControlPlaneReporter,
 	type ControlPlaneDeploymentReport,
 	type ControlPlaneReporter,
-} from '../../../control-plane.ts';
+} from '../../../entrypoints/clients/control-plane.ts';
 import {
 	resolvePublishedContentPreviewTtlHours,
 	resolveTeamScopedContentLocator,
 	signEditorialPreviewToken,
 	type PublishedContentManifest,
 	type PublishedContentObjectPointer,
-} from '../../../platform/published-content.ts';
-import { createPublishedContentPipeline } from '../../../platform/published-content-pipeline.ts';
-import { collectTreeseedReconcileStatus, reconcileTreeseedTarget, resolveTreeseedBootstrapSelection } from '../../../reconcile/index.ts';
-import { loadTreeseedManifest } from '../../../platform/tenant-config.ts';
-import { applyTreeseedEnvironmentToProcess, assertTreeseedCommandEnvironment } from '../config-runtime.ts';
-import { runTreeseedHostingAudit } from '../hosting-audit.ts';
+} from '../../../platform/packages/published-content.ts';
+import { createPublishedContentPipeline } from '../../../platform/packages/published-content-pipeline.ts';
+import { collectReconcileStatus, reconcileTarget, resolveBootstrapSelection } from '../../../reconcile/index.ts';
+import { loadManifest } from '../../../platform/configuration/tenant-config.ts';
+import { applyEnvironmentToProcess, assertCommandEnvironment } from '../configuration/config-runtime.ts';
+import { runHostingAudit } from '../hosting/audit/hosting-audit.ts';
 import {
 	assertDeploymentInitialized,
 	createPersistentDeployTarget,
@@ -32,12 +32,12 @@ import {
 	purgePublishedContentCaches,
 	resolveConfiguredCloudflareAccountId,
 	resolveConfiguredSurfaceBaseUrl,
-	resolveTreeseedResourceIdentity,
+	resolveResourceIdentity,
 	runRemoteD1Migrations,
 	syncCloudflareSecrets,
 	writeDeployState,
-} from '../deploy.ts';
-import { currentManagedBranch, PRODUCTION_BRANCH, STAGING_BRANCH } from '../git-workflow.ts';
+} from '../hosting/deployment/deploy.ts';
+import { currentManagedBranch, PRODUCTION_BRANCH, STAGING_BRANCH } from '../operations/git-workflow.ts';
 import {
 	configuredRailwayServices,
 	deployRailwayService,
@@ -46,12 +46,12 @@ import {
 	validateRailwayServiceConfiguration,
 	verifyRailwayManagedResources,
 	verifyRailwayScheduledJobs,
-} from '../railway-deploy.ts';
-import { loadCliDeployConfig, packageScriptPath } from '../runtime-tools.ts';
-import { resolveTreeseedToolCommand } from '../../../managed-dependencies.ts';
-import type { TreeseedRunnableBootstrapSystem } from '../../../reconcile/index.ts';
-import { runPrefixedCommand, runTreeseedBootstrapDag, sleep, writeTreeseedBootstrapLine, type TreeseedBootstrapDagNode, type TreeseedBootstrapExecution, type TreeseedBootstrapTaskPrefix, type TreeseedBootstrapWriter } from '../bootstrap-runner.ts';
-import { runTenantDeployPreflight } from '../save-deploy-preflight.ts';
+} from '../hosting/railway/railway-deploy.ts';
+import { loadCliDeployConfig, packageScriptPath } from '../agents/runtime-tools.ts';
+import { resolveToolCommand } from '../../../entrypoints/runtime/managed-dependencies.ts';
+import type { RunnableBootstrapSystem } from '../../../reconcile/index.ts';
+import { runPrefixedCommand, runBootstrapDag, sleep, writeBootstrapLine, type BootstrapDagNode, type BootstrapExecution, type BootstrapTaskPrefix, type BootstrapWriter } from '../operations/bootstrap-runner.ts';
+import { runTenantDeployPreflight } from '../hosting/deployment/save-deploy-preflight.ts';
 import { ProjectPlatformAction, ProjectPlatformActionOptions, WEB_PLATFORM_BOOTSTRAP_SYSTEMS, currentCommit, currentRef, resolveProjectPlatformBootstrapSystems, timedPhase, writeWorkflowStatus } from './project-platform-scope.ts';
 import { probeHttp, resolveImmediatePagesProbeUrl, resolveReporter } from './repair-hosting-after-successful-deploy.ts';
 import { probeR2, resolveApiMonitorEndpoints, resolveImmediateApiProbeUrl } from './resolve-immediate-api-probe-url.ts';
@@ -59,7 +59,7 @@ import { reportDeployment } from './tenant-cloudflare-deploy-context.ts';
 import { deployProjectPlatform, publishProjectContent } from './deploy-project-platform.ts';
 
 export async function monitorProjectPlatform(options: ProjectPlatformActionOptions) {
-	const timings: TreeseedTimingEntry[] = [];
+	const timings: TimingEntry[] = [];
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);
 	const env = { ...process.env, ...(options.env ?? {}) };
 	const target = createPersistentDeployTarget(options.scope === 'local' ? 'staging' : options.scope);
@@ -179,7 +179,7 @@ export async function runProjectPlatformAction(action: ProjectPlatformAction, op
 	process.env.TREESEED_WORKFLOW_PLANE = previousWorkflowPlane ?? 'all';
 	writeWorkflowStatus(`action:start ${action} scope=${options.scope}`);
 	writeWorkflowStatus('action:apply-environment:start');
-	applyTreeseedEnvironmentToProcess({ tenantRoot: options.tenantRoot, scope: options.scope, override: true });
+	applyEnvironmentToProcess({ tenantRoot: options.tenantRoot, scope: options.scope, override: true });
 	writeWorkflowStatus('action:apply-environment:done');
 	writeWorkflowStatus('action:resolve-reporter:start');
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);

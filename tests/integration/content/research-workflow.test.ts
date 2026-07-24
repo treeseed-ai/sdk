@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { advanceResearchWorkflow, compileResearchWorkflow, RESEARCH_WORKFLOW_STAGES } from '../../../src/agent-capacity.ts';
+import { advanceResearchWorkflow, compileResearchWorkflow, RESEARCH_WORKFLOW_STAGES } from '../../../src/capacity/agents/agent-capacity.ts';
 
 const citation = (id: string, publisher: string) => ({
 	sourceUrl: `https://${publisher}/source/${id}`, title: `Source ${id}`, publisher,

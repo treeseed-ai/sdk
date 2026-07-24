@@ -4,10 +4,10 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
-	formatTreeseedHostingAuditReport,
-	resolveTreeseedHostingAuditTarget,
-	runTreeseedHostingAudit,
-} from '../../../src/operations/services/hosting-audit.ts';
+	formatHostingAuditReport,
+	resolveHostingAuditTarget,
+	runHostingAudit,
+} from '../../../src/operations/services/hosting/audit/hosting-audit.ts';
 
 function createTenantFixture() {
 	const tenantRoot = mkdtempSync(join(tmpdir(), 'treeseed-hosting-audit-'));
@@ -45,12 +45,12 @@ services:
 describe('hosting audit', () => {
 	it('maps explicit environments to stable reconcile targets', () => {
 		const tenantRoot = createTenantFixture();
-		expect(resolveTreeseedHostingAuditTarget({ tenantRoot, environment: 'local' })).toMatchObject({
+		expect(resolveHostingAuditTarget({ tenantRoot, environment: 'local' })).toMatchObject({
 			environment: 'local',
 			scope: 'local',
 			target: { kind: 'persistent', scope: 'staging' },
 		});
-		expect(resolveTreeseedHostingAuditTarget({ tenantRoot, environment: 'prod' })).toMatchObject({
+		expect(resolveHostingAuditTarget({ tenantRoot, environment: 'prod' })).toMatchObject({
 			environment: 'prod',
 			scope: 'prod',
 			target: { kind: 'persistent', scope: 'prod' },
@@ -60,7 +60,7 @@ describe('hosting audit', () => {
 	it('returns a JSON-safe report without leaking configured secret values', async () => {
 		const tenantRoot = createTenantFixture();
 		const secret = 'super-secret-hosted-github-token';
-		const report = await runTreeseedHostingAudit({
+		const report = await runHostingAudit({
 			tenantRoot,
 			environment: 'local',
 			hostKinds: ['repository'],
@@ -76,12 +76,12 @@ describe('hosting audit', () => {
 		expect(report.hostKinds).toEqual(['repository']);
 		expect(Array.isArray(report.checks)).toBe(true);
 		expect(json).not.toContain(secret);
-		expect(formatTreeseedHostingAuditReport(report)).not.toContain(secret);
+		expect(formatHostingAuditReport(report)).not.toContain(secret);
 	}, 20_000);
 
 	it('does not require GitHub config when auditing only web and email hosts', async () => {
 		const tenantRoot = createTenantFixture();
-		const report = await runTreeseedHostingAudit({
+		const report = await runHostingAudit({
 			tenantRoot,
 			environment: 'local',
 			hostKinds: ['web', 'email'],

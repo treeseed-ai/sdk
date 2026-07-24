@@ -7,27 +7,27 @@ import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 
 import {
-	auditTreeseedGuaranteeJourneys,
+	auditGuaranteeJourneys,
 	assertPathInsideWorkspace,
-	discoverTreeseedGuarantees,
-	exportTreeseedGuaranteesCsv,
-	exportTreeseedGuaranteesJson,
-	exportTreeseedGuaranteesMarkdown,
+	discoverGuarantees,
+	exportGuaranteesCsv,
+	exportGuaranteesJson,
+	exportGuaranteesMarkdown,
 	browserForGuaranteeDevice,
-	createTreeseedGuaranteeStatusReport,
+	createGuaranteeStatusReport,
 	fileExists,
-	loadTreeseedGuaranteeVerifierRegistry,
-	normalizeTreeseedGuaranteeTaxonomy,
-	planTreeseedGuarantees,
-	resolveTreeseedGuaranteeVerifierRefs,
-	runTreeseedGuarantees,
+	loadGuaranteeVerifierRegistry,
+	normalizeGuaranteeTaxonomy,
+	planGuarantees,
+	resolveGuaranteeVerifierRefs,
+	runGuarantees,
 	sceneAuthRoleForGuarantee,
 	sceneDeviceRunsForGuarantee,
-	validateTreeseedVitestVerifierOutput,
-	validateTreeseedGuarantee,
+	validateVitestVerifierOutput,
+	validateGuarantee,
 	validateGuaranteeSceneJourneyContract,
-	writeTreeseedGuaranteesExport,
-	writeTreeseedGuaranteeRunReport,
+	writeGuaranteesExport,
+	writeGuaranteeRunReport,
 } from '../../../src/guarantees/index.ts';
 
 function workspaceFixture(name: string) {
@@ -108,7 +108,7 @@ it('expands journey dependencies and implicit app auth dependencies in determini
 			.replace('manifest: ./scenes/ask-question.scene.yaml', 'manifest: ./scenes/ask-question.scene.yaml\n  entryRoute: /app/work/questions/new')
 			.replace('scene:\n  required: true', 'surface: admin-ui\nscene:\n  required: false'),
 			'packages/admin/guarantees/project/question/follow-up.guarantee.yaml');
-		const plan = planTreeseedGuarantees({ workspaceRoot: root, filter: { ids: ['guarantee.project.question.follow-up.039'] } });
+		const plan = planGuarantees({ workspaceRoot: root, filter: { ids: ['guarantee.project.question.follow-up.039'] } });
 		expect(plan.ok).toBe(true);
 		expect(plan.entries.map((entry) => entry.id)).toEqual([
 			'guarantee.user.auth.user-login.004',
@@ -247,9 +247,9 @@ verifiers:
     caseId: consumer.case
 `);
 
-		const registry = discoverTreeseedGuarantees({ workspaceRoot: root });
+		const registry = discoverGuarantees({ workspaceRoot: root });
 		expect(registry.diagnostics.map((entry) => entry.code)).toContain('guarantee.release_manual_evidence');
-		const plan = planTreeseedGuarantees({ workspaceRoot: root, filter: { ids: ['guarantee.market.journey.state-consumer.061'] } });
+		const plan = planGuarantees({ workspaceRoot: root, filter: { ids: ['guarantee.market.journey.state-consumer.061'] } });
 		expect(plan.entries.map((entry) => entry.id)).toEqual([
 			'guarantee.user.auth.user-login.004',
 			'guarantee.market.journey.state-producer.060',
@@ -289,7 +289,7 @@ verifiers:
     testFile: test/fixture.test.ts
 `);
 		const calls: string[] = [];
-		const report = await runTreeseedGuarantees({
+		const report = await runGuarantees({
 			workspaceRoot: root,
 			filter: { ids: ['guarantee.project.question.edit-question.039'] },
 			verifierExecutor: async ({ guarantee, ref }) => {

@@ -4,7 +4,7 @@ import {
 	parseGitHubRepositorySlug,
 	type GitHubApiClient,
 	type GitHubWorkflowProgressEvent,
-} from '../github-api.ts';
+} from '../repositories/github-api.ts';
 import { GitHubActionsRepositoryInspection, GitHubActionsVerificationOptions, GitHubActionsVerificationReport, GitHubActionsVerificationTarget, GitHubActionsWorkflowGate, aggregateWorkflowState } from './git-hub-actions-workflow-state.ts';
 import { collectFailures, inspectCommand, inspectWorkflow, resolveRemoteBranchHead, summarize, workflowMessage } from './resolve-remote-branch-head.ts';
 

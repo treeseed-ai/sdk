@@ -1,12 +1,12 @@
 import {
-	TREESEED_REMOTE_CONTRACT_HEADER,
-	TREESEED_REMOTE_CONTRACT_VERSION,
-} from '../remote.ts';
+	REMOTE_CONTRACT_HEADER,
+	REMOTE_CONTRACT_VERSION,
+} from '../entrypoints/clients/remote.ts';
 import type {
 	ProviderAssignmentLifecycleRequest,
 	ProviderAssignmentLifecycleResult,
 	ProviderNextAssignmentRequest,
-} from '../agent-capacity.ts';
+} from '../capacity/agents/agent-capacity.ts';
 import type {
 	CapacityProviderIdentity,
 	CapacityProviderIdentityRotationRequest,
@@ -104,7 +104,7 @@ export class ProviderProtocolClient {
 			: options.authorization;
 		const headers: Record<string, string> = {
 			accept: 'application/json',
-			[TREESEED_REMOTE_CONTRACT_HEADER]: String(TREESEED_REMOTE_CONTRACT_VERSION),
+			[REMOTE_CONTRACT_HEADER]: String(REMOTE_CONTRACT_VERSION),
 			...(authorization ? { authorization } : {}),
 			...options.headers,
 		};

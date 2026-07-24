@@ -25,9 +25,9 @@ export const contactSubmissions = sqliteTable('contact_submissions', {
 	index('idx_contact_submissions_email').on(table.email),
 ]);
 
-export const treeseedSchema = {
+export const Schema = {
 	subscribers,
 	contactSubmissions,
 };
 
-export type TreeseedDrizzleSchema = typeof treeseedSchema;
+export type DrizzleSchema = typeof Schema;

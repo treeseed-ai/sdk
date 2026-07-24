@@ -1,22 +1,22 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { relative } from 'node:path';
 import type {
-	TreeseedSceneDiagnostic,
-	TreeseedSceneVisualAuditCapture,
-	TreeseedSceneVisualAuditClientError,
-	TreeseedSceneVisualAuditClientErrorIncident,
-	TreeseedSceneVisualAuditFinding,
-	TreeseedSceneVisualAuditFindingOwner,
-	TreeseedSceneVisualAuditFindingSeverity,
-	TreeseedSceneVisualAuditManifest,
-	TreeseedSceneVisualAuditPaths,
-	TreeseedSceneVisualAuditReview,
-	TreeseedSceneVisualAuditReviewCategory,
-	TreeseedSceneVisualAuditReviewDetail,
-	TreeseedSceneVisualAuditRole,
-	TreeseedSceneVisualAuditRootCause,
+	SceneDiagnostic,
+	SceneVisualAuditCapture,
+	SceneVisualAuditClientError,
+	SceneVisualAuditClientErrorIncident,
+	SceneVisualAuditFinding,
+	SceneVisualAuditFindingOwner,
+	SceneVisualAuditFindingSeverity,
+	SceneVisualAuditManifest,
+	SceneVisualAuditPaths,
+	SceneVisualAuditReview,
+	SceneVisualAuditReviewCategory,
+	SceneVisualAuditReviewDetail,
+	SceneVisualAuditRole,
+	SceneVisualAuditRootCause,
 } from '../types.ts';
-import { writeTreeseedSceneVisualAuditContactSheets } from '../visual-audit-contact-sheets.ts';
+import { writeSceneVisualAuditContactSheets } from '../support/visual-audit/visual-audit-contact-sheets.ts';
 import { EnrichedClientError, SEVERITIES, errorIncidentCode, finding, guidance, normalizedErrorMessage, pathOwner, priorityScore, recommendedAction } from './severities.ts';
 
 export function incidentTitle(code: string) {
@@ -28,7 +28,7 @@ export function incidentTitle(code: string) {
 	return 'Client-side errors occur';
 }
 
-export function incidentSeverity(error: TreeseedSceneVisualAuditClientError): TreeseedSceneVisualAuditFindingSeverity {
+export function incidentSeverity(error: SceneVisualAuditClientError): SceneVisualAuditFindingSeverity {
 	if (error.kind === 'pageerror' || error.kind === 'uncaught-exception') return 'blocking';
 	if ((error.status ?? 0) >= 500 || normalizedErrorMessage(error) === 'http-500') return 'high';
 	if ((error.status ?? 0) >= 400 || normalizedErrorMessage(error) === 'http-404') return 'medium';
@@ -45,7 +45,7 @@ export function incidentKey(error: EnrichedClientError) {
 	].join('|');
 }
 
-export function buildClientErrorIncidents(errors: EnrichedClientError[]): TreeseedSceneVisualAuditClientErrorIncident[] {
+export function buildClientErrorIncidents(errors: EnrichedClientError[]): SceneVisualAuditClientErrorIncident[] {
 	const grouped = new Map<string, EnrichedClientError[]>();
 	for (const error of errors) {
 		if (normalizedErrorMessage(error) === 'request-aborted' && error.finalUrl) continue;
@@ -53,7 +53,7 @@ export function buildClientErrorIncidents(errors: EnrichedClientError[]): Treese
 		list.push(error);
 		grouped.set(incidentKey(error), list);
 	}
-	const output: TreeseedSceneVisualAuditClientErrorIncident[] = [];
+	const output: SceneVisualAuditClientErrorIncident[] = [];
 	let index = 0;
 	for (const list of grouped.values()) {
 		const first = list[0];
@@ -65,7 +65,7 @@ export function buildClientErrorIncidents(errors: EnrichedClientError[]): Treese
 		const roles = compactList(list.map((entry) => entry.role));
 		const devices = compactList(list.map((entry) => entry.device));
 		const captureIds = compactList(list.map((entry) => entry.captureId));
-		const severity = list.reduce<TreeseedSceneVisualAuditFindingSeverity>((best, entry) => severityRank(incidentSeverity(entry)) < severityRank(best) ? incidentSeverity(entry) : best, incidentSeverity(first));
+		const severity = list.reduce<SceneVisualAuditFindingSeverity>((best, entry) => severityRank(incidentSeverity(entry)) < severityRank(best) ? incidentSeverity(entry) : best, incidentSeverity(first));
 		const score = priorityScore({
 			severity,
 			category: 'client-error',
@@ -106,9 +106,9 @@ export function buildClientErrorIncidents(errors: EnrichedClientError[]): Treese
 		.map((entry, priorityRank) => ({ ...entry, priorityRank: priorityRank + 1 }));
 }
 
-export function incidentFindings(incidents: TreeseedSceneVisualAuditClientErrorIncident[], captures: TreeseedSceneVisualAuditCapture[], indexStart: number) {
+export function incidentFindings(incidents: SceneVisualAuditClientErrorIncident[], captures: SceneVisualAuditCapture[], indexStart: number) {
 	const byId = new Map(captures.map((capture) => [capture.id, capture]));
-	const output: TreeseedSceneVisualAuditFinding[] = [];
+	const output: SceneVisualAuditFinding[] = [];
 	let index = indexStart;
 	for (const incident of incidents) {
 		const capture = incident.captureIds.map((id) => byId.get(id)).find(Boolean);
@@ -128,13 +128,13 @@ export function incidentFindings(incidents: TreeseedSceneVisualAuditClientErrorI
 	return output;
 }
 
-export function architectureFindings(captures: TreeseedSceneVisualAuditCapture[], findings: TreeseedSceneVisualAuditFinding[], indexStart: number) {
-	const output: TreeseedSceneVisualAuditFinding[] = [];
+export function architectureFindings(captures: SceneVisualAuditCapture[], findings: SceneVisualAuditFinding[], indexStart: number) {
+	const output: SceneVisualAuditFinding[] = [];
 	let index = indexStart;
 	const sample = captures.find((capture) => capture.path.startsWith('/app')) ?? captures[0];
 	if (!sample) return output;
 	const repeated = (code: string) => findings.filter((entry) => entry.code === code);
-	const push = (code: string, title: string, message: string, owner: TreeseedSceneVisualAuditFindingOwner, evidence: Record<string, unknown>) => {
+	const push = (code: string, title: string, message: string, owner: SceneVisualAuditFindingOwner, evidence: Record<string, unknown>) => {
 		output.push(finding({ index: index += 1, capture: sample, severity: 'high', category: 'architecture', code, title, message, owner, evidence }));
 	};
 	if (new Set(repeated('visual.display.default_link_style').map((entry) => entry.path)).size >= 2 || new Set(repeated('visual.display.default_button_style').map((entry) => entry.path)).size >= 2) {
@@ -149,17 +149,17 @@ export function architectureFindings(captures: TreeseedSceneVisualAuditCapture[]
 	return output;
 }
 
-export function severityRank(value: TreeseedSceneVisualAuditFindingSeverity) {
+export function severityRank(value: SceneVisualAuditFindingSeverity) {
 	return SEVERITIES.indexOf(value);
 }
 
-export function filteredFindings(findings: TreeseedSceneVisualAuditFinding[], detail: TreeseedSceneVisualAuditReviewDetail, maxFindings: number) {
+export function filteredFindings(findings: SceneVisualAuditFinding[], detail: SceneVisualAuditReviewDetail, maxFindings: number) {
 	const sorted = [...findings].sort((a, b) => severityRank(a.severity) - severityRank(b.severity) || a.path.localeCompare(b.path) || a.code.localeCompare(b.code));
 	const byDetail = detail === 'summary' ? sorted.filter((entry) => entry.severity === 'blocking' || entry.severity === 'high') : sorted;
 	return byDetail.slice(0, maxFindings);
 }
 
-export function expectedFindingNoise(findingEntry: TreeseedSceneVisualAuditFinding) {
+export function expectedFindingNoise(findingEntry: SceneVisualAuditFinding) {
 	if (findingEntry.pathRoot !== '/404') return false;
 	if (findingEntry.code === 'visual.functional.http_error') return true;
 	if (findingEntry.code === 'visual.display.visible_error_text') return true;
@@ -167,7 +167,7 @@ export function expectedFindingNoise(findingEntry: TreeseedSceneVisualAuditFindi
 	return false;
 }
 
-export function messageSignature(findingEntry: TreeseedSceneVisualAuditFinding) {
+export function messageSignature(findingEntry: SceneVisualAuditFinding) {
 	const evidence = JSON.stringify(findingEntry.evidence);
 	if (/ENOENT.+starlight\/routes\/ssr/isu.test(findingEntry.message) || /starlight\/routes\/ssr/iu.test(evidence)) return 'missing-starlight-ssr-vendor';
 	if (/HTTP\s+500/iu.test(findingEntry.message) || findingEntry.message.includes('Internal Server Error')) return 'http-500';
@@ -177,7 +177,7 @@ export function messageSignature(findingEntry: TreeseedSceneVisualAuditFinding) 
 	return findingEntry.message.replace(/\bhttps?:\/\/\S+/giu, '<url>').replace(/\s+/gu, ' ').slice(0, 90);
 }
 
-export function rootCauseKey(findingEntry: TreeseedSceneVisualAuditFinding) {
+export function rootCauseKey(findingEntry: SceneVisualAuditFinding) {
 	if (findingEntry.category === 'architecture') return `${findingEntry.code}|${findingEntry.suspectedOwner}`;
 	if (findingEntry.code === 'visual.display.default_link_style' || findingEntry.code === 'visual.display.default_button_style') return `${findingEntry.code}|${findingEntry.suspectedOwner}|shared-controls`;
 	if (findingEntry.code === 'visual.functional.seeded_entity_missing') return `${findingEntry.code}|${findingEntry.suspectedOwner}|${findingEntry.pathRoot}`;
@@ -192,7 +192,7 @@ export function compactList<T extends string>(values: T[]) {
 	return [...new Set(values)].sort();
 }
 
-export function rootCauseTitle(findings: TreeseedSceneVisualAuditFinding[]) {
+export function rootCauseTitle(findings: SceneVisualAuditFinding[]) {
 	const first = findings[0];
 	if (!first) return 'Visual audit finding cluster';
 	if (first.code === 'visual.display.default_link_style' || first.code === 'visual.display.default_button_style') return 'Shared UI controls are falling back to browser-default styling';
@@ -207,7 +207,7 @@ export function rootCauseTitle(findings: TreeseedSceneVisualAuditFinding[]) {
 	return first.title;
 }
 
-export function rootCauseMessage(findings: TreeseedSceneVisualAuditFinding[]) {
+export function rootCauseMessage(findings: SceneVisualAuditFinding[]) {
 	const first = findings[0];
 	if (!first) return '';
 	const paths = compactList(findings.map((entry) => entry.path));
@@ -216,15 +216,15 @@ export function rootCauseMessage(findings: TreeseedSceneVisualAuditFinding[]) {
 	return `${first.message} Seen ${findings.length} time(s) across ${paths.length} path(s), ${roles.length} role(s), and ${devices.length} device profile(s).`;
 }
 
-export function buildRootCauses(findings: TreeseedSceneVisualAuditFinding[]) {
-	const grouped = new Map<string, TreeseedSceneVisualAuditFinding[]>();
+export function buildRootCauses(findings: SceneVisualAuditFinding[]) {
+	const grouped = new Map<string, SceneVisualAuditFinding[]>();
 	for (const findingEntry of findings) {
 		const key = rootCauseKey(findingEntry);
 		const list = grouped.get(key) ?? [];
 		list.push(findingEntry);
 		grouped.set(key, list);
 	}
-	const output: TreeseedSceneVisualAuditRootCause[] = [];
+	const output: SceneVisualAuditRootCause[] = [];
 	let index = 0;
 	for (const list of grouped.values()) {
 		const sorted = [...list].sort((a, b) => severityRank(a.severity) - severityRank(b.severity) || a.path.localeCompare(b.path));

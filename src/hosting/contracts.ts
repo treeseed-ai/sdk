@@ -1,9 +1,9 @@
-import type { TreeseedDeployConfig } from '../platform/contracts.ts';
-import type { TreeseedDiscoveredApplication } from './apps.ts';
+import type { DeployConfig } from '../platform/support/contracts.ts';
+import type { DiscoveredApplication } from './apps.ts';
 
-export type TreeseedHostingEnvironment = 'local' | 'staging' | 'prod';
+export type HostingEnvironment = 'local' | 'staging' | 'prod';
 
-export type TreeseedHostCapability =
+export type HostCapability =
 	| 'project'
 	| 'environment'
 	| 'container'
@@ -26,7 +26,7 @@ export type TreeseedHostCapability =
 	| 'port'
 	| 'hot-reload';
 
-export type TreeseedServicePlacement =
+export type ServicePlacement =
 	| 'web'
 	| 'api'
 	| 'database'
@@ -38,75 +38,75 @@ export type TreeseedServicePlacement =
 	| 'operations'
 	| 'custom';
 
-export type TreeseedHostingAction = 'noop' | 'create' | 'update' | 'verify' | 'rename' | 'adopt' | 'reattach' | 'retain' | 'delete' | 'blocked';
-export type TreeseedHostingStatus = 'unknown' | 'pending' | 'ready' | 'degraded' | 'blocked';
+export type HostingAction = 'noop' | 'create' | 'update' | 'verify' | 'rename' | 'adopt' | 'reattach' | 'retain' | 'delete' | 'blocked';
+export type HostingStatus = 'unknown' | 'pending' | 'ready' | 'degraded' | 'blocked';
 
-export interface TreeseedHostCapabilityDescriptor {
-	id: TreeseedHostCapability;
-	environments: TreeseedHostingEnvironment[];
+export interface HostCapabilityDescriptor {
+	id: HostCapability;
+	environments: HostingEnvironment[];
 }
 
-export interface TreeseedHostAdapterOperationInput {
-	environment: TreeseedHostingEnvironment;
-	unit: TreeseedHostingUnit;
-	graph: TreeseedHostingGraph;
+export interface HostAdapterOperationInput {
+	environment: HostingEnvironment;
+	unit: HostingUnit;
+	graph: HostingGraph;
 	planOnly?: boolean;
 }
 
-export interface TreeseedHostAdapterOperationResult {
-	status: TreeseedHostingStatus;
+export interface HostAdapterOperationResult {
+	status: HostingStatus;
 	locators: Record<string, string | null>;
 	state: Record<string, unknown>;
 	warnings: string[];
 }
 
-export interface TreeseedHostAdapter {
+export interface HostAdapter {
 	id: string;
 	label: string;
-	capabilities: TreeseedHostCapabilityDescriptor[];
-	refresh(input: TreeseedHostAdapterOperationInput): Promise<TreeseedHostAdapterOperationResult> | TreeseedHostAdapterOperationResult;
-	diff(input: TreeseedHostAdapterOperationInput & { observed: TreeseedHostAdapterOperationResult }): Promise<TreeseedHostingUnitPlan> | TreeseedHostingUnitPlan;
-	apply(input: TreeseedHostAdapterOperationInput & { plan: TreeseedHostingUnitPlan }): Promise<TreeseedHostAdapterOperationResult> | TreeseedHostAdapterOperationResult;
-	verify(input: TreeseedHostAdapterOperationInput & { observed: TreeseedHostAdapterOperationResult }): Promise<TreeseedHostingVerification> | TreeseedHostingVerification;
-	status(input: TreeseedHostAdapterOperationInput): Promise<TreeseedHostAdapterOperationResult> | TreeseedHostAdapterOperationResult;
+	capabilities: HostCapabilityDescriptor[];
+	refresh(input: HostAdapterOperationInput): Promise<HostAdapterOperationResult> | HostAdapterOperationResult;
+	diff(input: HostAdapterOperationInput & { observed: HostAdapterOperationResult }): Promise<HostingUnitPlan> | HostingUnitPlan;
+	apply(input: HostAdapterOperationInput & { plan: HostingUnitPlan }): Promise<HostAdapterOperationResult> | HostAdapterOperationResult;
+	verify(input: HostAdapterOperationInput & { observed: HostAdapterOperationResult }): Promise<HostingVerification> | HostingVerification;
+	status(input: HostAdapterOperationInput): Promise<HostAdapterOperationResult> | HostAdapterOperationResult;
 }
 
-export interface TreeseedServiceTypeAdapter {
+export interface ServiceTypeAdapter {
 	id: string;
 	label: string;
-	placement: TreeseedServicePlacement;
-	requiredCapabilities: TreeseedHostCapability[];
+	placement: ServicePlacement;
+	requiredCapabilities: HostCapability[];
 	composes?: string[];
-	defaultHostByEnvironment?: Partial<Record<TreeseedHostingEnvironment, string>>;
-	describe?(unit: TreeseedHostingUnit): string;
+	defaultHostByEnvironment?: Partial<Record<HostingEnvironment, string>>;
+	describe?(unit: HostingUnit): string;
 }
 
-export interface TreeseedHostingEnvironmentBinding {
+export interface HostingEnvironmentBinding {
 	hostId: string;
 	projectGroupId?: string;
 	enabled?: boolean;
 	config?: Record<string, unknown>;
 }
 
-export interface TreeseedServiceInstanceSpec {
+export interface ServiceInstanceSpec {
 	id: string;
 	label: string;
 	serviceType: string;
-	placement?: TreeseedServicePlacement;
+	placement?: ServicePlacement;
 	dependencies?: string[];
 	projectGroupId?: string;
 	config?: Record<string, unknown>;
 	secretRefs?: string[];
 	variableRefs?: string[];
-	environments?: Partial<Record<TreeseedHostingEnvironment, TreeseedHostingEnvironmentBinding>>;
+	environments?: Partial<Record<HostingEnvironment, HostingEnvironmentBinding>>;
 	metadata?: Record<string, unknown>;
 }
 
-export interface TreeseedHostProjectGroup {
+export interface HostProjectGroup {
 	id: string;
 	label: string;
 	hostId: string;
-	environments: Partial<Record<TreeseedHostingEnvironment, {
+	environments: Partial<Record<HostingEnvironment, {
 		projectName?: string;
 		projectId?: string;
 		environmentName?: string;
@@ -116,79 +116,79 @@ export interface TreeseedHostProjectGroup {
 	metadata?: Record<string, unknown>;
 }
 
-export interface TreeseedApplicationHostingProfile {
+export interface ApplicationHostingProfile {
 	id: string;
 	label: string;
 	description?: string;
-	services: TreeseedServiceInstanceSpec[];
-	projectGroups?: TreeseedHostProjectGroup[];
+	services: ServiceInstanceSpec[];
+	projectGroups?: HostProjectGroup[];
 	metadata?: Record<string, unknown>;
 }
 
-export interface TreeseedHostingGraphInput {
+export interface HostingGraphInput {
 	tenantRoot: string;
-	environment: TreeseedHostingEnvironment;
+	environment: HostingEnvironment;
 	env?: Record<string, string | undefined>;
 	configRoot?: string;
 	appId?: string;
-	deployConfig?: TreeseedDeployConfig;
-	hostAdapters?: Record<string, TreeseedHostAdapter>;
-	serviceTypeAdapters?: Record<string, TreeseedServiceTypeAdapter>;
-	profiles?: TreeseedApplicationHostingProfile[];
-	filter?: TreeseedHostingGraphFilter;
+	deployConfig?: DeployConfig;
+	hostAdapters?: Record<string, HostAdapter>;
+	serviceTypeAdapters?: Record<string, ServiceTypeAdapter>;
+	profiles?: ApplicationHostingProfile[];
+	filter?: HostingGraphFilter;
 }
 
-export interface TreeseedHostingGraphFilter {
+export interface HostingGraphFilter {
 	serviceIds?: string[];
-	placements?: TreeseedServicePlacement[];
+	placements?: ServicePlacement[];
 	hosts?: string[];
 }
 
-export interface TreeseedHostingUnit {
+export interface HostingUnit {
 	id: string;
 	label: string;
-	serviceType: TreeseedServiceTypeAdapter;
-	placement: TreeseedServicePlacement;
-	host: TreeseedHostAdapter;
-	environment: TreeseedHostingEnvironment;
-	projectGroup: TreeseedHostProjectGroup | null;
+	serviceType: ServiceTypeAdapter;
+	placement: ServicePlacement;
+	host: HostAdapter;
+	environment: HostingEnvironment;
+	projectGroup: HostProjectGroup | null;
 	dependencies: string[];
-	requiredCapabilities: TreeseedHostCapability[];
+	requiredCapabilities: HostCapability[];
 	config: Record<string, unknown>;
 	secretRefs: string[];
 	variableRefs: string[];
 	metadata: Record<string, unknown>;
-	application?: Pick<TreeseedDiscoveredApplication, 'id' | 'root' | 'relativeRoot' | 'configPath' | 'roles'>;
+	application?: Pick<DiscoveredApplication, 'id' | 'root' | 'relativeRoot' | 'configPath' | 'roles'>;
 }
 
-export interface TreeseedHostingGraph {
+export interface HostingGraph {
 	tenantRoot: string;
-	environment: TreeseedHostingEnvironment;
-	deployConfig: TreeseedDeployConfig;
-	applications?: TreeseedDiscoveredApplication[];
-	hosts: Record<string, TreeseedHostAdapter>;
-	serviceTypes: Record<string, TreeseedServiceTypeAdapter>;
-	profiles: TreeseedApplicationHostingProfile[];
-	projectGroups: Record<string, TreeseedHostProjectGroup>;
-	units: TreeseedHostingUnit[];
-	placements: TreeseedHostingPlacementSummary[];
+	environment: HostingEnvironment;
+	deployConfig: DeployConfig;
+	applications?: DiscoveredApplication[];
+	hosts: Record<string, HostAdapter>;
+	serviceTypes: Record<string, ServiceTypeAdapter>;
+	profiles: ApplicationHostingProfile[];
+	projectGroups: Record<string, HostProjectGroup>;
+	units: HostingUnit[];
+	placements: HostingPlacementSummary[];
 	warnings: string[];
 }
 
-export interface TreeseedHostingUnitPlan {
+export interface HostingUnitPlan {
 	unitId: string;
-	action: TreeseedHostingAction;
+	action: HostingAction;
 	reasons: string[];
 	before: Record<string, unknown>;
 	after: Record<string, unknown>;
 	warnings: string[];
-	actions?: TreeseedHostingAction[];
+	actions?: HostingAction[];
 	retainedResources?: unknown[];
 	blockedDrift?: unknown[];
 	providerLimitations?: unknown[];
 }
 
-export interface TreeseedHostingVerificationCheck {
+export interface HostingVerificationCheck {
 	key: string;
 	label: string;
 	ok: boolean;
@@ -197,41 +197,41 @@ export interface TreeseedHostingVerificationCheck {
 	issues: string[];
 }
 
-export interface TreeseedHostingVerification {
+export interface HostingVerification {
 	unitId: string;
-	status: TreeseedHostingStatus;
+	status: HostingStatus;
 	verified: boolean;
-	checks: TreeseedHostingVerificationCheck[];
+	checks: HostingVerificationCheck[];
 	warnings: string[];
 }
 
-export interface TreeseedHostingPlan {
-	environment: TreeseedHostingEnvironment;
+export interface HostingPlan {
+	environment: HostingEnvironment;
 	planOnly: boolean;
 	units: Array<{
-		unit: TreeseedHostingUnit;
-		observed: TreeseedHostAdapterOperationResult;
-		plan: TreeseedHostingUnitPlan;
-		verification: TreeseedHostingVerification;
+		unit: HostingUnit;
+		observed: HostAdapterOperationResult;
+		plan: HostingUnitPlan;
+		verification: HostingVerification;
 	}>;
-	placements: TreeseedHostingPlacementSummary[];
+	placements: HostingPlacementSummary[];
 	warnings: string[];
 }
 
-export interface TreeseedHostingPlacementSummary {
-	placement: TreeseedServicePlacement;
+export interface HostingPlacementSummary {
+	placement: ServicePlacement;
 	label: string;
 	serviceIds: string[];
 	hostIds: string[];
-	status: TreeseedHostingStatus;
+	status: HostingStatus;
 	advanced: boolean;
 }
 
-export interface TreeseedPersistedHostingLocator {
+export interface PersistedHostingLocator {
 	unitId: string;
 	serviceType: string;
 	hostId: string;
-	environment: TreeseedHostingEnvironment;
+	environment: HostingEnvironment;
 	projectGroupId: string | null;
 	locators: Record<string, string | null>;
 	updatedAt: string;

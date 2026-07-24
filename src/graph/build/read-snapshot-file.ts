@@ -5,10 +5,10 @@ import { toString } from 'mdast-util-to-string';
 import { unified } from 'unified';
 import remarkMdx from 'remark-mdx';
 import remarkParse from 'remark-parse';
-import { parseFrontmatterDocument } from '../../frontmatter.ts';
-import { resolveModelDefinition } from '../../model-registry.ts';
-import { readCanonicalFieldValue } from '../../sdk-fields.ts';
-import type { SdkGraphEdge, SdkGraphNode, SdkModelDefinition, SdkModelRegistry } from '../../sdk-types.ts';
+import { parseFrontmatterDocument } from '../../content/frontmatter.ts';
+import { resolveModelDefinition } from '../../entrypoints/models/model-registry.ts';
+import { readCanonicalFieldValue } from '../../entrypoints/models/sdk-fields.ts';
+import type { SdkGraphEdge, SdkGraphNode, SdkModelDefinition, SdkModelRegistry } from '../../entrypoints/models/sdk-types.ts';
 import {
 	AUTHORED_GRAPH_EDGE_TYPES,
 	computeEdgeId,

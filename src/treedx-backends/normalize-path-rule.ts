@@ -1,12 +1,12 @@
 import path from 'node:path';
-import { TreeDxClient } from '../treedx/client.ts';
-import { TreeDxApiError } from '../treedx/errors.ts';
+import { TreeDxClient } from '../treedx/support/client.ts';
+import { TreeDxApiError } from '../treedx/support/errors.ts';
 import type { TreeDxClientOptions } from '../treedx/types.ts';
-import { ContentStore } from '../content-store.ts';
-import { parseFrontmatterDocument, serializeFrontmatterDocument } from '../frontmatter.ts';
-import { ContentGraphRuntime } from '../graph.ts';
-import { resolveModelDefinition } from '../model-registry.ts';
-import { applyFilters, applySort } from '../sdk-filters.ts';
+import { ContentStore } from '../content/content-store.ts';
+import { parseFrontmatterDocument, serializeFrontmatterDocument } from '../content/frontmatter.ts';
+import { ContentGraphRuntime } from '../treedx/graph/graph.ts';
+import { resolveModelDefinition } from '../entrypoints/models/model-registry.ts';
+import { applyFilters, applySort } from '../entrypoints/models/sdk-filters.ts';
 import {
 	canonicalizeFrontmatter,
 	normalizeFilterFields,
@@ -14,8 +14,8 @@ import {
 	normalizeRecordToCanonicalShape,
 	normalizeSortFields,
 	readCanonicalFieldValue,
-} from '../sdk-fields.ts';
-import { assertExpectedVersion } from '../sdk-version.ts';
+} from '../entrypoints/models/sdk-fields.ts';
+import { assertExpectedVersion } from '../packages/sdk-version.ts';
 import type {
 	SdkContentEntry,
 	SdkContextPackRequest,
@@ -31,10 +31,10 @@ import type {
 	SdkPickResult,
 	SdkSearchRequest,
 	SdkUpdateRequest,
-} from '../sdk-types.ts';
-import { AgentSdkTreeDxOptions, ContentBackend, ResolvedTreeDxOptions, TreeDxContentRepositoryConfigError, TreeDxPortfolioResolverOptions, TreeDxRepositoryCandidate, TreeSeedTreeDxContentPathRule, arrayFromPayload, compactObject, normalizePathPattern, relativeContentDir, repoIdFromRepository, repositoryMatchesHint, stringValue } from './tree-seed-tree-dx-repository-hint.ts';
+} from '../entrypoints/models/sdk-types.ts';
+import { AgentSdkTreeDxOptions, ContentBackend, ResolvedTreeDxOptions, TreeDxContentRepositoryConfigError, TreeDxPortfolioResolverOptions, TreeDxRepositoryCandidate, TreeDxContentPathRule, arrayFromPayload, compactObject, normalizePathPattern, relativeContentDir, repoIdFromRepository, repositoryMatchesHint, stringValue } from './tree-dx-repository-hint.ts';
 
-export function normalizePathRule(input: string | TreeSeedTreeDxContentPathRule | undefined, fallback: TreeSeedTreeDxContentPathRule) {
+export function normalizePathRule(input: string | TreeDxContentPathRule | undefined, fallback: TreeDxContentPathRule) {
 	if (!input) return fallback;
 	if (typeof input === 'string') return { paths: [input] };
 	return input;
@@ -86,7 +86,7 @@ export class TreeDxPortfolioResolver {
 		return this.repositoryCache;
 	}
 
-	async resolveCandidates(rule: TreeSeedTreeDxContentPathRule) {
+	async resolveCandidates(rule: TreeDxContentPathRule) {
 		if (this.options.repoId) {
 			return rule.paths.map((path) => ({
 				repoId: this.options.repoId!,
@@ -107,7 +107,7 @@ export class TreeDxPortfolioResolver {
 		return promise;
 	}
 
-	private async resolveCandidatesUncached(rule: TreeSeedTreeDxContentPathRule) {
+	private async resolveCandidatesUncached(rule: TreeDxContentPathRule) {
 		const repositories = await this.listRepositories();
 		const hints = [...(this.options.repositoryHints ?? []), ...(rule.repositoryHints ?? [])]
 			.filter((hint) => hint.purpose !== 'site_code' && hint.purpose !== 'optional_project');

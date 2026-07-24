@@ -7,27 +7,27 @@ import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 
 import {
-	auditTreeseedGuaranteeJourneys,
+	auditGuaranteeJourneys,
 	assertPathInsideWorkspace,
-	discoverTreeseedGuarantees,
-	exportTreeseedGuaranteesCsv,
-	exportTreeseedGuaranteesJson,
-	exportTreeseedGuaranteesMarkdown,
+	discoverGuarantees,
+	exportGuaranteesCsv,
+	exportGuaranteesJson,
+	exportGuaranteesMarkdown,
 	browserForGuaranteeDevice,
-	createTreeseedGuaranteeStatusReport,
+	createGuaranteeStatusReport,
 	fileExists,
-	loadTreeseedGuaranteeVerifierRegistry,
-	normalizeTreeseedGuaranteeTaxonomy,
-	planTreeseedGuarantees,
-	resolveTreeseedGuaranteeVerifierRefs,
-	runTreeseedGuarantees,
+	loadGuaranteeVerifierRegistry,
+	normalizeGuaranteeTaxonomy,
+	planGuarantees,
+	resolveGuaranteeVerifierRefs,
+	runGuarantees,
 	sceneAuthRoleForGuarantee,
 	sceneDeviceRunsForGuarantee,
-	validateTreeseedVitestVerifierOutput,
-	validateTreeseedGuarantee,
+	validateVitestVerifierOutput,
+	validateGuarantee,
 	validateGuaranteeSceneJourneyContract,
-	writeTreeseedGuaranteesExport,
-	writeTreeseedGuaranteeRunReport,
+	writeGuaranteesExport,
+	writeGuaranteeRunReport,
 } from '../../../src/guarantees/index.ts';
 
 function workspaceFixture(name: string) {
@@ -120,7 +120,7 @@ verifiers:
     kind: strange
 `);
 
-		const registry = discoverTreeseedGuarantees({ workspaceRoot: root, filter: { type: 'Project' } });
+		const registry = discoverGuarantees({ workspaceRoot: root, filter: { type: 'Project' } });
 		expect(registry.ok).toBe(false);
 		expect(registry.counts.selected).toBe(0);
 		expect(registry.diagnostics.map((entry) => entry.code)).toEqual(expect.arrayContaining([
@@ -143,9 +143,9 @@ verifiers:
 			'guarantee_verifiers.invalid_kind',
 		]));
 
-		const loadedRegistry = loadTreeseedGuaranteeVerifierRegistry({ workspaceRoot: root, path: resolve(root, 'packages/admin/guarantees/bad.verifiers.yaml') });
+		const loadedRegistry = loadGuaranteeVerifierRegistry({ workspaceRoot: root, path: resolve(root, 'packages/admin/guarantees/bad.verifiers.yaml') });
 		expect(loadedRegistry.diagnostics.map((entry) => entry.code)).toContain('guarantee_verifiers.invalid_kind');
-		const direct = validateTreeseedGuarantee({ workspaceRoot: root, path: resolve(root, 'packages/admin/guarantees/project/question/active-invalid.guarantee.yaml') });
+		const direct = validateGuarantee({ workspaceRoot: root, path: resolve(root, 'packages/admin/guarantees/project/question/active-invalid.guarantee.yaml') });
 		expect(direct.diagnostics.map((entry) => entry.code)).toContain('guarantee.owner_package_mismatch');
 	});
 
@@ -166,7 +166,7 @@ gates: []
 preconditions: {}
 evidence: {}
 `, 'packages/admin/guarantees/project/question/parser-edge.guarantee.yaml');
-		const invalid = validateTreeseedGuarantee({ workspaceRoot: root, path: resolve(root, 'packages/admin/guarantees/project/question/parser-edge.guarantee.yaml') });
+		const invalid = validateGuarantee({ workspaceRoot: root, path: resolve(root, 'packages/admin/guarantees/project/question/parser-edge.guarantee.yaml') });
 		expect(invalid.diagnostics.map((entry) => entry.code)).toEqual(expect.arrayContaining([
 			'guarantee.unsupported_schema_version',
 			'guarantee.missing_required_field',
@@ -178,28 +178,28 @@ evidence: {}
 
 		mkdirSync(resolve(root, 'packages', 'no-package', 'guarantees', 'project', 'question'), { recursive: true });
 		writeFileSync(resolve(root, 'packages/no-package/guarantees/project/question/fallback.guarantee.yaml'), validGuarantee.replace('ownerPackage: "@treeseed/admin"', 'ownerPackage: "@treeseed/market"'));
-		const fallback = validateTreeseedGuarantee({ workspaceRoot: root, path: resolve(root, 'packages/no-package/guarantees/project/question/fallback.guarantee.yaml') });
+		const fallback = validateGuarantee({ workspaceRoot: root, path: resolve(root, 'packages/no-package/guarantees/project/question/fallback.guarantee.yaml') });
 		expect(fallback.ownerPackage).toBe('@treeseed/market');
 		expect(fallback.diagnostics.map((entry) => entry.code)).not.toContain('guarantee.owner_package_mismatch');
 
 		mkdirSync(resolve(root, 'packages', 'treedx', 'guarantees', 'project', 'question'), { recursive: true });
 		writeFileSync(resolve(root, 'packages/treedx/package.json'), JSON.stringify({ name: '@treeseed/treedx' }));
 		writeFileSync(resolve(root, 'packages/treedx/guarantees/project/question/bad.guarantee.yaml'), validGuarantee.replace('ownerPackage: "@treeseed/admin"', 'ownerPackage: "@treeseed/treedx"'));
-		const treedx = validateTreeseedGuarantee({ workspaceRoot: root, path: resolve(root, 'packages/treedx/guarantees/project/question/bad.guarantee.yaml') });
+		const treedx = validateGuarantee({ workspaceRoot: root, path: resolve(root, 'packages/treedx/guarantees/project/question/bad.guarantee.yaml') });
 		expect(treedx.diagnostics.map((entry) => entry.code)).toContain('guarantee.treedx_product_semantics_forbidden');
 
 		writeFileSync(resolve(root, 'packages/admin/guarantees/missing-owner.verifiers.yaml'), `schemaVersion: treeseed.guarantee-verifiers/v1
 verifiers:
   empty: {}
 `);
-		const registry = loadTreeseedGuaranteeVerifierRegistry({ workspaceRoot: root, path: resolve(root, 'packages/admin/guarantees/missing-owner.verifiers.yaml') });
+		const registry = loadGuaranteeVerifierRegistry({ workspaceRoot: root, path: resolve(root, 'packages/admin/guarantees/missing-owner.verifiers.yaml') });
 		expect(registry.diagnostics.map((entry) => entry.code)).toEqual(expect.arrayContaining([
 			'guarantee_verifiers.missing_owner_package',
 			'guarantee_verifiers.missing_kind',
 		]));
 
 		writeGuarantee(root, validGuarantee);
-		const filtered = discoverTreeseedGuarantees({
+		const filtered = discoverGuarantees({
 			workspaceRoot: root,
 			filter: {
 				subtype: 'missing',
@@ -215,10 +215,10 @@ verifiers:
 			.replace('journeyIndex: 38', 'journeyIndex: 999')
 			.replace('ownerPackage: "@treeseed/admin"', 'ownerPackage: "@treeseed/api"')
 			.replace(/scene:\n  required: true\n  manifest: \.\/scenes\/ask-question\.scene\.yaml\n/u, 'scene:\n  required: false\n'), 'packages/api/guarantees/api/endpoints/auth-and-sessions.guarantee.yaml');
-		const ownerFiltered = planTreeseedGuarantees({ workspaceRoot: root, filter: { ownerPackages: ['@treeseed/admin', '@treeseed/api'] }, includeDependencies: false });
+		const ownerFiltered = planGuarantees({ workspaceRoot: root, filter: { ownerPackages: ['@treeseed/admin', '@treeseed/api'] }, includeDependencies: false });
 		const selectedOwners = ownerFiltered.entries.filter((entry) => entry.selected).map((entry) => entry.ownerPackage);
 		expect(selectedOwners).toEqual(expect.arrayContaining(['@treeseed/admin', '@treeseed/api']));
-		const sceneFiltered = planTreeseedGuarantees({ workspaceRoot: root, filter: { sceneBacked: true }, includeDependencies: false });
+		const sceneFiltered = planGuarantees({ workspaceRoot: root, filter: { sceneBacked: true }, includeDependencies: false });
 		expect(sceneFiltered.entries.filter((entry) => entry.selected).map((entry) => entry.id)).not.toContain('guarantee.api.endpoints.auth-and-sessions.999');
 	});
 
@@ -251,7 +251,7 @@ verifiers:
 ownerPackage: "@treeseed/admin"
 `);
 
-		const discovered = discoverTreeseedGuarantees({ workspaceRoot: root });
+		const discovered = discoverGuarantees({ workspaceRoot: root });
 		const manifest = discovered.guarantees.find((entry) => entry.manifest?.id === 'guarantee.project.question.minimal.101')?.manifest;
 		expect(manifest).toMatchObject({
 			dependencies: { journeys: [], guarantees: [] },
@@ -272,22 +272,22 @@ ownerPackage: "@treeseed/admin"
 			{ ids: ['guarantee.missing'] },
 		];
 		for (const filter of filters) {
-			const report = discoverTreeseedGuarantees({ workspaceRoot: root, filter });
+			const report = discoverGuarantees({ workspaceRoot: root, filter });
 			expect(report.counts.selected).toBe(filter.journeyIndexes?.length === 0 ? 1 : 0);
 		}
-		expect(discoverTreeseedGuarantees({
+		expect(discoverGuarantees({
 			workspaceRoot: root,
 			filter: { journeyIndexes: [101] },
 		}).counts.selected).toBe(0);
-		expect(exportTreeseedGuaranteesCsv({ guarantees: discovered.guarantees })).toContain('guarantee.project.question.minimal.101');
-		expect(exportTreeseedGuaranteesJson({ registry: discovered }).guarantees[0]?.sceneManifest).toBeUndefined();
-		expect(exportTreeseedGuaranteesMarkdown({ registry: discovered })).toContain('Minimal Contract');
+		expect(exportGuaranteesCsv({ guarantees: discovered.guarantees })).toContain('guarantee.project.question.minimal.101');
+		expect(exportGuaranteesJson({ registry: discovered }).guarantees[0]?.sceneManifest).toBeUndefined();
+		expect(exportGuaranteesMarkdown({ registry: discovered })).toContain('Minimal Contract');
 
-		const noRegistries = resolveTreeseedGuaranteeVerifierRefs({
+		const noRegistries = resolveGuaranteeVerifierRefs({
 			refs: [], verifierRegistries: [], status: 'planned', sourcePath: resolve(root, 'minimal.guarantee.yaml'),
 		});
 		expect(noRegistries).toMatchObject({ ok: true, resolutions: [], diagnostics: [] });
-		const noMap = loadTreeseedGuaranteeVerifierRegistry({ workspaceRoot: root, path: resolve(root, 'packages/admin/guarantees/no-map.verifiers.yaml') });
+		const noMap = loadGuaranteeVerifierRegistry({ workspaceRoot: root, path: resolve(root, 'packages/admin/guarantees/no-map.verifiers.yaml') });
 		expect(noMap.registry?.verifiers).toEqual({});
 	});
 
@@ -303,11 +303,11 @@ it('discovers root guarantees while excluding verifier, dependency, and malforme
 		writeFileSync(resolve(root, 'packages/bad-package/guarantees/project/question/bad-package.guarantee.yaml'), validGuarantee);
 		writeFileSync(resolve(root, 'packages/admin/guarantees/empty.verifiers.yaml'), '');
 
-		const report = discoverTreeseedGuarantees({ workspaceRoot: root });
+		const report = discoverGuarantees({ workspaceRoot: root });
 		expect(report.guarantees.some((entry) => entry.ownerPackage === '@treeseed/market')).toBe(true);
 		expect(report.guarantees.some((entry) => entry.sourcePath.includes('node_modules'))).toBe(false);
 		expect(report.guarantees.some((entry) => entry.sourcePath.includes('/guarantees/verifiers/'))).toBe(true);
-		const emptyRegistry = loadTreeseedGuaranteeVerifierRegistry({
+		const emptyRegistry = loadGuaranteeVerifierRegistry({
 			workspaceRoot: root,
 			path: resolve(root, 'packages/admin/guarantees/empty.verifiers.yaml'),
 		});

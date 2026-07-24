@@ -1,14 +1,14 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
-import { serializeFrontmatterDocument, parseFrontmatterDocument } from '../../frontmatter.ts';
+import { serializeFrontmatterDocument, parseFrontmatterDocument } from '../../content/frontmatter.ts';
 import {
 	applyProjectLaunchHostBindingConfig,
 	auditProjectLaunchHostBindingConfig,
 	type ApplyProjectLaunchHostBindingConfigOptions,
-} from '../services/template-host-bindings.ts';
+} from '../services/hosting/deployment/template-host-bindings.ts';
 import { CONTENT_COLLECTION_SET, CONTENT_DEFAULTS, CONTENT_RELATION_POLICIES, DECISION_TYPE_VALUES, NormalizedPlatformContentInput, PlatformRepositoryClaim, PlatformRepositoryClaimInput, PlatformRepositoryDescriptor, PlatformRepositoryVerificationResult, execFileAsync } from './exec-file-async.ts';
 
 export class PlatformRepositoryVerificationError extends Error {
@@ -235,7 +235,7 @@ export function safeContentPath(repoPath: string, collection: string, slug: stri
 		: ['mdx', 'md'].map((ext) => resolve(root, `${safeSlug}.${ext}`));
 	const target = candidates.find((candidate) => existsSync(candidate)) ?? candidates[0]!;
 	const relativeTarget = relative(root, target);
-	if (relativeTarget.startsWith('..') || relativeTarget.includes('..') || relativeTarget.startsWith('/')) {
+	if (relativeTarget === '..' || relativeTarget.startsWith(`..${sep}`) || isAbsolute(relativeTarget)) {
 		throw new Error('Unsafe content path.');
 	}
 	return target;
@@ -243,7 +243,7 @@ export function safeContentPath(repoPath: string, collection: string, slug: stri
 
 export function assertAllowedPath(repoPath: string, targetPath: string) {
 	const relativePath = relative(repoPath, targetPath);
-	if (relativePath.startsWith('..') || relativePath.includes('..') || relativePath.startsWith('/')) {
+	if (relativePath === '..' || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) {
 		throw new Error('Repository operation attempted to write outside the repository workspace.');
 	}
 	if (!relativePath.startsWith('src/content/')) {
@@ -259,7 +259,7 @@ export function safeRepositoryRelativePath(repoPath: string, rawPath: unknown) {
 	}
 	const target = resolve(repoPath, value);
 	const relativePath = relative(repoPath, target);
-	if (relativePath.startsWith('..') || relativePath.includes('..') || relativePath.startsWith('/')) {
+	if (relativePath === '..' || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) {
 		throw new Error(`Repository initialization scaffold path is outside the repository: ${value}`);
 	}
 	return { target, relativePath };

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { readTreeseedTestSource, resolveTreeseedTestRoot } from '../../support/workspace-test-root.ts';
+import { readTestSource, resolveTestRoot } from '../../support/workspace-test-root.ts';
 
-const testRoot = resolveTreeseedTestRoot(import.meta.url);
+const testRoot = resolveTestRoot(import.meta.url);
 
 function source(relativePath: string) {
-	const result = readTreeseedTestSource(testRoot, relativePath);
+	const result = readTestSource(testRoot, relativePath);
 	expect(result, `${relativePath} exists`).not.toBeNull();
 	return result ?? '';
 }

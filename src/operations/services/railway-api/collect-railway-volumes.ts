@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { IacClient } from 'railway';
-import { connectRailwayServiceSourceWithCli, runRailwayCliJson } from '../railway-cli.ts';
-import { resolveTreeseedRailwayApiToken } from '../../../service-credentials.ts';
+import { connectRailwayServiceSourceWithCli, runRailwayCliJson } from '../hosting/railway/railway-cli.ts';
+import { resolveRailwayCredential } from '../../../configuration/service-credentials.ts';
 import { RailwayVolumeSummary, RailwayWorkspaceSummary, acquireRailwayReadSlot, extendRailwayReadCooldown, isRetryableRailwayStatus, isTransientRailwayRequestError, markRailwayTransientError, normalizeRailwayErrorMessage, parseRetryAfterMs, railwayConnectionLabel, resolveRailwayApiToken, resolveRailwayApiUrl, resolveRailwayWorkspace } from './default-railway-api-url.ts';
 import { mergeRailwayVolumeInstances, normalizeRailwayVolume, normalizeWorkspace } from './normalize-workspace.ts';
 
@@ -153,10 +153,10 @@ export async function railwayGraphqlRequest<TData = unknown>({
 				throw error;
 			}
 			attempt += 1;
-			const retryAfterMs = error && typeof error === 'object' && typeof (error as { treeseedRetryAfterMs?: unknown }).treeseedRetryAfterMs === 'number'
-				? Math.max(0, Number((error as { treeseedRetryAfterMs: number }).treeseedRetryAfterMs))
+			const retryAfterMs = error && typeof error === 'object' && typeof (error as { RetryAfterMs?: unknown }).RetryAfterMs === 'number'
+				? Math.max(0, Number((error as { RetryAfterMs: number }).RetryAfterMs))
 				: null;
-			const rateLimited = error && typeof error === 'object' && (error as { treeseedRateLimited?: boolean }).treeseedRateLimited === true;
+			const rateLimited = error && typeof error === 'object' && (error as { RateLimited?: boolean }).RateLimited === true;
 			const backoffMs = retryAfterMs !== null
 				? Math.min(retryAfterMs, 180_000)
 				: rateLimited

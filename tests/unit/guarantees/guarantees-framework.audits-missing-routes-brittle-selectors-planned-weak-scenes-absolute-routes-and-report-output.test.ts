@@ -7,27 +7,27 @@ import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 
 import {
-	auditTreeseedGuaranteeJourneys,
+	auditGuaranteeJourneys,
 	assertPathInsideWorkspace,
-	discoverTreeseedGuarantees,
-	exportTreeseedGuaranteesCsv,
-	exportTreeseedGuaranteesJson,
-	exportTreeseedGuaranteesMarkdown,
+	discoverGuarantees,
+	exportGuaranteesCsv,
+	exportGuaranteesJson,
+	exportGuaranteesMarkdown,
 	browserForGuaranteeDevice,
-	createTreeseedGuaranteeStatusReport,
+	createGuaranteeStatusReport,
 	fileExists,
-	loadTreeseedGuaranteeVerifierRegistry,
-	normalizeTreeseedGuaranteeTaxonomy,
-	planTreeseedGuarantees,
-	resolveTreeseedGuaranteeVerifierRefs,
-	runTreeseedGuarantees,
+	loadGuaranteeVerifierRegistry,
+	normalizeGuaranteeTaxonomy,
+	planGuarantees,
+	resolveGuaranteeVerifierRefs,
+	runGuarantees,
 	sceneAuthRoleForGuarantee,
 	sceneDeviceRunsForGuarantee,
-	validateTreeseedVitestVerifierOutput,
-	validateTreeseedGuarantee,
+	validateVitestVerifierOutput,
+	validateGuarantee,
 	validateGuaranteeSceneJourneyContract,
-	writeTreeseedGuaranteesExport,
-	writeTreeseedGuaranteeRunReport,
+	writeGuaranteesExport,
+	writeGuaranteeRunReport,
 } from '../../../src/guarantees/index.ts';
 
 function workspaceFixture(name: string) {
@@ -170,7 +170,7 @@ workflow:
       goto: /app/good
 `);
 
-		const audit = auditTreeseedGuaranteeJourneys({
+		const audit = auditGuaranteeJourneys({
 			workspaceRoot: root,
 			writeReport: 'generated/journey-audit.json',
 			now: new Date('2026-01-01T00:00:00.000Z'),
@@ -190,7 +190,7 @@ it('audits absent scene manifests and empty route actions as repairable planned 
 		const root = workspaceFixture('journey-audit-missing-manifest');
 		writeGuarantee(root, validGuarantee
 			.replace('manifest: ./scenes/ask-question.scene.yaml', 'manifest: ./scenes/does-not-exist.scene.yaml\n  entryRoute: ""'));
-		const audit = auditTreeseedGuaranteeJourneys({ workspaceRoot: root });
+		const audit = auditGuaranteeJourneys({ workspaceRoot: root });
 		expect(audit.ok).toBe(false);
 		expect(audit.items[0]).toMatchObject({
 			classification: 'planned-product-contract',
@@ -218,7 +218,7 @@ workflow:
         url: "?tab=one"
     expect: {}
 `);
-		const invalidWorkflow = auditTreeseedGuaranteeJourneys({ workspaceRoot: root });
+		const invalidWorkflow = auditGuaranteeJourneys({ workspaceRoot: root });
 		expect(invalidWorkflow.items.find((entry) => entry.guaranteeId.endsWith('invalid-workflow.102'))).toMatchObject({
 			classification: 'missing-product-route',
 		});
@@ -265,7 +265,7 @@ verifiers:
 		writeGuarantee(root, validGuarantee
 			.replace('status: planned', 'surface: admin-ui\nstatus: planned')
 			.replace('dependencies:\n  journeys: []\n  guarantees: []', `dependencies:\n  journeys: []\n  guarantees: []\ndependsOnGuarantees:\n  - ownerPackage: "@treeseed/api"\n    ref: api.endpoints.auth-and-sessions`));
-		const report = discoverTreeseedGuarantees({ workspaceRoot: root });
+		const report = discoverGuarantees({ workspaceRoot: root });
 		expect(report.ok).toBe(true);
 
 		writeGuarantee(root, validGuarantee
@@ -274,7 +274,7 @@ verifiers:
 			.replace('status: planned', 'surface: admin-ui\nstatus: planned')
 			.replace('dependencies:\n  journeys: []\n  guarantees: []', `dependencies:\n  journeys: []\n  guarantees: []\ndependsOnGuarantees:\n  - ownerPackage: "@treeseed/api"\n    ref: api.endpoints.missing`),
 			'packages/admin/guarantees/project/question/missing-api.guarantee.yaml');
-		const missing = discoverTreeseedGuarantees({ workspaceRoot: root });
+		const missing = discoverGuarantees({ workspaceRoot: root });
 		expect(missing.ok).toBe(false);
 		expect(missing.diagnostics.map((entry) => entry.code)).toContain('guarantee.missing_depends_on_guarantee');
 	});
@@ -282,16 +282,16 @@ verifiers:
 it('exports canonical lowercase CSV values', () => {
 		const root = workspaceFixture('csv');
 		writeGuarantee(root, validGuarantee);
-		const report = discoverTreeseedGuarantees({ workspaceRoot: root });
-		const csv = exportTreeseedGuaranteesCsv({ guarantees: report.guarantees });
+		const report = discoverGuarantees({ workspaceRoot: root });
+		const csv = exportGuaranteesCsv({ guarantees: report.guarantees });
 		expect(csv).toContain('guarantee.project.question.ask-question.038');
 		expect(csv).toContain(',project,question,');
 		expect(csv).toContain('"CSV commas, quotes, and newlines should export safely."');
-		expect(exportTreeseedGuaranteesJson({ registry: report }).guarantees[0]?.id).toBe('guarantee.project.question.ask-question.038');
-		expect(exportTreeseedGuaranteesMarkdown({ registry: report })).toContain('| guarantee.project.question.ask-question.038 |');
-		const jsonExport = writeTreeseedGuaranteesExport({ workspaceRoot: root, format: 'json', output: 'generated/guarantees.json' });
-		const markdownExport = writeTreeseedGuaranteesExport({ workspaceRoot: root, format: 'markdown', output: 'generated/guarantees.md' });
-		const csvExport = writeTreeseedGuaranteesExport({ workspaceRoot: root, format: 'csv', output: 'generated/guarantees.csv' });
+		expect(exportGuaranteesJson({ registry: report }).guarantees[0]?.id).toBe('guarantee.project.question.ask-question.038');
+		expect(exportGuaranteesMarkdown({ registry: report })).toContain('| guarantee.project.question.ask-question.038 |');
+		const jsonExport = writeGuaranteesExport({ workspaceRoot: root, format: 'json', output: 'generated/guarantees.json' });
+		const markdownExport = writeGuaranteesExport({ workspaceRoot: root, format: 'markdown', output: 'generated/guarantees.md' });
+		const csvExport = writeGuaranteesExport({ workspaceRoot: root, format: 'csv', output: 'generated/guarantees.csv' });
 		expect(jsonExport.ok).toBe(true);
 		expect(markdownExport.ok).toBe(true);
 		expect(csvExport.ok).toBe(true);
@@ -299,14 +299,14 @@ it('exports canonical lowercase CSV values', () => {
 	});
 
 it('normalizes taxonomy suggestions', () => {
-		expect(normalizeTreeseedGuaranteeTaxonomy('MarketplaceSeller')).toBe('marketplace-seller');
-		expect(normalizeTreeseedGuaranteeTaxonomy('TreeDX Routing')).toBe('treedx-routing');
+		expect(normalizeGuaranteeTaxonomy('MarketplaceSeller')).toBe('marketplace-seller');
+		expect(normalizeGuaranteeTaxonomy('TreeDX Routing')).toBe('treedx-routing');
 	});
 
 it('validates guarantee surfaces', () => {
 		const root = workspaceFixture('surface');
 		writeGuarantee(root, validGuarantee.replace('summary: Ask a project question.', 'surface: AdminUI\nsummary: Ask a project question.'));
-		const report = discoverTreeseedGuarantees({ workspaceRoot: root });
+		const report = discoverGuarantees({ workspaceRoot: root });
 		expect(report.ok).toBe(false);
 		expect(report.diagnostics.map((entry) => entry.code)).toContain('guarantee.invalid_surface');
 	});

@@ -4,21 +4,21 @@ import type {
 	SdkMessageEntity,
 	SdkRunEntity,
 	SdkSubscriptionEntity,
-	TreeseedAgentRunMeta,
-	TreeseedAgentRunPayload,
-	TreeseedContactSubmissionMeta,
-	TreeseedContactSubmissionPayload,
-	TreeseedCursorMeta,
-	TreeseedCursorPayload,
-	TreeseedLeaseMeta,
-	TreeseedLeasePayload,
-	TreeseedMessageMeta,
-	TreeseedMessagePayload,
-	TreeseedRecordEnvelope,
-	TreeseedRuntimeRecordType,
-	TreeseedSubscriptionMeta,
-	TreeseedSubscriptionPayload,
-} from '../sdk-types.ts';
+	AgentRunMeta,
+	AgentRunPayload,
+	ContactSubmissionMeta,
+	ContactSubmissionPayload,
+	CursorMeta,
+	CursorPayload,
+	LeaseMeta,
+	LeasePayload,
+	MessageMeta,
+	MessagePayload,
+	RecordEnvelope,
+	RuntimeRecordType,
+	SubscriptionMeta,
+	SubscriptionPayload,
+} from '../entrypoints/models/sdk-types.ts';
 
 export const TRESEED_ENVELOPE_SCHEMA_VERSION = 1;
 
@@ -96,8 +96,8 @@ export function createSubscriptionEnvelope(input: {
 	source?: string;
 	consentAt?: string | null;
 	ipHash?: string;
-	meta?: TreeseedSubscriptionMeta;
-}): TreeseedRecordEnvelope<TreeseedSubscriptionPayload, TreeseedSubscriptionMeta> {
+	meta?: SubscriptionMeta;
+}): RecordEnvelope<SubscriptionPayload, SubscriptionMeta> {
 	return {
 		recordType: 'subscription',
 		schemaVersion: TRESEED_ENVELOPE_SCHEMA_VERSION,
@@ -114,7 +114,7 @@ export function createSubscriptionEnvelope(input: {
 }
 
 export function subscriptionEntityFromEnvelope(row: RuntimeRecordRow): SdkSubscriptionEntity {
-	const payload = parseJsonObject<TreeseedSubscriptionPayload>(row.payload_json, {
+	const payload = parseJsonObject<SubscriptionPayload>(row.payload_json, {
 		email: String(row.record_key ?? row.lookup_key ?? ''),
 		name: null,
 		source: 'sdk',
@@ -146,8 +146,8 @@ export function createContactSubmissionEnvelope(input: {
 	message: string;
 	userAgent: string;
 	ipHash: string;
-	meta?: TreeseedContactSubmissionMeta;
-}): TreeseedRecordEnvelope<TreeseedContactSubmissionPayload, TreeseedContactSubmissionMeta> {
+	meta?: ContactSubmissionMeta;
+}): RecordEnvelope<ContactSubmissionPayload, ContactSubmissionMeta> {
 	return {
 		recordType: 'contact_submission',
 		schemaVersion: TRESEED_ENVELOPE_SCHEMA_VERSION,
@@ -169,8 +169,8 @@ export function createContactSubmissionEnvelope(input: {
 export function createMessageEnvelope(input: {
 	type: string;
 	payload: Record<string, unknown>;
-	meta?: TreeseedMessageMeta;
-}): TreeseedRecordEnvelope<TreeseedMessagePayload, TreeseedMessageMeta> {
+	meta?: MessageMeta;
+}): RecordEnvelope<MessagePayload, MessageMeta> {
 	return {
 		recordType: 'message',
 		schemaVersion: TRESEED_ENVELOPE_SCHEMA_VERSION,
@@ -181,7 +181,7 @@ export function createMessageEnvelope(input: {
 }
 
 export function messageEntityFromEnvelope(row: MessageQueueRow): SdkMessageEntity {
-	const payload = parseJsonObject<TreeseedMessagePayload>(row.payload_json, { body: {} });
+	const payload = parseJsonObject<MessagePayload>(row.payload_json, { body: {} });
 	return {
 		id: Number(row.id ?? 0),
 		recordType: 'message',
@@ -223,7 +223,7 @@ export function createRunEnvelope(input: {
 	commitSha?: string | null;
 	changedPaths?: string[];
 	finishedAt?: string | null;
-}): TreeseedRecordEnvelope<TreeseedAgentRunPayload, TreeseedAgentRunMeta> {
+}): RecordEnvelope<AgentRunPayload, AgentRunMeta> {
 	return {
 		recordType: 'agent_run',
 		schemaVersion: TRESEED_ENVELOPE_SCHEMA_VERSION,
@@ -252,7 +252,7 @@ export function createRunEnvelope(input: {
 }
 
 export function runEntityFromEnvelope(row: RuntimeRecordRow): SdkRunEntity {
-	const payload = parseJsonObject<TreeseedAgentRunPayload>(row.payload_json, {
+	const payload = parseJsonObject<AgentRunPayload>(row.payload_json, {
 		triggerSource: '',
 		selectedItemKey: null,
 		selectedMessageId: null,
@@ -263,7 +263,7 @@ export function runEntityFromEnvelope(row: RuntimeRecordRow): SdkRunEntity {
 		changedPaths: [],
 		finishedAt: null,
 	});
-	const meta = parseJsonObject<TreeseedAgentRunMeta>(row.meta_json, {
+	const meta = parseJsonObject<AgentRunMeta>(row.meta_json, {
 		runId: String(row.record_key ?? ''),
 		agentSlug: String(row.lookup_key ?? ''),
 	});
@@ -295,8 +295,8 @@ export function createCursorEnvelope(input: {
 	agentSlug: string;
 	cursorKey: string;
 	cursorValue: string;
-	meta?: TreeseedCursorMeta;
-}): TreeseedRecordEnvelope<TreeseedCursorPayload, TreeseedCursorMeta> {
+	meta?: CursorMeta;
+}): RecordEnvelope<CursorPayload, CursorMeta> {
 	return {
 		recordType: 'agent_cursor',
 		schemaVersion: TRESEED_ENVELOPE_SCHEMA_VERSION,
@@ -307,7 +307,7 @@ export function createCursorEnvelope(input: {
 }
 
 export function cursorEntityFromEnvelope(row: CursorStateRow): SdkCursorEntity {
-	const payload = parseJsonObject<TreeseedCursorPayload>(row.payload_json, { cursorValue: '' });
+	const payload = parseJsonObject<CursorPayload>(row.payload_json, { cursorValue: '' });
 	return {
 		recordType: 'agent_cursor',
 		schemaVersion: Number(row.schema_version ?? TRESEED_ENVELOPE_SCHEMA_VERSION),
@@ -320,8 +320,8 @@ export function cursorEntityFromEnvelope(row: CursorStateRow): SdkCursorEntity {
 
 export function createLeaseEnvelope(input: {
 	token: string;
-	meta?: TreeseedLeaseMeta;
-}): TreeseedRecordEnvelope<TreeseedLeasePayload, TreeseedLeaseMeta> {
+	meta?: LeaseMeta;
+}): RecordEnvelope<LeasePayload, LeaseMeta> {
 	return {
 		recordType: 'content_lease',
 		schemaVersion: TRESEED_ENVELOPE_SCHEMA_VERSION,
@@ -332,7 +332,7 @@ export function createLeaseEnvelope(input: {
 }
 
 export function leaseEntityFromEnvelope(row: LeaseStateRow): SdkLeaseEntity {
-	const payload = parseJsonObject<TreeseedLeasePayload>(row.payload_json, { token: '' });
+	const payload = parseJsonObject<LeasePayload>(row.payload_json, { token: '' });
 	return {
 		recordType: 'content_lease',
 		schemaVersion: Number(row.schema_version ?? TRESEED_ENVELOPE_SCHEMA_VERSION),

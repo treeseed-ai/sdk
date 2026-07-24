@@ -7,27 +7,27 @@ import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 
 import {
-	auditTreeseedGuaranteeJourneys,
+	auditGuaranteeJourneys,
 	assertPathInsideWorkspace,
-	discoverTreeseedGuarantees,
-	exportTreeseedGuaranteesCsv,
-	exportTreeseedGuaranteesJson,
-	exportTreeseedGuaranteesMarkdown,
+	discoverGuarantees,
+	exportGuaranteesCsv,
+	exportGuaranteesJson,
+	exportGuaranteesMarkdown,
 	browserForGuaranteeDevice,
-	createTreeseedGuaranteeStatusReport,
+	createGuaranteeStatusReport,
 	fileExists,
-	loadTreeseedGuaranteeVerifierRegistry,
-	normalizeTreeseedGuaranteeTaxonomy,
-	planTreeseedGuarantees,
-	resolveTreeseedGuaranteeVerifierRefs,
-	runTreeseedGuarantees,
+	loadGuaranteeVerifierRegistry,
+	normalizeGuaranteeTaxonomy,
+	planGuarantees,
+	resolveGuaranteeVerifierRefs,
+	runGuarantees,
 	sceneAuthRoleForGuarantee,
 	sceneDeviceRunsForGuarantee,
-	validateTreeseedVitestVerifierOutput,
-	validateTreeseedGuarantee,
+	validateVitestVerifierOutput,
+	validateGuarantee,
 	validateGuaranteeSceneJourneyContract,
-	writeTreeseedGuaranteesExport,
-	writeTreeseedGuaranteeRunReport,
+	writeGuaranteesExport,
+	writeGuaranteeRunReport,
 } from '../../../src/guarantees/index.ts';
 
 function workspaceFixture(name: string) {
@@ -169,7 +169,7 @@ it('validates lowercase taxonomy and planned placeholder verifiers', () => {
 		const root = workspaceFixture('valid');
 		writeGuarantee(root, validGuarantee);
 		writeFileSync(resolve(root, 'packages/admin/guarantees/project/question/scenes/ask-question.scene.yaml'), 'schemaVersion: treeseed.scene/v1\nid: fixture\n');
-		const report = discoverTreeseedGuarantees({ workspaceRoot: root });
+		const report = discoverGuarantees({ workspaceRoot: root });
 		expect(report.ok).toBe(true);
 		expect(report.counts.valid).toBe(1);
 	});
@@ -265,7 +265,7 @@ verifiers:
     kind: nodeScript
     command: scripts/check.ts
 `);
-		const report = discoverTreeseedGuarantees({ workspaceRoot: root });
+		const report = discoverGuarantees({ workspaceRoot: root });
 		expect(report.ok).toBe(false);
 		expect(report.diagnostics.map((entry) => entry.code)).toEqual(expect.arrayContaining([
 			'guarantee.missing_dependency',
@@ -295,7 +295,7 @@ verifiers:
 it('rejects mixed-case taxonomy and path mismatches', () => {
 		const root = workspaceFixture('taxonomy');
 		writeGuarantee(root, validGuarantee.replace('type: project', 'type: Project'));
-		const report = discoverTreeseedGuarantees({ workspaceRoot: root });
+		const report = discoverGuarantees({ workspaceRoot: root });
 		expect(report.ok).toBe(false);
 		expect(report.diagnostics.map((entry) => entry.code)).toContain('guarantee.invalid_type');
 		expect(report.diagnostics.map((entry) => entry.code)).toContain('guarantee.type_path_mismatch');

@@ -1,37 +1,37 @@
 import net from 'node:net';
 import tls from 'node:tls';
 import {
-	getTreeseedEnvironmentSuggestedValues,
-	type TreeseedEnvironmentScope,
-	validateTreeseedEnvironmentValues,
-} from '../../../platform/environment.ts';
+	getEnvironmentSuggestedValues,
+	type EnvironmentScope,
+	validateEnvironmentValues,
+} from '../../../platform/configuration/environment.ts';
 import {
-	collectTreeseedConfigSeedValues,
-	collectTreeseedEnvironmentContext,
-	checkTreeseedProviderConnections,
-} from '../config-runtime.ts';
+	collectConfigSeedValues,
+	collectEnvironmentContext,
+	checkProviderConnections,
+} from '../configuration/config-runtime.ts';
 import {
 	buildProvisioningSummary,
 	createBranchPreviewDeployTarget,
 	createPersistentDeployTarget,
 	loadDeployState,
-} from '../deploy.ts';
+} from '../hosting/deployment/deploy.ts';
 import {
 	currentManagedBranch,
 	PRODUCTION_BRANCH,
 	STAGING_BRANCH,
-} from '../git-workflow.ts';
-import { loadTreeseedPlatformConfig } from '../../../platform/config.ts';
+} from '../operations/git-workflow.ts';
+import { loadPlatformConfig } from '../../../platform/configuration/config.ts';
 import {
-	collectTreeseedReconcileStatus,
-	reconcileTreeseedTarget,
-	type TreeseedRunnableBootstrapSystem,
+	collectReconcileStatus,
+	reconcileTarget,
+	type RunnableBootstrapSystem,
 } from '../../../reconcile/index.ts';
-import type { TreeseedReconcileTarget } from '../../../reconcile/contracts.ts';
-import { HOST_GROUPS, TreeseedHostingAuditCheck, TreeseedHostingAuditHostKind, configCheck, firstValue } from './treeseed-hosting-audit-environment.ts';
+import type { ReconcileTarget } from '../../../reconcile/support/contracts/contracts.ts';
+import { HOST_GROUPS, HostingAuditCheck, HostingAuditHostKind, configCheck, firstValue } from './hosting-audit-environment.ts';
 
 export function requiredKeyCheck(
-	checks: TreeseedHostingAuditCheck[],
+	checks: HostingAuditCheck[],
 	values: Record<string, string | undefined>,
 	{
 		id,
@@ -42,7 +42,7 @@ export function requiredKeyCheck(
 		remediation,
 	}: {
 		id: string;
-		hostType: TreeseedHostingAuditHostKind;
+		hostType: HostingAuditHostKind;
 		provider: string;
 		keys: string[];
 		label: string;
@@ -63,9 +63,9 @@ export function requiredKeyCheck(
 }
 
 export function appendManualConfigChecks(
-	checks: TreeseedHostingAuditCheck[],
+	checks: HostingAuditCheck[],
 	values: Record<string, string | undefined>,
-	hostKinds: TreeseedHostingAuditHostKind[],
+	hostKinds: HostingAuditHostKind[],
 ) {
 	if (hostKinds.includes('repository')) {
 		requiredKeyCheck(checks, values, {
@@ -138,15 +138,15 @@ export function appendRegistryConfigChecks({
 	values,
 	hostKinds,
 }: {
-	checks: TreeseedHostingAuditCheck[];
+	checks: HostingAuditCheck[];
 	tenantRoot: string;
-	scope: TreeseedEnvironmentScope;
+	scope: EnvironmentScope;
 	values: Record<string, string | undefined>;
-	hostKinds: TreeseedHostingAuditHostKind[];
+	hostKinds: HostingAuditHostKind[];
 }) {
-	const registry = collectTreeseedEnvironmentContext(tenantRoot);
+	const registry = collectEnvironmentContext(tenantRoot);
 	const selectedGroups = new Set(hostKinds.flatMap((kind) => [...HOST_GROUPS[kind]]));
-	const validation = validateTreeseedEnvironmentValues({
+	const validation = validateEnvironmentValues({
 		values,
 		scope,
 		purpose: 'config',
@@ -181,14 +181,14 @@ export function appendRegistryConfigChecks({
 	}
 }
 
-export function providerConnectionChecks(report: Awaited<ReturnType<typeof checkTreeseedProviderConnections>>, hostKinds: TreeseedHostingAuditHostKind[]) {
+export function providerConnectionChecks(report: Awaited<ReturnType<typeof checkProviderConnections>>, hostKinds: HostingAuditHostKind[]) {
 	const allowedProviders = new Set<string>();
 	if (hostKinds.includes('repository')) allowedProviders.add('github');
 	if (hostKinds.includes('web')) allowedProviders.add('cloudflare');
 	return report.checks
 		.filter((check) => allowedProviders.has(check.provider))
-		.map((check): TreeseedHostingAuditCheck => {
-				const hostType: TreeseedHostingAuditHostKind =
+		.map((check): HostingAuditCheck => {
+				const hostType: HostingAuditHostKind =
 					check.provider === 'github' ? 'repository' : 'web';
 			return {
 				id: `identity.${check.provider}`,
@@ -205,8 +205,8 @@ export function providerConnectionChecks(report: Awaited<ReturnType<typeof check
 		});
 }
 
-export function reconcileSystemsForHostKinds(hostKinds: TreeseedHostingAuditHostKind[]) {
-	const systems = new Set<TreeseedRunnableBootstrapSystem>();
+export function reconcileSystemsForHostKinds(hostKinds: HostingAuditHostKind[]) {
+	const systems = new Set<RunnableBootstrapSystem>();
 	if (hostKinds.includes('repository')) systems.add('github');
 	if (hostKinds.includes('web')) {
 		systems.add('data');
@@ -215,10 +215,10 @@ export function reconcileSystemsForHostKinds(hostKinds: TreeseedHostingAuditHost
 	return [...systems];
 }
 
-export function reconcileStatusChecks(status: Awaited<ReturnType<typeof collectTreeseedReconcileStatus>>, repairedIds = new Set<string>()) {
-	const checks: TreeseedHostingAuditCheck[] = [];
+export function reconcileStatusChecks(status: Awaited<ReturnType<typeof collectReconcileStatus>>, repairedIds = new Set<string>()) {
+	const checks: HostingAuditCheck[] = [];
 	for (const unit of status.units) {
-			const hostType: TreeseedHostingAuditHostKind =
+			const hostType: HostingAuditHostKind =
 				unit.provider === 'github'
 					? 'repository'
 					: 'web';

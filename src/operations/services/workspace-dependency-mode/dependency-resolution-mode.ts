@@ -1,8 +1,8 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { runTreeseedGit } from '../git-runner.ts';
-import { workspacePackages, workspaceRoot } from '../workspace-tools.ts';
+import { runRepositoryGit } from '../operations/git-runner.ts';
+import { workspacePackages, workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
 import { packageBinEntries } from './collect-package-lock-consistency-issues.ts';
 
 export type DependencyResolutionMode = 'local-workspace' | 'git-dev' | 'stable-registry';
@@ -113,7 +113,7 @@ export function writeMetadata(root: string, links: WorkspaceLink[]) {
 }
 
 export function gitInfoExcludePath(repoPath: string) {
-	const result = runTreeseedGit(['rev-parse', '--git-common-dir'], {
+	const result = runRepositoryGit(['rev-parse', '--git-common-dir'], {
 		cwd: repoPath,
 		mode: 'read',
 		allowFailure: true,

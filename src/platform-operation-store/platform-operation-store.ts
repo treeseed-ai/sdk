@@ -7,7 +7,7 @@ import {
 	type PlatformRunnerHeartbeatRequest,
 	type PlatformRunnerJobUpdateRequest,
 	type PlatformRunnerRegistrationRequest,
-} from '../platform-operations.ts';
+} from '../operations/platform-operations.ts';
 import { PLATFORM_OPERATION_SCHEMA_SQL, PlatformOperationStoreOptions, RelationalDatabaseAdapter, isoNow, normalizeOperationCapabilities, parseJson, repositoryKey, repositoryWorkspacePath, rowEvent, rowOperation } from './database-provider.ts';
 
 export class PlatformOperationStore {

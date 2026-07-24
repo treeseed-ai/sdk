@@ -72,7 +72,7 @@ import {
 	type CommonsProposalVote,
 	type CommonsQuestion,
 	type StripeConnectedAccount,
-} from '../../../src/sdk-types.ts';
+} from '../../../src/entrypoints/models/sdk-types.ts';
 describe('commerce contracts', () => {
 it('defines Phase 7 cooperative governance workflow vocabulary', () => {
 		expect(COMMERCE_OWNERSHIP_TRANSFER_STATUSES).toEqual(['draft', 'submitted', 'approved', 'rejected', 'canceled', 'superseded']);

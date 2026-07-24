@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { RemoteTemplateCatalogClient, parseTemplateCatalogResponse } from '../../../src/template-catalog.ts';
+import { RemoteTemplateCatalogClient, parseTemplateCatalogResponse } from '../../../src/commerce/catalog/template-catalog.ts';
 
 describe('template catalog client', () => {
 	it('normalizes array and envelope response shapes', () => {

@@ -1,14 +1,14 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
-import { serializeFrontmatterDocument, parseFrontmatterDocument } from '../../frontmatter.ts';
+import { serializeFrontmatterDocument, parseFrontmatterDocument } from '../../content/frontmatter.ts';
 import {
 	applyProjectLaunchHostBindingConfig,
 	auditProjectLaunchHostBindingConfig,
 	type ApplyProjectLaunchHostBindingConfigOptions,
-} from '../services/template-host-bindings.ts';
+} from '../services/hosting/deployment/template-host-bindings.ts';
 import { PlatformRepositoryDescriptor, PlatformRepositoryOperationInput, PlatformRepositoryOperationOptions, PlatformRepositoryVerificationResult, execFileAsync } from './exec-file-async.ts';
 import { PlatformRepositoryVerificationError, optionalTrimmedString, runGit, safeContentPath, slugifyPlatformContent } from './platform-repository-verification-error.ts';
 import { readContentRecord, writeContentRecord, writeParsedRecord } from './initialize-linked-repository.ts';
@@ -173,7 +173,7 @@ export async function runVerificationCommands(repoPath: string, repository: Plat
 		const args = Array.isArray(command.args) ? command.args.map(String) : [];
 		const cwd = resolve(repoPath, command.workingDirectory ?? '.');
 		const relativeCwd = relative(repoPath, cwd);
-		if (relativeCwd.startsWith('..') || relativeCwd.includes('..') || relativeCwd.startsWith('/')) {
+		if (relativeCwd === '..' || relativeCwd.startsWith(`..${sep}`) || isAbsolute(relativeCwd)) {
 			throw new Error('Repository verification command attempted to run outside the repository workspace.');
 		}
 		try {

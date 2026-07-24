@@ -9,14 +9,14 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
-	compileTreeseedHostingGraph,
+	compileHostingGraph,
 	createDefaultHostAdapters,
 	createDefaultServiceTypeAdapters,
-	discoverTreeseedApplications,
-	planTreeseedHostingGraph,
+	discoverApplications,
+	planHostingGraph,
 	serializeHostingPlan,
-	type TreeseedApplicationHostingProfile,
-	type TreeseedHostAdapter,
+	type ApplicationHostingProfile,
+	type HostAdapter,
 } from '../../../src/hosting/index.ts';
 
 function createTenant(configBody: string) {
@@ -222,7 +222,7 @@ ${extra}`;
 describe('hosting graph', () => {
 it('discovers split web and API applications from workspace manifests', () => {
 		const tenantRoot = createSplitWorkspace();
-		const applications = discoverTreeseedApplications(tenantRoot);
+		const applications = discoverApplications(tenantRoot);
 		expect(applications.map((app) => [app.id, app.relativeRoot])).toEqual([
 			['web', '.'],
 			['api', 'packages/api'],
@@ -232,7 +232,7 @@ it('discovers split web and API applications from workspace manifests', () => {
 
 it('merges split workspace app graphs and preserves app-relative API roots', () => {
 		const tenantRoot = createSplitWorkspace();
-		const graph = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging' });
+		const graph = compileHostingGraph({ tenantRoot, environment: 'staging' });
 		expect(graph.units.map((unit) => unit.id)).toEqual(expect.arrayContaining([
 			'web',
 			'ui',
@@ -256,9 +256,9 @@ it('merges split workspace app graphs and preserves app-relative API roots', () 
 
 it('can compile only the selected discovered application', () => {
 		const tenantRoot = createSplitWorkspace();
-		const web = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging', appId: 'web' });
-		const api = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging', appId: 'api' });
-		const ui = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging', appId: 'ui' });
+		const web = compileHostingGraph({ tenantRoot, environment: 'staging', appId: 'web' });
+		const api = compileHostingGraph({ tenantRoot, environment: 'staging', appId: 'api' });
+		const ui = compileHostingGraph({ tenantRoot, environment: 'staging', appId: 'ui' });
 		expect(web.units.map((unit) => unit.id)).toEqual(['web']);
 		expect(api.units.map((unit) => unit.id)).toEqual(expect.arrayContaining(['api', 'operationsRunner', 'treeseedDatabase']));
 		expect(api.units.find((unit) => unit.id === 'api')?.config.rootDir).toBe('.');
@@ -286,7 +286,7 @@ it('expands runner and TreeDX pools into indexed services with dedicated volumes
       maxNodes: 4
 `).replace('bootstrapCount: 1', 'bootstrapCount: 2');
 		const tenantRoot = createTenant(config);
-		const graph = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging' });
+		const graph = compileHostingGraph({ tenantRoot, environment: 'staging' });
 		const runners = graph.units.filter((unit) => unit.config.poolKey === 'operationsRunner');
 		const treeDxNodes = graph.units.filter((unit) => unit.serviceType.id === 'treedx-node');
 
@@ -308,7 +308,7 @@ it('expands runner and TreeDX pools into indexed services with dedicated volumes
 			'treeseed-treedx-staging-02-volume',
 		]);
 
-		const selected = compileTreeseedHostingGraph({
+		const selected = compileHostingGraph({
 			tenantRoot,
 			environment: 'staging',
 			filter: { serviceIds: ['operationsRunner'] },

@@ -6,12 +6,12 @@ import { platform as osPlatform, arch as osArch } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { withTreeseedServiceCredentialEnv } from '../service-credentials.ts';
-import { DependencyInstallerOptions, GH_CHECKSUMS_SHA256, GH_RELEASE_BASE_URL, GH_VERSION, NPM_PACKAGES, NPM_TOOLS, RAILWAY_RELEASE_BASE_URL, RAILWAY_VERSION, TreeseedDependencyReport, createTreeseedManagedToolEnv, currentPlatformAsset, currentRailwayPlatformAsset, managedGhBin, managedRailwayBin, report, resolveToolsHome, sha256File } from './dependency-runtime.ts';
+import { withServiceCredentialEnv } from '../configuration/service-credentials.ts';
+import { DependencyInstallerOptions, GH_CHECKSUMS_SHA256, GH_RELEASE_BASE_URL, GH_VERSION, NPM_PACKAGES, NPM_TOOLS, RAILWAY_RELEASE_BASE_URL, RAILWAY_VERSION, DependencyReport, createManagedToolEnv, currentPlatformAsset, currentRailwayPlatformAsset, managedGhBin, managedRailwayBin, report, resolveToolsHome, sha256File } from './dependency-runtime.ts';
 import { checkCommand, locateSystemBinary, npmToolMissingDetail, resolveNpmToolRuntimeBinary, resolvePackageRoot } from './redact-sensitive-output.ts';
 import { findExtractedGhBinary, parseChecksums } from './run-npm-tool-rebuilds.ts';
 
-export async function installGh(options: Required<Pick<DependencyInstallerOptions, 'env' | 'downloadFile' | 'spawn'>> & Pick<DependencyInstallerOptions, 'tenantRoot' | 'force' | 'write'>): Promise<TreeseedDependencyReport> {
+export async function installGh(options: Required<Pick<DependencyInstallerOptions, 'env' | 'downloadFile' | 'spawn'>> & Pick<DependencyInstallerOptions, 'tenantRoot' | 'force' | 'write'>): Promise<DependencyReport> {
 	const asset = currentPlatformAsset();
 	if (!asset) {
 		return report({
@@ -29,7 +29,7 @@ export async function installGh(options: Required<Pick<DependencyInstallerOption
 	if (existsSync(binaryPath)) {
 		const check = checkCommand(binaryPath, ['--version'], {
 			cwd: options.tenantRoot,
-			env: createTreeseedManagedToolEnv(options.env),
+			env: createManagedToolEnv(options.env),
 			spawn: options.spawn,
 		});
 		if (check.ok && check.stdout.includes(GH_VERSION)) {
@@ -91,7 +91,7 @@ export async function installGh(options: Required<Pick<DependencyInstallerOption
 		renameSync(stagingRoot, installRoot);
 		const check = checkCommand(binaryPath, ['--version'], {
 			cwd: options.tenantRoot,
-			env: createTreeseedManagedToolEnv(options.env),
+			env: createManagedToolEnv(options.env),
 			spawn: options.spawn,
 		});
 		if (!check.ok) {
@@ -124,7 +124,7 @@ export async function installGh(options: Required<Pick<DependencyInstallerOption
 	}
 }
 
-export async function installRailway(options: Required<Pick<DependencyInstallerOptions, 'env' | 'downloadFile' | 'spawn'>> & Pick<DependencyInstallerOptions, 'tenantRoot' | 'force' | 'write'>): Promise<TreeseedDependencyReport> {
+export async function installRailway(options: Required<Pick<DependencyInstallerOptions, 'env' | 'downloadFile' | 'spawn'>> & Pick<DependencyInstallerOptions, 'tenantRoot' | 'force' | 'write'>): Promise<DependencyReport> {
 	const asset = currentRailwayPlatformAsset();
 	if (!asset) {
 		return report({
@@ -199,7 +199,7 @@ export async function installRailway(options: Required<Pick<DependencyInstallerO
 	}
 }
 
-export function statusForNpmTool(tool: (typeof NPM_TOOLS)[number], options: DependencyInstallerOptions): TreeseedDependencyReport {
+export function statusForNpmTool(tool: (typeof NPM_TOOLS)[number], options: DependencyInstallerOptions): DependencyReport {
 	try {
 		const binaryPath = resolveNpmToolRuntimeBinary(tool);
 		return report({
@@ -227,7 +227,7 @@ export function statusForNpmTool(tool: (typeof NPM_TOOLS)[number], options: Depe
 	}
 }
 
-export function statusForNpmPackage(pkg: (typeof NPM_PACKAGES)[number]): TreeseedDependencyReport {
+export function statusForNpmPackage(pkg: (typeof NPM_PACKAGES)[number]): DependencyReport {
 	try {
 		const packageRoot = resolvePackageRoot(pkg.packageName);
 		return report({
@@ -255,7 +255,7 @@ export function statusForNpmPackage(pkg: (typeof NPM_PACKAGES)[number]): Treesee
 	}
 }
 
-export function systemStatus(name: 'git' | 'docker', required: boolean, options: DependencyInstallerOptions): TreeseedDependencyReport {
+export function systemStatus(name: 'git' | 'docker', required: boolean, options: DependencyInstallerOptions): DependencyReport {
 	const binaryPath = locateSystemBinary(name, options.spawn ?? spawnSync, options.env ?? process.env);
 	return report({
 		name,

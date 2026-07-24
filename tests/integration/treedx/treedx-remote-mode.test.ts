@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { AgentSdk } from '../../../src/sdk.ts';
-import type { SdkModelRegistry } from '../../../src/sdk-types.ts';
+import { AgentSdk } from '../../../src/entrypoints/models/sdk.ts';
+import type { SdkModelRegistry } from '../../../src/entrypoints/models/sdk-types.ts';
 
 function registry(): SdkModelRegistry {
 	return {

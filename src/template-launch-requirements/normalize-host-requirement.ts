@@ -26,7 +26,7 @@ import {
 	type TemplateSecretSensitivity,
 	type TemplateSecretSource,
 	type TemplateSecretTarget,
-} from '../sdk-types.ts';
+} from '../entrypoints/models/sdk-types.ts';
 import { Mutable, ParseProjectLaunchHostBindingSpecsOptions, ProjectLaunchHostInventoryRecord, expectArray, expectEnum, expectRecord, expectString, normalizeBoolean, normalizeConfigWrite, normalizeEnvironmentWrite, optionalEnum, optionalRecord, optionalRecordOfStrings, optionalString, optionalStringArray, validateRequirementKey } from './mutable.ts';
 
 export function normalizeHostRequirement(value: unknown, index: number): TemplateHostRequirement {

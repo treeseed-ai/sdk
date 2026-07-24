@@ -3,26 +3,26 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, resolve as resolvePath } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import {
-	discoverTreeseedPackageAdapters,
-	type TreeseedPackageAdapter,
-} from '../../operations/services/package-adapters.ts';
-import { redactCapacityProviderEnv, validateAndDigestCapacityProviderManifest } from '../../capacity-provider.ts';
-import { workspaceRoot } from '../../operations/services/workspace-tools.ts';
+	discoverPackageAdapters,
+	type PackageAdapter,
+} from '../../operations/services/reconciliation/package-adapters.ts';
+import { redactCapacityProviderEnv, validateAndDigestCapacityProviderManifest } from '../../capacity/providers/capacity-provider.ts';
+import { workspaceRoot } from '../../operations/services/treedx/workspaces/workspace-tools.ts';
 import {
 	checkedOutTemplateRepositories,
-	type TreeseedTemplateRepositoryManifest,
-} from '../../operations/services/managed-repositories.ts';
-import { deriveTreeseedDesiredUnits } from '../../reconcile/desired-state.ts';
-import type { TreeseedDesiredUnit, TreeseedReconcileSelector, TreeseedReconcileTarget } from '../../reconcile/contracts.ts';
+	type TemplateRepositoryManifest,
+} from '../../operations/services/support/managed-repositories.ts';
+import { deriveDesiredUnits } from '../../reconcile/reconciliation/desired-state.ts';
+import type { DesiredUnit, ReconcileSelector, ReconcileTarget } from '../../reconcile/support/contracts/contracts.ts';
 import {
 	buildProjectLocalContentResources,
-	type TreeseedLocalContentMode,
-} from '../local-content-materialization.ts';
-import { localTreeDxSeedDigest } from '../local-treedx-seed.ts';
-import { TreeseedDesiredEnvironment, TreeseedDesiredResource, TreeseedTemplateUnit, dockerPlatforms, localDockerPlatform, materializeDockerImageTags, packageReleaseCapability, packageRequiredSecretsForGitHubEnvironment, packageRequiredVariablesForGitHubEnvironment, stringArray, stringRecord, workflowName } from './treeseed-desired-environment.ts';
+	type LocalContentMode,
+} from '../content/local-content-materialization.ts';
+import { localTreeDxSeedDigest } from '../treedx/repositories/local-treedx-seed.ts';
+import { DesiredEnvironment, DesiredResource, TemplateUnit, dockerPlatforms, localDockerPlatform, materializeDockerImageTags, packageReleaseCapability, packageRequiredSecretsForGitHubEnvironment, packageRequiredVariablesForGitHubEnvironment, stringArray, stringRecord, workflowName } from './desired-environment.ts';
 
-export function packageResources(adapter: TreeseedPackageAdapter, environment: TreeseedDesiredEnvironment): TreeseedDesiredResource[] {
-	const resources: TreeseedDesiredResource[] = [];
+export function packageResources(adapter: PackageAdapter, environment: DesiredEnvironment): DesiredResource[] {
+	const resources: DesiredResource[] = [];
 	const packageId = adapter.id;
 	const repository = typeof adapter.metadata.repository === 'string' ? adapter.metadata.repository : null;
 	const dockerImageConfig = stringRecord(adapter.metadata.dockerImages);
@@ -228,7 +228,7 @@ export function packageResources(adapter: TreeseedPackageAdapter, environment: T
 	return resources;
 }
 
-export function templateResources(templates: TreeseedTemplateUnit[], environment: TreeseedDesiredEnvironment): TreeseedDesiredResource[] {
+export function templateResources(templates: TemplateUnit[], environment: DesiredEnvironment): DesiredResource[] {
 	return templates.map((template) => ({
 		id: `template-manifest:${template.id}`,
 		kind: 'template-manifest' as const,

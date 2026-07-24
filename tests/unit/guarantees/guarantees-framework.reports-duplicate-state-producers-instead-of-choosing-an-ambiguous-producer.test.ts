@@ -7,27 +7,27 @@ import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 
 import {
-	auditTreeseedGuaranteeJourneys,
+	auditGuaranteeJourneys,
 	assertPathInsideWorkspace,
-	discoverTreeseedGuarantees,
-	exportTreeseedGuaranteesCsv,
-	exportTreeseedGuaranteesJson,
-	exportTreeseedGuaranteesMarkdown,
+	discoverGuarantees,
+	exportGuaranteesCsv,
+	exportGuaranteesJson,
+	exportGuaranteesMarkdown,
 	browserForGuaranteeDevice,
-	createTreeseedGuaranteeStatusReport,
+	createGuaranteeStatusReport,
 	fileExists,
-	loadTreeseedGuaranteeVerifierRegistry,
-	normalizeTreeseedGuaranteeTaxonomy,
-	planTreeseedGuarantees,
-	resolveTreeseedGuaranteeVerifierRefs,
-	runTreeseedGuarantees,
+	loadGuaranteeVerifierRegistry,
+	normalizeGuaranteeTaxonomy,
+	planGuarantees,
+	resolveGuaranteeVerifierRefs,
+	runGuarantees,
 	sceneAuthRoleForGuarantee,
 	sceneDeviceRunsForGuarantee,
-	validateTreeseedVitestVerifierOutput,
-	validateTreeseedGuarantee,
+	validateVitestVerifierOutput,
+	validateGuarantee,
 	validateGuaranteeSceneJourneyContract,
-	writeTreeseedGuaranteesExport,
-	writeTreeseedGuaranteeRunReport,
+	writeGuaranteesExport,
+	writeGuaranteeRunReport,
 } from '../../../src/guarantees/index.ts';
 
 function workspaceFixture(name: string) {
@@ -149,7 +149,7 @@ journey:
       kind: custom
 workflow: []
 `);
-		const plan = planTreeseedGuarantees({ workspaceRoot: root, filter: { ids: ['guarantee.project.question.follow-up.040'] } });
+		const plan = planGuarantees({ workspaceRoot: root, filter: { ids: ['guarantee.project.question.follow-up.040'] } });
 		expect(plan.ok).toBe(false);
 		expect(plan.diagnostics.map((entry) => entry.code)).toContain('guarantee.state_duplicate_producer');
 		expect(plan.entries.find((entry) => entry.id === 'guarantee.project.question.follow-up.040')?.dependsOn).toEqual([
@@ -187,8 +187,8 @@ verifiers:
     kind: vitestCase
     testFile: test/fixture.test.ts
 `);
-		expect(() => planTreeseedGuarantees({ workspaceRoot: root, filter: { ids: ['guarantee.project.question.ask-question.038'] } })).not.toThrow();
-		const plan = planTreeseedGuarantees({ workspaceRoot: root, filter: { ids: ['guarantee.project.question.ask-question.038'] } });
+		expect(() => planGuarantees({ workspaceRoot: root, filter: { ids: ['guarantee.project.question.ask-question.038'] } })).not.toThrow();
+		const plan = planGuarantees({ workspaceRoot: root, filter: { ids: ['guarantee.project.question.ask-question.038'] } });
 		expect(plan.ok).toBe(false);
 		expect(plan.diagnostics.map((entry) => entry.code)).toContain('guarantee.dependency_cycle');
 	});
@@ -226,7 +226,7 @@ workflow:
     expect:
       text: Question
 `);
-		expect(auditTreeseedGuaranteeJourneys({ workspaceRoot: root }).ok).toBe(true);
+		expect(auditGuaranteeJourneys({ workspaceRoot: root }).ok).toBe(true);
 		writeFileSync(resolve(root, 'packages/admin/guarantees/project/question/scenes/ask-question.scene.yaml'), `schemaVersion: treeseed.scene/v1
 id: ask-question
 workflow:
@@ -234,7 +234,7 @@ workflow:
     action:
       goto: /app/work/questions/new
 `);
-		const weak = auditTreeseedGuaranteeJourneys({ workspaceRoot: root });
+		const weak = auditGuaranteeJourneys({ workspaceRoot: root });
 		expect(weak.ok).toBe(false);
 		expect(weak.totals.activeSceneBackedWeak).toBe(1);
 	});

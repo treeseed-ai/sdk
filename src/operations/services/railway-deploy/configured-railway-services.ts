@@ -1,13 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { loadCliDeployConfig } from '../runtime-tools.ts';
-import { resolveTreeseedMachineEnvironmentValues } from '../config-runtime.ts';
-import { createPersistentDeployTarget, resolveTreeseedResourceIdentity } from '../deploy.ts';
-import { classifyTreeseedGitMode, runTreeseedGitText } from '../git-runner.ts';
-import { discoverTreeseedApplications } from '../../../hosting/apps.ts';
-import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName, railwayTreeDxServiceName } from '../railway-source-policy.ts';
-import { runPrefixedCommand, sleep, type TreeseedBootstrapTaskPrefix, type TreeseedBootstrapWriter } from '../bootstrap-runner.ts';
+import { loadCliDeployConfig } from '../agents/runtime-tools.ts';
+import { resolveMachineEnvironmentValues } from '../configuration/config-runtime.ts';
+import { createPersistentDeployTarget, resolveResourceIdentity } from '../hosting/deployment/deploy.ts';
+import { classifyGitMode, runGitText } from '../operations/git-runner.ts';
+import { discoverApplications } from '../../../hosting/apps.ts';
+import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName, railwayTreeDxServiceName } from '../hosting/railway/railway-source-policy.ts';
+import { runPrefixedCommand, sleep, type BootstrapTaskPrefix, type BootstrapWriter } from '../operations/bootstrap-runner.ts';
 import {
 	ensureRailwayEnvironment,
 	ensureRailwayProject,
@@ -27,8 +27,8 @@ import {
 	resolveRailwayWorkspace,
 	resolveRailwayWorkspaceContext,
 	upsertRailwayVariables,
-} from '../railway-api.ts';
-import { elapsedMs, formatDurationMs, type TreeseedTimingEntry } from '../../../timing.ts';
+} from '../hosting/railway/railway-api.ts';
+import { elapsedMs, formatDurationMs, type TimingEntry } from '../../../entrypoints/runtime/timing.ts';
 import { configuredRailwayServicesForConfig } from './configured-railway-services-for-config.ts';
 import { HOSTED_PROJECT_SERVICE_KEYS, RAILWAY_SERVICE_KEYS, envValue, shouldManageRailwaySchedules } from './normalize-scope.ts';
 import { resolveRailwayAuthToken } from './railway-status-deployment-terminal-failure.ts';
@@ -36,7 +36,7 @@ import { resolveRailwayAuthToken } from './railway-status-deployment-terminal-fa
 export function configuredRailwayServices(tenantRoot, scope, envOverlay = {}, options = {}) {
 	const deployConfig = loadCliDeployConfig(tenantRoot);
 	const direct = configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, null, tenantRoot, envOverlay, options);
-	const nested = discoverTreeseedApplications(tenantRoot)
+	const nested = discoverApplications(tenantRoot)
 		.filter((application) => application.root !== resolve(tenantRoot))
 		.flatMap((application) => configuredRailwayServicesForConfig(
 			application.root,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SdkModelRegistry } from '../../../src/sdk-types.ts';
+import type { SdkModelRegistry } from '../../../src/entrypoints/models/sdk-types.ts';
 import {
 	TreeDxApiError,
 	TreeDxClient,

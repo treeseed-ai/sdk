@@ -1,16 +1,16 @@
-import { resolveTreeseedSceneBaseUrl } from '../base-url.ts';
-import { prepareTreeseedSceneEnvironment } from '../environment.ts';
-import { resolveTreeseedSceneAuth } from '../auth.ts';
-import { planOrApplyTreeseedSceneSeed } from '../seed.ts';
-import { sceneErrorDiagnostic } from '../diagnostics.ts';
-import { createBuiltInTreeseedSceneDiagramProvider } from '../diagram-providers.ts';
-import { buildTreeseedSceneNarrationEntries } from '../training-transcript.ts';
+import { resolveSceneBaseUrl } from '../support/execution/base-url.ts';
+import { prepareSceneEnvironment } from '../configuration/environment.ts';
+import { resolveSceneAuth } from '../accounts/auth.ts';
+import { planOrApplySceneSeed } from '../seeds/seed.ts';
+import { sceneErrorDiagnostic } from '../support/reporting/diagnostics.ts';
+import { createBuiltInSceneDiagramProvider } from '../capacity/providers/diagram-providers.ts';
+import { buildSceneNarrationEntries } from '../support/training/training-transcript.ts';
 import type {
-	TreeseedSceneAssertionRunReport,
-	TreeseedSceneDiagnostic,
-	TreeseedScenePlugin,
-	TreeseedSceneRuntimePluginContext,
-	TreeseedSceneSelector,
+	SceneAssertionRunReport,
+	SceneDiagnostic,
+	ScenePlugin,
+	SceneRuntimePluginContext,
+	SceneSelector,
 } from '../types.ts';
 
 
@@ -36,7 +36,7 @@ export function shortRuntimeHash(value: string) {
 	return (hash >>> 0).toString(36).padStart(7, '0').slice(0, 10);
 }
 
-export function sceneRuntimeValue(value: string, context: TreeseedSceneRuntimePluginContext) {
+export function sceneRuntimeValue(value: string, context: SceneRuntimePluginContext) {
 	const runSlug = context.runId.toLowerCase().replace(/[^a-z0-9]+/gu, '-').replace(/^-|-$/gu, '').slice(0, 48);
 	const runShort = shortRuntimeHash(context.runId);
 	return value
@@ -92,7 +92,7 @@ export function extractConfirmationUrl(body: string) {
 	return relative ?? null;
 }
 
-export function resolveMailpitConfirmationUrl(confirmationUrl: string, context: TreeseedSceneRuntimePluginContext) {
+export function resolveMailpitConfirmationUrl(confirmationUrl: string, context: SceneRuntimePluginContext) {
 	try {
 		const parsed = new URL(confirmationUrl);
 		if (parsed.pathname === '/auth/confirm-email' || /^\/team-invites\/[^/]+\/accept$/u.test(parsed.pathname)) {
@@ -134,7 +134,7 @@ export async function navigateScenePage(page: { goto(url: string, options?: { wa
 		: lastError instanceof Error ? lastError : new Error(String(lastError ?? `Navigation failed for ${url}`));
 }
 
-export async function assertionReport(kind: string, action: () => Promise<void>, selector?: TreeseedSceneSelector): Promise<TreeseedSceneAssertionRunReport> {
+export async function assertionReport(kind: string, action: () => Promise<void>, selector?: SceneSelector): Promise<SceneAssertionRunReport> {
 	const startedAt = new Date();
 	try {
 		await action();
@@ -143,7 +143,7 @@ export async function assertionReport(kind: string, action: () => Promise<void>,
 	} catch (error) {
 		const finishedAt = new Date();
 		const diagnostic = error && typeof error === 'object' && 'code' in error
-			? error as TreeseedSceneDiagnostic
+			? error as SceneDiagnostic
 			: sceneErrorDiagnostic('scene.assertion_failed', error instanceof Error ? error.message : String(error ?? 'Assertion failed.'));
 		return { kind, status: 'failed', startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: duration(startedAt, finishedAt), message: diagnostic.message, error: diagnostic, ...(selector ? { selector } : {}) };
 	}

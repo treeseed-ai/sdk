@@ -9,14 +9,14 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
-	compileTreeseedHostingGraph,
+	compileHostingGraph,
 	createDefaultHostAdapters,
 	createDefaultServiceTypeAdapters,
-	discoverTreeseedApplications,
-	planTreeseedHostingGraph,
+	discoverApplications,
+	planHostingGraph,
 	serializeHostingPlan,
-	type TreeseedApplicationHostingProfile,
-	type TreeseedHostAdapter,
+	type ApplicationHostingProfile,
+	type HostAdapter,
 } from '../../../src/hosting/index.ts';
 
 function createTenant(configBody: string) {
@@ -221,7 +221,7 @@ ${extra}`;
 }
 describe('hosting graph', () => {
 it('rejects host bindings that do not satisfy required service capabilities', () => {
-		const profile: TreeseedApplicationHostingProfile = {
+		const profile: ApplicationHostingProfile = {
 			id: 'bad-binding',
 			label: 'Bad binding',
 			services: [{
@@ -234,7 +234,7 @@ it('rejects host bindings that do not satisfy required service capabilities', ()
 			}],
 		};
 
-		expect(() => compileTreeseedHostingGraph({
+		expect(() => compileHostingGraph({
 			tenantRoot: createTenant(marketConfig()),
 			environment: 'staging',
 			profiles: [profile],
@@ -242,7 +242,7 @@ it('rejects host bindings that do not satisfy required service capabilities', ()
 	});
 
 it('orders service dependencies before composite domain services', () => {
-		const graph = compileTreeseedHostingGraph({
+		const graph = compileHostingGraph({
 			tenantRoot: createTenant(marketConfig()),
 			environment: 'staging',
 		});
@@ -254,7 +254,7 @@ it('orders service dependencies before composite domain services', () => {
 
 it('serializes plans without leaking secret values', async () => {
 		const tenantRoot = createTenant(marketConfig());
-		const plan = serializeHostingPlan(await planTreeseedHostingGraph({
+		const plan = serializeHostingPlan(await planHostingGraph({
 			tenantRoot,
 			environment: 'staging',
 			profiles: [{

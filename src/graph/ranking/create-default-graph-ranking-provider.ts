@@ -13,7 +13,7 @@ import type {
 	SdkGraphRankingQueryResult,
 	SdkGraphRankingSearchRequest,
 	SdkGraphSearchResult,
-} from '../../sdk-types.ts';
+} from '../../entrypoints/models/sdk-types.ts';
 import { normalizeText } from '../schema.ts';
 import { BM25F_FIELDS, BM25F_K1, DEFAULT_EDGE_WEIGHTS, MAX_SEED_COUNT, RWR_ITERATIONS, RWR_RESTART_PROBABILITY, RankingDocument, RankingEdgeTraversal, RankingField, canonicalityScore, clamp01, createRankingDocument, normalizeDateScore, stagePreference, tokenize } from './ranking-field.ts';
 

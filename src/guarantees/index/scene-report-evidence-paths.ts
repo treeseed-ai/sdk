@@ -2,11 +2,11 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve, sep } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { TreeseedGuaranteeReportWriteResult, TreeseedGuaranteeRunReport, TreeseedGuaranteeRunStatus, TreeseedGuaranteeRunStep, TreeseedGuaranteeSceneExecutionInput, TreeseedGuaranteeSceneExecutor, TreeseedGuaranteeVerifierExecutionResult, TreeseedGuaranteeVerifierExecutor, TreeseedGuaranteeVerifierResolution, arrayOrEmpty, diagnostic, sortedUnique } from './treeseed-guarantee-journey-audit-item.ts';
-import { exportTreeseedGuaranteesCsv, relativeEvidencePath } from './export-treeseed-guarantees-csv.ts';
+import { GuaranteeReportWriteResult, GuaranteeRunReport, GuaranteeRunStatus, GuaranteeRunStep, GuaranteeSceneExecutionInput, GuaranteeSceneExecutor, GuaranteeVerifierExecutionResult, GuaranteeVerifierExecutor, GuaranteeVerifierResolution, arrayOrEmpty, diagnostic, sortedUnique } from './guarantee-journey-audit-item.ts';
+import { exportGuaranteesCsv, relativeEvidencePath } from './export-guarantees-csv.ts';
 import { sceneAuthRoleForGuarantee, sceneDeviceRunsForGuarantee, validateGuaranteeSceneJourneyContract } from './run-verifier-command.ts';
-import { TreeseedGuaranteeDiagnostic, TreeseedGuaranteeManifest, TreeseedGuaranteeRegistryReport, TreeseedLoadedGuarantee } from './treeseed-guarantee-schema-version.ts';
-import { refs } from './build-treeseed-guarantee-dependency-graph.ts';
+import { GuaranteeDiagnostic, GuaranteeManifest, GuaranteeRegistryReport, LoadedGuarantee } from './guarantee-schema-version.ts';
+import { refs } from './build-guarantee-dependency-graph.ts';
 
 export function sceneReportEvidencePaths(workspaceRoot: string, report: {
 	artifacts?: { runRoot?: string; screenshotPaths?: string[] };
@@ -24,16 +24,16 @@ export function sceneReportEvidencePaths(workspaceRoot: string, report: {
 	].filter(Boolean).map((entry) => relativeEvidencePath(workspaceRoot, entry!)));
 }
 
-export async function defaultTreeseedGuaranteeSceneExecutor(input: TreeseedGuaranteeSceneExecutionInput): Promise<TreeseedGuaranteeVerifierExecutionResult> {
+export async function defaultGuaranteeSceneExecutor(input: GuaranteeSceneExecutionInput): Promise<GuaranteeVerifierExecutionResult> {
 	try {
 		const contractDiagnostics = validateGuaranteeSceneJourneyContract({ scenePath: input.scenePath, sourcePath: input.guarantee.sourcePath });
-		const scenes = await import('../scenes/index.ts');
+		const scenes = await import('../../scenes/index.ts');
 		const authRole = sceneAuthRoleForGuarantee(input.guarantee.manifest);
 		const runs = sceneDeviceRunsForGuarantee(input.device ? [input.device] : input.guarantee.manifest.devices.required);
 		if (runs.length > 1) {
 			const runReports = [];
 			for (const run of runs) {
-				const report = await scenes.runTreeseedScene({
+				const report = await scenes.runScene({
 					projectRoot: input.workspaceRoot,
 					scene: input.scenePath,
 					environment: input.environment,
@@ -52,11 +52,11 @@ export async function defaultTreeseedGuaranteeSceneExecutor(input: TreeseedGuara
 				status: ok ? 'passed' : 'failed',
 				summary: ok ? 'Scene device matrix passed.' : contractDiagnostics.length > 0 ? 'Scene is not a complete service journey.' : 'Scene device matrix failed.',
 				evidence: runReports.flatMap((entry) => sceneReportEvidencePaths(input.workspaceRoot, entry)),
-				diagnostics: [...contractDiagnostics, ...runReports.flatMap((entry: { diagnostics?: unknown[] }) => arrayOrEmpty(entry.diagnostics))] as TreeseedGuaranteeDiagnostic[],
+				diagnostics: [...contractDiagnostics, ...runReports.flatMap((entry: { diagnostics?: unknown[] }) => arrayOrEmpty(entry.diagnostics))] as GuaranteeDiagnostic[],
 			};
 		}
 		const run = runs[0]!;
-		const report = await scenes.runTreeseedScene({
+		const report = await scenes.runScene({
 				projectRoot: input.workspaceRoot,
 				scene: input.scenePath,
 				environment: input.environment,
@@ -84,7 +84,7 @@ export async function defaultTreeseedGuaranteeSceneExecutor(input: TreeseedGuara
 	}
 }
 
-export function markdownRunReport(report: TreeseedGuaranteeRunReport) {
+export function markdownRunReport(report: GuaranteeRunReport) {
 	return [
 		'# TreeSeed Guarantee Run',
 		'',
@@ -106,8 +106,8 @@ export function markdownRunReport(report: TreeseedGuaranteeRunReport) {
 	].join('\n');
 }
 
-export function writeTreeseedGuaranteeRunReport(input: { report: TreeseedGuaranteeRunReport; registry?: TreeseedGuaranteeRegistryReport }): TreeseedGuaranteeReportWriteResult {
-	const diagnostics: TreeseedGuaranteeDiagnostic[] = [];
+export function writeGuaranteeRunReport(input: { report: GuaranteeRunReport; registry?: GuaranteeRegistryReport }): GuaranteeReportWriteResult {
+	const diagnostics: GuaranteeDiagnostic[] = [];
 	const outputRoot = resolve(input.report.outputRoot);
 	try {
 		mkdirSync(outputRoot, { recursive: true });
@@ -118,7 +118,7 @@ export function writeTreeseedGuaranteeRunReport(input: { report: TreeseedGuarant
 		writeFileSync(planPath, `${JSON.stringify(input.report.plan, null, 2)}\n`, 'utf8');
 		writeFileSync(reportPath, `${JSON.stringify(input.report, null, 2)}\n`, 'utf8');
 		writeFileSync(markdownPath, markdownRunReport(input.report), 'utf8');
-		if (input.registry) writeFileSync(csvPath, exportTreeseedGuaranteesCsv({ guarantees: input.registry.guarantees, filter: input.report.filter }), 'utf8');
+		if (input.registry) writeFileSync(csvPath, exportGuaranteesCsv({ guarantees: input.registry.guarantees, filter: input.report.filter }), 'utf8');
 		else writeFileSync(csvPath, '', 'utf8');
 		return { ok: true, outputRoot, planPath, reportPath, markdownPath, csvPath, diagnostics };
 	} catch (error) {
@@ -139,7 +139,7 @@ export function runIdFor(now: Date) {
 	return now.toISOString().replace(/[:.]/gu, '-');
 }
 
-export function releaseBlocking(manifest: TreeseedGuaranteeManifest) {
+export function releaseBlocking(manifest: GuaranteeManifest) {
 	return manifest.run?.requiredForRelease === true || manifest.gates.includes('release') || manifest.gates.includes('security') || manifest.gates.includes('migration');
 }
 
@@ -148,28 +148,28 @@ export async function runGuaranteeSteps(input: {
 	environment: string;
 	runId: string;
 	outputRoot: string;
-	guarantee: TreeseedLoadedGuarantee & { manifest: TreeseedGuaranteeManifest };
+	guarantee: LoadedGuarantee & { manifest: GuaranteeManifest };
 	selected: boolean;
 	dependency: boolean;
-	resolutions: Map<string, TreeseedGuaranteeVerifierResolution>;
-	sceneExecutor: TreeseedGuaranteeSceneExecutor;
-	verifierExecutor: TreeseedGuaranteeVerifierExecutor;
-	verifierCache: Map<string, TreeseedGuaranteeVerifierExecutionResult>;
+	resolutions: Map<string, GuaranteeVerifierResolution>;
+	sceneExecutor: GuaranteeSceneExecutor;
+	verifierExecutor: GuaranteeVerifierExecutor;
+	verifierCache: Map<string, GuaranteeVerifierExecutionResult>;
 	record?: boolean;
 	sceneArtifacts?: 'full' | 'screenshots';
 	device?: string;
 	onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void;
 }) {
 	const startedAt = new Date().toISOString();
-	const steps: TreeseedGuaranteeRunStep[] = [];
-	const diagnostics: TreeseedGuaranteeDiagnostic[] = [];
+	const steps: GuaranteeRunStep[] = [];
+	const diagnostics: GuaranteeDiagnostic[] = [];
 	const evidence: string[] = [];
-	const addStep = async (step: Omit<TreeseedGuaranteeRunStep, 'startedAt' | 'completedAt'>, run: () => Promise<TreeseedGuaranteeVerifierExecutionResult>) => {
+	const addStep = async (step: Omit<GuaranteeRunStep, 'startedAt' | 'completedAt'>, run: () => Promise<GuaranteeVerifierExecutionResult>) => {
 		const stepStartedAt = new Date().toISOString();
 		input.onProgress?.(`[guarantees][step] ${input.guarantee.manifest.id}: starting ${step.kind}${step.ref ? ` ${step.ref}` : ''}`);
 		const result = await run();
 		const completedAt = new Date().toISOString();
-		const nextStep: TreeseedGuaranteeRunStep = {
+		const nextStep: GuaranteeRunStep = {
 			...step,
 			status: result.status,
 			summary: result.summary ?? step.summary,
@@ -198,7 +198,7 @@ export async function runGuaranteeSteps(input: {
 			device: input.device,
 		}));
 	}
-	const verifierGroups: Array<{ kind: TreeseedGuaranteeRunStep['kind']; refs: string[] }> = [
+	const verifierGroups: Array<{ kind: GuaranteeRunStep['kind']; refs: string[] }> = [
 		{ kind: 'api', refs: arrayOrEmpty(input.guarantee.manifest.api?.verifierRefs) },
 		{ kind: 'content', refs: arrayOrEmpty(input.guarantee.manifest.content?.verifierRefs) },
 		{ kind: 'audit', refs: arrayOrEmpty(input.guarantee.manifest.audit?.verifierRefs) },
@@ -233,7 +233,7 @@ export async function runGuaranteeSteps(input: {
 			});
 		}
 	}
-	const status: TreeseedGuaranteeRunStatus = steps.some((step) => step.status === 'failed')
+	const status: GuaranteeRunStatus = steps.some((step) => step.status === 'failed')
 		? 'failed'
 		: steps.some((step) => step.status === 'blocked')
 			? 'blocked'

@@ -4,7 +4,7 @@ import {
 	formatCommitMessage,
 	generateFallbackCommitMessage,
 	generateRepositoryCommitMessage,
-} from '../../../src/operations/services/commit-message-provider.ts';
+} from '../../../src/operations/services/capacity/providers/commit-message-provider.ts';
 
 const baseContext = {
 	repoName: '@treeseed/sdk',

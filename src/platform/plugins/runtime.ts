@@ -3,11 +3,11 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { TreeseedDeployConfig } from '../contracts.ts';
-import { loadTreeseedDeployConfig } from '../deploy-config.ts';
-import { TREESEED_DEFAULT_PLUGIN_PACKAGE } from './constants.ts';
-import type { TreeseedPluginEnvironmentContext } from '../plugin.ts';
-import type { SdkGraphRankingProvider } from '../../sdk-types.ts';
+import type { DeployConfig } from '../support/contracts.ts';
+import { loadDeployConfig } from '../hosting/deploy-config.ts';
+import { DEFAULT_PLUGIN_PACKAGE } from './constants.ts';
+import type { PluginEnvironmentContext } from '../support/plugin.ts';
+import type { SdkGraphRankingProvider } from '../../entrypoints/models/sdk-types.ts';
 
 export const require = createRequire(import.meta.url);
 export const runtimeDir = path.dirname(fileURLToPath(import.meta.url));
@@ -19,7 +19,7 @@ export type LoadedPluginEntry = {
 	plugin: Record<string, any>;
 };
 
-export type LoadedTreeseedPluginEntry = LoadedPluginEntry;
+export type LoadedPluginRegistration = LoadedPluginEntry;
 
 export function normalizeLoadedPlugin(moduleExports: unknown, packageName: string) {
 	const plugin = (moduleExports as { default?: unknown } | undefined)?.default ?? moduleExports;
@@ -75,7 +75,7 @@ export function resolveInstalledPluginPath(packageName: string, tenantRoot: stri
 	});
 }
 
-export function parseTreeseedPackageReference(packageName: string) {
+export function parsePackageReference(packageName: string) {
 	const match = packageName.match(/^@treeseed\/([^/]+)(?:\/(.+))?$/u);
 	if (!match) return null;
 	return {
@@ -113,7 +113,7 @@ export function buildWorkspacePluginArtifacts(packageDir: string, packageName: s
 }
 
 export function resolveLocalWorkspacePluginPath(packageName: string, tenantRoot: string) {
-	const parsed = parseTreeseedPackageReference(packageName);
+	const parsed = parsePackageReference(packageName);
 	if (!parsed) return null;
 
 	const packageDir = path.resolve(tenantRoot, 'packages', parsed.packageId);
@@ -143,7 +143,7 @@ export function resolveLocalWorkspacePluginPath(packageName: string, tenantRoot:
 }
 
 export function loadPluginModule(packageName: string, tenantRoot: string) {
-	if (packageName === TREESEED_DEFAULT_PLUGIN_PACKAGE) {
+	if (packageName === DEFAULT_PLUGIN_PACKAGE) {
 		const localDefaultPluginPath = resolveLocalDefaultPluginPath();
 		const resolvedPath = localDefaultPluginPath ?? resolveInstalledPluginPath(packageName, tenantRoot);
 		return {
@@ -177,8 +177,8 @@ export function loadPluginModule(packageName: string, tenantRoot: string) {
 	};
 }
 
-export function loadTreeseedPlugins(config: TreeseedDeployConfig = loadTreeseedDeployConfig()): LoadedPluginEntry[] {
-	const tenantRoot = (config as TreeseedDeployConfig & { __tenantRoot?: string }).__tenantRoot ?? process.cwd();
+export function loadPlugins(config: DeployConfig = loadDeployConfig()): LoadedPluginEntry[] {
+	const tenantRoot = (config as DeployConfig & { __tenantRoot?: string }).__tenantRoot ?? process.cwd();
 	const plugins: LoadedPluginEntry[] = [];
 
 	for (const pluginRef of config.plugins ?? []) {
@@ -256,8 +256,8 @@ export function assertSelectedProvider(provided: Set<string>, label: string, id?
 	}
 }
 
-export function loadTreeseedPluginRuntime(config: TreeseedDeployConfig = loadTreeseedDeployConfig()) {
-	const plugins = loadTreeseedPlugins(config);
+export function loadPluginRuntime(config: DeployConfig = loadDeployConfig()) {
+	const plugins = loadPlugins(config);
 	const provided = collectProvidedIds(plugins);
 	const providers = config.providers;
 
@@ -270,7 +270,7 @@ export function loadTreeseedPluginRuntime(config: TreeseedDeployConfig = loadTre
 	assertSelectedProvider(provided.agents.notification, 'agents.notification', providers.agents.notification);
 	assertSelectedProvider(provided.agents.research, 'agents.research', providers.agents.research);
 	assertSelectedProvider(provided.deploy, 'deploy', providers.deploy);
-	assertSelectedProvider(provided.dns, 'dns', providers.dns ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.dns);
+	assertSelectedProvider(provided.dns, 'dns', providers.dns ?? DEFAULT_PROVIDER_SELECTIONS.dns);
 	assertSelectedProvider(provided.content.runtime, 'content.runtime', providers.content?.runtime);
 	assertSelectedProvider(provided.content.publish, 'content.publish', providers.content?.publish);
 	if (providers.content?.docs) {
@@ -285,9 +285,9 @@ export function loadTreeseedPluginRuntime(config: TreeseedDeployConfig = loadTre
 	};
 }
 
-export function resolveTreeseedGraphRankingProvider(
+export function resolveGraphRankingProvider(
 	plugins: LoadedPluginEntry[],
-	context: Omit<TreeseedPluginEnvironmentContext, 'pluginConfig'>,
+	context: Omit<PluginEnvironmentContext, 'pluginConfig'>,
 ): SdkGraphRankingProvider | null {
 	for (const entry of plugins) {
 		const contributions = entry.plugin.graphRankingProviders;

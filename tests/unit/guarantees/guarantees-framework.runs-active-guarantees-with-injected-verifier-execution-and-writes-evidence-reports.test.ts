@@ -7,27 +7,27 @@ import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 
 import {
-	auditTreeseedGuaranteeJourneys,
+	auditGuaranteeJourneys,
 	assertPathInsideWorkspace,
-	discoverTreeseedGuarantees,
-	exportTreeseedGuaranteesCsv,
-	exportTreeseedGuaranteesJson,
-	exportTreeseedGuaranteesMarkdown,
+	discoverGuarantees,
+	exportGuaranteesCsv,
+	exportGuaranteesJson,
+	exportGuaranteesMarkdown,
 	browserForGuaranteeDevice,
-	createTreeseedGuaranteeStatusReport,
+	createGuaranteeStatusReport,
 	fileExists,
-	loadTreeseedGuaranteeVerifierRegistry,
-	normalizeTreeseedGuaranteeTaxonomy,
-	planTreeseedGuarantees,
-	resolveTreeseedGuaranteeVerifierRefs,
-	runTreeseedGuarantees,
+	loadGuaranteeVerifierRegistry,
+	normalizeGuaranteeTaxonomy,
+	planGuarantees,
+	resolveGuaranteeVerifierRefs,
+	runGuarantees,
 	sceneAuthRoleForGuarantee,
 	sceneDeviceRunsForGuarantee,
-	validateTreeseedVitestVerifierOutput,
-	validateTreeseedGuarantee,
+	validateVitestVerifierOutput,
+	validateGuarantee,
 	validateGuaranteeSceneJourneyContract,
-	writeTreeseedGuaranteesExport,
-	writeTreeseedGuaranteeRunReport,
+	writeGuaranteesExport,
+	writeGuaranteeRunReport,
 } from '../../../src/guarantees/index.ts';
 
 function workspaceFixture(name: string) {
@@ -110,7 +110,7 @@ verifiers:
     kind: vitestCase
     testFile: test/fixture.test.ts
 `);
-		const report = await runTreeseedGuarantees({
+		const report = await runGuarantees({
 			workspaceRoot: root,
 			verifierExecutor: async ({ ref }) => ({ status: 'passed', summary: `${ref} passed`, evidence: [`evidence/${ref}.json`] }),
 			now: new Date('2026-01-01T00:00:00.000Z'),
@@ -138,13 +138,13 @@ verifiers:
     kind: manualEvidence
 `);
 
-		const passed = await runTreeseedGuarantees({
+		const passed = await runGuarantees({
 			workspaceRoot: root,
 			verifierExecutor: async () => ({ status: 'passed' }),
 		});
 		expect(passed.results[0]).toMatchObject({ status: 'passed', evidence: [], diagnostics: [] });
 
-		const skipped = await runTreeseedGuarantees({
+		const skipped = await runGuarantees({
 			workspaceRoot: root,
 		});
 		expect(skipped.results[0]?.status).toBe('skipped');
@@ -192,8 +192,8 @@ verifiers:
     kind: nodeScript
     command: /definitely/missing/treeseed-verifier
 `);
-		const registry = discoverTreeseedGuarantees({ workspaceRoot: root });
-		const resolution = resolveTreeseedGuaranteeVerifierRefs({
+		const registry = discoverGuarantees({ workspaceRoot: root });
+		const resolution = resolveGuaranteeVerifierRefs({
 			refs: ['fixture.todo', 'fixture.todo', 'todo.placeholder', 'missing.ref'],
 			verifierRegistries: registry.verifierRegistries,
 			status: 'planned',
@@ -202,14 +202,14 @@ verifiers:
 		expect(resolution.resolutions).toHaveLength(3);
 		expect(resolution.diagnostics.map((entry) => entry.code)).toEqual(['guarantee.todo_verifier_ref', 'guarantee.missing_verifier_ref']);
 
-		const activeResolution = resolveTreeseedGuaranteeVerifierRefs({
+		const activeResolution = resolveGuaranteeVerifierRefs({
 			refs: ['todo.placeholder'],
 			verifierRegistries: registry.verifierRegistries,
 			status: 'active',
 		});
 		expect(activeResolution.ok).toBe(false);
 
-		const report = await runTreeseedGuarantees({
+		const report = await runGuarantees({
 			workspaceRoot: root,
 			now: new Date('2026-01-01T00:00:00.000Z'),
 		});
@@ -276,7 +276,7 @@ verifiers:
     evidence: [manual.md]
 `);
 		const progress: string[] = [];
-		const report = await runTreeseedGuarantees({
+		const report = await runGuarantees({
 			workspaceRoot: root,
 			now: new Date('2026-01-01T00:00:00.000Z'),
 			onProgress: (message) => progress.push(message),

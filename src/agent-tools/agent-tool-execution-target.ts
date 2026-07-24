@@ -1,10 +1,10 @@
-import type { SdkDispatchNamespace, SdkDispatchPolicy } from '../sdk-types.ts';
+import type { SdkDispatchNamespace, SdkDispatchPolicy } from '../entrypoints/models/sdk-types.ts';
 import {
-	createTreeseedContentToolPresets,
-	genericTreeseedContentInputSchema,
-	type TreeseedContentAction,
-	type TreeseedContentModel,
-} from '../content-operations.ts';
+	createContentToolPresets,
+	genericContentInputSchema,
+	type ContentAction,
+	type ContentModel,
+} from '../operations/content-operations.ts';
 
 
 export type AgentToolExecutionTarget = 'sdk_dispatch' | 'treedx_proxy' | 'treeseed_content' | 'provider_runner';
@@ -43,8 +43,8 @@ export interface AgentToolDefinition {
 	requirements: AgentToolRequirement[];
 	dispatch?: AgentToolDispatchMapping;
 	content?: {
-		action: TreeseedContentAction;
-		model?: TreeseedContentModel;
+		action: ContentAction;
+		model?: ContentModel;
 		preset?: string;
 	};
 }
@@ -72,7 +72,7 @@ export const CONTENT_RESULT_SCHEMA = {
 	additionalProperties: true,
 } satisfies Record<string, unknown>;
 
-export function contentRequirements(action: TreeseedContentAction): AgentToolRequirement[] {
+export function contentRequirements(action: ContentAction): AgentToolRequirement[] {
 	if (action === 'commit') return ['treedx_proxy_handle', 'treedx_writable_workspace', 'content_access', 'content_commit'];
 	if (action === 'create' || action === 'update' || action === 'link' || action === 'validate') {
 		return ['treedx_proxy_handle', 'treedx_writable_workspace', 'content_access'];
@@ -80,7 +80,7 @@ export function contentRequirements(action: TreeseedContentAction): AgentToolReq
 	return ['treedx_proxy_handle', 'content_access'];
 }
 
-export function contentMutability(action: TreeseedContentAction): AgentToolMutability {
+export function contentMutability(action: ContentAction): AgentToolMutability {
 	return action === 'describe' || action === 'query' || action === 'read' ? 'read' : 'content_write';
 }
 
@@ -97,7 +97,7 @@ export const GENERIC_CONTENT_TOOLS: AgentToolDefinition[] = ([
 	id: `treeseed.content.${action}`,
 	title,
 	description,
-	inputSchema: genericTreeseedContentInputSchema(action),
+	inputSchema: genericContentInputSchema(action),
 	outputSchema: CONTENT_RESULT_SCHEMA,
 	executionTarget: 'treeseed_content',
 	mutability: contentMutability(action),
@@ -106,7 +106,7 @@ export const GENERIC_CONTENT_TOOLS: AgentToolDefinition[] = ([
 	content: { action },
 }));
 
-export const PRESET_CONTENT_TOOLS: AgentToolDefinition[] = createTreeseedContentToolPresets().map((preset) => ({
+export const PRESET_CONTENT_TOOLS: AgentToolDefinition[] = createContentToolPresets().map((preset) => ({
 	id: preset.id,
 	title: preset.title,
 	description: preset.description,

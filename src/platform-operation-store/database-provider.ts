@@ -7,7 +7,7 @@ import {
 	type PlatformRunnerHeartbeatRequest,
 	type PlatformRunnerJobUpdateRequest,
 	type PlatformRunnerRegistrationRequest,
-} from '../platform-operations.ts';
+} from '../operations/platform-operations.ts';
 import { PlatformOperationStore } from './platform-operation-store.ts';
 
 export type DatabaseProvider = 'd1' | 'sqlite' | 'postgres';

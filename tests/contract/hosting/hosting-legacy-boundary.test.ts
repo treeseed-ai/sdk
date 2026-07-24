@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { readTreeseedTestSource, resolveTreeseedTestRoot, sourceFunctionBody } from '../../support/workspace-test-root.ts';
+import { readTestSource, resolveTestRoot, sourceFunctionBody } from '../../support/workspace-test-root.ts';
 
-const testRoot = resolveTreeseedTestRoot(import.meta.url);
+const testRoot = resolveTestRoot(import.meta.url);
 
 function source(path: string) {
-	const result = readTreeseedTestSource(testRoot, path);
+	const result = readTestSource(testRoot, path);
 	expect(result, `${path} exists`).not.toBeNull();
 	return result ?? '';
 }
@@ -45,9 +45,9 @@ function anyFunctionBody(fileSource: string, functionName: string) {
 describe('hosting legacy mutation boundary', () => {
 	it('keeps direct Railway GraphQL strictly query-only', () => {
 		for (const path of [
-			'packages/sdk/src/operations/services/railway-api.ts',
-			'packages/sdk/src/operations/services/railway-deploy.ts',
-			'packages/sdk/src/reconcile/live-acceptance.ts',
+			'packages/sdk/src/operations/services/hosting/railway/railway-api.ts',
+			'packages/sdk/src/operations/services/hosting/railway/railway-deploy.ts',
+			'packages/sdk/src/reconcile/support/acceptance/live-acceptance.ts',
 		]) {
 			const contents = source(path);
 			expect(contents, `${path} must not contain a Railway GraphQL mutation document`).not.toMatch(/^\s*mutation\s+/gmu);
@@ -92,8 +92,8 @@ describe('hosting legacy mutation boundary', () => {
 	});
 
 	it('refuses Railway service delete-and-recreate repair paths in normal reconciliation', () => {
-		const railwayApi = source('packages/sdk/src/operations/services/railway-api.ts');
-		const builtins = source('packages/sdk/src/reconcile/builtin-adapters.ts');
+		const railwayApi = source('packages/sdk/src/operations/services/hosting/railway/railway-api.ts');
+		const builtins = source('packages/sdk/src/reconcile/reconciliation/builtin-adapters.ts');
 
 		for (const [label, body] of [
 			['ensureRailwayService', functionBody(railwayApi, 'ensureRailwayService')],
@@ -118,7 +118,7 @@ describe('hosting legacy mutation boundary', () => {
 	});
 
 	it('routes Railway hosting provisioning through the SDK IaC project adapter only', () => {
-		const builtins = source('packages/sdk/src/reconcile/builtin-adapters.ts');
+		const builtins = source('packages/sdk/src/reconcile/reconciliation/builtin-adapters.ts');
 		const sync = sourceFunctionBody(builtins, 'syncRailwayEnvironmentForScope');
 		expect(sync).not.toBe('');
 

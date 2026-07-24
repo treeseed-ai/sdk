@@ -1,13 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { loadCliDeployConfig } from '../runtime-tools.ts';
-import { resolveTreeseedMachineEnvironmentValues } from '../config-runtime.ts';
-import { createPersistentDeployTarget, resolveTreeseedResourceIdentity } from '../deploy.ts';
-import { classifyTreeseedGitMode, runTreeseedGitText } from '../git-runner.ts';
-import { discoverTreeseedApplications } from '../../../hosting/apps.ts';
-import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName, railwayTreeDxServiceName } from '../railway-source-policy.ts';
-import { runPrefixedCommand, sleep, type TreeseedBootstrapTaskPrefix, type TreeseedBootstrapWriter } from '../bootstrap-runner.ts';
+import { loadCliDeployConfig } from '../agents/runtime-tools.ts';
+import { resolveMachineEnvironmentValues } from '../configuration/config-runtime.ts';
+import { createPersistentDeployTarget, resolveResourceIdentity } from '../hosting/deployment/deploy.ts';
+import { classifyGitMode, runGitText } from '../operations/git-runner.ts';
+import { discoverApplications } from '../../../hosting/apps.ts';
+import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName, railwayTreeDxServiceName } from '../hosting/railway/railway-source-policy.ts';
+import { runPrefixedCommand, sleep, type BootstrapTaskPrefix, type BootstrapWriter } from '../operations/bootstrap-runner.ts';
 import {
 	ensureRailwayEnvironment,
 	ensureRailwayProject,
@@ -27,8 +27,8 @@ import {
 	resolveRailwayWorkspace,
 	resolveRailwayWorkspaceContext,
 	upsertRailwayVariables,
-} from '../railway-api.ts';
-import { elapsedMs, formatDurationMs, type TreeseedTimingEntry } from '../../../timing.ts';
+} from '../hosting/railway/railway-api.ts';
+import { elapsedMs, formatDurationMs, type TimingEntry } from '../../../entrypoints/runtime/timing.ts';
 import { HOSTED_PROJECT_SERVICE_KEYS, OPERATIONS_RUNNER_BOOTSTRAP_COUNT, RAILWAY_SERVICE_KEYS, WORKER_RUNNER_BOOTSTRAP_INDEX, WORKER_RUNNER_VOLUME_MOUNT_PATH, configuredApiPublicBaseUrl, defaultRailwayImageRef, deriveRailwayCapacityProviderRunnerServiceName, deriveRailwayOperationsRunnerServiceName, deriveRailwayWorkerRunnerServiceName, envValue, normalizeScheduleExpressions, normalizeScope, railwayImageRefEnvForService, railwayServiceNameSuffix, resolveRailwayEnvironmentForScope } from './normalize-scope.ts';
 import { configuredPublicTreeDxRailwayServices, resolveRailwayCapacityProviderRoot, resolveRailwayServiceSourcePolicy } from './configured-public-tree-dx-railway-services.ts';
 
@@ -44,14 +44,14 @@ export function configuredRailwayServicesForConfig(tenantRoot, scope, deployConf
 	];
 	let machineEnv = {};
 	try {
-		machineEnv = resolveTreeseedMachineEnvironmentValues(machineConfigRoot, normalizedScope, imageRefKeys);
+		machineEnv = resolveMachineEnvironmentValues(machineConfigRoot, normalizedScope, imageRefKeys);
 	} catch {
 		machineEnv = {};
 	}
 	const imageRefEnv = { ...machineEnv, ...process.env, ...envOverlay };
 	let identity;
 	try {
-		identity = resolveTreeseedResourceIdentity(deployConfig, createPersistentDeployTarget(normalizedScope));
+		identity = resolveResourceIdentity(deployConfig, createPersistentDeployTarget(normalizedScope));
 	} catch {
 		identity = { deploymentKey: deployConfig.slug ?? deployConfig.name ?? 'treeseed' };
 	}

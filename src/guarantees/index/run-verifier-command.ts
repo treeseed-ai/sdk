@@ -2,10 +2,10 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve, sep } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { TreeseedGuaranteeDiagnostic, TreeseedGuaranteeManifest } from './treeseed-guarantee-schema-version.ts';
-import { TreeseedGuaranteeVerifierExecutionInput, TreeseedGuaranteeVerifierExecutionResult, arrayOrEmpty, diagnostic, isRecord } from './treeseed-guarantee-journey-audit-item.ts';
-import { sceneHasAcceptanceAssertions } from './plan-treeseed-guarantees.ts';
-import { npmWorkspaceArgs, packageWorkspaceForOwner, validateTreeseedVitestVerifierOutput, writeCommandEvidence } from './export-treeseed-guarantees-csv.ts';
+import { GuaranteeDiagnostic, GuaranteeManifest } from './guarantee-schema-version.ts';
+import { GuaranteeVerifierExecutionInput, GuaranteeVerifierExecutionResult, arrayOrEmpty, diagnostic, isRecord } from './guarantee-journey-audit-item.ts';
+import { sceneHasAcceptanceAssertions } from './plan-guarantees.ts';
+import { npmWorkspaceArgs, packageWorkspaceForOwner, validateVitestVerifierOutput, writeCommandEvidence } from './export-guarantees-csv.ts';
 
 export function runVerifierCommand(input: {
 	command: string;
@@ -84,8 +84,8 @@ export function sceneActionKindFromManifestAction(action: unknown) {
 	return keys[0] ?? 'unknown';
 }
 
-export function validateGuaranteeSceneJourneyContract(input: { scenePath: string; sourcePath?: string }): TreeseedGuaranteeDiagnostic[] {
-	const diagnostics: TreeseedGuaranteeDiagnostic[] = [];
+export function validateGuaranteeSceneJourneyContract(input: { scenePath: string; sourcePath?: string }): GuaranteeDiagnostic[] {
+	const diagnostics: GuaranteeDiagnostic[] = [];
 	let value: unknown = null;
 	try {
 		value = parseYaml(readFileSync(input.scenePath, 'utf8'));
@@ -166,7 +166,7 @@ export function isLoopbackUrl(value: string) {
 	}
 }
 
-export async function defaultTreeseedGuaranteeVerifierExecutor(input: TreeseedGuaranteeVerifierExecutionInput): Promise<TreeseedGuaranteeVerifierExecutionResult> {
+export async function defaultGuaranteeVerifierExecutor(input: GuaranteeVerifierExecutionInput): Promise<GuaranteeVerifierExecutionResult> {
 	const definition = input.definition;
 	const ownerPackage = definition.ownerPackage ?? input.guarantee.manifest.ownerPackage;
 	const workspace = packageWorkspaceForOwner(ownerPackage);
@@ -210,7 +210,7 @@ export async function defaultTreeseedGuaranteeVerifierExecutor(input: TreeseedGu
 			args: npmWorkspaceArgs(workspace, ['exec', '--', 'vitest', 'run', definition.testFile, ...(definition.testName ? ['-t', definition.testName] : [])]),
 			timeoutSeconds: definition.timeoutSeconds,
 			onProgress: input.onProgress,
-			validateSuccess: validateTreeseedVitestVerifierOutput,
+			validateSuccess: validateVitestVerifierOutput,
 		});
 	}
 	if (definition.kind === 'packageScript') {
@@ -249,7 +249,7 @@ export async function defaultTreeseedGuaranteeVerifierExecutor(input: TreeseedGu
 	};
 }
 
-export function sceneAuthRoleForGuarantee(manifest: TreeseedGuaranteeManifest) {
+export function sceneAuthRoleForGuarantee(manifest: GuaranteeManifest) {
 	if (manifest.actors.allowed.includes('anonymous_user') || manifest.actors.allowed.includes('anonymous')) return undefined;
 	const actors = manifest.actors.allowed.map((actor) => actor.toLowerCase());
 	if (actors.some((actor) => /owner|operator|seller|platform|host/iu.test(actor))) return 'owner';

@@ -2,35 +2,35 @@ import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, ex
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import { collectTreeseedReconcileStatus, reconcileTreeseedTarget } from '../../../reconcile/index.ts';
-import { checkTreeseedProviderConnections, collectTreeseedConfigSeedValues, syncTreeseedGitHubEnvironment } from '../config-runtime.ts';
-import { createPersistentDeployTarget, runRemoteD1Migrations, finalizeDeploymentState } from '../deploy.ts';
+import { collectReconcileStatus, reconcileTarget } from '../../../reconcile/index.ts';
+import { checkProviderConnections, collectConfigSeedValues, syncGitHubEnvironment } from '../configuration/config-runtime.ts';
+import { createPersistentDeployTarget, runRemoteD1Migrations, finalizeDeploymentState } from '../hosting/deployment/deploy.ts';
 import {
 	createGitHubRepository,
 	ensureGitHubDeployAutomation,
 	initializeGitHubRepositoryWorkingTree,
 	resolveGitHubRemoteUrls,
 	resolveDefaultGitHubOwner,
-} from '../github-automation.ts';
-import { configuredRailwayServices, deployRailwayService, ensureRailwayScheduledJobs, validateRailwayDeployPrerequisites, verifyRailwayScheduledJobs } from '../railway-deploy.ts';
-import { loadCliDeployConfig } from '../runtime-tools.ts';
-import { templateCatalogRoot } from '../runtime-paths.ts';
-import { scaffoldTemplateProject } from '../template-registry.ts';
-import { applyProjectLaunchHostBindingConfig } from '../template-host-bindings.ts';
-import { runTreeseedGit } from '../git-runner.ts';
+} from '../repositories/github-automation.ts';
+import { configuredRailwayServices, deployRailwayService, ensureRailwayScheduledJobs, validateRailwayDeployPrerequisites, verifyRailwayScheduledJobs } from '../hosting/railway/railway-deploy.ts';
+import { loadCliDeployConfig } from '../agents/runtime-tools.ts';
+import { templateCatalogRoot } from '../runtime/runtime-paths.ts';
+import { scaffoldTemplateProject } from '../support/template-registry.ts';
+import { applyProjectLaunchHostBindingConfig } from '../hosting/deployment/template-host-bindings.ts';
+import { runRepositoryGit } from '../operations/git-runner.ts';
 import {
 	ProjectLaunchSecretSyncError,
 	syncProjectLaunchHostBindingSecrets,
 	type ProjectLaunchSecretSyncResult,
-} from '../template-secret-sync.ts';
-import { buildKnowledgePackMarketPackage, buildTemplateMarketPackage, importKnowledgePack } from '../market-packaging.ts';
-import { resolveTreeseedToolBinary } from '../../../managed-dependencies.ts';
-import { TREESEED_DEFAULT_STARTER_TEMPLATE_ID } from '../../../sdk-types.ts';
+} from '../configuration/template-secret-sync.ts';
+import { buildKnowledgePackMarketPackage, buildTemplateMarketPackage, importKnowledgePack } from '../support/market-packaging.ts';
+import { resolveToolBinary } from '../../../entrypoints/runtime/managed-dependencies.ts';
+import { DEFAULT_STARTER_TEMPLATE_ID } from '../../../entrypoints/models/sdk-types.ts';
 import type {
 	ProjectLaunchConfigWritePlanItem,
 	ProjectLaunchResolvedHostBinding,
 	ProjectLaunchSecretDeploymentPlanItem,
-} from '../../../template-launch-requirements.ts';
+} from '../../../entrypoints/templates/template-launch-requirements.ts';
 
 
 export type KnowledgeHubProviderLaunchFailurePhase =
@@ -148,7 +148,7 @@ export interface KnowledgeHubProviderLaunchResult {
 		workflows: Array<{ workflowPath: string; changed: boolean; workingDirectory?: string; mode?: string }>;
 		secrets: { existing: string[]; created: string[] };
 		variables: { existing: string[]; created: string[] };
-		environmentSync?: Array<Awaited<ReturnType<typeof syncTreeseedGitHubEnvironment>>>;
+		environmentSync?: Array<Awaited<ReturnType<typeof syncGitHubEnvironment>>>;
 		hostBindingSecretSync?: ProjectLaunchSecretSyncResult | null;
 	};
 	cloudflare: {
@@ -174,7 +174,7 @@ export interface KnowledgeHubProviderLaunchResult {
 export interface KnowledgeHubProviderLaunchPreflightReport {
 	ok: boolean;
 	missingConfig: string[];
-	providerChecks: ReturnType<typeof checkTreeseedProviderConnections>;
+	providerChecks: ReturnType<typeof checkProviderConnections>;
 	commands: {
 		git: boolean;
 		gh: boolean;
@@ -247,7 +247,7 @@ export function ensureDir(path: string) {
 
 export function runGit(cwd: string, args: string[], capture = true) {
 	const mutating = /^(add|commit|checkout|switch|merge|tag|push|fetch|worktree|submodule|reset|clean|restore|branch)$/u.test(args[0] ?? '');
-	const result = runTreeseedGit(args, {
+	const result = runRepositoryGit(args, {
 		cwd,
 		mode: mutating ? 'mutate' : 'read',
 		allowFailure: true,
@@ -257,7 +257,7 @@ export function runGit(cwd: string, args: string[], capture = true) {
 	if (result.status !== 0) {
 		if (args[0] === 'push' && !args.includes('--force')) {
 			const retryArgs = ['push', '--force', ...args.slice(1)];
-			const retry = runTreeseedGit(retryArgs, {
+			const retry = runRepositoryGit(retryArgs, {
 				cwd,
 				mode: 'mutate',
 				allowFailure: true,

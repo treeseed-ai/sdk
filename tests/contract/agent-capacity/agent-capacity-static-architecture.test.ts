@@ -5,7 +5,7 @@ import { BUILT_IN_AGENT_EXECUTION_PROVIDER_IDS } from '../../../src/types/agents
 
 const packageRoot = process.cwd();
 const roots = [resolve(packageRoot, 'src/agent-capacity'), resolve(packageRoot, 'src/capacity-provider')];
-const rootModules = [resolve(packageRoot, 'src/agent-capacity.ts'), resolve(packageRoot, 'src/capacity-provider.ts')];
+const rootModules = [resolve(packageRoot, 'src/capacity/agents/agent-capacity.ts'), resolve(packageRoot, 'src/capacity/providers/capacity-provider.ts')];
 const suppression = /@ts-(?:nocheck|ignore|expect-error)|eslint-disable|biome-ignore/gu;
 const forbiddenImport = /from\s+['"]@treeseed\/(?:admin|agent|api|cli|core|ui)(?:\/[^'"]*)?['"]/gu;
 
@@ -33,7 +33,7 @@ describe('portable agent-capacity static architecture', () => {
 	});
 
 	it('advertises only canonical execution providers and built-in handlers', () => {
-		const source = readFileSync(resolve(packageRoot, 'src/plugin-default.ts'), 'utf8');
+		const source = readFileSync(resolve(packageRoot, 'src/entrypoints/models/plugin-default.ts'), 'utf8');
 		expect(BUILT_IN_AGENT_EXECUTION_PROVIDER_IDS).toEqual(['codex', 'copilot', 'jira', 'github_issues', 'discord', 'workflow']);
 		expect(source).toContain('execution: [...BUILT_IN_AGENT_EXECUTION_PROVIDER_IDS]');
 		for (const handler of ['writer', 'actor', 'estimate', 'releaser', 'reporter']) {

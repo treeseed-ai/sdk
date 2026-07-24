@@ -26,7 +26,7 @@ import {
 	type TemplateSecretSensitivity,
 	type TemplateSecretSource,
 	type TemplateSecretTarget,
-} from '../sdk-types.ts';
+} from '../entrypoints/models/sdk-types.ts';
 import { ProjectLaunchHostInventoryRecord, ProjectLaunchResolvedHostBinding, ResolveProjectLaunchHostBindingsOptions } from './mutable.ts';
 import { bindingSelectedBy, defaultHostIds, hostUsabilityError, normalizeHostSnapshot, normalizeResourceSnapshot, resolveManagedHost, resolveTeamHost } from './parse-project-launch-host-binding-specs.ts';
 import { hostMetadataType } from './normalize-host-requirement.ts';

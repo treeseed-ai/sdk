@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
-import { TREEDX_CLIENT_OPERATION_MAP } from '../../../src/treedx/client.ts';
+import { TREEDX_CLIENT_OPERATION_MAP } from '../../../src/treedx/support/client.ts';
 
 type OpenApiOperation = {
 	operationId?: string;

@@ -1,26 +1,26 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { runTreeseedGit } from '../git-runner.ts';
+import { runRepositoryGit } from '../operations/git-runner.ts';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
-import { elapsedMs, formatTimingMarkdown, formatTimingSummary, type TreeseedTimingEntry } from '../../../timing.ts';
+import { elapsedMs, formatTimingMarkdown, formatTimingSummary, type TimingEntry } from '../../../entrypoints/runtime/timing.ts';
 import {
 	createControlPlaneReporter,
 	type ControlPlaneDeploymentReport,
 	type ControlPlaneReporter,
-} from '../../../control-plane.ts';
+} from '../../../entrypoints/clients/control-plane.ts';
 import {
 	resolvePublishedContentPreviewTtlHours,
 	resolveTeamScopedContentLocator,
 	signEditorialPreviewToken,
 	type PublishedContentManifest,
 	type PublishedContentObjectPointer,
-} from '../../../platform/published-content.ts';
-import { createPublishedContentPipeline } from '../../../platform/published-content-pipeline.ts';
-import { collectTreeseedReconcileStatus, reconcileTreeseedTarget, resolveTreeseedBootstrapSelection } from '../../../reconcile/index.ts';
-import { loadTreeseedManifest } from '../../../platform/tenant-config.ts';
-import { applyTreeseedEnvironmentToProcess, assertTreeseedCommandEnvironment } from '../config-runtime.ts';
-import { runTreeseedHostingAudit } from '../hosting-audit.ts';
+} from '../../../platform/packages/published-content.ts';
+import { createPublishedContentPipeline } from '../../../platform/packages/published-content-pipeline.ts';
+import { collectReconcileStatus, reconcileTarget, resolveBootstrapSelection } from '../../../reconcile/index.ts';
+import { loadManifest } from '../../../platform/configuration/tenant-config.ts';
+import { applyEnvironmentToProcess, assertCommandEnvironment } from '../configuration/config-runtime.ts';
+import { runHostingAudit } from '../hosting/audit/hosting-audit.ts';
 import {
 	assertDeploymentInitialized,
 	createPersistentDeployTarget,
@@ -32,12 +32,12 @@ import {
 	purgePublishedContentCaches,
 	resolveConfiguredCloudflareAccountId,
 	resolveConfiguredSurfaceBaseUrl,
-	resolveTreeseedResourceIdentity,
+	resolveResourceIdentity,
 	runRemoteD1Migrations,
 	syncCloudflareSecrets,
 	writeDeployState,
-} from '../deploy.ts';
-import { currentManagedBranch, PRODUCTION_BRANCH, STAGING_BRANCH } from '../git-workflow.ts';
+} from '../hosting/deployment/deploy.ts';
+import { currentManagedBranch, PRODUCTION_BRANCH, STAGING_BRANCH } from '../operations/git-workflow.ts';
 import {
 	configuredRailwayServices,
 	deployRailwayService,
@@ -46,12 +46,12 @@ import {
 	validateRailwayServiceConfiguration,
 	verifyRailwayManagedResources,
 	verifyRailwayScheduledJobs,
-} from '../railway-deploy.ts';
-import { loadCliDeployConfig, packageScriptPath } from '../runtime-tools.ts';
-import { resolveTreeseedToolCommand } from '../../../managed-dependencies.ts';
-import type { TreeseedRunnableBootstrapSystem } from '../../../reconcile/index.ts';
-import { runPrefixedCommand, runTreeseedBootstrapDag, sleep, writeTreeseedBootstrapLine, type TreeseedBootstrapDagNode, type TreeseedBootstrapExecution, type TreeseedBootstrapTaskPrefix, type TreeseedBootstrapWriter } from '../bootstrap-runner.ts';
-import { runTenantDeployPreflight } from '../save-deploy-preflight.ts';
+} from '../hosting/railway/railway-deploy.ts';
+import { loadCliDeployConfig, packageScriptPath } from '../agents/runtime-tools.ts';
+import { resolveToolCommand } from '../../../entrypoints/runtime/managed-dependencies.ts';
+import type { RunnableBootstrapSystem } from '../../../reconcile/index.ts';
+import { runPrefixedCommand, runBootstrapDag, sleep, writeBootstrapLine, type BootstrapDagNode, type BootstrapExecution, type BootstrapTaskPrefix, type BootstrapWriter } from '../operations/bootstrap-runner.ts';
+import { runTenantDeployPreflight } from '../hosting/deployment/save-deploy-preflight.ts';
 import { ProjectPlatformActionOptions, currentCommit, currentRef, recordTiming, resolveProjectPlatformBootstrapSystems, timedPhase, writeProviderTimingSummary, writeWorkflowStatus } from './project-platform-scope.ts';
 import { repairHostingAfterSuccessfulDeploy, resolveReporter } from './repair-hosting-after-successful-deploy.ts';
 import { TenantCloudflareDeployContext, prepareTenantCloudflareDeploy, reportDeployment, runTenantDataMigration, runTenantWebBuild, runTenantWebPublish } from './tenant-cloudflare-deploy-context.ts';
@@ -61,7 +61,7 @@ import { monitorProjectPlatform } from './monitor-project-platform.ts';
 
 export async function deployProjectPlatform(options: ProjectPlatformActionOptions) {
 	writeWorkflowStatus(`deploy:start scope=${options.scope} planOnly=${options.planOnly ? 'true' : 'false'}`);
-	const timings: TreeseedTimingEntry[] = [];
+	const timings: TimingEntry[] = [];
 	const deployStartMs = performance.now();
 	writeWorkflowStatus('deploy:resolve-reporter');
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);
@@ -90,11 +90,11 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 	if (!options.skipProvision) {
 		writeWorkflowStatus('deploy:provision:start');
 		const provision = await timedPhase(timings, 'deploy:provision', () => provisionProjectPlatform({ ...options, reporter, bootstrapSystems }));
-		timings.push(...((provision as { timings?: TreeseedTimingEntry[] }).timings ?? []));
+		timings.push(...((provision as { timings?: TimingEntry[] }).timings ?? []));
 		writeWorkflowStatus('deploy:provision:done');
 	}
 
-	const nodes: Array<TreeseedBootstrapDagNode> = [];
+	const nodes: Array<BootstrapDagNode> = [];
 	let cloudflareContext: TenantCloudflareDeployContext | null = null;
 	if (options.scope === 'local' && selectedSystems.has('web')) {
 		nodes.push({
@@ -199,7 +199,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 			id: 'agents:schedules',
 			dependencies: agentDeployNodeIds,
 			run: async () => {
-				writeTreeseedBootstrapLine(write, {
+				writeBootstrapLine(write, {
 					scope: options.scope,
 					system: 'agents',
 					task: 'schedules',
@@ -222,13 +222,13 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 		});
 	}
 
-	await runTreeseedBootstrapDag({ nodes, execution, write, timings });
+	await runBootstrapDag({ nodes, execution, write, timings });
 
 	const serviceResults = selectedRailwayServiceKeys
 		.map((serviceKey) => serviceResultsByKey.get(serviceKey))
 		.filter(Boolean);
 	for (const result of serviceResults) {
-		timings.push(...((result as { timings?: TreeseedTimingEntry[] }).timings ?? []));
+		timings.push(...((result as { timings?: TimingEntry[] }).timings ?? []));
 	}
 	if (options.scope !== 'local' && !options.planOnly && (selectedSystems.has('web') || serviceResults.length > 0)) {
 		finalizeDeploymentState(options.tenantRoot, {
@@ -253,7 +253,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 		});
 	}
 	const monitor = await timedPhase(timings, 'deploy:monitor', () => monitorProjectPlatform({ ...options, reporter, bootstrapSystems }));
-	timings.push(...((monitor as { timings?: TreeseedTimingEntry[] }).timings ?? []));
+	timings.push(...((monitor as { timings?: TimingEntry[] }).timings ?? []));
 	const hostingRepair = await timedPhase(timings, 'deploy:hosting-repair', () => repairHostingAfterSuccessfulDeploy(options, bootstrapSystems));
 	recordTiming(timings, 'deploy:total', deployStartMs);
 	writeProviderTimingSummary(options, timings);

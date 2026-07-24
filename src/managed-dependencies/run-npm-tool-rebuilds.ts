@@ -6,12 +6,12 @@ import { platform as osPlatform, arch as osArch } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { withTreeseedServiceCredentialEnv } from '../service-credentials.ts';
-import { DependencyInstallerOptions, TreeseedDependencyInstallResult, TreeseedManagedToolName, TreeseedNpmInstallReport, TreeseedToolInvocation, TreeseedToolStatusResult, createTreeseedManagedToolEnv, managedGhBin, managedRailwayBin, tokenEnv } from './dependency-runtime.ts';
+import { withServiceCredentialEnv } from '../configuration/service-credentials.ts';
+import { DependencyInstallerOptions, DependencyInstallResult, ManagedToolName, NpmInstallReport, ToolInvocation, ToolStatusResult, createManagedToolEnv, managedGhBin, managedRailwayBin, tokenEnv } from './dependency-runtime.ts';
 import { npmToolsMissingRuntime, resolveNpmRebuildCommand } from './collect-native-dependency-repairs.ts';
 import { findNpmTool, locateSystemBinary, redactSensitiveOutput, resolveNpmToolRuntimeBinary } from './redact-sensitive-output.ts';
 
-export function runNpmToolRebuilds(options: Required<Pick<DependencyInstallerOptions, 'env' | 'spawn'>> & Pick<DependencyInstallerOptions, 'tenantRoot' | 'write'>): TreeseedNpmInstallReport[] {
+export function runNpmToolRebuilds(options: Required<Pick<DependencyInstallerOptions, 'env' | 'spawn'>> & Pick<DependencyInstallerOptions, 'tenantRoot' | 'write'>): NpmInstallReport[] {
 	const missingRuntimeTools = npmToolsMissingRuntime();
 	if (missingRuntimeTools.length === 0) {
 		return [];
@@ -64,7 +64,7 @@ export function runNpmToolRebuilds(options: Required<Pick<DependencyInstallerOpt
 	}];
 }
 
-export function formatTreeseedDependencyFailureDetails(result: Pick<TreeseedDependencyInstallResult, 'npmInstalls' | 'reports'>) {
+export function formatDependencyFailureDetails(result: Pick<DependencyInstallResult, 'npmInstalls' | 'reports'>) {
 	const npmFailures = result.npmInstalls
 		.filter((entry) => entry.status === 'failed')
 		.map((entry) => {
@@ -79,7 +79,7 @@ export function formatTreeseedDependencyFailureDetails(result: Pick<TreeseedDepe
 	return [...npmFailures, ...toolFailures].join('\n- ') || 'No dependency failure details were reported.';
 }
 
-export function resolveTreeseedToolBinary(toolName: TreeseedManagedToolName, options: { env?: NodeJS.ProcessEnv } = {}) {
+export function resolveToolBinary(toolName: ManagedToolName, options: { env?: NodeJS.ProcessEnv } = {}) {
 	if (toolName === 'gh') {
 		const managed = managedGhBin(options.env);
 		if (existsSync(managed)) {
@@ -101,8 +101,8 @@ export function resolveTreeseedToolBinary(toolName: TreeseedManagedToolName, opt
 	return null;
 }
 
-export function resolveTreeseedToolCommand(toolName: TreeseedManagedToolName, options: { env?: NodeJS.ProcessEnv } = {}) {
-	const binaryPath = resolveTreeseedToolBinary(toolName, options);
+export function resolveToolCommand(toolName: ManagedToolName, options: { env?: NodeJS.ProcessEnv } = {}) {
+	const binaryPath = resolveToolBinary(toolName, options);
 	if (!binaryPath) {
 		return null;
 	}
@@ -112,8 +112,8 @@ export function resolveTreeseedToolCommand(toolName: TreeseedManagedToolName, op
 	return { command: binaryPath, argsPrefix: [], binaryPath };
 }
 
-export function invocationForTool(toolName: TreeseedManagedToolName, env: NodeJS.ProcessEnv = process.env): TreeseedToolInvocation {
-	const command = resolveTreeseedToolCommand(toolName, { env });
+export function invocationForTool(toolName: ManagedToolName, env: NodeJS.ProcessEnv = process.env): ToolInvocation {
+	const command = resolveToolCommand(toolName, { env });
 	if (!command) {
 		return {
 			mode: 'unavailable',
@@ -130,9 +130,9 @@ export function invocationForTool(toolName: TreeseedManagedToolName, env: NodeJS
 	};
 }
 
-export function checkGitHubAuth(options: DependencyInstallerOptions): TreeseedToolStatusResult['auth']['github'] {
+export function checkGitHubAuth(options: DependencyInstallerOptions): ToolStatusResult['auth']['github'] {
 	const env = tokenEnv(options.env ?? process.env);
-	const gh = resolveTreeseedToolCommand('gh', { env });
+	const gh = resolveToolCommand('gh', { env });
 	const command = gh ? [gh.command, ...gh.argsPrefix, 'auth', 'status', '--hostname', 'github.com'] : [];
 	const remediation = [
 		'Run `npx trsd install --json` to install or inspect managed tools.',
@@ -151,7 +151,7 @@ export function checkGitHubAuth(options: DependencyInstallerOptions): TreeseedTo
 	}
 	const result = (options.spawn ?? spawnSync)(gh.command, [...gh.argsPrefix, 'auth', 'status', '--hostname', 'github.com'], {
 		cwd: options.tenantRoot,
-		env: createTreeseedManagedToolEnv(env),
+		env: createManagedToolEnv(env),
 		stdio: 'pipe',
 		encoding: 'utf8',
 		timeout: 15000,

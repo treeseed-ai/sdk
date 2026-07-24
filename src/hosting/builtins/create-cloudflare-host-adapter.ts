@@ -1,26 +1,26 @@
 import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
-import { resolveTreeseedLaunchEnvironment } from '../../operations/services/config-runtime.ts';
-import { cloudflareApiRequest, resolveCloudflareZoneIdForHost, resolveConfiguredCloudflareAccountId, runWrangler } from '../../operations/services/deploy.ts';
+import { resolveLaunchEnvironment } from '../../operations/services/configuration/config-runtime.ts';
+import { cloudflareApiRequest, resolveCloudflareZoneIdForHost, resolveConfiguredCloudflareAccountId, runWrangler } from '../../operations/services/hosting/deployment/deploy.ts';
 import type {
-	TreeseedApplicationHostingProfile,
-	TreeseedHostAdapter,
-	TreeseedHostAdapterOperationInput,
-	TreeseedHostAdapterOperationResult,
-	TreeseedHostCapability,
-	TreeseedHostingEnvironment,
-	TreeseedHostingStatus,
-	TreeseedHostingUnit,
-	TreeseedHostingUnitPlan,
-	TreeseedHostingVerification,
-	TreeseedServicePlacement,
-	TreeseedServiceTypeAdapter,
+	ApplicationHostingProfile,
+	HostAdapter,
+	HostAdapterOperationInput,
+	HostAdapterOperationResult,
+	HostCapability,
+	HostingEnvironment,
+	HostingStatus,
+	HostingUnit,
+	HostingUnitPlan,
+	HostingVerification,
+	ServicePlacement,
+	ServiceTypeAdapter,
 } from '../contracts.ts';
 import { ALL_ENVIRONMENTS, PROVIDER_ENVIRONMENTS, cloudflarePagesBranchName, cloudflarePagesBuildCommand, cloudflarePagesBuildOutputDir, cloudflarePagesDeploymentUrl, cloudflarePagesDomain, cloudflarePagesProjectName, createReconcilerOwnedHostAdapter, reconcilerOwnedStatus } from './all-environments.ts';
 import { cloudflarePagesDnsTarget, cloudflarePagesDomainName, observeCloudflarePagesDeployment, observeCloudflarePagesDns, observeCloudflarePagesDomain, observeCloudflarePagesProject, probeCloudflarePagesPublicUrl } from './probe-cloudflare-pages-public-url.ts';
 
-export function createCloudflareHostAdapter(): TreeseedHostAdapter {
+export function createCloudflareHostAdapter(): HostAdapter {
 	const base = createReconcilerOwnedHostAdapter('cloudflare', 'Cloudflare', [
 		'web-site',
 		'object-store',
@@ -32,7 +32,7 @@ export function createCloudflareHostAdapter(): TreeseedHostAdapter {
 		'deployment',
 		'health',
 	], PROVIDER_ENVIRONMENTS);
-	const isPagesSite = (input: TreeseedHostAdapterOperationInput) => input.unit.serviceType.id === 'web-site';
+	const isPagesSite = (input: HostAdapterOperationInput) => input.unit.serviceType.id === 'web-site';
 	return {
 		...base,
 		refresh(input) {
@@ -169,7 +169,7 @@ export function createCloudflareHostAdapter(): TreeseedHostAdapter {
 	};
 }
 
-export function createDefaultHostAdapters(): Record<string, TreeseedHostAdapter> {
+export function createDefaultHostAdapters(): Record<string, HostAdapter> {
 	return {
 		railway: createReconcilerOwnedHostAdapter('railway', 'Railway', [
 			'project',
@@ -226,11 +226,11 @@ export function createDefaultHostAdapters(): Record<string, TreeseedHostAdapter>
 export function serviceType(
 	id: string,
 	label: string,
-	placement: TreeseedServicePlacement,
-	requiredCapabilities: TreeseedHostCapability[],
-	defaultHostByEnvironment: Partial<Record<TreeseedHostingEnvironment, string>>,
+	placement: ServicePlacement,
+	requiredCapabilities: HostCapability[],
+	defaultHostByEnvironment: Partial<Record<HostingEnvironment, string>>,
 	composes: string[] = [],
-): TreeseedServiceTypeAdapter {
+): ServiceTypeAdapter {
 	return {
 		id,
 		label,

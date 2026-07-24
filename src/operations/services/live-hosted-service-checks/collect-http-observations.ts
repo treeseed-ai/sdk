@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
-import { loadTreeseedPlatformConfig } from '../../../platform/config.ts';
-import { resolveTreeseedLaunchEnvironment } from '../config-runtime.ts';
+import { loadPlatformConfig } from '../../../platform/configuration/config.ts';
+import { resolveLaunchEnvironment } from '../configuration/config-runtime.ts';
 import {
 	getRailwayServiceInstance,
 	inspectRailwayServiceDeploymentHealth,
@@ -11,31 +11,31 @@ import {
 	listRailwayVolumes,
 	normalizeRailwayEnvironmentName,
 	resolveRailwayWorkspaceContext,
-} from '../railway-api.ts';
+} from '../hosting/railway/railway-api.ts';
 import {
 	configuredRailwayServices,
-	findStaleTreeseedOperationsRunnerResources,
-	isTreeseedOperationsRunnerResourceName,
+	findStaleOperationsRunnerResources,
+	isOperationsRunnerResourceName,
 	railwayObsoleteAliasCleanupPolicy,
-} from '../railway-deploy.ts';
-import { railwayTreeDxServiceName } from '../railway-source-policy.ts';
-import { discoverTreeseedApplications } from '../../../hosting/apps.ts';
+} from '../hosting/railway/railway-deploy.ts';
+import { railwayTreeDxServiceName } from '../hosting/railway/railway-source-policy.ts';
+import { discoverApplications } from '../../../hosting/apps.ts';
 import {
-	collectTreeseedHostedServiceChecks,
-	type TreeseedHostedServiceCheckReport,
-	type TreeseedHostedServiceTarget,
-	type TreeseedObservedRailwayServiceState,
-} from '../hosted-service-checks.ts';
-import { TreeseedLiveHostedServiceCheckOptions, TreeseedLiveHostedServiceCheckReport, observeHttp, pagesBranchName, selectedServiceKeySet, selectedWebConfig, serviceIsSelected, serviceMatchesAppSelection, urlForDomain } from './default-retry-attempts.ts';
+	collectHostedServiceChecks,
+	type HostedServiceCheckReport,
+	type HostedServiceTarget,
+	type ObservedRailwayServiceState,
+} from '../hosting/audit/hosted-service-checks.ts';
+import { LiveHostedServiceCheckOptions, LiveHostedServiceCheckReport, observeHttp, pagesBranchName, selectedServiceKeySet, selectedWebConfig, serviceIsSelected, serviceMatchesAppSelection, urlForDomain } from './default-retry-attempts.ts';
 import { resolveLiveProviderEnv } from './verify-railway-postgres-topology.ts';
 import { collectRailwayObservations } from './collect-railway-observations.ts';
 
-export async function collectHttpObservations(options: TreeseedLiveHostedServiceCheckOptions) {
-	const deployConfig = loadTreeseedPlatformConfig({ tenantRoot: options.tenantRoot, environment: options.target, env: options.env }).deployConfig;
+export async function collectHttpObservations(options: LiveHostedServiceCheckOptions) {
+	const deployConfig = loadPlatformConfig({ tenantRoot: options.tenantRoot, environment: options.target, env: options.env }).deployConfig;
 	const urls = new Set<string>();
 	const fallbacks = new Map<string, string>();
 	const selectedServiceKeys = selectedServiceKeySet(options);
-	const applications = discoverTreeseedApplications(options.tenantRoot);
+	const applications = discoverApplications(options.tenantRoot);
 	const selectedApplication = options.appId
 		? applications.find((application) => application.id === options.appId || application.relativeRoot === options.appId)
 		: null;
@@ -92,7 +92,7 @@ export async function collectHttpObservations(options: TreeseedLiveHostedService
 	return Object.fromEntries(entries);
 }
 
-export function strictenReport(report: TreeseedLiveHostedServiceCheckReport, options: TreeseedLiveHostedServiceCheckOptions) {
+export function strictenReport(report: LiveHostedServiceCheckReport, options: LiveHostedServiceCheckOptions) {
 	if (!options.strict) return report;
 	const checks = report.checks.map((check) => {
 		if (check.status !== 'skipped') return check;
@@ -115,7 +115,7 @@ export function strictenReport(report: TreeseedLiveHostedServiceCheckReport, opt
 	return { ...report, checks, summary };
 }
 
-export async function collectTreeseedLiveHostedServiceChecks(options: TreeseedLiveHostedServiceCheckOptions): Promise<TreeseedLiveHostedServiceCheckReport> {
+export async function collectLiveHostedServiceChecks(options: LiveHostedServiceCheckOptions): Promise<LiveHostedServiceCheckReport> {
 	const effectiveOptions = {
 		...options,
 		env: resolveLiveProviderEnv(options),
@@ -128,7 +128,7 @@ export async function collectTreeseedLiveHostedServiceChecks(options: TreeseedLi
 	const httpChecks = requireLiveHttp
 		? await collectHttpObservations(effectiveOptions)
 		: {};
-	const report = collectTreeseedHostedServiceChecks({
+	const report = collectHostedServiceChecks({
 		tenantRoot: effectiveOptions.tenantRoot,
 		target: effectiveOptions.target,
 		appId: effectiveOptions.appId,

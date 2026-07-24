@@ -9,12 +9,12 @@ import {
 	scaffoldTemplateProject,
 	syncTemplateProject,
 	validateTemplateProduct,
-} from '../../../src/operations/services/template-registry.ts';
+} from '../../../src/operations/services/support/template-registry.ts';
 import {
 	normalizeProjectLaunchHostBindings,
 	resolveProjectLaunchHostBindings,
-} from '../../../src/template-launch-requirements.ts';
-import { applyProjectLaunchHostBindingConfig } from '../../../src/operations/services/template-host-bindings.ts';
+} from '../../../src/entrypoints/templates/template-launch-requirements.ts';
+import { applyProjectLaunchHostBindingConfig } from '../../../src/operations/services/hosting/deployment/template-host-bindings.ts';
 
 function git(cwd: string, args: string[]) {
 	const result = spawnSync('git', args, {

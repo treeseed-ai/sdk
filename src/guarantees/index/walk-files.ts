@@ -2,8 +2,8 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve, sep } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { EXCLUDED_DIRS, GUARANTEE_ID_PATTERN, KNOWN_DEVICES, KNOWN_GATES, KNOWN_STATUSES, KNOWN_SURFACES, TAXONOMY_PATTERN, diagnostic, isRecord, numberArray, numberValue, readYamlFile, stringArray, stringValue } from './treeseed-guarantee-journey-audit-item.ts';
-import { TREESEED_GUARANTEE_SCHEMA_VERSION, TreeseedGuaranteeDevice, TreeseedGuaranteeDiagnostic, TreeseedGuaranteeGate, TreeseedGuaranteeManifest, TreeseedGuaranteeRunContract, TreeseedGuaranteeSceneContract, TreeseedGuaranteeStatus, TreeseedGuaranteeSurface, TreeseedGuaranteeVerifierContract, TreeseedLoadedGuarantee } from './treeseed-guarantee-schema-version.ts';
+import { EXCLUDED_DIRS, GUARANTEE_ID_PATTERN, KNOWN_DEVICES, KNOWN_GATES, KNOWN_STATUSES, KNOWN_SURFACES, TAXONOMY_PATTERN, diagnostic, isRecord, numberArray, numberValue, readYamlFile, stringArray, stringValue } from './guarantee-journey-audit-item.ts';
+import { GUARANTEE_SCHEMA_VERSION, GuaranteeDevice, GuaranteeDiagnostic, GuaranteeGate, GuaranteeManifest, GuaranteeRunContract, GuaranteeSceneContract, GuaranteeStatus, GuaranteeSurface, GuaranteeVerifierContract, LoadedGuarantee } from './guarantee-schema-version.ts';
 import { allVerifierRefs } from './parse-verifier-registry.ts';
 
 export function walkFiles(root: string, predicate: (path: string) => boolean): string[] {
@@ -44,7 +44,7 @@ export function ownerPackageFromRoot(packageRoot: string) {
 	return '@treeseed/market';
 }
 
-export function validateTaxonomyPath(input: { workspaceRoot: string; sourcePath: string; manifest: TreeseedGuaranteeManifest; diagnostics: TreeseedGuaranteeDiagnostic[] }) {
+export function validateTaxonomyPath(input: { workspaceRoot: string; sourcePath: string; manifest: GuaranteeManifest; diagnostics: GuaranteeDiagnostic[] }) {
 	const packageRoot = nearestPackageRoot(input.workspaceRoot, input.sourcePath);
 	const relativePath = relative(packageRoot, input.sourcePath).split(sep);
 	const guaranteeIndex = relativePath.indexOf('guarantees');
@@ -63,7 +63,7 @@ export function validateTaxonomyPath(input: { workspaceRoot: string; sourcePath:
 	}
 }
 
-export function parseContract(value: unknown): TreeseedGuaranteeVerifierContract | undefined {
+export function parseContract(value: unknown): GuaranteeVerifierContract | undefined {
 	if (!isRecord(value)) return undefined;
 	return {
 		...(typeof value.required === 'boolean' ? { required: value.required } : {}),
@@ -71,7 +71,7 @@ export function parseContract(value: unknown): TreeseedGuaranteeVerifierContract
 	};
 }
 
-export function parseRunContract(value: unknown): TreeseedGuaranteeRunContract | undefined {
+export function parseRunContract(value: unknown): GuaranteeRunContract | undefined {
 	if (!isRecord(value)) return undefined;
 	const timeoutSeconds = numberValue(value.timeoutSeconds);
 	return {
@@ -81,7 +81,7 @@ export function parseRunContract(value: unknown): TreeseedGuaranteeRunContract |
 	};
 }
 
-export function parseScene(value: unknown): TreeseedGuaranteeSceneContract | undefined {
+export function parseScene(value: unknown): GuaranteeSceneContract | undefined {
 	if (!isRecord(value)) return undefined;
 	const mode = isRecord(value.mode) ? value.mode : {};
 	return {
@@ -96,21 +96,21 @@ export function parseScene(value: unknown): TreeseedGuaranteeSceneContract | und
 	};
 }
 
-export function parseGuaranteeManifest(value: unknown, diagnostics: TreeseedGuaranteeDiagnostic[], sourcePath: string): TreeseedGuaranteeManifest | null {
+export function parseGuaranteeManifest(value: unknown, diagnostics: GuaranteeDiagnostic[], sourcePath: string): GuaranteeManifest | null {
 	if (!isRecord(value)) {
 		diagnostics.push(diagnostic('error', 'guarantee.invalid_manifest', 'Guarantee manifest must be an object.', 'manifest', sourcePath));
 		return null;
 	}
 	const schemaVersion = stringValue(value.schemaVersion);
-	if (schemaVersion !== TREESEED_GUARANTEE_SCHEMA_VERSION) diagnostics.push(diagnostic('error', 'guarantee.unsupported_schema_version', `Unsupported guarantee schema version "${schemaVersion}".`, 'schemaVersion', sourcePath));
+	if (schemaVersion !== GUARANTEE_SCHEMA_VERSION) diagnostics.push(diagnostic('error', 'guarantee.unsupported_schema_version', `Unsupported guarantee schema version "${schemaVersion}".`, 'schemaVersion', sourcePath));
 	const id = stringValue(value.id);
 	const type = stringValue(value.type);
 	const subtype = stringValue(value.subtype);
 	const journey = stringValue(value.journey);
 	const ownerPackage = stringValue(value.ownerPackage);
-	const surface = stringValue(value.surface) as TreeseedGuaranteeSurface;
+	const surface = stringValue(value.surface) as GuaranteeSurface;
 	const summary = stringValue(value.summary);
-	const status = stringValue(value.status) as TreeseedGuaranteeStatus;
+	const status = stringValue(value.status) as GuaranteeStatus;
 
 	for (const [field, fieldValue] of Object.entries({ id, type, subtype, journey, ownerPackage, summary, status })) {
 		if (!fieldValue) diagnostics.push(diagnostic('error', 'guarantee.missing_required_field', `Missing required field: ${field}.`, field, sourcePath));
@@ -135,18 +135,18 @@ export function parseGuaranteeManifest(value: unknown, diagnostics: TreeseedGuar
 	const devices = isRecord(value.devices) ? value.devices : {};
 	const preconditions = isRecord(value.preconditions) ? value.preconditions : {};
 	const evidence = isRecord(value.evidence) ? value.evidence : {};
-	const gates = stringArray(value.gates) as TreeseedGuaranteeGate[];
+	const gates = stringArray(value.gates) as GuaranteeGate[];
 	for (const gate of gates) {
 		if (!KNOWN_GATES.has(gate)) diagnostics.push(diagnostic('error', 'guarantee.invalid_gate', `Unsupported guarantee gate "${gate}".`, 'gates', sourcePath));
 	}
-	const requiredDevices = stringArray(devices.required) as TreeseedGuaranteeDevice[];
-	const optionalDevices = stringArray(devices.optional) as TreeseedGuaranteeDevice[];
+	const requiredDevices = stringArray(devices.required) as GuaranteeDevice[];
+	const optionalDevices = stringArray(devices.optional) as GuaranteeDevice[];
 	for (const device of [...requiredDevices, ...optionalDevices]) {
 		if (!KNOWN_DEVICES.has(device)) diagnostics.push(diagnostic('error', 'guarantee.invalid_device', `Unsupported guarantee device "${device}".`, 'devices', sourcePath));
 	}
 
-	const manifest: TreeseedGuaranteeManifest = {
-		schemaVersion: TREESEED_GUARANTEE_SCHEMA_VERSION,
+	const manifest: GuaranteeManifest = {
+		schemaVersion: GUARANTEE_SCHEMA_VERSION,
 		id,
 		...(Number.isInteger(Number(value.journeyIndex)) ? { journeyIndex: Number(value.journeyIndex) } : {}),
 		type,
@@ -215,11 +215,11 @@ export function parseGuaranteeManifest(value: unknown, diagnostics: TreeseedGuar
 	return diagnostics.some((entry) => entry.severity === 'error' && entry.sourcePath === sourcePath && entry.code !== 'guarantee.scene_missing_planned') ? manifest : manifest;
 }
 
-export function loadTreeseedGuaranteeManifest(input: { workspaceRoot: string; path: string }): TreeseedLoadedGuarantee {
+export function loadGuaranteeManifest(input: { workspaceRoot: string; path: string }): LoadedGuarantee {
 	const sourcePath = resolve(input.path);
 	const packageRoot = nearestPackageRoot(resolve(input.workspaceRoot), sourcePath);
 	const ownerPackage = ownerPackageFromRoot(packageRoot);
-	const diagnostics: TreeseedGuaranteeDiagnostic[] = [];
+	const diagnostics: GuaranteeDiagnostic[] = [];
 	const value = readYamlFile(sourcePath, diagnostics);
 	const manifest = value ? parseGuaranteeManifest(value, diagnostics, sourcePath) : null;
 	if (manifest) {

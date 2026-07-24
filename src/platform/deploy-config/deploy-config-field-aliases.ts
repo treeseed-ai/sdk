@@ -1,37 +1,37 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import type { TreeseedFieldAliasRegistry } from '../../field-aliases.ts';
-import { normalizeAliasedRecord } from '../../field-aliases.ts';
+import type { FieldAliasRegistry } from '../../entrypoints/models/field-aliases.ts';
+import { normalizeAliasedRecord } from '../../entrypoints/models/field-aliases.ts';
 import type {
-	TreeseedDeployConfig,
-	TreeseedExportConfig,
-	TreeseedHubConfig,
-	TreeseedLocalRuntimeConfig,
-	TreeseedManagedServiceConfig,
-	TreeseedManagedServicesConfig,
-	TreeseedPlatformSurfacesConfig,
-	TreeseedProcessingConfig,
-	TreeseedPluginReference,
-	TreeseedProviderSelections,
-	TreeseedRuntimeConfig,
-	TreeseedWebCachePolicyConfig,
-	TreeseedWebSourcePageCacheConfig,
-} from '../contracts.ts';
-import { resolveTreeseedTenantRoot } from '../tenant-config.ts';
+	DeployConfig,
+	ExportConfig,
+	HubConfig,
+	LocalRuntimeConfig,
+	ManagedServiceConfig,
+	ManagedServicesConfig,
+	PlatformSurfacesConfig,
+	ProcessingConfig,
+	PluginReference,
+	ProviderSelections,
+	RuntimeConfig,
+	WebCachePolicyConfig,
+	WebSourcePageCacheConfig,
+} from '../support/contracts.ts';
+import { resolveTenantRoot } from '../configuration/tenant-config.ts';
 import {
-	TREESEED_DEFAULT_PLUGIN_REFERENCES,
-	TREESEED_DEFAULT_PROVIDER_SELECTIONS,
+	DEFAULT_PLUGIN_REFERENCES,
+	DEFAULT_PROVIDER_SELECTIONS,
 } from '../plugins/constants.ts';
 
 
-export const deployConfigFieldAliases: TreeseedFieldAliasRegistry = {
+export const deployConfigFieldAliases: FieldAliasRegistry = {
 	siteUrl: { key: 'siteUrl', aliases: ['site_url'] },
 	contactEmail: { key: 'contactEmail', aliases: ['contact_email'] },
 	projectRoot: { key: 'projectRoot', aliases: ['project_root'] },
 };
 
-export const hostingFieldAliases: TreeseedFieldAliasRegistry = {
+export const hostingFieldAliases: FieldAliasRegistry = {
 	kind: { key: 'kind', aliases: ['kind'] },
 	registration: { key: 'registration', aliases: ['registration'] },
 	marketBaseUrl: { key: 'marketBaseUrl', aliases: ['market_base_url'] },
@@ -39,11 +39,11 @@ export const hostingFieldAliases: TreeseedFieldAliasRegistry = {
 	projectId: { key: 'projectId', aliases: ['project_id'] },
 };
 
-export const hubFieldAliases: TreeseedFieldAliasRegistry = {
+export const hubFieldAliases: FieldAliasRegistry = {
 	mode: { key: 'mode', aliases: ['mode'] },
 };
 
-export const runtimeFieldAliases: TreeseedFieldAliasRegistry = {
+export const runtimeFieldAliases: FieldAliasRegistry = {
 	mode: { key: 'mode', aliases: ['mode'] },
 	registration: { key: 'registration', aliases: ['registration'] },
 	marketBaseUrl: { key: 'marketBaseUrl', aliases: ['market_base_url'] },
@@ -51,13 +51,13 @@ export const runtimeFieldAliases: TreeseedFieldAliasRegistry = {
 	projectId: { key: 'projectId', aliases: ['project_id'] },
 };
 
-export const processingFieldAliases: TreeseedFieldAliasRegistry = {
+export const processingFieldAliases: FieldAliasRegistry = {
 	mode: { key: 'mode', aliases: ['mode'] },
 	providerRef: { key: 'providerRef', aliases: ['provider_ref', 'providerRef'] },
 	requiredCapabilities: { key: 'requiredCapabilities', aliases: ['required_capabilities', 'requiredCapabilities'] },
 };
 
-export const cloudflareFieldAliases: TreeseedFieldAliasRegistry = {
+export const cloudflareFieldAliases: FieldAliasRegistry = {
 	accountId: { key: 'accountId', aliases: ['account_id'] },
 	zoneId: { key: 'zoneId', aliases: ['zone_id'] },
 	workerName: { key: 'workerName', aliases: ['worker_name'] },
@@ -67,7 +67,7 @@ export const cloudflareFieldAliases: TreeseedFieldAliasRegistry = {
 	queueBinding: { key: 'queueBinding', aliases: ['queue_binding'] },
 };
 
-export const cloudflarePagesFieldAliases: TreeseedFieldAliasRegistry = {
+export const cloudflarePagesFieldAliases: FieldAliasRegistry = {
 	projectName: { key: 'projectName', aliases: ['project_name'] },
 	previewProjectName: { key: 'previewProjectName', aliases: ['preview_project_name'] },
 	productionBranch: { key: 'productionBranch', aliases: ['production_branch'] },
@@ -75,7 +75,7 @@ export const cloudflarePagesFieldAliases: TreeseedFieldAliasRegistry = {
 	buildOutputDir: { key: 'buildOutputDir', aliases: ['build_output_dir'] },
 };
 
-export const cloudflareR2FieldAliases: TreeseedFieldAliasRegistry = {
+export const cloudflareR2FieldAliases: FieldAliasRegistry = {
 	binding: { key: 'binding', aliases: ['binding'] },
 	bucketName: { key: 'bucketName', aliases: ['bucket_name'] },
 	publicBaseUrl: { key: 'publicBaseUrl', aliases: ['public_base_url'] },
@@ -84,17 +84,17 @@ export const cloudflareR2FieldAliases: TreeseedFieldAliasRegistry = {
 	previewTtlHours: { key: 'previewTtlHours', aliases: ['preview_ttl_hours'] },
 };
 
-export const webSurfaceCacheFieldAliases: TreeseedFieldAliasRegistry = {
+export const webSurfaceCacheFieldAliases: FieldAliasRegistry = {
 	sourcePages: { key: 'sourcePages', aliases: ['source_pages'] },
 	contentPages: { key: 'contentPages', aliases: ['content_pages'] },
 	r2PublishedObjects: { key: 'r2PublishedObjects', aliases: ['r2_published_objects'] },
 };
 
-export const localRuntimeFieldAliases: TreeseedFieldAliasRegistry = {
+export const localRuntimeFieldAliases: FieldAliasRegistry = {
 	runtime: { key: 'runtime', aliases: ['runtime', 'runtime_mode', 'runtimeMode'] },
 };
 
-export const webCachePolicyFieldAliases: TreeseedFieldAliasRegistry = {
+export const webCachePolicyFieldAliases: FieldAliasRegistry = {
 	browserTtlSeconds: { key: 'browserTtlSeconds', aliases: ['browser_ttl_seconds'] },
 	edgeTtlSeconds: { key: 'edgeTtlSeconds', aliases: ['edge_ttl_seconds'] },
 	staleWhileRevalidateSeconds: { key: 'staleWhileRevalidateSeconds', aliases: ['stale_while_revalidate_seconds'] },
@@ -104,9 +104,9 @@ export const webCachePolicyFieldAliases: TreeseedFieldAliasRegistry = {
 
 export const CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER = 'replace-with-cloudflare-account-id';
 
-export const TREESEED_DEFAULT_SOURCE_PAGE_PURGE_PATHS = ['/', '/contact', '/404'];
+export const DEFAULT_SOURCE_PAGE_PURGE_PATHS = ['/', '/contact', '/404'];
 
-export const TREESEED_DEFAULT_LONG_LIVED_CACHE_POLICY: Required<TreeseedWebCachePolicyConfig> = {
+export const DEFAULT_LONG_LIVED_CACHE_POLICY: Required<WebCachePolicyConfig> = {
 	browserTtlSeconds: 0,
 	edgeTtlSeconds: 31536000,
 	staleWhileRevalidateSeconds: 86400,
@@ -213,9 +213,9 @@ export function optionalRecord(value: unknown, label: string) {
 	return value as Record<string, unknown>;
 }
 
-export function parsePluginReferences(value: unknown): TreeseedPluginReference[] {
+export function parsePluginReferences(value: unknown): PluginReference[] {
 	if (value === undefined) {
-		return [...TREESEED_DEFAULT_PLUGIN_REFERENCES];
+		return [...DEFAULT_PLUGIN_REFERENCES];
 	}
 
 	if (!Array.isArray(value)) {

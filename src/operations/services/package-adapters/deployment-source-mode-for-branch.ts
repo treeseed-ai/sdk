@@ -1,16 +1,16 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { workspacePackages, workspaceRoot } from '../workspace-tools.ts';
-import { runTreeseedGit } from '../git-runner.ts';
-import { resolveTreeseedLaunchEnvironment } from '../config-runtime.ts';
-import { resolveGitHubCredentialForRepository } from '../github-credentials.ts';
+import { workspacePackages, workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
+import { runRepositoryGit } from '../operations/git-runner.ts';
+import { resolveLaunchEnvironment } from '../configuration/config-runtime.ts';
+import { resolveGitHubCredentialForRepository } from '../configuration/github-credentials.ts';
 import {
 	createGitHubApiClient,
 	getLatestGitHubWorkflowRun,
-} from '../github-api.ts';
-import { resolveTreeseedDockerhubToken, resolveTreeseedDockerhubUsername } from '../../../service-credentials.ts';
-import { inspectTreeseedContentStructure } from '../../../platform/content-runtime-source.ts';
+} from '../repositories/github-api.ts';
+import { resolveDockerhubToken, resolveDockerhubUsername } from '../../../configuration/service-credentials.ts';
+import { inspectContentStructure } from '../../../platform/content/content-runtime-source.ts';
 import type {
 	SeedContentPublishTargetKind,
 	SeedContentRuntimeSource,
@@ -25,7 +25,7 @@ import {
 	SEED_LOCAL_CONTENT_MATERIALIZATIONS,
 	SEED_PROJECT_TOPOLOGIES,
 } from '../../../seeds/types.ts';
-import { TreeseedPackageAdapter, TreeseedPackageManifest, commandFromScript, docsSiteReadiness, normalizeGitHubRepositorySlug, normalizeTreeseedPackageProjectArchitecture, readStructuredFile } from './treeseed-package-kind.ts';
+import { PackageAdapter, PackageManifestDocument, commandFromScript, docsSiteReadiness, normalizeGitHubRepositorySlug, normalizePackageProjectArchitecture, readStructuredFile } from './package-kind.ts';
 
 export function deploymentSourceModeForBranch(metadata: Record<string, unknown>, branch: string) {
 	const source = stringRecord(metadata.deploymentSource);
@@ -40,8 +40,8 @@ export function deploymentSourceModeForBranch(metadata: Record<string, unknown>,
 				: null;
 }
 
-export function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]): TreeseedPackageAdapter {
-	const manifest = readTreeseedPackageManifest(pkg.dir);
+export function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]): PackageAdapter {
+	const manifest = readPackageManifestDocument(pkg.dir);
 	const scripts = pkg.packageJson?.scripts && typeof pkg.packageJson.scripts === 'object' && !Array.isArray(pkg.packageJson.scripts)
 		? pkg.packageJson.scripts as Record<string, unknown>
 		: {};
@@ -65,7 +65,7 @@ export function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[
 	const hostedVerifyWorkflow = stringValue(manifest?.hostedVerifyWorkflow)
 		?? stringValue(releaseGateRecord.workflow)
 		?? (existsSync(resolve(pkg.dir, '.github/workflows/deploy.yml')) ? 'deploy.yml' : null);
-	const projectArchitecture = normalizeTreeseedPackageProjectArchitecture(manifest?.projectArchitecture, id);
+	const projectArchitecture = normalizePackageProjectArchitecture(manifest?.projectArchitecture, id);
 	const docsReadiness = docsSiteReadiness(pkg.dir, projectArchitecture);
 	const verifyLocal = typeof scripts['verify:local'] === 'string'
 		? 'verify:local'
@@ -85,7 +85,7 @@ export function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[
 		relativeDir: pkg.relativeDir,
 		version: typeof pkg.packageJson?.version === 'string' ? pkg.packageJson.version : null,
 		publishTarget,
-		manifestPath: treeseedPackageManifestPath(pkg.dir) ?? resolve(pkg.dir, 'package.json'),
+		manifestPath: PackageManifestPath(pkg.dir) ?? resolve(pkg.dir, 'package.json'),
 		versionSource: resolve(pkg.dir, 'package.json'),
 		verifyCommands: {
 			fast: commandFromScript(pkg.dir, manifestVerify.fast, 'fast')
@@ -157,7 +157,7 @@ export function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[
 	};
 }
 
-export function treeseedPackageManifestPath(dir: string) {
+export function PackageManifestPath(dir: string) {
 	for (const fileName of ['treeseed.package.yaml', 'treeseed.package.yml', 'treeseed.package.json', '.treeseed-package.json']) {
 		const filePath = resolve(dir, fileName);
 		if (existsSync(filePath)) return filePath;
@@ -165,9 +165,9 @@ export function treeseedPackageManifestPath(dir: string) {
 	return null;
 }
 
-export function readTreeseedPackageManifest(dir: string): TreeseedPackageManifest | null {
-	const filePath = treeseedPackageManifestPath(dir);
-	return filePath ? readStructuredFile(filePath) as TreeseedPackageManifest | null : null;
+export function readPackageManifestDocument(dir: string): PackageManifestDocument | null {
+	const filePath = PackageManifestPath(dir);
+	return filePath ? readStructuredFile(filePath) as PackageManifestDocument | null : null;
 }
 
 export function stringRecord(value: unknown) {

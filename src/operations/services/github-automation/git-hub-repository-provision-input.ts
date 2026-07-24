@@ -1,12 +1,12 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
-import { runTreeseedGit } from '../git-runner.ts';
-import { resolveTreeseedEnvironmentRegistry } from '../../../platform/environment.ts';
-import { packageRoot, loadCliDeployConfig } from '../runtime-tools.ts';
+import { runRepositoryGit } from '../operations/git-runner.ts';
+import { resolveEnvironmentRegistry } from '../../../platform/configuration/environment.ts';
+import { packageRoot, loadCliDeployConfig } from '../agents/runtime-tools.ts';
 import {
 	filterManagedHostGitHubEnvironment,
 	usesManagedHostOperationRequests,
-} from '../managed-host-security.ts';
+} from '../hosting/audit/managed-host-security.ts';
 import {
 	createGitHubApiClient,
 	ensureGitHubRepository,
@@ -17,8 +17,8 @@ import {
 	upsertGitHubRepositorySecret,
 	upsertGitHubRepositoryVariable,
 	waitForGitHubWorkflowRunCompletion,
-} from '../github-api.ts';
-import { resolveTreeseedGitHubToken } from '../../../service-credentials.ts';
+} from '../repositories/github-api.ts';
+import { resolveGitHubToken } from '../../../configuration/service-credentials.ts';
 
 
 export interface GitHubRepositoryProvisionInput {
@@ -41,7 +41,7 @@ export interface GitHubProvisionedRepository {
 	defaultBranch: string;
 }
 
-export interface TreeseedGitHubRepositoryTarget {
+export interface GitHubRepositoryTarget {
 	owner: string;
 	name: string;
 	visibility: 'private' | 'public' | 'internal';
@@ -87,7 +87,7 @@ export function parseGitHubRepositoryFromRemote(remoteUrl) {
 
 export function runGit(args, { cwd, allowFailure = false, capture = true } = {}) {
 	const mutating = /^(add|commit|checkout|switch|merge|tag|push|fetch|worktree|submodule|reset|clean|restore|branch)$/u.test(args[0] ?? '');
-	const result = runTreeseedGit(args, {
+	const result = runRepositoryGit(args, {
 		cwd,
 		mode: mutating ? 'mutate' : 'read',
 		allowFailure,
@@ -98,7 +98,7 @@ export function runGit(args, { cwd, allowFailure = false, capture = true } = {})
 	if (result.status !== 0 && !allowFailure) {
 		if (args[0] === 'push' && !args.includes('--force')) {
 			const retryArgs = ['push', '--force', ...args.slice(1)];
-			const retry = runTreeseedGit(retryArgs, {
+			const retry = runRepositoryGit(retryArgs, {
 				cwd,
 				mode: 'mutate',
 				allowFailure: true,
@@ -174,7 +174,7 @@ export function resolveDefaultGitHubOwner() {
 	return 'treeseed-ai';
 }
 
-export function normalizeGitHubVisibility(value: unknown): TreeseedGitHubRepositoryTarget['visibility'] {
+export function normalizeGitHubVisibility(value: unknown): GitHubRepositoryTarget['visibility'] {
 	const normalized = String(value ?? '').trim().toLowerCase();
 	return normalized === 'public' || normalized === 'internal' || normalized === 'private'
 		? normalized
@@ -195,7 +195,7 @@ export function resolveGitHubRepositoryTarget(
 		values?: Record<string, string | undefined>;
 		defaultName?: string;
 	} = {},
-): TreeseedGitHubRepositoryTarget {
+): GitHubRepositoryTarget {
 	const origin = maybeResolveGitHubRepositorySlug(tenantRoot);
 	const parsedOrigin = origin ? parseGitHubRepositorySlug(origin) : null;
 	const owner = configuredValue(values, 'TREESEED_GITHUB_OWNER') || parsedOrigin?.owner || '';

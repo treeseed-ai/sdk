@@ -6,7 +6,7 @@ import type {
 	SdkGraphQueryView,
 	SdkGraphSeed,
 	SdkGraphWhereFilter,
-} from '../sdk-types.ts';
+} from '../entrypoints/models/sdk-types.ts';
 
 export const CLAUSE_KEYWORDS = new Set(['for', 'in', 'via', 'depth', 'where', 'limit', 'budget', 'as']);
 export const VALID_STAGES: SdkGraphQueryStage[] = ['plan', 'implement', 'research', 'debug', 'review'];

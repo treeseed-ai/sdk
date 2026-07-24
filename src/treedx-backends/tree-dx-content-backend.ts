@@ -1,12 +1,12 @@
 import path from 'node:path';
-import { TreeDxClient } from '../treedx/client.ts';
-import { TreeDxApiError } from '../treedx/errors.ts';
+import { TreeDxClient } from '../treedx/support/client.ts';
+import { TreeDxApiError } from '../treedx/support/errors.ts';
 import type { TreeDxClientOptions } from '../treedx/types.ts';
-import { ContentStore } from '../content-store.ts';
-import { parseFrontmatterDocument, serializeFrontmatterDocument } from '../frontmatter.ts';
-import { ContentGraphRuntime } from '../graph.ts';
-import { resolveModelDefinition } from '../model-registry.ts';
-import { applyFilters, applySort } from '../sdk-filters.ts';
+import { ContentStore } from '../content/content-store.ts';
+import { parseFrontmatterDocument, serializeFrontmatterDocument } from '../content/frontmatter.ts';
+import { ContentGraphRuntime } from '../treedx/graph/graph.ts';
+import { resolveModelDefinition } from '../entrypoints/models/model-registry.ts';
+import { applyFilters, applySort } from '../entrypoints/models/sdk-filters.ts';
 import {
 	canonicalizeFrontmatter,
 	normalizeFilterFields,
@@ -14,8 +14,8 @@ import {
 	normalizeRecordToCanonicalShape,
 	normalizeSortFields,
 	readCanonicalFieldValue,
-} from '../sdk-fields.ts';
-import { assertExpectedVersion } from '../sdk-version.ts';
+} from '../entrypoints/models/sdk-fields.ts';
+import { assertExpectedVersion } from '../packages/sdk-version.ts';
 import type {
 	SdkContentEntry,
 	SdkContextPackRequest,
@@ -31,8 +31,8 @@ import type {
 	SdkPickResult,
 	SdkSearchRequest,
 	SdkUpdateRequest,
-} from '../sdk-types.ts';
-import { ContentBackend, GraphBackend, TreeDxRepositoryCandidate, TreeSeedTreeDxContentPathRule, compactObject, dateForEntry, ensureMutationAllowed, entryMatchesIdentity, extractTextPayload, inferSlug, isMarkdownPath, makeDefaultPathRule, normalizePathList, pathMatchesPattern, sanitizeFrontmatterInput, stringValue, titleForEntry } from './tree-seed-tree-dx-repository-hint.ts';
+} from '../entrypoints/models/sdk-types.ts';
+import { ContentBackend, GraphBackend, TreeDxRepositoryCandidate, TreeDxContentPathRule, compactObject, dateForEntry, ensureMutationAllowed, entryMatchesIdentity, extractTextPayload, inferSlug, isMarkdownPath, makeDefaultPathRule, normalizePathList, pathMatchesPattern, sanitizeFrontmatterInput, stringValue, titleForEntry } from './tree-dx-repository-hint.ts';
 import { TreeDxPortfolioResolver, mutationPath, normalizePathRule } from './normalize-path-rule.ts';
 
 export class TreeDxContentBackend implements ContentBackend {
@@ -45,7 +45,7 @@ export class TreeDxContentBackend implements ContentBackend {
 			directRepoId?: string;
 			ref?: string;
 			workspaceId?: string;
-			contentPathMap?: Record<string, string | TreeSeedTreeDxContentPathRule>;
+			contentPathMap?: Record<string, string | TreeDxContentPathRule>;
 			localLeaseStore: ContentStore;
 		},
 	) {}

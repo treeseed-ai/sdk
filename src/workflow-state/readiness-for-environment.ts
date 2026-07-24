@@ -1,12 +1,12 @@
 import { spawnSync } from 'node:child_process';
-import { collectTreeseedConfigSeedValues, resolveTreeseedMachineEnvironmentValues, resolveTreeseedRemoteSession, collectTreeseedEnvironmentContext, withTreeseedKeyAgentAutopromptDisabled } from ".././operations/services/config-runtime.ts";
-import { resolveTreeseedGitHubToken } from ".././service-credentials.ts";
-import { resolveWranglerBin } from ".././operations/services/runtime-tools.ts";
-import { getTreeseedEnvironmentSuggestedValues, validateTreeseedEnvironmentValues } from ".././platform/environment.ts";
-import { createTreeseedManagedToolEnv, resolveTreeseedToolCommand } from ".././managed-dependencies.ts";
-import { TreeseedWorkflowProviderCheck, TreeseedWorkflowState, TreeseedWorkflowStatusOptions, runGit } from './treeseed-branch-role.ts';
+import { collectConfigSeedValues, resolveMachineEnvironmentValues, resolveRemoteSession, collectEnvironmentContext, withKeyAgentAutopromptDisabled } from "../operations/services/configuration/config-runtime.ts";
+import { resolveGitHubToken } from "../configuration/service-credentials.ts";
+import { resolveWranglerBin } from "../operations/services/agents/runtime-tools.ts";
+import { getEnvironmentSuggestedValues, validateEnvironmentValues } from "../platform/configuration/environment.ts";
+import { createManagedToolEnv, resolveToolCommand } from "../entrypoints/runtime/managed-dependencies.ts";
+import { WorkflowProviderCheck, WorkflowState, WorkflowStatusOptions, runGit } from './branch-role.ts';
 
-export function readinessForEnvironment(state: TreeseedWorkflowState, scope: 'local' | 'staging' | 'prod') {
+export function readinessForEnvironment(state: WorkflowState, scope: 'local' | 'staging' | 'prod') {
 	const blockers = [...state.persistentEnvironments[scope].blockers];
 	const warnings = [...state.persistentEnvironments[scope].warnings];
 
@@ -40,7 +40,7 @@ export function readinessForEnvironment(state: TreeseedWorkflowState, scope: 'lo
 
 export function safeResolveRemoteSession(cwd: string, hostId?: string | null) {
 	try {
-		return withTreeseedKeyAgentAutopromptDisabled(() => resolveTreeseedRemoteSession(cwd, hostId ?? undefined));
+		return withKeyAgentAutopromptDisabled(() => resolveRemoteSession(cwd, hostId ?? undefined));
 	} catch {
 		return null;
 	}
@@ -48,7 +48,7 @@ export function safeResolveRemoteSession(cwd: string, hostId?: string | null) {
 
 export function safeResolveMachineEnvironmentValues(cwd: string, scope: 'local' | 'staging' | 'prod') {
 	try {
-		return withTreeseedKeyAgentAutopromptDisabled(() => resolveTreeseedMachineEnvironmentValues(cwd, scope));
+		return withKeyAgentAutopromptDisabled(() => resolveMachineEnvironmentValues(cwd, scope));
 	} catch {
 		return {};
 	}
@@ -57,11 +57,11 @@ export function safeResolveMachineEnvironmentValues(cwd: string, scope: 'local' 
 export function collectStatusConfigScope(
 	cwd: string,
 	scope: 'local' | 'staging' | 'prod',
-	environmentContext: ReturnType<typeof collectTreeseedEnvironmentContext>,
+	environmentContext: ReturnType<typeof collectEnvironmentContext>,
 	env: NodeJS.ProcessEnv = process.env,
 ) {
-	const values = collectTreeseedConfigSeedValues(cwd, scope, env);
-	const suggestedValues = getTreeseedEnvironmentSuggestedValues({
+	const values = collectConfigSeedValues(cwd, scope, env);
+	const suggestedValues = getEnvironmentSuggestedValues({
 		scope,
 		purpose: 'config',
 		deployConfig: environmentContext.context.deployConfig,
@@ -69,7 +69,7 @@ export function collectStatusConfigScope(
 		plugins: environmentContext.context.plugins,
 		values,
 	});
-	const validation = validateTreeseedEnvironmentValues({
+	const validation = validateEnvironmentValues({
 		values: {
 			...suggestedValues,
 			...values,
@@ -92,7 +92,7 @@ export function collectStatusConfigScope(
 }
 
 export function providerProblems(
-	validation: ReturnType<typeof validateTreeseedEnvironmentValues>,
+	validation: ReturnType<typeof validateEnvironmentValues>,
 	provider: 'github' | 'cloudflare' | 'railway' | 'localDevelopment',
 ) {
 	const problems = [...validation.missing, ...validation.invalid];
@@ -117,7 +117,7 @@ export function isCloudflareProviderProblem(problem: { id: string; entry: { grou
 	return id.startsWith('CLOUDFLARE_') || id.includes('TURNSTILE') || problem.entry.group === 'cloudflare';
 }
 
-export function liveCheckResult(configured: boolean, live?: TreeseedWorkflowProviderCheck['live']): TreeseedWorkflowProviderCheck {
+export function liveCheckResult(configured: boolean, live?: WorkflowProviderCheck['live']): WorkflowProviderCheck {
 	return live ? { configured, live } : { configured };
 }
 
@@ -143,14 +143,14 @@ export function providerLiveCheck(provider: 'github' | 'cloudflare' | 'railway',
 	try {
 		const result = (() => {
 			if (provider === 'github') {
-				const gh = resolveTreeseedToolCommand('gh', { env });
+				const gh = resolveToolCommand('gh', { env });
 				if (!gh) return { ok: false, detail: 'GitHub CLI `gh` is unavailable.' };
-				return spawnLiveCheck(gh.command, [...gh.argsPrefix, 'api', 'user', '--jq', '.login'], cwd, createTreeseedManagedToolEnv(env));
+				return spawnLiveCheck(gh.command, [...gh.argsPrefix, 'api', 'user', '--jq', '.login'], cwd, createManagedToolEnv(env));
 			}
 			if (provider === 'cloudflare') {
 				return spawnLiveCheck(process.execPath, [resolveWranglerBin(), 'whoami'], cwd, env);
 			}
-			const railway = resolveTreeseedToolCommand('railway', { env });
+			const railway = resolveToolCommand('railway', { env });
 			if (!railway) return { ok: false, detail: 'Railway CLI is unavailable.' };
 			return spawnLiveCheck(railway.command, [...railway.argsPrefix, 'whoami'], cwd, env);
 		})();
@@ -172,10 +172,10 @@ export function providerStatusForScope(
 	cwd: string,
 	scope: 'local' | 'staging' | 'prod',
 	statusConfig: ReturnType<typeof collectStatusConfigScope>,
-	options: TreeseedWorkflowStatusOptions,
+	options: WorkflowStatusOptions,
 ) {
 	const values = statusConfig.values;
-	const githubConfigured = Boolean(resolveTreeseedGitHubToken(values));
+	const githubConfigured = Boolean(resolveGitHubToken(values));
 	const cloudflareConfigured = typeof values.TREESEED_CLOUDFLARE_API_TOKEN === 'string' && values.TREESEED_CLOUDFLARE_API_TOKEN.trim().length > 0;
 	const railwayConfigured = typeof values.TREESEED_RAILWAY_API_TOKEN === 'string' && values.TREESEED_RAILWAY_API_TOKEN.trim().length > 0;
 	const localDevelopmentConfigured = providerProblems(statusConfig.validation, 'localDevelopment').length === 0;

@@ -89,7 +89,7 @@ export interface AgentRuntimeSpec {
 	tools: AgentToolPolicy;
 	contentAccess?: AgentContentAccessPolicy;
 	context?: {
-		queries?: import('../graph/context-query-contracts.ts').DeclarativeContextQuery[];
+		queries?: import('../../graph/context-query-contracts.ts').DeclarativeContextQuery[];
 	};
 	execution: AgentExecutionConfig;
 	outputs: AgentOutputContract;

@@ -26,7 +26,7 @@ import {
 	type TemplateSecretSensitivity,
 	type TemplateSecretSource,
 	type TemplateSecretTarget,
-} from '../sdk-types.ts';
+} from '../entrypoints/models/sdk-types.ts';
 import { ParseProjectLaunchHostBindingSpecsOptions, ParseProjectLaunchHostBindingSpecsResult, ProjectLaunchHostInventoryRecord, ProjectLaunchLocalHostBindingSummary, expectString, validateRequirementKey } from './mutable.ts';
 import { hostMetadataType, localHostMetadata, normalizeSpecList, portableHostConfigValues, safeLocalIdSegment } from './normalize-host-requirement.ts';
 

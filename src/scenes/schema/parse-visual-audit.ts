@@ -1,46 +1,46 @@
-import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../diagnostics.ts';
-import { findBuiltInTreeseedSceneAction, findBuiltInTreeseedSceneAssertion } from '../registry.ts';
+import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
+import { findBuiltInSceneAction, findBuiltInSceneAssertion } from '../support/plugins/registry.ts';
 import {
-	TREESEED_SCENE_BROWSERS,
-	TREESEED_SCENE_ENVIRONMENTS,
-	TREESEED_SCENE_SCHEMA_VERSION,
-	type TreeseedSceneAction,
-	type TreeseedSceneArtifacts,
-	type TreeseedSceneBrowser,
-	type TreeseedSceneChapter,
-	type TreeseedSceneDeviceConfig,
-	type TreeseedSceneDeviceProfile,
-	type TreeseedSceneDiagram,
-	type TreeseedSceneDiagnostic,
-	type TreeseedSceneEnvironment,
-	type TreeseedSceneExpectation,
-	type TreeseedSceneManifest,
-	type TreeseedSceneMode,
-	type TreeseedSceneMotion,
-	type TreeseedSceneOverlay,
-	type TreeseedSceneOverlayVariant,
-	type TreeseedSceneRenderConfig,
-	type TreeseedSceneRenderEvidenceFit,
-	type TreeseedSceneRuntimeConfig,
-	type TreeseedSceneSelector,
-	type TreeseedSceneSetup,
-	type TreeseedSceneTarget,
-	type TreeseedSceneTrainingConfig,
-	type TreeseedSceneVisualAuditConfig,
-	type TreeseedSceneVisualObject,
-	type TreeseedSceneVisualPoint,
-	type TreeseedSceneVisualRegion,
-	type TreeseedSceneVisualSize,
-	type TreeseedSceneVisualStyle,
-	type TreeseedSceneWorkflowStep,
+	SCENE_BROWSERS,
+	SCENE_ENVIRONMENTS,
+	SCENE_SCHEMA_VERSION,
+	type SceneAction,
+	type SceneArtifacts,
+	type SceneBrowser,
+	type SceneChapter,
+	type SceneDeviceConfig,
+	type SceneDeviceProfile,
+	type SceneDiagram,
+	type SceneDiagnostic,
+	type SceneEnvironment,
+	type SceneExpectation,
+	type SceneManifest,
+	type SceneMode,
+	type SceneMotion,
+	type SceneOverlay,
+	type SceneOverlayVariant,
+	type SceneRenderConfig,
+	type SceneRenderEvidenceFit,
+	type SceneRuntimeConfig,
+	type SceneSelector,
+	type SceneSetup,
+	type SceneTarget,
+	type SceneTrainingConfig,
+	type SceneVisualAuditConfig,
+	type SceneVisualObject,
+	type SceneVisualPoint,
+	type SceneVisualRegion,
+	type SceneVisualSize,
+	type SceneVisualStyle,
+	type SceneWorkflowStep,
 } from '../types.ts';
-import { defaultTreeseedSceneVisualAuditConfig, parseDiagrams, parseRender, parseRuntime, parseTraining } from './parse-diagrams.ts';
+import { defaultSceneVisualAuditConfig, parseDiagrams, parseRender, parseRuntime, parseTraining } from './parse-diagrams.ts';
 import { FILESYSTEM_SAFE_SCENE_ID, TOP_LEVEL_FIELDS, booleanField, isRecord, objectField, optionalString, parseJourney, requireString, stringArrayField } from './filesystem-safe-scene-id.ts';
 import { expectationKeys, parseArtifacts, parseDevices, parseMode, parseSetup, parseTarget } from './parse-action.ts';
 import { parseChapters, parseOverlays, parseWorkflow } from './parse-workflow.ts';
 
-export function parseVisualAudit(value: unknown, diagnostics: TreeseedSceneDiagnostic[]): TreeseedSceneVisualAuditConfig {
-	const defaults = defaultTreeseedSceneVisualAuditConfig();
+export function parseVisualAudit(value: unknown, diagnostics: SceneDiagnostic[]): SceneVisualAuditConfig {
+	const defaults = defaultSceneVisualAuditConfig();
 	if (value === undefined) return defaults;
 	if (!isRecord(value)) {
 		diagnostics.push(sceneErrorDiagnostic('scene.invalid_object', 'Expected visualAudit to be an object.', 'visualAudit'));
@@ -80,7 +80,7 @@ export function parseVisualAudit(value: unknown, diagnostics: TreeseedSceneDiagn
 		}
 	}
 	const rawReviewDetail = review && typeof review.detail === 'string' ? review.detail : defaults.review.detail;
-	const reviewDetail = ['summary', 'standard', 'full'].includes(rawReviewDetail) ? rawReviewDetail as TreeseedSceneVisualAuditConfig['review']['detail'] : defaults.review.detail;
+	const reviewDetail = ['summary', 'standard', 'full'].includes(rawReviewDetail) ? rawReviewDetail as SceneVisualAuditConfig['review']['detail'] : defaults.review.detail;
 	if (review && review.detail !== undefined && reviewDetail !== review.detail) {
 		diagnostics.push(sceneErrorDiagnostic('scene.visual_audit_invalid_review_detail', 'Visual audit review detail must be summary, standard, or full.', 'visualAudit.review.detail'));
 	}
@@ -111,19 +111,19 @@ export function parseVisualAudit(value: unknown, diagnostics: TreeseedSceneDiagn
 	};
 }
 
-export function actionKind(action: TreeseedSceneAction) {
+export function actionKind(action: SceneAction) {
 	return Object.keys(action)[0] ?? '';
 }
 
-export function sceneActionKind(action: TreeseedSceneAction) {
+export function sceneActionKind(action: SceneAction) {
 	return actionKind(action);
 }
 
-export function sceneExpectationKinds(expectation: TreeseedSceneExpectation | undefined) {
+export function sceneExpectationKinds(expectation: SceneExpectation | undefined) {
 	return expectationKeys(expectation);
 }
 
-export function parseTreeseedSceneManifest(value: unknown, diagnostics: TreeseedSceneDiagnostic[]): TreeseedSceneManifest | null {
+export function parseSceneManifest(value: unknown, diagnostics: SceneDiagnostic[]): SceneManifest | null {
 	if (!isRecord(value)) {
 		diagnostics.push(sceneErrorDiagnostic('scene.invalid_manifest', 'Expected scene manifest to be an object.', 'manifest'));
 		return null;
@@ -132,7 +132,7 @@ export function parseTreeseedSceneManifest(value: unknown, diagnostics: Treeseed
 		if (!TOP_LEVEL_FIELDS.has(key)) diagnostics.push(sceneWarningDiagnostic('scene.unknown_field', `Unknown top-level field: ${key}.`, key));
 	}
 	const schemaVersion = requireString(value, 'schemaVersion', 'manifest', diagnostics);
-	if (schemaVersion && schemaVersion !== TREESEED_SCENE_SCHEMA_VERSION) diagnostics.push(sceneErrorDiagnostic('scene.unsupported_schema_version', `Unsupported scene schema version: ${schemaVersion}.`, 'schemaVersion'));
+	if (schemaVersion && schemaVersion !== SCENE_SCHEMA_VERSION) diagnostics.push(sceneErrorDiagnostic('scene.unsupported_schema_version', `Unsupported scene schema version: ${schemaVersion}.`, 'schemaVersion'));
 	const id = requireString(value, 'id', 'manifest', diagnostics);
 	if (id && !FILESYSTEM_SAFE_SCENE_ID.test(id)) diagnostics.push(sceneErrorDiagnostic('scene.invalid_id', `Invalid scene id: ${id}.`, 'id'));
 	const title = requireString(value, 'title', 'manifest', diagnostics);
@@ -143,7 +143,7 @@ export function parseTreeseedSceneManifest(value: unknown, diagnostics: Treeseed
 	if (workflow.length > 10 && !Array.isArray(value.chapters)) diagnostics.push(sceneErrorDiagnostic('scene.missing_chapters', 'Scenes with more than 10 workflow steps must define chapters.', 'chapters'));
 	const stepIds = new Set(workflow.map((step) => step.id));
 	return {
-		schemaVersion: TREESEED_SCENE_SCHEMA_VERSION,
+		schemaVersion: SCENE_SCHEMA_VERSION,
 		id,
 		title,
 		description: optionalString(value, 'description'),

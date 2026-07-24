@@ -1,21 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { compileTreeseedDesiredResourceGraph } from '../../../src/platform/desired-state.ts';
+import { compileDesiredResourceGraph } from '../../../src/platform/reconciliation/desired-state.ts';
 import {
-	deriveTreeseedPackageProjectResources,
-	discoverTreeseedPackageAdapters,
-	validateTreeseedPackageManifests,
-} from '../../../src/operations/services/package-adapters.ts';
-import { assertDevelopmentInternalCommitReferences } from '../../../src/operations/services/package-reference-policy.ts';
-import { inspectTreeseedGitLocks } from '../../../src/operations/services/git-runner.ts';
-import { resolveTreeseedTestPath, resolveTreeseedTestRoot } from '../../support/workspace-test-root.ts';
+	derivePackageProjectResources,
+	discoverPackageAdapters,
+	validatePackageManifests,
+} from '../../../src/operations/services/reconciliation/package-adapters.ts';
+import { assertDevelopmentInternalCommitReferences } from '../../../src/operations/services/packages/package-reference-policy.ts';
+import { inspectRepositoryGitLocks } from '../../../src/operations/services/operations/git-runner.ts';
+import { resolveTestPath, resolveTestRoot } from '../../support/workspace-test-root.ts';
 
-const testRoot = resolveTreeseedTestRoot(import.meta.url);
+const testRoot = resolveTestRoot(import.meta.url);
 const workspaceRoot = testRoot.layout === 'workspace' ? testRoot.root : null;
 
 describe('canonical desired resource graph', () => {
 	it('compiles package, image, and reconcile resources from one manifest-driven graph', () => {
 		if (!workspaceRoot) return;
-		const graph = compileTreeseedDesiredResourceGraph({
+		const graph = compileDesiredResourceGraph({
 			tenantRoot: workspaceRoot,
 			target: { kind: 'persistent', scope: 'staging' },
 		});
@@ -42,10 +42,10 @@ describe('canonical desired resource graph', () => {
 
 	it('validates every checked-out Treeseed package manifest', () => {
 		if (!workspaceRoot) return;
-		const results = validateTreeseedPackageManifests(workspaceRoot);
+		const results = validatePackageManifests(workspaceRoot);
 		expect(results.length).toBeGreaterThanOrEqual(8);
 		expect(results.every((entry) => entry.ok)).toBe(true);
-		const adapters = discoverTreeseedPackageAdapters(workspaceRoot);
+		const adapters = discoverPackageAdapters(workspaceRoot);
 		const dockerPackages = adapters.filter((adapter) => adapter.artifacts.some((artifact) => artifact.provider === 'docker'));
 		expect(dockerPackages.map((adapter) => adapter.id).sort()).toEqual(['@treeseed/agent', '@treeseed/api', 'treedx']);
 		for (const adapter of dockerPackages) {
@@ -58,7 +58,7 @@ describe('canonical desired resource graph', () => {
 
 	it('blocks production image publish gates on reconciled DockerHub GitHub bindings', () => {
 		if (!workspaceRoot) return;
-		const graph = compileTreeseedDesiredResourceGraph({
+		const graph = compileDesiredResourceGraph({
 			tenantRoot: workspaceRoot,
 			target: { kind: 'persistent', scope: 'prod' },
 		});
@@ -95,7 +95,7 @@ describe('canonical desired resource graph', () => {
 
 	it('exposes first-party package project architecture and docs readiness from package manifests', () => {
 		if (!workspaceRoot) return;
-		const adapters = discoverTreeseedPackageAdapters(workspaceRoot);
+		const adapters = discoverPackageAdapters(workspaceRoot);
 		const packageIds = adapters.map((entry) => entry.id);
 		expect(packageIds).toEqual(expect.arrayContaining([
 			'@treeseed/admin',
@@ -135,7 +135,7 @@ describe('canonical desired resource graph', () => {
 
 	it('derives safe package project resources for later seed expansion', () => {
 		if (!workspaceRoot) return;
-		const projects = deriveTreeseedPackageProjectResources(workspaceRoot);
+		const projects = derivePackageProjectResources(workspaceRoot);
 		expect(projects.map((entry) => entry.slug)).toEqual(expect.arrayContaining([
 			'admin',
 			'agent',
@@ -170,7 +170,7 @@ describe('canonical desired resource graph', () => {
 
 	it('includes local TreeDX as the default content repository plane for local dev', () => {
 		if (!workspaceRoot) return;
-		const graph = compileTreeseedDesiredResourceGraph({
+		const graph = compileDesiredResourceGraph({
 			tenantRoot: workspaceRoot,
 			target: { kind: 'persistent', scope: 'local' },
 		});
@@ -236,7 +236,7 @@ describe('canonical desired resource graph', () => {
 
 	it('adds project architecture diagnostics to local dev without cloning content by default', () => {
 		if (!workspaceRoot) return;
-		const graph = compileTreeseedDesiredResourceGraph({
+		const graph = compileDesiredResourceGraph({
 			tenantRoot: workspaceRoot,
 			target: { kind: 'persistent', scope: 'local' },
 		});
@@ -266,7 +266,7 @@ describe('canonical desired resource graph', () => {
 
 	it('plans managed local content materialization only when preview or edit is requested', () => {
 		if (!workspaceRoot) return;
-		const graph = compileTreeseedDesiredResourceGraph({
+		const graph = compileDesiredResourceGraph({
 			tenantRoot: workspaceRoot,
 			target: { kind: 'persistent', scope: 'local' },
 			localContent: 'preview',
@@ -286,7 +286,7 @@ describe('canonical desired resource graph', () => {
 
 	it('includes first-party starter templates in release gate planning', () => {
 		if (!workspaceRoot) return;
-		const graph = compileTreeseedDesiredResourceGraph({
+		const graph = compileDesiredResourceGraph({
 			tenantRoot: workspaceRoot,
 			target: { kind: 'persistent', scope: 'prod' },
 		});
@@ -310,7 +310,7 @@ describe('canonical desired resource graph', () => {
 
 	it('reconciles first-party starter content into isolated local TreeDX repositories', () => {
 		if (!workspaceRoot) return;
-		const graph = compileTreeseedDesiredResourceGraph({
+		const graph = compileDesiredResourceGraph({
 			tenantRoot: workspaceRoot,
 			target: { kind: 'persistent', scope: 'local' },
 		});
@@ -335,7 +335,7 @@ describe('canonical desired resource graph', () => {
 
 	it('orders package release verify gates by declared internal package dependencies', () => {
 		if (!workspaceRoot) return;
-		const graph = compileTreeseedDesiredResourceGraph({
+		const graph = compileDesiredResourceGraph({
 			tenantRoot: workspaceRoot,
 			target: { kind: 'persistent', scope: 'staging' },
 		});
@@ -363,7 +363,7 @@ describe('canonical desired resource graph', () => {
 	});
 
 	it('reports Git index lock diagnostics without mutating by default', () => {
-		const diagnostic = inspectTreeseedGitLocks(workspaceRoot ?? resolveTreeseedTestPath(testRoot, 'packages/sdk') ?? testRoot.root);
+		const diagnostic = inspectRepositoryGitLocks(workspaceRoot ?? resolveTestPath(testRoot, 'packages/sdk') ?? testRoot.root);
 		expect(diagnostic.repoRoot).toBeTruthy();
 		expect(diagnostic.removed).toBe(false);
 	});

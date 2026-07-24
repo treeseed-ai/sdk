@@ -1,11 +1,11 @@
-import { runTreeseedManagedDev, type TreeseedManagedDevAction, type TreeseedManagedDevOptions } from '../../local-dev/managed-dev.ts';
+import { runManagedDev, type ManagedDevAction, type ManagedDevOptions } from '../../local-dev/managed-dev.ts';
 
-export function runManagedDevAction(input: { tenantRoot: string; action: TreeseedManagedDevAction; surfaces: string[]; options?: Record<string, unknown>; env?: NodeJS.ProcessEnv }) {
-	return runTreeseedManagedDev({
+export function runManagedDevAction(input: { tenantRoot: string; action: ManagedDevAction; surfaces: string[]; options?: Record<string, unknown>; env?: NodeJS.ProcessEnv }) {
+	return runManagedDev({
 		action: input.action,
 		cwd: input.tenantRoot,
 		surfaces: input.surfaces.join(','),
-		webRuntime: input.options?.webRuntime as TreeseedManagedDevOptions['webRuntime'],
+		webRuntime: input.options?.webRuntime as ManagedDevOptions['webRuntime'],
 		webHost: typeof input.options?.host === 'string' ? input.options.host : undefined,
 		webPort: typeof input.options?.port === 'number' ? input.options.port : undefined,
 		apiHost: typeof input.options?.apiHost === 'string' ? input.options.apiHost : undefined,

@@ -3,8 +3,8 @@ import {
 	ProjectLaunchSecretSyncError,
 	resolveProjectLaunchSecretValueOverlay,
 	syncProjectLaunchHostBindingSecrets,
-} from '../../../src/operations/services/template-secret-sync.ts';
-import type { ProjectLaunchSecretDeploymentPlanItem } from '../../../src/template-launch-requirements.ts';
+} from '../../../src/operations/services/configuration/template-secret-sync.ts';
+import type { ProjectLaunchSecretDeploymentPlanItem } from '../../../src/entrypoints/templates/template-launch-requirements.ts';
 
 function secretItem(overrides: Partial<ProjectLaunchSecretDeploymentPlanItem> = {}): ProjectLaunchSecretDeploymentPlanItem {
 	return {

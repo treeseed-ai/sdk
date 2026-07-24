@@ -19,21 +19,21 @@ export {
 	resolveTeamScopedContentLocator,
 	signEditorialPreviewToken,
 	verifyEditorialPreviewToken,
-} from '.././platform/published-content.ts';
+} from '../platform/packages/published-content.ts';
 
 export {
 	createFilesystemContentSource,
 	createPublishedContentPipeline,
-} from '.././platform/published-content-pipeline.ts';
+} from '../platform/packages/published-content-pipeline.ts';
 
 export {
-	loadTreeseedManifest,
-	loadTreeseedTenantManifest,
-	resolveTreeseedTenantRoot,
+	loadManifest,
+	loadTenantManifest,
+	resolveTenantRoot,
 	getTenantContentRoot,
 	tenantFeatureEnabled,
 	tenantModelRendered,
-} from '.././platform/tenant-config.ts';
+} from '../platform/configuration/tenant-config.ts';
 
 export type {
 	ContentPublishProvider,
@@ -56,7 +56,7 @@ export type {
 	PublishedOverlayManifest,
 	PublishedContentVisibility,
 	TeamScopedContentLocator,
-} from '.././platform/published-content.ts';
+} from '../platform/packages/published-content.ts';
 
 export type {
 	ArtifactBuilder,
@@ -70,21 +70,21 @@ export type {
 	RuntimeBundleBuilder,
 	RuntimeBundleBuilderResult,
 	RenderedContentEntry,
-} from '.././platform/published-content-pipeline.ts';
+} from '../platform/packages/published-content-pipeline.ts';
 
 export {
 	contentRuntimeMetadataFromTarget,
-	inspectTreeseedContentStructure,
-	resolveTreeseedContentRuntimeSource,
-} from '.././platform/content-runtime-source.ts';
+	inspectContentStructure,
+	resolveContentRuntimeSource,
+} from '../platform/content/content-runtime-source.ts';
 
 export type {
-	TreeseedContentRuntimeDiagnostic,
-	TreeseedContentRuntimeDiagnosticStatus,
-	TreeseedContentRuntimeMode,
-	TreeseedContentRuntimeResolution,
-	TreeseedEffectiveContentSource,
-	TreeseedLocalContentRuntimeSummary,
-	TreeseedR2ContentRuntimeMetadata,
-	TreeseedTreeDxContentRuntimeMetadata,
-} from '.././platform/content-runtime-source.ts';
+	ContentRuntimeDiagnostic,
+	ContentRuntimeDiagnosticStatus,
+	ContentRuntimeMode,
+	ContentRuntimeResolution,
+	EffectiveContentSource,
+	LocalContentRuntimeSummary,
+	R2ContentRuntimeMetadata,
+	TreeDxContentRuntimeMetadata,
+} from '../platform/content/content-runtime-source.ts';

@@ -12,16 +12,16 @@ import {
 import path, { dirname, extname, relative, resolve } from 'node:path';
 import { runDefaultAction, setLogLevel, type CliOptions, type PackResult } from 'repomix';
 import { parse as parseYaml } from 'yaml';
-import type { TreeseedBookDefinition, TreeseedTenantConfig } from '../contracts.ts';
-import { buildTenantBookRuntime } from '../books-data.ts';
-import { loadTreeseedManifest } from '../tenant-config.ts';
+import type { BookDefinition, TenantConfig } from '../support/contracts.ts';
+import { buildTenantBookRuntime } from '../content/books-data.ts';
+import { loadManifest } from '../configuration/tenant-config.ts';
 import { buildBookExportManifest } from './book-export-package-version.ts';
 import type {
-	TreeseedBookExportManifest,
-	TreeseedBookPackageResult,
+	BookExportManifest,
+	BookPackageResult,
 } from './book-export-package-version.ts';
 
-export function stageManifest(manifest: TreeseedBookExportManifest, stageRoot: string) {
+export function stageManifest(manifest: BookExportManifest, stageRoot: string) {
 	rmSync(stageRoot, { recursive: true, force: true });
 	mkdirSync(resolve(stageRoot, 'manifest'), { recursive: true });
 	mkdirSync(resolve(stageRoot, 'content'), { recursive: true });
@@ -93,7 +93,7 @@ export function jsonFence(value: unknown) {
 	return ['```json', JSON.stringify(value, null, 2), '```'].join('\n');
 }
 
-export function renderBookPackageMarkdown(manifest: TreeseedBookExportManifest, repomixMarkdown: string) {
+export function renderBookPackageMarkdown(manifest: BookExportManifest, repomixMarkdown: string) {
 	const header = {
 		packageKind: manifest.packageKind,
 		packageVersion: manifest.packageVersion,
@@ -135,7 +135,7 @@ export function renderBookPackageMarkdown(manifest: TreeseedBookExportManifest, 
 	].join('\n');
 }
 
-export function buildBookIndexPayload(manifest: TreeseedBookExportManifest, markdownPath: string) {
+export function buildBookIndexPayload(manifest: BookExportManifest, markdownPath: string) {
 	return {
 		packageKind: manifest.packageKind,
 		packageVersion: manifest.packageVersion,
@@ -168,7 +168,7 @@ export function sidecarIndexPath(markdownPath: string) {
 	return markdownPath.replace(/\.md$/u, '.json');
 }
 
-export async function exportManifestPackage(manifest: TreeseedBookExportManifest, markdownPath: string, indexPath: string) {
+export async function exportManifestPackage(manifest: BookExportManifest, markdownPath: string, indexPath: string) {
 	const tempRoot = resolve(manifest.tenantRoot, '.treeseed', 'tmp', 'book-exports', manifest.packageId.replaceAll(':', '-'));
 	const repomixOutputPath = resolve(tempRoot, '..', `${manifest.packageId.replaceAll(':', '-')}.repomix.md`);
 	stageManifest(manifest, tempRoot);
@@ -190,7 +190,7 @@ export async function exportManifestPackage(manifest: TreeseedBookExportManifest
 	rmSync(repomixOutputPath, { force: true });
 }
 
-export async function exportBookPackage(bookId: string, options: { projectRoot?: string } = {}): Promise<TreeseedBookPackageResult> {
+export async function exportBookPackage(bookId: string, options: { projectRoot?: string } = {}): Promise<BookPackageResult> {
 	const manifest = buildBookExportManifest(bookId, options);
 	const markdownPath = resolve(booksOutputRoot(manifest.tenantRoot), manifest.book.downloadFileName);
 	const indexPath = sidecarIndexPath(markdownPath);
@@ -204,7 +204,7 @@ export async function exportBookPackage(bookId: string, options: { projectRoot?:
 	};
 }
 
-export function renderLibraryMarkdown(manifest: TreeseedBookExportManifest, memberPackages: TreeseedBookPackageResult[]) {
+export function renderLibraryMarkdown(manifest: BookExportManifest, memberPackages: BookPackageResult[]) {
 	return [
 		`# ${manifest.book.downloadTitle}`,
 		'',

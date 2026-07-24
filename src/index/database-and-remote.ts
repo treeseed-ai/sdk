@@ -1,10 +1,10 @@
-export { resolveSdkRecordVersion } from '.././sdk-version.ts';
+export { resolveSdkRecordVersion } from '../packages/sdk-version.ts';
 
 export {
 	normalizeAliasedRecord,
 	preprocessAliasedRecord,
 	resolveAliasedField,
-} from '.././field-aliases.ts';
+} from '../entrypoints/models/field-aliases.ts';
 
 export {
 	canonicalizeFrontmatter,
@@ -15,31 +15,31 @@ export {
 	readCanonicalFieldValue,
 	resolveModelField,
 	validateModelFieldAliases,
-} from '.././sdk-fields.ts';
+} from '../entrypoints/models/sdk-fields.ts';
 
 export {
-	TREESEED_REMOTE_CONTRACT_HEADER,
-	TREESEED_REMOTE_CONTRACT_VERSION,
-	RemoteTreeseedClient,
-	RemoteTreeseedAuthClient,
-	RemoteTreeseedDispatchClient,
-	RemoteTreeseedJobsClient,
-	RemoteTreeseedRunnerClient,
-	RemoteTreeseedSdkClient,
-	RemoteTreeseedOperationsClient,
-} from '.././remote.ts';
+	REMOTE_CONTRACT_HEADER,
+	REMOTE_CONTRACT_VERSION,
+	RemoteClient,
+	RemoteAuthClient,
+	RemoteDispatchClient,
+	RemoteJobsClient,
+	RemoteRunnerClient,
+	RemoteSdkClient,
+	RemoteOperationsClient,
+} from '../entrypoints/clients/remote.ts';
 
-export * from '.././db/index.ts';
+export * from '../db/index.ts';
 
 export type {
-	TreeseedFieldAliasBinding,
-	TreeseedFieldAliasRegistry,
-} from '.././field-aliases.ts';
+	FieldAliasBinding,
+	FieldAliasRegistry,
+} from '../entrypoints/models/field-aliases.ts';
 
-export type { AgentDatabase } from '.././d1-store.ts';
+export type { AgentDatabase } from '../persistence/d1-store.ts';
 
-export type { D1DatabaseLike, D1PreparedStatementLike } from '.././types/cloudflare.ts';
+export type { D1DatabaseLike, D1PreparedStatementLike } from '../types/cloudflare.ts';
 
-export { CloudflareHttpD1Database } from '.././d1-http.ts';
+export { CloudflareHttpD1Database } from '../persistence/d1-http.ts';
 
-export type * from '.././remote.ts';
+export type * from '../entrypoints/clients/remote.ts';

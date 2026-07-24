@@ -2,8 +2,8 @@ import { Buffer } from 'node:buffer';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { Octokit } from 'octokit';
-import { createTreeseedManagedToolEnv, resolveTreeseedToolBinary } from '../../../managed-dependencies.ts';
-import { resolveTreeseedGitHubToken } from '../../../service-credentials.ts';
+import { createManagedToolEnv, resolveToolBinary } from '../../../entrypoints/runtime/managed-dependencies.ts';
+import { resolveGitHubToken } from '../../../configuration/service-credentials.ts';
 import { GitHubApiClient, GitHubWorkflowCancellationResult, GitHubWorkflowDispatchResult, GitHubWorkflowFailureSummary, GitHubWorkflowFailureSummaryInput, GitHubWorkflowFileStatus, GitHubWorkflowJobSummary, GitHubWorkflowRunSummary, normalizeGitHubApiError, parseGitHubRepositorySlug, resolveGitHubApiToken } from './require.ts';
 import { createGitHubApiClient } from './create-git-hub-api-client.ts';
 
@@ -28,7 +28,7 @@ export function upsertGitHubRepositoryVariableWithGhCli(
 		GH_TOKEN: token,
 		GITHUB_TOKEN: token,
 	};
-	const gh = resolveTreeseedToolBinary('gh', { env: ghEnv });
+	const gh = resolveToolBinary('gh', { env: ghEnv });
 	if (!gh) {
 		throw new Error('GitHub CLI `gh` is unavailable.');
 	}
@@ -44,7 +44,7 @@ export function upsertGitHubRepositoryVariableWithGhCli(
 			'-f',
 			`value=${value}`,
 		],
-		{ encoding: 'utf8', env: createTreeseedManagedToolEnv(ghEnv) },
+		{ encoding: 'utf8', env: createManagedToolEnv(ghEnv) },
 	);
 	if (create.status === 0) {
 		return;
@@ -65,7 +65,7 @@ export function upsertGitHubRepositoryVariableWithGhCli(
 			'-f',
 			`value=${value}`,
 		],
-		{ encoding: 'utf8', env: createTreeseedManagedToolEnv(ghEnv) },
+		{ encoding: 'utf8', env: createManagedToolEnv(ghEnv) },
 	);
 	if (update.status === 0) {
 		return;

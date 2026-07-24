@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AgentSdk, TreeDxClient } from '../../../src/index.ts';
-import type { SdkModelRegistry } from '../../../src/sdk-types.ts';
+import type { SdkModelRegistry } from '../../../src/entrypoints/models/sdk-types.ts';
 
 const liveReady = Boolean(
 	process.env.TREEDX_LIVE_URL &&

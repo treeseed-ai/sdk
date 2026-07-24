@@ -1,27 +1,27 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { basename, dirname, relative, resolve } from 'node:path';
-import { runTreeseedGit } from '../git-runner.ts';
+import { runRepositoryGit } from '../operations/git-runner.ts';
 import {
-	normalizeTreeseedTemplateId,
+	normalizeTemplateId,
 	type SdkTemplateCatalogEntry,
 	type SdkTemplateCatalogResponse,
 	type TemplateLaunchRequirements,
-} from '../../../sdk-types.ts';
-import { RemoteTemplateCatalogClient } from '../../../template-catalog.ts';
+} from '../../../entrypoints/models/sdk-types.ts';
+import { RemoteTemplateCatalogClient } from '../../../commerce/catalog/template-catalog.ts';
 import {
 	type ProjectLaunchConfigWritePlanItem,
 	type ProjectLaunchLocalHostBindingSummary,
 	type ProjectLaunchResolvedHostBinding,
 	type ProjectLaunchSecretDeploymentPlanItem,
 	normalizeTemplateLaunchRequirements,
-} from '../../../template-launch-requirements.ts';
-import { preserveProjectLaunchHostBindingConfigOverlay } from '../template-host-bindings.ts';
+} from '../../../entrypoints/templates/template-launch-requirements.ts';
+import { preserveProjectLaunchHostBindingConfigOverlay } from '../hosting/deployment/template-host-bindings.ts';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import {
-	resolveTreeseedTemplateCatalogCachePath,
-	resolveTreeseedTemplateCatalogEndpoint,
-} from '../config-runtime.ts';
+	resolveTemplateCatalogCachePath,
+	resolveTemplateCatalogEndpoint,
+} from '../configuration/config-runtime.ts';
 import {
 	cliPackageVersion,
 	agentPackageVersion,
@@ -29,7 +29,7 @@ import {
 	cliPackageRoot,
 	localTemplateArtifactsRoot,
 	sdkPackageVersion,
-} from '../runtime-paths.ts';
+} from '../runtime/runtime-paths.ts';
 import { ResolvedTemplateDefinition, StarterHostBindingState, StarterResolutionInput, TemplateCatalogOptions, TemplateCategory, TemplateManifest, TemplateProductDefinition, TemplateState, ensureDir, listTemplateArtifactIds, loadJsonFile, validateTemplateManifest, validateTemplateProductShape } from './template-categories.ts';
 import { copyTemplateTree, loadRemoteTemplateCatalog, loadTemplateState, normalizeTemplateProduct, renderTemplateFile, resolveTemplateDefinitionPaths, resolveVariableValue, writeTemplateState } from './validate-template-placeholders.ts';
 
@@ -78,7 +78,7 @@ export async function listTemplateProducts(options: TemplateCatalogOptions = {})
 }
 
 export async function resolveTemplateProduct(id: string, options: TemplateCatalogOptions = {}) {
-	const normalizedId = normalizeTreeseedTemplateId(id);
+	const normalizedId = normalizeTemplateId(id);
 	const product = (await listTemplateProducts(options)).find((entry) => entry.id === normalizedId);
 	if (!product) {
 		throw new Error(`Unable to resolve remote template product "${id}".`);

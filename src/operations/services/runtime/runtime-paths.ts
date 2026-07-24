@@ -1,0 +1,37 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { agentPackageRoot, corePackageRoot, packageRoot, runtimeRoot, sdkPackageRoot } from '../agents/runtime-tools.ts';
+
+const pathsRuntimeRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
+export const cliPackageRoot = packageRoot;
+const cliRuntimeRoot = runtimeRoot ?? pathsRuntimeRoot;
+export { corePackageRoot, packageRoot };
+export const workspaceRoot = resolve(cliPackageRoot, '..');
+function resolveProjectRoot(localPath: string, workspacePath: string) {
+	return existsSync(localPath) ? localPath : workspacePath;
+}
+
+function readPackageVersion(packageDir: string, fallback = '0.0.0') {
+	const packageJsonPath = resolve(packageDir, 'package.json');
+	if (!existsSync(packageJsonPath)) {
+		return fallback;
+	}
+	return JSON.parse(readFileSync(packageJsonPath, 'utf8')).version ?? fallback;
+}
+
+export const templatesRoot = resolveProjectRoot(resolve(cliPackageRoot, 'templates'), resolve(workspaceRoot, 'templates'));
+export const examplesRoot = resolveProjectRoot(resolve(cliPackageRoot, 'examples'), resolve(workspaceRoot, 'examples'));
+export const fixturesRoot = resolveProjectRoot(resolve(cliPackageRoot, '.fixtures', 'treeseed-fixtures'), resolve(workspaceRoot, 'fixtures'));
+export const referenceAppsRoot = resolveProjectRoot(resolve(cliPackageRoot, 'reference-apps'), resolve(workspaceRoot, 'reference-apps'));
+export const toolingRoot = resolveProjectRoot(resolve(cliPackageRoot, 'tooling'), resolve(workspaceRoot, 'tooling'));
+export const fixtureRoot = resolve(corePackageRoot, 'fixture');
+export const fixtureWranglerConfig = resolve(fixtureRoot, 'wrangler.toml');
+export const sdkD1MigrationsRoot = resolve(sdkPackageRoot, 'drizzle', 'd1');
+export const fixtureSrcRoot = resolve(fixtureRoot, 'src');
+export const templateCatalogRoot = resolve(cliRuntimeRoot, 'template-catalog');
+export const localTemplateArtifactsRoot = resolve(templateCatalogRoot, 'templates');
+export const cliPackageVersion = readPackageVersion(cliPackageRoot);
+export const agentPackageVersion = readPackageVersion(agentPackageRoot);
+export const corePackageVersion = readPackageVersion(corePackageRoot);
+export const sdkPackageVersion = readPackageVersion(sdkPackageRoot);

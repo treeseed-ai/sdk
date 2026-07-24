@@ -1,0 +1,28 @@
+import crypto from 'node:crypto';
+import type { ContentLeaseRecord } from "../../../types/agents.ts";
+import type { D1DatabaseLike } from "../../../types/cloudflare.ts";
+import type { ReleaseDetail, ReleaseSummary, SharePackageStatus, InboxItem, WorkstreamDetail, WorkstreamEvent, WorkstreamSummary, } from "../../../projects/projects-core/project-workflow.ts";
+import { applyFilters, applySort } from "../../../entrypoints/models/sdk-filters.ts";
+import { normalizeFilterFields, normalizeMutationData, normalizeRecordToCanonicalShape, normalizeSortFields } from "../../../entrypoints/models/sdk-fields.ts";
+import { assertExpectedVersion } from "../../../packages/sdk-version.ts";
+import { resolveModelDefinition } from "../../../entrypoints/models/model-registry.ts";
+import type { SdkAckMessageRequest, SdkClaimMessageRequest, ApprovalRequest, CreateApprovalRequestRequest, DecideApprovalRequestRequest, SdkCreateMessageRequest, SdkCursorEntity, SdkCursorRequest, SdkFilterCondition, SdkFollowRequest, SdkGetRequest, SdkGetCursorRequest, SdkLeaseEntity, SdkLeaseReleaseRequest, SdkMessageEntity, SdkMutationRequest, SdkPickRequest, SdkPickResult, SdkRecordRunRequest, SdkRunEntity, SdkSearchRequest, ListApprovalRequestsRequest, SdkSubscriptionEntity, UpsertTeamInboxItemRequest, SdkUpdateRequest, } from "../../../entrypoints/models/sdk-types.ts";
+import { CursorStore } from "../../../stores/cursor-store.ts";
+import { MemoryProjectWorkflowStore, SqliteProjectWorkflowStore } from "../../../stores/project-workflow-store.ts";
+import { LeaseStore, type LeaseClaimInput } from "../../../stores/lease-store.ts";
+import { MessageStore } from "../../../stores/message-store.ts";
+import { OperationalStore } from "../../../stores/operational-store.ts";
+import { RunStore } from "../../../stores/run-store.ts";
+import { SubscriptionStore } from "../../../stores/subscription-store.ts";
+import { TryClaimContentLeaseInput, D1Record, AgentDatabase, nowIso, nextLeaseToken, pickSortForRequest, filterSinceField, approvalStateFor, approvalRequestFromInput, decidedApprovalRequest, inboxItemFromInput, MemoryAgentDatabase, CloudflareD1AgentDatabase } from "../../../persistence/d1-store.ts";
+export async function listApprovalRequestsMethod(this: MemoryAgentDatabase, request: ListApprovalRequestsRequest = {}) {
+    const states = request.state
+        ? new Set((Array.isArray(request.state) ? request.state : [request.state]).map(String))
+        : null;
+    return [...this.approvalRequests.values()]
+        .filter((approval) => !request.projectId || approval.projectId === request.projectId)
+        .filter((approval) => !request.teamId || approval.teamId === request.teamId)
+        .filter((approval) => !states || states.has(approval.state))
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .slice(0, request.limit ?? 100);
+}

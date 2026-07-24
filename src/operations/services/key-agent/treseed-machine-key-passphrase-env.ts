@@ -9,13 +9,13 @@ export const TRESEED_MACHINE_KEY_PASSPHRASE_ENV = 'TREESEED_KEY_PASSPHRASE';
 
 export const TRESEED_KEY_AGENT_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 
-export const TREESEED_KEY_AGENT_IDLE_TIMEOUT_MS = TRESEED_KEY_AGENT_IDLE_TIMEOUT_MS;
+export const KEY_AGENT_IDLE_TIMEOUT_MS = TRESEED_KEY_AGENT_IDLE_TIMEOUT_MS;
 
 export const TRESEED_WRAPPED_MACHINE_KEY_VERSION = 2;
 
 export const TRESEED_WRAPPED_MACHINE_KEY_KIND = 'treeseed-wrapped-machine-key';
 
-export const TREESEED_MACHINE_KEY_PASSPHRASE_ENV = TRESEED_MACHINE_KEY_PASSPHRASE_ENV;
+export const MACHINE_KEY_PASSPHRASE_ENV = TRESEED_MACHINE_KEY_PASSPHRASE_ENV;
 
 export const KEY_AGENT_SOCKET_RELATIVE_PATH = '.treeseed/run/key-agent.sock';
 
@@ -28,7 +28,7 @@ export const WRAPPED_KEY_KDF_PARAMS = {
 	keyLength: 32,
 };
 
-export type TreeseedWrappedMachineKey = {
+export type WrappedMachineKey = {
 	version: 2;
 	kind: typeof TRESEED_WRAPPED_MACHINE_KEY_KIND;
 	createdAt: string;
@@ -50,7 +50,7 @@ export type TreeseedWrappedMachineKey = {
 	fingerprint: string;
 };
 
-export type TreeseedKeyAgentStatus = {
+export type KeyAgentStatus = {
 	running: boolean;
 	unlocked: boolean;
 	wrappedKeyPresent: boolean;
@@ -61,7 +61,7 @@ export type TreeseedKeyAgentStatus = {
 	idleRemainingMs: number;
 };
 
-export type TreeseedKeyAgentDiagnostics = {
+export type KeyAgentDiagnostics = {
 	socketPath: string;
 	pidPath: string;
 	socketPresent: boolean;
@@ -72,7 +72,7 @@ export type TreeseedKeyAgentDiagnostics = {
 	lastError: string | null;
 };
 
-export type TreeseedKeyAgentCommand =
+export type KeyAgentCommand =
 	| { command: 'health'; keyPath: string; socketPath: string; idleTimeoutMs: number }
 	| { command: 'status'; keyPath: string; socketPath: string; idleTimeoutMs: number }
 	| { command: 'unlock'; keyPath: string; socketPath: string; idleTimeoutMs: number; passphrase: string; createIfMissing?: boolean; allowMigration?: boolean }
@@ -80,21 +80,21 @@ export type TreeseedKeyAgentCommand =
 	| { command: 'touch'; keyPath: string; socketPath: string; idleTimeoutMs: number }
 	| { command: 'get-machine-key'; keyPath: string; socketPath: string; idleTimeoutMs: number };
 
-export type TreeseedKeyAgentResponse = {
+export type KeyAgentResponse = {
 	ok: boolean;
 	code?: string;
 	message?: string;
-	status?: TreeseedKeyAgentStatus;
+	status?: KeyAgentStatus;
 	machineKey?: string;
-	diagnostics?: TreeseedKeyAgentDiagnostics;
+	diagnostics?: KeyAgentDiagnostics;
 };
 
-export class TreeseedKeyAgentError extends Error {
+export class KeyAgentError extends Error {
 	code: 'locked' | 'unlock_required' | 'unlock_failed' | 'wrapped_key_missing' | 'wrapped_key_migration_required' | 'interactive_required' | 'daemon_unavailable' | 'corrupt_wrapped_key' | 'permission_denied' | 'protocol_error';
 	details?: Record<string, unknown>;
 
 	constructor(
-		code: TreeseedKeyAgentError['code'],
+		code: KeyAgentError['code'],
 		message: string,
 		details?: Record<string, unknown>,
 	) {
@@ -105,7 +105,7 @@ export class TreeseedKeyAgentError extends Error {
 	}
 }
 
-export type TreeseedKeyAgentSessionState = {
+export type KeyAgentSessionState = {
 	machineKey: Buffer | null;
 	lastTouchedAt: number;
 	idleTimeoutMs: number;
@@ -128,7 +128,7 @@ export function pidFilePath(socketPath: string) {
 	return `${socketPath}.pid`;
 }
 
-export function detectSocketKind(socketPath: string): TreeseedKeyAgentDiagnostics['socketKind'] {
+export function detectSocketKind(socketPath: string): KeyAgentDiagnostics['socketKind'] {
 	if (!existsSync(socketPath)) {
 		return 'missing';
 	}
@@ -164,7 +164,7 @@ export function deriveWrappingKey(passphrase: string, salt: Buffer, keyLength: n
 	});
 }
 
-export function wrapMachineKey(machineKey: Buffer, passphrase: string): TreeseedWrappedMachineKey {
+export function wrapMachineKey(machineKey: Buffer, passphrase: string): WrappedMachineKey {
 	const salt = randomBytes(16);
 	const iv = randomBytes(12);
 	const wrappingKey = deriveWrappingKey(passphrase, salt, WRAPPED_KEY_KDF_PARAMS.keyLength);
@@ -194,7 +194,7 @@ export function wrapMachineKey(machineKey: Buffer, passphrase: string): Treeseed
 	};
 }
 
-export function unwrapMachineKey(payload: TreeseedWrappedMachineKey, passphrase: string) {
+export function unwrapMachineKey(payload: WrappedMachineKey, passphrase: string) {
 	try {
 		const salt = Buffer.from(payload.kdf.salt, 'base64');
 		const wrappingKey = deriveWrappingKey(passphrase, salt, payload.kdf.keyLength);
@@ -205,7 +205,7 @@ export function unwrapMachineKey(payload: TreeseedWrappedMachineKey, passphrase:
 			decipher.final(),
 		]);
 	} catch (error) {
-		throw new TreeseedKeyAgentError(
+		throw new KeyAgentError(
 			'unlock_failed',
 			'Unable to unlock the Treeseed machine key. The passphrase is incorrect or the wrapped key file is corrupt.',
 			{ cause: error instanceof Error ? error.message : String(error) },
@@ -213,7 +213,7 @@ export function unwrapMachineKey(payload: TreeseedWrappedMachineKey, passphrase:
 	}
 }
 
-export function isWrappedMachineKeyPayload(value: unknown): value is TreeseedWrappedMachineKey {
+export function isWrappedMachineKeyPayload(value: unknown): value is WrappedMachineKey {
 	if (!value || typeof value !== 'object') {
 		return false;
 	}

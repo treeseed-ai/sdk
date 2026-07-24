@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { resolveApiConfig } from '../../../src/api/config.ts';
+import { resolveApiConfig } from '../../../src/api/configuration/config.ts';
 import { D1AuthProvider } from '../../../src/api/auth/d1-provider.ts';
 import { NodeSqliteD1Database } from '../../../src/db/node-sqlite.ts';
 

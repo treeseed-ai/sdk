@@ -191,7 +191,7 @@ export interface AgentToolPolicy {
 
 export interface AgentContentScope {
 	models: string[];
-	actions?: import('../content-operations.ts').TreeseedContentAction[];
+	actions?: import('../../operations/content-operations.ts').ContentAction[];
 	books?: string[];
 	paths?: string[];
 	relations?: string[];

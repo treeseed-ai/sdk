@@ -1,7 +1,7 @@
 import {
-	TREESEED_REMOTE_CONTRACT_HEADER,
-	TREESEED_REMOTE_CONTRACT_VERSION,
-} from '../remote.ts';
+	REMOTE_CONTRACT_HEADER,
+	REMOTE_CONTRACT_VERSION,
+} from '../entrypoints/clients/remote.ts';
 import { PLATFORM_OPERATION_ENDPOINTS, PlatformOperation, PlatformOperationEvent, PlatformRunnerClaimRequest, PlatformRunnerClientOptions, PlatformRunnerHeartbeatRequest, PlatformRunnerJobUpdateRequest, PlatformRunnerRegistrationRequest, buildPlatformRunnerAuthHeaders } from './platform-operation-endpoints.ts';
 import { PlatformOperationApiError, assertPlatformOperation, assertPlatformOperationEvent, assertPlatformOperationOkEnvelope, isRecord, normalizeBaseUrl } from './nested-record.ts';
 
@@ -26,7 +26,7 @@ export class PlatformRunnerClient {
 	private async requestJson<T>(path: string, options: { method?: 'GET' | 'POST'; body?: unknown } = {}): Promise<T> {
 		const headers: Record<string, string> = {
 			accept: 'application/json',
-			[TREESEED_REMOTE_CONTRACT_HEADER]: String(TREESEED_REMOTE_CONTRACT_VERSION),
+			[REMOTE_CONTRACT_HEADER]: String(REMOTE_CONTRACT_VERSION),
 			...buildPlatformRunnerAuthHeaders(this.runnerSecret),
 		};
 		if (this.userAgent) headers['user-agent'] = this.userAgent;

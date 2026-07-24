@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
-import { loadTreeseedPlatformConfig } from '../../../platform/config.ts';
-import { resolveTreeseedLaunchEnvironment } from '../config-runtime.ts';
+import { loadPlatformConfig } from '../../../platform/configuration/config.ts';
+import { resolveLaunchEnvironment } from '../configuration/config-runtime.ts';
 import {
 	getRailwayServiceInstance,
 	inspectRailwayServiceDeploymentHealth,
@@ -11,21 +11,21 @@ import {
 	listRailwayVolumes,
 	normalizeRailwayEnvironmentName,
 	resolveRailwayWorkspaceContext,
-} from '../railway-api.ts';
+} from '../hosting/railway/railway-api.ts';
 import {
 	configuredRailwayServices,
-	findStaleTreeseedOperationsRunnerResources,
-	isTreeseedOperationsRunnerResourceName,
+	findStaleOperationsRunnerResources,
+	isOperationsRunnerResourceName,
 	railwayObsoleteAliasCleanupPolicy,
-} from '../railway-deploy.ts';
-import { railwayTreeDxServiceName } from '../railway-source-policy.ts';
-import { discoverTreeseedApplications } from '../../../hosting/apps.ts';
+} from '../hosting/railway/railway-deploy.ts';
+import { railwayTreeDxServiceName } from '../hosting/railway/railway-source-policy.ts';
+import { discoverApplications } from '../../../hosting/apps.ts';
 import {
-	collectTreeseedHostedServiceChecks,
-	type TreeseedHostedServiceCheckReport,
-	type TreeseedHostedServiceTarget,
-	type TreeseedObservedRailwayServiceState,
-} from '../hosted-service-checks.ts';
+	collectHostedServiceChecks,
+	type HostedServiceCheckReport,
+	type HostedServiceTarget,
+	type ObservedRailwayServiceState,
+} from '../hosting/audit/hosted-service-checks.ts';
 
 
 export const DEFAULT_RETRY_ATTEMPTS = 3;
@@ -36,9 +36,9 @@ export const DEFAULT_RAILWAY_DEPLOYMENT_SETTLE_ATTEMPTS = 12;
 
 export const DEFAULT_RAILWAY_DEPLOYMENT_SETTLE_INTERVAL_MS = 5000;
 
-export interface TreeseedLiveHostedServiceCheckOptions {
+export interface LiveHostedServiceCheckOptions {
 	tenantRoot: string;
-	target: TreeseedHostedServiceTarget;
+	target: HostedServiceTarget;
 	appId?: string;
 	serviceKeys?: string[];
 	strict?: boolean;
@@ -57,7 +57,7 @@ export interface TreeseedLiveHostedServiceCheckOptions {
 	fetchImpl?: typeof fetch;
 }
 
-export interface TreeseedLiveHostedServiceCheckReport extends TreeseedHostedServiceCheckReport {
+export interface LiveHostedServiceCheckReport extends HostedServiceCheckReport {
 	live: true;
 	liveObservation: {
 		railway: 'observed' | 'skipped' | 'failed';
@@ -87,11 +87,11 @@ export function urlForDomain(value: unknown) {
 	return /^https?:\/\//iu.test(normalized) ? normalized : `https://${normalized}`;
 }
 
-export function selectedWebConfig(deployConfig: Record<string, any>, selectedApplication: ReturnType<typeof discoverTreeseedApplications>[number] | null) {
+export function selectedWebConfig(deployConfig: Record<string, any>, selectedApplication: ReturnType<typeof discoverApplications>[number] | null) {
 	return selectedApplication?.roles.includes('web') ? selectedApplication.config : deployConfig;
 }
 
-export function pagesBranchName(config: Record<string, any>, target: TreeseedHostedServiceTarget) {
+export function pagesBranchName(config: Record<string, any>, target: HostedServiceTarget) {
 	const pages = config.cloudflare?.pages && typeof config.cloudflare.pages === 'object'
 		? config.cloudflare.pages
 		: {};
@@ -100,7 +100,7 @@ export function pagesBranchName(config: Record<string, any>, target: TreeseedHos
 	return typeof pages[key] === 'string' && pages[key].trim() ? pages[key].trim() : fallback;
 }
 
-export async function observeHttp(url: string, options: TreeseedLiveHostedServiceCheckOptions) {
+export async function observeHttp(url: string, options: LiveHostedServiceCheckOptions) {
 	const attempts = Math.max(1, Math.floor(options.httpRetry?.attempts ?? options.retry?.attempts ?? DEFAULT_RETRY_ATTEMPTS));
 	const intervalMs = Math.max(0, Math.floor(options.httpRetry?.intervalMs ?? options.retry?.intervalMs ?? DEFAULT_RETRY_INTERVAL_MS));
 	const timeoutMs = Math.max(1000, Math.floor(options.timeoutMs ?? 10000));
@@ -133,7 +133,7 @@ export async function inspectRailwayServiceDeploymentHealthWithRetry(input: {
 	environmentId: string;
 	serviceName?: string;
 	acceptSleeping?: boolean;
-	options: TreeseedLiveHostedServiceCheckOptions;
+	options: LiveHostedServiceCheckOptions;
 }) {
 	const attempts = Math.max(1, Math.floor(input.options.retry?.attempts ?? DEFAULT_RAILWAY_DEPLOYMENT_SETTLE_ATTEMPTS));
 	const intervalMs = Math.max(0, Math.floor(input.options.retry?.intervalMs ?? DEFAULT_RAILWAY_DEPLOYMENT_SETTLE_INTERVAL_MS));
@@ -203,7 +203,7 @@ export function isRetainedDetachedRailwayVolume(value: unknown) {
 	return String(value ?? '').trim().startsWith('retained-');
 }
 
-export function selectedServiceKeySet(options: TreeseedLiveHostedServiceCheckOptions) {
+export function selectedServiceKeySet(options: LiveHostedServiceCheckOptions) {
 	return new Set((options.serviceKeys ?? []).map((key) => key.trim()).filter(Boolean));
 }
 
@@ -215,7 +215,7 @@ export function serviceMatchesAppSelection(
 	service: ReturnType<typeof configuredRailwayServices>[number],
 	tenantRoot: string,
 	appId: string | undefined,
-	applications: ReturnType<typeof discoverTreeseedApplications>,
+	applications: ReturnType<typeof discoverApplications>,
 ) {
 	if (!appId) return true;
 	if (service.application?.id === appId) return true;
@@ -226,14 +226,14 @@ export function serviceMatchesAppSelection(
 	return false;
 }
 
-export function treeseedDatabaseDescriptors(tenantRoot: string, options: TreeseedLiveHostedServiceCheckOptions) {
+export function DatabaseDescriptors(tenantRoot: string, options: LiveHostedServiceCheckOptions) {
 	const descriptors: Array<{
 		applicationId: string | null;
 		applicationRoot: string;
 		serviceName: string;
 	}> = [];
-	const rootConfig = loadTreeseedPlatformConfig({ tenantRoot, environment: options.target, env: process.env }).deployConfig;
-	const applications = discoverTreeseedApplications(tenantRoot);
+	const rootConfig = loadPlatformConfig({ tenantRoot, environment: options.target, env: process.env }).deployConfig;
+	const applications = discoverApplications(tenantRoot);
 	const candidates = [
 		{ applicationId: null, applicationRoot: tenantRoot, config: rootConfig },
 		...applications.map((application) => ({

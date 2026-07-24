@@ -7,27 +7,27 @@ import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 
 import {
-	auditTreeseedGuaranteeJourneys,
+	auditGuaranteeJourneys,
 	assertPathInsideWorkspace,
-	discoverTreeseedGuarantees,
-	exportTreeseedGuaranteesCsv,
-	exportTreeseedGuaranteesJson,
-	exportTreeseedGuaranteesMarkdown,
+	discoverGuarantees,
+	exportGuaranteesCsv,
+	exportGuaranteesJson,
+	exportGuaranteesMarkdown,
 	browserForGuaranteeDevice,
-	createTreeseedGuaranteeStatusReport,
+	createGuaranteeStatusReport,
 	fileExists,
-	loadTreeseedGuaranteeVerifierRegistry,
-	normalizeTreeseedGuaranteeTaxonomy,
-	planTreeseedGuarantees,
-	resolveTreeseedGuaranteeVerifierRefs,
-	runTreeseedGuarantees,
+	loadGuaranteeVerifierRegistry,
+	normalizeGuaranteeTaxonomy,
+	planGuarantees,
+	resolveGuaranteeVerifierRefs,
+	runGuarantees,
 	sceneAuthRoleForGuarantee,
 	sceneDeviceRunsForGuarantee,
-	validateTreeseedVitestVerifierOutput,
-	validateTreeseedGuarantee,
+	validateVitestVerifierOutput,
+	validateGuarantee,
 	validateGuaranteeSceneJourneyContract,
-	writeTreeseedGuaranteesExport,
-	writeTreeseedGuaranteeRunReport,
+	writeGuaranteesExport,
+	writeGuaranteeRunReport,
 } from '../../../src/guarantees/index.ts';
 
 function workspaceFixture(name: string) {
@@ -111,7 +111,7 @@ verifiers:
 		const previousBaseUrl = process.env.TREESEED_API_BASE_URL;
 		process.env.TREESEED_API_BASE_URL = 'http://127.0.0.1:3000/';
 		try {
-			await expect(runTreeseedGuarantees({
+			await expect(runGuarantees({
 				workspaceRoot: apiRoot,
 				environment: 'staging',
 				now: new Date('2026-01-01T00:00:00.000Z'),
@@ -146,7 +146,7 @@ verifiers:
     kind: packageScript
     command: verify:market
 `);
-		const report = await runTreeseedGuarantees({
+		const report = await runGuarantees({
 			workspaceRoot: marketRoot,
 			now: new Date('2026-01-01T00:00:00.000Z'),
 		});
@@ -183,7 +183,7 @@ verifiers:
 		const previousSecret = process.env.TREESEED_ACCEPTANCE_SERVICE_SECRET;
 		process.env.TREESEED_ACCEPTANCE_SERVICE_SECRET = 'super-secret-value';
 		try {
-			const report = await runTreeseedGuarantees({
+			const report = await runGuarantees({
 				workspaceRoot: root,
 				now: new Date('2026-01-01T00:00:00.000Z'),
 			});
@@ -218,7 +218,7 @@ verifiers:
 it('counts skipped planned release guarantees as release-blocking when the run requests that policy', async () => {
 		const root = workspaceFixture('planned-release-skip-policy');
 		writeGuarantee(root, validGuarantee);
-		const report = await runTreeseedGuarantees({
+		const report = await runGuarantees({
 			workspaceRoot: root,
 			includePlanned: true,
 			failOnSkippedReleaseGuarantees: true,
@@ -253,7 +253,7 @@ verifiers:
     testFile: test/fixture.test.ts
 `);
 		const calls: string[] = [];
-		const report = await runTreeseedGuarantees({
+		const report = await runGuarantees({
 			workspaceRoot: root,
 			verifierExecutor: async ({ ref }) => {
 				calls.push(ref);
@@ -274,7 +274,7 @@ verifiers:
 it('reports planned guarantees as skipped when requested', async () => {
 		const root = workspaceFixture('planned-runner');
 		writeGuarantee(root, validGuarantee);
-		const report = await runTreeseedGuarantees({ workspaceRoot: root, includePlanned: true, now: new Date('2026-01-01T00:00:00.000Z') });
+		const report = await runGuarantees({ workspaceRoot: root, includePlanned: true, now: new Date('2026-01-01T00:00:00.000Z') });
 		expect(report.ok).toBe(true);
 		expect(report.counts.planned).toBe(1);
 		expect(report.counts.skipped).toBe(1);
@@ -283,7 +283,7 @@ it('reports planned guarantees as skipped when requested', async () => {
 it('creates status summaries grouped by type and status', () => {
 		const root = workspaceFixture('status');
 		writeGuarantee(root, validGuarantee);
-		const status = createTreeseedGuaranteeStatusReport({ workspaceRoot: root });
+		const status = createGuaranteeStatusReport({ workspaceRoot: root });
 		expect(status.ok).toBe(true);
 		expect(status.byType.project).toBe(1);
 		expect(status.byStatus.planned).toBe(1);
@@ -291,19 +291,19 @@ it('creates status summaries grouped by type and status', () => {
 	});
 
 it('rejects vitest verifier output that executed no assertions', () => {
-		expect(validateTreeseedVitestVerifierOutput({
+		expect(validateVitestVerifierOutput({
 			stdout: ' Test Files  1 passed (1)\n      Tests  2 passed (2)\n',
 			stderr: '',
 		})).toBeNull();
-		expect(validateTreeseedVitestVerifierOutput({
+		expect(validateVitestVerifierOutput({
 			stdout: ' Test Files  1 skipped (1)\n      Tests  27 skipped (27)\n',
 			stderr: '',
 		})).toContain('without executing any assertions');
-		expect(validateTreeseedVitestVerifierOutput({
+		expect(validateVitestVerifierOutput({
 			stdout: 'No test files found, exiting with code 0\n',
 			stderr: '',
 		})).toContain('without executing any assertions');
-		expect(validateTreeseedVitestVerifierOutput({
+		expect(validateVitestVerifierOutput({
 			stdout: '',
 			stderr: '\u001B[31m Tests  3 failed (3)\u001B[0m\r\n',
 		})).toBeNull();

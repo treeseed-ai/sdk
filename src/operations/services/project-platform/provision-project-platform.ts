@@ -1,26 +1,26 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { runTreeseedGit } from '../git-runner.ts';
+import { runRepositoryGit } from '../operations/git-runner.ts';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
-import { elapsedMs, formatTimingMarkdown, formatTimingSummary, type TreeseedTimingEntry } from '../../../timing.ts';
+import { elapsedMs, formatTimingMarkdown, formatTimingSummary, type TimingEntry } from '../../../entrypoints/runtime/timing.ts';
 import {
 	createControlPlaneReporter,
 	type ControlPlaneDeploymentReport,
 	type ControlPlaneReporter,
-} from '../../../control-plane.ts';
+} from '../../../entrypoints/clients/control-plane.ts';
 import {
 	resolvePublishedContentPreviewTtlHours,
 	resolveTeamScopedContentLocator,
 	signEditorialPreviewToken,
 	type PublishedContentManifest,
 	type PublishedContentObjectPointer,
-} from '../../../platform/published-content.ts';
-import { createPublishedContentPipeline } from '../../../platform/published-content-pipeline.ts';
-import { collectTreeseedReconcileStatus, reconcileTreeseedTarget, resolveTreeseedBootstrapSelection } from '../../../reconcile/index.ts';
-import { loadTreeseedManifest } from '../../../platform/tenant-config.ts';
-import { applyTreeseedEnvironmentToProcess, assertTreeseedCommandEnvironment } from '../config-runtime.ts';
-import { runTreeseedHostingAudit } from '../hosting-audit.ts';
+} from '../../../platform/packages/published-content.ts';
+import { createPublishedContentPipeline } from '../../../platform/packages/published-content-pipeline.ts';
+import { collectReconcileStatus, reconcileTarget, resolveBootstrapSelection } from '../../../reconcile/index.ts';
+import { loadManifest } from '../../../platform/configuration/tenant-config.ts';
+import { applyEnvironmentToProcess, assertCommandEnvironment } from '../configuration/config-runtime.ts';
+import { runHostingAudit } from '../hosting/audit/hosting-audit.ts';
 import {
 	assertDeploymentInitialized,
 	createPersistentDeployTarget,
@@ -32,12 +32,12 @@ import {
 	purgePublishedContentCaches,
 	resolveConfiguredCloudflareAccountId,
 	resolveConfiguredSurfaceBaseUrl,
-	resolveTreeseedResourceIdentity,
+	resolveResourceIdentity,
 	runRemoteD1Migrations,
 	syncCloudflareSecrets,
 	writeDeployState,
-} from '../deploy.ts';
-import { currentManagedBranch, PRODUCTION_BRANCH, STAGING_BRANCH } from '../git-workflow.ts';
+} from '../hosting/deployment/deploy.ts';
+import { currentManagedBranch, PRODUCTION_BRANCH, STAGING_BRANCH } from '../operations/git-workflow.ts';
 import {
 	configuredRailwayServices,
 	deployRailwayService,
@@ -46,19 +46,19 @@ import {
 	validateRailwayServiceConfiguration,
 	verifyRailwayManagedResources,
 	verifyRailwayScheduledJobs,
-} from '../railway-deploy.ts';
-import { loadCliDeployConfig, packageScriptPath } from '../runtime-tools.ts';
-import { resolveTreeseedToolCommand } from '../../../managed-dependencies.ts';
-import type { TreeseedRunnableBootstrapSystem } from '../../../reconcile/index.ts';
-import { runPrefixedCommand, runTreeseedBootstrapDag, sleep, writeTreeseedBootstrapLine, type TreeseedBootstrapDagNode, type TreeseedBootstrapExecution, type TreeseedBootstrapTaskPrefix, type TreeseedBootstrapWriter } from '../bootstrap-runner.ts';
-import { runTenantDeployPreflight } from '../save-deploy-preflight.ts';
+} from '../hosting/railway/railway-deploy.ts';
+import { loadCliDeployConfig, packageScriptPath } from '../agents/runtime-tools.ts';
+import { resolveToolCommand } from '../../../entrypoints/runtime/managed-dependencies.ts';
+import type { RunnableBootstrapSystem } from '../../../reconcile/index.ts';
+import { runPrefixedCommand, runBootstrapDag, sleep, writeBootstrapLine, type BootstrapDagNode, type BootstrapExecution, type BootstrapTaskPrefix, type BootstrapWriter } from '../operations/bootstrap-runner.ts';
+import { runTenantDeployPreflight } from '../hosting/deployment/save-deploy-preflight.ts';
 import { ProjectPlatformActionOptions, currentCommit, currentRef, resolveProjectPlatformBootstrapSystems, timedPhase, writeWorkflowStatus } from './project-platform-scope.ts';
 import { resolveReporter } from './repair-hosting-after-successful-deploy.ts';
 import { reportDeployment } from './tenant-cloudflare-deploy-context.ts';
 
 export async function provisionProjectPlatform(options: ProjectPlatformActionOptions) {
 	writeWorkflowStatus(`provision:start scope=${options.scope}`);
-	const timings: TreeseedTimingEntry[] = [];
+	const timings: TimingEntry[] = [];
 	writeWorkflowStatus('provision:resolve-reporter');
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);
 	writeWorkflowStatus(`provision:reporter kind=${reporter.kind} enabled=${reporter.enabled ? 'true' : 'false'}`);
@@ -70,7 +70,7 @@ export async function provisionProjectPlatform(options: ProjectPlatformActionOpt
 	const selectedSystems = new Set(bootstrapSystems);
 	const env = { ...process.env, ...(options.env ?? {}) };
 	writeWorkflowStatus(`provision:reconcile:start systems=${bootstrapSystems.join(',') || '(none)'}`);
-	const summary = await timedPhase(timings, 'provision:reconcile', () => reconcileTreeseedTarget({
+	const summary = await timedPhase(timings, 'provision:reconcile', () => reconcileTarget({
 		tenantRoot: options.tenantRoot,
 		target,
 		env,
@@ -79,9 +79,9 @@ export async function provisionProjectPlatform(options: ProjectPlatformActionOpt
 		planOnly: options.planOnly,
 	}));
 	writeWorkflowStatus('provision:reconcile:done');
-	timings.push(...((summary as { timings?: TreeseedTimingEntry[] }).timings ?? []));
+	timings.push(...((summary as { timings?: TimingEntry[] }).timings ?? []));
 	writeWorkflowStatus('provision:collect-reconcile-status:start');
-	const verification = await timedPhase(timings, 'provision:collect-reconcile-status', () => collectTreeseedReconcileStatus({
+	const verification = await timedPhase(timings, 'provision:collect-reconcile-status', () => collectReconcileStatus({
 		tenantRoot: options.tenantRoot,
 		target,
 		env,

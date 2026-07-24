@@ -1,49 +1,49 @@
 import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, relative, resolve } from 'node:path';
-import { RemoteTreeseedAuthClient, RemoteTreeseedClient } from '../../../remote.ts';
-import { classifyTreeseedGitMode, runTreeseedGitText } from '../../../operations/services/git-runner.ts';
+import { RemoteAuthClient, RemoteClient } from '../../../entrypoints/clients/remote.ts';
+import { classifyGitMode, runGitText } from '../../services/operations/git-runner.ts';
 import {
-	findTreeseedOperation,
+	findOperation,
 	TRESEED_OPERATION_SPECS,
-} from '../../../operations-registry.ts';
+} from '../../operations-registry.ts';
 import type {
-	TreeseedOperationContext,
-	TreeseedOperationImplementation,
-	TreeseedOperationMetadata,
-	TreeseedOperationProvider,
-	TreeseedOperationResult,
-} from '../../../operations-types.ts';
+	OperationContext,
+	OperationImplementation,
+	OperationMetadata,
+	OperationProvider,
+	OperationResult,
+} from '../../operations-types.ts';
 import {
-	clearTreeseedRemoteSession,
-	inspectTreeseedKeyAgentStatus,
-	lockTreeseedSecretSession,
-	migrateTreeseedMachineKeyToWrapped,
-	resolveTreeseedLaunchEnvironment,
-	resolveTreeseedRemoteConfig,
-	rotateTreeseedMachineKey,
-	rotateTreeseedMachineKeyPassphrase,
-	setTreeseedRemoteSession,
-	TREESEED_MACHINE_KEY_PASSPHRASE_ENV,
-	TreeseedKeyAgentError,
-	unlockTreeseedSecretSessionFromEnv,
-} from '../../../operations/services/config-runtime.ts';
+	clearRemoteSession,
+	inspectKeyAgentStatus,
+	lockSecretSession,
+	migrateMachineKeyToWrapped,
+	resolveLaunchEnvironment,
+	resolveRemoteConfig,
+	rotateMachineKey,
+	rotateMachineKeyPassphrase,
+	setRemoteSession,
+	MACHINE_KEY_PASSPHRASE_ENV,
+	KeyAgentError,
+	unlockSecretSessionFromEnv,
+} from '../../services/configuration/config-runtime.ts';
 import {
 	createPersistentDeployTarget,
 	deployTargetLabel,
 	ensureGeneratedWranglerConfig,
 	finalizeDeploymentState,
 	loadDeployState,
-} from '../../../operations/services/deploy.ts';
+} from '../../services/hosting/deployment/deploy.ts';
 import {
 	PRODUCTION_BRANCH,
 	STAGING_BRANCH,
-} from '../../../operations/services/git-workflow.ts';
+} from '../../services/operations/git-workflow.ts';
 import {
 	loadCliDeployConfig,
 	packageScriptPath,
 	resolveWranglerBin,
-} from '../../../operations/services/runtime-tools.ts';
+} from '../../services/agents/runtime-tools.ts';
 import {
 	scaffoldTemplateProject,
 	listTemplateProducts,
@@ -53,10 +53,10 @@ import {
 	serializeTemplateRegistryEntry,
 	syncTemplateProject,
 	validateTemplateProduct,
-} from '../../../operations/services/template-registry.ts';
-import { applyProjectLaunchHostBindingConfig } from '../../../operations/services/template-host-bindings.ts';
-import { validateKnowledgeHubProviderLaunchPrerequisites } from '../../../operations/services/hub-provider-launch.ts';
-import { publishProjectContent } from '../../../operations/services/project-platform.ts';
+} from '../../services/support/template-registry.ts';
+import { applyProjectLaunchHostBindingConfig } from '../../services/hosting/deployment/template-host-bindings.ts';
+import { validateKnowledgeHubProviderLaunchPrerequisites } from '../../services/capacity/providers/hub-provider-launch.ts';
+import { publishProjectContent } from '../../services/projects/projects-core/project-platform.ts';
 import {
 	createKnowledgeHubRepositories,
 	executeKnowledgeHubLaunch,
@@ -65,30 +65,30 @@ import {
 	type KnowledgeHubLaunchIntent,
 	type KnowledgeHubRepositoryPlan,
 	type RepositoryHost,
-} from '../../../operations/services/hub-launch.ts';
+} from '../../services/support/hub-launch.ts';
 import {
 	collectCliPreflight,
 	formatCliPreflightReport,
-} from '../../../operations/services/workspace-preflight.ts';
-import { repoRoot } from '../../../operations/services/workspace-save.ts';
-import { TREESEED_DEFAULT_STARTER_TEMPLATE_ID } from '../../../sdk-types.ts';
+} from '../../services/treedx/workspaces/workspace-preflight.ts';
+import { repoRoot } from '../../services/treedx/workspaces/workspace-save.ts';
+import { DEFAULT_STARTER_TEMPLATE_ID } from '../../../entrypoints/models/sdk-types.ts';
 import {
 	parseProjectLaunchHostBindingSpecs,
 	resolveProjectLaunchHostBindings,
-} from '../../../template-launch-requirements.ts';
-import { run } from '../../../operations/services/workspace-tools.ts';
-import { resolveTreeseedWorkflowState } from '../../../workflow-state.ts';
-import { TreeseedWorkflowError, TreeseedWorkflowSdk } from '../../../workflow.ts';
+} from '../../../entrypoints/templates/template-launch-requirements.ts';
+import { run } from '../../services/treedx/workspaces/workspace-tools.ts';
+import { resolveWorkflowState } from '../../workflow-state.ts';
+import { WorkflowError, WorkflowSdk } from '../../workflow.ts';
 import {
-	collectTreeseedToolStatus,
-	formatTreeseedDependencyReport,
-	installTreeseedDependencies,
-} from '../../../managed-dependencies.ts';
+	collectToolStatus,
+	formatDependencyReport,
+	installDependencies,
+} from '../../../entrypoints/runtime/managed-dependencies.ts';
 import { BaseOperation, failureResult, operationEnv, operationResult, prepareContentPublishRoot } from './run-git.ts';
 import { arrayOfStrings, plainObject, stringValue, workspaceAttachPlan, writeJsonFile } from './hub-resume-launch-operation.ts';
 
 export class ContentPublishOperation extends BaseOperation {
-	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+	async execute(input: Record<string, unknown>, context: OperationContext) {
 		const tenantRoot = typeof input.tenantRoot === 'string' ? input.tenantRoot : context.cwd;
 		const contentRepositoryRoot = typeof input.contentRepositoryRoot === 'string'
 			? input.contentRepositoryRoot
@@ -125,7 +125,7 @@ export class ContentPublishOperation extends BaseOperation {
 				publishTarget: 'r2_published_artifacts',
 				contentSource: contentRepositoryRoot ? 'content_repository' : 'tenant_root',
 				r2: {
-					bucketName: context.env?.TREESEED_CONTENT_BUCKET_NAME ?? process.env.TREESEED_CONTENT_BUCKET_NAME ?? null,
+					bucketName: context.env?.CONTENT_BUCKET_NAME ?? process.env.CONTENT_BUCKET_NAME ?? null,
 					publicBaseUrl: context.env?.TREESEED_CONTENT_PUBLIC_BASE_URL ?? process.env.TREESEED_CONTENT_PUBLIC_BASE_URL ?? null,
 				},
 			});
@@ -136,7 +136,7 @@ export class ContentPublishOperation extends BaseOperation {
 }
 
 export class WorkspacePlanAttachParentOperation extends BaseOperation {
-	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+	async execute(input: Record<string, unknown>, context: OperationContext) {
 		const plan = workspaceAttachPlan(input, context.cwd);
 		return operationResult(this.metadata, {
 			...plan,
@@ -149,7 +149,7 @@ export class WorkspacePlanAttachParentOperation extends BaseOperation {
 }
 
 export class WorkspaceAttachParentOperation extends BaseOperation {
-	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+	async execute(input: Record<string, unknown>, context: OperationContext) {
 		const plan = workspaceAttachPlan(plainObject(input.plan).state ? plainObject(input.plan) : input, context.cwd);
 		if (plan.issues.length > 0) {
 			return operationResult(this.metadata, {
@@ -197,7 +197,7 @@ export class WorkspaceAttachParentOperation extends BaseOperation {
 }
 
 export class WorkspaceUpdateSubmodulePointersOperation extends BaseOperation {
-	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+	async execute(input: Record<string, unknown>, context: OperationContext) {
 		const plan = workspaceAttachPlan(plainObject(input.workspace).state ? plainObject(input.workspace) : input, context.cwd);
 		const hasCapability = input.hasParentWorkspaceCapability === true
 			|| arrayOfStrings(input.capabilities).includes('parent_workspace:update_submodule_pointers');
@@ -236,8 +236,8 @@ export class WorkspaceUpdateSubmodulePointersOperation extends BaseOperation {
 }
 
 export class DoctorOperation extends BaseOperation {
-	async execute(_input: Record<string, unknown>, context: TreeseedOperationContext) {
-		const state = resolveTreeseedWorkflowState(context.cwd);
+	async execute(_input: Record<string, unknown>, context: OperationContext) {
+		const state = resolveWorkflowState(context.cwd);
 		const preflight = collectCliPreflight({ cwd: context.cwd, requireAuth: false });
 		return operationResult(this.metadata, {
 			state,
@@ -250,14 +250,14 @@ export class DoctorOperation extends BaseOperation {
 }
 
 export class InstallOperation extends BaseOperation<{ force?: boolean }> {
-	async execute(input: { force?: boolean }, context: TreeseedOperationContext) {
-		const result = await installTreeseedDependencies({
+	async execute(input: { force?: boolean }, context: OperationContext) {
+		const result = await installDependencies({
 			tenantRoot: context.cwd,
 			force: input.force === true,
 			env: context.env,
 			write: context.outputFormat === 'json' ? undefined : context.write,
 		});
-		const stdout = [formatTreeseedDependencyReport(result)];
+		const stdout = [formatDependencyReport(result)];
 		return operationResult(this.metadata, result, {
 			ok: result.ok,
 			exitCode: result.ok ? 0 : 1,
@@ -274,8 +274,8 @@ export class InstallOperation extends BaseOperation<{ force?: boolean }> {
 }
 
 export class ToolsOperation extends BaseOperation {
-	async execute(_input: Record<string, unknown>, context: TreeseedOperationContext) {
-		const result = collectTreeseedToolStatus({
+	async execute(_input: Record<string, unknown>, context: OperationContext) {
+		const result = collectToolStatus({
 			tenantRoot: context.cwd,
 			env: operationEnv(context),
 			spawn: context.spawn as typeof spawnSync | undefined,
@@ -310,11 +310,11 @@ export class ToolsOperation extends BaseOperation {
 }
 
 export class AuthLoginOperation extends BaseOperation {
-	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+	async execute(input: Record<string, unknown>, context: OperationContext) {
 		const tenantRoot = context.cwd;
-		const remoteConfig = resolveTreeseedRemoteConfig(tenantRoot, context.env);
+		const remoteConfig = resolveRemoteConfig(tenantRoot, context.env);
 		const hostId = typeof input.host === 'string' ? input.host : remoteConfig.activeHostId;
-		const client = new RemoteTreeseedAuthClient(new RemoteTreeseedClient({
+		const client = new RemoteAuthClient(new RemoteClient({
 			...remoteConfig,
 			activeHostId: hostId,
 		}));
@@ -326,7 +326,7 @@ export class AuthLoginOperation extends BaseOperation {
 		while (Date.now() < deadline) {
 			const response = await client.pollDeviceFlow({ deviceCode: started.deviceCode });
 			if (response.ok && response.status === 'approved') {
-				setTreeseedRemoteSession(tenantRoot, {
+				setRemoteSession(tenantRoot, {
 					hostId,
 					accessToken: response.accessToken,
 					refreshToken: response.refreshToken,
@@ -350,10 +350,10 @@ export class AuthLoginOperation extends BaseOperation {
 }
 
 export class AuthLogoutOperation extends BaseOperation {
-	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
-		const remoteConfig = resolveTreeseedRemoteConfig(context.cwd, context.env);
+	async execute(input: Record<string, unknown>, context: OperationContext) {
+		const remoteConfig = resolveRemoteConfig(context.cwd, context.env);
 		const hostId = typeof input.host === 'string' ? input.host : remoteConfig.activeHostId;
-		clearTreeseedRemoteSession(context.cwd, hostId);
+		clearRemoteSession(context.cwd, hostId);
 		return operationResult(this.metadata, { hostId });
 	}
 }

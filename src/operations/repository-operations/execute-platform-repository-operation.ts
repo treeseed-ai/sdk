@@ -3,12 +3,12 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { serializeFrontmatterDocument, parseFrontmatterDocument } from '../../frontmatter.ts';
+import { serializeFrontmatterDocument, parseFrontmatterDocument } from '../../content/frontmatter.ts';
 import {
 	applyProjectLaunchHostBindingConfig,
 	auditProjectLaunchHostBindingConfig,
 	type ApplyProjectLaunchHostBindingConfigOptions,
-} from '../services/template-host-bindings.ts';
+} from '../services/hosting/deployment/template-host-bindings.ts';
 import { PlatformRepositoryOperationInput, PlatformRepositoryOperationOptions, PlatformRepositoryOperationResult } from './exec-file-async.ts';
 import { assertHostBindingChangedPaths, assertRepositoryWriteMode, changedPaths, changedPathsFromOutput, commitIfRequested, createDecisionFromGovernanceProposal, outputHref, runVerificationCommands } from './create-decision-from-governance-proposal.ts';
 import { derivePlatformRepositoryKey, syncRepository } from './platform-repository-verification-error.ts';

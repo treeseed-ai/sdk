@@ -1,16 +1,16 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { workspacePackages, workspaceRoot } from '../workspace-tools.ts';
-import { runTreeseedGit } from '../git-runner.ts';
-import { resolveTreeseedLaunchEnvironment } from '../config-runtime.ts';
-import { resolveGitHubCredentialForRepository } from '../github-credentials.ts';
+import { workspacePackages, workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
+import { runRepositoryGit } from '../operations/git-runner.ts';
+import { resolveLaunchEnvironment } from '../configuration/config-runtime.ts';
+import { resolveGitHubCredentialForRepository } from '../configuration/github-credentials.ts';
 import {
 	createGitHubApiClient,
 	getLatestGitHubWorkflowRun,
-} from '../github-api.ts';
-import { resolveTreeseedDockerhubToken, resolveTreeseedDockerhubUsername } from '../../../service-credentials.ts';
-import { inspectTreeseedContentStructure } from '../../../platform/content-runtime-source.ts';
+} from '../repositories/github-api.ts';
+import { resolveDockerhubToken, resolveDockerhubUsername } from '../../../configuration/service-credentials.ts';
+import { inspectContentStructure } from '../../../platform/content/content-runtime-source.ts';
 import type {
 	SeedContentPublishTargetKind,
 	SeedContentRuntimeSource,
@@ -25,11 +25,11 @@ import {
 	SEED_LOCAL_CONTENT_MATERIALIZATIONS,
 	SEED_PROJECT_TOPOLOGIES,
 } from '../../../seeds/types.ts';
-import { TreeseedPackageAdapter, commandFromScript, docsSiteReadiness, normalizeTreeseedPackageProjectArchitecture, readMixProjectVersion } from './treeseed-package-kind.ts';
-import { manifestDockerArtifacts, positiveIntegerValue, readTreeseedPackageManifest, stringArray, stringRecord, stringValue, treeseedPackageManifestPath } from './deployment-source-mode-for-branch.ts';
+import { PackageAdapter, commandFromScript, docsSiteReadiness, normalizePackageProjectArchitecture, readMixProjectVersion } from './package-kind.ts';
+import { manifestDockerArtifacts, positiveIntegerValue, readPackageManifestDocument, stringArray, stringRecord, stringValue, PackageManifestPath } from './deployment-source-mode-for-branch.ts';
 
-export function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter | null {
-	const manifest = readTreeseedPackageManifest(dir);
+export function beamPackageAdapter(root: string, dir: string): PackageAdapter | null {
+	const manifest = readPackageManifestDocument(dir);
 	const hasMixProject = existsSync(resolve(dir, 'apps/api/mix.exs')) || existsSync(resolve(dir, 'mix.exs'));
 	if (!manifest && !hasMixProject) return null;
 	const kind = typeof manifest?.kind === 'string' ? manifest.kind : 'beam-elixir-rust';
@@ -60,7 +60,7 @@ export function beamPackageAdapter(root: string, dir: string): TreeseedPackageAd
 	const hostedVerifyWorkflow = stringValue(manifest?.hostedVerifyWorkflow)
 		?? stringValue(releaseGateRecord.workflow)
 		?? (existsSync(resolve(dir, '.github/workflows/release-gate.yml')) ? 'release-gate.yml' : null);
-	const projectArchitecture = normalizeTreeseedPackageProjectArchitecture(manifest?.projectArchitecture, id);
+	const projectArchitecture = normalizePackageProjectArchitecture(manifest?.projectArchitecture, id);
 	const docsReadiness = docsSiteReadiness(dir, projectArchitecture);
 	const capabilityRecord = stringRecord(manifest?.capabilities);
 	const localOnly = capabilityRecord.localOnly === true;
@@ -82,7 +82,7 @@ export function beamPackageAdapter(root: string, dir: string): TreeseedPackageAd
 		relativeDir: relative(root, dir).replaceAll('\\', '/'),
 		version,
 		publishTarget: image,
-		manifestPath: treeseedPackageManifestPath(dir),
+		manifestPath: PackageManifestPath(dir),
 		versionSource,
 		verifyCommands: {
 			fast: commandFromScript(dir, fast, 'fast'),
@@ -158,7 +158,7 @@ export function beamPackageAdapter(root: string, dir: string): TreeseedPackageAd
 }
 
 export function gitOutput(cwd: string, args: string[]) {
-	const result = runTreeseedGit(args, { cwd, mode: 'read' });
+	const result = runRepositoryGit(args, { cwd, mode: 'read' });
 	return result.stdout.trim();
 }
 

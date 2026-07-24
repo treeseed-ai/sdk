@@ -9,18 +9,18 @@ import {
 	type RailwayIacPlanResponse,
 	type ResourceNode,
 } from 'railway/iac';
-import { railwayGraphqlRequest } from '../../../operations/services/railway-api.ts';
-import { assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService } from '../../../operations/services/railway-source-policy.ts';
-import { TreeseedRailwayIacProjectInput, TreeseedRailwayIacRenderResult, TreeseedRailwayIacService, TreeseedRailwayObservedService, TreeseedRailwayObservedVolume, TreeseedRailwayVolumeBinding, TreeseedRailwayVolumeBindingResult, cleanupStaleRailwayIacRenders } from './treeseed-railway-iac-service.ts';
+import { railwayGraphqlRequest } from '../../../operations/services/hosting/railway/railway-api.ts';
+import { assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService } from '../../../operations/services/hosting/railway/railway-source-policy.ts';
+import { RailwayIacProjectInput, RailwayIacRenderResult, RailwayIacService, RailwayObservedService, RailwayObservedVolume, RailwayVolumeBinding, RailwayVolumeBindingResult, cleanupStaleRailwayIacRenders } from './railway-iac-service.ts';
 import { activeObservedVolumeInstances, buildConfig, deployConfig, id, js, normalizeIacScope, renderPostgresEnv, renderServiceEnv, serviceSource, validateGeneratedVariables } from './run-railway-iac-with-rate-limit-retry.ts';
 
 export function resolveRailwayIacVolumeBindings(input: {
 	environmentId: string;
-	services: TreeseedRailwayIacService[];
-	liveServices: TreeseedRailwayObservedService[];
-	volumes: TreeseedRailwayObservedVolume[];
-}): TreeseedRailwayVolumeBindingResult {
-	const bindings: TreeseedRailwayVolumeBinding[] = [];
+	services: RailwayIacService[];
+	liveServices: RailwayObservedService[];
+	volumes: RailwayObservedVolume[];
+}): RailwayVolumeBindingResult {
+	const bindings: RailwayVolumeBinding[] = [];
 	const blockedReasons: string[] = [];
 	const serviceIdByName = new Map(input.liveServices.map((service) => [service.name, service.id]));
 
@@ -68,7 +68,7 @@ export function resolveRailwayIacVolumeBindings(input: {
 
 export function detachRetainedRailwayVolumeBindings(
 	resources: ResourceNode[],
-	bindings: TreeseedRailwayVolumeBinding[],
+	bindings: RailwayVolumeBinding[],
 ) {
 	const movedVolumeNames = new Set(bindings.map((binding) => binding.volumeName));
 	return resources.map((resource) => {
@@ -104,7 +104,7 @@ export function detachRetainedRailwayCustomDomains(resources: ResourceNode[], do
 	});
 }
 
-export function renderRailwayIacProject(input: TreeseedRailwayIacProjectInput): TreeseedRailwayIacRenderResult {
+export function renderRailwayIacProject(input: RailwayIacProjectInput): RailwayIacRenderResult {
 	const scope = normalizeIacScope(input);
 	const region = input.region?.trim() || 'us-east4-eqdc4a';
 	const tempParent = resolve(input.tenantRoot, '.treeseed', 'tmp');

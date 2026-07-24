@@ -1,5 +1,5 @@
 import type { AgentActivityProfilesConfiguration } from '../../types/agents.ts';
-import type { ProjectAgentClass } from '../contracts/project-agent-class.ts';
+import type { ProjectAgentClass } from '../contracts/projects/agents/project-agent-class.ts';
 
 export interface CapacityConfigurationDiagnostic { code: string; path: string; message: string }
 export interface CapacityConfigurationValidation { ok: boolean; diagnostics: CapacityConfigurationDiagnostic[] }

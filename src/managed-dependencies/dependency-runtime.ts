@@ -6,12 +6,12 @@ import { platform as osPlatform, arch as osArch } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { withTreeseedServiceCredentialEnv } from '../service-credentials.ts';
+import { withServiceCredentialEnv } from '../configuration/service-credentials.ts';
 
 
 export const require = createRequire(import.meta.url);
 
-export type TreeseedManagedToolName =
+export type ManagedToolName =
 	| 'git'
 	| 'gh'
 	| 'wrangler'
@@ -22,7 +22,7 @@ export type TreeseedManagedToolName =
 	| 'docker'
 	| 'gh-act';
 
-export type TreeseedManagedDependencyStatus =
+export type ManagedDependencyStatus =
 	| 'already-present'
 	| 'installed'
 	| 'repaired'
@@ -31,18 +31,18 @@ export type TreeseedManagedDependencyStatus =
 	| 'failed'
 	| 'unsupported';
 
-export type TreeseedDependencyReport = {
-	name: TreeseedManagedToolName;
+export type DependencyReport = {
+	name: ManagedToolName;
 	kind: 'system' | 'download' | 'npm' | 'extension';
 	version?: string;
 	source: 'system' | 'managed-cache' | 'package' | 'managed-gh-config' | 'not-applicable';
 	binaryPath: string | null;
-	status: TreeseedManagedDependencyStatus;
+	status: ManagedDependencyStatus;
 	required: boolean;
 	detail: string;
 };
 
-export type TreeseedNpmInstallReport = {
+export type NpmInstallReport = {
 	root: string | null;
 	command: string[];
 	status: 'already-present' | 'installed' | 'skipped' | 'failed';
@@ -50,27 +50,27 @@ export type TreeseedNpmInstallReport = {
 	detail: string;
 };
 
-export type TreeseedDependencyInstallResult = {
+export type DependencyInstallResult = {
 	ok: boolean;
 	toolsHome: string;
 	ghConfigDir: string;
-	npmInstalls: TreeseedNpmInstallReport[];
-	reports: TreeseedDependencyReport[];
+	npmInstalls: NpmInstallReport[];
+	reports: DependencyReport[];
 };
 
-export type TreeseedToolInvocation = {
+export type ToolInvocation = {
 	mode: 'direct' | 'node' | 'unavailable';
 	command: string | null;
 	argsPrefix: string[];
 	binaryPath: string | null;
 };
 
-export type TreeseedToolReport = TreeseedDependencyReport & {
-	invocation: TreeseedToolInvocation;
+export type ToolReport = DependencyReport & {
+	invocation: ToolInvocation;
 };
 
-export type TreeseedToolStatusResult = TreeseedDependencyInstallResult & {
-	tools: TreeseedToolReport[];
+export type ToolStatusResult = DependencyInstallResult & {
+	tools: ToolReport[];
 	auth: {
 		github: {
 			checked: boolean;
@@ -152,7 +152,7 @@ export const RAILWAY_ASSETS: VerifiedPlatformAsset[] = [
 ];
 
 export const NPM_TOOLS: Array<{
-	name: Extract<TreeseedManagedToolName, 'wrangler' | 'copilot' | 'copilot-language-server'>;
+	name: Extract<ManagedToolName, 'wrangler' | 'copilot' | 'copilot-language-server'>;
 	packageName: string;
 	binName: string;
 	version: string;
@@ -164,14 +164,14 @@ export const NPM_TOOLS: Array<{
 ];
 
 export const NPM_PACKAGES: Array<{
-	name: Extract<TreeseedManagedToolName, 'copilot-sdk'>;
+	name: Extract<ManagedToolName, 'copilot-sdk'>;
 	packageName: string;
 	version: string;
 }> = [
 	{ name: 'copilot-sdk', packageName: '@github/copilot-sdk', version: '0.3.0' },
 ];
 
-export function report(input: Omit<TreeseedDependencyReport, 'binaryPath'> & { binaryPath?: string | null }): TreeseedDependencyReport {
+export function report(input: Omit<DependencyReport, 'binaryPath'> & { binaryPath?: string | null }): DependencyReport {
 	return {
 		binaryPath: input.binaryPath ?? null,
 		...input,
@@ -192,13 +192,13 @@ export function resolveToolsHome(env: NodeJS.ProcessEnv = process.env) {
 	return resolve(process.cwd(), '.treeseed', 'tools');
 }
 
-export function createTreeseedManagedToolEnv(env: NodeJS.ProcessEnv = process.env) {
+export function createManagedToolEnv(env: NodeJS.ProcessEnv = process.env) {
 	const toolsHome = resolveToolsHome(env);
 	const ghBinDir = resolve(toolsHome, 'gh', GH_VERSION, platformKey(), 'bin');
 	const pathKey = process.platform === 'win32' ? 'Path' : 'PATH';
 	const existingPath = env[pathKey] ?? env.PATH ?? '';
 	return {
-		...withTreeseedServiceCredentialEnv(env),
+		...withServiceCredentialEnv(env),
 		GH_CONFIG_DIR: env.TREESEED_GH_CONFIG_DIR ?? resolve(toolsHome, 'gh-config'),
 		GH_PROMPT_DISABLED: '1',
 		GH_NO_UPDATE_NOTIFIER: '1',
@@ -239,7 +239,7 @@ export function managedRailwayBin(env: NodeJS.ProcessEnv = process.env) {
 }
 
 export function tokenEnv(env: NodeJS.ProcessEnv = process.env) {
-	const translated = withTreeseedServiceCredentialEnv(env);
+	const translated = withServiceCredentialEnv(env);
 	const ghToken = translated.GH_TOKEN?.trim() || translated.GITHUB_TOKEN?.trim() || '';
 	return ghToken
 		? {

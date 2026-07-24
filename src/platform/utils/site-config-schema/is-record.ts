@@ -1,9 +1,9 @@
 // @ts-nocheck
 import { parse as parseYaml } from 'yaml';
-import { normalizeAliasedRecord } from '../../../field-aliases.ts';
+import { normalizeAliasedRecord } from '../../../entrypoints/models/field-aliases.ts';
 
 
-/** @typedef {import('../../field-aliases.ts').TreeseedFieldAliasRegistry} TreeseedFieldAliasRegistry */
+/** @typedef {import('../../../entrypoints/models/field-aliases.ts').FieldAliasRegistry} FieldAliasRegistry */
 
 export function isRecord(value) {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);

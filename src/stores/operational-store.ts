@@ -5,8 +5,8 @@ import type {
 	DecideApprovalRequestRequest,
 	ListApprovalRequestsRequest,
 	UpsertTeamInboxItemRequest,
-} from '../sdk-types.ts';
-import type { InboxItem } from '../project-workflow.ts';
+} from '../entrypoints/models/sdk-types.ts';
+import type { InboxItem } from '../projects/projects-core/project-workflow.ts';
 import { SqliteStoreBase, nowIso, toSqlValue, type DatabaseRow } from './helpers.ts';
 
 function json(value: unknown) {

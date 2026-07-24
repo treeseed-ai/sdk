@@ -2,8 +2,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildBookExportManifest, exportBookLibrary, exportBookPackage } from '../../../src/platform/book-export.ts';
-import { buildTenantBookRuntime } from '../../../src/platform/books-data.ts';
+import { buildBookExportManifest, exportBookLibrary, exportBookPackage } from '../../../src/platform/content/book-export.ts';
+import { buildTenantBookRuntime } from '../../../src/platform/content/books-data.ts';
 
 const tempRoots: string[] = [];
 

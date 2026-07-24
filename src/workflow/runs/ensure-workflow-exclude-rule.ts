@@ -1,8 +1,8 @@
 import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { dirname, resolve } from 'node:path';
-import type { TreeseedWorkflowMode } from '../session.ts';
-import { ACTIVE_WORKFLOW_RUNS, LOCK_STALE_AFTER_MS, TreeseedWorkflowExecutionMode, TreeseedWorkflowLockInspection, TreeseedWorkflowLockRecord, TreeseedWorkflowLockScope, TreeseedWorkflowRunCommand, TreeseedWorkflowRunJournal, TreeseedWorkflowRunStatus, installWorkflowSignalHandlers, nowIso, resolveGitDir, workflowControlRoot, workflowLockPath, workflowLockScopeForCommand, workflowRunPath, workflowRunsRoot } from './treeseed-workflow-run-command.ts';
+import type { WorkflowMode } from '../session.ts';
+import { ACTIVE_WORKFLOW_RUNS, LOCK_STALE_AFTER_MS, WorkflowExecutionMode, WorkflowLockInspection, WorkflowLockRecord, WorkflowLockScope, WorkflowRunCommand, WorkflowRunJournal, WorkflowRunStatus, installWorkflowSignalHandlers, nowIso, resolveGitDir, workflowControlRoot, workflowLockPath, workflowLockScopeForCommand, workflowRunPath, workflowRunsRoot } from './workflow-run-command.ts';
 import { updateWorkflowRunJournal } from './update-workflow-run-journal.ts';
 
 export function ensureWorkflowExcludeRule(root: string) {
@@ -20,7 +20,7 @@ export function ensureWorkflowExcludeRule(root: string) {
 	writeFileSync(excludePath, `${current}${current.endsWith('\n') || current.length === 0 ? '' : '\n'}${pattern}\n`, 'utf8');
 }
 
-export function ensureWorkflowControlDirs(root: string, runId?: string | null, scope?: TreeseedWorkflowLockScope) {
+export function ensureWorkflowControlDirs(root: string, runId?: string | null, scope?: WorkflowLockScope) {
 	const controlDir = workflowControlRoot(root, runId, scope);
 	const runsDir = workflowRunsRoot(root, runId, scope);
 	mkdirSync(runsDir, { recursive: true });
@@ -57,13 +57,13 @@ export function pidIsAlive(pid: number | null) {
 	}
 }
 
-export function generateWorkflowRunId(command: TreeseedWorkflowRunCommand) {
+export function generateWorkflowRunId(command: WorkflowRunCommand) {
 	return `${command}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function inspectWorkflowLock(root: string, options: { scope?: TreeseedWorkflowLockScope } = {}): TreeseedWorkflowLockInspection {
+export function inspectWorkflowLock(root: string, options: { scope?: WorkflowLockScope } = {}): WorkflowLockInspection {
 	const scope = options.scope ?? 'worktree';
-	const lock = safeJsonParse<TreeseedWorkflowLockRecord>(workflowLockPath(root, null, scope));
+	const lock = safeJsonParse<WorkflowLockRecord>(workflowLockPath(root, null, scope));
 	if (!lock) {
 		return {
 			lock: null,
@@ -93,7 +93,7 @@ export function inspectWorkflowLock(root: string, options: { scope?: TreeseedWor
 	};
 }
 
-export function acquireWorkflowLock(root: string, command: TreeseedWorkflowRunCommand, runId: string) {
+export function acquireWorkflowLock(root: string, command: WorkflowRunCommand, runId: string) {
 	const scope = workflowLockScopeForCommand(command);
 	const dirs = ensureWorkflowControlDirs(root, runId, scope);
 	const inspection = inspectWorkflowLock(root, { scope });
@@ -122,7 +122,7 @@ export function acquireWorkflowLock(root: string, command: TreeseedWorkflowRunCo
 		rmSync(dirs.lockPath, { force: true });
 	}
 	const timestamp = nowIso();
-	const lock: TreeseedWorkflowLockRecord = {
+	const lock: WorkflowLockRecord = {
 		schemaVersion: 1,
 		kind: 'treeseed.workflow.lock',
 		scope,
@@ -148,11 +148,11 @@ export function acquireWorkflowLock(root: string, command: TreeseedWorkflowRunCo
 
 export function refreshWorkflowLock(root: string, runId: string) {
 	const path = workflowLockPath(root, runId);
-	const lock = safeJsonParse<TreeseedWorkflowLockRecord>(path);
+	const lock = safeJsonParse<WorkflowLockRecord>(path);
 	if (!lock || lock.runId !== runId) {
 		return null;
 	}
-	const updated: TreeseedWorkflowLockRecord = {
+	const updated: WorkflowLockRecord = {
 		...lock,
 		updatedAt: nowIso(),
 		stale: false,
@@ -165,7 +165,7 @@ export function refreshWorkflowLock(root: string, runId: string) {
 export function releaseWorkflowLock(root: string, runId: string) {
 	ACTIVE_WORKFLOW_RUNS.delete(runId);
 	const path = workflowLockPath(root, runId);
-	const lock = safeJsonParse<TreeseedWorkflowLockRecord>(path);
+	const lock = safeJsonParse<WorkflowLockRecord>(path);
 	if (!lock || lock.runId !== runId) {
 		return false;
 	}
@@ -173,14 +173,14 @@ export function releaseWorkflowLock(root: string, runId: string) {
 	return true;
 }
 
-export function writeWorkflowRunJournal(root: string, journal: TreeseedWorkflowRunJournal) {
+export function writeWorkflowRunJournal(root: string, journal: WorkflowRunJournal) {
 	ensureWorkflowControlDirs(root, journal.runId);
 	writeFileSync(workflowRunPath(root, journal.runId), `${JSON.stringify(journal, null, 2)}\n`, 'utf8');
 	return journal;
 }
 
 export function readWorkflowRunJournal(root: string, runId: string) {
-	return safeJsonParse<TreeseedWorkflowRunJournal>(workflowRunPath(root, runId));
+	return safeJsonParse<WorkflowRunJournal>(workflowRunPath(root, runId));
 }
 
 export function jsonStringField(source: string, key: string) {
@@ -222,9 +222,9 @@ export function archivedWorkflowRunSummary(path: string) {
 		return null;
 	}
 	const runId = jsonStringField(head, 'runId');
-	const command = jsonStringField(head, 'command') as TreeseedWorkflowRunCommand | null;
-	const executionMode = jsonStringField(head, 'executionMode') as TreeseedWorkflowExecutionMode | null;
-	const status = jsonStringField(head, 'status') as TreeseedWorkflowRunStatus | null;
+	const command = jsonStringField(head, 'command') as WorkflowRunCommand | null;
+	const executionMode = jsonStringField(head, 'executionMode') as WorkflowExecutionMode | null;
+	const status = jsonStringField(head, 'status') as WorkflowRunStatus | null;
 	const createdAt = jsonStringField(head, 'createdAt');
 	const updatedAt = jsonStringField(head, 'updatedAt');
 	const archivedAt = jsonStringField(tail, 'archivedAt');
@@ -258,5 +258,5 @@ export function archivedWorkflowRunSummary(path: string) {
 			classifiedAt,
 			archivedAt,
 		},
-	} satisfies TreeseedWorkflowRunJournal;
+	} satisfies WorkflowRunJournal;
 }

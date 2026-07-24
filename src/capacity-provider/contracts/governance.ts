@@ -1,4 +1,4 @@
-import type { ResearchSourcePolicy } from '../../agent-capacity/contracts/research-source-policy.ts';
+import type { ResearchSourcePolicy } from '../../agent-capacity/contracts/support/research-source-policy.ts';
 
 export const CAPACITY_PROVIDER_IDENTITY_ALGORITHM = 'Ed25519' as const;
 export const CAPACITY_PROVIDER_PROOF_TTL_SECONDS = 300;

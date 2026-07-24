@@ -346,4 +346,4 @@ export function evaluateCapacityAdmission(input: CapacityAdmissionInput): Capaci
 		explanation,
 	};
 }
-import { evaluateAllocationHierarchy } from './policy/allocation-hierarchy.ts';
+import { evaluateAllocationHierarchy } from './policy/capacity/allocations/allocation-hierarchy.ts';

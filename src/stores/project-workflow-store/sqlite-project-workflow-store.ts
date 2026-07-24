@@ -11,7 +11,7 @@ import type {
 	WorkstreamState,
 	WorkstreamSummary,
 	LinkedProjectRecordRef,
-} from '../../project-workflow.ts';
+} from '../../projects/projects-core/project-workflow.ts';
 import { SqliteStoreBase, nowIso, toSqlValue, type DatabaseRow } from '../helpers.ts';
 import { JsonRecord, parseJson, releaseSummaryFromRow, sharePackageFromRow, stringify, workstreamEventFromRow, workstreamFromRow } from './json-record.ts';
 

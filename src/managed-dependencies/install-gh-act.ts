@@ -6,16 +6,16 @@ import { platform as osPlatform, arch as osArch } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { withTreeseedServiceCredentialEnv } from '../service-credentials.ts';
-import { DependencyInstallerOptions, GH_VERSION, NPM_PACKAGES, NPM_TOOLS, RAILWAY_VERSION, TreeseedDependencyInstallResult, TreeseedDependencyReport, TreeseedToolStatusResult, createTreeseedManagedToolEnv, managedGhBin, managedRailwayBin, report, resolveToolsHome } from './dependency-runtime.ts';
-import { checkGitHubAuth, defaultDownloadFile, invocationForTool, resolveTreeseedToolBinary, runNpmToolRebuilds } from './run-npm-tool-rebuilds.ts';
+import { withServiceCredentialEnv } from '../configuration/service-credentials.ts';
+import { DependencyInstallerOptions, GH_VERSION, NPM_PACKAGES, NPM_TOOLS, RAILWAY_VERSION, DependencyInstallResult, DependencyReport, ToolStatusResult, createManagedToolEnv, managedGhBin, managedRailwayBin, report, resolveToolsHome } from './dependency-runtime.ts';
+import { checkGitHubAuth, defaultDownloadFile, invocationForTool, resolveToolBinary, runNpmToolRebuilds } from './run-npm-tool-rebuilds.ts';
 import { checkCommand, locateSystemBinary } from './redact-sensitive-output.ts';
 import { runNpmBootstrap } from './collect-native-dependency-repairs.ts';
 import { installGh, installRailway, statusForNpmPackage, statusForNpmTool, systemStatus } from './install-gh.ts';
 
-export function installGhAct(options: DependencyInstallerOptions): TreeseedDependencyReport {
-	const env = createTreeseedManagedToolEnv(options.env ?? process.env);
-	const gh = resolveTreeseedToolBinary('gh', { env });
+export function installGhAct(options: DependencyInstallerOptions): DependencyReport {
+	const env = createManagedToolEnv(options.env ?? process.env);
+	const gh = resolveToolBinary('gh', { env });
 	const docker = locateSystemBinary('docker', options.spawn ?? spawnSync, options.env ?? process.env);
 	if (!docker) {
 		return report({
@@ -81,7 +81,7 @@ export function installGhAct(options: DependencyInstallerOptions): TreeseedDepen
 	});
 }
 
-export async function installTreeseedDependencies(options: DependencyInstallerOptions = {}): Promise<TreeseedDependencyInstallResult> {
+export async function installDependencies(options: DependencyInstallerOptions = {}): Promise<DependencyInstallResult> {
 	const env = options.env ?? process.env;
 	const effectiveOptions = {
 		...options,
@@ -90,12 +90,12 @@ export async function installTreeseedDependencies(options: DependencyInstallerOp
 		spawn: options.spawn ?? spawnSync,
 	};
 	mkdirSync(resolveToolsHome(env), { recursive: true });
-	mkdirSync(createTreeseedManagedToolEnv(env).GH_CONFIG_DIR, { recursive: true });
+	mkdirSync(createManagedToolEnv(env).GH_CONFIG_DIR, { recursive: true });
 	const npmInstalls = [
 		...runNpmBootstrap(effectiveOptions),
 		...runNpmToolRebuilds(effectiveOptions),
 	];
-	const reports: TreeseedDependencyReport[] = [
+	const reports: DependencyReport[] = [
 		systemStatus('git', true, effectiveOptions),
 		await installGh(effectiveOptions),
 		await installRailway(effectiveOptions),
@@ -110,13 +110,13 @@ export async function installTreeseedDependencies(options: DependencyInstallerOp
 	return {
 		ok,
 		toolsHome: resolveToolsHome(env),
-		ghConfigDir: createTreeseedManagedToolEnv(env).GH_CONFIG_DIR,
+		ghConfigDir: createManagedToolEnv(env).GH_CONFIG_DIR,
 		npmInstalls,
 		reports,
 	};
 }
 
-export function collectTreeseedDependencyStatus(options: DependencyInstallerOptions = {}): TreeseedDependencyInstallResult {
+export function collectDependencyStatus(options: DependencyInstallerOptions = {}): DependencyInstallResult {
 	const env = options.env ?? process.env;
 	const ghBinary = managedGhBin(env);
 	const ghStatus = existsSync(ghBinary)
@@ -172,19 +172,19 @@ export function collectTreeseedDependencyStatus(options: DependencyInstallerOpti
 				? 'gh-act status is checked during installation because it requires executing gh.'
 				: 'gh-act is skipped until GitHub CLI is installed.',
 		}),
-	] satisfies TreeseedDependencyReport[];
+	] satisfies DependencyReport[];
 	return {
 		ok: reports.every((entry) => !entry.required || !['failed', 'missing', 'unsupported'].includes(entry.status)),
 		toolsHome: resolveToolsHome(env),
-		ghConfigDir: createTreeseedManagedToolEnv(env).GH_CONFIG_DIR,
+		ghConfigDir: createManagedToolEnv(env).GH_CONFIG_DIR,
 		npmInstalls: [],
 		reports,
 	};
 }
 
-export function collectTreeseedToolStatus(options: DependencyInstallerOptions = {}): TreeseedToolStatusResult {
+export function collectToolStatus(options: DependencyInstallerOptions = {}): ToolStatusResult {
 	const env = options.env ?? process.env;
-	const status = collectTreeseedDependencyStatus(options);
+	const status = collectDependencyStatus(options);
 	const tools = status.reports.map((entry) => ({
 		...entry,
 		invocation: invocationForTool(entry.name, env),
@@ -198,7 +198,7 @@ export function collectTreeseedToolStatus(options: DependencyInstallerOptions = 
 	};
 }
 
-export function formatTreeseedDependencyReport(result: TreeseedDependencyInstallResult) {
+export function formatDependencyReport(result: DependencyInstallResult) {
 	return [
 		'Treeseed dependency status',
 		`Tools home: ${result.toolsHome}`,

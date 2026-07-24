@@ -1,4 +1,4 @@
-import { CloudflareHttpD1Database } from '../../d1-http.ts';
+import { CloudflareHttpD1Database } from '../../persistence/d1-http.ts';
 import { NodeSqliteD1Database } from '../../db/node-sqlite.ts';
 import type { D1DatabaseLike } from '../../types/cloudflare.ts';
 import type { ApiConfig } from '../types.ts';

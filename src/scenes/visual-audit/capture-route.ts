@@ -1,57 +1,57 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { readTreeseedDevInstance } from '../../local-dev/managed-dev.ts';
-import { resolveTreeseedSceneBaseUrl } from '../base-url.ts';
-import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../diagnostics.ts';
-import { resolveTreeseedSceneDeviceProfile } from '../devices.ts';
-import { prepareTreeseedSceneEnvironment } from '../environment.ts';
-import { validateTreeseedScene } from '../planner.ts';
-import { writeTreeseedSceneVisualAuditReport } from '../visual-audit-report.ts';
+import { readDevInstance } from '../../local-dev/managed-dev.ts';
+import { resolveSceneBaseUrl } from '../support/execution/base-url.ts';
+import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
+import { resolveSceneDeviceProfile } from '../runtime/devices.ts';
+import { prepareSceneEnvironment } from '../configuration/environment.ts';
+import { validateScene } from '../support/execution/planner.ts';
+import { writeSceneVisualAuditReport } from '../support/visual-audit/visual-audit-report.ts';
 import {
-	buildTreeseedSceneVisualAuditReview,
-	isTreeseedSceneVisualAuditIgnoredClientError,
-	writeTreeseedSceneVisualAuditReview,
-} from '../visual-audit-review.ts';
+	buildSceneVisualAuditReview,
+	isSceneVisualAuditIgnoredClientError,
+	writeSceneVisualAuditReview,
+} from '../support/visual-audit/visual-audit-review.ts';
 import {
-	discoverTreeseedSceneVisualAuditRoutes,
-	treeseedSceneVisualAuditRouteFilename,
-} from '../visual-audit-routes.ts';
+	discoverSceneVisualAuditRoutes,
+	SceneVisualAuditRouteFilename,
+} from '../support/visual-audit/visual-audit-routes.ts';
 import {
-	ensureTreeseedSceneVisualAuditRoleFixtures,
-	signInTreeseedSceneVisualAuditRole,
-	validateTreeseedSceneVisualAuditRoles,
-} from '../visual-audit-fixtures.ts';
+	ensureSceneVisualAuditRoleFixtures,
+	signInSceneVisualAuditRole,
+	validateSceneVisualAuditRoles,
+} from '../testing/visual-audit-fixtures.ts';
 import type {
-	TreeseedSceneDeviceProfile,
-	TreeseedSceneVisualAuditClientError,
-	TreeseedSceneDiagnostic,
-	TreeseedSceneVisualAuditCapture,
-	TreeseedSceneVisualAuditManifest,
-	TreeseedSceneVisualAuditOptions,
-	TreeseedSceneVisualAuditPaths,
-	TreeseedSceneVisualAuditReport,
-	TreeseedSceneVisualAuditRole,
+	SceneDeviceProfile,
+	SceneVisualAuditClientError,
+	SceneDiagnostic,
+	SceneVisualAuditCapture,
+	SceneVisualAuditManifest,
+	SceneVisualAuditOptions,
+	SceneVisualAuditPaths,
+	SceneVisualAuditReport,
+	SceneVisualAuditRole,
 } from '../types.ts';
 import { captureId, captureLooksHealthy, clientErrorId, collectDomSummary, expectedStatusMatches, hasTransientVisualAuditServerError, pathFromUrl, screenshotPath } from './split-diagnostics.ts';
 
 export async function captureRoute(input: {
 	page: any;
 	baseUrl: string;
-	paths: TreeseedSceneVisualAuditPaths;
-	role: TreeseedSceneVisualAuditRole;
+	paths: SceneVisualAuditPaths;
+	role: SceneVisualAuditRole;
 	device: string;
-	route: TreeseedSceneVisualAuditManifest['routes'][number];
+	route: SceneVisualAuditManifest['routes'][number];
 	includeFullPage: boolean;
-}): Promise<TreeseedSceneVisualAuditCapture> {
+}): Promise<SceneVisualAuditCapture> {
 	const started = Date.now();
 	const url = new URL(input.route.path, input.baseUrl).toString();
 	const capturedAt = new Date().toISOString();
-	const diagnostics: TreeseedSceneDiagnostic[] = [];
+	const diagnostics: SceneDiagnostic[] = [];
 	const captureIdValue = captureId(input.role, input.device, input.route.id);
-	const clientErrors: TreeseedSceneVisualAuditClientError[] = [];
-	const pushClientError = (entry: Omit<TreeseedSceneVisualAuditClientError, 'id' | 'captureId' | 'timestamp'> & { timestamp?: string }) => {
-		if (isTreeseedSceneVisualAuditIgnoredClientError(entry)) return;
+	const clientErrors: SceneVisualAuditClientError[] = [];
+	const pushClientError = (entry: Omit<SceneVisualAuditClientError, 'id' | 'captureId' | 'timestamp'> & { timestamp?: string }) => {
+		if (isSceneVisualAuditIgnoredClientError(entry)) return;
 		clientErrors.push({
 			...entry,
 			id: clientErrorId(captureIdValue, clientErrors.length + 1),
@@ -195,12 +195,12 @@ export async function captureRoute(input: {
 }
 
 export function skipCapture(input: {
-	role: TreeseedSceneVisualAuditRole;
+	role: SceneVisualAuditRole;
 	device: string;
-	route: TreeseedSceneVisualAuditManifest['routes'][number];
+	route: SceneVisualAuditManifest['routes'][number];
 	baseUrl: string;
-	diagnostic: TreeseedSceneDiagnostic;
-}): TreeseedSceneVisualAuditCapture {
+	diagnostic: SceneDiagnostic;
+}): SceneVisualAuditCapture {
 	return {
 		id: captureId(input.role, input.device, input.route.id),
 		routeId: input.route.id,
@@ -222,7 +222,7 @@ export function skipCapture(input: {
 	};
 }
 
-export function browserContextOptions(profile: TreeseedSceneDeviceProfile) {
+export function browserContextOptions(profile: SceneDeviceProfile) {
 	return {
 		viewport: profile.viewport,
 		screen: profile.viewport,
@@ -237,8 +237,8 @@ export function visualAuditPreflightRoutes() {
 	return ['/', '/auth/register', '/agents', '/questions', '/app'];
 }
 
-export async function runVisualAuditPreflight(baseUrl: string): Promise<TreeseedSceneDiagnostic[]> {
-	const diagnostics: TreeseedSceneDiagnostic[] = [];
+export async function runVisualAuditPreflight(baseUrl: string): Promise<SceneDiagnostic[]> {
+	const diagnostics: SceneDiagnostic[] = [];
 	const unhealthy: string[] = [];
 	for (const path of visualAuditPreflightRoutes()) {
 		try {

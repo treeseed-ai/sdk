@@ -1,27 +1,27 @@
 import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { runTreeseedGit } from '../../operations/services/git-runner.ts';
+import { runRepositoryGit } from '../../operations/services/operations/git-runner.ts';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
-import { discoverTreeseedApplications } from '../../hosting/apps.ts';
-import { githubRepositoryCredentialEnvName } from '../../operations/services/github-credentials.ts';
-import { discoverTreeseedPackageAdapters } from '../../operations/services/package-adapters.ts';
-import type { TreeseedDeployConfig, TreeseedTenantConfig } from '../contracts.ts';
-import { loadTreeseedDeployConfig } from '../deploy-config.ts';
-import { loadTreeseedPlugins, type LoadedTreeseedPluginEntry } from '../plugins.ts';
-import { loadTreeseedManifest } from '../tenant-config.ts';
-import { DEFAULT_TREESEED_MARKET_BASE_URL, NamedPredicateMap, NamedResolverMap, TreeseedEnvironmentContext, TreeseedEnvironmentRegistryOverlay, TreeseedEnvironmentScope, smtpEnabled, turnstileEnabled, webSurfaceEnabled } from './treeseed-environment-scopes.ts';
+import { discoverApplications } from '../../hosting/apps.ts';
+import { githubRepositoryCredentialEnvName } from '../../operations/services/configuration/github-credentials.ts';
+import { discoverPackageAdapters } from '../../operations/services/reconciliation/package-adapters.ts';
+import type { DeployConfig, TenantConfig } from '../support/contracts.ts';
+import { loadDeployConfig } from '../hosting/deploy-config.ts';
+import { loadPlugins, type LoadedPluginRegistration } from '../support/plugins.ts';
+import { loadManifest } from '../configuration/tenant-config.ts';
+import { DEFAULT_MARKET_BASE_URL, NamedPredicateMap, NamedResolverMap, EnvironmentContext, EnvironmentRegistryOverlay, EnvironmentScope, smtpEnabled, turnstileEnabled, webSurfaceEnabled } from './environment-scopes.ts';
 import { apiSurfaceEnabled, codexExecutionSelected, contactEmailDefault, copilotExecutionSelected, formsEnabled, generatedSecret, hostedProjectEnabled, localApiDatabaseUrlDefault, localSmtpHostDefault, localSmtpPortDefault, marketControlPlaneEnabled, processingPlaneEnabled, projectDomainsDefault, projectRegistrationEnabled, railwayManagedEnabled, resolveApiWebServiceId, resolveConfiguredApiBaseUrl, resolveContentBucketName, resolveHostingKind, resolveHostingRegistration, resolveHubMode, resolvePagesPreviewProjectName, resolvePagesProjectName, resolveRuntimeMode, resolveRuntimeRegistration, resolveWebServiceId, selfHostedProjectEnabled } from './api-surface-enabled.ts';
 
-export function resolveContentBucketBinding(context: TreeseedEnvironmentContext) {
+export function resolveContentBucketBinding(context: EnvironmentContext) {
 	return context.deployConfig.cloudflare.r2?.binding?.trim() || 'TREESEED_CONTENT_BUCKET';
 }
 
 export function resolveMarketBaseUrl(
-	context: TreeseedEnvironmentContext,
-	_scope: TreeseedEnvironmentScope,
+	context: EnvironmentContext,
+	_scope: EnvironmentScope,
 	values: Record<string, string | undefined> = {},
 ) {
 	return values.TREESEED_API_BASE_URL?.trim()
@@ -30,23 +30,23 @@ export function resolveMarketBaseUrl(
 		|| process.env.TREESEED_CENTRAL_MARKET_API_BASE_URL?.trim()
 		|| context.deployConfig.runtime?.marketBaseUrl?.trim()
 		|| context.deployConfig.hosting?.marketBaseUrl?.trim()
-		|| DEFAULT_TREESEED_MARKET_BASE_URL;
+		|| DEFAULT_MARKET_BASE_URL;
 }
 
 export function resolveCentralMarketBaseUrl(
-	context: TreeseedEnvironmentContext,
-	scope: TreeseedEnvironmentScope,
+	context: EnvironmentContext,
+	scope: EnvironmentScope,
 	values: Record<string, string | undefined> = {},
 ) {
 	return values.TREESEED_CENTRAL_MARKET_API_BASE_URL?.trim()
 		|| process.env.TREESEED_CENTRAL_MARKET_API_BASE_URL?.trim()
 		|| resolveMarketBaseUrl(context, scope, values)
-		|| DEFAULT_TREESEED_MARKET_BASE_URL;
+		|| DEFAULT_MARKET_BASE_URL;
 }
 
 export function resolveCatalogMarketBaseUrls(
-	context: TreeseedEnvironmentContext,
-	scope: TreeseedEnvironmentScope,
+	context: EnvironmentContext,
+	scope: EnvironmentScope,
 	values: Record<string, string | undefined> = {},
 ) {
 	return values.TREESEED_CATALOG_MARKET_API_BASE_URLS?.trim()
@@ -56,11 +56,11 @@ export function resolveCatalogMarketBaseUrls(
 		|| resolveCentralMarketBaseUrl(context, scope, values);
 }
 
-export function resolveHostedTeamId(context: TreeseedEnvironmentContext) {
+export function resolveHostedTeamId(context: EnvironmentContext) {
 	return context.deployConfig.slug;
 }
 
-export function resolveHostedProjectId(context: TreeseedEnvironmentContext) {
+export function resolveHostedProjectId(context: EnvironmentContext) {
 	return context.deployConfig.slug;
 }
 
@@ -68,11 +68,11 @@ export function resolveRailwayWorkspaceDefault() {
 	return 'knowledge-coop';
 }
 
-export function resolvePlatformRunnerIdDefault(_context: TreeseedEnvironmentContext, scope: TreeseedEnvironmentScope) {
+export function resolvePlatformRunnerIdDefault(_context: EnvironmentContext, scope: EnvironmentScope) {
 	return scope === 'prod' ? 'treeseed-ops-prod-1' : scope === 'staging' ? 'treeseed-ops-staging-1' : 'treeseed-ops-local-1';
 }
 
-export function resolvePlatformRunnerEnvironmentDefault(_context: TreeseedEnvironmentContext, scope: TreeseedEnvironmentScope) {
+export function resolvePlatformRunnerEnvironmentDefault(_context: EnvironmentContext, scope: EnvironmentScope) {
 	return scope === 'prod' ? 'production' : scope;
 }
 
@@ -91,8 +91,8 @@ export function parseGitHubRepositorySlugFromRemote(remoteUrl: string | undefine
 	return null;
 }
 
-export function resolveGitHubOriginRepository(context: TreeseedEnvironmentContext) {
-	const rootResult = runTreeseedGit(['rev-parse', '--show-toplevel'], {
+export function resolveGitHubOriginRepository(context: EnvironmentContext) {
+	const rootResult = runRepositoryGit(['rev-parse', '--show-toplevel'], {
 		cwd: context.tenantRoot,
 		mode: 'read',
 		allowFailure: true,
@@ -100,7 +100,7 @@ export function resolveGitHubOriginRepository(context: TreeseedEnvironmentContex
 	if (rootResult.status !== 0 || resolve(rootResult.stdout.trim()) !== resolve(context.tenantRoot)) {
 		return null;
 	}
-	const result = runTreeseedGit(['remote', 'get-url', 'origin'], {
+	const result = runRepositoryGit(['remote', 'get-url', 'origin'], {
 		cwd: context.tenantRoot,
 		mode: 'read',
 		allowFailure: true,
@@ -111,11 +111,11 @@ export function resolveGitHubOriginRepository(context: TreeseedEnvironmentContex
 	return parseGitHubRepositorySlugFromRemote(result.stdout);
 }
 
-export function resolveGitHubOwnerDefault(context: TreeseedEnvironmentContext) {
+export function resolveGitHubOwnerDefault(context: EnvironmentContext) {
 	return resolveGitHubOriginRepository(context)?.owner;
 }
 
-export function resolveGitHubRepositoryNameDefault(context: TreeseedEnvironmentContext) {
+export function resolveGitHubRepositoryNameDefault(context: EnvironmentContext) {
 	return resolveGitHubOriginRepository(context)?.name || context.deployConfig.slug;
 }
 
@@ -166,11 +166,11 @@ export const PREDICATES: NamedPredicateMap = {
 	codexExecutionSelected: (context) => codexExecutionSelected(context),
 	copilotExecutionSelected: (context) => copilotExecutionSelected(context),
 	railwayManagedEnabled: (context) => railwayManagedEnabled(context),
-	hubTreeseedHosted: (context) => resolveHubMode(context) === 'treeseed_hosted',
+	hubHosted: (context) => resolveHubMode(context) === 'treeseed_hosted',
 	hubCustomerHosted: (context) => resolveHubMode(context) === 'customer_hosted',
 	runtimeNone: (context) => resolveRuntimeMode(context) === 'none',
 	runtimeByoAttached: (context) => resolveRuntimeMode(context) === 'byo_attached',
-	runtimeTreeseedManaged: (context) => resolveRuntimeMode(context) === 'treeseed_managed',
+	runtimeManaged: (context) => resolveRuntimeMode(context) === 'treeseed_managed',
 	marketControlPlaneEnabled: (context) => marketControlPlaneEnabled(context),
 	hostedProjectEnabled: (context) => hostedProjectEnabled(context),
 	selfHostedProjectEnabled: (context) => selfHostedProjectEnabled(context),
@@ -198,12 +198,12 @@ export function deepMerge(left: unknown, right: unknown): unknown {
 	return right;
 }
 
-export function normalizeOverlay(raw: unknown, label: string): TreeseedEnvironmentRegistryOverlay {
+export function normalizeOverlay(raw: unknown, label: string): EnvironmentRegistryOverlay {
 	if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
 		throw new Error(`Invalid Treeseed environment registry overlay from ${label}.`);
 	}
 
-	const overlay = raw as TreeseedEnvironmentRegistryOverlay;
+	const overlay = raw as EnvironmentRegistryOverlay;
 	if (overlay.entries === undefined) {
 		return { entries: {} };
 	}

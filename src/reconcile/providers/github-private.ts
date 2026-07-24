@@ -10,7 +10,7 @@ import {
 	upsertGitHubEnvironmentSecret,
 	upsertGitHubEnvironmentVariable,
 	waitForGitHubWorkflowRunCompletion,
-} from '../../operations/services/github-api.ts';
+} from '../../operations/services/repositories/github-api.ts';
 
 export function createReconcileGitHubClient(env: NodeJS.ProcessEnv | Record<string, string | undefined>) {
 	return createGitHubApiClient({ env });

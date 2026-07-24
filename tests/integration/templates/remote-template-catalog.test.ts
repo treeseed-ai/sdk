@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { listTemplateProducts, resolveTemplateDefinition } from '../../../src/operations/services/template-registry.ts';
+import { listTemplateProducts, resolveTemplateDefinition } from '../../../src/operations/services/support/template-registry.ts';
 
 function makeMachineConfigRoot(endpoint) {
 	const root = mkdtempSync(join(tmpdir(), 'treeseed-cli-template-catalog-'));

@@ -6,8 +6,8 @@ import {
 	createPersistentDeployTarget,
 	loadDeployState,
 	recordHostedDeploymentState,
-} from '../../../src/operations/services/deploy.ts';
-import { loadCliDeployConfig } from '../../../src/operations/services/runtime-tools.ts';
+} from '../../../src/operations/services/hosting/deployment/deploy.ts';
+import { loadCliDeployConfig } from '../../../src/operations/services/agents/runtime-tools.ts';
 
 const roots: string[] = [];
 

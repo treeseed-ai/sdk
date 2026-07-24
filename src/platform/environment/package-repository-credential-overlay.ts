@@ -1,26 +1,26 @@
 import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { runTreeseedGit } from '../../operations/services/git-runner.ts';
+import { runRepositoryGit } from '../../operations/services/operations/git-runner.ts';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
-import { discoverTreeseedApplications } from '../../hosting/apps.ts';
-import { githubRepositoryCredentialEnvName } from '../../operations/services/github-credentials.ts';
-import { discoverTreeseedPackageAdapters } from '../../operations/services/package-adapters.ts';
-import type { TreeseedDeployConfig, TreeseedTenantConfig } from '../contracts.ts';
-import { loadTreeseedDeployConfig } from '../deploy-config.ts';
-import { loadTreeseedPlugins, type LoadedTreeseedPluginEntry } from '../plugins.ts';
-import { loadTreeseedManifest } from '../tenant-config.ts';
-import { TENANT_ENVIRONMENT_OVERLAY_PATH, TREESEED_CONFIG_STARTUP_PROFILES, TreeseedEnvironmentContext, TreeseedEnvironmentEntry, TreeseedEnvironmentEntryOverride, TreeseedEnvironmentEntryYaml, TreeseedEnvironmentPurpose, TreeseedEnvironmentRegistryOverlay, TreeseedEnvironmentScope, TreeseedResolvedEnvironmentRegistry, loadOptionalTenantConfig, resolveSdkEnvironmentPath, resolveSiblingPackageEnvironmentPath, webSurfaceEnabled } from './treeseed-environment-scopes.ts';
+import { discoverApplications } from '../../hosting/apps.ts';
+import { githubRepositoryCredentialEnvName } from '../../operations/services/configuration/github-credentials.ts';
+import { discoverPackageAdapters } from '../../operations/services/reconciliation/package-adapters.ts';
+import type { DeployConfig, TenantConfig } from '../support/contracts.ts';
+import { loadDeployConfig } from '../hosting/deploy-config.ts';
+import { loadPlugins, type LoadedPluginRegistration } from '../support/plugins.ts';
+import { loadManifest } from '../configuration/tenant-config.ts';
+import { TENANT_ENVIRONMENT_OVERLAY_PATH, CONFIG_STARTUP_PROFILES, EnvironmentContext, EnvironmentEntry, EnvironmentEntryOverride, EnvironmentEntryYaml, EnvironmentPurpose, EnvironmentRegistryOverlay, EnvironmentScope, ResolvedEnvironmentRegistry, loadOptionalTenantConfig, resolveSdkEnvironmentPath, resolveSiblingPackageEnvironmentPath, webSurfaceEnabled } from './environment-scopes.ts';
 import { PREDICATES, VALUE_RESOLVERS, deepMerge, normalizeOverlay, readPluginEnvironmentOverlay, readYamlOverlayIfPresent } from './resolve-content-bucket-binding.ts';
 import { apiSurfaceEnabled, processingPlaneEnabled } from './api-surface-enabled.ts';
 
-export function packageRepositoryCredentialOverlay(tenantRoot: string): TreeseedEnvironmentRegistryOverlay {
-	const entries: Record<string, TreeseedEnvironmentEntryOverride> = {};
-	let packages: ReturnType<typeof discoverTreeseedPackageAdapters> = [];
+export function packageRepositoryCredentialOverlay(tenantRoot: string): EnvironmentRegistryOverlay {
+	const entries: Record<string, EnvironmentEntryOverride> = {};
+	let packages: ReturnType<typeof discoverPackageAdapters> = [];
 	try {
-		packages = discoverTreeseedPackageAdapters(tenantRoot);
+		packages = discoverPackageAdapters(tenantRoot);
 	} catch {
 		packages = [];
 	}
@@ -57,11 +57,11 @@ export function packageRepositoryCredentialOverlay(tenantRoot: string): Treeseed
 	return { entries };
 }
 
-export function loadTreeseedEnvironmentOverlay(tenantRoot: string) {
+export function loadEnvironmentOverlay(tenantRoot: string) {
 	const overlayPath = resolve(tenantRoot, TENANT_ENVIRONMENT_OVERLAY_PATH);
 	return {
 		path: overlayPath,
-		overlay: readYamlOverlayIfPresent(overlayPath) ?? ({ entries: {} } satisfies TreeseedEnvironmentRegistryOverlay),
+		overlay: readYamlOverlayIfPresent(overlayPath) ?? ({ entries: {} } satisfies EnvironmentRegistryOverlay),
 	};
 }
 
@@ -83,7 +83,7 @@ export function resolveNamedPredicate(ref: string | undefined) {
 	return predicate;
 }
 
-export function materializeEntry(id: string, entry: TreeseedEnvironmentEntryYaml): TreeseedEnvironmentEntry {
+export function materializeEntry(id: string, entry: EnvironmentEntryYaml): EnvironmentEntry {
 	return {
 		...entry,
 		id,
@@ -107,18 +107,18 @@ export function materializeEntry(id: string, entry: TreeseedEnvironmentEntryYaml
 }
 
 export function mergeEntryYaml(
-	baseEntry: TreeseedEnvironmentEntryYaml | undefined,
+	baseEntry: EnvironmentEntryYaml | undefined,
 	id: string,
-	override: TreeseedEnvironmentEntryOverride,
+	override: EnvironmentEntryOverride,
 ) {
-	const merged = (baseEntry ? deepMerge(baseEntry, override) : override) as TreeseedEnvironmentEntryYaml;
+	const merged = (baseEntry ? deepMerge(baseEntry, override) : override) as EnvironmentEntryYaml;
 
 	if (
 		typeof merged.label !== 'string'
 		|| typeof merged.group !== 'string'
 		|| (merged.cluster !== undefined && typeof merged.cluster !== 'string')
 		|| (merged.onboardingFeature !== undefined && typeof merged.onboardingFeature !== 'string')
-		|| (merged.startupProfile !== undefined && !TREESEED_CONFIG_STARTUP_PROFILES.includes(merged.startupProfile))
+		|| (merged.startupProfile !== undefined && !CONFIG_STARTUP_PROFILES.includes(merged.startupProfile))
 		|| typeof merged.description !== 'string'
 		|| typeof merged.howToGet !== 'string'
 		|| !Array.isArray(merged.targets)
@@ -133,8 +133,8 @@ export function mergeEntryYaml(
 	return merged;
 }
 
-export function collectOverlaySources(context: TreeseedEnvironmentContext) {
-	const sources: Array<{ label: string; overlay: TreeseedEnvironmentRegistryOverlay }> = [];
+export function collectOverlaySources(context: EnvironmentContext) {
+	const sources: Array<{ label: string; overlay: EnvironmentRegistryOverlay }> = [];
 
 	const sdkEnvironmentPath = resolveSdkEnvironmentPath();
 	const sdkOverlay = readYamlOverlayIfPresent(sdkEnvironmentPath);
@@ -164,9 +164,9 @@ export function collectOverlaySources(context: TreeseedEnvironmentContext) {
 		}
 	}
 
-	let discoveredApiApps: ReturnType<typeof discoverTreeseedApplications> = [];
+	let discoveredApiApps: ReturnType<typeof discoverApplications> = [];
 	try {
-		discoveredApiApps = discoverTreeseedApplications(context.tenantRoot)
+		discoveredApiApps = discoverApplications(context.tenantRoot)
 			.filter((application) => application.root !== context.tenantRoot && application.roles.some((role) => role === 'api' || role === 'operations-runner' || role === 'treeseed-control-plane'));
 	} catch {
 		discoveredApiApps = [];
@@ -217,22 +217,22 @@ export function collectOverlaySources(context: TreeseedEnvironmentContext) {
 		}
 	}
 
-	const tenantOverlay = loadTreeseedEnvironmentOverlay(context.tenantRoot);
+	const tenantOverlay = loadEnvironmentOverlay(context.tenantRoot);
 	sources.push({ label: tenantOverlay.path, overlay: tenantOverlay.overlay });
 	return sources;
 }
 
-export function resolveTreeseedEnvironmentContext(options: {
-	deployConfig?: TreeseedDeployConfig;
-	tenantConfig?: TreeseedTenantConfig;
-	plugins?: LoadedTreeseedPluginEntry[];
-} = {}): TreeseedEnvironmentContext {
-	const deployConfig = options.deployConfig ?? loadTreeseedDeployConfig();
+export function resolveEnvironmentContext(options: {
+	deployConfig?: DeployConfig;
+	tenantConfig?: TenantConfig;
+	plugins?: LoadedPluginRegistration[];
+} = {}): EnvironmentContext {
+	const deployConfig = options.deployConfig ?? loadDeployConfig();
 	const tenantConfig = options.tenantConfig ?? loadOptionalTenantConfig();
-	const plugins = options.plugins ?? loadTreeseedPlugins(deployConfig);
+	const plugins = options.plugins ?? loadPlugins(deployConfig);
 	const tenantRoot =
-		(deployConfig as TreeseedDeployConfig & { __tenantRoot?: string }).__tenantRoot
-		?? (tenantConfig as TreeseedTenantConfig & { __tenantRoot?: string } | undefined)?.__tenantRoot
+		(deployConfig as DeployConfig & { __tenantRoot?: string }).__tenantRoot
+		?? (tenantConfig as TenantConfig & { __tenantRoot?: string } | undefined)?.__tenantRoot
 		?? process.cwd();
 
 	return {
@@ -243,13 +243,13 @@ export function resolveTreeseedEnvironmentContext(options: {
 	};
 }
 
-export function resolveTreeseedEnvironmentRegistry(options: {
-	deployConfig?: TreeseedDeployConfig;
-	tenantConfig?: TreeseedTenantConfig;
-	plugins?: LoadedTreeseedPluginEntry[];
-} = {}): TreeseedResolvedEnvironmentRegistry {
-	const context = resolveTreeseedEnvironmentContext(options);
-	const entriesById = new Map<string, TreeseedEnvironmentEntryYaml>();
+export function resolveEnvironmentRegistry(options: {
+	deployConfig?: DeployConfig;
+	tenantConfig?: TenantConfig;
+	plugins?: LoadedPluginRegistration[];
+} = {}): ResolvedEnvironmentRegistry {
+	const context = resolveEnvironmentContext(options);
+	const entriesById = new Map<string, EnvironmentEntryYaml>();
 	const order: string[] = [];
 
 	for (const source of collectOverlaySources(context)) {
@@ -268,11 +268,11 @@ export function resolveTreeseedEnvironmentRegistry(options: {
 	};
 }
 
-export function isTreeseedEnvironmentEntryRelevant(
-	entry: TreeseedEnvironmentEntry,
-	context: TreeseedEnvironmentContext,
-	scope: TreeseedEnvironmentScope,
-	purpose?: TreeseedEnvironmentPurpose,
+export function isEnvironmentEntryRelevant(
+	entry: EnvironmentEntry,
+	context: EnvironmentContext,
+	scope: EnvironmentScope,
+	purpose?: EnvironmentPurpose,
 ) {
 	if (!entry.scopes.includes(scope)) {
 		return false;

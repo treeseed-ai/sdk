@@ -9,14 +9,14 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
-	compileTreeseedHostingGraph,
+	compileHostingGraph,
 	createDefaultHostAdapters,
 	createDefaultServiceTypeAdapters,
-	discoverTreeseedApplications,
-	planTreeseedHostingGraph,
+	discoverApplications,
+	planHostingGraph,
 	serializeHostingPlan,
-	type TreeseedApplicationHostingProfile,
-	type TreeseedHostAdapter,
+	type ApplicationHostingProfile,
+	type HostAdapter,
 } from '../../../src/hosting/index.ts';
 
 function createTenant(configBody: string) {
@@ -222,7 +222,7 @@ ${extra}`;
 describe('hosting graph', () => {
 it('lets tests provide a strict host adapter implementation for read-only planning', async () => {
 		const observed: string[] = [];
-		const strictHost: TreeseedHostAdapter = {
+		const strictHost: HostAdapter = {
 			id: 'strict-host',
 			label: 'Strict Host',
 			capabilities: [
@@ -253,7 +253,7 @@ it('lets tests provide a strict host adapter implementation for read-only planni
 			},
 		};
 
-		await planTreeseedHostingGraph({
+		await planHostingGraph({
 			tenantRoot: createTenant(marketConfig()),
 			environment: 'staging',
 			hostAdapters: { 'strict-host': strictHost },

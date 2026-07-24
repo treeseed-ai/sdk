@@ -4,7 +4,7 @@ import {
 	parseGitHubRepositorySlug,
 	type GitHubApiClient,
 	type GitHubWorkflowProgressEvent,
-} from '../github-api.ts';
+} from '../repositories/github-api.ts';
 import { inspectCommand } from './resolve-remote-branch-head.ts';
 
 export type GitHubActionsWorkflowState = 'success' | 'failure' | 'pending' | 'missing' | 'not_pushed' | 'error';

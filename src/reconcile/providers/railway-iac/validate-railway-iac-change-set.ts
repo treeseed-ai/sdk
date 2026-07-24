@@ -9,9 +9,9 @@ import {
 	type RailwayIacPlanResponse,
 	type ResourceNode,
 } from 'railway/iac';
-import { railwayGraphqlRequest } from '../../../operations/services/railway-api.ts';
-import { assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService } from '../../../operations/services/railway-source-policy.ts';
-import { RailwayIacValidationResult, TreeseedRailwayIacProjectInput } from './treeseed-railway-iac-service.ts';
+import { railwayGraphqlRequest } from '../../../operations/services/hosting/railway/railway-api.ts';
+import { assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService } from '../../../operations/services/hosting/railway/railway-source-policy.ts';
+import { RailwayIacValidationResult, RailwayIacProjectInput } from './railway-iac-service.ts';
 import { changeName, isRailwayGitSourceChange, isRailwayImageSourceChange, isRailwaySourceChange, renderRailwayIacProject } from './resolve-railway-iac-volume-bindings.ts';
 import { id, runRailwayIacWithRateLimitRetry } from './run-railway-iac-with-rate-limit-retry.ts';
 import { applyRailwayIacProjectWithPlan } from './apply-railway-iac-project-with-plan.ts';
@@ -88,7 +88,7 @@ export function validateRailwayIacChangeSet(changeSet: RailwayChangeSet | undefi
 	};
 }
 
-export async function planRailwayIacProject(input: TreeseedRailwayIacProjectInput, rendered = renderRailwayIacProject(input)): Promise<RailwayIacPlanResponse> {
+export async function planRailwayIacProject(input: RailwayIacProjectInput, rendered = renderRailwayIacProject(input)): Promise<RailwayIacPlanResponse> {
 	return runRailwayIacWithRateLimitRetry(() => runRailwayIac({
 		command: 'plan',
 		cwd: rendered.tempDir,
@@ -108,7 +108,7 @@ export async function planRailwayIacProject(input: TreeseedRailwayIacProjectInpu
 		});
 }
 
-export async function applyRailwayIacProject(input: TreeseedRailwayIacProjectInput, rendered = renderRailwayIacProject(input)): Promise<RailwayIacApplyResponse> {
+export async function applyRailwayIacProject(input: RailwayIacProjectInput, rendered = renderRailwayIacProject(input)): Promise<RailwayIacApplyResponse> {
 	return applyRailwayIacProjectWithPlan(input, rendered);
 }
 
@@ -145,7 +145,7 @@ export function railwayPatchForPlan(plan: RailwayIacPlanResponse) {
 	});
 }
 
-export function railwayIacClient(input: TreeseedRailwayIacProjectInput) {
+export function railwayIacClient(input: RailwayIacProjectInput) {
 	return new IacClient({
 		token: input.railwayApiToken,
 		authType: 'bearer',
@@ -153,7 +153,7 @@ export function railwayIacClient(input: TreeseedRailwayIacProjectInput) {
 	});
 }
 
-export async function readRailwayStagedPatch(input: TreeseedRailwayIacProjectInput) {
+export async function readRailwayStagedPatch(input: RailwayIacProjectInput) {
 	return runRailwayIacWithRateLimitRetry(async () => {
 		const response = await railwayGraphqlRequest<{
 			environmentStagedChanges: RailwayStagedPatch;
@@ -178,7 +178,7 @@ export async function readRailwayStagedPatch(input: TreeseedRailwayIacProjectInp
 
 export async function commitAndVerifyRailwayStagedPatch(
 	client: IacClient,
-	input: TreeseedRailwayIacProjectInput,
+	input: RailwayIacProjectInput,
 	patch: NonNullable<RailwayStagedPatch>,
 	{
 		attempts = 450,

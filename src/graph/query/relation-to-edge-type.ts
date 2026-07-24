@@ -18,7 +18,7 @@ import type {
 	SdkGraphSeedResolution,
 	SdkGraphTraversalResult,
 	SdkGraphWhereFilter,
-} from '../../sdk-types.ts';
+} from '../../entrypoints/models/sdk-types.ts';
 import type { GraphBuildState } from '../build.ts';
 import { parseGraphDsl } from '../dsl.ts';
 import { DEFAULT_GRAPH_RANKING_PROVIDER } from '../ranking.ts';
