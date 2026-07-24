@@ -114,7 +114,7 @@ export function ensureCommandReadiness(root: string) {
 	}
 	const checks = [
 		{ id: 'sdk', path: resolve(root, 'node_modules/@treeseed/sdk/package.json') },
-		{ id: 'sdk-workflow-support', path: resolve(root, 'node_modules/@treeseed/sdk/dist/workflow-support.js') },
+		{ id: 'sdk-workflow-support', path: resolve(root, 'node_modules/@treeseed/sdk/dist/operations/workflow-support.js') },
 		{ id: 'core', path: resolve(root, 'node_modules/@treeseed/core/package.json') },
 		{ id: 'agent-api', path: resolve(root, 'node_modules/@treeseed/agent/dist/api/index.js') },
 		{ id: 'cli', path: resolve(root, 'node_modules/@treeseed/cli/package.json') },

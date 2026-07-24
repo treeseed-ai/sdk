@@ -112,10 +112,10 @@ export function readPackageScript(root: string, packageDir: string, scriptName: 
 
 export function ensureWorkflowWorkspacePackageArtifacts(root: string, helpers: WorkflowOperationHelpers) {
 	const packages = [
-		{ name: '@treeseed/sdk', dir: 'packages/sdk', artifacts: ['dist/index.js', 'dist/workflow-support.js', 'dist/plugin-default.js', 'dist/platform/env.yaml'] },
+		{ name: '@treeseed/sdk', dir: 'packages/sdk', artifacts: ['dist/index.js', 'dist/operations/workflow-support.js', 'dist/entrypoints/models/plugin-default.js', 'dist/platform/env.yaml'] },
 		{ name: '@treeseed/ui', dir: 'packages/ui', artifacts: ['dist/index.js'] },
 		{ name: '@treeseed/agent', dir: 'packages/agent', artifacts: ['dist/api/index.js', 'dist/provider/manager.js', 'dist/provider/runner.js'] },
-		{ name: '@treeseed/core', dir: 'packages/core', artifacts: ['dist/plugin-default.js'] },
+		{ name: '@treeseed/core', dir: 'packages/core', artifacts: ['dist/support/plugin-default.js'] },
 		{ name: '@treeseed/admin', dir: 'packages/admin', artifacts: ['dist/plugin.js'] },
 		{ name: '@treeseed/cli', dir: 'packages/cli', artifacts: ['dist/cli/main.js'] },
 	];

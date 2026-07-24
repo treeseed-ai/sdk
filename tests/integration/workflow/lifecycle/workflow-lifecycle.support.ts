@@ -320,17 +320,18 @@ export function writePackageFiles(root: string, dirName: string, dependencies: R
 	writeFileSync(resolve(root, 'README.md'), `# ${dirName}\n`, 'utf8');
 	writeFileSync(resolve(root, 'index.js'), `export const name = '${dirName}';\n`, 'utf8');
 	if (dirName === 'sdk') {
-		mkdirSync(resolve(root, 'dist'), { recursive: true });
-		writeFileSync(resolve(root, 'dist', 'workflow-support.js'), 'export {};\n', 'utf8');
-		writeFileSync(resolve(root, 'dist', 'plugin-default.js'), 'export {};\n', 'utf8');
+		mkdirSync(resolve(root, 'dist', 'operations'), { recursive: true });
+		mkdirSync(resolve(root, 'dist', 'entrypoints', 'models'), { recursive: true });
+		writeFileSync(resolve(root, 'dist', 'operations', 'workflow-support.js'), 'export {};\n', 'utf8');
+		writeFileSync(resolve(root, 'dist', 'entrypoints', 'models', 'plugin-default.js'), 'export {};\n', 'utf8');
 		mkdirSync(resolve(root, 'drizzle', 'd1'), { recursive: true });
 		mkdirSync(resolve(root, 'drizzle', 'market'), { recursive: true });
 		writeFileSync(resolve(root, 'drizzle', 'd1', '0000_treeseed_d1.sql'), '-- d1 schema\n', 'utf8');
 			writeFileSync(resolve(root, 'drizzle', 'market', '0000_market_control_plane.sql'), '-- market pg schema\n', 'utf8');
 	} else if (dirName === 'core') {
-		mkdirSync(resolve(root, 'dist'), { recursive: true });
+		mkdirSync(resolve(root, 'dist', 'support'), { recursive: true });
 		writeFileSync(resolve(root, 'dist', 'api.js'), 'export {};\n', 'utf8');
-		writeFileSync(resolve(root, 'dist', 'plugin-default.js'), 'export {};\n', 'utf8');
+		writeFileSync(resolve(root, 'dist', 'support', 'plugin-default.js'), 'export {};\n', 'utf8');
 	} else if (dirName === 'ui') {
 		mkdirSync(resolve(root, 'dist'), { recursive: true });
 		writeFileSync(resolve(root, 'dist', 'index.js'), 'export {};\n', 'utf8');
@@ -481,4 +482,3 @@ export function setPackageVersion(repoDir: string, version: string) {
 	git(repoDir, ['commit', '-m', `test: set version ${version}`]);
 	git(repoDir, ['push', 'origin', 'staging']);
 }
-
