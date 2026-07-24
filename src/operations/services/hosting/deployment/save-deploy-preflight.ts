@@ -63,21 +63,21 @@ export function validateSaveAutomationPrerequisites({ cwd }) {
 }
 
 export function runWorkspaceSavePreflight({ cwd }) {
-	runStep('lint', 'workspace-lint', { cwd });
-	runStep('test', 'workspace-release-test', { cwd });
-	runStep('build', 'tenant-build', { cwd });
+	runStep('lint', 'treedx/workspaces/workspace-lint', { cwd });
+	runStep('test', 'treedx/workspaces/workspace-release-test', { cwd });
+	runStep('build', 'build/tenant-build', { cwd });
 }
 
 export function runWorkspaceReleasePreflight({ cwd }) {
-	runStep('lint', 'workspace-lint', { cwd });
-	runStep('test', 'workspace-release-test', { cwd });
-	runStep('build', 'tenant-build', { cwd });
+	runStep('lint', 'treedx/workspaces/workspace-lint', { cwd });
+	runStep('test', 'treedx/workspaces/workspace-release-test', { cwd });
+	runStep('build', 'build/tenant-build', { cwd });
 }
 
 export function runTenantDeployPreflight({ cwd, scope = 'prod' }) {
 	applyEnvironmentToProcess({ tenantRoot: cwd, scope, override: true });
 	assertCommandEnvironment({ tenantRoot: cwd, scope, purpose: 'deploy' });
-	runStep('lint', 'tenant-lint', { cwd });
-	runStep('test', 'tenant-test', { cwd });
-	runStep('build', 'tenant-build', { cwd });
+	runStep('lint', 'tenant/tenant-lint', { cwd });
+	runStep('test', 'testing/tenant-test', { cwd });
+	runStep('build', 'build/tenant-build', { cwd });
 }
