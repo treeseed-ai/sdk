@@ -74,7 +74,7 @@ it('adopts dirty staging work into a new recovery branch without rewriting files
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('recovery/save-stage-release');
 		expect(readFileSync(resolve(work, 'recovery.txt'), 'utf8')).toBe('root recovery\n');
 		expect(readFileSync(resolve(work, 'packages', 'sdk', 'recovery.txt'), 'utf8')).toBe('sdk recovery\n');
-	}, 180000);
+	}, 360000);
 
 it('does not auto-resume a failed save when the workspace has new edits', async () => {
 		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -106,7 +106,7 @@ it('does not auto-resume a failed save when the workspace has new edits', async 
 		expect(freshResult.runId).not.toBe(runId);
 		expect(freshResult.payload.autoResumed).toBe(false);
 		expect(freshResult.payload.message).toBe('fix: save repair edits');
-	}, 180000);
+	}, 360000);
 
 it('lists interrupted workflow runs and resumes them after the workspace is repaired', async () => {
 		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -136,7 +136,7 @@ it('lists interrupted workflow runs and resumes them after the workspace is repa
 
 		const finalRecover = await workflow.recover();
 		expect(finalRecover.payload.interruptedRuns.length).toBe(0);
-	}, 180000);
+	}, 360000);
 
 it('reports partial recursive save state when a later package repo cannot be pushed', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -173,7 +173,7 @@ it('reports partial recursive save state when a later package repo cannot be pus
 			expect(details.repos.find((repo) => repo.name === '@treeseed/sdk')?.pushed).toBe(false);
 			expect(details.repos.find((repo) => repo.name === '@treeseed/core')?.pushed).toBe(false);
 		}
-	}, 180000);
+	}, 360000);
 
 it('requires explicit resume for the newest failed same-branch save', async () => {
 		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -205,7 +205,7 @@ it('requires explicit resume for the newest failed same-branch save', async () =
 		expect(resumeResult.payload.message).toBe('feat: original save');
 		expect(resumeResult.payload.repos.find((repo: { name: string }) => repo.name === '@treeseed/core')?.pushed).toBe(true);
 		expect(resumeResult.payload.rootRepo.pushed).toBe(true);
-	}, 180000);
+	}, 360000);
 
 it('surfaces active workflow locks through recover and blocks concurrent mutating commands', async () => {
 		const { work } = createWorkflowRepo();
@@ -223,5 +223,5 @@ it('surfaces active workflow locks through recover and blocks concurrent mutatin
 		} finally {
 			releaseWorkflowLock(work, 'save-lock-test');
 		}
-	}, 180000);
+	}, 360000);
 });

@@ -48,7 +48,7 @@
     "test:guarantees:coverage": "vitest run --config ./vitest.guarantees.config.ts --coverage",
     "test:capacity-cleanup-live": "node --import tsx ./scripts/testing/test-live-acceptance-cleanup-service.ts",
     "test:workflow:lifecycle": "vitest run --config ./vitest.workflow.config.ts",
-    "test:release": "npm run test:unit:fast",
+    "test:release": "npm run test:unit",
     "test:smoke": "node --import tsx ./scripts/testing/test-smoke.ts",
     "treedx:generate-types": "node --import tsx ./scripts/treedx/repositories/generate-treedx-openapi-types.ts",
     "treedx:check-types": "node --import tsx ./scripts/treedx/repositories/generate-treedx-openapi-types.ts --check",

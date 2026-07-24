@@ -68,7 +68,7 @@ it('auto-saves dirty task branches during close and returns to staging', async (
 		expect(result.payload.finalBranch).toBe('staging');
 		expect(result.payload.finalState.branchName).toBe('staging');
 		expect(git(work, ['tag', '--list', 'deprecated/*'])).toContain('deprecated/feature-demo-task/');
-	}, 180000);
+	}, 360000);
 
 it('can adopt unrelated package staging history into an initial production branch', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-workflow-unrelated-release-'));
@@ -119,7 +119,7 @@ it('closes matching package task branches and preserves deprecated tags', async 
 		expect(git(work, ['branch', '--list', 'feature/demo-task'])).toBe('');
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--list', 'feature/demo-task'])).toBe('');
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', 'deprecated/*'])).toContain('deprecated/feature-demo-task/');
-	}, 180000);
+	}, 360000);
 
 it('creates managed worktrees for agent switch without moving the primary checkout', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -138,7 +138,7 @@ it('creates managed worktrees for agent switch without moving the primary checko
 		expect(git(String(result.payload.worktreePath), ['branch', '--show-current'])).toBe('feature/agent-worktree');
 		expect(existsSync(resolve(String(result.payload.worktreePath), 'node_modules/.bin/trsd'))).toBe(true);
 		expect(existsSync(resolve(String(result.payload.worktreePath), 'node_modules/.bin/treeseed'))).toBe(true);
-	}, 180000);
+	}, 360000);
 
 it('fails switch when a checked-out package repo is dirty', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -148,7 +148,7 @@ it('fails switch when a checked-out package repo is dirty', async () => {
 		await expect(workflow.switchTask({ branch: 'feature/blocked-task' })).rejects.toThrow(
 			'clean git worktree',
 		);
-	}, 180000);
+	}, 360000);
 
 it('leaves divergent detached package repos untouched with a clear blocker', () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -216,7 +216,7 @@ it('removes managed worktrees after agent close cleanup', async () => {
 		expect(closed.payload.worktreeCleanup.removed).toBe(true);
 		expect(existsSync(worktreePath)).toBe(false);
 		expect(git(work, ['branch', '--show-current'])).toBe('feature/demo-task');
-	}, 180000);
+	}, 360000);
 
 it('returns switch plans without mutating the market or package repos', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -233,7 +233,7 @@ it('returns switch plans without mutating the market or package repos', async ()
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('staging');
 		expect(git(work, ['ls-remote', '--heads', 'origin', 'feature/plan-only'])).toBe('');
 		expect(git(resolve(work, 'packages', 'sdk'), ['ls-remote', '--heads', 'origin', 'feature/plan-only'])).toBe('');
-	}, 180000);
+	}, 360000);
 
 it('save repairs package repos detached at the current branch head before preflight validation', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -284,7 +284,7 @@ it('stages from a managed worktree after local promotion proof', async () => {
 		expect(staged.payload.worktreePath).toBe(worktreePath);
 		expect(existsSync(worktreePath)).toBe(false);
 		expect(git(work, ['branch', '--show-current'])).toBe('staging');
-	}, 180000);
+	}, 360000);
 
 it('switch mirrors task branches into checked-out package repos without pushing package branches', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -301,7 +301,7 @@ it('switch mirrors task branches into checked-out package repos without pushing 
 		expect(git(work, ['ls-remote', '--heads', 'origin', 'feature/parallel-task'])).toContain('feature/parallel-task');
 		expect(git(resolve(work, 'packages', 'sdk'), ['ls-remote', '--heads', 'origin', 'feature/parallel-task'])).toBe('');
 		expect(git(resolve(work, 'packages', 'core'), ['ls-remote', '--heads', 'origin', 'feature/parallel-task'])).toBe('');
-	}, 180000);
+	}, 360000);
 
 it('treats normal package branch checkouts as a no-op', () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });

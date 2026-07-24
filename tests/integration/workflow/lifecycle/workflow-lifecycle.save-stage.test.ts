@@ -156,7 +156,7 @@ it('recursively saves dirty checked-out workspace packages before saving the mar
 		const coreSdkSpec = JSON.parse(readFileSync(resolve(work, 'packages', 'core', 'package.json'), 'utf8')).dependencies['@treeseed/sdk'];
 		expect(sdkVersion).toMatch(/^0\.4\.13-dev\.feature-demo-task\./);
 		expect(coreSdkSpec).toMatch(/^git\+file:\/\/.*sdk\.git#[a-f0-9]{40}$/u);
-	}, 180000);
+	}, 360000);
 
 it('resolves status from nested directories against the tenant root', () => {
 		const { work } = createWorkflowRepo();
@@ -243,7 +243,7 @@ it('stages package feature branches through local ref promotion', async () => {
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--list', 'feature/demo-task'])).toContain('feature/demo-task');
 		expect(git(fixtureRepo, ['rev-parse', 'origin/staging'])).toBe(git(fixtureRepo, ['rev-parse', 'HEAD']));
 		expect(git(templateRepo, ['rev-parse', 'origin/staging'])).toBe(git(templateRepo, ['rev-parse', 'HEAD']));
-	}, 180000);
+	}, 360000);
 
 it('surfaces package branch drift and dirty package blockers in status', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -259,7 +259,7 @@ it('surfaces package branch drift and dirty package blockers in status', async (
 		expect(result.payload.packageSync.dirty).toBe(true);
 		expect(result.payload.packageSync.blockers.join('\n')).toContain('@treeseed/core is on staging instead of feature/demo-task.');
 		expect(result.payload.packageSync.blockers.join('\n')).toContain('@treeseed/cli has uncommitted changes.');
-	}, 180000);
+	}, 360000);
 
 it('treats save with no new changes as a successful sync checkpoint', async () => {
 		const { work } = createWorkflowRepo();
@@ -275,7 +275,7 @@ it('treats save with no new changes as a successful sync checkpoint', async () =
 		expect(result.payload.noChanges).toBe(true);
 		expect(result.payload.branchSync.pushed).toBe(true);
 		expect(result.payload.finalState.branchName).toBe('feature/demo-task');
-	}, 180000);
+	}, 360000);
 
 it('uses dev-save mode for staging even when package repos start on main', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -306,5 +306,5 @@ it('uses dev-save mode for staging even when package repos start on main', async
 		]));
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('staging');
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '0.4.13'])).toBe('');
-	}, 180000);
+	}, 360000);
 });

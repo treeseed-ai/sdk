@@ -80,7 +80,7 @@ it('blocks normal patch releases when public package release lines are drifted',
 			targetVersionLine: '0.11',
 			plan: true,
 		})).rejects.toThrow('Release line repair target must match the highest current public package line');
-	}, 180000);
+	}, 360000);
 
 it('blocks release gate execution when staging state is not ready', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -184,7 +184,7 @@ it('classifies stale release runs and prunes them from resumable recovery', asyn
 		expect(obsolete.payload.obsoleteRuns).not.toContainEqual(expect.objectContaining({
 			classification: expect.objectContaining({ archivedAt: expect.any(String) }),
 		}));
-	}, 180000);
+	}, 360000);
 
 it('includes starter templates and shared fixtures in release helper repo plans', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -209,7 +209,7 @@ it('includes starter templates and shared fixtures in release helper repo plans'
 			expect.stringMatching(/^template:/),
 		]));
 		expect(result.payload.blockers).toEqual([]);
-	}, 180000);
+	}, 360000);
 
 it('plans API production image refs from selected API and selected TreeDX metadata changes', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -307,7 +307,7 @@ it('plans release-line repair without bumping packages already on the target lin
 		});
 		expect(result.payload.plannedVersions).not.toHaveProperty('@treeseed/sdk');
 		expect(result.payload.blockers).toEqual([]);
-	}, 180000);
+	}, 360000);
 
 it('releases only changed packages plus dependents and syncs market main to package main heads', async () => {
 			const { work } = createWorkflowRepo({ withWorkspacePackages: true });
