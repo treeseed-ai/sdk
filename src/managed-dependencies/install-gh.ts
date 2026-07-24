@@ -7,7 +7,8 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { withServiceCredentialEnv } from '../configuration/service-credentials.ts';
-import { DependencyInstallerOptions, GH_CHECKSUMS_SHA256, GH_RELEASE_BASE_URL, GH_VERSION, NPM_PACKAGES, NPM_TOOLS, RAILWAY_RELEASE_BASE_URL, RAILWAY_VERSION, DependencyReport, createManagedToolEnv, currentPlatformAsset, currentRailwayPlatformAsset, managedGhBin, managedRailwayBin, report, resolveToolsHome, sha256File } from './dependency-runtime.ts';
+import { GH_CHECKSUMS_SHA256, GH_RELEASE_BASE_URL, GH_VERSION, NPM_PACKAGES, NPM_TOOLS, RAILWAY_RELEASE_BASE_URL, RAILWAY_VERSION, createManagedToolEnv, currentPlatformAsset, currentRailwayPlatformAsset, managedGhBin, managedRailwayBin, report, resolveToolsHome, sha256File } from './dependency-runtime.ts';
+import type { DependencyInstallerOptions, DependencyReport } from './dependency-runtime.ts';
 import { checkCommand, locateSystemBinary, npmToolMissingDetail, resolveNpmToolRuntimeBinary, resolvePackageRoot } from './redact-sensitive-output.ts';
 import { findExtractedGhBinary, parseChecksums } from './run-npm-tool-rebuilds.ts';
 

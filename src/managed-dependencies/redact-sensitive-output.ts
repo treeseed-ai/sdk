@@ -7,7 +7,8 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { withServiceCredentialEnv } from '../configuration/service-credentials.ts';
-import { NPM_PACKAGES, NPM_TOOLS, ManagedToolName, cleanCommandPathOutput, require } from './dependency-runtime.ts';
+import { NPM_PACKAGES, NPM_TOOLS, cleanCommandPathOutput, require } from './dependency-runtime.ts';
+import type { ManagedToolName } from './dependency-runtime.ts';
 import { collectNativeDependencyRepairs } from './collect-native-dependency-repairs.ts';
 
 export function redactSensitiveOutput(output: string) {

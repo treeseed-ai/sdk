@@ -8,7 +8,8 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { withServiceCredentialEnv } from '../configuration/service-credentials.ts';
 import { collectInstalledNativeDependencyIssues, esbuildPlatformPackage, npmBackedDependenciesAvailable, resolveNpmInstallCommand, resolveNpmToolRuntimeBinary } from './redact-sensitive-output.ts';
-import { DependencyInstallerOptions, NPM_TOOLS, NpmInstallReport } from './dependency-runtime.ts';
+import { NPM_TOOLS } from './dependency-runtime.ts';
+import type { DependencyInstallerOptions, NpmInstallReport } from './dependency-runtime.ts';
 
 export function collectNativeDependencyRepairs(tenantRoot: string) {
 	const binaryPackage = esbuildPlatformPackage();

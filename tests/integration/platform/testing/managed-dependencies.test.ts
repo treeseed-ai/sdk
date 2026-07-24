@@ -2,6 +2,7 @@ import { chmod, mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdtempSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
 	collectDependencyStatus,
@@ -85,6 +86,15 @@ describe('managed dependencies', () => {
 	afterEach(async () => {
 		await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
 		roots.length = 0;
+	});
+
+	it('loads the complete managed-dependency entrypoint with native TypeScript stripping', () => {
+		const entrypoint = new URL('../../../../src/entrypoints/runtime/managed-dependencies.ts', import.meta.url);
+		const result = spawnSync(process.execPath, ['-e', 'await import(process.argv[1])', entrypoint.href], {
+			encoding: 'utf8',
+		});
+
+		expect(result.status, result.stderr).toBe(0);
 	});
 
 	it('uses TREESEED_TOOLS_HOME for managed dependency status', async () => {
