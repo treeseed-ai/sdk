@@ -311,6 +311,16 @@ it('plans release-line repair without bumping packages already on the target lin
 
 it('releases only changed packages plus dependents and syncs market main to package main heads', async () => {
 			const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const releasePassphrase = 'release-integration-passphrase';
+		vi.stubEnv(MACHINE_KEY_PASSPHRASE_ENV, releasePassphrase);
+		writeMachineConfig(work, createMachineConfigForWorkflowRepo(work));
+		await ensureSecretSessionForConfig({
+			tenantRoot: work,
+			interactive: false,
+			env: { ...process.env, [MACHINE_KEY_PASSPHRASE_ENV]: releasePassphrase },
+			createIfMissing: true,
+			allowMigration: true,
+		});
 		const workflow = workflowFor(work);
 		git(work, ['checkout', 'staging']);
 		const fixtureRepo = addStaleNestedSubmodule(resolve(work, 'packages', 'sdk'), '.fixtures/treeseed-fixtures', 'staging');
