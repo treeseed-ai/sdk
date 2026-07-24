@@ -47,9 +47,9 @@ function createTreeDxAdapterFixture() {
       "repository: treeseed-ai/treedx",
       "workflowTemplateVersion: custom",
       "verify:",
-      "  fast: scripts/test-treedx-fast.sh",
-      "  local: scripts/test-all.sh",
-      "  release: scripts/release-gate.sh",
+      "  fast: scripts/verification/test-treedx-fast.sh",
+      "  local: scripts/verification/test-all.sh",
+      "  release: scripts/release/release-gate.sh",
       "releaseGate:",
       "  workflow: .github/workflows/release-gate.yml",
       "dockerImages:",
@@ -100,11 +100,11 @@ describe("TreeDX release gate integration", () => {
 
   it("has unified release-gate scripts in the repository root", () => {
     const scripts = [
-      "scripts/openapi-check.sh",
-      "scripts/storage-recovery-check.sh",
-      "scripts/security-check.sh",
-      "scripts/test-all.sh",
-      "scripts/release-gate.sh",
+      "scripts/verification/openapi-check.sh",
+      "scripts/verification/storage-recovery-check.sh",
+      "scripts/verification/security-check.sh",
+      "scripts/verification/test-all.sh",
+      "scripts/release/release-gate.sh",
     ];
     const present = scripts.map((script) =>
       existsSync(resolve(workspaceRoot, script)),

@@ -9,7 +9,7 @@ import {
 
 function findWorkspaceRoot() {
 	if (process.env.TREESEED_VERIFY_PACKAGE_ISOLATED === '1') {
-		return resolve(dirname(fileURLToPath(import.meta.url)), '../../fixtures/scene-project');
+		return resolve(dirname(fileURLToPath(import.meta.url)), '../../../fixtures/scene-project');
 	}
 	let current = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 	for (let index = 0; index < 8; index += 1) {
@@ -18,7 +18,7 @@ function findWorkspaceRoot() {
 		if (next === current) break;
 		current = next;
 	}
-	return resolve(dirname(fileURLToPath(import.meta.url)), '../../fixtures/scene-project');
+	return resolve(dirname(fileURLToPath(import.meta.url)), '../../../fixtures/scene-project');
 }
 
 describe('user team management demo scene', () => {

@@ -67,11 +67,11 @@ export function beamPackageAdapter(root: string, dir: string): PackageAdapter | 
 	const verify = manifest?.verify && typeof manifest.verify === 'object' && !Array.isArray(manifest.verify)
 		? manifest.verify as Record<string, unknown>
 		: {};
-	const fast = verify.fast ?? (existsSync(resolve(dir, 'scripts/test-treedx-fast.sh')) ? 'scripts/test-treedx-fast.sh' : null);
-	const local = verify.local ?? (existsSync(resolve(dir, 'scripts/test-all.sh')) ? 'scripts/test-all.sh' : null);
+	const fast = verify.fast ?? (existsSync(resolve(dir, 'scripts/verification/test-treedx-fast.sh')) ? 'scripts/verification/test-treedx-fast.sh' : null);
+	const local = verify.local ?? (existsSync(resolve(dir, 'scripts/verification/test-all.sh')) ? 'scripts/verification/test-all.sh' : null);
 	const releaseGate = stringValue(manifest?.releaseGate)
 		?? verify.release
-		?? (existsSync(resolve(dir, 'scripts/release-gate.sh')) ? 'scripts/release-gate.sh' : null);
+		?? (existsSync(resolve(dir, 'scripts/release/release-gate.sh')) ? 'scripts/release/release-gate.sh' : null);
 	const version = readMixProjectVersion(versionSource);
 	const shaTag = 'sha-<short-sha>';
 	return {

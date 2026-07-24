@@ -75,7 +75,7 @@ export function prepareCloudflareLocalRuntime({ envOverrides = {}, persistTo, ou
 		cwd: corePackageRoot,
 	});
 
-	runNodeScript('./scripts/build-tenant-worker.ts', [], {
+	runNodeScript('./scripts/build/build-tenant-worker.ts', [], {
 		cwd: fixtureRoot,
 		env: {
 			LOCAL_DEV_MODE: 'cloudflare',
