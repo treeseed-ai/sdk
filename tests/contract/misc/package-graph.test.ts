@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -168,6 +169,15 @@ describe('sdk package graph', () => {
 		const builtVerifyDriver = resolve(workspaceRoot, 'dist', 'scripts', 'verification', 'verify-driver.js');
 		expect(existsSync(builtVerifyDriver)).toBe(true);
 		expect(statSync(builtVerifyDriver).mode & 0o111).not.toBe(0);
+	});
+
+	it('loads the source verifier graph with native TypeScript stripping', () => {
+		const verifierEntry = new URL('../../../src/verification/run-verify-driver.ts', import.meta.url);
+		const result = spawnSync(process.execPath, ['-e', 'await import(process.argv[2])', 'verification-import-check', verifierEntry.href], {
+			encoding: 'utf8',
+		});
+
+		expect(result.status, result.stderr).toBe(0);
 	});
 
 	it('keeps package verify workflows branch-push triggerable for staging saves', () => {

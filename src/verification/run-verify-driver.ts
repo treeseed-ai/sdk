@@ -4,7 +4,8 @@ import { basename, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createManagedToolEnv, resolveToolBinary } from '../entrypoints/runtime/managed-dependencies.ts';
-import { VerifyDriverOptions, check, createActArgs, defaultWrite, run, runActCommand } from './verify-driver.ts';
+import { check, createActArgs, defaultWrite, run, runActCommand } from './verify-driver.ts';
+import type { VerifyDriverOptions } from './verify-driver.ts';
 import { createWorkspaceActWorkflow, getVerifyDriverStatus } from './create-workspace-act-workflow.ts';
 
 export function runVerifyDriver(options: VerifyDriverOptions = {}) {
