@@ -1,5 +1,39 @@
+export {
+	PUBLISHED_CONTENT_MANIFEST_SCHEMA_VERSION,
+	EDITORIAL_PREVIEW_COOKIE,
+	TeamScopedR2OverlayContentRuntimeProvider,
+	TeamScopedR2OverlayContentPublishProvider,
+	createTeamScopedR2OverlayContentRuntimeProvider,
+	createTeamScopedR2OverlayContentPublishProvider,
+	isTeamScopedR2ContentEnabled,
+	parsePublishedCollectionIndex,
+	parsePublishedContentManifest,
+	parsePublishedOverlayManifest,
+	readPublishedContentManifest,
+	readPublishedOverlayManifest,
+	resolveCloudflareR2Bucket,
+	resolvePublishedContentBucketBinding,
+	resolvePublishedContentManifestKey,
+	resolvePublishedContentPreviewRoot,
+	resolvePublishedContentPreviewTtlHours,
+	resolveTeamScopedContentLocator,
+	signEditorialPreviewToken,
+	verifyEditorialPreviewToken,
+} from '.././platform/published-content.ts';
 
+export {
+	createFilesystemContentSource,
+	createPublishedContentPipeline,
+} from '.././platform/published-content-pipeline.ts';
 
+export {
+	loadTreeseedManifest,
+	loadTreeseedTenantManifest,
+	resolveTreeseedTenantRoot,
+	getTenantContentRoot,
+	tenantFeatureEnabled,
+	tenantModelRendered,
+} from '.././platform/tenant-config.ts';
 
 export type {
 	ContentPublishProvider,
@@ -54,7 +88,3 @@ export type {
 	TreeseedR2ContentRuntimeMetadata,
 	TreeseedTreeDxContentRuntimeMetadata,
 } from '.././platform/content-runtime-source.ts';
-
-export { CloudflareHttpD1Database } from '.././d1-http.ts';
-
-export type * from '.././remote.ts';

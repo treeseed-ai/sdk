@@ -1,6 +1,6 @@
-export { runMethod } from './run.ts';
-export { firstMethod } from './first.ts';
-export { allMethod } from './all.ts';
+export { runMethod } from './execute-statement.ts';
+export { firstMethod } from './query-first.ts';
+export { allMethod } from './query-all.ts';
 export { ensureInitializedMethod } from './ensure-initialized.ts';
 export { ensureAuthSchemaMethod } from './ensure-auth-schema.ts';
 export { seedCatalogMethod } from './seed-catalog.ts';

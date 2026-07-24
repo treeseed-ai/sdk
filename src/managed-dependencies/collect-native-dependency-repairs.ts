@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { withTreeseedServiceCredentialEnv } from '../service-credentials.ts';
 import { collectInstalledNativeDependencyIssues, esbuildPlatformPackage, npmBackedDependenciesAvailable, resolveNpmInstallCommand, resolveNpmToolRuntimeBinary } from './redact-sensitive-output.ts';
-import { DependencyInstallerOptions, NPM_TOOLS, TreeseedNpmInstallReport } from './require.ts';
+import { DependencyInstallerOptions, NPM_TOOLS, TreeseedNpmInstallReport } from './dependency-runtime.ts';
 
 export function collectNativeDependencyRepairs(tenantRoot: string) {
 	const binaryPackage = esbuildPlatformPackage();

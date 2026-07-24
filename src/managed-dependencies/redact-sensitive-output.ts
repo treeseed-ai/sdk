@@ -7,7 +7,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { withTreeseedServiceCredentialEnv } from '../service-credentials.ts';
-import { NPM_PACKAGES, NPM_TOOLS, TreeseedManagedToolName, cleanCommandPathOutput, require } from './require.ts';
+import { NPM_PACKAGES, NPM_TOOLS, TreeseedManagedToolName, cleanCommandPathOutput, require } from './dependency-runtime.ts';
 import { collectNativeDependencyRepairs } from './collect-native-dependency-repairs.ts';
 
 export function redactSensitiveOutput(output: string) {

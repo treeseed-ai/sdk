@@ -1,9 +1,9 @@
 export { rowsForModelMethod } from './rows-for-model.ts';
-export { getMethod } from './get.ts';
+export { getMethod } from './get-record.ts';
 export { searchMethod } from './search.ts';
 export { followMethod } from './follow.ts';
 export { pickMethod } from './pick.ts';
-export { createMethod } from './create.ts';
+export { createMethod } from './create-record.ts';
 export { updateMethod } from './update.ts';
 export { claimMessageMethod } from './claim-message.ts';
 export { ackMessageMethod } from './ack-message.ts';

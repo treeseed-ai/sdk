@@ -1,14 +1,14 @@
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
 	createBranchPreviewDeployTarget,
 	createPersistentDeployTarget,
 	deployTargetLabel,
 	loadDeployState,
-} from '../dist/scripts/deploy-lib.js';
-import { renderDeployWebWorkflow } from '../dist/operations/services/github-automation.js';
-import { incrementVersion } from '../dist/scripts/workspace-save-lib.js';
-import { makeTenantRoot } from './cli-test-fixtures.ts';
+} from '../../../src/operations/services/deploy.ts';
+import { renderDeployWebWorkflow } from '../../../src/operations/services/github-automation.ts';
+import { incrementVersion } from '../../../src/operations/services/workspace-save.ts';
+import { makeTenantRoot } from '../../../scripts/cli-test-fixtures.ts';
 
 test('persistent and branch targets produce distinct labels', () => {
 	assert.equal(deployTargetLabel(createPersistentDeployTarget('staging')), 'staging');
@@ -19,6 +19,7 @@ test('branch preview state derives branch-specific worker names', () => {
 	const tenantRoot = makeTenantRoot();
 	const deployConfig = {
 		cloudflare: { accountId: 'fixture-cloudflare-account-id', workerName: 'treeseed-working-site' },
+		hosting: { teamId: 'fixture-team', projectId: 'working-site' },
 	};
 	const state = loadDeployState(tenantRoot, deployConfig, { target: createBranchPreviewDeployTarget('feature/preview') });
 	assert.match(state.workerName, /^treeseed-working-site-feature-preview/);

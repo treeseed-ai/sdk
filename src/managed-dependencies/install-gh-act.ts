@@ -7,7 +7,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { withTreeseedServiceCredentialEnv } from '../service-credentials.ts';
-import { DependencyInstallerOptions, GH_VERSION, NPM_PACKAGES, NPM_TOOLS, RAILWAY_VERSION, TreeseedDependencyInstallResult, TreeseedDependencyReport, TreeseedToolStatusResult, createTreeseedManagedToolEnv, managedGhBin, managedRailwayBin, report, resolveToolsHome } from './require.ts';
+import { DependencyInstallerOptions, GH_VERSION, NPM_PACKAGES, NPM_TOOLS, RAILWAY_VERSION, TreeseedDependencyInstallResult, TreeseedDependencyReport, TreeseedToolStatusResult, createTreeseedManagedToolEnv, managedGhBin, managedRailwayBin, report, resolveToolsHome } from './dependency-runtime.ts';
 import { checkGitHubAuth, defaultDownloadFile, invocationForTool, resolveTreeseedToolBinary, runNpmToolRebuilds } from './run-npm-tool-rebuilds.ts';
 import { checkCommand, locateSystemBinary } from './redact-sensitive-output.ts';
 import { runNpmBootstrap } from './collect-native-dependency-repairs.ts';
