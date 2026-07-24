@@ -165,6 +165,9 @@ describe('sdk package graph', () => {
 	it('publishes the shared verify executable for package consumers', () => {
 		const packageJson = JSON.parse(readFileSync(sdkPackageJsonPath, 'utf8'));
 		expect(packageJson.bin?.['treeseed-sdk-verify']).toBe('./dist/scripts/verification/verify-driver.js');
+		const builtVerifyDriver = resolve(workspaceRoot, 'dist', 'scripts', 'verification', 'verify-driver.js');
+		expect(existsSync(builtVerifyDriver)).toBe(true);
+		expect(statSync(builtVerifyDriver).mode & 0o111).not.toBe(0);
 	});
 
 	it('keeps package verify workflows branch-push triggerable for staging saves', () => {

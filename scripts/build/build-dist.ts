@@ -242,6 +242,9 @@ function transpileScript(filePath, outputRoot) {
 
 	ensureDir(outputFile);
 	writeFileSync(outputFile, rewriteScriptRuntimeSpecifiers(transformed, filePath, outputFile, outputRoot), 'utf8');
+	if ((statSync(filePath).mode & 0o111) !== 0) {
+		chmodSync(outputFile, 0o755);
+	}
 }
 
 function emitDeclarations(outputRoot) {
