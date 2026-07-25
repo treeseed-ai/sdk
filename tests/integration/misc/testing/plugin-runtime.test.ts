@@ -207,8 +207,14 @@ providers:
 				'packages/core/package.json': JSON.stringify({
 					name: '@treeseed/core',
 					type: 'module',
+					exports: {
+						'./plugin-default': {
+							types: './dist/plugin-default.d.ts',
+							default: './dist/support/plugin-default.js',
+						},
+					},
 				}, null, 2),
-				'packages/core/dist/plugin-default.js': `export default {
+				'packages/core/dist/support/plugin-default.js': `export default {
   id: 'local-core-default',
   provides: {
     forms: ['store_only'],

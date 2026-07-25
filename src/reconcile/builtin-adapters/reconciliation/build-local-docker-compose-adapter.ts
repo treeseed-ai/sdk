@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { ReconcileAdapter, ReconcileAdapterInput, UnitVerificationCheck } from "../../support/contracts/contracts.ts";
-import { localComposeDriftReasons, localComposeReconciledSpecHash, localComposeRequiredPathWarnings, localComposeServiceReady, observeLocalComposeRequiredPaths, parseLocalComposeServices, waitForLocalComposeServices } from "../../runtime/local-compose-state.ts";
+import { localComposeDriftReasons, localComposeReconciledSpecHash, localComposeRequiredPathWarnings, localComposeRuntimeConfigDrift, localComposeServiceReady, observeLocalComposeRequiredPaths, parseLocalComposeServices, waitForLocalComposeServices } from "../../runtime/local-compose-state.ts";
 import { desiredUnitSpecHash } from "../../support/state/state.ts";
 import { inspectDockerAvailability, runDockerCompose } from "../../providers/docker-private.ts";
 import { buildLocalComposeLaunchEnv, checkHttpHealthWithRetry, localComposeBuildPolicy, runLocalComposePrepareCommand } from '../build/local-compose-build-policy.ts';
@@ -73,6 +73,11 @@ export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
 				desiredSpecHash: desiredUnitSpecHash(input.unit),
 				reconciledSpecHash: localComposeReconciledSpecHash(input.unit.spec),
 				configHash: input.observed.live.configHash,
+				services: parseLocalComposeServices(
+					input.observed.live.ps && typeof input.observed.live.ps === 'object'
+						? (input.observed.live.ps as Record<string, unknown>).stdout
+						: null,
+				),
 				requiredPaths: Array.isArray(input.observed.live.requiredPaths) ? input.observed.live.requiredPaths as ReturnType<typeof observeLocalComposeRequiredPaths> : [],
 			});
 			if (driftReasons.length > 0) {
@@ -172,6 +177,15 @@ export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
 				},
 			});
 			const services = serviceWait.observations;
+			const configDrift = localComposeRuntimeConfigDrift(input.observed.live.configHash, services);
+			checks.push(verificationCheck('compose-config', 'Running Compose services use the rendered desired configuration', 'cli', {
+				exists: services.length > 0,
+				configured: true,
+				ready: configDrift.length === 0,
+				verified: services.length > 0 && configDrift.length === 0,
+				observed: services.map(({ service, configHash }) => ({ service, configHash })),
+				issues: configDrift,
+			}));
 			for (const service of declaredServices) {
 				const observation = services.find((entry) => entry.service === service);
 				const ready = localComposeServiceReady(observation);

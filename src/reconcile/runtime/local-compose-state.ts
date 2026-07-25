@@ -65,6 +65,7 @@ export function localComposeDriftReasons(input: {
 	desiredSpecHash: string;
 	reconciledSpecHash?: string;
 	configHash: unknown;
+	services?: LocalComposeServiceObservation[];
 	requiredPaths: LocalComposeRequiredPathObservation[];
 }) {
 	const previous = input.persistedState;
@@ -87,6 +88,7 @@ export function localComposeDriftReasons(input: {
 	} else if (previousConfigHash && currentConfigHash && previousConfigHash !== currentConfigHash) {
 		reasons.push('rendered compose configuration changed');
 	}
+	reasons.push(...localComposeRuntimeConfigDrift(input.configHash, input.services ?? []));
 	if (input.requiredPaths.length > 0) {
 		const previousSignature = requiredPathSignature(previous.lastReconciledState.requiredPaths);
 		const currentSignature = requiredPathSignature(input.requiredPaths);
@@ -105,6 +107,19 @@ export interface LocalComposeServiceObservation {
 	service: string;
 	state: string;
 	health: string;
+	configHash: string | null;
+}
+
+function composeLabel(record: Record<string, unknown>, key: string) {
+	const labels = record.Labels ?? record.labels;
+	if (labels && typeof labels === 'object' && !Array.isArray(labels)) {
+		const value = (labels as Record<string, unknown>)[key];
+		return typeof value === 'string' ? value : null;
+	}
+	if (typeof labels !== 'string') return null;
+	const prefix = `${key}=`;
+	const match = labels.split(',').find((entry) => entry.startsWith(prefix));
+	return match?.slice(prefix.length) || null;
 }
 
 export function parseLocalComposeServices(stdout: unknown): LocalComposeServiceObservation[] {
@@ -127,7 +142,29 @@ export function parseLocalComposeServices(stdout: unknown): LocalComposeServiceO
 			service,
 			state: String(record.State ?? record.state ?? '').toLowerCase(),
 			health: String(record.Health ?? record.health ?? '').toLowerCase(),
+			configHash: composeLabel(record, 'com.docker.compose.config-hash'),
 		}];
+	});
+}
+
+export function parseLocalComposeConfigHashes(value: unknown) {
+	if (typeof value !== 'string') return new Map<string, string>();
+	return new Map(value.split(/\r?\n/u).flatMap((line) => {
+		const [service, configHash, ...extra] = line.trim().split(/\s+/u);
+		return service && configHash && extra.length === 0 ? [[service, configHash] as const] : [];
+	}));
+}
+
+export function localComposeRuntimeConfigDrift(
+	renderedConfigHash: unknown,
+	services: LocalComposeServiceObservation[],
+) {
+	const desired = parseLocalComposeConfigHashes(renderedConfigHash);
+	if (desired.size === 0 || services.length === 0) return [];
+	return services.flatMap((service) => {
+		const expected = desired.get(service.service);
+		if (!expected || service.configHash === expected) return [];
+		return [`running compose service ${service.service} uses stale rendered configuration`];
 	});
 }
 

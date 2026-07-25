@@ -84,6 +84,29 @@ export function parsePackageReference(packageName: string) {
 	};
 }
 
+function packageExportTarget(packageJson: Record<string, any>, subpath: string) {
+	const exports = packageJson.exports;
+	if (!exports || typeof exports !== 'object' || Array.isArray(exports)) return null;
+	const exportKey = subpath === 'index' ? '.' : `./${subpath}`;
+	const entry = exports[exportKey];
+	if (typeof entry === 'string') return entry;
+	if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+	for (const condition of ['import', 'default', 'require']) {
+		if (typeof entry[condition] === 'string') return entry[condition] as string;
+	}
+	return null;
+}
+
+function workspacePluginCandidates(packageDir: string, packageJson: Record<string, any>, subpath: string) {
+	const normalizedSubpath = subpath.replace(/^\.\//u, '').replace(/\.js$/u, '');
+	const declaredTarget = packageExportTarget(packageJson, normalizedSubpath);
+	return [
+		...(declaredTarget ? [path.resolve(packageDir, declaredTarget)] : []),
+		path.resolve(packageDir, 'dist', `${normalizedSubpath}.js`),
+		path.resolve(packageDir, `${normalizedSubpath}.js`),
+	];
+}
+
 export function buildWorkspacePluginArtifacts(packageDir: string, packageName: string) {
 	const packageJsonPath = path.resolve(packageDir, 'package.json');
 	let packageJson: Record<string, any>;
@@ -120,23 +143,22 @@ export function resolveLocalWorkspacePluginPath(packageName: string, tenantRoot:
 	const packageJsonPath = path.resolve(packageDir, 'package.json');
 	if (!existsSync(packageJsonPath)) return null;
 
+	let packageJson: Record<string, any>;
 	try {
-		const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+		packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as Record<string, any>;
 		if (packageJson?.name !== `@treeseed/${parsed.packageId}`) return null;
 	} catch {
 		return null;
 	}
 
-	const normalizedSubpath = parsed.subpath.replace(/^\.\//u, '').replace(/\.js$/u, '');
-	const candidates = [
-		path.resolve(packageDir, 'dist', `${normalizedSubpath}.js`),
-		path.resolve(packageDir, `${normalizedSubpath}.js`),
-	];
+	const candidates = workspacePluginCandidates(packageDir, packageJson, parsed.subpath);
 	const existing = candidates.find((candidate) => existsSync(candidate));
 	if (existing) return existing;
 
 	if (buildWorkspacePluginArtifacts(packageDir, packageName)) {
-		return candidates.find((candidate) => existsSync(candidate)) ?? null;
+		const rebuiltPackageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as Record<string, any>;
+		return workspacePluginCandidates(packageDir, rebuiltPackageJson, parsed.subpath)
+			.find((candidate) => existsSync(candidate)) ?? null;
 	}
 
 	return null;

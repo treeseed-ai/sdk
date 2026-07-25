@@ -4,11 +4,13 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
 	localComposeDriftReasons,
+	localComposeRuntimeConfigDrift,
 	localComposeReconciledSpecHash,
 	localComposeRequiredPathWarnings,
 	localComposeServiceReady,
 	observeLocalComposeRequiredPaths,
 	parseLocalComposeServices,
+	parseLocalComposeConfigHashes,
 	waitForLocalComposeServices,
 } from '../../../../src/reconcile/runtime/local-compose-state.ts';
 import { validateAndDigestCapacityProviderManifest } from '../../../../src/capacity-provider/config/manifest.ts';
@@ -68,20 +70,48 @@ describe('local Docker Compose exact-state helpers', () => {
 
 	it('parses both array and line-delimited compose status and rejects unhealthy services', () => {
 		const array = parseLocalComposeServices(JSON.stringify([
-			{ Service: 'manager', State: 'running', Health: 'healthy' },
+			{ Service: 'manager', State: 'running', Health: 'healthy', Labels: 'other=value,com.docker.compose.config-hash=manager-hash' },
 			{ Service: 'runner', State: 'exited', Health: '' },
 		]));
 		expect(localComposeServiceReady(array.find((entry) => entry.service === 'manager'))).toBe(true);
+		expect(array[0]?.configHash).toBe('manager-hash');
 		expect(localComposeServiceReady(array.find((entry) => entry.service === 'runner'))).toBe(false);
 		const lines = parseLocalComposeServices('{"Service":"manager","State":"running"}\n{"Service":"runner","State":"running","Health":"unhealthy"}');
 		expect(localComposeServiceReady(lines[0])).toBe(true);
 		expect(localComposeServiceReady(lines[1])).toBe(false);
 	});
 
+	it('detects running containers created from stale rendered compose configuration', () => {
+		const rendered = 'manager desired-manager\nrunner desired-runner';
+		expect(parseLocalComposeConfigHashes(rendered)).toEqual(new Map([
+			['manager', 'desired-manager'],
+			['runner', 'desired-runner'],
+		]));
+		const services = parseLocalComposeServices(JSON.stringify([
+			{ Service: 'manager', State: 'running', Labels: 'com.docker.compose.config-hash=old-manager' },
+			{ Service: 'runner', State: 'running', Labels: { 'com.docker.compose.config-hash': 'desired-runner' } },
+		]));
+		expect(localComposeRuntimeConfigDrift(rendered, services)).toEqual([
+			'running compose service manager uses stale rendered configuration',
+		]);
+		expect(localComposeDriftReasons({
+			persistedState: persisted({
+				desiredSpecHash: 'new-spec',
+				lastReconciledState: { configHash: rendered, requiredPaths: [] },
+			}),
+			desiredSpecHash: 'new-spec',
+			configHash: rendered,
+			services,
+			requiredPaths: [],
+		})).toEqual([
+			'running compose service manager uses stale rendered configuration',
+		]);
+	});
+
 	it('waits through a bounded starting state until every declared service is healthy', async () => {
 		const observations = [
-			[{ service: 'postgres', state: 'running', health: 'starting' }],
-			[{ service: 'postgres', state: 'running', health: 'healthy' }],
+			[{ service: 'postgres', state: 'running', health: 'starting', configHash: null }],
+			[{ service: 'postgres', state: 'running', health: 'healthy', configHash: null }],
 		];
 		let index = 0;
 		const result = await waitForLocalComposeServices({
