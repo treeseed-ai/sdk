@@ -156,6 +156,16 @@ workflow: []
 			'guarantee.project.question.ask-question.038',
 			'guarantee.project.question.edit-question.039',
 		]);
+
+		for (const file of ['ask-question.guarantee.yaml', 'edit-question.guarantee.yaml']) {
+			const path = resolve(root, 'packages/admin/guarantees/project/question', file);
+			writeFileSync(path, readFileSync(path, 'utf8').replace(
+				'manifest: ./scenes/',
+				'executionKey: shared-question-setup\n  manifest: ./scenes/',
+			));
+		}
+		const sharedPlan = planGuarantees({ workspaceRoot: root, filter: { ids: ['guarantee.project.question.follow-up.040'] } });
+		expect(sharedPlan.diagnostics.map((entry) => entry.code)).not.toContain('guarantee.state_duplicate_producer');
 	});
 
 it('reports cyclic guarantee dependencies during planning without overflowing depth calculation', () => {
@@ -237,5 +247,25 @@ workflow:
 		const weak = auditGuaranteeJourneys({ workspaceRoot: root });
 		expect(weak.ok).toBe(false);
 		expect(weak.totals.activeSceneBackedWeak).toBe(1);
+		writeFileSync(resolve(root, 'packages/admin/guarantees/project/question/scenes/ask-question.scene.yaml'), `schemaVersion: treeseed.scene/v1
+id: ask-question
+journey:
+  kind: service
+  minimumSteps: 2
+workflow:
+  - id: open
+    action:
+      goto: /app/work/questions/new
+    expect:
+      urlIncludes: /app/work/questions/new
+  - id: tab-only
+    action:
+      keyboard: Tab
+    expect:
+      urlIncludes: /app/work/questions/new
+`);
+		const navigationOnly = auditGuaranteeJourneys({ workspaceRoot: root });
+		expect(navigationOnly.ok).toBe(false);
+		expect(navigationOnly.totals.activeSceneBackedWeak).toBe(1);
 	});
 });

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, relative, resolve, sep } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { GuaranteeDiagnostic, GuaranteeFilter, GuaranteeManifest, LoadedGuarantee } from './guarantee-schema-version.ts';
-import { GuaranteeRunReport, GuaranteeRunResult, GuaranteeRunState, GuaranteeSceneExecutor, GuaranteeVerifierExecutionResult, GuaranteeVerifierExecutor, arrayOrEmpty, diagnostic, sortedUnique } from './guarantee-journey-audit-item.ts';
+import { GuaranteeExecutionGraphReport, GuaranteeRunReport, GuaranteeRunResult, GuaranteeRunState, GuaranteeSceneExecutor, GuaranteeVerifierExecutionResult, GuaranteeVerifierExecutor, arrayOrEmpty, diagnostic, sortedUnique } from './guarantee-journey-audit-item.ts';
 import { defaultGuaranteeSceneExecutor, releaseBlocking, runGuaranteeSteps, runIdFor, writeGuaranteeRunReport } from './scene-report-evidence-paths.ts';
 import { allVerifierRefs, discoverGuarantees } from './parse-verifier-registry.ts';
 import { planGuarantees } from './plan-guarantees.ts';
@@ -42,6 +42,12 @@ export async function runGuarantees(input: {
 	const diagnostics: GuaranteeDiagnostic[] = [...registry.diagnostics, ...plan.diagnostics];
 	const allResolutions = verifierDefinitionsByRef(registry.verifierRegistries);
 	const verifierCache = new Map<string, GuaranteeVerifierExecutionResult>();
+	const sceneCache = new Map<string, GuaranteeVerifierExecutionResult>();
+	const state: GuaranteeRunState = {
+		schemaVersion: 'treeseed.guarantee-run-state/v2',
+		runId,
+		values: {},
+	};
 	const graph = buildGuaranteeDependencyGraph({ guarantees: registry.guarantees, filter, includeDependencies: input.includeDependencies !== false });
 	diagnostics.push(...graph.diagnostics);
 	const selectedIds = graph.selectedIds;
@@ -166,6 +172,8 @@ export async function runGuarantees(input: {
 				sceneExecutor: input.sceneExecutor ?? defaultGuaranteeSceneExecutor,
 				verifierExecutor: input.verifierExecutor ?? defaultGuaranteeVerifierExecutor,
 				verifierCache,
+				sceneCache,
+				runState: state,
 				record: input.record,
 				sceneArtifacts: input.sceneArtifacts,
 				device: input.device,
@@ -199,24 +207,63 @@ export async function runGuarantees(input: {
 		completedAt,
 		outputRoot,
 		statePath: relativeEvidencePath(workspaceRoot, resolve(outputRoot, 'state.json')),
+		executionGraphPath: relativeEvidencePath(workspaceRoot, resolve(outputRoot, 'execution-graph.json')),
 		plan,
 		results,
 		diagnostics,
 		counts,
 	};
 	mkdirSync(outputRoot, { recursive: true });
-	const state: GuaranteeRunState = {
-		schemaVersion: 'treeseed.guarantee-run-state/v1',
-		runId,
-		values: {},
-	};
 	writeFileSync(resolve(outputRoot, 'state.json'), `${JSON.stringify(state, null, 2)}\n`);
+	const executionGraph = buildExecutionGraphReport({ runId, environment, plan: report.plan.entries, results });
+	writeFileSync(resolve(outputRoot, 'execution-graph.json'), `${JSON.stringify(executionGraph, null, 2)}\n`);
 	const writeResult = writeGuaranteeRunReport({ report, registry });
 	if (!writeResult.ok) {
 		report.ok = false;
 		report.diagnostics.push(...writeResult.diagnostics);
 	}
 	return report;
+}
+
+export function buildExecutionGraphReport(input: {
+	runId: string;
+	environment: string;
+	plan: GuaranteeRunReport['plan']['entries'];
+	results: GuaranteeRunResult[];
+}): GuaranteeExecutionGraphReport {
+	const resultById = new Map(input.results.map((entry) => [entry.id, entry]));
+	const executionByGuarantee = new Map(input.plan.map((entry) => [entry.id, entry.sceneExecutionKey ?? entry.id]));
+	const nodes = new Map<string, GuaranteeExecutionGraphReport['nodes'][number]>();
+	for (const entry of input.plan.filter((candidate) => candidate.sceneManifest)) {
+		const executionKey = entry.sceneExecutionKey ?? entry.id;
+		for (const device of entry.devices.length ? entry.devices : ['desktop_chromium']) {
+			const id = `${executionKey}@${device}`;
+			const existing = nodes.get(id);
+			const result = resultById.get(entry.id);
+			nodes.set(id, {
+				id,
+				executionKey,
+				device,
+				guaranteeIds: sortedUnique([...(existing?.guaranteeIds ?? []), entry.id]),
+				dependsOn: sortedUnique([
+					...(existing?.dependsOn ?? []),
+					...entry.dependsOn
+						.map((dependency) => `${executionByGuarantee.get(dependency) ?? dependency}@${device}`)
+						.filter((dependencyId) => dependencyId !== id),
+				]).filter((dependencyId) => dependencyId !== id),
+				producesState: sortedUnique([...(existing?.producesState ?? []), ...arrayOrEmpty(entry.producesState)]),
+				consumesState: sortedUnique([...(existing?.consumesState ?? []), ...arrayOrEmpty(entry.consumesState)]),
+				status: result?.status ?? existing?.status ?? 'planned',
+				evidence: sortedUnique([...(existing?.evidence ?? []), ...arrayOrEmpty(result?.evidence)]),
+			});
+		}
+	}
+	return {
+		schemaVersion: 'treeseed.guarantee-execution-graph/v1',
+		runId: input.runId,
+		environment: input.environment,
+		nodes: [...nodes.values()],
+	};
 }
 
 export function createGuaranteeStatusReport(input: { workspaceRoot: string }) {

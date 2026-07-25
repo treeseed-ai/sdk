@@ -13,6 +13,7 @@ export type SceneTimelineWriter = {
 
 export type SceneRuntimePluginContext = {
 	projectRoot: string;
+	runId: string;
 	scene: SceneManifest;
 	environment: SceneEnvironment;
 	baseUrl: string;

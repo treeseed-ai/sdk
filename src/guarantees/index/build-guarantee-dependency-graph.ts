@@ -61,22 +61,29 @@ export function buildGuaranteeDependencyGraph(input: { guarantees: LoadedGuarant
 	}
 	for (const [key, producers] of producersByStateKey) {
 		const unique = [...new Set(producers)];
-		if (unique.length > 1) {
+		const executionGroups = new Map<string, string[]>();
+		for (const id of unique) {
+			const executionKey = byId.get(id)?.manifest.scene?.executionKey ?? id;
+			executionGroups.set(executionKey, [...arrayOrEmpty(executionGroups.get(executionKey)), id]);
+		}
+		if (executionGroups.size > 1) {
 			diagnostics.push(diagnostic(
 				'error',
 				'guarantee.state_duplicate_producer',
-				`State key ${key} is produced by multiple included guarantees: ${unique.join(', ')}.`,
+				`State key ${key} is produced by multiple execution nodes: ${[...executionGroups.keys()].join(', ')}.`,
 				'journey.producesState',
 				byId.get(unique[0])?.sourcePath,
 			));
 		}
-		producersByStateKey.set(key, unique);
+		producersByStateKey.set(key, [...executionGroups.values()].map((ids) => ids[0]!));
 	}
 	for (const [id, keys] of stateConsumes) {
 		for (const key of keys) {
 			const producers = arrayOrEmpty(producersByStateKey.get(key));
 			const producer = producers.length === 1 ? producers[0] : undefined;
-			if (producer && producer !== id && includedIds.has(producer)) {
+			const producerExecutionKey = producer ? byId.get(producer)?.manifest.scene?.executionKey ?? producer : undefined;
+			const consumerExecutionKey = byId.get(id)?.manifest.scene?.executionKey ?? id;
+			if (producer && producerExecutionKey !== consumerExecutionKey && includedIds.has(producer)) {
 				const deps = arrayOrEmpty(depMap.get(id));
 				if (!deps.includes(producer)) deps.push(producer);
 				depMap.set(id, deps.sort((a, b) => sortGuaranteeEntries(byId.get(a)!, byId.get(b)!)));

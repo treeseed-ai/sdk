@@ -31,14 +31,35 @@ export type GuaranteeJourneyAuditItem = {
 };
 
 export type GuaranteeRunState = {
-	schemaVersion: 'treeseed.guarantee-run-state/v1';
+	schemaVersion: 'treeseed.guarantee-run-state/v2';
 	runId: string;
 	values: Record<string, {
 		producerGuaranteeId: string;
-		kind: 'user' | 'team' | 'project' | 'host' | 'capacity-provider' | 'workday' | 'operation' | 'content' | 'custom';
+		executionKey: string;
+		device: string;
+		kind: 'browser-storage' | 'marker' | 'user' | 'team' | 'project' | 'host' | 'capacity-provider' | 'workday' | 'operation' | 'content' | 'custom';
 		value: unknown;
 		createdAt: string;
 	}>;
+};
+
+export type GuaranteeExecutionGraphNode = {
+	id: string;
+	executionKey: string;
+	device: string;
+	guaranteeIds: string[];
+	dependsOn: string[];
+	producesState: string[];
+	consumesState: string[];
+	status: GuaranteeRunStatus | 'planned';
+	evidence: string[];
+};
+
+export type GuaranteeExecutionGraphReport = {
+	schemaVersion: 'treeseed.guarantee-execution-graph/v1';
+	runId: string;
+	environment: string;
+	nodes: GuaranteeExecutionGraphNode[];
 };
 
 export type GuaranteeVerifierResolution = {
@@ -97,6 +118,7 @@ export type GuaranteeRunReport = {
 	completedAt: string;
 	outputRoot: string;
 	statePath?: string;
+	executionGraphPath?: string;
 	plan: GuaranteePlanReport;
 	results: GuaranteeRunResult[];
 	diagnostics: GuaranteeDiagnostic[];
@@ -148,6 +170,9 @@ export type GuaranteeSceneExecutionInput = {
 	outputRoot: string;
 	guarantee: LoadedGuarantee & { manifest: GuaranteeManifest };
 	scenePath: string;
+	executionKey: string;
+	sceneCache: Map<string, GuaranteeVerifierExecutionResult>;
+	runState: GuaranteeRunState;
 	record?: boolean;
 	artifactMode?: 'full' | 'screenshots';
 	device?: string;

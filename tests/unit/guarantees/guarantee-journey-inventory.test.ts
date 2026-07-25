@@ -31,8 +31,8 @@ describe('guarantee journey inventory', () => {
     );
   });
 
-  it('requires every scene-backed guarantee to carry service journey intent', () => {
-    for (const item of inventory.items) {
+  it('requires every active scene-backed guarantee to carry service journey intent', () => {
+    for (const item of inventory.items.filter((candidate) => candidate.status === 'active')) {
       expect(item.workflowStepCount, item.guaranteeId).toBeGreaterThanOrEqual(2);
       expect(item.interactiveStepCount, item.guaranteeId).toBeGreaterThanOrEqual(1);
       expect(

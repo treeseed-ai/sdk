@@ -327,7 +327,7 @@ workflow:
 `;
 }
 describe('scene Playwright runner foundation', () => {
-it('reports deferred runtime actions and stops non-continuable workflows at the failed step', async () => {
+it('reports failed API runtime actions and stops non-continuable workflows at the failed step', async () => {
 		const root = workspace();
 		writeScene(root, 'deferred-action', `schemaVersion: treeseed.scene/v1
 id: deferred-action
@@ -356,7 +356,7 @@ workflow:
 		expect(report.ok).toBe(false);
 		expect(report.failedStep).toBe('request-api');
 		expect(report.steps.map((step) => step.id)).toEqual(['request-api']);
-		expect(report.diagnostics.some((entry) => entry.code === 'scene.unsupported_runtime_action')).toBe(true);
+		expect(report.diagnostics.some((entry) => entry.code === 'scene.api_request_failed')).toBe(true);
 		expect(adapter.page.calls).not.toContain('goto:http://example.test/after');
 	});
 });

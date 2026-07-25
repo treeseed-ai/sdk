@@ -81,6 +81,7 @@ export function parseAction(value: unknown, path: string, diagnostics: SceneDiag
 				...(optionalString(spec, 'subjectIncludes') ? { subjectIncludes: optionalString(spec, 'subjectIncludes') } : {}),
 				...(spec.displayInboxSeconds !== undefined ? { displayInboxSeconds: positiveNumberField(spec, 'displayInboxSeconds', undefined, `${path}.mailpitConfirmLatest`, diagnostics) } : {}),
 				...(spec.displayMessageSeconds !== undefined ? { displayMessageSeconds: positiveNumberField(spec, 'displayMessageSeconds', undefined, `${path}.mailpitConfirmLatest`, diagnostics) } : {}),
+				...(typeof spec.navigate === 'boolean' ? { navigate: spec.navigate } : {}),
 			},
 		};
 	}
@@ -119,7 +120,12 @@ export function parseExpectation(value: unknown, path: string, diagnostics: Scen
 		const visible = arrayField(value, 'visible', path, diagnostics) ?? [];
 		expectation.visible = visible.map((entry, index) => parseSelector(entry, `${path}.visible[${index}]`, diagnostics)).filter((entry): entry is SceneSelector => Boolean(entry));
 	}
+	if (value.notVisible !== undefined) {
+		const notVisible = arrayField(value, 'notVisible', path, diagnostics) ?? [];
+		expectation.notVisible = notVisible.map((entry, index) => parseSelector(entry, `${path}.notVisible[${index}]`, diagnostics)).filter((entry): entry is SceneSelector => Boolean(entry));
+	}
 	if (value.text !== undefined) expectation.text = asString(value.text);
+	if (value.notText !== undefined) expectation.notText = asString(value.notText);
 	if (value.urlIncludes !== undefined) expectation.urlIncludes = asString(value.urlIncludes);
 	if (value.operation !== undefined) {
 		if (!isRecord(value.operation)) {
@@ -140,7 +146,7 @@ export function parseExpectation(value: unknown, path: string, diagnostics: Scen
 
 export function expectationKeys(expectation: SceneExpectation | undefined) {
 	if (!expectation) return [];
-	return ['visible', 'text', 'urlIncludes', 'operation'].filter((key) => expectation[key as keyof SceneExpectation] !== undefined);
+	return ['visible', 'notVisible', 'text', 'notText', 'urlIncludes', 'operation'].filter((key) => expectation[key as keyof SceneExpectation] !== undefined);
 }
 
 export function actionCanOmitExpectation(action: SceneAction | null) {

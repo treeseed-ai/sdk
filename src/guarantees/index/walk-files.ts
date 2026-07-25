@@ -87,6 +87,7 @@ export function parseScene(value: unknown): GuaranteeSceneContract | undefined {
 	return {
 		...(typeof value.required === 'boolean' ? { required: value.required } : {}),
 		...(typeof value.manifest === 'string' ? { manifest: value.manifest } : {}),
+		...(typeof value.executionKey === 'string' && value.executionKey.trim() ? { executionKey: value.executionKey.trim() } : {}),
 		...(isRecord(value.mode)
 			? { mode: { acceptance: mode.acceptance === true, demo: mode.demo === true, training: mode.training === true } }
 			: {}),

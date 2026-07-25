@@ -34,6 +34,7 @@ export function createPlaywrightSceneBrowserAdapter(): SceneBrowserAdapter {
 					isMobile: input.isMobile ?? false,
 					hasTouch: input.hasTouch ?? false,
 					...(input.userAgent ? { userAgent: input.userAgent } : {}),
+					...(input.storageStatePath ? { storageState: input.storageStatePath } : {}),
 					...(input.recordVideoDir ? { recordVideo: { dir: input.recordVideoDir, size: input.videoSize ?? input.viewport } } : {}),
 				});
 				const page = await context.newPage();
@@ -53,6 +54,9 @@ export function createPlaywrightSceneBrowserAdapter(): SceneBrowserAdapter {
 						} catch {
 							return [];
 						}
+					},
+					async saveStorageState(path: string) {
+						await context.storageState({ path });
 					},
 					async close() {
 						await context.close().catch(() => undefined);

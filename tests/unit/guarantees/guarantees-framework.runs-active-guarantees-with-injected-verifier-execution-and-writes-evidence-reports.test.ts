@@ -119,6 +119,15 @@ verifiers:
 		expect(report.counts.passed).toBe(1);
 		expect(report.results[0]?.steps.map((step) => step.ref)).toEqual(['fixture.question.api', 'fixture.question.content', 'fixture.question.audit']);
 		expect(report.outputRoot).toContain('.treeseed/guarantees/runs/2026-01-01T00-00-00-000Z');
+		expect(JSON.parse(readFileSync(resolve(root, report.statePath), 'utf8'))).toMatchObject({
+			schemaVersion: 'treeseed.guarantee-run-state/v2',
+			runId: report.runId,
+			values: {},
+		});
+		expect(JSON.parse(readFileSync(resolve(root, report.executionGraphPath), 'utf8'))).toMatchObject({
+			schemaVersion: 'treeseed.guarantee-execution-graph/v1',
+			runId: report.runId,
+		});
 	});
 
 it('normalizes sparse verifier results and permits explicitly allowed skipped guarantees', async () => {

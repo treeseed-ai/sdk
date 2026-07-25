@@ -55,6 +55,7 @@ export type GuaranteeApiContract = GuaranteeVerifierContract;
 export type GuaranteeSceneContract = {
 	required?: boolean;
 	manifest?: string;
+	executionKey?: string;
 	mode?: {
 		acceptance?: boolean;
 		demo?: boolean;
@@ -105,6 +106,7 @@ export type GuaranteeManifest = {
 		optional?: GuaranteeDevice[];
 	};
 	gates: GuaranteeGate[];
+	devices: GuaranteeDevice[];
 	preconditions: {
 		fixtures?: string[];
 		notes?: string[];
@@ -209,6 +211,7 @@ export type GuaranteePlanEntry = {
 	selected: boolean;
 	dependency: boolean;
 	sceneManifest?: string;
+	sceneExecutionKey?: string;
 	apiVerifierRefs: string[];
 	contentVerifierRefs: string[];
 	auditVerifierRefs: string[];

@@ -100,6 +100,7 @@ export type SceneRunReport = {
 		sourceRunId: string | null;
 	} | null;
 	progressPath: string | null;
+	storageStatePath?: string | null;
 	warnings: SceneDiagnostic[];
 	blockers: SceneDiagnostic[];
 	diagnostics: SceneDiagnostic[];
@@ -189,6 +190,7 @@ export type SceneBrowserLaunchInput = {
 	deviceScaleFactor?: number;
 	isMobile?: boolean;
 	hasTouch?: boolean;
+	storageStatePath?: string;
 };
 
 export type SceneLocator = {
@@ -221,6 +223,7 @@ export type SceneBrowserSession = {
 	startTracing?(): Promise<void>;
 	stopTracing?(tracePath: string): Promise<void>;
 	videoPaths?(): Promise<string[]>;
+	saveStorageState?(path: string): Promise<void>;
 	close(): Promise<void>;
 };
 

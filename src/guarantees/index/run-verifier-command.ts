@@ -108,7 +108,7 @@ export function validateGuaranteeSceneJourneyContract(input: { scenePath: string
 		diagnostics.push(diagnostic('error', 'guarantee.scene_missing_service_journey', 'Scene-backed active guarantees must declare journey.kind: service so evidence is tied to a service journey contract.', 'scene.journey.kind', input.sourcePath));
 	}
 	const actionKinds = workflow.map((step) => sceneActionKindFromManifestAction((step as { action?: unknown } | null)?.action));
-	const interactiveActions = actionKinds.filter((kind) => kind !== 'goto' && kind !== 'pause');
+	const interactiveActions = actionKinds.filter((kind) => !['goto', 'pause', 'keyboard'].includes(kind));
 	if (workflow.length < minimumSteps || interactiveActions.length === 0) {
 		diagnostics.push(diagnostic(
 			'error',

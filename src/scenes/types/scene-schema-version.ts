@@ -199,13 +199,15 @@ export type SceneAction =
 	| { select: SceneSelector & { value?: string; label?: string } }
 	| { keyboard: string }
 	| { pause: { mode: 'manual' | 'timed'; prompt?: string; durationSeconds?: number } }
-	| { mailpitConfirmLatest: { mailpitUrl: string; email: string; subjectIncludes?: string; displayInboxSeconds?: number; displayMessageSeconds?: number } }
+	| { mailpitConfirmLatest: { mailpitUrl: string; email: string; subjectIncludes?: string; displayInboxSeconds?: number; displayMessageSeconds?: number; navigate?: boolean } }
 	| { apiRequest: Record<string, unknown> }
 	| { waitForOperation: SceneOperationWaitSpec };
 
 export type SceneExpectation = {
 	visible?: SceneSelector[];
+	notVisible?: SceneSelector[];
 	text?: string;
+	notText?: string;
 	urlIncludes?: string;
 	operation?: {
 		id?: string;

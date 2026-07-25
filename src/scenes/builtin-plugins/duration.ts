@@ -86,16 +86,16 @@ export function mailpitMessageBody(value: unknown) {
 }
 
 export function extractConfirmationUrl(body: string) {
-	const absolute = body.match(/https?:\/\/[^"' <>\n]+(?:\/auth\/confirm-email\?[^"' <>\n]+|\/team-invites\/[^"' <>\n]+\/accept)/u)?.[0];
+	const absolute = body.match(/https?:\/\/[^"' <>\n]+(?:\/auth\/(?:confirm-email|reset-password)\?[^"' <>\n]+|\/team-invites\/[^"' <>\n]+\/accept)/u)?.[0];
 	if (absolute) return absolute;
-	const relative = body.match(/(?:\/auth\/confirm-email\?[^"' <>\n]+|\/team-invites\/[^"' <>\n]+\/accept)/u)?.[0];
+	const relative = body.match(/(?:\/auth\/(?:confirm-email|reset-password)\?[^"' <>\n]+|\/team-invites\/[^"' <>\n]+\/accept)/u)?.[0];
 	return relative ?? null;
 }
 
 export function resolveMailpitConfirmationUrl(confirmationUrl: string, context: SceneRuntimePluginContext) {
 	try {
 		const parsed = new URL(confirmationUrl);
-		if (parsed.pathname === '/auth/confirm-email' || /^\/team-invites\/[^/]+\/accept$/u.test(parsed.pathname)) {
+		if (parsed.pathname === '/auth/confirm-email' || parsed.pathname === '/auth/reset-password' || /^\/team-invites\/[^/]+\/accept$/u.test(parsed.pathname)) {
 			return context.resolveUrl(`${parsed.pathname}${parsed.search}${parsed.hash}`);
 		}
 	} catch {

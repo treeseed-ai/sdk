@@ -38,6 +38,8 @@ describe('local process reconcile provider', () => {
 		expect(api?.env.TREESEED_API_BASE_URL).toBe('http://127.0.0.1:3000');
 		expect(api?.env.TREESEED_PLATFORM_RUNNER_SECRET).toBe('treeseed-platform-runner-dev-secret');
 		expect(web?.env.TREESEED_MARKET_API_BASE_URL).toBe('http://127.0.0.1:3000');
+		expect(web?.args).toContain('./packages/sdk/scripts/tenant/tenant-astro-command.ts');
+		expect(web?.sourceClosureDigest).toMatch(/^[a-f0-9]{64}$/u);
 		expect(runner?.env.TREESEED_DATABASE_URL).toBe(api?.env.TREESEED_DATABASE_URL);
 		expect(runner?.env.TREESEED_PLATFORM_RUNNER_ENVIRONMENT).toBe('local');
 		expect(runner?.health).toEqual([{ id: 'operations-runner', kind: 'http', url: 'http://127.0.0.1:3001/readyz', timeoutMs: 10_000 }]);

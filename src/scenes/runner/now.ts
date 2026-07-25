@@ -194,18 +194,49 @@ export function canContinueAfterFailure(scene: SceneManifest, step: { demoOnly?:
 }
 
 export function sceneWithRunOverrides(scene: SceneManifest, input: SceneRunOptions): SceneManifest {
-	if (!input.authRole) return scene;
+	const runId = substitutionToken(input.runId ?? 'scene-run');
+	const deviceId = substitutionToken(String(input.device ?? 'default'));
+	const runShort = shortSubstitutionToken(input.runId ?? 'scene-run');
+	const substituted = substituteSceneTokens(scene, { runId, runShort, deviceId });
+	if (!input.authRole) return substituted;
 	return {
-		...scene,
+		...substituted,
 		setup: {
-			...scene.setup,
+			...substituted.setup,
 			auth: {
-				...(scene.setup.auth ?? {}),
+				...(substituted.setup.auth ?? {}),
 				required: input.authRole !== 'anonymous',
-				role: (scene.setup.auth?.role ?? input.authRole) as SceneVisualAuditRole,
+				role: (substituted.setup.auth?.role ?? input.authRole) as SceneVisualAuditRole,
 			},
 		},
 	};
+}
+
+function substitutionToken(value: string) {
+	return value.toLowerCase().replace(/[^a-z0-9-]+/gu, '-').replace(/^-|-$/gu, '').slice(0, 24) || 'default';
+}
+
+function shortSubstitutionToken(value: string) {
+	let hash = 2166136261;
+	for (let index = 0; index < value.length; index += 1) {
+		hash ^= value.charCodeAt(index);
+		hash = Math.imul(hash, 16777619);
+	}
+	return (hash >>> 0).toString(36).padStart(7, '0').slice(0, 10);
+}
+
+function substituteSceneTokens<T>(value: T, tokens: { runId: string; runShort: string; deviceId: string }): T {
+	if (typeof value === 'string') {
+		return value
+			.replaceAll('{{runId}}', tokens.runId)
+			.replaceAll('{{runShort}}', tokens.runShort)
+			.replaceAll('{{deviceId}}', tokens.deviceId) as T;
+	}
+	if (Array.isArray(value)) return value.map((entry) => substituteSceneTokens(entry, tokens)) as T;
+	if (value && typeof value === 'object') {
+		return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, substituteSceneTokens(entry, tokens)])) as T;
+	}
+	return value;
 }
 
 export function appendBlockedSceneLogs(

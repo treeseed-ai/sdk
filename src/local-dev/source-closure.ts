@@ -11,6 +11,21 @@ const API_RUNTIME_INPUTS = [
 	'packages/sdk/package.json',
 ] as const;
 
+const WEB_RUNTIME_INPUTS = [
+	'src',
+	'astro.config.mjs',
+	'package.json',
+	'treeseed.site.yaml',
+	'packages/admin/dist',
+	'packages/admin/package.json',
+	'packages/core/dist',
+	'packages/core/package.json',
+	'packages/ui/dist',
+	'packages/ui/package.json',
+	'packages/sdk/dist',
+	'packages/sdk/package.json',
+] as const;
+
 function closureFiles(path: string): string[] {
 	if (!existsSync(path)) return [];
 	const stat = lstatSync(path);
@@ -26,9 +41,14 @@ export function managedDevSourceClosureDigest(input: {
 	tenantRoot: string;
 	surface: string;
 }): string | null {
-	if (input.surface !== 'api' && input.surface !== 'operations-runner') return null;
+	const configuredPaths = input.surface === 'web'
+		? WEB_RUNTIME_INPUTS
+		: input.surface === 'api' || input.surface === 'operations-runner'
+			? API_RUNTIME_INPUTS
+			: null;
+	if (!configuredPaths) return null;
 	const hash = createHash('sha256');
-	for (const configuredPath of API_RUNTIME_INPUTS) {
+	for (const configuredPath of configuredPaths) {
 		const absolutePath = resolve(input.tenantRoot, configuredPath);
 		const files = closureFiles(absolutePath);
 		hash.update(configuredPath);

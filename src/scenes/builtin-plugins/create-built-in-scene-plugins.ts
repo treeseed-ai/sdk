@@ -1,4 +1,4 @@
-import { resolveSceneBaseUrl } from '../support/execution/base-url.ts';
+import { resolveSceneApiBaseUrl, resolveSceneBaseUrl } from '../support/execution/base-url.ts';
 import { prepareSceneEnvironment } from '../configuration/environment.ts';
 import { resolveSceneAuth } from '../accounts/auth.ts';
 import { planOrApplySceneSeed } from '../seeds/seed.ts';
@@ -13,6 +13,12 @@ import type {
 	SceneSelector,
 } from '../types.ts';
 import { assertionReport, extractConfirmationUrl, mailpitApiUrl, mailpitMessageBody, mailpitMessageId, mailpitMessageRecipients, mailpitMessageSubject, mailpitMessages, navigateScenePage, resolveMailpitConfirmationUrl, sceneRuntimeValue, sleep } from './duration.ts';
+
+function failureMessage(error: unknown, fallback: string) {
+	if (error instanceof Error) return error.message;
+	if (typeof error === 'string' && error) return error;
+	try { return JSON.stringify(error) || fallback; } catch { return fallback; }
+}
 
 export function createBuiltInScenePlugins(): ScenePlugin[] {
 	return [
@@ -88,10 +94,39 @@ export function createBuiltInScenePlugins(): ScenePlugin[] {
 				apiRequest: {
 					id: 'apiRequest',
 					phase: 4,
-					status: 'deferred',
-					summary: 'API request actions are reserved for the plugin-contract extension point.',
-					async run() {
-						return { ok: false, diagnostics: [sceneErrorDiagnostic('scene.unsupported_runtime_action', 'Action "apiRequest" is deferred until an API action plugin is available.', 'workflow.action.apiRequest')] };
+					status: 'available',
+					summary: 'Issue a run-scoped HTTP request against the scene web or API surface.',
+					async run({ action, step, context }) {
+						if (!('apiRequest' in action)) return { ok: false, diagnostics: [sceneErrorDiagnostic('scene.invalid_action', 'Expected apiRequest action.', `workflow.${step.id}.action.apiRequest`)] };
+						const raw = action.apiRequest;
+						const path = typeof raw.path === 'string' ? sceneRuntimeValue(raw.path, context) : '';
+						if (!path) return { ok: false, diagnostics: [sceneErrorDiagnostic('scene.invalid_action', 'apiRequest.path is required.', `workflow.${step.id}.action.apiRequest.path`)] };
+						const method = typeof raw.method === 'string' ? raw.method.toUpperCase() : 'GET';
+						const apiBaseUrl = resolveSceneApiBaseUrl({
+							projectRoot: context.projectRoot,
+							environment: context.environment,
+							webBaseUrl: context.baseUrl,
+						});
+						const baseUrl = raw.base === 'web' ? context.baseUrl : apiBaseUrl;
+						const headers = runtimeRecord(raw.headers, context);
+						const body = raw.body === undefined ? undefined : JSON.stringify(runtimeValue(raw.body, context));
+						if (body && !hasHeader(headers, 'content-type')) headers['content-type'] = 'application/json';
+						try {
+							const response = await fetch(new URL(path, `${baseUrl.replace(/\/+$/u, '')}/`), {
+								method,
+								headers,
+								body,
+							});
+							const expectedStatus = typeof raw.expectedStatus === 'number' ? raw.expectedStatus : 200;
+							if (response.status !== expectedStatus) {
+								const responseBody = (await response.text()).slice(0, 500);
+								return { ok: false, diagnostics: [sceneErrorDiagnostic('scene.api_request_failed', `Expected HTTP ${expectedStatus}, received ${response.status}: ${responseBody}`, `workflow.${step.id}.action.apiRequest`)] };
+							}
+							context.timeline.push('api.request', { method, path, status: response.status, base: raw.base === 'web' ? 'web' : 'api' }, step.id);
+							return { ok: true, diagnostics: [] };
+						} catch (error) {
+							return { ok: false, diagnostics: [sceneErrorDiagnostic('scene.api_request_failed', failureMessage(error, 'API request failed.'), `workflow.${step.id}.action.apiRequest`)] };
+						}
 					},
 				},
 				pause: {
@@ -180,10 +215,10 @@ export function createBuiltInScenePlugins(): ScenePlugin[] {
 									await context.sleep(displayMessageSeconds * 1000);
 								}
 								context.timeline.push('mailpit.confirm.open', { messageId: id, email, url: resolvedUrl }, step.id);
-								await navigateScenePage(context.session.page, resolvedUrl);
+								if (raw.navigate !== false) await navigateScenePage(context.session.page, resolvedUrl);
 								return { ok: true, diagnostics: [] };
 						} catch (error) {
-							return { ok: false, diagnostics: [sceneErrorDiagnostic('scene.mailpit_unavailable', error instanceof Error ? error.message : String(error ?? 'Mailpit confirmation failed.'), `workflow.${step.id}.action.mailpitConfirmLatest`)] };
+							return { ok: false, diagnostics: [sceneErrorDiagnostic('scene.mailpit_unavailable', failureMessage(error, 'Mailpit confirmation failed.'), `workflow.${step.id}.action.mailpitConfirmLatest`)] };
 						}
 					},
 				},
@@ -248,6 +283,23 @@ export function createBuiltInScenePlugins(): ScenePlugin[] {
 						return results.find((result) => result.status === 'failed') ?? results[0] ?? await assertionReport('visible', async () => undefined);
 					},
 				},
+				notVisible: {
+					id: 'notVisible',
+					phase: 2,
+					status: 'available',
+					summary: 'Expect selectors to be absent or hidden.',
+					async run({ value, step, context }) {
+						const selectors = Array.isArray(value) ? value as SceneSelector[] : [];
+						const results = [];
+						for (const selector of selectors) {
+							results.push(await assertionReport('notVisible', async () => {
+								const locator = context.resolveSelector(selector);
+								if (await locator.isVisible()) throw sceneErrorDiagnostic('scene.selector_unexpected', 'Expected selector to be absent or hidden.', `workflow.${step.id}.expect.notVisible`);
+							}, selector));
+						}
+						return results.find((result) => result.status === 'failed') ?? results[0] ?? await assertionReport('notVisible', async () => undefined);
+					},
+				},
 				text: {
 					id: 'text',
 					phase: 2,
@@ -261,6 +313,21 @@ export function createBuiltInScenePlugins(): ScenePlugin[] {
 							const locator = textLocator.first ? textLocator.first() : textLocator;
 							await locator.waitFor({ state: 'visible', timeout: 10_000 });
 							if (!(await locator.isVisible())) throw sceneErrorDiagnostic('scene.text_not_found', `Expected text to be visible: ${text}.`, `workflow.${step.id}.expect.text`);
+						}, selector);
+					},
+				},
+				notText: {
+					id: 'notText',
+					phase: 2,
+					status: 'available',
+					summary: 'Expect text to be absent or hidden.',
+					async run({ value, step, context }) {
+						const text = String(value ?? '');
+						const selector: SceneSelector = { text };
+						return assertionReport('notText', async () => {
+							const textLocator = context.session.page.getByText(text);
+							const locator = textLocator.first ? textLocator.first() : textLocator;
+							if (await locator.isVisible()) throw sceneErrorDiagnostic('scene.text_unexpected', `Expected text to be absent: ${text}.`, `workflow.${step.id}.expect.notText`);
 						}, selector);
 					},
 				},
@@ -391,4 +458,20 @@ export function createBuiltInScenePlugins(): ScenePlugin[] {
 			artifacts: Object.fromEntries(['training-json', 'training-markdown', 'training-captions', 'training-chapter-clips'].map((id) => [id, { id, phase: 8 as const, status: 'available' as const, summary: `Built-in training artifact writer: ${id}.` }])),
 		},
 	];
+}
+
+function runtimeValue(value: unknown, context: SceneRuntimePluginContext): unknown {
+	if (typeof value === 'string') return sceneRuntimeValue(value, context);
+	if (Array.isArray(value)) return value.map((entry) => runtimeValue(entry, context));
+	if (!value || typeof value !== 'object') return value;
+	return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, runtimeValue(entry, context)]));
+}
+
+function runtimeRecord(value: unknown, context: SceneRuntimePluginContext): Record<string, string> {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+	return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, String(runtimeValue(entry, context))]));
+}
+
+function hasHeader(headers: Record<string, string>, expected: string) {
+	return Object.keys(headers).some((key) => key.toLowerCase() === expected);
 }

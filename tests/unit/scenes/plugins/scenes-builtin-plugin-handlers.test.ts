@@ -185,6 +185,22 @@ describe('built-in scene plugin handlers', () => {
 		expect(ctx.session.page.goto).toHaveBeenCalledWith('http://local/auth/confirm-email?token=abc', expect.anything());
 		expect((await registry.actions.get('mailpitConfirmLatest')!.run({ action: {}, step, context: ctx } as never)).ok).toBe(false);
 
+		const resetUrl = await listen((request, response) => {
+			response.setHeader('content-type', 'application/json');
+			if (request.url === '/api/v1/messages') {
+				response.end(JSON.stringify({ messages: [{ ID: 'reset-1', Subject: 'Reset password', To: [{ Address: 'user@example.test' }] }] }));
+				return;
+			}
+			response.end(JSON.stringify({ HTML: '<a href=\"http://api.local/auth/reset-password?token=reset-abc\">Reset</a>' }));
+		});
+		const resetContext = context();
+		expect((await registry.actions.get('mailpitConfirmLatest')!.run({
+			action: { mailpitConfirmLatest: { mailpitUrl: resetUrl, email: 'user@example.test', subjectIncludes: 'Reset' } },
+			step,
+			context: resetContext,
+		} as never)).ok).toBe(true);
+		expect(resetContext.session.page.goto).toHaveBeenCalledWith('http://local/auth/reset-password?token=reset-abc', expect.anything());
+
 		const missingMessageUrl = await listen((_request, response) => {
 			response.setHeader('content-type', 'application/json');
 			response.end(JSON.stringify({ messages: [] }));

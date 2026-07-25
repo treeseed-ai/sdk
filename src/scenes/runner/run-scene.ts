@@ -193,10 +193,11 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 			deviceScaleFactor: device?.deviceScaleFactor,
 			isMobile: device?.isMobile,
 			hasTouch: device?.hasTouch,
+			storageStatePath: input.inputStorageStatePath,
 		});
 		registerScenePageObservers({ session, currentStepId: () => currentStepId, consoleErrors, networkErrors, linkedOperationIds, artifacts, timeline });
 		if (tracePath) await session.startTracing?.();
-		if (scene.setup.auth?.role && scene.setup.auth.role !== 'anonymous' && scene.setup.auth.seedOnly !== true) {
+		if (scene.setup.auth?.role && scene.setup.auth.role !== 'anonymous' && scene.setup.auth.seedOnly !== true && !input.inputStorageStatePath) {
 			const signInDiagnostics = await signInSceneVisualAuditRole({
 				page: session.page,
 				baseUrl: baseUrl.baseUrl,
@@ -425,6 +426,9 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 			}
 		}
 		if (tracePath) await session.stopTracing?.(tracePath);
+		if (input.outputStorageStatePath && !diagnostics.some((entry) => entry.severity === 'error')) {
+			await session.saveStorageState?.(input.outputStorageStatePath);
+		}
 		await session.close().catch(() => undefined);
 		sessionClosed = true;
 		const videoPaths = await session.videoPaths?.() ?? [];
@@ -481,6 +485,7 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 		checkpoints,
 		resumedFrom: null,
 		progressPath: artifacts.progressPath!,
+		storageStatePath: input.outputStorageStatePath ?? null,
 		warnings: splitDiagnostics(diagnostics, 'warning'),
 		blockers: splitDiagnostics(diagnostics, 'error'),
 		diagnostics,

@@ -11,6 +11,7 @@ import { refs } from './build-guarantee-dependency-graph.ts';
 export function sceneReportEvidencePaths(workspaceRoot: string, report: {
 	artifacts?: { runRoot?: string; screenshotPaths?: string[] };
 	playwrightTracePath?: string | null;
+	storageStatePath?: string | null;
 	steps?: Array<{ screenshotPath?: string | null }>;
 }) {
 	const primaryScreenshots = [
@@ -20,6 +21,7 @@ export function sceneReportEvidencePaths(workspaceRoot: string, report: {
 	return sortedUnique([
 		...primaryScreenshots,
 		report.playwrightTracePath ?? undefined,
+		report.storageStatePath ?? undefined,
 		report.artifacts?.runRoot,
 	].filter(Boolean).map((entry) => relativeEvidencePath(workspaceRoot, entry!)));
 }
@@ -30,33 +32,35 @@ export async function defaultGuaranteeSceneExecutor(input: GuaranteeSceneExecuti
 		const scenes = await import('../../scenes/index.ts');
 		const authRole = sceneAuthRoleForGuarantee(input.guarantee.manifest);
 		const runs = sceneDeviceRunsForGuarantee(input.device ? [input.device] : input.guarantee.manifest.devices.required);
-		if (runs.length > 1) {
-			const runReports = [];
-			for (const run of runs) {
-				const report = await scenes.runScene({
-					projectRoot: input.workspaceRoot,
-					scene: input.scenePath,
-					environment: input.environment,
-					device: run.device,
-					browser: run.browser,
-					authRole,
-					record: input.record,
-					artifactMode: input.artifactMode,
-					mode: 'acceptance',
-					runId: `${input.runId}-${run.id}`,
-				});
-				runReports.push(report);
+		const scene = parseYaml(readFileSync(input.scenePath, 'utf8')) as Record<string, unknown>;
+		const stateRefs = journeyStateRefs(scene);
+		const runResults: GuaranteeVerifierExecutionResult[] = [];
+		for (const run of runs) {
+			const cacheKey = `${input.environment}:${input.executionKey}:${run.id}`;
+			const cached = input.sceneCache.get(cacheKey);
+			if (cached) {
+				runResults.push({ ...cached, summary: `${cached.summary ?? 'Scene passed.'} (cached execution ${input.executionKey})` });
+				continue;
 			}
-			const ok = contractDiagnostics.length === 0 && runReports.every((entry: { ok: boolean }) => entry.ok);
-			return {
-				status: ok ? 'passed' : 'failed',
-				summary: ok ? 'Scene device matrix passed.' : contractDiagnostics.length > 0 ? 'Scene is not a complete service journey.' : 'Scene device matrix failed.',
-				evidence: runReports.flatMap((entry) => sceneReportEvidencePaths(input.workspaceRoot, entry)),
-				diagnostics: [...contractDiagnostics, ...runReports.flatMap((entry: { diagnostics?: unknown[] }) => arrayOrEmpty(entry.diagnostics))] as GuaranteeDiagnostic[],
-			};
-		}
-		const run = runs[0]!;
-		const report = await scenes.runScene({
+			const browserInputs = stateRefs.consumes.filter((entry) => entry.kind === 'browser-storage');
+			const browserOutputs = stateRefs.produces.filter((entry) => entry.kind === 'browser-storage');
+			if (browserInputs.length > 1 || browserOutputs.length > 1) {
+				runResults.push(sceneStateFailure(input, 'guarantee.scene_browser_state_ambiguous', 'A scene may consume and produce at most one browser-storage state.'));
+				continue;
+			}
+			const inputState = browserInputs[0] ? input.runState.values[stateValueKey(browserInputs[0].key, run.id)] : undefined;
+			if (browserInputs[0] && !inputState) {
+				runResults.push(sceneStateFailure(input, 'guarantee.scene_state_missing', `Missing browser state ${browserInputs[0].key} for ${run.id}.`));
+				continue;
+			}
+			const outputStorageStatePath = browserOutputs[0]
+				? resolve(input.outputRoot, 'state', `${safeStateKey(browserOutputs[0].key)}-${run.id}.json`)
+				: undefined;
+			if (outputStorageStatePath) mkdirSync(dirname(outputStorageStatePath), { recursive: true });
+			const inputStorageStatePath = typeof (inputState?.value as { path?: unknown } | undefined)?.path === 'string'
+				? (inputState!.value as { path: string }).path
+				: undefined;
+			const report = await scenes.runScene({
 				projectRoot: input.workspaceRoot,
 				scene: input.scenePath,
 				environment: input.environment,
@@ -67,19 +71,79 @@ export async function defaultGuaranteeSceneExecutor(input: GuaranteeSceneExecuti
 				artifactMode: input.artifactMode,
 				mode: 'acceptance',
 				runId: `${input.runId}-${run.id}`,
-		});
-		const ok = contractDiagnostics.length === 0 && report.ok;
+				...(inputStorageStatePath ? { inputStorageStatePath } : {}),
+				...(outputStorageStatePath ? { outputStorageStatePath } : {}),
+			});
+			const ok = contractDiagnostics.length === 0 && report.ok;
+			const result: GuaranteeVerifierExecutionResult = {
+				status: ok ? 'passed' : 'failed',
+				summary: ok ? 'Scene passed.' : contractDiagnostics.length > 0 ? 'Scene is not a complete service journey.' : 'Scene failed.',
+				evidence: sceneReportEvidencePaths(input.workspaceRoot, report),
+				diagnostics: [...contractDiagnostics, ...arrayOrEmpty(report.diagnostics)] as GuaranteeDiagnostic[],
+			};
+			if (ok) recordProducedState({ input, refs: stateRefs.produces, device: run.id, outputStorageStatePath });
+			input.sceneCache.set(cacheKey, result);
+			runResults.push(result);
+		}
+		const ok = runResults.length > 0 && runResults.every((entry) => entry.status === 'passed');
 		return {
 			status: ok ? 'passed' : 'failed',
-			summary: ok ? 'Scene passed.' : contractDiagnostics.length > 0 ? 'Scene is not a complete service journey.' : 'Scene failed.',
-			evidence: sceneReportEvidencePaths(input.workspaceRoot, report),
-			diagnostics: [...contractDiagnostics, ...arrayOrEmpty(report.diagnostics)],
+			summary: ok ? (runs.length > 1 ? 'Scene device graph passed.' : runResults[0]?.summary) : 'Scene device graph failed.',
+			evidence: runResults.flatMap((entry) => arrayOrEmpty(entry.evidence)),
+			diagnostics: runResults.flatMap((entry) => arrayOrEmpty(entry.diagnostics)),
 		};
 	} catch (error) {
 		return {
 			status: 'failed',
 			summary: error instanceof Error ? error.message : String(error),
 			diagnostics: [diagnostic('error', 'guarantee.scene_execution_failed', error instanceof Error ? error.message : String(error), 'scene', input.guarantee.sourcePath)],
+		};
+	}
+}
+
+type JourneyStateRef = { key: string; kind: string };
+
+function journeyStateRefs(scene: Record<string, unknown>) {
+	const journey = scene.journey && typeof scene.journey === 'object' ? scene.journey as Record<string, unknown> : {};
+	const refs = (field: 'producesState' | 'consumesState') => arrayOrEmpty(journey[field] as unknown[])
+		.flatMap((entry): JourneyStateRef[] => entry && typeof entry === 'object'
+			&& typeof (entry as Record<string, unknown>).key === 'string'
+			? [{ key: String((entry as Record<string, unknown>).key), kind: String((entry as Record<string, unknown>).kind ?? 'marker') }]
+			: []);
+	return { produces: refs('producesState'), consumes: refs('consumesState') };
+}
+
+function stateValueKey(key: string, device: string) {
+	return `${key}@${device}`;
+}
+
+function safeStateKey(key: string) {
+	return key.replace(/[^a-z0-9._-]+/giu, '-');
+}
+
+function sceneStateFailure(input: GuaranteeSceneExecutionInput, code: string, message: string): GuaranteeVerifierExecutionResult {
+	return {
+		status: 'failed',
+		summary: message,
+		diagnostics: [diagnostic('error', code, message, 'scene.journey', input.guarantee.sourcePath)],
+	};
+}
+
+function recordProducedState(input: {
+	input: GuaranteeSceneExecutionInput;
+	refs: JourneyStateRef[];
+	device: string;
+	outputStorageStatePath?: string;
+}) {
+	const createdAt = new Date().toISOString();
+	for (const ref of input.refs) {
+		input.input.runState.values[stateValueKey(ref.key, input.device)] = {
+			producerGuaranteeId: input.input.guarantee.manifest.id,
+			executionKey: input.input.executionKey,
+			device: input.device,
+			kind: ref.kind === 'browser-storage' ? 'browser-storage' : 'marker',
+			value: ref.kind === 'browser-storage' ? { path: input.outputStorageStatePath } : { ready: true },
+			createdAt,
 		};
 	}
 }
@@ -155,6 +219,8 @@ export async function runGuaranteeSteps(input: {
 	sceneExecutor: GuaranteeSceneExecutor;
 	verifierExecutor: GuaranteeVerifierExecutor;
 	verifierCache: Map<string, GuaranteeVerifierExecutionResult>;
+	sceneCache: Map<string, GuaranteeVerifierExecutionResult>;
+	runState: import('./guarantee-journey-audit-item.ts').GuaranteeRunState;
 	record?: boolean;
 	sceneArtifacts?: 'full' | 'screenshots';
 	device?: string;
@@ -193,6 +259,9 @@ export async function runGuaranteeSteps(input: {
 			outputRoot: input.outputRoot,
 			guarantee: input.guarantee,
 			scenePath,
+			executionKey: scene.executionKey ?? input.guarantee.manifest.id,
+			sceneCache: input.sceneCache,
+			runState: input.runState,
 			record: input.record ?? false,
 			artifactMode: input.sceneArtifacts,
 			device: input.device,

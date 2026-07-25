@@ -27,10 +27,12 @@ export function planGuarantees(input: { workspaceRoot: string; filter?: Guarante
 			...(entry.manifest.surface ? { surface: entry.manifest.surface } : {}),
 			status: entry.manifest.status,
 			gates: entry.manifest.gates,
+			devices: entry.manifest.devices.required,
 			sourcePath: entry.relativePath,
 			selected: selectedIds.has(entry.manifest.id),
 			dependency: !selectedIds.has(entry.manifest.id),
 			...(entry.manifest.scene?.manifest ? { sceneManifest: entry.manifest.scene.manifest } : {}),
+			...(entry.manifest.scene?.executionKey ? { sceneExecutionKey: entry.manifest.scene.executionKey } : {}),
 			apiVerifierRefs: refs(entry.manifest.api),
 			contentVerifierRefs: refs(entry.manifest.content),
 			auditVerifierRefs: refs(entry.manifest.audit),
@@ -179,7 +181,7 @@ export function auditGuaranteeJourneys(input: { workspaceRoot: string; filter?: 
 		const serviceJourney = journey?.kind === 'service';
 		const minimumSteps = typeof journey?.minimumSteps === 'number' ? journey.minimumSteps : 2;
 		const actionKinds = workflow.map(actionKindFromSceneStep);
-		const interactiveStepCount = actionKinds.filter((kind) => kind !== 'goto' && kind !== 'pause').length;
+		const interactiveStepCount = actionKinds.filter((kind) => !['goto', 'pause', 'keyboard'].includes(kind)).length;
 		const currentRoute = normalizeRoutePath(entry.manifest.scene?.entryRoute || sceneRouteFromYaml(scene));
 		const routeExists = Boolean(currentRoute && !currentRoute.includes(':') && [...routes].some((pattern) => routePatternMatches(pattern, currentRoute))) || !currentRoute;
 		const missingSelectors = entry.manifest.status === 'active' && !sceneUsesOnlyStableSelectors(scene);

@@ -80,6 +80,8 @@ export type SceneRunOptions = {
 	artifactMode?: 'full' | 'screenshots';
 	runId?: string;
 	timestamp?: string;
+	inputStorageStatePath?: string;
+	outputStorageStatePath?: string;
 	browserAdapter?: SceneBrowserAdapter;
 	environmentAdapter?: SceneEnvironmentAdapter;
 	authResolver?: SceneAuthResolver;

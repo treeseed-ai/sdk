@@ -136,7 +136,7 @@ export function buildManagedDevProcessSpec(input: {
 		};
 	}
 	const webRuntime = input.options.webRuntime ?? 'local';
-	const tenantAstroCommand = `./packages/sdk/scripts/tenant-astro-command.${'ts'}`;
+	const tenantAstroCommand = `./packages/sdk/scripts/tenant/tenant-astro-command.${'ts'}`;
 	const webArgs = webRuntime === 'provider'
 		? ['--host', host, '--port', String(webPort)]
 		: ['dev', '--host', host, '--port', String(webPort)];
