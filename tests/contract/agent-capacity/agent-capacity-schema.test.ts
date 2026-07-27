@@ -78,7 +78,11 @@ describe('agent capacity market schema', () => {
 
 	it('uses one clean baseline with no capacity compatibility migrations', () => {
 		const migrationDirectory = resolve(process.cwd(), 'drizzle/market');
-		expect(readdirSync(migrationDirectory).filter((file) => file.endsWith('.sql'))).toEqual(['0000_market_control_plane.sql']);
+		const migrationFiles = readdirSync(migrationDirectory).filter((file) => file.endsWith('.sql')).sort();
+		expect(migrationFiles[0]).toBe('0000_market_control_plane.sql');
+		for (const file of migrationFiles.slice(1)) {
+			expect(readFileSync(resolve(migrationDirectory, file), 'utf8')).not.toMatch(/\b(capacity_|workday_|agent_fallback_outputs)\b/u);
+		}
 		const baseline = readFileSync(resolve(migrationDirectory, '0000_market_control_plane.sql'), 'utf8');
 		expect(baseline).toContain('"workday_run_id" text');
 		expect(baseline).toContain('"admission_token" text NOT NULL');

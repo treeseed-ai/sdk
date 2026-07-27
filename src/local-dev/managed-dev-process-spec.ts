@@ -18,11 +18,12 @@ function apiCommand(tenantRoot: string, script: 'api' | 'runner') {
 	};
 }
 
-function localApiEnvironment(apiPort: number) {
+function localApiEnvironment(apiPort: number, webPort: number) {
 	const apiBaseUrl = `http://127.0.0.1:${apiPort}`;
 	return {
 		TREESEED_DATABASE_URL: 'postgresql://treeseed:treeseed-local-dev@127.0.0.1:54329/treeseed_api',
 		TREESEED_API_BASE_URL: apiBaseUrl,
+		TREESEED_SITE_URL: `http://127.0.0.1:${webPort}`,
 		TREESEED_CAPACITY_ACCEPTANCE_API_URL: apiBaseUrl,
 		TREESEED_CAPACITY_ACCEPTANCE_ADMIN_TOKEN: 'tsk_local_treeseed_acceptance_admin',
 		TREESEED_CAPACITY_ACCEPTANCE_AGENT_CLASS_ID: 'planning',
@@ -56,12 +57,13 @@ function localApiEnvironment(apiPort: number) {
 	};
 }
 
-function localWebEnvironment(apiPort: number) {
+function localWebEnvironment(apiPort: number, webPort: number) {
 	const apiBaseUrl = `http://127.0.0.1:${apiPort}`;
 	return {
 		TREESEED_MARKET_API_BASE_URL: apiBaseUrl,
 		TREESEED_CENTRAL_MARKET_API_BASE_URL: apiBaseUrl,
 		TREESEED_API_BASE_URL: apiBaseUrl,
+		TREESEED_SITE_URL: `http://127.0.0.1:${webPort}`,
 		TREESEED_CAPACITY_ACCEPTANCE_API_URL: apiBaseUrl,
 		TREESEED_CAPACITY_ACCEPTANCE_ADMIN_TOKEN: 'tsk_local_treeseed_acceptance_admin',
 		TREESEED_CAPACITY_ACCEPTANCE_AGENT_CLASS_ID: 'planning',
@@ -111,7 +113,7 @@ export function buildManagedDevProcessSpec(input: {
 			id,
 			surface: input.surface,
 			...apiCommand(input.tenantRoot, 'api'),
-			env: { ...localApiEnvironment(apiPort), ...env, HOST: apiHost, PORT: String(apiPort) },
+			env: { ...localApiEnvironment(apiPort, webPort), ...env, HOST: apiHost, PORT: String(apiPort) },
 			port: apiPort,
 			health: [{ id: 'api', kind: 'http', url: `http://${apiHost}:${apiPort}/healthz` }],
 			logPath,
@@ -126,7 +128,7 @@ export function buildManagedDevProcessSpec(input: {
 			id,
 			surface: input.surface,
 			...apiCommand(input.tenantRoot, 'runner'),
-			env: { ...localApiEnvironment(apiPort), ...env, PORT: String(runnerPort) },
+			env: { ...localApiEnvironment(apiPort, webPort), ...env, PORT: String(runnerPort) },
 			port: runnerPort,
 			health: [{ id: 'operations-runner', kind: 'http', url: `http://127.0.0.1:${runnerPort}/readyz`, timeoutMs: 10_000 }],
 			logPath,
@@ -151,9 +153,9 @@ export function buildManagedDevProcessSpec(input: {
 		id: 'web',
 		surface: 'web',
 		...command,
-		env: { ...localWebEnvironment(apiPort), ...env },
+		env: { ...localWebEnvironment(apiPort, webPort), ...env },
 		port: webPort,
-		health: [{ id: 'web', kind: 'http', url: `http://${host}:${webPort}` }],
+		health: [{ id: 'web', kind: 'http', url: `http://${host}:${webPort}`, timeoutMs: 10_000 }],
 		logPath,
 		pidPath,
 		instancePath,

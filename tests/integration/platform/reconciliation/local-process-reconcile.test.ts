@@ -33,14 +33,18 @@ describe('local process reconcile provider', () => {
 		const web = plan.processes.find((entry) => entry.id === 'web');
 		const runner = plan.processes.find((entry) => entry.id === 'operations-runner');
 
-	expect(api?.port).toBe(3000);
-	expect(api?.env.TREESEED_DATABASE_URL).toBe('postgresql://treeseed:treeseed-local-dev@127.0.0.1:54329/treeseed_api');
+		expect(api?.port).toBe(3000);
+		expect(api?.env.TREESEED_DATABASE_URL).toBe('postgresql://treeseed:treeseed-local-dev@127.0.0.1:54329/treeseed_api');
 		expect(api?.env.TREESEED_API_BASE_URL).toBe('http://127.0.0.1:3000');
+		expect(api?.env.TREESEED_SITE_URL).toBe('http://127.0.0.1:4321');
 		expect(api?.env.TREESEED_PLATFORM_RUNNER_SECRET).toBe('treeseed-platform-runner-dev-secret');
 		expect(web?.env.TREESEED_MARKET_API_BASE_URL).toBe('http://127.0.0.1:3000');
+		expect(web?.env.TREESEED_SITE_URL).toBe('http://127.0.0.1:4321');
 		expect(web?.args).toContain('./packages/sdk/scripts/tenant/tenant-astro-command.ts');
 		expect(web?.sourceClosureDigest).toMatch(/^[a-f0-9]{64}$/u);
+		expect(web?.health).toEqual([{ id: 'web', kind: 'http', url: 'http://127.0.0.1:4321', timeoutMs: 10_000 }]);
 		expect(runner?.env.TREESEED_DATABASE_URL).toBe(api?.env.TREESEED_DATABASE_URL);
+		expect(runner?.env.TREESEED_SITE_URL).toBe('http://127.0.0.1:4321');
 		expect(runner?.env.TREESEED_PLATFORM_RUNNER_ENVIRONMENT).toBe('local');
 		expect(runner?.health).toEqual([{ id: 'operations-runner', kind: 'http', url: 'http://127.0.0.1:3001/readyz', timeoutMs: 10_000 }]);
 	});

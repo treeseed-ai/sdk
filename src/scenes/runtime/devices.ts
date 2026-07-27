@@ -23,11 +23,7 @@ const LEGACY_DEVICE_PROFILE_ALIASES: Record<string, string> = {
 export function listSceneDeviceProfiles(scene: SceneManifest): SceneDeviceProfile[] {
 	const sceneProfiles = scene.devices?.profiles ?? [];
 	if (sceneProfiles.length === 0) return defaultSceneDeviceConfig().profiles;
-	const seen = new Set(sceneProfiles.map((entry) => entry.id));
-	return [
-		...sceneProfiles,
-		...defaultSceneDeviceConfig().profiles.filter((entry) => !seen.has(entry.id)),
-	];
+	return sceneProfiles;
 }
 
 export function resolveSceneDeviceProfile(input: {
@@ -40,10 +36,10 @@ export function resolveSceneDeviceProfile(input: {
 	const profiles = listSceneDeviceProfiles(input.scene);
 	const selected = input.device ?? input.scene.devices?.defaultProfile ?? 'desktop';
 	const normalized = LEGACY_DEVICE_PROFILE_ALIASES[selected] ?? selected;
-	const profile = profiles.find((entry) => entry.id === normalized)
-		?? (selected in LEGACY_DEVICE_PROFILE_ALIASES
-			? profiles.find((entry) => entry.id === input.scene.devices?.defaultProfile) ?? profiles[0] ?? null
-			: null);
+	const profile = profiles.find((entry) => entry.id === selected)
+		?? profiles.find((entry) => entry.id === normalized)
+		?? profiles.find((entry) => LEGACY_DEVICE_PROFILE_ALIASES[entry.id] === selected)
+		?? null;
 	if (!profile) {
 		return {
 			profile: null,

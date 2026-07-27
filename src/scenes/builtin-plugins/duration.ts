@@ -93,15 +93,28 @@ export function extractConfirmationUrl(body: string) {
 }
 
 export function resolveMailpitConfirmationUrl(confirmationUrl: string, context: SceneRuntimePluginContext) {
+	if (confirmationUrl.startsWith('/')) return context.resolveUrl(confirmationUrl);
+	let parsed: URL;
 	try {
-		const parsed = new URL(confirmationUrl);
-		if (parsed.pathname === '/auth/confirm-email' || parsed.pathname === '/auth/reset-password' || /^\/team-invites\/[^/]+\/accept$/u.test(parsed.pathname)) {
-			return context.resolveUrl(`${parsed.pathname}${parsed.search}${parsed.hash}`);
-		}
+		parsed = new URL(confirmationUrl);
 	} catch {
-		// Relative confirmation URLs are resolved below.
+		throw sceneErrorDiagnostic(
+			'scene.mailpit_confirm_link_invalid',
+			`Mailpit confirmation link is not a valid URL: ${confirmationUrl}`,
+			'workflow.action.mailpitConfirmLatest',
+		);
 	}
-	return confirmationUrl.startsWith('/') ? context.resolveUrl(confirmationUrl) : confirmationUrl;
+	if (parsed.pathname === '/auth/confirm-email' || parsed.pathname === '/auth/reset-password' || /^\/team-invites\/[^/]+\/accept$/u.test(parsed.pathname)) {
+		const expectedOrigin = new URL(context.baseUrl).origin;
+		if (parsed.origin !== expectedOrigin) {
+			throw sceneErrorDiagnostic(
+				'scene.mailpit_link_origin_mismatch',
+				`Mailpit link origin ${parsed.origin} does not match the scene web origin ${expectedOrigin}.`,
+				'workflow.action.mailpitConfirmLatest',
+			);
+		}
+	}
+	return confirmationUrl;
 }
 
 export async function sleep(ms: number) {

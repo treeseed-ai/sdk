@@ -218,6 +218,9 @@ export function createBuiltInScenePlugins(): ScenePlugin[] {
 								if (raw.navigate !== false) await navigateScenePage(context.session.page, resolvedUrl);
 								return { ok: true, diagnostics: [] };
 						} catch (error) {
+							if (error && typeof error === 'object' && 'code' in error) {
+								return { ok: false, diagnostics: [error as SceneDiagnostic] };
+							}
 							return { ok: false, diagnostics: [sceneErrorDiagnostic('scene.mailpit_unavailable', failureMessage(error, 'Mailpit confirmation failed.'), `workflow.${step.id}.action.mailpitConfirmLatest`)] };
 						}
 					},

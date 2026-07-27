@@ -8,6 +8,21 @@ import { genericObservedState, genericResult, noopDiff } from '../../hosting/to-
 import { verificationCheck } from '../../hosting/first-railway-domain-string.ts';
 import { summarizeVerification } from '../../support/summarize-verification.ts';
 
+const LOCAL_TREEDX_RECONCILIATION_TIMEOUT_MS = 120_000;
+
+export function createLocalTreeDxReconciliationClient(
+	baseUrl: string,
+	token: string,
+	fetchImpl?: typeof fetch,
+) {
+	return new TreeDxClient({
+		baseUrl,
+		token,
+		timeoutMs: LOCAL_TREEDX_RECONCILIATION_TIMEOUT_MS,
+		...(fetchImpl ? { fetch: fetchImpl } : {}),
+	});
+}
+
 export async function verifyLocalTreeDxProjectContent(
 	client: TreeDxClient,
 	project: LocalTreeDxContentProject,
@@ -54,7 +69,7 @@ export function buildLocalTreeDxAdapter(): ReconcileAdapter {
 			const warnings: string[] = [];
 			if (baseUrl && token) {
 				try {
-					repositories = await new TreeDxClient({ baseUrl, token, timeoutMs: 30_000 }).listRepositories();
+					repositories = await createLocalTreeDxReconciliationClient(baseUrl, token).listRepositories();
 				} catch (error) {
 					warnings.push(`TreeDX repositories could not be observed: ${error instanceof Error ? error.message : String(error)}`);
 				}
@@ -111,7 +126,7 @@ export function buildLocalTreeDxAdapter(): ReconcileAdapter {
 			const token = nonEmptyString(input.unit.spec.token) || mintLocalTreeDxJwt(recordValue(input.unit.spec.auth));
 			const projects = localTreeDxProjects(input.unit.spec.projects);
 			if (!baseUrl || !token || projects.length === 0) return genericResult(input);
-			const client = new TreeDxClient({ baseUrl, token, timeoutMs: 30_000 });
+			const client = createLocalTreeDxReconciliationClient(baseUrl, token);
 			const syncedProjects = [];
 			const syncSeedContent = input.unit.spec.syncSeedContent !== false;
 			for (const [index, project] of projects.entries()) {
@@ -183,7 +198,7 @@ export function buildLocalTreeDxAdapter(): ReconcileAdapter {
 			const baseUrl = nonEmptyString(input.unit.spec.baseUrl);
 			const token = nonEmptyString(input.unit.spec.token) || mintLocalTreeDxJwt(recordValue(input.unit.spec.auth));
 			if (baseUrl && token) {
-				const client = new TreeDxClient({ baseUrl, token, timeoutMs: 30_000 });
+				const client = createLocalTreeDxReconciliationClient(baseUrl, token);
 				let repositories: unknown[] = [];
 				try {
 					repositories = await client.listRepositories();

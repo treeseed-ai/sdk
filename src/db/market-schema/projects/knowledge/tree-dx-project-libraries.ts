@@ -182,6 +182,7 @@ export const userPreferences = pgTable('user_preferences', {
 	userId: text('user_id').primaryKey(),
 	colorScheme: text('color_scheme').notNull().default('fern'),
 	themeMode: text('theme_mode').notNull().default('system'),
+	timeZone: text('time_zone').notNull().default('UTC'),
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 });
@@ -230,7 +231,6 @@ export const userPersonalThemes = pgTable('user_personal_themes', {
 export const userNotificationPreferences = pgTable('user_notification_preferences', {
 	userId: text('user_id').primaryKey(),
 	emailCadence: text('email_cadence').notNull().default('daily'),
-	timeZone: text('time_zone').notNull().default('UTC'),
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 });

@@ -13,6 +13,7 @@ import { checkWebUsernameMethod } from './accounts/queries/check-web-username.ts
 import { checkWebEmailMethod } from './accounts/queries/check-web-email.ts';
 import { authProvidersMethod } from './capacity/providers/contracts/auth-providers.ts';
 import { accountIdentityMethod } from './accounts/contracts/account-identity.ts';
+import { accountPreferencesMethod, updateAccountPreferencesMethod } from './accounts/preferences/account-preferences.ts';
 import { webEmailsMethod } from './accounts/contracts/web-emails.ts';
 import { addWebEmailMethod } from './accounts/creation/add-web-email.ts';
 import { verifyWebEmailMethod } from './accounts/lifecycle/verify-web-email.ts';
@@ -204,6 +205,8 @@ export function installMarketClientMethods(prototype: MarketClient) {
 	prototype.checkWebEmail = checkWebEmailMethod;
 	prototype.authProviders = authProvidersMethod;
 	prototype.accountIdentity = accountIdentityMethod;
+	prototype.accountPreferences = accountPreferencesMethod;
+	prototype.updateAccountPreferences = updateAccountPreferencesMethod;
 	prototype.webEmails = webEmailsMethod;
 	prototype.addWebEmail = addWebEmailMethod;
 	prototype.verifyWebEmail = verifyWebEmailMethod;

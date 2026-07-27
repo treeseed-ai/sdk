@@ -87,6 +87,10 @@ export interface AccountIdentity {
 	providers: Array<{ id: string; provider: string; email?: string | null; linkedAt: string; canUnlink: boolean }>;
 }
 
+export interface AccountPreferences {
+	timeZone: string;
+}
+
 export interface AccountWebSession {
 	id: string;
 	provider: string;
@@ -139,7 +143,6 @@ export interface NotificationProject {
 
 export interface NotificationPreferences {
 	emailCadence: NotificationEmailCadence;
-	timeZone: string;
 	globalContentTypes: string[];
 	projectOverrides: NotificationProjectOverride[];
 }
@@ -194,7 +197,6 @@ export function normalizeNotificationPreferences(input: Partial<NotificationPref
 		: [];
 	return {
 		emailCadence: cadence,
-		timeZone: typeof input?.timeZone === 'string' && input.timeZone.trim() ? input.timeZone.trim() : 'UTC',
 		globalContentTypes: normalizeTypes(input?.globalContentTypes),
 		projectOverrides: Array.isArray(input?.projectOverrides) ? input.projectOverrides
 			.filter((entry): entry is NotificationProjectOverride => Boolean(entry && typeof entry.projectId === 'string' && entry.projectId.trim()))

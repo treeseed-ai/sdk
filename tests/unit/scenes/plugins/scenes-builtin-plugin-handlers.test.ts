@@ -169,7 +169,7 @@ describe('built-in scene plugin handlers', () => {
 				return;
 			}
 			if (request.url === '/api/v1/message/message-1') {
-				response.end(JSON.stringify({ HTML: '<a href="http://api.local/auth/confirm-email?token=abc">Confirm</a>' }));
+				response.end(JSON.stringify({ HTML: '<a href="http://local/auth/confirm-email?token=abc">Confirm</a>' }));
 				return;
 			}
 			response.statusCode = 404;
@@ -191,7 +191,7 @@ describe('built-in scene plugin handlers', () => {
 				response.end(JSON.stringify({ messages: [{ ID: 'reset-1', Subject: 'Reset password', To: [{ Address: 'user@example.test' }] }] }));
 				return;
 			}
-			response.end(JSON.stringify({ HTML: '<a href=\"http://api.local/auth/reset-password?token=reset-abc\">Reset</a>' }));
+			response.end(JSON.stringify({ HTML: '<a href=\"http://local/auth/reset-password?token=reset-abc\">Reset</a>' }));
 		});
 		const resetContext = context();
 		expect((await registry.actions.get('mailpitConfirmLatest')!.run({
@@ -200,6 +200,24 @@ describe('built-in scene plugin handlers', () => {
 			context: resetContext,
 		} as never)).ok).toBe(true);
 		expect(resetContext.session.page.goto).toHaveBeenCalledWith('http://local/auth/reset-password?token=reset-abc', expect.anything());
+
+		const wrongOriginUrl = await listen((request, response) => {
+			response.setHeader('content-type', 'application/json');
+			if (request.url === '/api/v1/messages') {
+				response.end(JSON.stringify({ messages: [{ ID: 'wrong-origin', Subject: 'Confirm', To: [{ Address: 'user@example.test' }] }] }));
+				return;
+			}
+			response.end(JSON.stringify({ HTML: '<a href="http://api.local/auth/confirm-email?token=abc">Confirm</a>' }));
+		});
+		const wrongOrigin = await registry.actions.get('mailpitConfirmLatest')!.run({
+			action: { mailpitConfirmLatest: { mailpitUrl: wrongOriginUrl, email: 'user@example.test' } },
+			step,
+			context: context(),
+		} as never);
+		expect(wrongOrigin).toMatchObject({
+			ok: false,
+			diagnostics: [{ code: 'scene.mailpit_link_origin_mismatch' }],
+		});
 
 		const missingMessageUrl = await listen((_request, response) => {
 			response.setHeader('content-type', 'application/json');

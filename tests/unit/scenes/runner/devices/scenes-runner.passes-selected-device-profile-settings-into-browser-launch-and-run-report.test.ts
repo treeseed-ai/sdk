@@ -181,6 +181,14 @@ workflow:
 `;
 }
 
+function legacyNamedDeviceScene() {
+	return deviceScene()
+		.replace('defaultProfile: desktop', 'defaultProfile: desktop_chromium')
+		.replaceAll('id: desktop', 'id: desktop_chromium')
+		.replaceAll('id: mobile', 'id: mobile_chromium')
+		.replaceAll('id: tablet', 'id: tablet_chromium');
+}
+
 class FakeLocator implements SceneLocator {
 	constructor(private readonly selector: string, private readonly page: FakePage) {}
 	first() {
@@ -352,5 +360,27 @@ it('passes selected device profile settings into browser launch and run report',
 		expect(mobile.launches[0]?.isMobile).toBe(true);
 		expect(mobile.launches[0]?.hasTouch).toBe(true);
 		expect(mobileReport.device?.id).toBe('mobile');
+	});
+
+	it('selects exact legacy-named profiles without adding or falling back to desktop', async () => {
+		const root = workspace();
+		writeScene(root, 'legacy-device-smoke', legacyNamedDeviceScene());
+		const mobile = new FakeAdapter();
+		const report = await runScene({
+			projectRoot: root,
+			scene: 'legacy-device-smoke',
+			browserAdapter: mobile,
+			device: 'mobile_chromium',
+		});
+
+		expect(report.device?.id).toBe('mobile_chromium');
+		expect(mobile.launches[0]?.viewport).toEqual({ width: 390, height: 844 });
+
+		const matrix = await runSceneDeviceMatrix({
+			projectRoot: root,
+			scene: 'legacy-device-smoke',
+			browserAdapter: new FakeAdapter(),
+		});
+		expect(matrix.devices).toEqual(['desktop_chromium', 'tablet_chromium', 'mobile_chromium']);
 	});
 });

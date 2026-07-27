@@ -6,13 +6,11 @@ describe('account redesign contracts', () => {
 	it('normalizes notification preferences as deterministic exact state', () => {
 		const result = normalizeNotificationPreferences({
 			emailCadence: 'weekly',
-			timeZone: 'America/New_York',
 			globalContentTypes: ['questions', 'questions', 'not-a-capability'],
 			projectOverrides: [{ projectId: 'project-b', contentTypes: ['notes'] }, { projectId: 'project-a', contentTypes: ['decisions'] }],
 		});
 		expect(result).toEqual({
 			emailCadence: 'weekly',
-			timeZone: 'America/New_York',
 			globalContentTypes: ['questions'],
 			projectOverrides: [{ projectId: 'project-a', contentTypes: ['decisions'] }, { projectId: 'project-b', contentTypes: ['notes'] }],
 		});

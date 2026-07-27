@@ -14,6 +14,8 @@ declare module '../support/market-client.ts' {
 		checkWebEmail: OmitThisParameter<typeof import('./accounts/queries/check-web-email.ts').checkWebEmailMethod>;
 		authProviders: OmitThisParameter<typeof import('./capacity/providers/contracts/auth-providers.ts').authProvidersMethod>;
 		accountIdentity: OmitThisParameter<typeof import('./accounts/contracts/account-identity.ts').accountIdentityMethod>;
+		accountPreferences: OmitThisParameter<typeof import('./accounts/preferences/account-preferences.ts').accountPreferencesMethod>;
+		updateAccountPreferences: OmitThisParameter<typeof import('./accounts/preferences/account-preferences.ts').updateAccountPreferencesMethod>;
 		webEmails: OmitThisParameter<typeof import('./accounts/contracts/web-emails.ts').webEmailsMethod>;
 		addWebEmail: OmitThisParameter<typeof import('./accounts/creation/add-web-email.ts').addWebEmailMethod>;
 		verifyWebEmail: OmitThisParameter<typeof import('./accounts/lifecycle/verify-web-email.ts').verifyWebEmailMethod>;
