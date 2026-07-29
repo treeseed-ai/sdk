@@ -4,7 +4,7 @@ import { dirname, relative, resolve, sep } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { GUARANTEE_JOURNEY_AUDIT_SCHEMA_VERSION, GuaranteeDiagnostic, GuaranteeFilter, GuaranteeJourneyAudit, GuaranteeManifest, GuaranteePlanEntry, LoadedGuarantee } from './guarantee-schema-version.ts';
 import { EXCLUDED_DIRS, GuaranteeJourneyAuditItem, GuaranteePlanReport, arrayOrEmpty, diagnostic, isRecord } from './guarantee-journey-audit-item.ts';
-import { discoverGuarantees, readSceneYaml, sceneManifestPathForGuarantee, sceneRouteFromYaml, selectedByFilter } from './parse-verifier-registry.ts';
+import { discoverGuarantees, readSceneYaml, sceneManifestPathForGuarantee, sceneRouteFromYaml, sceneStateKeys, selectedByFilter } from './parse-verifier-registry.ts';
 import { buildGuaranteeDependencyGraph, filterGuarantees, refs } from './build-guarantee-dependency-graph.ts';
 import { validateGuaranteeSceneJourneyContract } from './run-verifier-command.ts';
 import { assertPathInsideWorkspace } from './run-guarantees.ts';
@@ -17,6 +17,20 @@ export function planGuarantees(input: { workspaceRoot: string; filter?: Guarante
 	const entries = graph.entries
 		.map((entry): GuaranteePlanEntry => {
 			const meta = graph.meta.get(entry.manifest.id);
+			const negativeScenes = arrayOrEmpty(entry.manifest.negativeCases)
+				.filter((candidate) => candidate.sceneManifest)
+				.map((candidate) => {
+					const scenePath = resolve(dirname(entry.sourcePath), candidate.sceneManifest!);
+					const scene = existsSync(scenePath) ? readSceneYaml(scenePath) : null;
+					return {
+						id: candidate.id,
+						...(candidate.actor ? { actor: candidate.actor } : {}),
+						manifest: candidate.sceneManifest!,
+						executionKey: candidate.executionKey ?? `${entry.manifest.id}:negative:${candidate.id}`,
+						producesState: sceneStateKeys(scene, 'producesState'),
+						consumesState: sceneStateKeys(scene, 'consumesState'),
+					};
+				});
 			return ({
 			id: entry.manifest.id,
 			...(entry.manifest.journeyIndex ? { journeyIndex: entry.manifest.journeyIndex } : {}),
@@ -33,6 +47,7 @@ export function planGuarantees(input: { workspaceRoot: string; filter?: Guarante
 			dependency: !selectedIds.has(entry.manifest.id),
 			...(entry.manifest.scene?.manifest ? { sceneManifest: entry.manifest.scene.manifest } : {}),
 			...(entry.manifest.scene?.executionKey ? { sceneExecutionKey: entry.manifest.scene.executionKey } : {}),
+			...(negativeScenes.length ? { negativeScenes } : {}),
 			apiVerifierRefs: refs(entry.manifest.api),
 			contentVerifierRefs: refs(entry.manifest.content),
 			auditVerifierRefs: refs(entry.manifest.audit),

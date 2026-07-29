@@ -198,6 +198,11 @@ export const teams = pgTable('teams', {
 	displayName: text('display_name'),
 	logoUrl: text('logo_url'),
 	profileSummary: text('profile_summary'),
+	status: text('status').notNull().default('active'),
+	archivedAt: text('archived_at'),
+	archivedByUserId: text('archived_by_user_id'),
+	restoreDeadlineAt: text('restore_deadline_at'),
+	lifecycleVersion: integer('lifecycle_version').notNull().default(1),
 }, (table) => [
 	uniqueIndex('idx_teams_name').on(table.name)
 ]);

@@ -198,6 +198,7 @@ export type SceneLocator = {
 	waitFor(options?: { state?: 'visible'; timeout?: number }): Promise<void>;
 	click(): Promise<void>;
 	fill(value: string): Promise<void>;
+	evaluate?<T>(callback: (element: unknown, value: T) => void, value: T): Promise<void>;
 	selectOption?(option: string | { label: string }): Promise<void>;
 	isVisible(): Promise<boolean>;
 };
@@ -214,7 +215,12 @@ export type ScenePage = {
 	};
 	screenshot(options: { path: string; fullPage?: boolean }): Promise<void>;
 	on(event: 'console', handler: (message: { type(): string; text(): string }) => void): void;
-	on(event: 'requestfailed', handler: (request: { url(): string; method(): string; failure(): { errorText: string } | null }) => void): void;
+	on(event: 'requestfailed', handler: (request: {
+		url(): string;
+		method(): string;
+		failure(): { errorText: string } | null;
+		resourceType?(): string;
+	}) => void): void;
 	on(event: 'response', handler: (response: { url(): string; status(): number; request(): { method(): string }; json?(): Promise<unknown> }) => void): void;
 };
 

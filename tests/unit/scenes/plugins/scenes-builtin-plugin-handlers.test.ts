@@ -25,6 +25,7 @@ function locator(visible = true) {
 		waitFor: vi.fn(async () => undefined),
 		click: vi.fn(async () => undefined),
 		fill: vi.fn(async () => undefined),
+		evaluate: vi.fn(async () => undefined),
 		selectOption: vi.fn(async () => undefined),
 		isVisible: vi.fn(async () => visible),
 		first() {
@@ -94,6 +95,16 @@ describe('built-in scene plugin handlers', () => {
 			},
 		});
 		await expect(registry.actions.get('goto')!.run({ action: { goto: '/down' }, step, context: httpErrorCtx } as never)).rejects.toMatchObject({ code: 'scene.navigation_http_error' });
+		expect((await registry.actions.get('goto')!.run({
+			action: { goto: { path: '/down', expectedStatus: 503 } },
+			step,
+			context: httpErrorCtx,
+		} as never)).ok).toBe(true);
+		await expect(registry.actions.get('goto')!.run({
+			action: { goto: { path: '/down', expectedStatus: 403 } },
+			step,
+			context: httpErrorCtx,
+		} as never)).rejects.toMatchObject({ code: 'scene.navigation_status_mismatch' });
 		const fallbackHttpCtx = context({
 			session: { page: { goto: vi.fn(async () => ({ status: () => 502, url: () => undefined })), keyboard: { press: vi.fn(async () => undefined) } } },
 			sleep: vi.fn(async () => undefined),
@@ -108,7 +119,43 @@ describe('built-in scene plugin handlers', () => {
 		await expect(registry.actions.get('goto')!.run({ action: { goto: '/null-failure' }, step, context: nullFailureCtx } as never)).rejects.toThrow('Navigation failed');
 		expect((await registry.actions.get('click')!.run({ action: { click: { role: 'button', name: 'Save' } }, step, context: ctx } as never)).ok).toBe(true);
 		expect((await registry.actions.get('click')!.run({ action: {}, step, context: ctx } as never)).diagnostics[0]?.code).toBe('scene.invalid_action');
+		const hiddenMenu = locator(false);
+		const visibleLogout = locator(true);
+		const responsiveContext = context({
+			resolveSelector: vi.fn()
+				.mockReturnValueOnce(hiddenMenu)
+				.mockReturnValueOnce(visibleLogout),
+		});
+		expect((await registry.actions.get('clickVisibleSequence')!.run({
+			action: { clickVisibleSequence: [{ role: 'button', name: 'Open team operations' }, { role: 'button', name: 'Sign out' }] },
+			step,
+			context: responsiveContext,
+		} as never)).ok).toBe(true);
+		expect(hiddenMenu.click).not.toHaveBeenCalled();
+		expect(visibleLogout.click).toHaveBeenCalledOnce();
+		const mobileMenu = locator(true);
+		const drawerLogout = locator(true);
+		const mobileContext = context({
+			resolveSelector: vi.fn()
+				.mockReturnValueOnce(mobileMenu)
+				.mockReturnValueOnce(drawerLogout),
+		});
+		expect((await registry.actions.get('clickVisibleSequence')!.run({
+			action: { clickVisibleSequence: [{ role: 'button', name: 'Open team operations' }, { role: 'button', name: 'Sign out' }] },
+			step,
+			context: mobileContext,
+		} as never)).ok).toBe(true);
+		expect(mobileMenu.click).toHaveBeenCalledOnce();
+		expect(drawerLogout.click).toHaveBeenCalledOnce();
 		expect((await registry.actions.get('fill')!.run({ action: { fill: { label: 'Name', value: 'Value {{runShort}}' } }, step, context: ctx } as never)).ok).toBe(true);
+		const hiddenInternal = locator(false);
+		const hiddenContext = context({ resolveSelector: vi.fn(() => hiddenInternal) });
+		expect((await registry.actions.get('fill')!.run({
+			action: { fill: { css: 'input[type="hidden"]', internal: true, value: 'stale' } },
+			step,
+			context: hiddenContext,
+		} as never)).ok).toBe(true);
+		expect(hiddenInternal.evaluate).toHaveBeenCalled();
 		expect((await registry.actions.get('fill')!.run({ action: {}, step, context: ctx } as never)).diagnostics[0]?.code).toBe('scene.invalid_action');
 		expect(ctx.resolveSelector().fill).toBeDefined();
 		expect((await registry.actions.get('select')!.run({ action: { select: { label: 'Mode', value: 'auto' } }, step, context: ctx } as never)).ok).toBe(true);

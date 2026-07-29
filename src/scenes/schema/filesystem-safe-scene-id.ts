@@ -171,14 +171,18 @@ export function stringArrayField(record: Record<string, unknown>, field: string,
 export function stateRefArray(record: Record<string, unknown>, field: string, path: string, diagnostics: SceneDiagnostic[]) {
 	const value = arrayField(record, field, path, diagnostics);
 	if (!value) return undefined;
-	const refs: Array<{ key: string; kind: string }> = [];
+	const refs: Array<{ key: string; kind: string; value?: unknown }> = [];
 	value.forEach((entry, index) => {
 		const entryPath = `${path}.${field}[${index}]`;
 		if (!isRecord(entry)) {
 			diagnostics.push(sceneErrorDiagnostic('scene.invalid_state_ref', `Expected ${field} entry to be an object.`, entryPath));
 			return;
 		}
-		refs.push({ key: requireString(entry, 'key', entryPath, diagnostics), kind: requireString(entry, 'kind', entryPath, diagnostics) });
+		refs.push({
+			key: requireString(entry, 'key', entryPath, diagnostics),
+			kind: requireString(entry, 'kind', entryPath, diagnostics),
+			...(entry.value !== undefined ? { value: entry.value } : {}),
+		});
 	});
 	return refs;
 }

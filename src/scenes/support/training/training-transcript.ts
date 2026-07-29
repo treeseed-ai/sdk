@@ -34,6 +34,7 @@ function chapterForStep(run: SceneRunReport, stepId: string) {
 function actionSummary(actionKind: string) {
 	if (actionKind === 'goto') return 'navigates the browser to the expected screen';
 	if (actionKind === 'click') return 'performs the requested user click';
+	if (actionKind === 'clickVisibleSequence') return 'uses the visible controls for the active responsive layout';
 	if (actionKind === 'fill') return 'fills a browser field';
 	if (actionKind === 'keyboard') return 'sends a keyboard command';
 	if (actionKind === 'waitForOperation') return 'waits for a Treeseed platform operation to reach an accepted state';

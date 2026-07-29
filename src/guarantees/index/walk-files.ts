@@ -136,6 +136,7 @@ export function parseGuaranteeManifest(value: unknown, diagnostics: GuaranteeDia
 	const devices = isRecord(value.devices) ? value.devices : {};
 	const preconditions = isRecord(value.preconditions) ? value.preconditions : {};
 	const evidence = isRecord(value.evidence) ? value.evidence : {};
+	const uiFeature = isRecord(value.uiFeature) ? value.uiFeature : {};
 	const gates = stringArray(value.gates) as GuaranteeGate[];
 	for (const gate of gates) {
 		if (!KNOWN_GATES.has(gate)) diagnostics.push(diagnostic('error', 'guarantee.invalid_gate', `Unsupported guarantee gate "${gate}".`, 'gates', sourcePath));
@@ -175,6 +176,9 @@ export function parseGuaranteeManifest(value: unknown, diagnostics: GuaranteeDia
 			fixtures: stringArray(preconditions.fixtures),
 			notes: stringArray(preconditions.notes),
 		},
+		...(stringValue(uiFeature.contract)
+			? { uiFeature: { contract: stringValue(uiFeature.contract), capabilities: stringArray(uiFeature.capabilities) } }
+			: {}),
 		...(parseScene(value.scene) ? { scene: parseScene(value.scene) } : {}),
 		...(parseContract(value.api) ? { api: parseContract(value.api) } : {}),
 		...(parseContract(value.content) ? { content: parseContract(value.content) } : {}),
@@ -183,6 +187,8 @@ export function parseGuaranteeManifest(value: unknown, diagnostics: GuaranteeDia
 			? value.negativeCases.filter(isRecord).map((entry) => ({
 					id: stringValue(entry.id),
 					...(typeof entry.actor === 'string' ? { actor: entry.actor } : {}),
+					...(typeof entry.sceneManifest === 'string' ? { sceneManifest: entry.sceneManifest } : {}),
+					...(typeof entry.executionKey === 'string' ? { executionKey: entry.executionKey } : {}),
 					verifierRefs: stringArray(entry.verifierRefs),
 					notes: stringArray(entry.notes),
 				}))
@@ -212,6 +218,17 @@ export function parseGuaranteeManifest(value: unknown, diagnostics: GuaranteeDia
 		const scenePath = resolve(dirname(sourcePath), manifest.scene.manifest);
 		if (!existsSync(scenePath) && manifest.status === 'active') diagnostics.push(diagnostic('error', 'guarantee.scene_missing', `Scene manifest does not exist: ${manifest.scene.manifest}.`, 'scene.manifest', sourcePath));
 		if (!existsSync(scenePath) && manifest.status !== 'active') diagnostics.push(diagnostic('warning', 'guarantee.scene_missing_planned', `Planned guarantee scene does not exist yet: ${manifest.scene.manifest}.`, 'scene.manifest', sourcePath));
+	}
+	for (const negativeCase of manifest.negativeCases ?? []) {
+		if (!negativeCase.sceneManifest) continue;
+		const scenePath = resolve(dirname(sourcePath), negativeCase.sceneManifest);
+		if (!existsSync(scenePath)) diagnostics.push(diagnostic(
+			manifest.status === 'active' ? 'error' : 'warning',
+			'guarantee.negative_scene_missing',
+			`Negative browser scene does not exist: ${negativeCase.sceneManifest}.`,
+			'negativeCases.sceneManifest',
+			sourcePath,
+		));
 	}
 	return diagnostics.some((entry) => entry.severity === 'error' && entry.sourcePath === sourcePath && entry.code !== 'guarantee.scene_missing_planned') ? manifest : manifest;
 }

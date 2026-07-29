@@ -231,7 +231,7 @@ it('counts skipped planned release guarantees as release-blocking when the run r
 		expect(report.results[0]?.steps[0]?.summary).toBe('Guarantee is planned.');
 	});
 
-it('caches identical verifier refs within one guarantee run', async () => {
+it('caches only explicitly shareable identical verifier refs within one guarantee run', async () => {
 		const root = workspaceFixture('runner-cache');
 		const active = validGuarantee
 			.replace('status: planned', 'surface: admin-ui\nstatus: active')
@@ -250,6 +250,7 @@ ownerPackage: "@treeseed/admin"
 verifiers:
   fixture.shared.api:
     kind: vitestCase
+    shareable: true
     testFile: test/fixture.test.ts
 `);
 		const calls: string[] = [];
@@ -265,8 +266,6 @@ verifiers:
 		expect(report.counts.passed).toBe(2);
 		expect(calls).toEqual(['fixture.shared.api']);
 		expect(report.results[1]?.steps.map((step) => step.summary)).toEqual([
-			'fixture.shared.api passed (cached)',
-			'fixture.shared.api passed (cached)',
 			'fixture.shared.api passed (cached)',
 		]);
 	});

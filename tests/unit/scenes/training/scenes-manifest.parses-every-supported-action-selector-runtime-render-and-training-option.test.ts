@@ -102,6 +102,7 @@ it('parses every supported action, selector, runtime, render, and training optio
 				{ id: 'mail', title: 'Mail', action: { mailpitConfirmLatest: { mailpitUrl: 'http://localhost:8025', email: 'owner@example.test', subjectIncludes: 'Confirm', displayInboxSeconds: 1, displayMessageSeconds: 1 } }, expect: { text: 'Confirmed' } },
 				{ id: 'click-scene', title: 'Click scene', action: { click: { scene: 'project.save' } }, expect: { visible: [{ scene: 'project.saved' }, { testId: 'saved' }, { role: 'status', name: 'Saved' }, { text: 'Saved' }, { css: '.saved', internal: true }] } },
 				{ id: 'click-test', title: 'Click test', action: { click: { testId: 'submit' } }, expect: { text: 'Submitted' } },
+				{ id: 'responsive-clicks', title: 'Responsive clicks', action: { clickVisibleSequence: [{ role: 'button', name: 'Open menu' }, { role: 'button', name: 'Sign out' }] }, expect: { text: 'Signed out' } },
 				{ id: 'select', title: 'Select', action: { select: { role: 'combobox', name: 'Role', value: 'owner', label: 'Owner' } } },
 				{ id: 'fill', title: 'Fill', action: { fill: { role: 'textbox', name: 'Name', value: 'TreeSeed' } } },
 			],
@@ -121,7 +122,7 @@ it('parses every supported action, selector, runtime, render, and training optio
 		}, diagnostics as never);
 
 		expect(diagnostics).toEqual([]);
-		expect(scene?.workflow).toHaveLength(10);
+		expect(scene?.workflow).toHaveLength(11);
 		expect(scene?.render.remotion?.output?.resolution).toEqual({ width: 1920, height: 1080 });
 		expect(scene?.training.glossary.terms[0]).toMatchObject({ term: 'Project', sourceStep: 'goto', tags: ['core'] });
 	});

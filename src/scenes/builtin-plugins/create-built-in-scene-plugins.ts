@@ -13,6 +13,7 @@ import type {
 	SceneSelector,
 } from '../types.ts';
 import { assertionReport, extractConfirmationUrl, mailpitApiUrl, mailpitMessageBody, mailpitMessageId, mailpitMessageRecipients, mailpitMessageSubject, mailpitMessages, navigateScenePage, resolveMailpitConfirmationUrl, sceneRuntimeValue, sleep } from './duration.ts';
+import { clickVisibleSequenceAction } from './responsive-actions.ts';
 
 function failureMessage(error: unknown, fallback: string) {
 	if (error instanceof Error) return error.message;
@@ -36,7 +37,9 @@ export function createBuiltInScenePlugins(): ScenePlugin[] {
 					summary: 'Navigate to a route or absolute URL.',
 					async run({ action, context }) {
 						if (!('goto' in action)) return { ok: false, diagnostics: [sceneErrorDiagnostic('scene.invalid_action', 'Expected goto action.', 'workflow.action.goto')] };
-						await navigateScenePage(context.session.page, context.resolveUrl(action.goto));
+						const route = typeof action.goto === 'string' ? action.goto : action.goto.path;
+						const expectedStatus = typeof action.goto === 'string' ? undefined : action.goto.expectedStatus;
+						await navigateScenePage(context.session.page, context.resolveUrl(route), expectedStatus);
 						return { ok: true, diagnostics: [] };
 					},
 				},
@@ -53,6 +56,7 @@ export function createBuiltInScenePlugins(): ScenePlugin[] {
 						return { ok: true, diagnostics: [] };
 					},
 				},
+				clickVisibleSequence: clickVisibleSequenceAction,
 				fill: {
 					id: 'fill',
 					phase: 2,
@@ -61,8 +65,19 @@ export function createBuiltInScenePlugins(): ScenePlugin[] {
 					async run({ action, context }) {
 						if (!('fill' in action)) return { ok: false, diagnostics: [sceneErrorDiagnostic('scene.invalid_action', 'Expected fill action.', 'workflow.action.fill')] };
 						const locator = context.resolveSelector(action.fill);
-						await locator.waitFor({ state: 'visible', timeout: 10_000 });
-						await locator.fill(sceneRuntimeValue(action.fill.value, context));
+						const value = sceneRuntimeValue(action.fill.value, context);
+						if (action.fill.internal && !(await locator.isVisible())) {
+							if (!locator.evaluate) return { ok: false, diagnostics: [sceneErrorDiagnostic('scene.unsupported_runtime_action', 'The active browser adapter cannot set an internal hidden prerequisite value.', 'workflow.action.fill')] };
+							await locator.evaluate((element, nextValue) => {
+								const control = element as { value?: string; dispatchEvent?: (event: Event) => void };
+								control.value = nextValue;
+								control.dispatchEvent?.(new Event('input', { bubbles: true }));
+								control.dispatchEvent?.(new Event('change', { bubbles: true }));
+							}, value);
+						} else {
+							await locator.waitFor({ state: 'visible', timeout: 10_000 });
+							await locator.fill(value);
+						}
 						return { ok: true, diagnostics: [] };
 					},
 				},

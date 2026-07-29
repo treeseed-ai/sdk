@@ -18,7 +18,7 @@ describe('MarketClient errors', () => {
 			}),
 		});
 
-		await expect(client.deleteTeam('team-a', 'DELETE team-a')).rejects.toMatchObject<Partial<MarketClientError>>({
+		await expect(client.deleteTeamPermanently('team-a', { confirmation: 'team-a' })).rejects.toMatchObject<Partial<MarketClientError>>({
 			name: 'MarketClientError',
 			message: 'Team still has owned content.',
 			status: 400,
@@ -34,7 +34,7 @@ describe('MarketClient errors', () => {
 				code: 'capacity_idempotency_key_conflict', details: { operation: 'capacity-grant.transition.revoke' },
 			}), { status: 409, headers: { 'content-type': 'application/json' } }),
 		});
-		await expect(client.deleteTeam('team-a', 'DELETE team-a')).rejects.toThrow(
+		await expect(client.deleteTeamPermanently('team-a', { confirmation: 'team-a' })).rejects.toThrow(
 			'The idempotency key is already bound to different operation input. (operation: capacity-grant.transition.revoke)',
 		);
 	});

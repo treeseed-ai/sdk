@@ -44,7 +44,10 @@ declare module '../support/market-client.ts' {
 		currentMarket: OmitThisParameter<typeof import('./support/queries/current-market.ts').currentMarketMethod>;
 		teams: OmitThisParameter<typeof import('./teams/contracts/teams.ts').teamsMethod>;
 		createTeam: OmitThisParameter<typeof import('./teams/creation/create-team.ts').createTeamMethod>;
-		deleteTeam: OmitThisParameter<typeof import('./teams/retirement/delete-team.ts').deleteTeamMethod>;
+		archiveTeam: OmitThisParameter<typeof import('./teams/lifecycle/team-lifecycle.ts').archiveTeamMethod>;
+		restoreTeam: OmitThisParameter<typeof import('./teams/lifecycle/team-lifecycle.ts').restoreTeamMethod>;
+		teamDeletionReadiness: OmitThisParameter<typeof import('./teams/lifecycle/team-lifecycle.ts').teamDeletionReadinessMethod>;
+		deleteTeamPermanently: OmitThisParameter<typeof import('./teams/lifecycle/team-lifecycle.ts').deleteTeamPermanentlyMethod>;
 		teamDeletionBlockers: OmitThisParameter<typeof import('./teams/contracts/team-deletion-blockers.ts').teamDeletionBlockersMethod>;
 		teamMembers: OmitThisParameter<typeof import('./teams/contracts/team-members.ts').teamMembersMethod>;
 		teamPermissions: OmitThisParameter<typeof import('./teams/contracts/team-permissions.ts').teamPermissionsMethod>;

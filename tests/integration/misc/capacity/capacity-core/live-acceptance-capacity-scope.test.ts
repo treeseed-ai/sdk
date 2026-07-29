@@ -50,7 +50,10 @@ describe('isolated capacity acceptance scope cleanup', () => {
 				calls.push('team-blockers');
 				return { ok: true, payload: teamBlockersRead === 1 ? [{ code: 'catalog_item', id: 'project-a' }] : [] };
 			},
-			async deleteTeam() {
+			async teams() {
+				return { ok: true, payload: [{ id: 'team-a', status: 'active', lifecycleVersion: 1 }] };
+			},
+			async deleteTeamPermanently() {
 				calls.push('delete-team');
 				return { ok: true };
 			},

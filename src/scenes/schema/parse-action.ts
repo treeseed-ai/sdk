@@ -44,11 +44,19 @@ export function parseAction(value: unknown, path: string, diagnostics: SceneDiag
 	const keys = Object.keys(value).filter((key) => value[key] !== undefined);
 	const supported = keys.filter((key) => findBuiltInSceneAction(key));
 	if (keys.length !== 1 || supported.length !== 1) {
-		diagnostics.push(sceneErrorDiagnostic('scene.invalid_action', `Expected exactly one supported action key. Supported actions: goto, click, fill, select, keyboard, pause, mailpitConfirmLatest, apiRequest, waitForOperation.`, path));
+		diagnostics.push(sceneErrorDiagnostic('scene.invalid_action', `Expected exactly one supported action key. Supported actions: goto, click, clickVisibleSequence, fill, select, keyboard, pause, mailpitConfirmLatest, apiRequest, waitForOperation.`, path));
 		return null;
 	}
 	const key = supported[0]!;
-	if (key === 'goto') return { goto: asString(value.goto) || '' };
+	if (key === 'goto') {
+		if (!isRecord(value.goto)) return { goto: asString(value.goto) || '' };
+		const route = requireString(value.goto, 'path', `${path}.goto`, diagnostics);
+		const expectedStatus = Number(value.goto.expectedStatus);
+		if (!Number.isInteger(expectedStatus) || expectedStatus < 100 || expectedStatus > 599) {
+			diagnostics.push(sceneErrorDiagnostic('scene.invalid_navigation_status', 'goto.expectedStatus must be an HTTP status from 100 through 599.', `${path}.goto.expectedStatus`));
+		}
+		return { goto: { path: route, expectedStatus } };
+	}
 	if (key === 'keyboard') return { keyboard: asString(value.keyboard) || '' };
 	if (key === 'apiRequest') return { apiRequest: isRecord(value.apiRequest) ? value.apiRequest : {} };
 	if (key === 'waitForOperation') {
@@ -88,6 +96,13 @@ export function parseAction(value: unknown, path: string, diagnostics: SceneDiag
 	if (key === 'click') {
 		const selector = parseSelector(value.click, `${path}.click`, diagnostics);
 		return selector ? { click: selector } : null;
+	}
+	if (key === 'clickVisibleSequence') {
+		const entries = arrayField(value, 'clickVisibleSequence', path, diagnostics) ?? [];
+		const selectors = entries.map((entry, index) => parseSelector(entry, `${path}.clickVisibleSequence[${index}]`, diagnostics))
+			.filter((entry): entry is SceneSelector => Boolean(entry));
+		if (selectors.length === 0) diagnostics.push(sceneErrorDiagnostic('scene.missing_field', 'clickVisibleSequence requires at least one selector.', `${path}.clickVisibleSequence`));
+		return { clickVisibleSequence: selectors };
 	}
 	if (key === 'select') {
 		const selectValue = isRecord(value.select) ? value.select : {};

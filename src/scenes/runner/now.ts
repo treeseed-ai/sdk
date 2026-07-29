@@ -212,11 +212,11 @@ export function sceneWithRunOverrides(scene: SceneManifest, input: SceneRunOptio
 	};
 }
 
-function substitutionToken(value: string) {
+export function substitutionToken(value: string) {
 	return value.toLowerCase().replace(/[^a-z0-9-]+/gu, '-').replace(/^-|-$/gu, '').slice(0, 24) || 'default';
 }
 
-function shortSubstitutionToken(value: string) {
+export function shortSubstitutionToken(value: string) {
 	let hash = 2166136261;
 	for (let index = 0; index < value.length; index += 1) {
 		hash ^= value.charCodeAt(index);
@@ -225,7 +225,7 @@ function shortSubstitutionToken(value: string) {
 	return (hash >>> 0).toString(36).padStart(7, '0').slice(0, 10);
 }
 
-function substituteSceneTokens<T>(value: T, tokens: { runId: string; runShort: string; deviceId: string }): T {
+export function substituteSceneTokens<T>(value: T, tokens: { runId: string; runShort: string; deviceId: string }): T {
 	if (typeof value === 'string') {
 		return value
 			.replaceAll('{{runId}}', tokens.runId)
@@ -271,8 +271,26 @@ export function registerScenePageObservers(input: {
 		input.timeline.push('console', entry, stepId);
 	});
 	input.session.page.on('requestfailed', (request) => {
+		const message = request.failure()?.errorText ?? 'request failed';
+		const resourceType = request.resourceType?.();
+		const isCurrentPageRead = (() => {
+			if (request.method() !== 'GET') return false;
+			try {
+				const requested = new URL(request.url());
+				const current = new URL(input.session.page.url());
+				return requested.origin === current.origin
+					&& requested.pathname === current.pathname
+					&& requested.search === current.search;
+			} catch {
+				return false;
+			}
+		})();
+		if (message === 'net::ERR_ABORTED' && resourceType && ['document', 'image', 'media', 'font', 'stylesheet'].includes(resourceType)) {
+			return;
+		}
+		if (message === 'net::ERR_ABORTED' && isCurrentPageRead) return;
 		const stepId = input.currentStepId();
-		const entry = { message: request.failure()?.errorText ?? 'request failed', timestamp: now().toISOString(), url: request.url(), method: request.method(), ...(stepId ? { stepId } : {}) };
+		const entry = { message, timestamp: now().toISOString(), url: request.url(), method: request.method(), ...(stepId ? { stepId } : {}) };
 		input.networkErrors.push(entry);
 		appendSceneJsonl(input.artifacts.networkLogPath!, entry);
 		appendSceneJsonl(input.artifacts.errorsLogPath!, { kind: 'network', ...entry });

@@ -69,8 +69,15 @@ export type GuaranteeSceneContract = {
 export type GuaranteeNegativeCase = {
 	id: string;
 	actor?: string;
+	sceneManifest?: string;
+	executionKey?: string;
 	verifierRefs?: string[];
 	notes?: string[];
+};
+
+export type GuaranteeUiFeatureReference = {
+	contract: string;
+	capabilities: string[];
 };
 
 export type GuaranteeDependencies = {
@@ -101,16 +108,16 @@ export type GuaranteeManifest = {
 		allowed: string[];
 		forbidden: string[];
 	};
+	gates: GuaranteeGate[];
 	devices: {
 		required: GuaranteeDevice[];
 		optional?: GuaranteeDevice[];
 	};
-	gates: GuaranteeGate[];
-	devices: GuaranteeDevice[];
 	preconditions: {
 		fixtures?: string[];
 		notes?: string[];
 	};
+	uiFeature?: GuaranteeUiFeatureReference;
 	scene?: GuaranteeSceneContract;
 	api?: GuaranteeApiContract;
 	content?: GuaranteeVerifierContract;
@@ -155,6 +162,7 @@ export type GuaranteeVerifierDefinition = {
 	timeoutSeconds?: number;
 	evidence?: string[];
 	description?: string;
+	shareable?: boolean;
 };
 
 export type GuaranteeVerifierRegistry = {
@@ -212,6 +220,14 @@ export type GuaranteePlanEntry = {
 	dependency: boolean;
 	sceneManifest?: string;
 	sceneExecutionKey?: string;
+	negativeScenes?: Array<{
+		id: string;
+		actor?: string;
+		manifest: string;
+		executionKey: string;
+		producesState: string[];
+		consumesState: string[];
+	}>;
 	apiVerifierRefs: string[];
 	contentVerifierRefs: string[];
 	auditVerifierRefs: string[];

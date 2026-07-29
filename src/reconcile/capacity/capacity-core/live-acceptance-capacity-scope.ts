@@ -92,7 +92,10 @@ export async function deleteLocalCapacityAcceptanceTeam(
 		await waitForProjectDeletion(adminClient, team.id, projectId);
 	}
 	await waitForTeamDeletionReadiness(adminClient, team.id);
-	const deleted = await adminClient.deleteTeam(team.id, `DELETE ${team.name}`);
+	const deleted = await adminClient.deleteTeamPermanently(team.id, {
+		confirmation: team.name,
+		localAcceptanceCleanup: true,
+	});
 	if (!deleted.ok) {
 		throw new Error(`Capacity acceptance could not delete isolated team ${team.id}: ${deleted.message ?? deleted.code ?? 'unknown error'}.`);
 	}

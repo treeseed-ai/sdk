@@ -42,7 +42,12 @@ import { marketsMethod } from './support/identity/markets.ts';
 import { currentMarketMethod } from './support/queries/current-market.ts';
 import { teamsMethod } from './teams/contracts/teams.ts';
 import { createTeamMethod } from './teams/creation/create-team.ts';
-import { deleteTeamMethod } from './teams/retirement/delete-team.ts';
+import {
+	archiveTeamMethod,
+	deleteTeamPermanentlyMethod,
+	restoreTeamMethod,
+	teamDeletionReadinessMethod,
+} from './teams/lifecycle/team-lifecycle.ts';
 import { teamDeletionBlockersMethod } from './teams/contracts/team-deletion-blockers.ts';
 import { teamMembersMethod } from './teams/contracts/team-members.ts';
 import { teamPermissionsMethod } from './teams/contracts/team-permissions.ts';
@@ -235,7 +240,10 @@ export function installMarketClientMethods(prototype: MarketClient) {
 	prototype.currentMarket = currentMarketMethod;
 	prototype.teams = teamsMethod;
 	prototype.createTeam = createTeamMethod;
-	prototype.deleteTeam = deleteTeamMethod;
+	prototype.archiveTeam = archiveTeamMethod;
+	prototype.restoreTeam = restoreTeamMethod;
+	prototype.teamDeletionReadiness = teamDeletionReadinessMethod;
+	prototype.deleteTeamPermanently = deleteTeamPermanentlyMethod;
 	prototype.teamDeletionBlockers = teamDeletionBlockersMethod;
 	prototype.teamMembers = teamMembersMethod;
 	prototype.teamPermissions = teamPermissionsMethod;

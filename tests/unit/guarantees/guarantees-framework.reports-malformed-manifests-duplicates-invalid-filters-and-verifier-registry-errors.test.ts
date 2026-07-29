@@ -134,7 +134,6 @@ verifiers:
 			'guarantee.duplicate_journey_index',
 			'guarantee.missing_dependency',
 			'guarantee.missing_journey_dependency',
-			'guarantee.forward_journey_dependency',
 			'guarantee_filter.invalid_type',
 			'guarantee_verifiers.unsupported_schema_version',
 			'guarantee_verifiers.owner_package_mismatch',

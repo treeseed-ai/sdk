@@ -126,14 +126,17 @@ export function isRetryableNavigationError(error: unknown) {
 	return /Timeout|ERR_CONNECTION|ECONNRESET|ECONNREFUSED|ETIMEDOUT|503|502|504/iu.test(message);
 }
 
-export async function navigateScenePage(page: { goto(url: string, options?: { waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'; timeout?: number }): Promise<{ status(): number; url(): string } | null | undefined> }, url: string) {
+export async function navigateScenePage(page: { goto(url: string, options?: { waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'; timeout?: number }): Promise<{ status(): number; url(): string } | null | undefined> }, url: string, expectedStatus?: number) {
 	let lastError: unknown = null;
 	for (let attempt = 1; attempt <= 3; attempt += 1) {
 		try {
 			const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
 			const status = response?.status();
+			if (typeof expectedStatus === 'number' && status !== expectedStatus) {
+				throw sceneErrorDiagnostic('scene.navigation_status_mismatch', `Expected navigation to ${response?.url() ?? url} to return HTTP ${expectedStatus}, received ${status ?? 'no response'}.`, 'workflow.action.goto.expectedStatus');
+			}
 			if (typeof status === 'number' && status >= 400) {
-				throw sceneErrorDiagnostic('scene.navigation_http_error', `Navigation to ${response?.url() ?? url} returned HTTP ${status}.`, 'workflow.action.goto');
+				if (status !== expectedStatus) throw sceneErrorDiagnostic('scene.navigation_http_error', `Navigation to ${response?.url() ?? url} returned HTTP ${status}.`, 'workflow.action.goto');
 			}
 			return;
 		} catch (error) {

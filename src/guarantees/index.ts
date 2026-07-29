@@ -8,3 +8,5 @@ export * from './index/export-guarantees-csv.ts';
 export * from './index/run-verifier-command.ts';
 export * from './index/scene-report-evidence-paths.ts';
 export * from './index/run-guarantees.ts';
+export * from './features/ui-feature-contract.ts';
+export * from './features/ui-scene-runtime-trust.ts';

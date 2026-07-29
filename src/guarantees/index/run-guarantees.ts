@@ -10,6 +10,7 @@ import { planGuarantees } from './plan-guarantees.ts';
 import { relativeEvidencePath, resolveGuaranteeVerifierRefs, verifierDefinitionsByRef } from './export-guarantees-csv.ts';
 import { buildGuaranteeDependencyGraph, refs } from './build-guarantee-dependency-graph.ts';
 import { defaultGuaranteeVerifierExecutor } from './run-verifier-command.ts';
+import { guaranteeSourceClosure } from '../features/guarantee-source-closure.ts';
 
 export async function runGuarantees(input: {
 	workspaceRoot: string;
@@ -33,6 +34,7 @@ export async function runGuarantees(input: {
 	const startedAtDate = input.now ?? new Date();
 	const startedAt = startedAtDate.toISOString();
 	const runId = runIdFor(startedAtDate);
+	const startedSourceClosure = guaranteeSourceClosure(workspaceRoot);
 	const outputRoot = resolve(workspaceRoot, input.outputRoot ?? (input.evidenceTarget === 'release'
 		? `.treeseed/guarantees/release/${runId}`
 		: `.treeseed/guarantees/runs/${runId}`));
@@ -46,6 +48,7 @@ export async function runGuarantees(input: {
 	const state: GuaranteeRunState = {
 		schemaVersion: 'treeseed.guarantee-run-state/v2',
 		runId,
+		sourceClosure: startedSourceClosure,
 		values: {},
 	};
 	const graph = buildGuaranteeDependencyGraph({ guarantees: registry.guarantees, filter, includeDependencies: input.includeDependencies !== false });
@@ -185,10 +188,38 @@ export async function runGuarantees(input: {
 		}
 	}
 	const completedAt = new Date().toISOString();
+	const completedSourceClosure = guaranteeSourceClosure(workspaceRoot);
+	const sourceClosureMatches = JSON.stringify(startedSourceClosure) === JSON.stringify(completedSourceClosure);
+	if (!sourceClosureMatches) {
+		const sourceDiagnostic = diagnostic(
+			'error',
+			'guarantee.source_closure_drift',
+			'The runtime or guarantee contract source closure changed during execution; collected evidence is inadmissible.',
+			'sourceClosure',
+		);
+		diagnostics.push(sourceDiagnostic);
+		for (const result of results) {
+			const entry = runEntries.find((candidate) => candidate.manifest.id === result.id);
+			if (!entry || !releaseBlocking(entry.manifest) || result.status !== 'passed') continue;
+			result.status = 'failed';
+			result.diagnostics.push(sourceDiagnostic);
+			result.steps.push({
+				id: 'source-closure',
+				kind: 'verifier',
+				status: 'failed',
+				summary: sourceDiagnostic.message,
+				diagnostics: [sourceDiagnostic],
+				startedAt: completedAt,
+				completedAt,
+			});
+		}
+	}
 	const releaseBlockingFailures = results.filter((result) => {
 		const entry = runEntries.find((candidate) => candidate.manifest.id === result.id);
 		return entry && releaseBlocking(entry.manifest) && ['failed', 'blocked', ...(input.failOnSkippedReleaseGuarantees === true ? ['skipped' as const] : [])].includes(result.status);
-	}).length;
+	}).length + (input.failOnSkippedReleaseGuarantees === true
+		? runEntries.filter((entry) => releaseBlocking(entry.manifest) && entry.manifest.status !== 'active' && !resultById.has(entry.manifest.id)).length
+		: 0);
 	const counts = {
 		planned: plan.entries.filter((entry) => entry.status !== 'active').length,
 		passed: results.filter((entry) => entry.status === 'passed').length,
@@ -208,6 +239,11 @@ export async function runGuarantees(input: {
 		outputRoot,
 		statePath: relativeEvidencePath(workspaceRoot, resolve(outputRoot, 'state.json')),
 		executionGraphPath: relativeEvidencePath(workspaceRoot, resolve(outputRoot, 'execution-graph.json')),
+		sourceClosure: {
+			started: startedSourceClosure,
+			completed: completedSourceClosure,
+			matches: sourceClosureMatches,
+		},
 		plan,
 		results,
 		diagnostics,
@@ -234,12 +270,31 @@ export function buildExecutionGraphReport(input: {
 	const resultById = new Map(input.results.map((entry) => [entry.id, entry]));
 	const executionByGuarantee = new Map(input.plan.map((entry) => [entry.id, entry.sceneExecutionKey ?? entry.id]));
 	const nodes = new Map<string, GuaranteeExecutionGraphReport['nodes'][number]>();
-	for (const entry of input.plan.filter((candidate) => candidate.sceneManifest)) {
-		const executionKey = entry.sceneExecutionKey ?? entry.id;
+	for (const entry of input.plan) {
+		const scenes = [
+			...(entry.sceneManifest ? [{
+				executionKey: entry.sceneExecutionKey ?? entry.id,
+				producesState: arrayOrEmpty(entry.producesState),
+				consumesState: arrayOrEmpty(entry.consumesState),
+				stepId: 'scene',
+			}] : []),
+			...arrayOrEmpty(entry.negativeScenes).map((scene) => ({
+				executionKey: scene.executionKey,
+				producesState: scene.producesState,
+				consumesState: scene.consumesState,
+				stepId: `negative-scene:${scene.id}`,
+			})),
+		];
+		for (const scene of scenes) {
+		const executionKey = scene.executionKey;
 		for (const device of entry.devices.length ? entry.devices : ['desktop_chromium']) {
 			const id = `${executionKey}@${device}`;
 			const existing = nodes.get(id);
 			const result = resultById.get(entry.id);
+			const deviceResult = result?.steps
+				.filter((step) => step.id === scene.stepId)
+				.flatMap((step) => arrayOrEmpty(step.deviceResults))
+				.find((candidate) => candidate.requestedDevice === device);
 			nodes.set(id, {
 				id,
 				executionKey,
@@ -251,11 +306,12 @@ export function buildExecutionGraphReport(input: {
 						.map((dependency) => `${executionByGuarantee.get(dependency) ?? dependency}@${device}`)
 						.filter((dependencyId) => dependencyId !== id),
 				]).filter((dependencyId) => dependencyId !== id),
-				producesState: sortedUnique([...(existing?.producesState ?? []), ...arrayOrEmpty(entry.producesState)]),
-				consumesState: sortedUnique([...(existing?.consumesState ?? []), ...arrayOrEmpty(entry.consumesState)]),
-				status: result?.status ?? existing?.status ?? 'planned',
-				evidence: sortedUnique([...(existing?.evidence ?? []), ...arrayOrEmpty(result?.evidence)]),
+				producesState: sortedUnique([...(existing?.producesState ?? []), ...scene.producesState]),
+				consumesState: sortedUnique([...(existing?.consumesState ?? []), ...scene.consumesState]),
+				status: deviceResult?.status ?? (result?.status === 'blocked' ? 'blocked' : existing?.status ?? 'planned'),
+				evidence: sortedUnique([...(existing?.evidence ?? []), ...arrayOrEmpty(deviceResult?.evidence)]),
 			});
+		}
 		}
 	}
 	return {

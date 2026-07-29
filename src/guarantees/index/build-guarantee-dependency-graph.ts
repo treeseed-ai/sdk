@@ -5,6 +5,7 @@ import { parse as parseYaml } from 'yaml';
 import { GuaranteeDiagnostic, GuaranteeFilter, GuaranteeManifest, GuaranteeRegistryReport, GuaranteeVerifierContract, LoadedGuarantee, LoadedGuaranteeVerifierRegistry } from './guarantee-schema-version.ts';
 import { GuaranteeDependencyGraph, GuaranteeDependencyGraphMeta, GuaranteeDependencyReason, allVerifierRefs, dependencyIdsForGuarantee, readSceneYaml, sceneManifestPathForGuarantee, sceneStateKeys, selectedByFilter, sortGuaranteeEntries, validateFilter } from './parse-verifier-registry.ts';
 import { arrayOrEmpty, diagnostic } from './guarantee-journey-audit-item.ts';
+import { validateUiFeatureContracts } from '../features/ui-feature-contract.ts';
 
 export function buildGuaranteeDependencyGraph(input: { guarantees: LoadedGuarantee[]; filter?: GuaranteeFilter; includeDependencies?: boolean }): GuaranteeDependencyGraph {
 	const valid = input.guarantees.filter((entry): entry is LoadedGuarantee & { manifest: GuaranteeManifest } => Boolean(entry.manifest)).sort(sortGuaranteeEntries);
@@ -153,6 +154,7 @@ export function validateGuaranteeRegistry(input: {
 	];
 	validateFilter(input.filter, diagnostics);
 	const valid = input.guarantees.filter((entry): entry is LoadedGuarantee & { manifest: GuaranteeManifest } => Boolean(entry.manifest));
+	diagnostics.push(...validateUiFeatureContracts({ guarantees: valid }));
 	const ids = new Map<string, LoadedGuarantee & { manifest: GuaranteeManifest }>();
 	const journeyIndexes = new Map<number, LoadedGuarantee & { manifest: GuaranteeManifest }>();
 	for (const entry of valid) {
@@ -171,7 +173,6 @@ export function validateGuaranteeRegistry(input: {
 		}
 		for (const dep of arrayOrEmpty(entry.manifest.dependencies.journeys)) {
 			if (!journeyIndexes.has(dep)) diagnostics.push(diagnostic('error', 'guarantee.missing_journey_dependency', `Missing journey dependency "${dep}".`, 'dependencies.journeys', entry.sourcePath));
-			if (entry.manifest.journeyIndex && dep >= entry.manifest.journeyIndex) diagnostics.push(diagnostic('error', 'guarantee.forward_journey_dependency', `Journey dependency ${dep} must be lower than ${entry.manifest.journeyIndex}.`, 'dependencies.journeys', entry.sourcePath));
 		}
 	}
 	for (const entry of valid) {

@@ -126,7 +126,7 @@ export function validateGuaranteeSceneJourneyContract(input: { scenePath: string
 	return diagnostics;
 }
 
-export function apiAcceptanceEnvironment(environment: string) {
+export function apiAcceptanceEnvironment(environment: string, runState?: GuaranteeVerifierExecutionInput['runState']) {
 	const baseUrl = apiAcceptanceBaseUrl(environment);
 	const serviceId = process.env.TREESEED_ACCEPTANCE_SERVICE_ID
 		?? process.env.TREESEED_API_WEB_SERVICE_ID
@@ -141,6 +141,10 @@ export function apiAcceptanceEnvironment(environment: string) {
 		TREESEED_API_BASE_URL: baseUrl,
 		TREESEED_ACCEPTANCE_SERVICE_ID: serviceId,
 		TREESEED_ACCEPTANCE_SERVICE_SECRET: serviceSecret,
+		...(runState ? {
+			TREESEED_GUARANTEE_RUN_ID: runState.runId,
+			TREESEED_GUARANTEE_RUN_STATE: JSON.stringify(runState.values),
+		} : {}),
 	};
 }
 
@@ -194,7 +198,7 @@ export async function defaultGuaranteeVerifierExecutor(input: GuaranteeVerifierE
 			command: 'npm',
 			args: ['-w', 'packages/api', 'run', 'test:acceptance', '--', '--environment', input.environment, '--base-url', apiAcceptanceBaseUrl(input.environment), '--case', definition.caseId, '--json'],
 			timeoutSeconds: definition.timeoutSeconds,
-			env: apiAcceptanceEnvironment(input.environment),
+			env: apiAcceptanceEnvironment(input.environment, input.runState),
 			onProgress: input.onProgress,
 		});
 	}
@@ -239,6 +243,7 @@ export async function defaultGuaranteeVerifierExecutor(input: GuaranteeVerifierE
 			args: ['--import', 'tsx', definition.command, ...arrayOrEmpty(definition.args)],
 			cwd: definition.cwd,
 			timeoutSeconds: definition.timeoutSeconds,
+			env: apiAcceptanceEnvironment(input.environment, input.runState),
 			onProgress: input.onProgress,
 		});
 	}

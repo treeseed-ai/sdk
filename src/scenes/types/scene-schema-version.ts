@@ -193,8 +193,9 @@ export type SceneOperationWaitSpec = {
 };
 
 export type SceneAction =
-	| { goto: string }
+	| { goto: string | { path: string; expectedStatus: number } }
 	| { click: SceneSelector }
+	| { clickVisibleSequence: SceneSelector[] }
 	| { fill: SceneSelector & { value: string } }
 	| { select: SceneSelector & { value?: string; label?: string } }
 	| { keyboard: string }

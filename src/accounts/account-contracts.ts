@@ -82,6 +82,11 @@ export interface AccountIdentity {
 	firstName?: string | null;
 	lastName?: string | null;
 	image?: string | null;
+	headline?: string | null;
+	profileSummary?: string | null;
+	location?: string | null;
+	website?: string | null;
+	expertise?: string[];
 	hasCredential: boolean;
 	emails: AccountEmailAddress[];
 	providers: Array<{ id: string; provider: string; email?: string | null; linkedAt: string; canUnlink: boolean }>;

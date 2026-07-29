@@ -2,11 +2,13 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve, sep } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { GuaranteeReportWriteResult, GuaranteeRunReport, GuaranteeRunStatus, GuaranteeRunStep, GuaranteeSceneExecutionInput, GuaranteeSceneExecutor, GuaranteeVerifierExecutionResult, GuaranteeVerifierExecutor, GuaranteeVerifierResolution, arrayOrEmpty, diagnostic, sortedUnique } from './guarantee-journey-audit-item.ts';
+import { GuaranteeDeviceExecutionResult, GuaranteeReportWriteResult, GuaranteeRunReport, GuaranteeRunStatus, GuaranteeRunStep, GuaranteeSceneExecutionInput, GuaranteeSceneExecutor, GuaranteeVerifierExecutionResult, GuaranteeVerifierExecutor, GuaranteeVerifierResolution, arrayOrEmpty, diagnostic, isRecord, sortedUnique, stringValue } from './guarantee-journey-audit-item.ts';
 import { exportGuaranteesCsv, relativeEvidencePath } from './export-guarantees-csv.ts';
 import { sceneAuthRoleForGuarantee, sceneDeviceRunsForGuarantee, validateGuaranteeSceneJourneyContract } from './run-verifier-command.ts';
 import { GuaranteeDiagnostic, GuaranteeManifest, GuaranteeRegistryReport, LoadedGuarantee } from './guarantee-schema-version.ts';
 import { refs } from './build-guarantee-dependency-graph.ts';
+import { shortSubstitutionToken, substitutionToken, substituteSceneTokens } from '../../scenes/runner/now.ts';
+import { unexpectedUiSceneRuntimeDiagnostics } from '../features/ui-scene-runtime-trust.ts';
 
 export function sceneReportEvidencePaths(workspaceRoot: string, report: {
 	artifacts?: { runRoot?: string; screenshotPaths?: string[] };
@@ -74,12 +76,36 @@ export async function defaultGuaranteeSceneExecutor(input: GuaranteeSceneExecuti
 				...(inputStorageStatePath ? { inputStorageStatePath } : {}),
 				...(outputStorageStatePath ? { outputStorageStatePath } : {}),
 			});
-			const ok = contractDiagnostics.length === 0 && report.ok;
+			const expected = expectedDevice(scene, run.device);
+			const actual = report.device;
+			const deviceDiagnostics = validateSceneDeviceEvidence({
+				requestedDevice: run.device,
+				requestedBrowser: run.browser,
+				expected,
+				actual,
+				actualBrowser: report.browser,
+				sourcePath: input.guarantee.sourcePath,
+			});
+			const runtimeDiagnostics = unexpectedUiSceneRuntimeDiagnostics(report, input.guarantee.sourcePath);
+			const ok = contractDiagnostics.length === 0 && deviceDiagnostics.length === 0 && runtimeDiagnostics.length === 0 && report.ok;
+			const deviceResult: GuaranteeDeviceExecutionResult = {
+				requestedDevice: run.device,
+				...(actual?.id ? { actualDevice: actual.id } : {}),
+				...(report.browser ? { browser: report.browser } : {}),
+				...(actual?.viewport ? { viewport: actual.viewport } : {}),
+				...(actual?.deviceScaleFactor !== undefined ? { deviceScaleFactor: actual.deviceScaleFactor } : {}),
+				...(actual?.isMobile !== undefined ? { isMobile: actual.isMobile } : {}),
+				...(actual?.hasTouch !== undefined ? { hasTouch: actual.hasTouch } : {}),
+				status: ok ? 'passed' : 'failed',
+				evidence: sceneReportEvidencePaths(input.workspaceRoot, report),
+				diagnostics: [...deviceDiagnostics, ...runtimeDiagnostics],
+			};
 			const result: GuaranteeVerifierExecutionResult = {
 				status: ok ? 'passed' : 'failed',
-				summary: ok ? 'Scene passed.' : contractDiagnostics.length > 0 ? 'Scene is not a complete service journey.' : 'Scene failed.',
-				evidence: sceneReportEvidencePaths(input.workspaceRoot, report),
-				diagnostics: [...contractDiagnostics, ...arrayOrEmpty(report.diagnostics)] as GuaranteeDiagnostic[],
+				summary: ok ? 'Scene passed.' : contractDiagnostics.length > 0 ? 'Scene is not a complete service journey.' : deviceDiagnostics.length > 0 ? 'Scene device evidence does not match the requested device.' : runtimeDiagnostics.length > 0 ? 'Scene emitted unexpected browser runtime errors.' : 'Scene failed.',
+				evidence: deviceResult.evidence,
+				diagnostics: [...contractDiagnostics, ...deviceDiagnostics, ...runtimeDiagnostics, ...arrayOrEmpty(report.diagnostics)] as GuaranteeDiagnostic[],
+				deviceResults: [deviceResult],
 			};
 			if (ok) recordProducedState({ input, refs: stateRefs.produces, device: run.id, outputStorageStatePath });
 			input.sceneCache.set(cacheKey, result);
@@ -91,6 +117,7 @@ export async function defaultGuaranteeSceneExecutor(input: GuaranteeSceneExecuti
 			summary: ok ? (runs.length > 1 ? 'Scene device graph passed.' : runResults[0]?.summary) : 'Scene device graph failed.',
 			evidence: runResults.flatMap((entry) => arrayOrEmpty(entry.evidence)),
 			diagnostics: runResults.flatMap((entry) => arrayOrEmpty(entry.diagnostics)),
+			deviceResults: runResults.flatMap((entry) => arrayOrEmpty(entry.deviceResults)),
 		};
 	} catch (error) {
 		return {
@@ -101,14 +128,67 @@ export async function defaultGuaranteeSceneExecutor(input: GuaranteeSceneExecuti
 	}
 }
 
-type JourneyStateRef = { key: string; kind: string };
+type ExpectedDevice = {
+	id: string;
+	viewport?: { width: number; height: number };
+	deviceScaleFactor?: number;
+	isMobile?: boolean;
+	hasTouch?: boolean;
+};
+
+function expectedDevice(scene: Record<string, unknown>, requestedDevice: string): ExpectedDevice | undefined {
+	const devices = isRecord(scene.devices) ? scene.devices : {};
+	const profiles = Array.isArray(devices.profiles) ? devices.profiles : [];
+	const profile = profiles.find((entry) => isRecord(entry) && stringValue(entry.id) === requestedDevice);
+	if (!isRecord(profile)) return undefined;
+	const viewport = isRecord(profile.viewport) ? profile.viewport : {};
+	return {
+		id: requestedDevice,
+		...(Number.isFinite(Number(viewport.width)) && Number.isFinite(Number(viewport.height))
+			? { viewport: { width: Number(viewport.width), height: Number(viewport.height) } }
+			: {}),
+		...(typeof profile.deviceScaleFactor === 'number' ? { deviceScaleFactor: profile.deviceScaleFactor } : {}),
+		...(typeof profile.isMobile === 'boolean' ? { isMobile: profile.isMobile } : {}),
+		...(typeof profile.hasTouch === 'boolean' ? { hasTouch: profile.hasTouch } : {}),
+	};
+}
+
+export function validateSceneDeviceEvidence(input: {
+	requestedDevice: string;
+	requestedBrowser: string;
+	expected?: ExpectedDevice;
+	actual?: ExpectedDevice | null;
+	actualBrowser?: string | null;
+	sourcePath?: string;
+}) {
+	const mismatches: string[] = [];
+	if (!input.expected) mismatches.push(`scene has no exact "${input.requestedDevice}" profile`);
+	if (!input.actual) mismatches.push('scene report has no device metadata');
+	if (input.actual?.id !== input.requestedDevice) mismatches.push(`actual device was "${input.actual?.id ?? 'missing'}"`);
+	if (input.actualBrowser !== input.requestedBrowser) mismatches.push(`actual browser was "${input.actualBrowser ?? 'missing'}"`);
+	for (const field of ['deviceScaleFactor', 'isMobile', 'hasTouch'] as const) {
+		if (input.expected?.[field] !== input.actual?.[field]) mismatches.push(`${field} was ${String(input.actual?.[field])}, expected ${String(input.expected?.[field])}`);
+	}
+	if (input.expected?.viewport?.width !== input.actual?.viewport?.width || input.expected?.viewport?.height !== input.actual?.viewport?.height) {
+		mismatches.push(`viewport was ${input.actual?.viewport?.width ?? '?'}x${input.actual?.viewport?.height ?? '?'}, expected ${input.expected?.viewport?.width ?? '?'}x${input.expected?.viewport?.height ?? '?'}`);
+	}
+	return mismatches.length === 0 ? [] : [
+		diagnostic('error', 'guarantee.scene_device_mismatch', `Requested ${input.requestedDevice}/${input.requestedBrowser}, but ${mismatches.join('; ')}.`, 'scene.device', input.sourcePath),
+	];
+}
+
+type JourneyStateRef = { key: string; kind: string; value?: unknown };
 
 function journeyStateRefs(scene: Record<string, unknown>) {
 	const journey = scene.journey && typeof scene.journey === 'object' ? scene.journey as Record<string, unknown> : {};
 	const refs = (field: 'producesState' | 'consumesState') => arrayOrEmpty(journey[field] as unknown[])
 		.flatMap((entry): JourneyStateRef[] => entry && typeof entry === 'object'
 			&& typeof (entry as Record<string, unknown>).key === 'string'
-			? [{ key: String((entry as Record<string, unknown>).key), kind: String((entry as Record<string, unknown>).kind ?? 'marker') }]
+			? [{
+				key: String((entry as Record<string, unknown>).key),
+				kind: String((entry as Record<string, unknown>).kind ?? 'marker'),
+				...((entry as Record<string, unknown>).value !== undefined ? { value: (entry as Record<string, unknown>).value } : {}),
+			}]
 			: []);
 	return { produces: refs('producesState'), consumes: refs('consumesState') };
 }
@@ -137,12 +217,22 @@ function recordProducedState(input: {
 }) {
 	const createdAt = new Date().toISOString();
 	for (const ref of input.refs) {
+		const sceneRunId = `${input.input.runId}-${input.device}`;
+		const value = ref.kind === 'browser-storage'
+			? { path: input.outputStorageStatePath }
+			: ref.value === undefined
+				? { ready: true }
+				: substituteSceneTokens(ref.value, {
+					runId: substitutionToken(sceneRunId),
+					runShort: shortSubstitutionToken(sceneRunId),
+					deviceId: substitutionToken(input.device),
+				});
 		input.input.runState.values[stateValueKey(ref.key, input.device)] = {
 			producerGuaranteeId: input.input.guarantee.manifest.id,
 			executionKey: input.input.executionKey,
 			device: input.device,
 			kind: ref.kind === 'browser-storage' ? 'browser-storage' : 'marker',
-			value: ref.kind === 'browser-storage' ? { path: input.outputStorageStatePath } : { ready: true },
+			value,
 			createdAt,
 		};
 	}
@@ -241,6 +331,7 @@ export async function runGuaranteeSteps(input: {
 			summary: result.summary ?? step.summary,
 			evidence: result.evidence ?? arrayOrEmpty(step.evidence),
 			diagnostics: result.diagnostics ?? arrayOrEmpty(step.diagnostics),
+			deviceResults: result.deviceResults,
 			startedAt: stepStartedAt,
 			completedAt,
 		};
@@ -267,14 +358,49 @@ export async function runGuaranteeSteps(input: {
 			device: input.device,
 		}));
 	}
+	for (const negativeCase of arrayOrEmpty(input.guarantee.manifest.negativeCases).filter((entry) => entry.sceneManifest)) {
+		const scenePath = resolve(dirname(input.guarantee.sourcePath), negativeCase.sceneManifest!);
+		const negativeGuarantee = {
+			...input.guarantee,
+			manifest: {
+				...input.guarantee.manifest,
+				actors: {
+					allowed: negativeCase.actor ? [negativeCase.actor] : [],
+					forbidden: [],
+				},
+			},
+		};
+		await addStep({
+			id: `negative-scene:${negativeCase.id}`,
+			kind: 'negative-case',
+			status: 'blocked',
+			summary: `Browser denial journey for ${negativeCase.actor ?? negativeCase.id}.`,
+		}, () => input.sceneExecutor({
+			workspaceRoot: input.workspaceRoot,
+			environment: input.environment,
+			runId: input.runId,
+			outputRoot: input.outputRoot,
+			guarantee: negativeGuarantee,
+			scenePath,
+			executionKey: negativeCase.executionKey ?? `${input.guarantee.manifest.id}:negative:${negativeCase.id}`,
+			sceneCache: input.sceneCache,
+			runState: input.runState,
+			record: input.record ?? false,
+			artifactMode: input.sceneArtifacts,
+			device: input.device,
+		}));
+	}
 	const verifierGroups: Array<{ kind: GuaranteeRunStep['kind']; refs: string[] }> = [
 		{ kind: 'api', refs: arrayOrEmpty(input.guarantee.manifest.api?.verifierRefs) },
 		{ kind: 'content', refs: arrayOrEmpty(input.guarantee.manifest.content?.verifierRefs) },
 		{ kind: 'audit', refs: arrayOrEmpty(input.guarantee.manifest.audit?.verifierRefs) },
 		{ kind: 'negative-case', refs: arrayOrEmpty(input.guarantee.manifest.negativeCases).flatMap((entry) => arrayOrEmpty(entry.verifierRefs)) },
 	];
+	const executedVerifierRefs = new Set<string>();
 	for (const group of verifierGroups) {
 		for (const ref of group.refs) {
+			if (executedVerifierRefs.has(ref)) continue;
+			executedVerifierRefs.add(ref);
 			const resolution = input.resolutions.get(ref);
 			if (!resolution?.definition) {
 				const missing = diagnostic('error', 'guarantee.verifier_unresolved', `Verifier ref "${ref}" is not resolved.`, ref, input.guarantee.sourcePath);
@@ -282,7 +408,10 @@ export async function runGuaranteeSteps(input: {
 				diagnostics.push(missing);
 				continue;
 			}
-			const cacheKey = `${input.environment}:${ref}`;
+			const shareable = resolution.definition.shareable === true;
+			const cacheKey = shareable
+				? `${input.environment}:shared:${ref}`
+				: `${input.environment}:${input.runId}:${input.guarantee.manifest.id}:${ref}`;
 			await addStep({ id: ref, kind: group.kind, ref, status: 'blocked' }, async () => {
 				const cached = input.verifierCache.get(cacheKey);
 				if (cached) return { ...cached, summary: `${cached.summary ?? `${ref} passed.`} (cached)` };
@@ -295,6 +424,7 @@ export async function runGuaranteeSteps(input: {
 				ref,
 				definition: resolution.definition!,
 				kind: group.kind,
+				runState: input.runState,
 				onProgress: input.onProgress,
 				});
 				input.verifierCache.set(cacheKey, result);

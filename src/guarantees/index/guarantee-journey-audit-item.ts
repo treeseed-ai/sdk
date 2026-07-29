@@ -33,6 +33,7 @@ export type GuaranteeJourneyAuditItem = {
 export type GuaranteeRunState = {
 	schemaVersion: 'treeseed.guarantee-run-state/v2';
 	runId: string;
+	sourceClosure?: GuaranteeSourceClosure;
 	values: Record<string, {
 		producerGuaranteeId: string;
 		executionKey: string;
@@ -41,6 +42,13 @@ export type GuaranteeRunState = {
 		value: unknown;
 		createdAt: string;
 	}>;
+};
+
+export type GuaranteeSourceClosure = {
+	schemaVersion: 'treeseed.guarantee-source-closure/v1';
+	web: string | null;
+	api: string | null;
+	contracts: string;
 };
 
 export type GuaranteeExecutionGraphNode = {
@@ -86,8 +94,22 @@ export type GuaranteeRunStep = {
 	summary?: string;
 	evidence?: string[];
 	diagnostics?: GuaranteeDiagnostic[];
+	deviceResults?: GuaranteeDeviceExecutionResult[];
 	startedAt?: string;
 	completedAt?: string;
+};
+
+export type GuaranteeDeviceExecutionResult = {
+	requestedDevice: string;
+	actualDevice?: string;
+	browser?: string;
+	viewport?: { width: number; height: number };
+	deviceScaleFactor?: number;
+	isMobile?: boolean;
+	hasTouch?: boolean;
+	status: GuaranteeRunStatus;
+	evidence: string[];
+	diagnostics: GuaranteeDiagnostic[];
 };
 
 export type GuaranteeRunResult = {
@@ -119,6 +141,11 @@ export type GuaranteeRunReport = {
 	outputRoot: string;
 	statePath?: string;
 	executionGraphPath?: string;
+	sourceClosure?: {
+		started: GuaranteeSourceClosure;
+		completed: GuaranteeSourceClosure;
+		matches: boolean;
+	};
 	plan: GuaranteePlanReport;
 	results: GuaranteeRunResult[];
 	diagnostics: GuaranteeDiagnostic[];
@@ -151,6 +178,7 @@ export type GuaranteeVerifierExecutionInput = {
 	ref: string;
 	definition: GuaranteeVerifierDefinition;
 	kind: GuaranteeRunStep['kind'];
+	runState: GuaranteeRunState;
 	onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void;
 };
 
@@ -159,6 +187,7 @@ export type GuaranteeVerifierExecutionResult = {
 	summary?: string;
 	evidence?: string[];
 	diagnostics?: GuaranteeDiagnostic[];
+	deviceResults?: GuaranteeDeviceExecutionResult[];
 };
 
 export type GuaranteeVerifierExecutor = (input: GuaranteeVerifierExecutionInput) => Promise<GuaranteeVerifierExecutionResult>;

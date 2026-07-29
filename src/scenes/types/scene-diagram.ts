@@ -232,7 +232,7 @@ export type SceneManifest = {
 		proves?: string[];
 		minimumSteps?: number;
 		requiresInteractiveAction?: boolean;
-		producesState?: Array<{ key: string; kind: string }>;
+		producesState?: Array<{ key: string; kind: string; value?: unknown }>;
 		consumesState?: Array<{ key: string; kind: string }>;
 	};
 	mode: SceneMode;

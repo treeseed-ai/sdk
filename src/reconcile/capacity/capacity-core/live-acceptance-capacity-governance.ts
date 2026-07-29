@@ -6,6 +6,7 @@ import {
 	signCapacityProviderProof,
 } from '../../../capacity/providers/capacity-provider.ts';
 import { MarketClient } from '../../../entrypoints/clients/market-client.ts';
+import { deleteLocalCapacityAcceptanceTeam } from './live-acceptance-capacity-scope.ts';
 
 export interface CapacityGovernanceAcceptanceProof {
 	secondTeamId: string;
@@ -112,8 +113,7 @@ export async function proveLocalCapacityGovernance(input: {
 	const secondTeamId = createdTeam.payload.id;
 	if (!secondTeamId) throw new Error('Capacity governance acceptance could not resolve its durable audit team.');
 	const cleanup = async () => {
-		const deleted = await input.adminClient.deleteTeam(secondTeamId, `DELETE ${teamName}`);
-		if (!deleted.ok) throw new Error(`Capacity governance acceptance could not delete team ${secondTeamId}: ${deleted.message ?? deleted.code ?? 'unknown error'}.`);
+		await deleteLocalCapacityAcceptanceTeam(input.adminClient, { id: secondTeamId, name: teamName });
 	};
 	try {
 		const protocol = new ProviderProtocolClient({
