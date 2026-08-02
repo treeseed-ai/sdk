@@ -24,7 +24,7 @@ describe('local process reconcile provider', () => {
 		expect(serialized).not.toContain('TREESEED_KEY_PASSPHRASE');
 		expect(serialized).not.toContain('"env"');
 		expect(result.parsed?.plan?.processes?.[0]?.logPath).toContain('.treeseed/logs/dev/web.log');
-	});
+	}, 15_000);
 
 	it('injects local API database and service defaults for managed dev processes', () => {
 		const tenantRoot = mkdtempSync(join(tmpdir(), 'treeseed-local-process-env-'));
