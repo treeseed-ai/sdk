@@ -1,18 +1,18 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { createServer, type Server } from 'node:net';
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
-import type { CanonicalDrift, CanonicalGraphNode } from '../support/state/platform.ts';
-import type { RunLiveReconcileTestsOptions, LiveReconcileEnvironment, LiveReconcileMode, LiveReconcileScenarioResult } from '../support/acceptance/live-acceptance.ts';
-import type { LiveAcceptanceEnv } from '../support/acceptance/live-acceptance-values.ts';
-import { runCapacityProviderAssignmentProof } from '../capacity/capacity-core/live-acceptance-capacity-proof.ts';
+import { mkdir,mkdtemp,readdir,rm,writeFile } from 'node:fs/promises';
+import { createServer,type Server } from 'node:net';
+import { join,resolve } from 'node:path';
+import { MarketClient } from '../../entrypoints/clients/market-client.ts';
 import type { CapacityAcceptanceProof } from '../capacity/capacity-core/live-acceptance-capacity-context.ts';
 import { capacityAcceptanceConfig } from '../capacity/capacity-core/live-acceptance-capacity-context.ts';
-import { deleteLocalCapacityAcceptanceTeam, isLocalCapacityAcceptanceTeam } from '../capacity/capacity-core/live-acceptance-capacity-scope.ts';
-import { MarketClient } from '../../entrypoints/clients/market-client.ts';
-import { PROVIDER_CAPABILITIES, blocking, emitProgress, measuredScenario, node, providerNode, providerPrefixRoot, scenario } from './live-acceptance-runtime.ts';
+import { runCapacityProviderAssignmentProof } from '../capacity/capacity-core/live-acceptance-capacity-proof.ts';
+import { deleteLocalCapacityAcceptanceTeam,isLocalCapacityAcceptanceTeam } from '../capacity/capacity-core/live-acceptance-capacity-scope.ts';
+import type { LiveAcceptanceEnv } from '../support/acceptance/live-acceptance-values.ts';
 import { cleanupLocalAcceptanceAgentWorktrees } from '../support/acceptance/live-acceptance-worktree-cleanup.ts';
+import type { LiveReconcileEnvironment,LiveReconcileMode,LiveReconcileScenarioResult,RunLiveReconcileTestsOptions } from '../support/acceptance/live-acceptance.ts';
+import type { CanonicalDrift,CanonicalGraphNode } from '../support/state/platform.ts';
+import { PROVIDER_CAPABILITIES,blocking,emitProgress,measuredScenario,node,providerNode,providerPrefixRoot,scenario } from './live-acceptance-runtime.ts';
 
 type LiveProgress = RunLiveReconcileTestsOptions['onProgress'];
 type LiveEnv = LiveAcceptanceEnv;

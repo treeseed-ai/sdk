@@ -1,19 +1,19 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac,timingSafeEqual } from 'node:crypto';
 import type { D1DatabaseLike } from '../../types/cloudflare.ts';
 import type {
-	ApiAuthProvider,
-	ApiConfig,
-	ApiCredential,
-	ApiPrincipal,
-	DeviceCodeApproveRequest,
-	DeviceCodePollRequest,
-	DeviceCodePollResponse,
-	DeviceCodeStartRequest,
-	DeviceCodeStartResponse,
-	TokenRefreshRequest,
-	TokenRefreshResponse,
-	TrustedUserAssertionClaims,
-	UserIdentityProfileInput,
+ApiAuthProvider,
+ApiConfig,
+ApiCredential,
+ApiPrincipal,
+DeviceCodeApproveRequest,
+DeviceCodePollRequest,
+DeviceCodePollResponse,
+DeviceCodeStartRequest,
+DeviceCodeStartResponse,
+TokenRefreshRequest,
+TokenRefreshResponse,
+TrustedUserAssertionClaims,
+UserIdentityProfileInput,
 } from '../types.ts';
 import { D1AuthStore } from './d1-store.ts';
 

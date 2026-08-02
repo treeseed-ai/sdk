@@ -1,40 +1,32 @@
 import { mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { randomUUID } from 'node:crypto';
-import { readDevInstance } from '../../local-dev/managed-dev.ts';
-import { resolveSceneBaseUrl } from '../support/execution/base-url.ts';
-import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
-import { resolveSceneDeviceProfile } from '../runtime/devices.ts';
 import { prepareSceneEnvironment } from '../configuration/environment.ts';
+import { resolveSceneDeviceProfile } from '../runtime/devices.ts';
+import { resolveSceneBaseUrl } from '../support/execution/base-url.ts';
 import { validateScene } from '../support/execution/planner.ts';
+import { sceneErrorDiagnostic } from '../support/reporting/diagnostics.ts';
 import { writeSceneVisualAuditReport } from '../support/visual-audit/visual-audit-report.ts';
 import {
-	buildSceneVisualAuditReview,
-	isSceneVisualAuditIgnoredClientError,
-	writeSceneVisualAuditReview,
+buildSceneVisualAuditReview,
+writeSceneVisualAuditReview
 } from '../support/visual-audit/visual-audit-review.ts';
 import {
-	discoverSceneVisualAuditRoutes,
-	SceneVisualAuditRouteFilename,
+discoverSceneVisualAuditRoutes
 } from '../support/visual-audit/visual-audit-routes.ts';
 import {
-	ensureSceneVisualAuditRoleFixtures,
-	signInSceneVisualAuditRole,
-	validateSceneVisualAuditRoles,
+ensureSceneVisualAuditRoleFixtures,
+signInSceneVisualAuditRole,
+validateSceneVisualAuditRoles,
 } from '../testing/visual-audit-fixtures.ts';
 import type {
-	SceneDeviceProfile,
-	SceneVisualAuditClientError,
-	SceneDiagnostic,
-	SceneVisualAuditCapture,
-	SceneVisualAuditManifest,
-	SceneVisualAuditOptions,
-	SceneVisualAuditPaths,
-	SceneVisualAuditReport,
-	SceneVisualAuditRole,
+SceneDeviceProfile,
+SceneDiagnostic,
+SceneVisualAuditCapture,
+SceneVisualAuditManifest,
+SceneVisualAuditOptions,
+SceneVisualAuditReport
 } from '../types.ts';
-import { auditId, compactTimestamp, loadPlaywright, pathsFor, resolveVisualAuditApiBaseUrl, splitDiagnostics } from './split-diagnostics.ts';
-import { browserContextOptions, captureRoute, runVisualAuditPreflight, skipCapture } from './capture-route.ts';
+import { browserContextOptions,captureRoute,runVisualAuditPreflight,skipCapture } from './capture-route.ts';
+import { auditId,compactTimestamp,loadPlaywright,pathsFor,resolveVisualAuditApiBaseUrl,splitDiagnostics } from './split-diagnostics.ts';
 
 export async function runSceneVisualAudit(input: SceneVisualAuditOptions): Promise<SceneVisualAuditReport> {
 	const validation = validateScene({ projectRoot: input.projectRoot, scene: input.scene });

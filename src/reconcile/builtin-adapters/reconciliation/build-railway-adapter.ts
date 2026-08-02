@@ -1,21 +1,21 @@
-import { resolve } from 'node:path';
 import { validateRailwayDeployPrerequisites } from "../../../operations/services/hosting/railway/railway-deploy.ts";
-import type { ReconcileAdapter, ReconcileUnitType } from "../../support/contracts/contracts.ts";
-import { buildRailwayEnv, buildWorkflowMetaAdapter } from './build-workflow-meta-adapter.ts';
-import { observeRailwayUnit } from '../hosting/observe-railway-unit.ts';
-import { buildRailwayDiff, destroyRailwayUnit, reconcileRailwayUnit } from '../hosting/railway-verification-may-settle.ts';
-import { verifyRailwayUnit } from '../hosting/verify-railway-unit.ts';
-import { buildAttachmentDiff, observeCustomDomainUnit, observeDnsRecordUnit, resolveDesiredDnsRecords } from '../capacity/providers/capacity-provider-variables-for-service.ts';
-import { reconcileCustomDomainUnit, reconcileDnsRecordUnit, verifyCustomDomainUnit, verifyDnsRecordUnit } from '../support/verify-custom-domain-unit.ts';
-import { buildCompositeAdapter, buildManifestAdapter, buildPackageWorkflowAdapter, isTransientRailwayReconcileError } from '../hosting/to-deploy-target.ts';
-import { buildCloudflareAdapter } from '../hosting/build-cloudflare-diff.ts';
-import { buildDockerImageBuildAdapter, buildGitHubWorkflowDispatchAdapter, buildPackageImageAdapter } from './build-git-hub-workflow-dispatch-adapter.ts';
-import { buildGitHubBindingAdapter, buildGitHubEnvironmentAdapter } from '../treedx/graph/build-graph-only-adapter.ts';
-import { buildLocalContentMaterializationAdapter, buildLocalProcessAdapter } from './build-local-content-materialization-adapter.ts';
+import type { ReconcileAdapter,ReconcileUnitType } from "../../support/contracts/contracts.ts";
 import { buildCapacityProviderAdapter } from '../capacity/providers/build-capacity-provider-adapter.ts';
-import { buildLocalDockerComposeAdapter } from './build-local-docker-compose-adapter.ts';
+import { buildAttachmentDiff,observeCustomDomainUnit,observeDnsRecordUnit,resolveDesiredDnsRecords } from '../capacity/providers/capacity-provider-variables-for-service.ts';
+import { buildCloudflareAdapter } from '../hosting/build-cloudflare-diff.ts';
+import { buildCloudflareTunnelAdapter } from '../hosting/cloudflare-tunnel/build-cloudflare-tunnel-adapter.ts';
+import { observeRailwayUnit } from '../hosting/observe-railway-unit.ts';
+import { buildRailwayDiff,destroyRailwayUnit,reconcileRailwayUnit } from '../hosting/railway-verification-may-settle.ts';
+import { buildCompositeAdapter,buildManifestAdapter,buildPackageWorkflowAdapter,isTransientRailwayReconcileError } from '../hosting/to-deploy-target.ts';
+import { verifyRailwayUnit } from '../hosting/verify-railway-unit.ts';
 import { buildLocalTreeDxAdapter } from '../projects/knowledge/verify-local-tree-dx-project-content.ts';
+import { reconcileCustomDomainUnit,reconcileDnsRecordUnit,verifyCustomDomainUnit,verifyDnsRecordUnit } from '../support/verify-custom-domain-unit.ts';
+import { buildGitHubBindingAdapter,buildGitHubEnvironmentAdapter } from '../treedx/graph/build-graph-only-adapter.ts';
+import { buildDockerImageBuildAdapter,buildGitHubWorkflowDispatchAdapter,buildPackageImageAdapter } from './build-git-hub-workflow-dispatch-adapter.ts';
+import { buildLocalContentMaterializationAdapter,buildLocalProcessAdapter } from './build-local-content-materialization-adapter.ts';
+import { buildLocalDockerComposeAdapter } from './build-local-docker-compose-adapter.ts';
 import { buildReleaseGateAdapter } from './build-release-gate-adapter.ts';
+import { buildRailwayEnv,buildWorkflowMetaAdapter } from './build-workflow-meta-adapter.ts';
 
 export function buildRailwayAdapter(unitType: ReconcileUnitType): ReconcileAdapter {
 	return {
@@ -144,6 +144,7 @@ export function createCloudflareReconcileAdapters() {
 		buildCustomDomainAdapter('custom-domain:web', 'cloudflare'),
 		buildDnsRecordAdapter(),
 		buildCompositeAdapter('web-ui'),
+		buildCloudflareTunnelAdapter(),
 	];
 }
 

@@ -1,18 +1,5 @@
-import type { FieldAliasBinding } from '../../../entrypoints/models/field-aliases.ts';
-import type {
-	CapacityBusinessModel,
-	CapacityLaneUnit,
-	CapacityReservation,
-	NativeUsageObservation,
-} from '../../../agent-capacity/contracts/support/financial-records.ts';
-import type {
-	CapacityExecutionProvider,
-	CapacityExecutionProviderNativeLimit,
-	CapacityExecutionProviderObservation,
-	CapacityProviderMembershipView,
-} from '../../../capacity-provider/contracts/index.ts';
-import { CommerceFulfillmentEventType, CommerceFulfillmentStatus, CommerceServiceContractStatus, CommerceServiceEventType } from '../payments/commerce-subscription-statuses.ts';
-import { CommonsDecisionStatus, CommonsGovernanceEventType, CommonsParticipantStatus, CommonsProposalStatus, CommonsQuestionStatus, CommonsVoteValue } from '../governance/commerce-governance-states.ts';
+import { CommonsDecisionStatus,CommonsGovernanceEventType,CommonsParticipantStatus,CommonsProposalStatus,CommonsQuestionStatus,CommonsVoteValue } from '../governance/commerce-governance-states.ts';
+import { CommerceFulfillmentEventType,CommerceFulfillmentStatus,CommerceServiceContractStatus,CommerceServiceEventType } from '../payments/commerce-subscription-statuses.ts';
 
 export interface CommerceServiceContract {
 	id: string;

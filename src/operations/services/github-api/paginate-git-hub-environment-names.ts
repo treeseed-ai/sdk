@@ -1,11 +1,6 @@
 import { Buffer } from 'node:buffer';
-import { spawnSync } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { Octokit } from 'octokit';
-import { createManagedToolEnv, resolveToolBinary } from '../../../entrypoints/runtime/managed-dependencies.ts';
-import { resolveGitHubToken } from '../../../configuration/service-credentials.ts';
-import { GitHubApiClient, normalizeGitHubApiError, parseGitHubRepositorySlug, sodium, withGitHubApiRetries } from './require.ts';
-import { createGitHubApiClient, paginateNames } from './create-git-hub-api-client.ts';
+import { createGitHubApiClient,paginateNames } from './create-git-hub-api-client.ts';
+import { GitHubApiClient,normalizeGitHubApiError,parseGitHubRepositorySlug,sodium,withGitHubApiRetries } from './require.ts';
 
 export async function paginateGitHubEnvironmentNames(
 	client: GitHubApiClient,

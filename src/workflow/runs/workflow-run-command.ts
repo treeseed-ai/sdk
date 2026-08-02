@@ -1,8 +1,7 @@
-import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { hostname } from 'node:os';
-import { dirname, resolve } from 'node:path';
+import { existsSync,readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { WorkflowMode } from '../session.ts';
-import { readWorkflowRunJournal, releaseWorkflowLock } from './ensure-workflow-exclude-rule.ts';
+import { readWorkflowRunJournal,releaseWorkflowLock } from './ensure-workflow-exclude-rule.ts';
 import { updateWorkflowRunJournal } from './update-workflow-run-journal.ts';
 
 export type WorkflowRunCommand =

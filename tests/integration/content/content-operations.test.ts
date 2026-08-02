@@ -110,4 +110,22 @@ describe('content operations', () => {
 		expect(linked.body).toBe('Existing body.');
 		expect(linked.ref).toMatchObject({ subjectId: 'core', subjectField: 'related_objectives' });
 	});
+
+	it('reports the explicitly requested relation when existing content has another subject edge', () => {
+		const existing = renderContentRecord({
+			model: 'note',
+			title: 'Editorial review',
+			fields: { about: ['guide.overview'] },
+			body: 'Existing review.',
+		});
+		const linked = renderContentRecord({
+			model: 'note',
+			title: 'Editorial review',
+			existingContent: existing.content,
+			relations: [{ field: 'relatedObjectives', targetModel: 'objective', targetSlug: 'objective:core' }],
+		});
+
+		expect(linked.frontmatter).toMatchObject({ about: ['guide.overview'], relatedObjectives: ['objective:core'] });
+		expect(linked.ref).toMatchObject({ subjectId: 'objective:core', subjectField: 'relatedObjectives' });
+	});
 });

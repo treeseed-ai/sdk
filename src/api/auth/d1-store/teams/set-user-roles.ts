@@ -1,12 +1,15 @@
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
-import type { D1DatabaseLike } from "../../../../types/cloudflare.ts";
-import type { ApiConfig, ApiCredential, ApiPrincipal, DeviceCodeApproveRequest, DeviceCodePollRequest, DeviceCodePollResponse, DeviceCodeStartRequest, DeviceCodeStartResponse, TokenRefreshRequest, TokenRefreshResponse, TrustedUserAssertionClaims, UserIdentityProfileInput, } from "../../../types.ts";
-import { DEFAULT_PERMISSIONS, DEFAULT_ROLES } from "../../rbac.ts";
-import { createAccessToken, nextOpaqueToken, principalFromAccessTokenPayload, verifyAccessToken } from "../../tokens.ts";
-import { approvalUrl, AUTH_SCHEMA_SQL, DeviceCodeRow, UserRow, PrincipalRecord, PersonalAccessTokenResult, ServiceCredentialResult, now, isoNow, addSeconds, parseJson, stableHash, equalHash, D1AuthStore } from "../../d1-store.ts";
+import { D1AuthStore } from "../../d1-store.ts";
 export async function setUserRolesMethod(this: D1AuthStore, userId: string, roles: string[]) {
     await this.ensureInitialized();
     const requestedRoles = [...new Set(roles.map((role) => role.trim()).filter(Boolean))];
+	const currentRoles = await this.rolesForUser(userId);
+	if (currentRoles.includes('platform_admin') && !requestedRoles.includes('platform_admin')) {
+		const count = await this.first<{ count: number }>(`SELECT COUNT(DISTINCT bindings.user_id) AS count
+			FROM user_role_bindings bindings
+			INNER JOIN roles ON roles.id = bindings.role_id
+			WHERE roles.key = 'platform_admin'`);
+		if (Number(count?.count ?? 0) <= 1) throw new Error('The final platform administrator cannot be removed.');
+	}
     await this.replaceRoles(userId, requestedRoles.length > 0 ? requestedRoles : ['member']);
     await this.writeAuditEvent({
         actorType: 'service',

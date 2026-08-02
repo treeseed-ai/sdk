@@ -272,6 +272,17 @@ class FakePage implements ScenePage {
 			});
 		}
 	}
+	emitAbortedPrefetch(url: string) {
+		for (const handler of this.handlers.requestfailed ?? []) {
+			handler({
+				url: () => url,
+				method: () => 'GET',
+				failure: () => ({ errorText: 'net::ERR_ABORTED' }),
+				resourceType: () => 'fetch',
+				headers: () => ({ 'sec-purpose': 'prefetch' }),
+			});
+		}
+	}
 	emitResponse(status: number, url: string, payload: unknown) {
 		for (const handler of this.handlers.response ?? []) {
 			handler({
@@ -349,8 +360,10 @@ it('records console and network failures in reports and jsonl artifacts', async 
 			adapter.page.emitRequestFailed('http://example.test/api');
 			adapter.page.emitAbortedResource('http://example.test/logo.svg', 'image');
 			adapter.page.emitAbortedResource('http://example.test/next', 'document');
+			adapter.page.emitAbortedResource('http://example.test/lazy-module.js', 'script');
 			adapter.page.emitAbortedResource(url, 'fetch');
 			adapter.page.emitAbortedResource('http://example.test/submit', 'fetch');
+			adapter.page.emitAbortedPrefetch('http://example.test/account');
 			adapter.page.emitResponse(202, 'http://example.test/v1/operations', { payload: { operation: { id: 'op_123' } } });
 			adapter.page.emitResponse(500, 'http://example.test/v1/fail', { ok: false });
 			await Promise.resolve();
@@ -361,7 +374,9 @@ it('records console and network failures in reports and jsonl artifacts', async 
 		expect(report.steps[0]?.networkErrors[0]?.url).toBe('http://example.test/api');
 		expect(report.steps[0]?.networkErrors.some((entry) => entry.url?.endsWith('/logo.svg'))).toBe(false);
 		expect(report.steps[0]?.networkErrors.some((entry) => entry.url?.endsWith('/next'))).toBe(false);
+		expect(report.steps[0]?.networkErrors.some((entry) => entry.url?.endsWith('/lazy-module.js'))).toBe(false);
 		expect(report.steps[0]?.networkErrors.some((entry) => entry.url === 'http://example.test/')).toBe(false);
+		expect(report.steps[0]?.networkErrors.some((entry) => entry.url?.endsWith('/account'))).toBe(false);
 		expect(report.steps[0]?.networkErrors.some((entry) => entry.url?.endsWith('/submit'))).toBe(true);
 		expect(report.steps[0]?.operationIds).toContain('op_123');
 		expect(readFileSync(report.artifacts!.consoleLogPath!, 'utf8')).toContain('boom');

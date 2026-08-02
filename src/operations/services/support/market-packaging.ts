@@ -1,10 +1,10 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { basename, dirname, resolve, relative } from 'node:path';
-import { cliPackageVersion, corePackageVersion, sdkPackageVersion } from '../runtime/runtime-paths.ts';
+import { cpSync,existsSync,mkdirSync,readdirSync,readFileSync,statSync,writeFileSync } from 'node:fs';
+import { basename,dirname,relative,resolve } from 'node:path';
+import { cliPackageVersion,corePackageVersion,sdkPackageVersion } from '../runtime/runtime-paths.ts';
 
 export interface MarketPackageManifest {
 	schemaVersion: 1;
-	kind: 'template' | 'knowledge_pack';
+	kind: 'template';
 	id: string;
 	title: string;
 	summary: string | null;
@@ -37,13 +37,6 @@ export interface MarketPackageBuildResult {
 	manifest: MarketPackageManifest;
 }
 
-export interface KnowledgePackImportResult {
-	manifest: MarketPackageManifest;
-	manifestPath: string;
-	payloadRoot: string;
-	importedPaths: string[];
-}
-
 const TEMPLATE_IGNORES = [
 	'.git',
 	'.github',
@@ -53,16 +46,6 @@ const TEMPLATE_IGNORES = [
 	'dist',
 	'.treeseed/state',
 	'.treeseed/generated',
-];
-
-const KNOWLEDGE_PACK_DEFAULT_PATHS = [
-	'src/content/objectives',
-	'src/content/questions',
-	'src/content/notes',
-	'src/content/proposals',
-	'src/content/decisions',
-	'src/content/knowledge',
-	'src/content/pages',
 ];
 
 function nowStamp(date = new Date()) {
@@ -212,7 +195,7 @@ function buildManifest(
 	};
 }
 
-export function resolveMarketPackageOutputRoot(projectRoot: string, kind: 'template' | 'knowledge_pack', slug: string) {
+export function resolveMarketPackageOutputRoot(projectRoot: string, kind: 'template', slug: string) {
 	return resolve(projectRoot, '.treeseed', 'packages', kind, `${slug}-${nowStamp()}`);
 }
 
@@ -247,72 +230,6 @@ export function buildTemplateMarketPackage(projectRoot: string, input: {
 		manifestPath,
 		files,
 		manifest,
-	};
-}
-
-export function buildKnowledgePackMarketPackage(projectRoot: string, input: {
-	id?: string;
-	title?: string;
-	summary?: string | null;
-	outputRoot?: string | null;
-	projectSlug?: string | null;
-	includePaths?: string[];
-	market?: MarketPackageManifest['market'];
-} = {}): MarketPackageBuildResult {
-	const projectSlug = slugify(input.projectSlug ?? basename(projectRoot), 'project');
-	const packageId = slugify(input.id ?? `${projectSlug}-knowledge-pack`, 'knowledge-pack');
-	const outputRoot = resolve(input.outputRoot ?? resolveMarketPackageOutputRoot(projectRoot, 'knowledge_pack', packageId));
-	const payloadRoot = resolve(outputRoot, 'payload');
-	ensureDir(payloadRoot);
-	const includePaths = (input.includePaths ?? KNOWLEDGE_PACK_DEFAULT_PATHS).filter((relativePath) => existsSync(resolve(projectRoot, relativePath)));
-	const files = copySelectedPaths(projectRoot, payloadRoot, includePaths);
-	const manifest = buildManifest(projectRoot, {
-		kind: 'knowledge_pack',
-		id: packageId,
-		title: input.title ?? `${projectSlug} knowledge pack`,
-		summary: input.summary ?? null,
-		projectSlug,
-		files,
-		sourceSelection: includePaths,
-		market: input.market,
-	});
-	const manifestPath = writeManifest(outputRoot, manifest);
-	return {
-		outputRoot,
-		payloadRoot,
-		manifestPath,
-		files,
-		manifest,
-	};
-}
-
-export function importKnowledgePack(targetRoot: string, sourcePath: string): KnowledgePackImportResult {
-	const resolvedSource = resolve(sourcePath);
-	const manifestPath = statSync(resolvedSource).isDirectory()
-		? resolve(resolvedSource, 'manifest.json')
-		: resolvedSource;
-	const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as MarketPackageManifest;
-	const sourceRoot = dirname(manifestPath);
-	const payloadRoot = resolve(sourceRoot, manifest.payloadRoot || 'payload');
-	if (!existsSync(payloadRoot)) {
-		throw new Error(`Knowledge pack payload directory is missing: ${payloadRoot}`);
-	}
-	const importedPaths: string[] = [];
-	for (const file of manifest.files) {
-		const sourceFile = resolve(payloadRoot, file);
-		if (!existsSync(sourceFile)) {
-			continue;
-		}
-		const targetFile = resolve(targetRoot, file);
-		ensureDir(dirname(targetFile));
-		cpSync(sourceFile, targetFile, { recursive: true, force: true });
-		importedPaths.push(file);
-	}
-	return {
-		manifest,
-		manifestPath,
-		payloadRoot,
-		importedPaths: importedPaths.sort((left, right) => left.localeCompare(right)),
 	};
 }
 

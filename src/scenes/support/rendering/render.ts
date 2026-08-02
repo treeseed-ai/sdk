@@ -1,24 +1,24 @@
 import { mkdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join,resolve } from 'node:path';
+import { createRemotionSceneRendererAdapter,resolveSceneRemotionEntryPoint } from '../../reconciliation/remotion-adapter.ts';
+import type {
+SceneDiagnostic,
+SceneRenderFormat,
+SceneRenderMode,
+SceneRenderOptions,
+SceneRenderProgressEvent,
+SceneRenderProgressEventType,
+SceneRenderReport,
+SceneRendererAdapter,
+} from '../../types.ts';
 import { appendSceneJsonl } from '../evidence/artifacts.ts';
-import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../reporting/diagnostics.ts';
 import { resolveScenePlugins } from '../plugins/registry.ts';
-import { createRemotionSceneRendererAdapter, resolveSceneRemotionEntryPoint } from '../../reconciliation/remotion-adapter.ts';
+import { sceneErrorDiagnostic,sceneWarningDiagnostic } from '../reporting/diagnostics.ts';
+import { appendSceneTrainingOutputPaths,writeSceneTrainingOutputs } from '../training/training-report.ts';
 import { listSceneRemotionCompositions } from './remotion-composition-registry.ts';
 import { loadSceneRenderInput } from './remotion-input.ts';
 import { stageSceneRenderMediaAssets } from './render-media-assets.ts';
-import { appendSceneRenderedVideo, writeSceneRenderReport } from './render-report.ts';
-import { appendSceneTrainingOutputPaths, writeSceneTrainingOutputs } from '../training/training-report.ts';
-import type {
-	SceneDiagnostic,
-	SceneRenderFormat,
-	SceneRenderMode,
-	SceneRenderOptions,
-	SceneRenderProgressEvent,
-	SceneRenderProgressEventType,
-	SceneRenderReport,
-	SceneRendererAdapter,
-} from '../../types.ts';
+import { appendSceneRenderedVideo,writeSceneRenderReport } from './render-report.ts';
 
 function renderId(timestamp: string) {
 	return timestamp.toLowerCase().replace(/[^a-z0-9]/gu, '').slice(0, 12) || 'render';

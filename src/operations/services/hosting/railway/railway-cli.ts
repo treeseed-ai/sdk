@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
-import { resolveToolCommand } from '../../../../entrypoints/runtime/managed-dependencies.ts';
 import { withServiceCredentialEnv } from '../../../../configuration/service-credentials.ts';
+import { resolveToolCommand } from '../../../../entrypoints/runtime/managed-dependencies.ts';
 
 type RailwayCliInput = {
 	args: string[];

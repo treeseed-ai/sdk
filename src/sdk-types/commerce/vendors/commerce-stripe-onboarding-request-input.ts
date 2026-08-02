@@ -1,19 +1,6 @@
-import type { FieldAliasBinding } from '../../../entrypoints/models/field-aliases.ts';
-import type {
-	CapacityBusinessModel,
-	CapacityLaneUnit,
-	CapacityReservation,
-	NativeUsageObservation,
-} from '../../../agent-capacity/contracts/support/financial-records.ts';
-import type {
-	CapacityExecutionProvider,
-	CapacityExecutionProviderNativeLimit,
-	CapacityExecutionProviderObservation,
-	CapacityProviderMembershipView,
-} from '../../../capacity-provider/contracts/index.ts';
-import { CommerceCapacityAccessLevel, CommerceCapacityAiInvolvementLevel, CommerceCapacityDataAccessLevel, CommerceCapacityHumanInvolvementLevel, CommerceCapacityInquiryStatus, CommerceCapacityListingStatus, CommerceCapacityRuntimeIsolationLevel, CommerceCapacitySecretAccessLevel, StripeConnectedAccount } from '../payments/commerce-subscription-statuses.ts';
-import { CommerceProductKind } from '../../support/template-launch-requirements.ts';
-import { CommerceGovernanceState, CommerceOwnershipModel, CommerceOwnershipTransferStatus, CommerceStewardshipRole, CommerceSuccessionEventType } from '../governance/commerce-governance-states.ts';
+import { CommerceProductKind } from '../../support/platform-contracts.ts';
+import { CommerceGovernanceState,CommerceOwnershipModel,CommerceOwnershipTransferStatus,CommerceStewardshipRole,CommerceSuccessionEventType } from '../governance/commerce-governance-states.ts';
+import { CommerceCapacityAccessLevel,CommerceCapacityAiInvolvementLevel,CommerceCapacityDataAccessLevel,CommerceCapacityHumanInvolvementLevel,CommerceCapacityInquiryStatus,CommerceCapacityListingStatus,CommerceCapacityRuntimeIsolationLevel,CommerceCapacitySecretAccessLevel,StripeConnectedAccount } from '../payments/commerce-subscription-statuses.ts';
 
 export interface CommerceStripeOnboardingRequestInput {
 	returnUrl?: string | null;

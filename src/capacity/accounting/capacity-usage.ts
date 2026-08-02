@@ -1,14 +1,14 @@
 import type {
-	CreditConversionProfile,
-	DerivedCapacityAvailability,
-	DerivedCapacityInput,
-} from '../../entrypoints/models/sdk-types.ts';
-import type {
-	CapacityReservation,
-	CapacityUsageActual,
-	NativeUsageObservation,
+CapacityReservation,
+CapacityUsageActual,
+NativeUsageObservation,
 } from '../../agent-capacity/contracts/support/financial-records.ts';
 import type { CapacityExecutionProvider } from '../../capacity-provider/contracts/index.ts';
+import type {
+CreditConversionProfile,
+DerivedCapacityAvailability,
+DerivedCapacityInput,
+} from '../../entrypoints/models/sdk-types.ts';
 
 export const ACTUAL_CREDIT_FORMULA_VERSION = 'treeseed.actual-credits.v1';
 export const DEFAULT_EXECUTION_PROFILE_ID = 'standard-code-model';

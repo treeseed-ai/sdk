@@ -1,3 +1,4 @@
+import { resolveCloudflareTunnelApiToken } from '../../configuration/service-credentials.ts';
 import { configuredLiveAcceptanceValue as configuredValue, type LiveAcceptanceEnv } from '../support/acceptance/live-acceptance-values.ts';
 
 type LiveEnv = LiveAcceptanceEnv;
@@ -53,6 +54,12 @@ export async function cloudflareRequestPayload(path: string, env: LiveEnv, fetch
 export async function cloudflareRequest(path: string, env: LiveEnv, fetchImpl: typeof fetch, init: RequestInit = {}) {
 	const payload = await cloudflareRequestPayload(path, env, fetchImpl, init);
 	return payload.result;
+}
+
+export async function cloudflareTunnelRequest(path: string, env: LiveEnv, fetchImpl: typeof fetch, init: RequestInit = {}) {
+	const credential = resolveCloudflareTunnelApiToken(env);
+	if (!credential.token) throw new Error('Missing TREESEED_CLOUDFLARE_TUNNEL_API_TOKEN or TREESEED_CLOUDFLARE_API_TOKEN fallback.');
+	return cloudflareRequest(path, { ...env, TREESEED_CLOUDFLARE_API_TOKEN: credential.token }, fetchImpl, init);
 }
 
 function isTransientCloudflareError(error: unknown) {

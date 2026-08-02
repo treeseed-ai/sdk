@@ -1,31 +1,30 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { sceneActionKind, sceneExpectationKinds } from "../support/validation/schema.ts";
-import { sceneErrorDiagnostic } from "../support/reporting/diagnostics.ts";
-import { resolveSceneDeviceProfile } from "../runtime/devices.ts";
-import { resolveSceneApiBaseUrl, resolveSceneBaseUrl } from "../support/execution/base-url.ts";
-import { prepareSceneEnvironment } from "../configuration/environment.ts";
 import { resolveSceneAuth } from "../accounts/auth.ts";
-import { planOrApplySceneSeed } from "../seeds/seed.ts";
+import { prepareSceneEnvironment } from "../configuration/environment.ts";
 import { waitForSceneOperation } from "../operations/operations.ts";
-import { collectSceneLogs } from "../support/reporting/logs.ts";
 import { createPlaywrightSceneBrowserAdapter } from "../reconciliation/playwright-adapter.ts";
+import { resolveSceneDeviceProfile } from "../runtime/devices.ts";
+import { planOrApplySceneSeed } from "../seeds/seed.ts";
+import { createSceneRunArtifacts,ensureSceneRunDirectories,writeSceneRunArtifacts } from "../support/evidence/artifacts.ts";
+import { createSceneCheckpoint,writeSceneCheckpoint } from "../support/evidence/checkpoints.ts";
+import { createSceneChapterReports,createSceneSegment,deriveSceneStepChapters,finishSceneSegment,writeSceneSegmentArtifacts } from "../support/evidence/segments.ts";
+import { createSceneTimeline } from "../support/evidence/timeline.ts";
+import { resolveSceneApiBaseUrl,resolveSceneBaseUrl } from "../support/execution/base-url.ts";
+import { resolveSceneStepTimeoutSeconds,withSceneTimeout } from "../support/execution/timeouts.ts";
 import { createSceneRuntimePluginContext } from "../support/plugins/plugins.ts";
 import { resolveScenePlugins } from "../support/plugins/registry.ts";
-import { createSceneTimeline } from "../support/evidence/timeline.ts";
+import { sceneErrorDiagnostic } from "../support/reporting/diagnostics.ts";
+import { collectSceneLogs } from "../support/reporting/logs.ts";
 import { createSceneProgress } from "../support/reporting/progress.ts";
-import { ensureSceneVisualAuditRoleFixtures, signInSceneVisualAuditRole } from "../testing/visual-audit-fixtures.ts";
-import { withSceneTimeout } from "../support/execution/timeouts.ts";
-import { createSceneCheckpoint, writeSceneCheckpoint } from "../support/evidence/checkpoints.ts";
-import { createSceneChapterReports, createSceneSegment, deriveSceneStepChapters, finishSceneSegment, writeSceneSegmentArtifacts } from "../support/evidence/segments.ts";
-import { createSceneRunArtifacts, ensureSceneRunDirectories, writeSceneRunArtifacts } from "../support/evidence/artifacts.ts";
 import { writeSceneMarkdownReport } from "../support/reporting/reporter.ts";
-import type { SceneAssertionRunReport, SceneBrowserSession, SceneDiagnostic, SceneObservedError, SceneOperationWaitReport, SceneRunOptions, SceneRunReport, SceneRunSetupReport, SceneRunStepReport } from "../types.ts";
-import { appendBlockedSceneLogs, canContinueAfterFailure, duration, now, planForInput, playwrightDiagnostic, registerScenePageObservers, reportFromBlock, resolveCapture, sceneWithRunOverrides, splitDiagnostics, validationForInput } from './now.ts';
-
+import { sceneActionKind,sceneExpectationKinds } from "../support/validation/schema.ts";
+import { ensureSceneVisualAuditRoleFixtures,signInSceneVisualAuditRole } from "../testing/visual-audit-fixtures.ts";
+import type { SceneAssertionRunReport,SceneBrowserSession,SceneDiagnostic,SceneObservedError,SceneOperationWaitReport,SceneRunOptions,SceneRunReport,SceneRunSetupReport,SceneRunStepReport } from "../types.ts";
+import { appendBlockedSceneLogs,canContinueAfterFailure,duration,now,planForInput,playwrightDiagnostic,registerScenePageObservers,reportFromBlock,resolveCapture,sceneWithRunOverrides,splitDiagnostics,validationForInput } from './now.ts';
+import { createSceneTraceEvidence } from './trace-evidence.ts';
 export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> {
-	const startedAt = now();
-	const validation = validationForInput(input);
+	const startedAt = now(), validation = validationForInput(input);
 	if (!validation.ok || !validation.scene) {
 		return reportFromBlock({
 			scenePath: validation.scenePath,
@@ -37,7 +36,20 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 			diagnostics: validation.diagnostics,
 		});
 	}
-	const scene = sceneWithRunOverrides(validation.scene, input);
+	const plan = planForInput(input, validation);
+	if (!plan.ok || !plan.artifactPaths) {
+		return reportFromBlock({
+			scenePath: validation.scenePath,
+			sceneId: validation.scene.id,
+			runId: input.runId ?? null,
+			startedAt,
+			environment: plan.environment,
+			browser: input.browser ?? validation.scene.target.browser,
+			diagnostics: plan.diagnostics,
+		});
+	}
+	const paths = plan.artifactPaths;
+	const scene = sceneWithRunOverrides(validation.scene, { ...input, runId: paths.runId });
 	const browser = input.browser ?? scene.target.browser;
 	const deviceResolution = resolveSceneDeviceProfile({ scene, device: input.device });
 	if (!deviceResolution.profile && deviceResolution.diagnostics.some((entry) => entry.severity === 'error')) {
@@ -56,21 +68,6 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 	const pluginResolution = resolveScenePlugins({ plugins: input.plugins });
 	const registry = pluginResolution.registry;
 	const environmentProvider = registry.environmentProviders[0];
-	const plan = planForInput(input, validation);
-	if (!plan.ok || !plan.artifactPaths) {
-		return reportFromBlock({
-			scenePath: validation.scenePath,
-			sceneId: scene.id,
-			runId: input.runId ?? null,
-			startedAt,
-			environment: plan.environment,
-			browser,
-			device,
-			diagnostics: plan.diagnostics,
-		});
-	}
-
-	const paths = plan.artifactPaths;
 	ensureSceneRunDirectories(paths);
 	const screenshotOnlyArtifacts = input.artifactMode === 'screenshots';
 	const tracePath = scene.artifacts.trace ? join(paths.playwrightRoot, 'trace.zip') : null;
@@ -82,7 +79,6 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 	writeFileSync(artifacts.networkLogPath!, '', 'utf8');
 	writeFileSync(artifacts.errorsLogPath!, '', 'utf8');
 	writeFileSync(artifacts.progressPath!, '', 'utf8');
-
 	const timeline = createSceneTimeline({ sceneId: scene.id, runId: paths.runId, startedAtMs: startedAt.getTime() });
 	const progress = createSceneProgress({ sceneId: scene.id, runId: paths.runId, startedAtMs: startedAt.getTime(), progressPath: artifacts.progressPath, onProgress: input.onProgress });
 	progress.push('scene.run.started', { title: scene.title, environment: plan.environment });
@@ -128,7 +124,6 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 		writeSceneRunArtifacts({ scene, plan, report, timeline: timeline.events });
 		return report;
 	}
-
 	const baseUrlResolver = environmentProvider?.resolveBaseUrl ?? resolveSceneBaseUrl;
 	const baseUrl = baseUrlResolver({ projectRoot: input.projectRoot, scene, environment: plan.environment, environmentReport });
 	if (!baseUrl.ok || !baseUrl.baseUrl) {
@@ -155,21 +150,18 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 		const apiBaseUrl = resolveSceneApiBaseUrl({ projectRoot: input.projectRoot, environment: plan.environment, webBaseUrl: baseUrl.baseUrl });
 		const roleFixtureDiagnostics = await ensureSceneVisualAuditRoleFixtures({
 			baseUrl: apiBaseUrl,
-			roles: [scene.setup.auth.role],
+			roles: [scene.setup.auth.role, ...(scene.setup.auth.fixtureRoles ?? [])],
 			projectRoot: input.projectRoot,
 			environment: plan.environment,
 		});
 		setupDiagnostics.push(...roleFixtureDiagnostics);
 	}
-
 	const adapter = input.browserAdapter ?? createPlaywrightSceneBrowserAdapter();
 	let session: SceneBrowserSession | null = null;
 	const steps: SceneRunStepReport[] = [];
 	const diagnostics: SceneDiagnostic[] = [...plan.diagnostics, ...setupDiagnostics];
-	let failedStep: string | null = null;
-	let currentStepId: string | undefined;
-	const consoleErrors: SceneObservedError[] = [];
-	const networkErrors: SceneObservedError[] = [];
+	let failedStep: string | null = null, currentStepId: string | undefined;
+	const consoleErrors: SceneObservedError[] = [], networkErrors: SceneObservedError[] = [];
 	const linkedOperationIds: string[] = [];
 	const operationReports: SceneOperationWaitReport[] = [];
 	const operationWaiter = input.operationWaiter ?? waitForSceneOperation;
@@ -178,6 +170,7 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 	const segments: SceneRunReport['segments'] = [];
 	const checkpoints: SceneRunReport['checkpoints'] = [];
 	const completedStepIds: string[] = [];
+	const traceEvidence = createSceneTraceEvidence(tracePath);
 	let currentChapterId: string | null = null;
 	let currentSegment: SceneRunReport['segments'][number] | null = null;
 	const segmentIndexes = new Map<string, number>();
@@ -196,7 +189,10 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 			storageStatePath: input.inputStorageStatePath,
 		});
 		registerScenePageObservers({ session, currentStepId: () => currentStepId, consoleErrors, networkErrors, linkedOperationIds, artifacts, timeline });
-		if (tracePath) await session.startTracing?.();
+		if (tracePath) {
+			await session.startTracing?.();
+			traceEvidence.started();
+		}
 		if (scene.setup.auth?.role && scene.setup.auth.role !== 'anonymous' && scene.setup.auth.seedOnly !== true && !input.inputStorageStatePath) {
 			const signInDiagnostics = await signInSceneVisualAuditRole({
 				page: session.page,
@@ -260,6 +256,7 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 			let status: SceneRunStepReport['status'] = 'passed';
 			timeline.push('action.start', { actionKind }, step.id);
 			try {
+				const stepTimeoutSeconds = resolveSceneStepTimeoutSeconds(step, runtime.timeouts.stepSeconds);
 				const runtimeContext = createSceneRuntimePluginContext({
 					projectRoot: input.projectRoot,
 					scene,
@@ -277,6 +274,7 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 					sleep: input.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
 					progress,
 				});
+				traceEvidence.capture(step.action, runtimeContext);
 				const actionHandler = registry.actions.get(actionKind);
 				if (!actionHandler) {
 					throw sceneErrorDiagnostic('scene.unknown_runtime_action', `No scene action plugin is registered for "${actionKind}".`, `workflow.${step.id}.action`);
@@ -286,8 +284,8 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 				}
 				const actionResult = await withSceneTimeout({
 					promise: actionHandler.run({ action: step.action, actionKind, step, context: runtimeContext }),
-					timeoutMs: (step.timeoutSeconds ?? runtime.timeouts.stepSeconds) * 1000,
-					diagnostic: sceneErrorDiagnostic('scene.step_timeout', `Step timed out after ${step.timeoutSeconds ?? runtime.timeouts.stepSeconds} seconds.`, `workflow.${step.id}`),
+					timeoutMs: stepTimeoutSeconds * 1000,
+					diagnostic: sceneErrorDiagnostic('scene.step_timeout', `Step timed out after ${stepTimeoutSeconds} seconds.`, `workflow.${step.id}`),
 				});
 				if (!actionResult.ok) throw actionResult.diagnostics[0] ?? sceneErrorDiagnostic('scene.step_failed', `Action "${actionKind}" failed.`, `workflow.${step.id}.action`);
 				if (actionResult.operationReport?.operationId && !linkedOperationIds.includes(actionResult.operationReport.operationId)) linkedOperationIds.push(actionResult.operationReport.operationId);
@@ -322,10 +320,12 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 				if (!failedStep) failedStep = step.id;
 			}
 			const screenshotPath = scene.artifacts.screenshots ? join(paths.playwrightRoot, 'screenshots', `${step.id}.png`) : null;
-			const viewportScreenshotPath = scene.artifacts.screenshots ? join(paths.playwrightRoot, 'screenshots', 'viewport', `${step.id}.png`) : null;
+			const fullPageScreenshots = scene.artifacts.fullPageScreenshots !== false;
+			const viewportScreenshotPath = scene.artifacts.screenshots && fullPageScreenshots
+				? join(paths.playwrightRoot, 'screenshots', 'viewport', `${step.id}.png`) : null;
 			if (viewportScreenshotPath) {
 				try {
-					await session.page.screenshot({ path: viewportScreenshotPath, fullPage: false });
+					await session.page.screenshot({ path: viewportScreenshotPath, fullPage: false, caret: 'initial' });
 					artifacts.viewportScreenshotPaths?.push(viewportScreenshotPath);
 					timeline.push('screenshot.viewport', { path: viewportScreenshotPath }, step.id);
 				} catch {
@@ -334,7 +334,7 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 			}
 			if (screenshotPath) {
 				try {
-					await session.page.screenshot({ path: screenshotPath, fullPage: true });
+					await session.page.screenshot({ path: screenshotPath, fullPage: fullPageScreenshots, caret: 'initial' });
 					artifacts.screenshotPaths.push(screenshotPath);
 					timeline.push('screenshot', { path: screenshotPath }, step.id);
 				} catch {
@@ -370,6 +370,10 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 				completedStepIds.push(step.id);
 				if (runtime.checkpoints.enabled && runtime.checkpoints.everyStep) {
 					const stepIndex = scene.workflow.findIndex((entry) => entry.id === step.id);
+					const checkpointId = step.checkpoint?.id ?? step.id;
+					const resumable = step.checkpoint?.resumable ?? runtime.checkpoints.defaultResumable;
+					const storageStatePath = resumable && session.saveStorageState ? join(paths.checkpointsRoot, `${checkpointId}.storage.json`) : undefined;
+					if (storageStatePath) await session.saveStorageState(storageStatePath);
 					const checkpoint = createSceneCheckpoint({
 						paths,
 						sceneId: scene.id,
@@ -379,8 +383,8 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 						segmentId: currentSegment?.id ?? 'default-segment-001',
 						completedStepIds,
 						nextStepId: scene.workflow[stepIndex + 1]?.id ?? null,
-						checkpointId: step.checkpoint?.id ?? step.id,
-						resumable: step.checkpoint?.resumable ?? runtime.checkpoints.defaultResumable,
+						checkpointId,
+						resumable,
 					});
 					checkpoints.push(checkpoint);
 					writeSceneCheckpoint(checkpoint);
@@ -425,10 +429,8 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 				progress.push('chapter.finished', { status: chapterReport.status }, { chapterId: chapterReport.id, status: chapterReport.status });
 			}
 		}
-		if (tracePath) await session.stopTracing?.(tracePath);
-		if (input.outputStorageStatePath && !diagnostics.some((entry) => entry.severity === 'error')) {
-			await session.saveStorageState?.(input.outputStorageStatePath);
-		}
+		await traceEvidence.finish(session);
+		if (input.outputStorageStatePath && !diagnostics.some((entry) => entry.severity === 'error')) await session.saveStorageState?.(input.outputStorageStatePath);
 		await session.close().catch(() => undefined);
 		sessionClosed = true;
 		const videoPaths = await session.videoPaths?.() ?? [];
@@ -439,6 +441,7 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 		failedStep = failedStep ?? null;
 	} finally {
 		currentStepId = undefined;
+		diagnostics.push(...await traceEvidence.finishSafely(session));
 		if (!sessionClosed) await session?.close().catch(() => undefined);
 	}
 	const finishedAt = now();

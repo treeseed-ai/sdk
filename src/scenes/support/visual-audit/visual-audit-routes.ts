@@ -1,12 +1,12 @@
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { basename, join, relative, resolve } from 'node:path';
-import { sceneWarningDiagnostic } from '../reporting/diagnostics.ts';
+import { existsSync,readFileSync,readdirSync,statSync } from 'node:fs';
+import { basename,join,relative,resolve } from 'node:path';
 import type {
-	SceneDiagnostic,
-	SceneManifest,
-	SceneVisualAuditRoute,
-	SceneVisualAuditRouteSource,
+SceneDiagnostic,
+SceneManifest,
+SceneVisualAuditRoute,
+SceneVisualAuditRouteSource,
 } from '../../types.ts';
+import { sceneWarningDiagnostic } from '../reporting/diagnostics.ts';
 
 const SEEDED_VALUES: Record<string, string> = {
 	teamId: 'visual-audit',
@@ -97,11 +97,8 @@ function canMaterializeDynamicPattern(pattern: string) {
 	const unsupportedSeedBackedAppRoutes = new Set([
 		'/app/capacity/providers/[providerId]/edit',
 		'/app/capacity/providers/[providerId]/keys',
-		'/app/hosts/[hostType]/new',
-		'/app/hosts/[hostType]/[hostId]/edit',
 		'/app/knowledge/[category]/[slug]',
 		'/app/knowledge/artifacts/[artifactId]',
-		'/app/projects/deployment/[id]',
 		'/app/projects/[projectId]/workdays/[workdayId]',
 		'/app/teams/[teamId]/edit',
 		'/app/teams/[teamId]/members',
@@ -249,7 +246,7 @@ function discoverTenantOverrides(projectRoot: string, routes: Map<string, SceneV
 
 const CONTENT_COLLECTION_ROUTES: Record<string, string> = {
 	agents: '/agents',
-	books: '/books',
+	// Book readers require the owning team and published manifest; local filenames cannot form canonical routes.
 	notes: '/notes',
 	objectives: '/objectives',
 	proposals: '/proposals',

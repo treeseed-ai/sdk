@@ -1,14 +1,14 @@
 import { resolve } from 'node:path';
 import { MarketClient } from '../../../entrypoints/clients/market-client.ts';
 import { runGitText } from '../../../operations/services/operations/git-runner.ts';
-import type { CapacityGovernanceRuntimeConnection } from '../../capacity/capacity-core/live-acceptance-capacity-governance.ts';
 import type { CapacityAcceptanceProof } from '../../capacity/capacity-core/live-acceptance-capacity-context.ts';
 import type { CapacityAcceptanceExecutionInput } from '../../capacity/capacity-core/live-acceptance-capacity-executor.ts';
-import type { RunLiveReconcileTestsOptions } from './live-acceptance.ts';
+import type { CapacityGovernanceRuntimeConnection } from '../../capacity/capacity-core/live-acceptance-capacity-governance.ts';
 import { verifyCapacityAcceptanceTerminal } from '../../capacity/capacity-core/live-acceptance-capacity-terminal.ts';
+import { finalizeLocalStarterAcceptance,provisionLocalStarterPortfolioCapacity } from '../../runtime/live-acceptance-starter-runtime.ts';
 import { engineeringStarterCapacityConfig } from './live-acceptance-starter-engineering.ts';
 import { researchStarterCapacityConfig } from './live-acceptance-starter-planning.ts';
-import { finalizeLocalStarterAcceptance, provisionLocalStarterPortfolioCapacity } from '../../runtime/live-acceptance-starter-runtime.ts';
+import type { RunLiveReconcileTestsOptions } from './live-acceptance.ts';
 
 const DECISION_ID = 'normalize-release-channel-inputs';
 

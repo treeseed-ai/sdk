@@ -1,13 +1,13 @@
 import crypto from 'node:crypto';
 import type {
-	ApprovalRequest,
-	CreateApprovalRequestRequest,
-	DecideApprovalRequestRequest,
-	ListApprovalRequestsRequest,
-	UpsertTeamInboxItemRequest,
+ApprovalRequest,
+CreateApprovalRequestRequest,
+DecideApprovalRequestRequest,
+ListApprovalRequestsRequest,
+UpsertTeamInboxItemRequest,
 } from '../entrypoints/models/sdk-types.ts';
 import type { InboxItem } from '../projects/projects-core/project-workflow.ts';
-import { SqliteStoreBase, nowIso, toSqlValue, type DatabaseRow } from './helpers.ts';
+import { SqliteStoreBase,nowIso,toSqlValue,type DatabaseRow } from './helpers.ts';
 
 function json(value: unknown) {
 	return JSON.stringify(value ?? {});

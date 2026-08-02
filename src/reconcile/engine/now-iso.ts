@@ -1,23 +1,19 @@
-import { createReconcileRegistry } from '../support/state/registry.ts';
-import type {
-	DesiredUnit,
-	ObservedUnitState,
-	ReconcilePlan,
-	ReconcileResult,
-	ReconcileRunContext,
-	ReconcileSelector,
-	ReconcileStateRecord,
-	ReconcileTarget,
-	ReconcileUnitDiff,
-	UnitPostcondition,
-	UnitPersistedState,
-	UnitVerificationResult,
-} from '../support/contracts/contracts.ts';
 import { deriveDesiredUnits } from '../reconciliation/desired-state.ts';
-import { ensurePersistedUnitState, desiredUnitSpecHash, loadReconcileState, updatePersistedUnitState, writeReconcileState } from '../support/state/state.ts';
-import { reverseTopologicallySortedUnits, topologicallySortDesiredUnits } from '../support/engine/units.ts';
-import { filterDesiredUnitsByBootstrapSystems, type RunnableBootstrapSystem } from '../support/bootstrap-systems.ts';
-import { elapsedMs, formatDurationMs, type TimingEntry } from '../../entrypoints/runtime/timing.ts';
+import type {
+DesiredUnit,
+ReconcilePlan,
+ReconcileResult,
+ReconcileRunContext,
+ReconcileSelector,
+ReconcileStateRecord,
+ReconcileTarget,
+UnitPersistedState,
+UnitPostcondition,
+UnitVerificationResult
+} from '../support/contracts/contracts.ts';
+import { topologicallySortDesiredUnits } from '../support/engine/units.ts';
+import { createReconcileRegistry } from '../support/state/registry.ts';
+import { desiredUnitSpecHash,ensurePersistedUnitState,updatePersistedUnitState } from '../support/state/state.ts';
 
 
 export function nowIso() {
@@ -263,6 +259,7 @@ export async function verifyPlanUnits({
 			postconditions,
 			verification: verification as UnitVerificationResult,
 		});
+		write?.(`Verified ${plan.unit.provider}:${plan.unit.unitType} (${(verification as UnitVerificationResult).verified ? 'ready' : 'unverified'}).`);
 	}
 	return verificationResults;
 }

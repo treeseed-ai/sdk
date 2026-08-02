@@ -1,80 +1,17 @@
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, resolve, relative } from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { copyFileSync,existsSync,mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { classifyGitMode, runGitText } from '../../operations/git-runner.ts';
+import { resolve } from 'node:path';
 import {
-	ensureSshPushUrlForOrigin,
-	remoteWriteUrl,
-	sshPushUrlForRemote,
-	type GitRemoteWriteMode,
-} from '../../repositories/git-remote-policy.ts';
-import {
-	generateRepositoryCommitMessage,
-	type CommitMessageDependencyUpdate,
-	type CommitMessageContext,
-	type CommitMessagePackageChange,
-	type CommitMessageProvider,
-	type CommitMessageProviderMode,
-	type CommitMessageSubmodulePointer,
-} from '../../capacity/providers/commit-message-provider.ts';
-import {
-	createPackageDependencyReference,
-	type DevDependencyReferenceMode,
-	type GitDependencyProtocol,
-	normalizeGitRemoteForDependency,
-	type PackageDependencyReference,
-	type RewrittenDevReference,
-	updateInternalDependencySpecs,
+normalizeGitRemoteForDependency,
+updateInternalDependencySpecs,
+type PackageDependencyReference
 } from '../../packages/package-reference-policy.ts';
 import {
-	PRODUCTION_BRANCH,
-	branchExists,
-	checkoutBranch,
-	headCommit,
-	pushBranch,
-	remoteBranchExists,
-	STAGING_BRANCH,
-} from '../../operations/git-workflow.ts';
-import {
-	collectMergeConflictReport,
-	currentBranch,
-	formatMergeConflictReport,
-	gitStatusPorcelain,
-	hasMeaningfulChanges,
-	incrementVersion,
-	originRemoteUrl,
-	repoRoot,
+incrementVersion
 } from '../../treedx/workspaces/workspace-save.ts';
-import {
-	hasCompletePackageCheckout,
-	run,
-	sortWorkspacePackages,
-	workspacePackages,
-} from '../../treedx/workspaces/workspace-tools.ts';
-import { collectDeploymentLockfileWorkspaceIssues, ensureLocalWorkspaceLinks } from '../../treedx/workspaces/workspace-dependency-mode.ts';
-import {
-	createBuildWarningSummary,
-	formatAllowedBuildWarnings,
-	type BuildWarningPolicyOptions,
-} from '../../build/build-warning-policy.js';
-import {
-	readVerificationCache,
-	writeVerificationCache,
-} from '../../support/verification-cache.ts';
-import {
-	discoverPackageAdapters,
-	type PackageCommand,
-} from '../../reconciliation/package-adapters.ts';
-import {
-	discoverManagedRepositories,
-	parseGitmodulesPaths,
-	readTemplateRepositoryManifest,
-	type ManagedRepositoryKind,
-} from '../../support/managed-repositories.ts';
-import { RepositorySaveNode, RepositorySaveOptions, emitProgress, readJson, runGit, writeJson } from './repo-kind.ts';
 import { runCapturedCommand } from '../runtime/with-short-process-temp-env.ts';
 import { nextDevVersion } from './classify-repo-kind.ts';
+import { RepositorySaveNode,RepositorySaveOptions,emitProgress,readJson,runGit,writeJson } from './repo-kind.ts';
 
 export function hasStagedChanges(repoDir: string) {
 	try {

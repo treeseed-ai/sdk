@@ -1,12 +1,12 @@
-import { inspectRailwayServiceDeploymentHealth, listRailwayVolumes, listRailwayVariables } from "../../../operations/services/hosting/railway/railway-api.ts";
-import type { ReconcileAdapterInput, UnitVerificationCheck, UnitVerificationResult } from "../../support/contracts/contracts.ts";
-import { findRailwayTopologyEntry, railwayStartCommandMatches, railwayUnitServiceIdentity, railwayVerificationMaySettle, resolveRailwayUnitTopology } from './railway-verification-may-settle.ts';
+import { inspectRailwayServiceDeploymentHealth,listRailwayVariables,listRailwayVolumes } from "../../../operations/services/hosting/railway/railway-api.ts";
+import type { ReconcileAdapterInput,UnitVerificationCheck,UnitVerificationResult } from "../../support/contracts/contracts.ts";
 import { summarizeVerification } from '../support/summarize-verification.ts';
+import { railwayServiceRootDirectory } from './build-cloudflare-diff.ts';
 import { verificationCheck } from './first-railway-domain-string.ts';
 import { collectRailwayEnvironmentSync } from './observe-railway-unit.ts';
-import { isTransientRailwayReconcileError, sleepMs } from './to-deploy-target.ts';
-import { railwayServiceRootDirectory } from './build-cloudflare-diff.ts';
+import { findRailwayTopologyEntry,railwayStartCommandMatches,railwayUnitServiceIdentity,railwayVerificationMaySettle,resolveRailwayUnitTopology } from './railway-verification-may-settle.ts';
 import { railwayProviderDrift } from './resolve-railway-topology-for-scope.ts';
+import { isTransientRailwayReconcileError,sleepMs } from './to-deploy-target.ts';
 
 export async function verifyRailwayUnit(input: ReconcileAdapterInput): Promise<UnitVerificationResult> {
 	let attempt = 0;

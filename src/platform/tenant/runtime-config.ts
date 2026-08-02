@@ -47,7 +47,6 @@ function fallbackTenantConfig(projectRoot: string): TenantConfig {
 			books: resolveRuntimePath(projectRoot, 'src/content/books'),
 			docs: resolveRuntimePath(projectRoot, 'src/content/knowledge'),
 			templates: resolveRuntimePath(projectRoot, 'src/content/templates'),
-			knowledge_packs: resolveRuntimePath(projectRoot, 'src/content/knowledge-packs'),
 			workdays: resolveRuntimePath(projectRoot, 'src/content/workdays'),
 		},
 		features: {

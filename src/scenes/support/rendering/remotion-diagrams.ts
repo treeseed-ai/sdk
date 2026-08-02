@@ -1,7 +1,7 @@
 import React from 'react';
 import { interpolate } from 'remotion';
-import { interpolateSceneMotion, renderVisualObject, visualStyle } from './remotion-visuals.ts';
 import type { SceneRenderDiagram } from '../../types.ts';
+import { interpolateSceneMotion,renderVisualObject,visualStyle } from './remotion-visuals.ts';
 
 const colors = {
 	bg: '#0f172a',

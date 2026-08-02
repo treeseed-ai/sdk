@@ -288,7 +288,6 @@ it('repairs an existing staging service to Git source before deploying it', asyn
 				TREESEED_RAILWAY_API_TOKEN: 'railway-token',
 				TREESEED_RAILWAY_WORKSPACE: 'workspace-1',
 				TREESEED_PLATFORM_RUNNER_SECRET: 'runner-secret-for-test',
-				TREESEED_CREDENTIAL_SESSION_SECRET: 'credential-secret-for-test',
 				TREESEED_WEB_SERVICE_SECRET: 'web-service-secret-for-test',
 			},
 			fetchImpl: fetchMock as typeof fetch,
@@ -307,7 +306,6 @@ it('repairs an existing staging service to Git source before deploying it', asyn
 			TREESEED_DEPLOY_SOURCE_REPOSITORY: 'treeseed-ai/api',
 			TREESEED_DEPLOY_SOURCE_BRANCH: 'staging',
 			TREESEED_PLATFORM_RUNNER_SECRET: 'runner-secret-for-test',
-			TREESEED_CREDENTIAL_SESSION_SECRET: 'credential-secret-for-test',
 			TREESEED_WEB_SERVICE_SECRET: 'web-service-secret-for-test',
 		});
 		expect(runRailwayCliJson).toHaveBeenCalledWith(expect.objectContaining({

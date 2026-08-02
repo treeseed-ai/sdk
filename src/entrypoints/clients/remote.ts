@@ -1,8 +1,8 @@
 import type {
-	RemoteJob,
-	RemoteJobEvent,
-	SdkDispatchRequest,
-	SdkDispatchResult,
+RemoteJob,
+RemoteJobEvent,
+SdkDispatchRequest,
+SdkDispatchResult,
 } from '../models/sdk-types.ts';
 
 export const REMOTE_CONTRACT_VERSION = 1;
@@ -387,17 +387,4 @@ export class RemoteRunnerClient {
 		});
 	}
 
-	consumeCredentialSession(jobId: string, sessionId: string) {
-		return this.client.requestJson<{ ok: true; payload: {
-			id: string;
-			hostKind: string;
-			hostId: string;
-			purpose: string;
-			provider?: string | null;
-			config: Record<string, string>;
-		} }>(`/v1/jobs/${encodeURIComponent(jobId)}/provider-credential-sessions/${encodeURIComponent(sessionId)}/consume`, {
-			method: 'POST',
-			requireAuth: true,
-		});
-	}
 }

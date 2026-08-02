@@ -1,82 +1,25 @@
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, resolve, relative } from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
-import { tmpdir } from 'node:os';
-import { classifyGitMode, runGitText } from '../../operations/git-runner.ts';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
-	ensureSshPushUrlForOrigin,
-	remoteWriteUrl,
-	sshPushUrlForRemote,
-	type GitRemoteWriteMode,
-} from '../../repositories/git-remote-policy.ts';
-import {
-	generateRepositoryCommitMessage,
-	type CommitMessageDependencyUpdate,
-	type CommitMessageContext,
-	type CommitMessagePackageChange,
-	type CommitMessageProvider,
-	type CommitMessageProviderMode,
-	type CommitMessageSubmodulePointer,
+type CommitMessageDependencyUpdate,
+type CommitMessagePackageChange,
+type CommitMessageSubmodulePointer
 } from '../../capacity/providers/commit-message-provider.ts';
 import {
-	createPackageDependencyReference,
-	type DevDependencyReferenceMode,
-	type GitDependencyProtocol,
-	normalizeGitRemoteForDependency,
-	type PackageDependencyReference,
-	type RewrittenDevReference,
-	updateInternalDependencySpecs,
-} from '../../packages/package-reference-policy.ts';
-import {
-	PRODUCTION_BRANCH,
-	branchExists,
-	checkoutBranch,
-	headCommit,
-	pushBranch,
-	remoteBranchExists,
-	STAGING_BRANCH,
+headCommit
 } from '../../operations/git-workflow.ts';
 import {
-	collectMergeConflictReport,
-	currentBranch,
-	formatMergeConflictReport,
-	gitStatusPorcelain,
-	hasMeaningfulChanges,
-	incrementVersion,
-	originRemoteUrl,
-	repoRoot,
-} from '../../treedx/workspaces/workspace-save.ts';
+createPackageDependencyReference,
+type RewrittenDevReference
+} from '../../packages/package-reference-policy.ts';
 import {
-	hasCompletePackageCheckout,
-	run,
-	sortWorkspacePackages,
-	workspacePackages,
-} from '../../treedx/workspaces/workspace-tools.ts';
-import { collectDeploymentLockfileWorkspaceIssues, ensureLocalWorkspaceLinks } from '../../treedx/workspaces/workspace-dependency-mode.ts';
-import {
-	createBuildWarningSummary,
-	formatAllowedBuildWarnings,
-	type BuildWarningPolicyOptions,
-} from '../../build/build-warning-policy.js';
-import {
-	readVerificationCache,
-	writeVerificationCache,
-} from '../../support/verification-cache.ts';
-import {
-	discoverPackageAdapters,
-	type PackageCommand,
-} from '../../reconciliation/package-adapters.ts';
-import {
-	discoverManagedRepositories,
-	parseGitmodulesPaths,
-	readTemplateRepositoryManifest,
-	type ManagedRepositoryKind,
-} from '../../support/managed-repositories.ts';
-import { localTagCommit, remoteTagCommit } from './run-script.ts';
-import { RepositorySaveError, RepositorySaveNode, RepositorySaveOptions, SaveState, emitProgress, readJson, runGit } from './repo-kind.ts';
-import { ensureWritableRemote, isGitRepo, originRemoteUrlSafe, repoDisplayName } from './classify-repo-kind.ts';
-import { packageScripts, runCapturedCommand, runQuietCommand } from '../runtime/with-short-process-temp-env.ts';
-import { checkoutOrCreateBranch, commitSubject } from '../repositories/discover-repository-save-nodes.ts';
+remoteWriteUrl
+} from '../../repositories/git-remote-policy.ts';
+import { checkoutOrCreateBranch,commitSubject } from '../repositories/discover-repository-save-nodes.ts';
+import { packageScripts,runCapturedCommand,runQuietCommand } from '../runtime/with-short-process-temp-env.ts';
+import { ensureWritableRemote,isGitRepo,originRemoteUrlSafe,repoDisplayName } from './classify-repo-kind.ts';
+import { RepositorySaveError,RepositorySaveNode,RepositorySaveOptions,SaveState,emitProgress,readJson,runGit } from './repo-kind.ts';
+import { localTagCommit,remoteTagCommit } from './run-script.ts';
 
 export function tagState(repoDir: string, tagName: string) {
 	const localCommit = localTagCommit(repoDir, tagName);

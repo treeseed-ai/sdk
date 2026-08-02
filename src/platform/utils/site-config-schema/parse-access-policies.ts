@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { parse as parseYaml } from 'yaml';
 import { normalizeAliasedRecord } from '../../../entrypoints/models/field-aliases.ts';
-import { expectRecord, expectString, optionalBoolean, optionalRecord, optionalString, parseAccessRoles, parseContactRouting, parseMenuGroups, parseTheme, stringArray } from './is-record.ts';
+import { expectRecord,expectString,optionalBoolean,optionalRecord,optionalString,parseAccessRoles,parseContactRouting,parseMenuGroups,parseTheme,stringArray } from './is-record.ts';
 
 export function parseAccessPolicies(value, path) {
 	const record = optionalRecord(value, path);

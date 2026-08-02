@@ -1,31 +1,16 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync,readFileSync } from 'node:fs';
+import { dirname,resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import type { FieldAliasRegistry } from '../../entrypoints/models/field-aliases.ts';
 import { normalizeAliasedRecord } from '../../entrypoints/models/field-aliases.ts';
-import type {
-	DeployConfig,
-	ExportConfig,
-	HubConfig,
-	LocalRuntimeConfig,
-	ManagedServiceConfig,
-	ManagedServicesConfig,
-	PlatformSurfacesConfig,
-	ProcessingConfig,
-	PluginReference,
-	ProviderSelections,
-	RuntimeConfig,
-	WebCachePolicyConfig,
-	WebSourcePageCacheConfig,
-} from '../support/contracts.ts';
 import { resolveTenantRoot } from '../configuration/tenant-config.ts';
-import {
-	DEFAULT_PLUGIN_REFERENCES,
-	DEFAULT_PROVIDER_SELECTIONS,
-} from '../plugins/constants.ts';
-import { CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER, DEFAULT_LONG_LIVED_CACHE_POLICY, DEFAULT_SOURCE_PAGE_PURGE_PATHS, cloudflareFieldAliases, cloudflarePagesFieldAliases, cloudflareR2FieldAliases, deployConfigFieldAliases, expectString, optionalBoolean, optionalCloudflareAccountId, optionalPositiveNumber, optionalRecord, optionalString, parseHostingConfig, parsePluginReferences } from './deploy-config-field-aliases.ts';
-import { inferManagedRuntimeFromServices, parseConnectionsConfig, parseExportConfig, parseManagedServicesConfig, parsePlatformSurfacesConfig, parseProcessingConfig, parsePublicTreeDxFederationConfig } from './parse-public-tree-dx-federation-config.ts';
-import { normalizeLegacyHostingFromPlanes, normalizePlanesFromLegacyHosting, parseHubConfig, parseProviderSelections, parseRuntimeConfig } from './normalize-planes-from-legacy-hosting.ts';
+import type {
+DeployConfig,
+WebCachePolicyConfig,
+WebSourcePageCacheConfig
+} from '../support/contracts.ts';
+import { CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER,DEFAULT_LONG_LIVED_CACHE_POLICY,DEFAULT_SOURCE_PAGE_PURGE_PATHS,cloudflareFieldAliases,cloudflarePagesFieldAliases,cloudflareR2FieldAliases,deployConfigFieldAliases,expectString,optionalBoolean,optionalCloudflareAccountId,optionalPositiveNumber,optionalRecord,optionalString,parseHostingConfig,parsePluginReferences } from './deploy-config-field-aliases.ts';
+import { normalizeLegacyHostingFromPlanes,normalizePlanesFromLegacyHosting,parseHubConfig,parseProviderSelections,parseRuntimeConfig } from './normalize-planes-from-legacy-hosting.ts';
+import { inferManagedRuntimeFromServices,parseConnectionsConfig,parseExportConfig,parseManagedServicesConfig,parsePlatformSurfacesConfig,parseProcessingConfig,parsePublicTreeDxFederationConfig } from './parse-public-tree-dx-federation-config.ts';
 
 export function parseDeployConfig(raw: string): DeployConfig {
 	const parsed = normalizeAliasedRecord(
@@ -44,6 +29,8 @@ export function parseDeployConfig(raw: string): DeployConfig {
 		cloudflareR2FieldAliases,
 		(optionalRecord(cloudflare.r2, 'cloudflare.r2') ?? {}) as Record<string, unknown>,
 	);
+	const cloudflareTunnel = optionalRecord(cloudflare.tunnel, 'cloudflare.tunnel') ?? {};
+	const cloudflareLocalTunnel = optionalRecord(cloudflareTunnel.local, 'cloudflare.tunnel.local') ?? {};
 	const hosting = parseHostingConfig(parsed.hosting);
 	const services = parseManagedServicesConfig(parsed.services);
 	const processing = parseProcessingConfig(parsed.processing, services);
@@ -107,6 +94,19 @@ export function parseDeployConfig(raw: string): DeployConfig {
 					manifestKeyTemplate: optionalString(cloudflareR2.manifestKeyTemplate) ?? 'teams/{teamId}/published/common.json',
 					previewRootTemplate: optionalString(cloudflareR2.previewRootTemplate) ?? 'teams/{teamId}/previews',
 					previewTtlHours: optionalPositiveNumber(cloudflareR2.previewTtlHours, 'cloudflare.r2.previewTtlHours') ?? 168,
+				},
+			tunnel: cloudflare.tunnel === undefined
+				? undefined
+				: {
+					local: cloudflareTunnel.local === undefined
+						? undefined
+						: {
+							enabled: optionalBoolean(cloudflareLocalTunnel.enabled, 'cloudflare.tunnel.local.enabled'),
+							name: optionalString(cloudflareLocalTunnel.name),
+							hostname: optionalString(cloudflareLocalTunnel.hostname),
+							zoneId: optionalString(cloudflareLocalTunnel.zoneId),
+							originUrl: optionalString(cloudflareLocalTunnel.originUrl),
+						},
 				},
 		},
 		plugins: parsePluginReferences(parsed.plugins),

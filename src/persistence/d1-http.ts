@@ -1,4 +1,4 @@
-import type { D1DatabaseLike, D1PreparedStatementLike } from '../types/cloudflare.ts';
+import type { D1DatabaseLike,D1PreparedStatementLike } from '../types/cloudflare.ts';
 
 type D1QueryResult<T = Record<string, unknown>> = {
 	success?: boolean;

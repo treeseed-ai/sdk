@@ -1,11 +1,10 @@
 import { sql } from 'drizzle-orm';
-import { bigint, check, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from 'drizzle-orm/pg-core';
-import { capacityExecutionProviders, capacityProviderLanes, capacityProviderTeamMemberships, capacityProviders } from '../../accounts/better-auth-account.ts';
-import { capacityReservations } from '../providers/capacity-provider-team-credentials.ts';
+import { check,foreignKey,index,integer,pgTable,real,text,uniqueIndex } from 'drizzle-orm/pg-core';
+import { capacityExecutionProviders,capacityProviderLanes,capacityProviderTeamMemberships,capacityProviders } from '../../accounts/better-auth-account.ts';
 import { agentModeRuns } from '../../agents/agent-mode-runs.ts';
-import { teams } from '../../support/subscribers.ts';
 import { projects } from '../../governance/policy/governance-electorate-snapshots.ts';
-import { leaseState } from '../../accounts/notification-events.ts';
+import { teams } from '../../support/subscribers.ts';
+import { capacityReservations } from '../providers/capacity-provider-team-credentials.ts';
 
 export const capacityLedgerEntries = pgTable('capacity_ledger_entries', {
 	id: text('id').primaryKey(),

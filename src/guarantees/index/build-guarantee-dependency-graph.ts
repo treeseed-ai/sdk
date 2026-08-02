@@ -1,11 +1,9 @@
-import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve, sep } from 'node:path';
-import { parse as parseYaml } from 'yaml';
-import { GuaranteeDiagnostic, GuaranteeFilter, GuaranteeManifest, GuaranteeRegistryReport, GuaranteeVerifierContract, LoadedGuarantee, LoadedGuaranteeVerifierRegistry } from './guarantee-schema-version.ts';
-import { GuaranteeDependencyGraph, GuaranteeDependencyGraphMeta, GuaranteeDependencyReason, allVerifierRefs, dependencyIdsForGuarantee, readSceneYaml, sceneManifestPathForGuarantee, sceneStateKeys, selectedByFilter, sortGuaranteeEntries, validateFilter } from './parse-verifier-registry.ts';
-import { arrayOrEmpty, diagnostic } from './guarantee-journey-audit-item.ts';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { validateUiFeatureContracts } from '../features/ui-feature-contract.ts';
+import { arrayOrEmpty,diagnostic } from './guarantee-journey-audit-item.ts';
+import { GuaranteeDiagnostic,GuaranteeFilter,GuaranteeManifest,GuaranteeRegistryReport,GuaranteeVerifierContract,LoadedGuarantee,LoadedGuaranteeVerifierRegistry } from './guarantee-schema-version.ts';
+import { allVerifierRefs,dependencyIdsForGuarantee,GuaranteeDependencyGraph,GuaranteeDependencyGraphMeta,GuaranteeDependencyReason,readSceneYaml,sceneManifestPathForGuarantee,sceneStateKeys,selectedByFilter,sortGuaranteeEntries,validateFilter } from './parse-verifier-registry.ts';
 
 export function buildGuaranteeDependencyGraph(input: { guarantees: LoadedGuarantee[]; filter?: GuaranteeFilter; includeDependencies?: boolean }): GuaranteeDependencyGraph {
 	const valid = input.guarantees.filter((entry): entry is LoadedGuarantee & { manifest: GuaranteeManifest } => Boolean(entry.manifest)).sort(sortGuaranteeEntries);

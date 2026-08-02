@@ -1,13 +1,11 @@
-import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve, sep } from 'node:path';
-import { parse as parseYaml } from 'yaml';
-import { GUARANTEE_JOURNEY_AUDIT_SCHEMA_VERSION, GuaranteeDiagnostic, GuaranteeFilter, GuaranteeJourneyAudit, GuaranteeManifest, GuaranteePlanEntry, LoadedGuarantee } from './guarantee-schema-version.ts';
-import { EXCLUDED_DIRS, GuaranteeJourneyAuditItem, GuaranteePlanReport, arrayOrEmpty, diagnostic, isRecord } from './guarantee-journey-audit-item.ts';
-import { discoverGuarantees, readSceneYaml, sceneManifestPathForGuarantee, sceneRouteFromYaml, sceneStateKeys, selectedByFilter } from './parse-verifier-registry.ts';
-import { buildGuaranteeDependencyGraph, filterGuarantees, refs } from './build-guarantee-dependency-graph.ts';
-import { validateGuaranteeSceneJourneyContract } from './run-verifier-command.ts';
+import { existsSync,mkdirSync,readdirSync,statSync,writeFileSync } from 'node:fs';
+import { dirname,relative,resolve } from 'node:path';
+import { buildGuaranteeDependencyGraph,filterGuarantees,refs } from './build-guarantee-dependency-graph.ts';
+import { arrayOrEmpty,diagnostic,EXCLUDED_DIRS,GuaranteeJourneyAuditItem,GuaranteePlanReport,isRecord } from './guarantee-journey-audit-item.ts';
+import { GUARANTEE_JOURNEY_AUDIT_SCHEMA_VERSION,GuaranteeDiagnostic,GuaranteeFilter,GuaranteeJourneyAudit,GuaranteeManifest,GuaranteePlanEntry,LoadedGuarantee } from './guarantee-schema-version.ts';
+import { discoverGuarantees,readSceneYaml,sceneManifestPathForGuarantee,sceneRouteFromYaml,sceneStateKeys,selectedByFilter } from './parse-verifier-registry.ts';
 import { assertPathInsideWorkspace } from './run-guarantees.ts';
+import { validateGuaranteeSceneJourneyContract } from './run-verifier-command.ts';
 
 export function planGuarantees(input: { workspaceRoot: string; filter?: GuaranteeFilter; environment?: string; includeDependencies?: boolean }): GuaranteePlanReport {
 	const registry = discoverGuarantees({ workspaceRoot: input.workspaceRoot, filter: input.filter });

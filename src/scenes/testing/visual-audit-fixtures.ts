@@ -1,7 +1,7 @@
-import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
-import { MarketClient, MarketClientError } from '../../entrypoints/clients/market-client.ts';
+import { MarketClient,MarketClientError } from '../../entrypoints/clients/market-client.ts';
 import { resolveMachineEnvironmentValues } from '../../operations/services/configuration/config-runtime.ts';
-import type { SceneDiagnostic, SceneVisualAuditRole } from '../types.ts';
+import { sceneErrorDiagnostic,sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
+import type { SceneDiagnostic,SceneVisualAuditRole } from '../types.ts';
 
 export const VISUAL_AUDIT_PASSWORD = 'TreeSeedVisualAudit!2026';
 
@@ -9,6 +9,11 @@ export const VISUAL_AUDIT_USERS: Record<string, { email: string; password: strin
 	owner: { email: 'visual.owner@treeseed.io', password: VISUAL_AUDIT_PASSWORD, label: 'Visual Audit Owner' },
 	admin: { email: 'visual.admin@treeseed.io', password: VISUAL_AUDIT_PASSWORD, label: 'Visual Audit Admin' },
 	member: { email: 'visual.member@treeseed.io', password: VISUAL_AUDIT_PASSWORD, label: 'Visual Audit Member' },
+	viewer: { email: 'visual.viewer@treeseed.io', password: VISUAL_AUDIT_PASSWORD, label: 'Visual Audit Viewer' },
+	nonmember: { email: 'visual.nonmember@treeseed.io', password: VISUAL_AUDIT_PASSWORD, label: 'Visual Audit Nonmember' },
+	service_admin: { email: 'visual.service-admin@treeseed.io', password: VISUAL_AUDIT_PASSWORD, label: 'Visual Audit Service Admin' },
+	platform_admin: { email: 'visual.platform-admin@treeseed.io', password: VISUAL_AUDIT_PASSWORD, label: 'Visual Audit Platform Admin' },
+	knowledge_reviewer: { email: 'visual.knowledge-reviewer@treeseed.io', password: VISUAL_AUDIT_PASSWORD, label: 'Visual Audit Knowledge Reviewer' },
 };
 
 export function SceneVisualAuditUserForRole(role: SceneVisualAuditRole) {
@@ -27,7 +32,7 @@ export function validateSceneVisualAuditRoles(roles: SceneVisualAuditRole[]) {
 }
 
 function usernameForRole(role: SceneVisualAuditRole) {
-	return `visual-${role}`;
+	return `visual-${role.replace(/_/gu, '-')}`;
 }
 
 function clientFor(baseUrl: string, accessToken?: string | null) {
@@ -106,8 +111,14 @@ function seedActorsForRoles(roles: SceneVisualAuditRole[]) {
 			email: user.email,
 			username: usernameForRole(role),
 			displayName: user.label,
-			siteRoles: role === 'admin' ? ['member'] : ['member'],
-			teamRole: role === 'owner' ? 'team_owner' : role === 'admin' ? 'project_lead' : 'contributor',
+			siteRoles: ['platform_admin', 'knowledge_reviewer'].includes(role) ? ['platform_admin'] : role === 'nonmember' ? ['viewer'] : ['member'],
+			teamRole:
+				role === 'owner' ? 'team_owner'
+					: role === 'admin' ? 'project_lead'
+						: role === 'service_admin' ? 'service_admin'
+							: role === 'viewer' ? 'reviewer'
+								: role === 'nonmember' ? undefined
+									: 'contributor',
 		};
 	}
 	return actors;

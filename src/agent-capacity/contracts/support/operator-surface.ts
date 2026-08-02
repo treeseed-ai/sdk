@@ -1,4 +1,4 @@
-import { CAPACITY_CONFIGURATION_DESCRIPTORS, type CapacityConfigurationFamily } from '../configuration/configuration.ts';
+import { CAPACITY_CONFIGURATION_DESCRIPTORS,type CapacityConfigurationFamily } from '../configuration/configuration.ts';
 
 export type CapacityOperatorConfiguration = CapacityConfigurationFamily;
 export type CapacityOperatorAccess = 'team-read' | 'team-manage' | 'project-read' | 'project-manage' | 'provider-proof' | 'provider-access-token' | 'provider-owner-local';

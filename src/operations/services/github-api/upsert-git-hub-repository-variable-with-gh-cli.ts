@@ -1,11 +1,7 @@
-import { Buffer } from 'node:buffer';
 import { spawnSync } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { Octokit } from 'octokit';
-import { createManagedToolEnv, resolveToolBinary } from '../../../entrypoints/runtime/managed-dependencies.ts';
-import { resolveGitHubToken } from '../../../configuration/service-credentials.ts';
-import { GitHubApiClient, GitHubWorkflowCancellationResult, GitHubWorkflowDispatchResult, GitHubWorkflowFailureSummary, GitHubWorkflowFailureSummaryInput, GitHubWorkflowFileStatus, GitHubWorkflowJobSummary, GitHubWorkflowRunSummary, normalizeGitHubApiError, parseGitHubRepositorySlug, resolveGitHubApiToken } from './require.ts';
+import { createManagedToolEnv,resolveToolBinary } from '../../../entrypoints/runtime/managed-dependencies.ts';
 import { createGitHubApiClient } from './create-git-hub-api-client.ts';
+import { GitHubApiClient,GitHubWorkflowCancellationResult,GitHubWorkflowDispatchResult,GitHubWorkflowFailureSummary,GitHubWorkflowFailureSummaryInput,GitHubWorkflowFileStatus,GitHubWorkflowJobSummary,GitHubWorkflowRunSummary,normalizeGitHubApiError,parseGitHubRepositorySlug,resolveGitHubApiToken } from './require.ts';
 
 export function upsertGitHubRepositoryVariableWithGhCli(
 	repository: string | { owner: string; name: string },

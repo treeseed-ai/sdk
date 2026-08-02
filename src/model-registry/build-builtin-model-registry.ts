@@ -1,16 +1,9 @@
 import path from 'node:path';
-import { resolveSdkRepoRoot } from '../runtime/runtime.ts';
-import { validateModelFieldAliases } from '../entrypoints/models/sdk-fields.ts';
-import { assertResearchCitations } from '../agent-capacity/validation/research-citation.ts';
 import type {
-	SdkBuiltinModelName,
-	SdkGraphModelConfig,
-	SdkModelFieldBinding,
-	SdkModelDefinition,
-	SdkModelName,
-	SdkModelRegistry,
+SdkBuiltinModelName,
+SdkModelDefinition
 } from '../entrypoints/models/sdk-types.ts';
-import { citationsField, contentRoot, deriveFieldLists, field, graph } from './content-root.ts';
+import { citationsField,contentRoot,deriveFieldLists,field,graph } from './content-root.ts';
 
 export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinModelName, SdkModelDefinition> {
 	const root = contentRoot(repoRoot);
@@ -57,7 +50,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 				tagField: 'tags',
 				enableSections: true,
 				referenceFields: [
-					{ field: 'about', edgeType: 'REFERENCES', targetModels: ['objective', 'question', 'proposal', 'decision', 'note'], multiple: true },
+					{ field: 'about', edgeType: 'REFERENCES', targetModels: ['objective', 'question', 'proposal', 'decision', 'note', 'knowledge'], multiple: true },
 					{ field: 'related_objectives', edgeType: 'REFERENCES', targetModels: ['objective'], multiple: true },
 					{ field: 'related_questions', edgeType: 'REFERENCES', targetModels: ['question'], multiple: true },
 					{ field: 'related_proposals', edgeType: 'REFERENCES', targetModels: ['proposal'], multiple: true },
@@ -209,17 +202,23 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 				titleField: 'title',
 				tagField: 'tags',
 				enableSections: true,
+				referenceFields: [
+					{ field: 'related_books', edgeType: 'RELATES_TO', targetModels: ['book'], multiple: true },
+					{ field: 'editorial_core_note', edgeType: 'GUIDED_BY', targetModels: ['note'] },
+				],
 			}),
 			fields: {
 				title: field('title', { filterable: true, sortable: true, contentKeys: ['title'], writeContentKey: 'title' }),
 				citations: citationsField(),
 				slug: field('slug', { filterable: true, contentKeys: ['slug'], writeContentKey: 'slug' }),
 				tags: field('tags', { filterable: true, comparableAs: 'string_array', contentKeys: ['tags'], writeContentKey: 'tags' }),
+				related_books: field('related_books', { aliases: ['relatedBookIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['relatedBookIds', 'related_books'], writeContentKey: 'relatedBookIds' }),
+				editorial_core_note: field('editorial_core_note', { aliases: ['editorialCoreNoteId'], filterable: true, contentKeys: ['editorialCoreNoteId', 'editorial_core_note'], writeContentKey: 'editorialCoreNoteId' }),
 				section_label: field('section_label', { aliases: ['sectionLabel'], filterable: true, contentKeys: ['section_label', 'sectionLabel'], writeContentKey: 'section_label' }),
 				order: field('order', { sortable: true, comparableAs: 'number', contentKeys: ['order'], writeContentKey: 'order' }),
 				updated_at: field('updated_at', { aliases: ['updated', 'updatedAt'], sortable: true, comparableAs: 'date', contentKeys: ['updated_at', 'updated', 'updatedAt'], writeContentKey: 'updated_at' }),
 			},
-			filterableFields: ['title', 'slug', 'tags', 'section_label'],
+			filterableFields: ['title', 'slug', 'tags', 'section_label', 'related_books', 'editorial_core_note'],
 			sortableFields: ['title', 'order', 'updated_at'],
 			pickField: 'order',
 			contentCollection: 'books',
@@ -235,15 +234,34 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 				titleField: 'title',
 				tagField: 'tags',
 				enableSections: true,
+				referenceFields: [
+					{ field: 'parent', edgeType: 'BELONGS_TO', targetModels: ['knowledge'] },
+					{ field: 'related_knowledge', edgeType: 'RELATES_TO', targetModels: ['knowledge'], multiple: true },
+					{ field: 'related_books', edgeType: 'RELATES_TO', targetModels: ['book'], multiple: true },
+					{ field: 'related_notes', edgeType: 'REFERENCES', targetModels: ['note'], multiple: true },
+					{ field: 'related_questions', edgeType: 'REFERENCES', targetModels: ['question'], multiple: true },
+					{ field: 'related_objectives', edgeType: 'REFERENCES', targetModels: ['objective'], multiple: true },
+					{ field: 'related_proposals', edgeType: 'REFERENCES', targetModels: ['proposal'], multiple: true },
+					{ field: 'related_decisions', edgeType: 'REFERENCES', targetModels: ['decision'], multiple: true },
+				],
 			}),
 			fields: {
 				title: field('title', { filterable: true, sortable: true, contentKeys: ['title'], writeContentKey: 'title' }),
 				citations: citationsField(),
 				tags: field('tags', { filterable: true, comparableAs: 'string_array', contentKeys: ['tags'], writeContentKey: 'tags' }),
+				parent: field('parent', { aliases: ['parentId'], filterable: true, contentKeys: ['parentId', 'parent'], writeContentKey: 'parentId' }),
+				related_knowledge: field('related_knowledge', { aliases: ['relatedKnowledgeIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['relatedKnowledgeIds', 'related_knowledge'], writeContentKey: 'relatedKnowledgeIds' }),
+				related_books: field('related_books', { aliases: ['relatedBookIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['relatedBookIds', 'related_books'], writeContentKey: 'relatedBookIds' }),
+				related_notes: field('related_notes', { aliases: ['relatedNoteIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['relatedNoteIds', 'related_notes'], writeContentKey: 'relatedNoteIds' }),
+				related_questions: field('related_questions', { aliases: ['relatedQuestionIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['relatedQuestionIds', 'related_questions'], writeContentKey: 'relatedQuestionIds' }),
+				related_objectives: field('related_objectives', { aliases: ['relatedObjectiveIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['relatedObjectiveIds', 'related_objectives'], writeContentKey: 'relatedObjectiveIds' }),
+				related_proposals: field('related_proposals', { aliases: ['relatedProposalIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['relatedProposalIds', 'related_proposals'], writeContentKey: 'relatedProposalIds' }),
+				related_decisions: field('related_decisions', { aliases: ['relatedDecisionIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['relatedDecisionIds', 'related_decisions'], writeContentKey: 'relatedDecisionIds' }),
+				guarantees: field('guarantees', { aliases: ['guaranteeIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['guaranteeIds', 'guarantees'], writeContentKey: 'guaranteeIds' }),
 				updated_at: field('updated_at', { aliases: ['updated', 'updatedAt'], filterable: true, sortable: true, comparableAs: 'date', contentKeys: ['updated_at', 'updated', 'updatedAt'], writeContentKey: 'updated_at' }),
 				slug: field('slug', { filterable: true, contentKeys: ['slug'], writeContentKey: 'slug' }),
 			},
-			filterableFields: ['title', 'tags', 'updated_at', 'slug'],
+			filterableFields: ['title', 'tags', 'updated_at', 'slug', 'parent', 'related_knowledge', 'related_books', 'related_notes', 'related_questions', 'related_objectives', 'related_proposals', 'related_decisions', 'guarantees'],
 			sortableFields: ['title', 'updated_at'],
 			pickField: 'updated_at',
 			contentCollection: 'docs',

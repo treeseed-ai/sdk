@@ -1,9 +1,9 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { basename, relative, resolve } from 'node:path';
+import { existsSync,readFileSync } from 'node:fs';
+import { basename,relative,resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { currentBranch, gitStatusPorcelain, originRemoteUrl, repoRoot } from '../treedx/workspaces/workspace-save.ts';
-import { hasCompletePackageCheckout, sortWorkspacePackages, workspacePackages } from '../treedx/workspaces/workspace-tools.ts';
 import { discoverPackageAdapters } from '../reconciliation/package-adapters.ts';
+import { currentBranch,gitStatusPorcelain,originRemoteUrl,repoRoot } from '../treedx/workspaces/workspace-save.ts';
+import { hasCompletePackageCheckout,sortWorkspacePackages,workspacePackages } from '../treedx/workspaces/workspace-tools.ts';
 
 export type ManagedRepositoryKind = 'root' | 'package' | 'template' | 'fixture' | 'project';
 

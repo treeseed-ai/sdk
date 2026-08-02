@@ -91,8 +91,8 @@ notes:
 describe('Treeseed guarantees framework', () => {
 it('derives authenticated scene roles from protected guarantee actors', () => {
 		const manifest = {
-			actors: { allowed: ['host_operator', 'team_owner'], forbidden: ['anonymous_user', 'unauthorized_user'] },
-			scene: { entryRoute: '/app/hosts/preview-host-plan' },
+			actors: { allowed: ['service_administrator', 'team_owner'], forbidden: ['anonymous_user', 'unauthorized_user'] },
+			scene: { entryRoute: '/app/services' },
 		} as Parameters<typeof sceneAuthRoleForGuarantee>[0];
 		expect(sceneAuthRoleForGuarantee(manifest)).toBe('owner');
 		expect(sceneAuthRoleForGuarantee({

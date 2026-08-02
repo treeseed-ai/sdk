@@ -1,5 +1,6 @@
+import { resolveMachineEnvironmentValues } from '../../operations/services/configuration/config-runtime.ts';
 import { sceneErrorDiagnostic } from '../support/reporting/diagnostics.ts';
-import type { SceneOperationWaitOptions, SceneOperationWaitReport } from '../types.ts';
+import type { SceneOperationWaitOptions,SceneOperationWaitReport } from '../types.ts';
 
 const FAILURE_STATUSES = new Set(['failed', 'cancelled', 'timed_out', 'error']);
 
@@ -30,10 +31,33 @@ function operationIdFrom(input: SceneOperationWaitOptions) {
 	return input.linkedOperationIds?.at(-1) ?? null;
 }
 
+function configuredServiceValue(input: SceneOperationWaitOptions, ...keys: string[]) {
+	try {
+		const values = resolveMachineEnvironmentValues(input.projectRoot, input.environment);
+		for (const key of keys) {
+			const value = values?.[key];
+			if (typeof value === 'string' && value.trim()) return value.trim();
+		}
+	} catch {
+		// Local defaults and explicit process values remain available when config is absent.
+	}
+	return undefined;
+}
+
 async function defaultFetchOperation(input: SceneOperationWaitOptions, operationId: string) {
 	if (input.fetchOperation) return input.fetchOperation(operationId);
-	const serviceId = process.env.TREESEED_ACCEPTANCE_SERVICE_ID ?? process.env.TREESEED_WEB_SERVICE_ID ?? process.env.TREESEED_API_WEB_SERVICE_ID ?? 'web';
-	const serviceSecret = process.env.TREESEED_ACCEPTANCE_SERVICE_SECRET ?? process.env.TREESEED_WEB_SERVICE_SECRET ?? process.env.TREESEED_API_WEB_SERVICE_SECRET;
+	const serviceId = process.env.TREESEED_ACCEPTANCE_SERVICE_ID
+		?? process.env.TREESEED_WEB_SERVICE_ID
+		?? process.env.TREESEED_API_WEB_SERVICE_ID
+		?? configuredServiceValue(input, 'TREESEED_ACCEPTANCE_SERVICE_ID', 'TREESEED_WEB_SERVICE_ID', 'TREESEED_API_WEB_SERVICE_ID')
+		?? 'web';
+	const serviceSecret = [
+		process.env.TREESEED_ACCEPTANCE_SERVICE_SECRET,
+		process.env.TREESEED_WEB_SERVICE_SECRET,
+		process.env.TREESEED_API_WEB_SERVICE_SECRET,
+	].find((value) => value?.trim())?.trim()
+		?? (input.environment === 'local' ? 'treeseed-web-service-dev-secret' : undefined)
+		?? configuredServiceValue(input, 'TREESEED_ACCEPTANCE_SERVICE_SECRET', 'TREESEED_WEB_SERVICE_SECRET', 'TREESEED_API_WEB_SERVICE_SECRET');
 	if (!serviceSecret) throw sceneErrorDiagnostic('scene.operation_unavailable', 'Missing service credentials for platform operation polling.', 'workflow.operation');
 	const response = await fetch(`${input.baseUrl.replace(/\/+$/u, '')}/v1/platform/operations/${encodeURIComponent(operationId)}`, {
 		headers: {
@@ -74,12 +98,14 @@ export async function waitForSceneOperation(input: SceneOperationWaitOptions): P
 	let latestStatus: string | null = null;
 	let latestKind: string | null = input.spec.kind ?? null;
 	let events: unknown[] = [];
+	let lastUnavailable: ReturnType<typeof sceneErrorDiagnostic> | null = null;
 	while (Date.now() - started <= timeoutMs) {
 		try {
 			const payload = await defaultFetchOperation(input, operationId);
 			const operation = (payload.operation ?? (payload.payload as Record<string, unknown> | undefined)?.operation ?? payload) as Record<string, unknown>;
 			latestStatus = operationStatus(operation);
 			latestKind = operationKind(operation) ?? latestKind;
+			lastUnavailable = null;
 			events = await defaultFetchEvents(input, operationId);
 			const tick: SceneOperationWaitReport = {
 				ok: acceptedStatuses.includes(latestStatus),
@@ -97,19 +123,11 @@ export async function waitForSceneOperation(input: SceneOperationWaitOptions): P
 				return { ...tick, ok: false, diagnostics: [sceneErrorDiagnostic('scene.operation_failed', `Operation ${operationId} ended with status ${latestStatus}.`, 'workflow.operation')] };
 			}
 		} catch (error) {
-			const diagnostic = error && typeof error === 'object' && 'code' in error
+			lastUnavailable = error && typeof error === 'object' && 'code' in error
 				? error as ReturnType<typeof sceneErrorDiagnostic>
 				: sceneErrorDiagnostic('scene.operation_unavailable', error instanceof Error ? error.message : String(error ?? 'Operation polling failed.'), 'workflow.operation');
-			return {
-				ok: false,
-				operationId,
-				kind: latestKind,
-				finalStatus: latestStatus,
-				acceptedStatuses,
-				events,
-				durationMs: Date.now() - started,
-				diagnostics: [diagnostic],
-			};
+			await input.onUpdate?.({ ok: false, operationId, kind: latestKind, finalStatus: latestStatus,
+				acceptedStatuses, events, durationMs: Date.now() - started, diagnostics: [lastUnavailable] });
 		}
 		await wait(pollMs);
 	}
@@ -121,7 +139,7 @@ export async function waitForSceneOperation(input: SceneOperationWaitOptions): P
 		acceptedStatuses,
 		events,
 		durationMs: Date.now() - started,
-		diagnostics: [sceneErrorDiagnostic('scene.operation_poll_timeout', `Operation ${operationId} did not reach an accepted status within ${timeoutMs}ms.`, 'workflow.operation')],
+		diagnostics: [lastUnavailable ?? sceneErrorDiagnostic('scene.operation_poll_timeout', `Operation ${operationId} did not reach an accepted status within ${timeoutMs}ms.`, 'workflow.operation')],
 	};
 }
 

@@ -1,10 +1,10 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync,mkdirSync,readFileSync,writeFileSync } from 'node:fs';
+import { dirname,resolve } from 'node:path';
+import { runGitText } from '../../operations/services/operations/git-runner.ts';
 import { findPackageAdapter } from '../../operations/services/reconciliation/package-adapters.ts';
 import { checkedOutTemplateRepositories } from '../../operations/services/support/managed-repositories.ts';
-import { runGitText } from '../../operations/services/operations/git-runner.ts';
-import type { ReconcileRunContext, ReconcileSelector, ReconcileTarget } from '../support/contracts/contracts.ts';
+import type { ReconcileRunContext,ReconcileSelector,ReconcileTarget } from '../support/contracts/contracts.ts';
 
 function requireMatchingStageCandidate(tenantRoot: string, packageId: string, packageDir: string) {
 	const candidatePath = resolve(tenantRoot, '.treeseed/workflow/stage-candidates/latest.json');

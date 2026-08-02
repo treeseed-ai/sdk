@@ -1,21 +1,8 @@
-import type { FieldAliasBinding } from '../../../entrypoints/models/field-aliases.ts';
-import type {
-	CapacityBusinessModel,
-	CapacityLaneUnit,
-	CapacityReservation,
-	NativeUsageObservation,
-} from '../../../agent-capacity/contracts/support/financial-records.ts';
-import type {
-	CapacityExecutionProvider,
-	CapacityExecutionProviderNativeLimit,
-	CapacityExecutionProviderObservation,
-	CapacityProviderMembershipView,
-} from '../../../capacity-provider/contracts/index.ts';
-import { CommerceEntitlementStatus, CommerceGovernanceState, CommerceOrderStatus, CommerceOwnershipModel, CommerceStripeEnvironment, CommerceStripeSyncStatus } from '../governance/commerce-governance-states.ts';
-import { CommerceRefundStatus, CommerceServiceQuoteStatus, CommerceServiceRequestStatus, CommerceWebhookEventStatus } from './commerce-subscription-statuses.ts';
-import { CommerceCheckout, CommerceOrder, CommercePaymentGroup } from '../capacity/commerce-capacity-listing-input.ts';
-import { CommerceOfferMode, CommerceProductKind } from '../../support/template-launch-requirements.ts';
+import { CommerceOfferMode,CommerceProductKind } from '../../support/platform-contracts.ts';
+import { CommerceCheckout,CommerceOrder,CommercePaymentGroup } from '../capacity/commerce-capacity-listing-input.ts';
+import { CommerceEntitlementStatus,CommerceGovernanceState,CommerceOrderStatus,CommerceOwnershipModel,CommerceStripeEnvironment,CommerceStripeSyncStatus } from '../governance/commerce-governance-states.ts';
 import { CommerceGovernanceEvent } from '../services/commerce-service-contract.ts';
+import { CommerceRefundStatus,CommerceServiceQuoteStatus,CommerceServiceRequestStatus,CommerceWebhookEventStatus } from './commerce-subscription-statuses.ts';
 
 export interface CommerceEntitlement {
 	id: string;

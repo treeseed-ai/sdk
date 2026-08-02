@@ -1,10 +1,8 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
-import { run, workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
-import { collectMergeConflictReport, currentBranch, formatMergeConflictReport, gitStatusPorcelain, repoRoot } from '../treedx/workspaces/workspace-save.ts';
+import { existsSync,readFileSync,writeFileSync } from 'node:fs';
+import { isAbsolute,resolve } from 'node:path';
+import { runRepositoryGit,type GitRunnerMode } from '../operations/git-runner.ts';
 import { ensureSshPushUrlForOrigin } from '../repositories/git-remote-policy.ts';
-import { runRepositoryGit, type GitRunnerMode } from '../operations/git-runner.ts';
-import { createManagedToolEnv, resolveToolBinary } from '../../../entrypoints/runtime/managed-dependencies.ts';
+import { workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
 
 
 export const STAGING_BRANCH = 'staging';

@@ -1,9 +1,9 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync,readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { runScene } from '../../operations/runner.ts';
+import type { SceneCheckpoint,SceneManifest,SceneResumeOptions,SceneRunReport } from '../../types.ts';
 import { sceneErrorDiagnostic } from '../reporting/diagnostics.ts';
 import { resolveSceneRunRoot } from '../reporting/inspect.ts';
-import { runScene } from '../../operations/runner.ts';
-import type { SceneCheckpoint, SceneManifest, SceneResumeOptions, SceneRunReport } from '../../types.ts';
 
 function readJson<T>(path: string): T {
 	return JSON.parse(readFileSync(path, 'utf8')) as T;
@@ -63,9 +63,12 @@ export async function resumeScene(input: SceneResumeOptions): Promise<SceneRunRe
 		...scene,
 		workflow: scene.workflow.slice(nextIndex),
 	};
+	const storageStatePath = checkpointPath.replace(/\.json$/u, '.storage.json');
 	const report = await runScene({
 		...input,
+		runId: checkpoint.runId,
 		scene: resumeScene,
+		...(existsSync(storageStatePath) ? { inputStorageStatePath: storageStatePath } : {}),
 		onProgress: (event) => {
 			input.onProgress?.(event);
 		},

@@ -5,6 +5,7 @@ import {
 	resolveGitHubToken,
 	resolveRailwayCredential,
 	resolveCloudflareApiToken,
+	resolveCloudflareTunnelApiToken,
 	withServiceCredentialEnv,
 } from '../../../../src/index.ts';
 
@@ -20,6 +21,15 @@ describe('service credential translation', () => {
 		expect(resolveRailwayCredential({ TREESEED_RAILWAY_API_TOKEN: 'railway-canonical', RAILWAY_API_TOKEN: 'railway-native' })).toBe('railway-canonical');
 		expect(resolveCloudflareApiToken({ CLOUDFLARE_API_TOKEN: 'cf-native' })).toBe('');
 		expect(resolveRailwayCredential({ RAILWAY_API_TOKEN: 'railway-native' })).toBe('');
+	});
+
+	it('prefers the Tunnel token and reports broader fallback use', () => {
+		expect(resolveCloudflareTunnelApiToken({
+			TREESEED_CLOUDFLARE_TUNNEL_API_TOKEN: 'scoped-tunnel',
+			TREESEED_CLOUDFLARE_API_TOKEN: 'broad-token',
+		})).toEqual({ token: 'scoped-tunnel', source: 'tunnel', fallbackUsed: false });
+		expect(resolveCloudflareTunnelApiToken({ TREESEED_CLOUDFLARE_API_TOKEN: 'broad-token' }))
+			.toEqual({ token: 'broad-token', source: 'cloudflare-api', fallbackUsed: true });
 	});
 
 	it('emits service-native names only in translated execution env', () => {

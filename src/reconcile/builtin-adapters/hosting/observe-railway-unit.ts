@@ -1,17 +1,17 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { collectEnvironmentContext, resolveMachineEnvironmentValues, setMachineEnvironmentValue } from "../../../operations/services/configuration/config-runtime.ts";
-import { loadDeployState, resolveConfiguredSurfaceDomain } from "../../../operations/services/hosting/deployment/deploy.ts";
-import { configuredRailwayServices } from "../../../operations/services/hosting/railway/railway-deploy.ts";
+import { collectEnvironmentContext,resolveMachineEnvironmentValues,setMachineEnvironmentValue } from "../../../operations/services/configuration/config-runtime.ts";
 import { shouldExposeManagedHostRuntimeSecret } from "../../../operations/services/hosting/audit/managed-host-security.ts";
-import type { ObservedUnitState, ReconcileAdapterInput } from "../../support/contracts/contracts.ts";
-import { configuredRailwayServicesForInput, resolveRailwayTopologyForScope } from './resolve-railway-topology-for-scope.ts';
-import { isTransientRailwayReconcileError, sleepMs, toDeployTarget } from './to-deploy-target.ts';
-import { findRailwayTopologyEntry, railwayUnitServiceIdentity, resolveRailwayUnitTopology } from './railway-verification-may-settle.ts';
-import { buildCloudflareEnv, findCloudflareD1ByName, hasLiveResourceId, normalizeEnvironmentValues, resolveReconcileEnvironmentValues } from '../reconciliation/build-workflow-meta-adapter.ts';
-import { configuredMarketDatabaseService } from './build-cloudflare-diff.ts';
+import { loadDeployState,resolveConfiguredSurfaceDomain } from "../../../operations/services/hosting/deployment/deploy.ts";
+import { configuredRailwayServices } from "../../../operations/services/hosting/railway/railway-deploy.ts";
+import type { ObservedUnitState,ReconcileAdapterInput } from "../../support/contracts/contracts.ts";
 import { capacityProviderVariablesForService } from '../capacity/providers/capacity-provider-variables-for-service.ts';
+import { buildCloudflareEnv,findCloudflareD1ByName,hasLiveResourceId,normalizeEnvironmentValues,resolveReconcileEnvironmentValues } from '../reconciliation/build-workflow-meta-adapter.ts';
+import { configuredMarketDatabaseService } from './build-cloudflare-diff.ts';
+import { findRailwayTopologyEntry,railwayUnitServiceIdentity,resolveRailwayUnitTopology } from './railway-verification-may-settle.ts';
+import { configuredRailwayServicesForInput,resolveRailwayTopologyForScope } from './resolve-railway-topology-for-scope.ts';
+import { isTransientRailwayReconcileError,sleepMs,toDeployTarget } from './to-deploy-target.ts';
 
 export async function observeRailwayUnit(input: ReconcileAdapterInput, {
 	refresh = false,

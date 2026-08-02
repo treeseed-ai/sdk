@@ -1,9 +1,9 @@
-import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../../support/reporting/diagnostics.ts';
+import { sceneErrorDiagnostic,sceneWarningDiagnostic } from '../../support/reporting/diagnostics.ts';
 import type {
-	SceneDiagram,
-	SceneDiagramDefinition,
-	SceneDiagramProvider,
-	SceneRunReport,
+SceneDiagram,
+SceneDiagramDefinition,
+SceneDiagramProvider,
+SceneRunReport,
 } from '../../types.ts';
 
 const SAFE_ID = /^[a-z0-9][a-z0-9._-]*$/u;

@@ -22,6 +22,32 @@ async function writeDeployConfig(body: string) {
 }
 
 describe('deploy config plane normalization', () => {
+	it('preserves the declared local provider callback tunnel', async () => {
+		const configPath = await writeDeployConfig(`name: Test Site
+slug: test-site
+siteUrl: https://example.com
+contactEmail: hello@example.com
+cloudflare:
+  accountId: account-123
+  zoneId: zone-123
+  tunnel:
+    local:
+      enabled: true
+      name: local-connectors
+      hostname: connect.example.com
+      originUrl: http://127.0.0.1:3000
+`);
+
+		const config = loadDeployConfigFromPath(configPath);
+		expect(config.cloudflare.tunnel?.local).toEqual({
+			enabled: true,
+			name: 'local-connectors',
+			hostname: 'connect.example.com',
+			zoneId: undefined,
+			originUrl: 'http://127.0.0.1:3000',
+		});
+	});
+
 	it('resolves projectRoot relative to the TreeSeed tenant root', async () => {
 		const configPath = await writeDeployConfig(`name: Test Site
 slug: test-site

@@ -1,23 +1,14 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { relative } from 'node:path';
 import type {
-	SceneDiagnostic,
-	SceneVisualAuditCapture,
-	SceneVisualAuditClientError,
-	SceneVisualAuditClientErrorIncident,
-	SceneVisualAuditFinding,
-	SceneVisualAuditFindingOwner,
-	SceneVisualAuditFindingSeverity,
-	SceneVisualAuditManifest,
-	SceneVisualAuditPaths,
-	SceneVisualAuditReview,
-	SceneVisualAuditReviewCategory,
-	SceneVisualAuditReviewDetail,
-	SceneVisualAuditRole,
-	SceneVisualAuditRootCause,
+SceneVisualAuditCapture,
+SceneVisualAuditClientError,
+SceneVisualAuditClientErrorIncident,
+SceneVisualAuditFinding,
+SceneVisualAuditFindingOwner,
+SceneVisualAuditFindingSeverity,
+SceneVisualAuditReviewDetail,
+SceneVisualAuditRootCause
 } from '../types.ts';
-import { writeSceneVisualAuditContactSheets } from '../support/visual-audit/visual-audit-contact-sheets.ts';
-import { EnrichedClientError, SEVERITIES, errorIncidentCode, finding, guidance, normalizedErrorMessage, pathOwner, priorityScore, recommendedAction } from './severities.ts';
+import { EnrichedClientError,SEVERITIES,errorIncidentCode,finding,guidance,normalizedErrorMessage,pathOwner,priorityScore,recommendedAction } from './severities.ts';
 
 export function incidentTitle(code: string) {
 	if (code === 'visual.client.http_500') return 'Routes return HTTP 500';

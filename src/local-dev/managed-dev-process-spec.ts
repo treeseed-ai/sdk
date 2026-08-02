@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
-import type { ManagedDevOptions, ManagedDevProcessSpec } from './managed-dev.ts';
+import type { ManagedDevOptions,ManagedDevProcessSpec } from './managed-dev.ts';
 import { managedDevSourceClosureDigest } from './source-closure.ts';
+import { resolveToolCommand } from '../managed-dependencies/run-npm-tool-rebuilds.ts';
 
 function scriptCommand(tenantRoot: string, script: string, args: string[] = []) {
 	return {
@@ -32,6 +33,8 @@ function localApiEnvironment(apiPort: number, webPort: number) {
 		TREESEED_API_AUTH_SECRET: 'treeseed-api-dev-secret',
 		TREESEED_API_WEB_SERVICE_ID: 'web',
 		TREESEED_API_WEB_SERVICE_SECRET: 'treeseed-web-service-dev-secret',
+		TREESEED_WEB_SERVICE_ID: 'web',
+		TREESEED_WEB_SERVICE_SECRET: 'treeseed-web-service-dev-secret',
 		TREESEED_API_WEB_ASSERTION_SECRET: 'treeseed-web-assertion-dev-secret',
 		TREESEED_TREEDX_URL: 'http://127.0.0.1:4000',
 		TREESEED_TREEDX_JWT_ISSUER: 'https://api.treeseed.local/treedx',
@@ -70,6 +73,8 @@ function localWebEnvironment(apiPort: number, webPort: number) {
 		TREESEED_CAPACITY_ACCEPTANCE_ENVIRONMENT: 'local',
 		TREESEED_API_WEB_SERVICE_ID: 'web',
 		TREESEED_API_WEB_SERVICE_SECRET: 'treeseed-web-service-dev-secret',
+		TREESEED_WEB_SERVICE_ID: 'web',
+		TREESEED_WEB_SERVICE_SECRET: 'treeseed-web-service-dev-secret',
 		TREESEED_API_WEB_ASSERTION_SECRET: 'treeseed-web-assertion-dev-secret',
 		TREESEED_SMTP_HOST: '127.0.0.1',
 		TREESEED_SMTP_PORT: '1025',
@@ -107,13 +112,25 @@ export function buildManagedDevProcessSpec(input: {
 	const sourceClosureDigest = managedDevSourceClosureDigest({
 		tenantRoot: input.tenantRoot,
 		surface: input.surface,
+		runtimeEnv: env,
 	});
 	if (input.surface === 'api') {
 		return {
 			id,
 			surface: input.surface,
 			...apiCommand(input.tenantRoot, 'api'),
-			env: { ...localApiEnvironment(apiPort, webPort), ...env, HOST: apiHost, PORT: String(apiPort) },
+			env: {
+				...localApiEnvironment(apiPort, webPort),
+				TREESEED_KNOWLEDGE_CONTENT_ROOT: resolve(input.tenantRoot, 'packages/admin/docs/src/content/knowledge'),
+				TREESEED_BOOK_CONTENT_ROOT: resolve(input.tenantRoot, 'packages/admin/docs/src/content/books'),
+				...env,
+				TREESEED_WEB_SERVICE_ID: 'web',
+				TREESEED_WEB_SERVICE_SECRET: 'treeseed-web-service-dev-secret',
+				TREESEED_API_WEB_SERVICE_ID: 'web',
+				TREESEED_API_WEB_SERVICE_SECRET: 'treeseed-web-service-dev-secret',
+				HOST: apiHost,
+				PORT: String(apiPort),
+			},
 			port: apiPort,
 			health: [{ id: 'api', kind: 'http', url: `http://${apiHost}:${apiPort}/healthz` }],
 			logPath,
@@ -128,13 +145,25 @@ export function buildManagedDevProcessSpec(input: {
 			id,
 			surface: input.surface,
 			...apiCommand(input.tenantRoot, 'runner'),
-			env: { ...localApiEnvironment(apiPort, webPort), ...env, PORT: String(runnerPort) },
+			env: { ...localApiEnvironment(apiPort, webPort), ...env,
+				TREESEED_WEB_SERVICE_ID: 'web', TREESEED_WEB_SERVICE_SECRET: 'treeseed-web-service-dev-secret',
+				TREESEED_API_WEB_SERVICE_ID: 'web', TREESEED_API_WEB_SERVICE_SECRET: 'treeseed-web-service-dev-secret',
+				PORT: String(runnerPort) },
 			port: runnerPort,
 			health: [{ id: 'operations-runner', kind: 'http', url: `http://127.0.0.1:${runnerPort}/readyz`, timeoutMs: 10_000 }],
 			logPath,
 			pidPath,
 			instancePath,
 			sourceClosureDigest,
+		};
+	}
+	if (input.surface === 'cloudflare-tunnel') {
+		const tool = resolveToolCommand('cloudflared', { env });
+		return {
+			id: 'cloudflare-tunnel', surface: input.surface, cwd: input.tenantRoot,
+			command: tool?.command ?? 'cloudflared', args: [...(tool?.argsPrefix ?? []), 'tunnel', '--no-autoupdate', '--loglevel', 'info', '--metrics', '127.0.0.1:20241', 'run'],
+			env, port: 20241, health: [{ id: 'cloudflare-tunnel', kind: 'http', url: 'http://127.0.0.1:20241/ready', timeoutMs: 10_000 }],
+			logPath, pidPath, instancePath, sourceClosureDigest,
 		};
 	}
 	const webRuntime = input.options.webRuntime ?? 'local';
@@ -153,7 +182,9 @@ export function buildManagedDevProcessSpec(input: {
 		id: 'web',
 		surface: 'web',
 		...command,
-		env: { ...localWebEnvironment(apiPort, webPort), ...env },
+		env: { ...localWebEnvironment(apiPort, webPort), ...env,
+			TREESEED_WEB_SERVICE_ID: 'web', TREESEED_WEB_SERVICE_SECRET: 'treeseed-web-service-dev-secret',
+			TREESEED_API_WEB_SERVICE_ID: 'web', TREESEED_API_WEB_SERVICE_SECRET: 'treeseed-web-service-dev-secret' },
 		port: webPort,
 		health: [{ id: 'web', kind: 'http', url: `http://${host}:${webPort}`, timeoutMs: 10_000 }],
 		logPath,

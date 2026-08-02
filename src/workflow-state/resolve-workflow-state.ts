@@ -1,22 +1,22 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { getMachineConfigPaths, inspectKeyAgentStatus, loadMachineConfig, collectEnvironmentContext } from "../operations/services/configuration/config-runtime.ts";
 import { resolveGitHubToken } from "../configuration/service-credentials.ts";
-import { resolveWebCachePolicy } from "../platform/hosting/deploy-config.ts";
-import { createBranchPreviewDeployTarget, createPersistentDeployTarget, loadDeployState } from "../operations/services/hosting/deployment/deploy.ts";
-import { loadPlatformConfig } from "../platform/configuration/config.ts";
-import { collectCliPreflight } from "../operations/services/treedx/workspaces/workspace-preflight.ts";
-import { collectPublicPackageReleaseLineState, currentBranch, gitStatusPorcelain } from "../operations/services/treedx/workspaces/workspace-save.ts";
-import { hasCompletePackageCheckout, isWorkspaceRoot, run } from "../operations/services/treedx/workspaces/workspace-tools.ts";
+import { collectEnvironmentContext,getMachineConfigPaths,inspectKeyAgentStatus,loadMachineConfig } from "../operations/services/configuration/config-runtime.ts";
+import { createBranchPreviewDeployTarget,createPersistentDeployTarget,loadDeployState } from "../operations/services/hosting/deployment/deploy.ts";
+import { inspectDetachedHeadRepair,PRODUCTION_BRANCH,STAGING_BRANCH } from "../operations/services/operations/git-workflow.ts";
 import { packageAdapterPlanSummary } from "../operations/services/reconciliation/package-adapters.ts";
 import { inspectWorkspaceDependencyMode } from "../operations/services/treedx/workspaces/workspace-dependency-mode.ts";
-import { inspectDetachedHeadRepair, PRODUCTION_BRANCH, STAGING_BRANCH } from "../operations/services/operations/git-workflow.ts";
-import { classifyWorkflowRunJournals, inspectWorkflowLock } from "../workflow/runs.ts";
-import { resolveWorkflowPaths, workflowEnvironmentForBranchRole } from "../workflow/policy.ts";
-import { WorkflowProviderStatus, WorkflowState, WorkflowStatusOptions, emptyEnvironmentStatus, emptyPersistentEnvironments, emptyProviderStatus, runGit } from './branch-role.ts';
-import { collectStatusConfigScope, hasStatusConfigValue, isCloudflareProviderProblem, knownRemoteTrackingBranchExists, providerStatusForScope, readinessForEnvironment, safeHeadCommit, safeResolveRemoteSession } from './readiness-for-environment.ts';
-import { capObsoleteWorkflowRuns, capWorkflowRunHistory, resolveLocalStatusUrl, safeReleaseHistory } from './safe-release-history.ts';
+import { collectCliPreflight } from "../operations/services/treedx/workspaces/workspace-preflight.ts";
+import { collectPublicPackageReleaseLineState,currentBranch,gitStatusPorcelain } from "../operations/services/treedx/workspaces/workspace-save.ts";
+import { hasCompletePackageCheckout,isWorkspaceRoot } from "../operations/services/treedx/workspaces/workspace-tools.ts";
+import { loadPlatformConfig } from "../platform/configuration/config.ts";
+import { resolveWebCachePolicy } from "../platform/hosting/deploy-config.ts";
+import { resolveWorkflowPaths,workflowEnvironmentForBranchRole } from "../workflow/policy.ts";
+import { classifyWorkflowRunJournals,inspectWorkflowLock } from "../workflow/runs.ts";
+import { emptyEnvironmentStatus,emptyPersistentEnvironments,emptyProviderStatus,runGit,WorkflowProviderStatus,WorkflowState,WorkflowStatusOptions } from './branch-role.ts';
+import { collectStatusConfigScope,hasStatusConfigValue,isCloudflareProviderProblem,knownRemoteTrackingBranchExists,providerStatusForScope,readinessForEnvironment,safeHeadCommit,safeResolveRemoteSession } from './readiness-for-environment.ts';
 import { recommendNextSteps } from './recommend-next-steps.ts';
+import { capObsoleteWorkflowRuns,capWorkflowRunHistory,resolveLocalStatusUrl,safeReleaseHistory } from './safe-release-history.ts';
 
 export function resolveWorkflowState(cwd: string, options: WorkflowStatusOptions = {}): WorkflowState {
 	const resolved = resolveWorkflowPaths(cwd);

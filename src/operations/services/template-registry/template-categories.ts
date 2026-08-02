@@ -1,34 +1,12 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
-import { basename, dirname, relative, resolve } from 'node:path';
-import { runRepositoryGit } from '../operations/git-runner.ts';
+import { existsSync,mkdirSync,readdirSync,readFileSync } from 'node:fs';
+import { basename,dirname,relative,resolve } from 'node:path';
 import {
-	normalizeTemplateId,
-	type SdkTemplateCatalogEntry,
-	type SdkTemplateCatalogResponse,
-	type TemplateLaunchRequirements,
+normalizeTemplateId,
+type SdkTemplateCatalogEntry
 } from '../../../entrypoints/models/sdk-types.ts';
-import { RemoteTemplateCatalogClient } from '../../../commerce/catalog/template-catalog.ts';
 import {
-	type ProjectLaunchConfigWritePlanItem,
-	type ProjectLaunchLocalHostBindingSummary,
-	type ProjectLaunchResolvedHostBinding,
-	type ProjectLaunchSecretDeploymentPlanItem,
-	normalizeTemplateLaunchRequirements,
-} from '../../../entrypoints/templates/template-launch-requirements.ts';
-import { preserveProjectLaunchHostBindingConfigOverlay } from '../hosting/deployment/template-host-bindings.ts';
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import {
-	resolveTemplateCatalogCachePath,
-	resolveTemplateCatalogEndpoint,
-} from '../configuration/config-runtime.ts';
-import {
-	cliPackageVersion,
-	agentPackageVersion,
-	corePackageVersion,
-	cliPackageRoot,
-	localTemplateArtifactsRoot,
-	sdkPackageVersion,
+cliPackageRoot,
+localTemplateArtifactsRoot
 } from '../runtime/runtime-paths.ts';
 import { validateTemplatePlaceholders } from './validate-template-placeholders.ts';
 
@@ -63,7 +41,6 @@ export interface TemplateManifest {
 		validatedOnly?: string[];
 		tenantManaged?: string[];
 	};
-	launchRequirements?: TemplateLaunchRequirements;
 	testing: {
 		smokeCommand?: string;
 		buildCommand?: string;
@@ -93,23 +70,6 @@ export interface StarterResolutionInput {
 	contactEmail?: string | null;
 	repositoryUrl?: string | null;
 	discordUrl?: string | null;
-	hostBindingState?: StarterHostBindingState | null;
-}
-
-export interface StarterHostBindingState {
-	hostBindings: Record<string, ProjectLaunchResolvedHostBinding>;
-	hostBindingPlans: {
-		configWrites: ProjectLaunchConfigWritePlanItem[];
-		secretDeployment: {
-			items: ProjectLaunchSecretDeploymentPlanItem[];
-		};
-	};
-	hostBindingSummaries?: ProjectLaunchLocalHostBindingSummary[];
-	hostBindingConfig?: {
-		configWrites?: unknown[];
-		environmentWrites?: unknown[];
-		targets?: string[];
-	} | null;
 }
 
 export interface TemplateState {
@@ -119,10 +79,6 @@ export interface TemplateState {
 	installedAt: string;
 	lastSyncedAt?: string;
 	replacements: Record<string, string>;
-	hostBindings?: StarterHostBindingState['hostBindings'];
-	hostBindingPlans?: StarterHostBindingState['hostBindingPlans'];
-	hostBindingSummaries?: ProjectLaunchLocalHostBindingSummary[];
-	hostBindingConfig?: StarterHostBindingState['hostBindingConfig'];
 }
 
 export interface TemplateCatalogCache {
@@ -264,6 +220,5 @@ export function validateTemplateManifest(definition: ResolvedTemplateDefinition)
 	if (!existsSync(templateRoot)) {
 		throw new Error(`Template ${manifest.id} is missing template/ at ${templateRoot}.`);
 	}
-	manifest.launchRequirements = normalizeTemplateLaunchRequirements(manifest.launchRequirements, `${manifestPath}: launchRequirements`);
 	validateTemplatePlaceholders(definition);
 }

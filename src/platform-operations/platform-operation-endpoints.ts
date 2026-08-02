@@ -1,7 +1,3 @@
-import {
-	REMOTE_CONTRACT_HEADER,
-	REMOTE_CONTRACT_VERSION,
-} from '../entrypoints/clients/remote.ts';
 
 
 export const PLATFORM_OPERATION_ENDPOINTS = {

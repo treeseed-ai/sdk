@@ -1,14 +1,14 @@
-import { MarketClient } from '../../../entrypoints/clients/market-client.ts';
 import {
-	capacityProviderPublicIdentity,
-	generateCapacityProviderIdentity,
-	ProviderProtocolClient,
-	signCapacityProviderProof,
+capacityProviderPublicIdentity,
+generateCapacityProviderIdentity,
+ProviderProtocolClient,
+signCapacityProviderProof,
 } from '../../../capacity/providers/capacity-provider.ts';
-import { TreeDxClient } from '../../../treedx/support/client.ts';
+import { MarketClient } from '../../../entrypoints/clients/market-client.ts';
 import { mintTreeDxHs256Token } from '../../../treedx/accounts/auth.ts';
+import { TreeDxClient } from '../../../treedx/support/client.ts';
+import { configuredLiveAcceptanceValue,type LiveAcceptanceEnv } from '../../support/acceptance/live-acceptance-values.ts';
 import type { LiveReconcileEnvironment } from '../../support/acceptance/live-acceptance.ts';
-import { configuredLiveAcceptanceValue, type LiveAcceptanceEnv } from '../../support/acceptance/live-acceptance-values.ts';
 import type { CapacityGovernanceAcceptanceProof } from './live-acceptance-capacity-governance.ts';
 
 export function capacityAcceptanceConfig(env: LiveAcceptanceEnv, environment: LiveReconcileEnvironment) {
@@ -156,9 +156,10 @@ export async function syncLocalAcceptanceAgentClass(adminClient: MarketClient, i
 	const activities = frontmatter.activityProfiles && typeof frontmatter.activityProfiles === 'object' && !Array.isArray(frontmatter.activityProfiles) ? frontmatter.activityProfiles as Record<string, unknown> : {};
 	const identity = frontmatter.identity && typeof frontmatter.identity === 'object' && !Array.isArray(frontmatter.identity) ? frontmatter.identity as Record<string, unknown> : {};
 	const classes = await adminClient.projectAgentClasses(input.projectId, { limit: 200 });
-	const existing = classes.payload.items.find((entry) => entry.id === input.agentClassId || entry.slug === input.agentClassId);
+	const scopedClassId = `${input.projectId}:${input.agentClassId}`;
+	const existing = classes.payload.items.find((entry) => entry.id === scopedClassId || entry.slug === input.agentClassId);
 	const body = {
-		id: input.agentClassId, slug: input.agentClassId, name: 'Testing agents', status: 'active',
+		id: scopedClassId, slug: input.agentClassId, name: 'Testing agents', status: 'active',
 		allowedModes: ['planning', 'acting'], requiredCapabilities: ['repo_read', 'agent_mode_run'],
 		handlerRefs: { agents: [{ slug: typeof frontmatter.slug === 'string' ? frontmatter.slug : 'tester', activities: Object.fromEntries(Object.entries(activities).filter(([, value]) => value && typeof value === 'object')) }] },
 		metadata: { source: 'treedx_project_agent_content_sync', contentPath: file.path, purpose: typeof identity.purpose === 'string' ? identity.purpose : null },

@@ -1,11 +1,9 @@
-import type { CapacityLedgerEntry, CapacityReservation, CapacityUsageActual } from '../support/financial-records.ts';
-import type { AgentCapacityEnvelope, AgentExecutionMode, AgentModeRun, DecisionExecutionInput, ProviderAssignment, ProviderAssignmentSynthesisSource, TreeDxProxyHandle, WorkdayCapacityEnvelope } from '../capacity/assignments/assignment-records.ts';
-import type { CapacityGrantV2 } from '../../allocation.ts';
-import type { AgentCapacityPlanRecord, DecisionExecutionInputStatus, DecisionExecutionReadinessStatus, DurableAgentCapacityPlanStatus, PlanningInputRequestStatus, WorkdayCapacityEnvelopeRecord, WorkdayCapacityEnvelopeStatus } from '../support/planning-records.ts';
-import type { AgentKernelPolicy, AgentKernelProfile } from '../projects/agents/project-agent-class.ts';
-import type { CapacityExecutionProvider, ProviderAvailabilitySession } from '../../../capacity-provider/contracts/index.ts';
 import type { CapacityPageInfo } from '../../../capacity/capacity-core/capacity-pagination.ts';
-import type { AgentRuntimeSpec, AgentWorkPackage, ExecutionCapabilityDemand, ExecutionCapabilitySupply, ExecutionProviderDescriptor, ExecutionResourceNeed } from '../../../types/agents.ts';
+import type { ExecutionCapabilityDemand,ExecutionCapabilitySupply } from '../../../types/agents.ts';
+import type { AgentCapacityEnvelope,AgentExecutionMode,AgentModeRun,DecisionExecutionInput,ProviderAssignment,ProviderAssignmentSynthesisSource,TreeDxProxyHandle,WorkdayCapacityEnvelope } from '../capacity/assignments/assignment-records.ts';
+import type { AgentKernelPolicy,AgentKernelProfile } from '../projects/agents/project-agent-class.ts';
+import type { CapacityLedgerEntry,CapacityReservation,CapacityUsageActual } from '../support/financial-records.ts';
+import type { WorkdayCapacityEnvelopeRecord } from '../support/planning-records.ts';
 
 export type AgentKernelModeExecutionStatus = 'completed' | 'waiting' | 'failed' | 'returned';
 export type AgentKernelModeFallbackCode =

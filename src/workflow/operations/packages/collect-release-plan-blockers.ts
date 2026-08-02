@@ -1,12 +1,12 @@
 import { resolveMachineEnvironmentValues } from "../../../operations/services/configuration/config-runtime.ts";
+import { resolveGitHubCredentialForRepository } from "../../../operations/services/configuration/github-credentials.ts";
 import { STAGING_BRANCH } from "../../../operations/services/operations/git-workflow.ts";
 import { resolveGitHubRepositorySlug } from "../../../operations/services/repositories/github-automation.ts";
-import { resolveGitHubCredentialForRepository } from "../../../operations/services/configuration/github-credentials.ts";
 import { collectPublicPackageReleaseLineState } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
-import { checkedOutWorkspacePackageRepos, type WorkflowMode, type WorkflowSession } from "../../session.ts";
 import type { WorkflowCiMode } from "../../../operations/workflow.ts";
-import { validatePackageReleaseWorkflows } from '../recovery/fail-workflow-run.ts';
+import { checkedOutWorkspacePackageRepos,type WorkflowMode,type WorkflowSession } from "../../session.ts";
 import { workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { validatePackageReleaseWorkflows } from '../recovery/fail-workflow-run.ts';
 import { stringRecord } from '../repositories/gates-for-saved-repository-reports.ts';
 
 export function collectReleasePlanBlockers(

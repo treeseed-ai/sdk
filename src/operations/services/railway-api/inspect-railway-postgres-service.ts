@@ -1,14 +1,8 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
-import { IacClient } from 'railway';
-import { connectRailwayServiceSourceWithCli, runRailwayCliJson } from '../hosting/railway/railway-cli.ts';
-import { resolveRailwayCredential } from '../../../configuration/service-credentials.ts';
-import { listRailwayVariables } from './ensure-railway-service-instance-configuration.ts';
-import { listRailwayVolumes } from './upsert-railway-variables.ts';
 import { railwayGraphqlRequest } from './collect-railway-volumes.ts';
-import { RailwayServiceInstanceSummary, normalizeConnectionNodes, railwayConnectionLabel } from './default-railway-api-url.ts';
-import { normalizeRailwayNumber, normalizeService } from './normalize-workspace.ts';
+import { RailwayServiceInstanceSummary,normalizeConnectionNodes,railwayConnectionLabel } from './default-railway-api-url.ts';
+import { listRailwayVariables } from './ensure-railway-service-instance-configuration.ts';
+import { normalizeRailwayNumber,normalizeService } from './normalize-workspace.ts';
+import { listRailwayVolumes } from './upsert-railway-variables.ts';
 
 export async function inspectRailwayPostgresService({
 	projectId,

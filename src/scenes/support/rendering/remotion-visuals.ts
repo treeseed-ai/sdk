@@ -1,12 +1,12 @@
 import React from 'react';
 import { interpolate } from 'remotion';
 import type {
-	SceneMotion,
-	SceneVisualObject,
-	SceneVisualPoint,
-	SceneVisualRegion,
-	SceneVisualSize,
-	SceneVisualStyle,
+SceneMotion,
+SceneVisualObject,
+SceneVisualPoint,
+SceneVisualRegion,
+SceneVisualSize,
+SceneVisualStyle,
 } from '../../types.ts';
 
 export const SceneVideoTheme = {

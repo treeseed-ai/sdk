@@ -1,19 +1,19 @@
 import React from 'react';
 import {
-	AbsoluteFill,
-	Composition,
-	Img,
-	Sequence,
-	Video,
-	interpolate,
-	registerRoot,
-	staticFile,
-	useCurrentFrame,
-	useVideoConfig,
+AbsoluteFill,
+Composition,
+Img,
+interpolate,
+registerRoot,
+Sequence,
+staticFile,
+useCurrentFrame,
+useVideoConfig,
+Video,
 } from 'remotion';
-import { renderSceneDiagram } from './remotion-diagrams.ts';
-import { interpolateSceneMotion, renderVisualObject, resolveVisualRegion, SceneVideoTheme, visualStyle } from './remotion-visuals.ts';
 import type { SceneRenderInput } from '../../types.ts';
+import { renderSceneDiagram } from './remotion-diagrams.ts';
+import { interpolateSceneMotion,renderVisualObject,resolveVisualRegion,SceneVideoTheme,visualStyle } from './remotion-visuals.ts';
 
 function titleCard(input: SceneRenderInput, subtitle: string) {
 	return React.createElement(AbsoluteFill, {

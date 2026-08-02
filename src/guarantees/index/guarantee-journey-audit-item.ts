@@ -1,8 +1,6 @@
-import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve, sep } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
-import { GuaranteeDevice, GuaranteeDiagnostic, GuaranteeDiagnosticSeverity, GuaranteeFilter, GuaranteeGate, GuaranteeManifest, GuaranteePlanEntry, GuaranteeStatus, GuaranteeSurface, GuaranteeVerifierDefinition, GuaranteeVerifierKind, LoadedGuarantee } from './guarantee-schema-version.ts';
+import { GuaranteeDevice,GuaranteeDiagnostic,GuaranteeDiagnosticSeverity,GuaranteeFilter,GuaranteeGate,GuaranteeManifest,GuaranteePlanEntry,GuaranteeStatus,GuaranteeSurface,GuaranteeVerifierDefinition,GuaranteeVerifierKind,LoadedGuarantee } from './guarantee-schema-version.ts';
 
 export type GuaranteeJourneyAuditItem = {
 	guaranteeId: string;

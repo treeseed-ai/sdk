@@ -1,30 +1,30 @@
+import type {
+ProviderAssignmentLifecycleRequest,
+ProviderAssignmentLifecycleResult,
+ProviderNextAssignmentRequest,
+} from '../capacity/agents/agent-capacity.ts';
 import {
-	REMOTE_CONTRACT_HEADER,
-	REMOTE_CONTRACT_VERSION,
+REMOTE_CONTRACT_HEADER,
+REMOTE_CONTRACT_VERSION,
 } from '../entrypoints/clients/remote.ts';
 import type {
-	ProviderAssignmentLifecycleRequest,
-	ProviderAssignmentLifecycleResult,
-	ProviderNextAssignmentRequest,
-} from '../capacity/agents/agent-capacity.ts';
-import type {
-	CapacityProviderIdentity,
-	CapacityProviderIdentityRotationRequest,
-	CapacityProviderSignedProof,
-	ProviderAccessTokenIssue,
-	ProviderCredentialIssuanceAuthorization,
-	ProviderAvailabilitySession,
-	ProviderRegistrationRequest,
-	ProviderRegistrationSubmission,
-	ProviderTeamCredentialIssue,
+CapacityProviderIdentity,
+CapacityProviderIdentityRotationRequest,
+CapacityProviderSignedProof,
+ProviderAccessTokenIssue,
+ProviderAvailabilitySession,
+ProviderCredentialIssuanceAuthorization,
+ProviderRegistrationRequest,
+ProviderRegistrationSubmission,
+ProviderTeamCredentialIssue,
 } from './contracts/index.ts';
 import {
-	CAPACITY_PROVIDER_ENDPOINTS,
-	CAPACITY_PROVIDER_GOVERNANCE_ENDPOINTS,
+CAPACITY_PROVIDER_ENDPOINTS,
+CAPACITY_PROVIDER_GOVERNANCE_ENDPOINTS,
 } from './protocol.ts';
 import {
-	assertCapacityProviderOkEnvelope,
-	buildCapacityProviderAuthHeaders,
+assertCapacityProviderOkEnvelope,
+buildCapacityProviderAuthHeaders,
 } from './security/http.ts';
 
 export interface ProviderProtocolClientOptions {
@@ -270,5 +270,9 @@ export class ProviderProtocolClient {
 
 	dispatchAssignmentWorkflowOperation(assignmentId: string, operationId: string, request: Record<string, unknown>) {
 		return this.requestOkJson<{ ok: true; payload: Record<string, unknown> }>(CAPACITY_PROVIDER_ENDPOINTS.assignmentWorkflowOperationDispatch(assignmentId, operationId), { method: 'POST', body: request });
+	}
+
+	getAssignmentWorkflowRun(assignmentId: string, runId: string) {
+		return this.requestOkJson<{ ok: true; payload: Record<string, unknown> }>(CAPACITY_PROVIDER_ENDPOINTS.assignmentWorkflowRun(assignmentId, runId));
 	}
 }

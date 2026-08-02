@@ -1,20 +1,20 @@
-import { hasSceneErrors, sceneErrorDiagnostic } from '../reporting/diagnostics.ts';
+import {
+SCENE_ENVIRONMENTS,
+type SceneEnvironment,
+type ScenePlanReport,
+type SceneValidationReport,
+} from '../../types.ts';
+import {
+listBuiltInSceneActions,
+listBuiltInSceneAssertions,
+listBuiltInSceneRenderers,
+resolveScenePlugins,
+} from '../plugins/registry.ts';
+import { SceneDiagramPluginId,validateSceneDiagrams } from '../rendering/diagram-validation.ts';
+import { hasSceneErrors,sceneErrorDiagnostic } from '../reporting/diagnostics.ts';
+import { parseSceneManifest,sceneActionKind,sceneExpectationKinds } from '../validation/schema.ts';
 import { loadSceneDocument } from './loader.ts';
 import { planSceneArtifactPaths } from './phase0.ts';
-import { SceneDiagramPluginId, validateSceneDiagrams } from '../rendering/diagram-validation.ts';
-import {
-	listBuiltInSceneActions,
-	listBuiltInSceneAssertions,
-	listBuiltInSceneRenderers,
-	resolveScenePlugins,
-} from '../plugins/registry.ts';
-import { parseSceneManifest, sceneActionKind, sceneExpectationKinds } from '../validation/schema.ts';
-import {
-	SCENE_ENVIRONMENTS,
-	type SceneEnvironment,
-	type ScenePlanReport,
-	type SceneValidationReport,
-} from '../../types.ts';
 
 function splitDiagnostics<T extends { severity: string }>(diagnostics: T[], severity: string) {
 	return diagnostics.filter((diagnostic) => diagnostic.severity === severity);

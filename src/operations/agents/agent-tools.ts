@@ -321,9 +321,9 @@ export function createAgentOperationEvent(input: {
 	};
 }
 
-export { checkpointAgentWorktree } from './agent-worktree-checkpoint.ts';
-export type { AgentWorktreeCheckpointExecutor, AgentWorktreeCheckpointInput } from './agent-worktree-checkpoint.ts';
-export { prepareAgentWorktree } from './agent-worktree-prepare.ts';
-export type { PrepareAgentWorktreeExecutor, PrepareAgentWorktreeInput } from './agent-worktree-prepare.ts';
 export { releaseAgentWorktree } from '../packages/agent-worktree-release.ts';
-export type { ReleaseAgentWorktreeExecutor, ReleaseAgentWorktreeInput } from '../packages/agent-worktree-release.ts';
+export type { ReleaseAgentWorktreeExecutor,ReleaseAgentWorktreeInput } from '../packages/agent-worktree-release.ts';
+export { checkpointAgentWorktree } from './agent-worktree-checkpoint.ts';
+export type { AgentWorktreeCheckpointExecutor,AgentWorktreeCheckpointInput } from './agent-worktree-checkpoint.ts';
+export { prepareAgentWorktree } from './agent-worktree-prepare.ts';
+export type { PrepareAgentWorktreeExecutor,PrepareAgentWorktreeInput } from './agent-worktree-prepare.ts';

@@ -5,6 +5,48 @@ export interface WorkdayPlanningAgent {
 	projectAgentClassId?: string | null;
 }
 
+export interface WorkdayAgentSelection {
+	classIds: string[];
+	classSlugs: string[];
+	agentSlugs: string[];
+	mode: 'intersection' | 'union';
+}
+
+function uniqueStrings(value: unknown): string[] {
+	if (!Array.isArray(value)) return [];
+	return [...new Set(value.map((item) => String(item).trim()).filter(Boolean))].sort();
+}
+
+export function normalizeWorkdayAgentSelection(value: unknown): WorkdayAgentSelection {
+	const input = record(value);
+	return {
+		classIds: uniqueStrings(input.classIds),
+		classSlugs: uniqueStrings(input.classSlugs),
+		agentSlugs: uniqueStrings(input.agentSlugs),
+		mode: input.mode === 'union' ? 'union' : 'intersection',
+	};
+}
+
+export function workdayAgentSelectionActive(selection: WorkdayAgentSelection): boolean {
+	return selection.classIds.length > 0 || selection.classSlugs.length > 0 || selection.agentSlugs.length > 0;
+}
+
+export function selectWorkdayAgents<T extends WorkdayPlanningAgent>(agents: T[], value: unknown): T[] {
+	const selection = normalizeWorkdayAgentSelection(value);
+	if (!workdayAgentSelectionActive(selection)) return agents;
+	const classSelectors = new Set([...selection.classIds, ...selection.classSlugs]);
+	const agentSelectors = new Set(selection.agentSlugs);
+	return agents.filter((agent) => {
+		const classMatch = classSelectors.size === 0 || [agent.projectAgentClassId, agent.projectAgentClassSlug]
+			.some((candidate) => candidate && [...classSelectors].some((selector) => selector === candidate || selector.endsWith(`:${candidate}`)));
+		const agentMatch = agentSelectors.size === 0 || agentSelectors.has(agent.slug);
+		if (selection.mode === 'union') {
+			return (classSelectors.size > 0 && classMatch) || (agentSelectors.size > 0 && agentMatch);
+		}
+		return classMatch && agentMatch;
+	});
+}
+
 export interface WorkdayExistingAssignment {
 	projectId?: string | null;
 	project_id?: string | null;

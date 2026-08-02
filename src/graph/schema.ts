@@ -1,13 +1,13 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
 import type {
-	SdkGraphEdge,
-	SdkGraphEdgeType,
-	SdkGraphModelConfig,
-	SdkGraphNode,
-	SdkGraphNodeType,
-	SdkModelDefinition,
-	SdkModelRegistry,
+SdkGraphEdge,
+SdkGraphEdgeType,
+SdkGraphModelConfig,
+SdkGraphNode,
+SdkGraphNodeType,
+SdkModelDefinition,
+SdkModelRegistry,
 } from '../entrypoints/models/sdk-types.ts';
 
 export const GRAPH_SNAPSHOT_VERSION = 1;

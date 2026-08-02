@@ -1,8 +1,8 @@
 import type {
-	CapacityAdmissionCounterClaim,
-	CapacityAdmissionReasonCode,
-	CapacityAllocationSetV2,
-	CapacityAllocationSlice,
+CapacityAdmissionCounterClaim,
+CapacityAdmissionReasonCode,
+CapacityAllocationSetV2,
+CapacityAllocationSlice,
 } from '../../../allocation.ts';
 
 interface AllocationHierarchyInput {

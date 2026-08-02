@@ -1,26 +1,20 @@
-import { createReconcileRegistry } from '../support/state/registry.ts';
-import type {
-	DesiredUnit,
-	ObservedUnitState,
-	ReconcilePlan,
-	ReconcileResult,
-	ReconcileRunContext,
-	ReconcileSelector,
-	ReconcileStateRecord,
-	ReconcileTarget,
-	ReconcileUnitDiff,
-	UnitPostcondition,
-	UnitPersistedState,
-	UnitVerificationResult,
-} from '../support/contracts/contracts.ts';
 import { deriveDesiredUnits } from '../reconciliation/desired-state.ts';
-import { ensurePersistedUnitState, desiredUnitSpecHash, loadReconcileState, updatePersistedUnitState, writeReconcileState } from '../support/state/state.ts';
-import { reverseTopologicallySortedUnits, topologicallySortDesiredUnits } from '../support/engine/units.ts';
-import { filterDesiredUnitsByBootstrapSystems, type RunnableBootstrapSystem } from '../support/bootstrap-systems.ts';
-import { elapsedMs, formatDurationMs, type TimingEntry } from '../../entrypoints/runtime/timing.ts';
-import { createRunContext, filterUnitsBySelector, formatVerificationFailure, verifyPlanUnits, wrapAdapterFailure } from './now-iso.ts';
-import { refreshUnits } from './refresh-units.ts';
+import { type RunnableBootstrapSystem } from '../support/bootstrap-systems.ts';
+import type {
+DesiredUnit,
+ObservedUnitState,
+ReconcileResult,
+ReconcileRunContext,
+ReconcileSelector,
+ReconcileTarget,
+UnitVerificationResult
+} from '../support/contracts/contracts.ts';
+import { reverseTopologicallySortedUnits } from '../support/engine/units.ts';
+import { createReconcileRegistry } from '../support/state/registry.ts';
+import { ensurePersistedUnitState,loadReconcileState } from '../support/state/state.ts';
+import { createRunContext,filterUnitsBySelector,formatVerificationFailure,verifyPlanUnits,wrapAdapterFailure } from './now-iso.ts';
 import { reconcileTarget } from './reconcile-target.ts';
+import { refreshUnits } from './refresh-units.ts';
 
 export async function destroyTargetUnits({
 	tenantRoot,
@@ -84,6 +78,7 @@ export async function collectReconcileStatus({
 	selector,
 	units,
 	session,
+	write,
 }: {
 	tenantRoot: string;
 	target: ReconcileTarget;
@@ -92,10 +87,12 @@ export async function collectReconcileStatus({
 	selector?: ReconcileSelector;
 	units?: DesiredUnit[];
 	session?: Map<string, unknown>;
+	write?: (line: string) => void;
 }) {
-	const observed = await refreshUnits({ tenantRoot, target, env, systems, selector, units });
+	const observed = await refreshUnits({ tenantRoot, target, env, systems, selector, units, write });
 	const registry = createReconcileRegistry(observed.deployConfig);
 	const context = createRunContext(tenantRoot, target, env, undefined, false, session);
+	context.session.set('treeseed:status-only', true);
 	const plans = await Promise.all(observed.units.map(async (unit) => {
 		const adapter = registry.get(unit.unitType, unit.provider);
 		const persisted = ensurePersistedUnitState(observed.state, unit);
@@ -118,6 +115,7 @@ export async function collectReconcileStatus({
 		registry,
 		context,
 		state: observed.state,
+		write,
 	});
 	const unitStatuses = observed.units.map((unit) => {
 		const observation = observed.observations.get(unit.unitId)!;

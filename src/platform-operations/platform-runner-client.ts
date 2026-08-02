@@ -1,9 +1,9 @@
 import {
-	REMOTE_CONTRACT_HEADER,
-	REMOTE_CONTRACT_VERSION,
+REMOTE_CONTRACT_HEADER,
+REMOTE_CONTRACT_VERSION,
 } from '../entrypoints/clients/remote.ts';
-import { PLATFORM_OPERATION_ENDPOINTS, PlatformOperation, PlatformOperationEvent, PlatformRunnerClaimRequest, PlatformRunnerClientOptions, PlatformRunnerHeartbeatRequest, PlatformRunnerJobUpdateRequest, PlatformRunnerRegistrationRequest, buildPlatformRunnerAuthHeaders } from './platform-operation-endpoints.ts';
-import { PlatformOperationApiError, assertPlatformOperation, assertPlatformOperationEvent, assertPlatformOperationOkEnvelope, isRecord, normalizeBaseUrl } from './nested-record.ts';
+import { PlatformOperationApiError,assertPlatformOperation,assertPlatformOperationEvent,assertPlatformOperationOkEnvelope,isRecord,normalizeBaseUrl } from './nested-record.ts';
+import { PLATFORM_OPERATION_ENDPOINTS,PlatformOperation,PlatformOperationEvent,PlatformRunnerClaimRequest,PlatformRunnerClientOptions,PlatformRunnerHeartbeatRequest,PlatformRunnerJobUpdateRequest,PlatformRunnerRegistrationRequest,buildPlatformRunnerAuthHeaders } from './platform-operation-endpoints.ts';
 
 export class PlatformRunnerClient {
 	private readonly marketUrl: string;

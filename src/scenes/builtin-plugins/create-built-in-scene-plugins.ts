@@ -1,18 +1,15 @@
-import { resolveSceneApiBaseUrl, resolveSceneBaseUrl } from '../support/execution/base-url.ts';
-import { prepareSceneEnvironment } from '../configuration/environment.ts';
 import { resolveSceneAuth } from '../accounts/auth.ts';
-import { planOrApplySceneSeed } from '../seeds/seed.ts';
-import { sceneErrorDiagnostic } from '../support/reporting/diagnostics.ts';
 import { createBuiltInSceneDiagramProvider } from '../capacity/providers/diagram-providers.ts';
+import { prepareSceneEnvironment } from '../configuration/environment.ts';
+import { planOrApplySceneSeed } from '../seeds/seed.ts';
+import { resolveSceneApiBaseUrl,resolveSceneBaseUrl } from '../support/execution/base-url.ts';
+import { sceneErrorDiagnostic } from '../support/reporting/diagnostics.ts';
 import { buildSceneNarrationEntries } from '../support/training/training-transcript.ts';
-import type {
-	SceneAssertionRunReport,
-	SceneDiagnostic,
-	ScenePlugin,
-	SceneRuntimePluginContext,
-	SceneSelector,
-} from '../types.ts';
-import { assertionReport, extractConfirmationUrl, mailpitApiUrl, mailpitMessageBody, mailpitMessageId, mailpitMessageRecipients, mailpitMessageSubject, mailpitMessages, navigateScenePage, resolveMailpitConfirmationUrl, sceneRuntimeValue, sleep } from './duration.ts';
+import type { SceneDiagnostic,ScenePlugin,SceneSelector } from '../types.ts';
+import { browserAssertionTimeoutMs } from './assertion-timeout.ts';
+import { assertionReport,extractConfirmationUrl,mailpitApiUrl,mailpitMessageBody,mailpitMessageId,mailpitMessageRecipients,mailpitMessageSubject,mailpitMessages,navigateScenePage,resolveMailpitConfirmationUrl,sceneRuntimeValue } from './duration.ts';
+import { assertSceneFocus } from './focus-assertion.ts';
+import { hasHeader,runtimeRecord,runtimeValue } from './request-values.ts';
 import { clickVisibleSequenceAction } from './responsive-actions.ts';
 
 function failureMessage(error: unknown, fallback: string) {
@@ -89,9 +86,23 @@ export function createBuiltInScenePlugins(): ScenePlugin[] {
 					async run({ action, context }) {
 						if (!('select' in action)) return { ok: false, diagnostics: [sceneErrorDiagnostic('scene.invalid_action', 'Expected select action.', 'workflow.action.select')] };
 						const locator = context.resolveSelector(action.select);
-						await locator.waitFor({ state: 'visible', timeout: 10_000 });
 						if (!locator.selectOption) return { ok: false, diagnostics: [sceneErrorDiagnostic('scene.unsupported_runtime_action', 'The active browser adapter does not support select actions.', 'workflow.action.select')] };
-						await locator.selectOption(action.select.value ?? { label: action.select.label ?? '' });
+						const selection = action.select.value ?? { label: action.select.label ?? '' };
+						if (action.select.internal && !(await locator.isVisible())) {
+							if (!locator.evaluate) return { ok: false, diagnostics: [sceneErrorDiagnostic('scene.unsupported_runtime_action', 'The active browser adapter cannot set an internal hidden prerequisite selection.', 'workflow.action.select')] };
+							await locator.evaluate((element, nextSelection) => {
+								const control = element as HTMLSelectElement;
+								const requested = typeof nextSelection === 'string' ? nextSelection : String(nextSelection.label ?? '');
+								const option = [...control.options].find((candidate) => candidate.value === requested || candidate.label === requested);
+								if (!option) throw new Error(`The internal select option "${requested}" was not found.`);
+								control.value = option.value;
+								control.dispatchEvent(new Event('input', { bubbles: true }));
+								control.dispatchEvent(new Event('change', { bubbles: true }));
+							}, selection);
+						} else {
+							await locator.waitFor({ state: 'visible', timeout: 10_000 });
+							await locator.selectOption(selection);
+						}
 						return { ok: true, diagnostics: [] };
 					},
 				},
@@ -294,7 +305,7 @@ export function createBuiltInScenePlugins(): ScenePlugin[] {
 						for (const selector of selectors) {
 							results.push(await assertionReport('visible', async () => {
 								const locator = context.resolveSelector(selector);
-								await locator.waitFor({ state: 'visible', timeout: 10_000 });
+								await locator.waitFor({ state: 'visible', timeout: browserAssertionTimeoutMs(context) });
 								if (!(await locator.isVisible())) throw sceneErrorDiagnostic('scene.selector_not_found', 'Expected selector to be visible.', `workflow.${step.id}.expect.visible`);
 							}, selector));
 						}
@@ -318,6 +329,15 @@ export function createBuiltInScenePlugins(): ScenePlugin[] {
 						return results.find((result) => result.status === 'failed') ?? results[0] ?? await assertionReport('notVisible', async () => undefined);
 					},
 				},
+				focused: {
+					id: 'focused',
+					phase: 2,
+					status: 'available',
+					summary: 'Expect a selector to own keyboard focus.',
+					async run({ value, step, context }) {
+						return assertSceneFocus({ value, stepId: step.id, resolveSelector: context.resolveSelector });
+					},
+				},
 				text: {
 					id: 'text',
 					phase: 2,
@@ -329,7 +349,7 @@ export function createBuiltInScenePlugins(): ScenePlugin[] {
 						return assertionReport('text', async () => {
 							const textLocator = context.session.page.getByText(text);
 							const locator = textLocator.first ? textLocator.first() : textLocator;
-							await locator.waitFor({ state: 'visible', timeout: 10_000 });
+							await locator.waitFor({ state: 'visible', timeout: browserAssertionTimeoutMs(context) });
 							if (!(await locator.isVisible())) throw sceneErrorDiagnostic('scene.text_not_found', `Expected text to be visible: ${text}.`, `workflow.${step.id}.expect.text`);
 						}, selector);
 					},
@@ -357,7 +377,7 @@ export function createBuiltInScenePlugins(): ScenePlugin[] {
 					async run({ value, step, context }) {
 						const expected = String(value ?? '');
 						return assertionReport('urlIncludes', async () => {
-							const timeoutMs = 10_000;
+							const timeoutMs = browserAssertionTimeoutMs(context);
 							const deadline = Date.now() + timeoutMs;
 							let current = context.session.page.url();
 							while (!current.includes(expected) && Date.now() < deadline) {
@@ -476,20 +496,4 @@ export function createBuiltInScenePlugins(): ScenePlugin[] {
 			artifacts: Object.fromEntries(['training-json', 'training-markdown', 'training-captions', 'training-chapter-clips'].map((id) => [id, { id, phase: 8 as const, status: 'available' as const, summary: `Built-in training artifact writer: ${id}.` }])),
 		},
 	];
-}
-
-function runtimeValue(value: unknown, context: SceneRuntimePluginContext): unknown {
-	if (typeof value === 'string') return sceneRuntimeValue(value, context);
-	if (Array.isArray(value)) return value.map((entry) => runtimeValue(entry, context));
-	if (!value || typeof value !== 'object') return value;
-	return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, runtimeValue(entry, context)]));
-}
-
-function runtimeRecord(value: unknown, context: SceneRuntimePluginContext): Record<string, string> {
-	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-	return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, String(runtimeValue(entry, context))]));
-}
-
-function hasHeader(headers: Record<string, string>, expected: string) {
-	return Object.keys(headers).some((key) => key.toLowerCase() === expected);
 }

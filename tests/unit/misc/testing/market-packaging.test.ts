@@ -1,11 +1,9 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-	buildKnowledgePackMarketPackage,
 	buildTemplateMarketPackage,
-	importKnowledgePack,
 } from '../../../../src/operations/services/support/market-packaging.ts';
 
 function createProjectRoot() {
@@ -42,20 +40,5 @@ describe('market packaging', () => {
 		expect(result.files).toContain('treeseed.site.yaml');
 		expect(existsSync(resolve(result.payloadRoot, 'package.json'))).toBe(true);
 		expect(existsSync(result.manifestPath)).toBe(true);
-	});
-
-	it('builds and imports a knowledge pack package into another project root', () => {
-		const sourceRoot = createProjectRoot();
-		const targetRoot = createProjectRoot();
-		const packageResult = buildKnowledgePackMarketPackage(sourceRoot, {
-			projectSlug: 'sample-project',
-			title: 'Sample pack',
-			summary: 'Reusable knowledge content',
-		});
-
-		const imported = importKnowledgePack(targetRoot, packageResult.outputRoot);
-		expect(imported.manifest.kind).toBe('knowledge_pack');
-		expect(imported.importedPaths).toContain('src/content/objectives/launch.mdx');
-		expect(readFileSync(resolve(targetRoot, 'src', 'content', 'objectives', 'launch.mdx'), 'utf8')).toContain('# Launch');
 	});
 });

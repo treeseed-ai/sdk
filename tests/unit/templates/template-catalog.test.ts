@@ -33,23 +33,6 @@ describe('template catalog client', () => {
 							hooksPolicy: 'builtin_only',
 							supportsReconcile: true,
 						},
-						launchRequirements: {
-							version: 1,
-							hosts: [{
-								kind: 'host',
-								key: 'sourceRepository',
-								type: 'repository',
-								required: true,
-								compatibleProviders: ['github'],
-								displayName: 'Source repository',
-								purpose: 'Create the source repository.',
-								configWrites: [{
-									target: 'treeseed.site.yaml',
-									path: 'hosting.hostBindings.sourceRepository.provider',
-									valueFrom: 'selectedHost.provider',
-								}],
-							}],
-						},
 					},
 				],
 			},
@@ -58,7 +41,6 @@ describe('template catalog client', () => {
 		expect(normalized.items).toHaveLength(1);
 		expect(normalized.items[0]?.displayName).toBe('Fixture Template');
 		expect(normalized.items[0]?.fulfillment.source.directory).toBe('templates/fixture-template');
-		expect(normalized.items[0]?.launchRequirements?.hosts?.[0]?.key).toBe('sourceRepository');
 	});
 
 	it('loads catalog entries from a file endpoint', async () => {

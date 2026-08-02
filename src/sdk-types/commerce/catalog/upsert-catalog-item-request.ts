@@ -1,19 +1,6 @@
-import type { FieldAliasBinding } from '../../../entrypoints/models/field-aliases.ts';
-import type {
-	CapacityBusinessModel,
-	CapacityLaneUnit,
-	CapacityReservation,
-	NativeUsageObservation,
-} from '../../../agent-capacity/contracts/support/financial-records.ts';
-import type {
-	CapacityExecutionProvider,
-	CapacityExecutionProviderNativeLimit,
-	CapacityExecutionProviderObservation,
-	CapacityProviderMembershipView,
-} from '../../../capacity-provider/contracts/index.ts';
 import { CatalogItem } from '../../governance/commons/commons-question-input.ts';
-import { CatalogItemOfferMode, CommerceOfferMode, TemplateLaunchRequirements } from '../../support/template-launch-requirements.ts';
 import { ApprovalRequest } from '../../support/planning-policy.ts';
+import { CatalogItemOfferMode,CommerceOfferMode } from '../../support/platform-contracts.ts';
 
 export interface UpsertCatalogItemRequest {
 	id?: string;
@@ -145,7 +132,6 @@ export interface SdkTemplateCatalogEntry {
 	relatedBooks?: string[];
 	relatedKnowledge?: string[];
 	relatedObjectives?: string[];
-	launchRequirements?: TemplateLaunchRequirements;
 }
 
 export interface SdkTemplateCatalogResponse {

@@ -1,9 +1,9 @@
 import {
-	CapacityProviderApiError,
-	capacityProviderPublicIdentity,
-	generateCapacityProviderIdentity,
-	ProviderProtocolClient,
-	signCapacityProviderProof,
+CapacityProviderApiError,
+capacityProviderPublicIdentity,
+generateCapacityProviderIdentity,
+ProviderProtocolClient,
+signCapacityProviderProof,
 } from '../../../capacity/providers/capacity-provider.ts';
 import { MarketClient } from '../../../entrypoints/clients/market-client.ts';
 import { deleteLocalCapacityAcceptanceTeam } from './live-acceptance-capacity-scope.ts';

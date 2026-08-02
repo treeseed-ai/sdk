@@ -1,13 +1,13 @@
 import { resolve } from 'node:path';
+import { discoverApplications } from "../../../../hosting/apps.ts";
 import { resolveCloudflareZoneIdForHost } from "../../../../operations/services/hosting/deployment/deploy.ts";
 import { configuredRailwayServices } from "../../../../operations/services/hosting/railway/railway-deploy.ts";
-import type { ObservedUnitState, ReconcileAdapterInput, ReconcileUnitDiff } from "../../../support/contracts/contracts.ts";
-import { discoverApplications } from "../../../../hosting/apps.ts";
-import { capacityProviderRoleForService } from '../../hosting/observe-railway-unit.ts';
-import { dnsRecordMatches, getCloudflarePagesDomain, getCustomDomainState, getPersistedCustomDomainState, listCloudflareDnsRecords, normalizeRailwayDomainDnsRecord, storeCustomDomainState } from '../../support/normalize-turnstile-domains.ts';
-import { buildCloudflareEnv } from '../../reconciliation/build-workflow-meta-adapter.ts';
+import type { ObservedUnitState,ReconcileAdapterInput,ReconcileUnitDiff } from "../../../support/contracts/contracts.ts";
 import { observeRailwayCustomDomainLive } from '../../hosting/first-railway-domain-string.ts';
+import { capacityProviderRoleForService } from '../../hosting/observe-railway-unit.ts';
 import { noopObservedState } from '../../hosting/to-deploy-target.ts';
+import { buildCloudflareEnv } from '../../reconciliation/build-workflow-meta-adapter.ts';
+import { dnsRecordMatches,getCloudflarePagesDomain,getCustomDomainState,getPersistedCustomDomainState,listCloudflareDnsRecords,normalizeRailwayDomainDnsRecord,storeCustomDomainState } from '../../support/normalize-turnstile-domains.ts';
 
 export function capacityProviderVariablesForService(
 	input: ReconcileAdapterInput,

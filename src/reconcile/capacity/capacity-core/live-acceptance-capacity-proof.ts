@@ -1,28 +1,28 @@
-import { MarketClient } from '../../../entrypoints/clients/market-client.ts';
 import { ProviderProtocolClient } from '../../../capacity/providers/capacity-provider.ts';
-import type { RunLiveReconcileTestsOptions, LiveReconcileEnvironment, LiveReconcileProvider } from '../../support/acceptance/live-acceptance.ts';
-import { configuredLiveAcceptanceValue, type LiveAcceptanceEnv } from '../../support/acceptance/live-acceptance-values.ts';
-import { verifyCapacityAcceptanceTerminal } from './live-acceptance-capacity-terminal.ts';
+import { MarketClient } from '../../../entrypoints/clients/market-client.ts';
+import { runLocalAutonomousStarterAcceptances } from '../../support/acceptance/live-acceptance-starters.ts';
+import { configuredLiveAcceptanceValue,type LiveAcceptanceEnv } from '../../support/acceptance/live-acceptance-values.ts';
+import type { LiveReconcileEnvironment,LiveReconcileProvider,RunLiveReconcileTestsOptions } from '../../support/acceptance/live-acceptance.ts';
+import { cleanupCapacityAssignmentProof } from './live-acceptance-capacity-cleanup.ts';
+import { provisionLocalCapacityCompetition } from './live-acceptance-capacity-competition.ts';
 import {
-	assertCapacityAcceptancePolicyUnchanged,
-	capacityAcceptancePolicyFingerprint,
-} from './live-acceptance-capacity-guards.ts';
-import {
-	capacityAcceptanceConfig,
-	capacityGrantForAcceptance,
-	createTreeDxProxyAuditEvidence,
-	effectiveActiveAllocation,
-	ensureLocalCapacityTreeDxBinding,
-	provisionLocalCapacityAcceptanceProvider,
-	resolveLocalCapacityAcceptanceScope,
-	syncLocalAcceptanceAgentClass,
-	type CapacityAcceptanceProof,
+capacityAcceptanceConfig,
+capacityGrantForAcceptance,
+createTreeDxProxyAuditEvidence,
+effectiveActiveAllocation,
+ensureLocalCapacityTreeDxBinding,
+provisionLocalCapacityAcceptanceProvider,
+resolveLocalCapacityAcceptanceScope,
+syncLocalAcceptanceAgentClass,
+type CapacityAcceptanceProof,
 } from './live-acceptance-capacity-context.ts';
 import { proveLocalCapacityGovernance } from './live-acceptance-capacity-governance.ts';
-import { provisionLocalCapacityCompetition } from './live-acceptance-capacity-competition.ts';
-import { cleanupCapacityAssignmentProof } from './live-acceptance-capacity-cleanup.ts';
-import { runLocalAutonomousStarterAcceptances } from '../../support/acceptance/live-acceptance-starters.ts';
+import {
+assertCapacityAcceptancePolicyUnchanged,
+capacityAcceptancePolicyFingerprint,
+} from './live-acceptance-capacity-guards.ts';
 import { createLocalCapacityAcceptanceScope } from './live-acceptance-capacity-scope.ts';
+import { verifyCapacityAcceptanceTerminal } from './live-acceptance-capacity-terminal.ts';
 type LiveEnv = LiveAcceptanceEnv; const configuredValue = configuredLiveAcceptanceValue;
 export async function runCapacityProviderAssignmentProof(input: {
 	provider: LiveReconcileProvider;
@@ -119,8 +119,7 @@ export async function runCapacityProviderAssignmentProof(input: {
 	let completedAssignmentId = '';
 	let humanPolicyFingerprint = '';
 	const executionThroughAgentRuntime = Boolean(input.capacityAssignmentExecutor && provisionedRuntime);
-	const agentClassId = executionThroughAgentRuntime ? 'testing' : config.agentClassId;
-	let assignmentError: unknown = null;
+	let agentClassId = executionThroughAgentRuntime ? 'testing' : config.agentClassId, assignmentError: unknown = null;
 	try {
 	let availabilitySession = await providerClient.createAvailabilitySession({
 		id: `${input.prefix}-session`,
@@ -140,7 +139,8 @@ export async function runCapacityProviderAssignmentProof(input: {
 	});
 	sessionIdForCleanup = String(availabilitySession.payload.id ?? '');
 	if (executionThroughAgentRuntime && input.environment === 'local') {
-		await syncLocalAcceptanceAgentClass(adminClient, { projectId: config.projectId, agentClassId, runId: input.runId });
+		const synchronized = await syncLocalAcceptanceAgentClass(adminClient, { projectId: config.projectId, agentClassId, runId: input.runId });
+		agentClassId = synchronized.payload.id;
 	} else {
 		const existingClasses = await adminClient.projectAgentClasses(config.projectId).catch(() => ({ payload: { items: [] } }));
 		const hasAgentClass = existingClasses.payload.items.some((entry) => entry.id === agentClassId || entry.slug === agentClassId);

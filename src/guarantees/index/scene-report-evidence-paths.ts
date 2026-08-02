@@ -1,14 +1,12 @@
-import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve, sep } from 'node:path';
+import { mkdirSync,readFileSync,writeFileSync } from 'node:fs';
+import { dirname,resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { GuaranteeDeviceExecutionResult, GuaranteeReportWriteResult, GuaranteeRunReport, GuaranteeRunStatus, GuaranteeRunStep, GuaranteeSceneExecutionInput, GuaranteeSceneExecutor, GuaranteeVerifierExecutionResult, GuaranteeVerifierExecutor, GuaranteeVerifierResolution, arrayOrEmpty, diagnostic, isRecord, sortedUnique, stringValue } from './guarantee-journey-audit-item.ts';
-import { exportGuaranteesCsv, relativeEvidencePath } from './export-guarantees-csv.ts';
-import { sceneAuthRoleForGuarantee, sceneDeviceRunsForGuarantee, validateGuaranteeSceneJourneyContract } from './run-verifier-command.ts';
-import { GuaranteeDiagnostic, GuaranteeManifest, GuaranteeRegistryReport, LoadedGuarantee } from './guarantee-schema-version.ts';
-import { refs } from './build-guarantee-dependency-graph.ts';
-import { shortSubstitutionToken, substitutionToken, substituteSceneTokens } from '../../scenes/runner/now.ts';
+import { shortSubstitutionToken,substituteSceneTokens,substitutionToken } from '../../scenes/runner/now.ts';
 import { unexpectedUiSceneRuntimeDiagnostics } from '../features/ui-scene-runtime-trust.ts';
+import { exportGuaranteesCsv,relativeEvidencePath } from './export-guarantees-csv.ts';
+import { arrayOrEmpty,diagnostic,GuaranteeDeviceExecutionResult,GuaranteeReportWriteResult,GuaranteeRunReport,GuaranteeRunStatus,GuaranteeRunStep,GuaranteeSceneExecutionInput,GuaranteeSceneExecutor,GuaranteeVerifierExecutionResult,GuaranteeVerifierExecutor,GuaranteeVerifierResolution,isRecord,sortedUnique,stringValue } from './guarantee-journey-audit-item.ts';
+import { GuaranteeDiagnostic,GuaranteeManifest,GuaranteeRegistryReport,LoadedGuarantee } from './guarantee-schema-version.ts';
+import { sceneAuthRoleForGuarantee,sceneDeviceRunsForGuarantee,validateGuaranteeSceneJourneyContract } from './run-verifier-command.ts';
 
 export function sceneReportEvidencePaths(workspaceRoot: string, report: {
 	artifacts?: { runRoot?: string; screenshotPaths?: string[] };

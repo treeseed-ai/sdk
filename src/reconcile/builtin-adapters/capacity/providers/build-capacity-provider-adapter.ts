@@ -1,12 +1,13 @@
+import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
-import { TreeDxClient } from "../../../../treedx/support/client.ts";
-import { mintTreeDxHs256Token } from "../../../../treedx/accounts/auth.ts";
 import { observeCapacityProviderRuntimeStatus } from "../../../../capacity-provider/runtime-status.ts";
 import { collectLocalTreeDxSeedFiles } from "../../../../platform/treedx/repositories/local-treedx-seed.ts";
-import type { ReconcileAdapter, UnitVerificationResult } from "../../../support/contracts/contracts.ts";
+import { mintTreeDxHs256Token } from "../../../../treedx/accounts/auth.ts";
+import { TreeDxClient } from "../../../../treedx/support/client.ts";
 import { checkHttpHealth } from "../../../providers/local-private.ts";
-import { genericObservedState, genericResult, noopDiff } from '../../hosting/to-deploy-target.ts';
+import type { ReconcileAdapter,UnitVerificationResult } from "../../../support/contracts/contracts.ts";
 import { verificationCheck } from '../../hosting/first-railway-domain-string.ts';
+import { genericObservedState,genericResult,noopDiff } from '../../hosting/to-deploy-target.ts';
 import { summarizeVerification } from '../../support/summarize-verification.ts';
 
 export function buildCapacityProviderAdapter(providerId: 'local' | 'railway'): ReconcileAdapter {
@@ -185,50 +186,189 @@ export async function ensureLocalTreeDxProjectRepository(client: TreeDxClient, p
 	return { repoId, created: true };
 }
 
+function projectIndexPaths(project: LocalTreeDxContentProject) {
+	return project.seedPaths?.length
+		? project.seedPaths.map((seedPath) => `${seedPath.replace(/\/+$/u, '')}/**`)
+		: [`${project.contentPath.replace(/\/+$/u, '')}/**`];
+}
+
+function localTreeDxSeedOperation(project: LocalTreeDxContentProject, files: ReturnType<typeof collectLocalTreeDxSeedFiles>) {
+	const digest = project.seedDigest || createHash('sha256')
+		.update(files.map((file) => `${file.path}\0${file.content}\0`).join(''))
+		.digest('hex');
+	return {
+		workspaceId: `ws_seed_${digest.slice(0, 32)}`,
+		branchName: `refs/heads/treeseed-seed-${digest.slice(0, 24)}`,
+	};
+}
+
+export async function refreshLocalTreeDxProjectIndexes(client: TreeDxClient, project: LocalTreeDxContentProject,
+	repositoryId: string, commitSha: string) {
+	const ref = project.defaultRef ?? 'refs/heads/main';
+	const paths = projectIndexPaths(project);
+	const requested = await client.refreshGraph({ repoId: repositoryId, ref, paths, forceFull: true });
+	let graph: Record<string, unknown> = recordValue(requested);
+	if (requested.jobId) {
+		for (let attempt = 0; attempt < 120; attempt += 1) {
+			const job = await client.getGraphRefreshJob({ repoId: repositoryId, ref, jobId: requested.jobId });
+			if (job.status === 'completed') { graph = { ...graph, ...recordValue(job) }; break; }
+			if (job.status === 'failed') throw new Error(`TreeDX graph refresh failed for ${project.slug}: ${job.errorCode ?? 'unknown error'}.`);
+			await new Promise((resolveWait) => setTimeout(resolveWait, 250));
+		}
+		if (graph.status !== 'completed') throw new Error(`TreeDX graph refresh timed out for ${project.slug}.`);
+	}
+	const search = await client.refreshSearchIndex({ repoId: repositoryId, ref, paths });
+	const resolved = nonEmptyString(search.resolvedRef) || nonEmptyString(search.sourceCommit);
+	if (search.stale || (commitSha && resolved !== commitSha)) {
+		throw new Error(`TreeDX search index did not resolve the reconciled commit for ${project.slug}.`);
+	}
+	return { graphRefresh: graph, searchIndex: search };
+}
+
+async function localTreeDxSeedDelta(client: TreeDxClient, project: LocalTreeDxContentProject, repositoryId: string,
+	desiredFiles: ReturnType<typeof collectLocalTreeDxSeedFiles>, requestedRef?: string) {
+	const ref = requestedRef ?? project.defaultRef ?? 'refs/heads/main';
+	const paths = await client.listRepositoryPaths({
+		repoId: repositoryId,
+		ref,
+		paths: projectIndexPaths(project),
+		extensions: ['.md', '.mdx'],
+		limit: 500,
+	});
+	if (paths.page?.hasMore) {
+		throw new Error(`TreeDX seed reconciliation for ${project.slug} exceeds the supported 500-file snapshot.`);
+	}
+	const currentPaths = (paths.entries ?? []).flatMap((entry) => {
+		const path = nonEmptyString(recordValue(entry).path);
+		return path ? [path] : [];
+	});
+	const current = currentPaths.length
+		? await client.readRepositoryFiles({ repoId: repositoryId, ref, paths: currentPaths, encoding: 'utf8', parseFrontmatter: false })
+		: { files: [], resolvedRef: paths.resolvedRef };
+	const observed = (current.files ?? []).map(treeDxSeedFileRecord);
+	const observedByPath = new Map(observed.map((file) => [file.path, file.content]));
+	const desiredByPath = new Map(desiredFiles.map((file) => [file.path, file.content]));
+	return {
+		changed: desiredFiles.filter((file) => observedByPath.get(file.path) !== file.content),
+		removed: currentPaths.filter((path) => !desiredByPath.has(path)),
+		resolvedRef: nonEmptyString(current.resolvedRef) || nonEmptyString(paths.resolvedRef),
+	};
+}
+
+async function resumeCommittedLocalTreeDxSeed(client: TreeDxClient, project: LocalTreeDxContentProject,
+	repositoryId: string, files: ReturnType<typeof collectLocalTreeDxSeedFiles>, operation: ReturnType<typeof localTreeDxSeedOperation>,
+	expectedDestinationHead: string) {
+	const refs = await client.listRepositoryRefs(repositoryId);
+	const source = refs.find((ref) => ref.name === operation.branchName);
+	const sourceHead = nonEmptyString(source?.target) || nonEmptyString(source?.sha);
+	if (!sourceHead) return null;
+	const sourceDelta = await localTreeDxSeedDelta(client, project, repositoryId, files, operation.branchName);
+	if (sourceDelta.changed.length > 0 || sourceDelta.removed.length > 0) return null;
+	const destinationRef = project.defaultRef ?? 'refs/heads/main';
+	const destination = refs.find((ref) => ref.name === destinationRef);
+	const destinationHead = nonEmptyString(destination?.target) || nonEmptyString(destination?.sha);
+	if (destinationHead !== sourceHead) {
+		if (destinationHead !== expectedDestinationHead) {
+			throw new Error(`TreeDX publication ref changed while resuming seed reconciliation for ${project.slug}.`);
+		}
+		await client.promoteRef({
+			repoId: repositoryId, sourceRef: operation.branchName, destinationRef,
+			expectedDestinationHead,
+		});
+	}
+	const indexes = await refreshLocalTreeDxProjectIndexes(client, project, repositoryId, sourceHead);
+	await client.retireRef({
+		repoId: repositoryId, ref: operation.branchName, mergedIntoRef: destinationRef,
+		expectedHead: sourceHead, expectedMergedIntoHead: sourceHead,
+	});
+	await client.closeWorkspace(operation.workspaceId).catch(() => null);
+	return { commitSha: sourceHead, ...indexes };
+}
+
+async function applyLocalTreeDxSeedDelta(client: TreeDxClient, workspaceId: string,
+	delta: Awaited<ReturnType<typeof localTreeDxSeedDelta>>) {
+	if (delta.changed.length > 0) {
+		await client.writeFiles({
+			workspaceId,
+			files: delta.changed.map((file) => ({ path: file.path, content: file.content, encoding: 'utf8' })),
+		});
+	}
+	for (const path of delta.removed) await client.deleteFile({ workspaceId, path });
+}
+
 export async function syncLocalTreeDxProjectContent(client: TreeDxClient, project: LocalTreeDxContentProject) {
 	const files = collectLocalTreeDxSeedFiles(project);
 	const repository = await ensureLocalTreeDxProjectRepository(client, project);
 	if (files.length === 0) {
 		return { project: project.slug, repositoryId: repository.repoId, repositoryName: project.repositoryName, files: 0, committed: false };
 	}
-	const workspace = recordValue(await client.createWorkspace({
-			repoId: repository.repoId,
-			baseRef: project.defaultRef ?? 'refs/heads/main',
-			branchName: project.defaultRef ?? 'refs/heads/main',
-			mode: 'writable',
-			allowedPaths: [`${project.contentPath.replace(/\/+$/u, '')}/**`],
-			ttlSeconds: 900,
-	}));
-	const workspaceId = nonEmptyString(workspace.workspaceId);
-	if (!workspaceId) throw new Error(`TreeDX did not return a workspace id for ${project.slug}.`);
-	try {
-		for (const file of files) {
-			await client.writeFile({
-				workspaceId,
-				path: file.path,
-				content: file.content,
-				encoding: 'utf8',
-			});
-		}
-		const commit = recordValue(await client.commit({
-			workspaceId,
-				message: `Sync ${project.slug} knowledge hub seed content`,
-				author: { name: 'TreeSeed Reconciler', email: 'reconciler@treeseed.local' },
-		}));
-		const graphRefresh = recordValue(await client.refreshGraph({
-			repoId: repository.repoId,
-				paths: project.seedPaths?.length ? project.seedPaths.map((seedPath) => `${seedPath.replace(/\/+$/u, '')}/**`) : [`${project.contentPath.replace(/\/+$/u, '')}/**`],
-		}).catch((error) => ({
-			error: error instanceof Error ? error.message : String(error),
-		})));
+	const delta = await localTreeDxSeedDelta(client, project, repository.repoId, files);
+	if (delta.changed.length === 0 && delta.removed.length === 0) {
 		return {
 			project: project.slug,
 			repositoryId: repository.repoId,
 			repositoryName: project.repositoryName,
 			files: files.length,
+			changedFiles: 0,
+			removedFiles: 0,
+			committed: false,
+			commitSha: delta.resolvedRef,
+		};
+	}
+	if (!delta.resolvedRef) throw new Error(`TreeDX did not resolve the current publication ref for ${project.slug}.`);
+	const operation = localTreeDxSeedOperation(project, files);
+	const resumed = await resumeCommittedLocalTreeDxSeed(client, project, repository.repoId, files, operation, delta.resolvedRef);
+	if (resumed) {
+		return {
+			project: project.slug, repositoryId: repository.repoId, repositoryName: project.repositoryName,
+			files: files.length, changedFiles: delta.changed.length, removedFiles: delta.removed.length,
+			committed: true, resumed: true, ...resumed,
+		};
+	}
+	const workspace = recordValue(await client.createWorkspace({
+		repoId: repository.repoId,
+		baseRef: project.defaultRef ?? 'refs/heads/main',
+		branchName: operation.branchName,
+		workspaceId: operation.workspaceId,
+		mode: 'writable',
+		allowedPaths: projectIndexPaths(project),
+		ttlSeconds: 900,
+	}));
+	const workspaceId = nonEmptyString(workspace.workspaceId);
+	if (!workspaceId) throw new Error(`TreeDX did not return a workspace id for ${project.slug}.`);
+	try {
+		await applyLocalTreeDxSeedDelta(client, workspaceId, delta);
+		const commit = recordValue(await client.commit({
+			workspaceId,
+				message: `Sync ${project.slug} knowledge hub seed content`,
+				author: { name: 'TreeSeed Reconciler', email: 'reconciler@treeseed.local' },
+		}));
+		const commitSha = nonEmptyString(commit.commitSha);
+		if (!commitSha) throw new Error(`TreeDX did not return a seed commit for ${project.slug}.`);
+		await client.promoteRef({
+			repoId: repository.repoId,
+			sourceRef: operation.branchName,
+			destinationRef: project.defaultRef ?? 'refs/heads/main',
+			expectedDestinationHead: delta.resolvedRef,
+		});
+		const indexes = await refreshLocalTreeDxProjectIndexes(client, project, repository.repoId, commitSha);
+		await client.retireRef({
+			repoId: repository.repoId,
+			ref: operation.branchName,
+			mergedIntoRef: project.defaultRef ?? 'refs/heads/main',
+			expectedHead: commitSha,
+			expectedMergedIntoHead: commitSha,
+		});
+		return {
+			project: project.slug,
+			repositoryId: repository.repoId,
+			repositoryName: project.repositoryName,
+			files: files.length,
+			changedFiles: delta.changed.length,
+			removedFiles: delta.removed.length,
 			committed: true,
-			commitSha: nonEmptyString(commit.commitSha) || null,
-			graphRefresh,
+			commitSha,
+			...indexes,
 		};
 	} finally {
 		await client.closeWorkspace(workspaceId).catch(() => null);

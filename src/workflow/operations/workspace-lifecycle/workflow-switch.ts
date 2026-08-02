@@ -1,22 +1,22 @@
-import { assertCleanWorktree, branchExists, checkoutNewTaskBranchWithChanges, checkoutTaskBranchFromStaging, headCommit, PRODUCTION_BRANCH, remoteBranchExists, STAGING_BRANCH } from "../../../operations/services/operations/git-workflow.ts";
-import { currentBranch, hasMeaningfulChanges } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
-import { workspaceRoot } from "../../../operations/services/treedx/workspaces/workspace-tools.ts";
-import { classifyGitMode, runRepositoryGit, runGitOk } from "../../../operations/services/operations/git-runner.ts";
-import { resolveWorkflowState } from "../../../operations/workflow-state.ts";
-import { resolveWorkflowSession } from "../../session.ts";
+import { classifyGitMode,runGitOk,runRepositoryGit } from "../../../operations/services/operations/git-runner.ts";
+import { assertCleanWorktree,branchExists,checkoutNewTaskBranchWithChanges,checkoutTaskBranchFromStaging,headCommit,PRODUCTION_BRANCH,remoteBranchExists,STAGING_BRANCH } from "../../../operations/services/operations/git-workflow.ts";
 import { checkedOutManagedWorkflowRepos } from "../../../operations/services/support/managed-repositories.ts";
-import { effectiveWorkflowWorktreeMode, ensureManagedWorkflowWorktree, plannedManagedWorkflowWorktreePath } from "../../worktrees.ts";
-import type { SwitchInput, UpdateInput } from "../../../operations/workflow.ts";
-import { WorkflowOperationHelpers, ensureWorkflowWorkspaceLinks } from '../recovery/workflow-write.ts';
-import { resolveProjectRootOrThrow, withContextEnv, workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
-import { reattachRepairablePackageRepos } from '../support/sync-current-branch-to-origin.ts';
-import { assertWorkspaceClean, buildWorkflowResult, createManagedWorkflowRepoReports, createWorkspaceRootRepoReport, findReportByName, normalizeExecutionMode } from '../support/create-repo-report.ts';
-import { helpersForCwd, shouldDispatchSwitchToManagedWorktree, worktreePayload } from '../packages/normalize-release-candidate-mode.ts';
-import { assertSessionBranchSafety, branchPreviewInitialized, reconcileBranchPreview, reconcileWorkflowBranchPreview } from '../packages/collect-published-release-artifact-checks.ts';
+import { currentBranch,hasMeaningfulChanges } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
+import { workspaceRoot } from "../../../operations/services/treedx/workspaces/workspace-tools.ts";
+import { resolveWorkflowState } from "../../../operations/workflow-state.ts";
+import type { SwitchInput,UpdateInput } from "../../../operations/workflow.ts";
+import { resolveWorkflowSession } from "../../session.ts";
+import { effectiveWorkflowWorktreeMode,ensureManagedWorkflowWorktree,plannedManagedWorkflowWorktreePath } from "../../worktrees.ts";
+import { resolveProjectRootOrThrow,withContextEnv,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { assertSessionBranchSafety,branchPreviewInitialized,reconcileBranchPreview,reconcileWorkflowBranchPreview } from '../packages/collect-published-release-artifact-checks.ts';
+import { helpersForCwd,shouldDispatchSwitchToManagedWorktree,worktreePayload } from '../packages/normalize-release-candidate-mode.ts';
+import { acquireWorkflowRun,completeWorkflowRun,executeJournalStep } from '../packages/prepare-fresh-release-run.ts';
 import { createNextSteps } from '../packages/release-admin-message.ts';
-import { acquireWorkflowRun, completeWorkflowRun, executeJournalStep } from '../packages/prepare-fresh-release-run.ts';
+import { toError } from '../support/workflow-helpers.ts';
 import { failWorkflowRun } from '../recovery/fail-workflow-run.ts';
-import { toError } from '../projects/projects-core/connect-market-project.ts';
+import { ensureWorkflowWorkspaceLinks,WorkflowOperationHelpers } from '../recovery/workflow-write.ts';
+import { assertWorkspaceClean,buildWorkflowResult,createManagedWorkflowRepoReports,createWorkspaceRootRepoReport,findReportByName,normalizeExecutionMode } from '../support/create-repo-report.ts';
+import { reattachRepairablePackageRepos } from '../support/sync-current-branch-to-origin.ts';
 
 export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: SwitchInput) {
 	try {

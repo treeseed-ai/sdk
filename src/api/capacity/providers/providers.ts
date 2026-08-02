@@ -1,14 +1,14 @@
-import { MemoryDeviceCodeAuthProvider } from '../../auth/memory-provider.ts';
-import { D1AuthProvider } from '../../auth/d1-provider.ts';
-import { resolveApiD1Database } from '../../auth/d1-database.ts';
-import type {
-	ApiAuthProvider,
-	ApiConfig,
-	ApiProviderFactory,
-	ApiRuntimeProviders,
-	ResolvedApiRuntimeProviders,
-} from '../../types.ts';
 import { BUILT_IN_AGENT_EXECUTION_PROVIDER_IDS } from '../../../types/agents.ts';
+import { resolveApiD1Database } from '../../auth/d1-database.ts';
+import { D1AuthProvider } from '../../auth/d1-provider.ts';
+import { MemoryDeviceCodeAuthProvider } from '../../auth/memory-provider.ts';
+import type {
+ApiAuthProvider,
+ApiConfig,
+ApiProviderFactory,
+ApiRuntimeProviders,
+ResolvedApiRuntimeProviders,
+} from '../../types.ts';
 
 function addProviders<T>(target: Map<string, T>, incoming: Record<string, T> | undefined, label: string) {
 	for (const [id, value] of Object.entries(incoming ?? {})) {

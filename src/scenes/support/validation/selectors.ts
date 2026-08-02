@@ -1,4 +1,4 @@
-import type { SceneLocator, ScenePage, SceneSelector } from '../../types.ts';
+import type { SceneLocator,ScenePage,SceneSelector } from '../../types.ts';
 
 function escapeAttribute(value: string) {
 	return value.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"');

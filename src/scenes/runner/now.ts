@@ -1,13 +1,13 @@
-import { sceneActionKind, sceneExpectationKinds } from "../support/validation/schema.ts";
-import { planScene, validateScene } from "../support/execution/planner.ts";
-import { sceneErrorDiagnostic } from "../support/reporting/diagnostics.ts";
-import { planSceneArtifactPaths } from "../support/execution/phase0.ts";
 import { extractSceneOperationIds } from "../operations/operations.ts";
-import { collectSceneLogs } from "../support/reporting/logs.ts";
-import { resolveScenePlugins } from "../support/plugins/registry.ts";
-import { createSceneTimeline } from "../support/evidence/timeline.ts";
 import { appendSceneJsonl } from "../support/evidence/artifacts.ts";
-import type { SceneBrowserSession, SceneDiagnostic, SceneObservedError, SceneOperationWaitReport, SceneRunOptions, SceneRunReport, SceneRunSetupReport, SceneValidationReport, ScenePlanReport, SceneManifest, SceneRenderEvidenceFit, SceneDeviceProfile, SceneVisualAuditRole } from "../types.ts";
+import { createSceneTimeline } from "../support/evidence/timeline.ts";
+import { planSceneArtifactPaths } from "../support/execution/phase0.ts";
+import { planScene,validateScene } from "../support/execution/planner.ts";
+import { resolveScenePlugins } from "../support/plugins/registry.ts";
+import { sceneErrorDiagnostic } from "../support/reporting/diagnostics.ts";
+import { collectSceneLogs } from "../support/reporting/logs.ts";
+import { sceneActionKind,sceneExpectationKinds } from "../support/validation/schema.ts";
+import type { SceneBrowserSession,SceneDeviceProfile,SceneDiagnostic,SceneManifest,SceneObservedError,SceneOperationWaitReport,ScenePlanReport,SceneRenderEvidenceFit,SceneRunOptions,SceneRunReport,SceneRunSetupReport,SceneValidationReport,SceneVisualAuditRole } from "../types.ts";
 
 
 export function now() {
@@ -273,6 +273,9 @@ export function registerScenePageObservers(input: {
 	input.session.page.on('requestfailed', (request) => {
 		const message = request.failure()?.errorText ?? 'request failed';
 		const resourceType = request.resourceType?.();
+		const headers = request.headers?.() ?? {};
+		const purpose = String(headers['sec-purpose'] ?? headers.purpose ?? '').toLowerCase();
+		const isSpeculativePrefetch = purpose.split(/[,\s]+/u).includes('prefetch');
 		const isCurrentPageRead = (() => {
 			if (request.method() !== 'GET') return false;
 			try {
@@ -285,12 +288,13 @@ export function registerScenePageObservers(input: {
 				return false;
 			}
 		})();
-		if (message === 'net::ERR_ABORTED' && resourceType && ['document', 'image', 'media', 'font', 'stylesheet'].includes(resourceType)) {
+		if (message === 'net::ERR_ABORTED' && resourceType && ['document', 'image', 'media', 'font', 'stylesheet', 'script'].includes(resourceType)) {
 			return;
 		}
+		if (message === 'net::ERR_ABORTED' && isSpeculativePrefetch) return;
 		if (message === 'net::ERR_ABORTED' && isCurrentPageRead) return;
 		const stepId = input.currentStepId();
-		const entry = { message, timestamp: now().toISOString(), url: request.url(), method: request.method(), ...(stepId ? { stepId } : {}) };
+		const entry = { message, timestamp: now().toISOString(), url: request.url(), method: request.method(), ...(resourceType ? { resourceType } : {}), ...(stepId ? { stepId } : {}) };
 		input.networkErrors.push(entry);
 		appendSceneJsonl(input.artifacts.networkLogPath!, entry);
 		appendSceneJsonl(input.artifacts.errorsLogPath!, { kind: 'network', ...entry });

@@ -1,5 +1,5 @@
 import type { CapacityProviderManifestV2 } from '../contracts/index.ts';
-import { canonicalCapacityProviderJson, capacityProviderSha256 } from '../security/identity.ts';
+import { canonicalCapacityProviderJson,capacityProviderSha256 } from '../security/identity.ts';
 import { validateCapacityProviderManifestV2 } from '../validation.ts';
 
 export interface ValidatedCapacityProviderManifest {

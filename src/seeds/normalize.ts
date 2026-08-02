@@ -1,8 +1,8 @@
 import type {
-	NormalizedSeedResource,
-	SeedEnvironment,
-	SeedManifest,
-	SeedResourceBase,
+NormalizedSeedResource,
+SeedEnvironment,
+SeedManifest,
+SeedResourceBase,
 } from './types.js';
 
 function declaredEnvironments(resource: SeedResourceBase, manifest: SeedManifest) {
@@ -54,32 +54,6 @@ export function normalizeSeedResources(manifest: SeedManifest, selected: SeedEnv
 		});
 	}
 
-	for (const host of manifest.resources.repositoryHosts) {
-		resources.push({
-			kind: 'repositoryHost',
-			key: host.key,
-			label: `${host.provider}/${host.name}`,
-			environments: selectedEnvironments(host, manifest, selected),
-			payload: {
-				teamKey: host.team,
-				provider: host.provider,
-				name: host.name,
-				ownership: host.ownership ?? 'treeseed_managed',
-				accountLabel: host.accountLabel ?? null,
-				organizationOrOwner: host.organizationOrOwner,
-				defaultVisibility: host.defaultVisibility ?? 'private',
-				softwareRepositoryNameTemplate: host.softwareRepositoryNameTemplate ?? null,
-				contentRepositoryNameTemplate: host.contentRepositoryNameTemplate ?? null,
-				branchPolicy: host.branchPolicy ?? null,
-				workflowPolicy: host.workflowPolicy ?? null,
-				allowedProjectKinds: host.allowedProjectKinds ?? null,
-				status: host.status ?? 'active',
-				credentialRef: host.credentialRef ?? null,
-				metadata: withMetadata(manifest, host.key, host.metadata),
-			},
-		});
-	}
-
 	for (const project of manifest.resources.projects) {
 		resources.push({
 			kind: 'project',
@@ -107,7 +81,6 @@ export function normalizeSeedResources(manifest: SeedManifest, selected: SeedEnv
 			environments: selectedEnvironments(repository, manifest, selected),
 			payload: {
 				projectKey: repository.project,
-				repositoryHostKey: repository.repositoryHost ?? null,
 				role: repository.role,
 				provider: repository.provider,
 				owner: repository.owner,

@@ -1,20 +1,17 @@
-import type { AgentPermissionConfig, AgentRuntimeSpec } from '../../types/agents.ts';
-import { resolveSdkRepoRoot } from '../../runtime/runtime.ts';
 import { normalizeAgentCliOptions } from '../../agents/cli-tools.ts';
 import { ContentStore } from '../../content/content-store.ts';
-import { CloudflareD1AgentDatabase, MemoryAgentDatabase, type AgentDatabase } from '../../persistence/d1-store.ts';
-import { ContentGraphRuntime } from '../../treedx/graph/graph.ts';
-import { createTreeDxClientFromAgentOptions, LocalContentBackend, LocalGraphBackend, MissingTreeDxContentBackend, resolveTreeDxOptions, TreeDxContentBackend, TreeDxGraphBackend, TreeDxPortfolioResolver, type AgentSdkContentRepositoryOptions, type AgentSdkTreeDxOptions, type ContentBackend, type GraphBackend, } from '../../treedx/repositories/treedx-backends.ts';
-import { LocalGraphPort, LocalRepositoryPort, LocalRepositoryQueryPort, TreeDxArtifactPort, TreeDxExecPort, TreeDxFederatedClient, TreeDxFederatedPort, TreeDxGraphAdapter, TreeDxGraphPort, TreeDxRegistryClient, TreeDxRegistryPort, TreeDxRepositoryPort, TreeDxRepositoryQueryPort, TreeDxClient as PublicTreeDxClient, type TreeDxClientOptions as PublicTreeDxClientOptions, } from '../../treedx/index.ts';
-import { loadPlugins, type LoadedPluginRegistration } from '../../platform/support/plugins.ts';
-import { buildScopedModelRegistry, resolveModelDefinition } from './model-registry.ts';
-import { findDispatchCapability } from '../dispatch/dispatch.ts';
-import { RemoteClient, RemoteDispatchClient } from '../clients/remote.ts';
-import { executeSdkOperation } from './sdk-dispatch.ts';
-import { OperationsSdk } from '../../operations/runtime/runtime.ts';
-import type { ReleaseDetail, ReleaseSummary, SharePackageStatus, WorkstreamDetail, WorkstreamEvent, WorkstreamSummary, } from '../../projects/projects-core/project-workflow.ts';
-import type { SdkAckMessageRequest, SdkClaimMessageRequest, CreateApprovalRequestRequest, SdkCreateMessageRequest, SdkCursorRequest, SdkFollowRequest, SdkGetRequest, SdkGetCursorRequest, SdkJsonEnvelope, SdkLeaseReleaseRequest, SdkMutationRequest, SdkGraphQueryOptions, SdkGraphQueryRequest, SdkGraphRefreshRequest, SdkGraphSearchOptions, SdkContextPackRequest, SdkGraphDslParseResult, SdkPickRequest, SdkRecordRunRequest, SdkSearchRequest, SdkUpdateRequest, SdkModelDefinition, SdkModelRegistry, SdkGraphRankingProvider, SdkDispatchConfig, SdkDispatchRequest, SdkDispatchResult, SdkDispatchCredentialSource, DecideApprovalRequestRequest, ListApprovalRequestsRequest, UpsertTeamInboxItemRequest, } from './sdk-types.ts';
 import { NodeSqliteD1Database } from '../../db/node-sqlite.ts';
+import { CloudflareD1AgentDatabase,MemoryAgentDatabase,type AgentDatabase } from '../../persistence/d1-store.ts';
+import { loadPlugins,type LoadedPluginRegistration } from '../../platform/support/plugins.ts';
+import { resolveSdkRepoRoot } from '../../runtime/runtime.ts';
+import "../../sdk/interface.ts";
+import * as extractedMethods from "../../sdk/methods.ts";
+import { ContentGraphRuntime } from '../../treedx/graph/graph.ts';
+import { LocalGraphPort,LocalRepositoryPort,LocalRepositoryQueryPort,TreeDxClient as PublicTreeDxClient,TreeDxArtifactPort,TreeDxExecPort,TreeDxFederatedClient,TreeDxFederatedPort,TreeDxGraphAdapter,TreeDxGraphPort,TreeDxRegistryClient,TreeDxRegistryPort,TreeDxRepositoryPort,TreeDxRepositoryQueryPort,type TreeDxClientOptions as PublicTreeDxClientOptions,} from '../../treedx/index.ts';
+import { createTreeDxClientFromAgentOptions,LocalContentBackend,LocalGraphBackend,MissingTreeDxContentBackend,resolveTreeDxOptions,TreeDxContentBackend,TreeDxGraphBackend,TreeDxPortfolioResolver,type AgentSdkContentRepositoryOptions,type AgentSdkTreeDxOptions,type ContentBackend,type GraphBackend,} from '../../treedx/repositories/treedx-backends.ts';
+import type { AgentPermissionConfig,AgentRuntimeSpec } from '../../types/agents.ts';
+import { buildScopedModelRegistry,resolveModelDefinition } from './model-registry.ts';
+import type { SdkAckMessageRequest,SdkClaimMessageRequest,SdkContextPackRequest,SdkCreateMessageRequest,SdkCursorRequest,SdkDispatchConfig,SdkFollowRequest,SdkGetCursorRequest,SdkGetRequest,SdkGraphQueryOptions,SdkGraphQueryRequest,SdkGraphRankingProvider,SdkGraphRefreshRequest,SdkGraphSearchOptions,SdkLeaseReleaseRequest,SdkModelDefinition,SdkModelRegistry,SdkMutationRequest,SdkPickRequest,SdkRecordRunRequest,SdkSearchRequest,SdkUpdateRequest } from './sdk-types.ts';
 export interface AgentSdkOptions {
     repoRoot?: string;
     database?: AgentDatabase;
@@ -26,7 +23,7 @@ export interface AgentSdkOptions {
     treeDx?: AgentSdkTreeDxOptions;
     contentRepository?: AgentSdkContentRepositoryOptions;
 }
-export type { AgentSdkContentRepositoryOptions, AgentSdkTreeDxOptions, TreeDxContentPathRule, TreeDxRepositoryHint, } from '../../treedx/repositories/treedx-backends.ts';
+export type { AgentSdkContentRepositoryOptions,AgentSdkTreeDxOptions,TreeDxContentPathRule,TreeDxRepositoryHint } from '../../treedx/repositories/treedx-backends.ts';
 export function normalizeAgentSpec(entry: Record<string, unknown> | null): AgentRuntimeSpec | null {
     if (!entry) {
         return null;
@@ -46,8 +43,6 @@ export function operationAllowed(permissions: AgentPermissionConfig[], model: st
     return permissions.some((permission) => permission.model === model
         && permission.operations.map(normalizeOperation).includes(normalizedOperation as AgentPermissionConfig['operations'][number]));
 }
-import * as extractedMethods from "../../sdk/methods.ts";
-import "../../sdk/interface.ts";
 export class AgentSdk {
     readonly repoRoot: string;
     readonly database: AgentDatabase;

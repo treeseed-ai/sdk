@@ -1,29 +1,15 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { parse as parseYaml } from 'yaml';
-import type { FieldAliasRegistry } from '../../entrypoints/models/field-aliases.ts';
 import { normalizeAliasedRecord } from '../../entrypoints/models/field-aliases.ts';
-import type {
-	DeployConfig,
-	ExportConfig,
-	HubConfig,
-	LocalRuntimeConfig,
-	ManagedServiceConfig,
-	ManagedServicesConfig,
-	PlatformSurfacesConfig,
-	ProcessingConfig,
-	PluginReference,
-	ProviderSelections,
-	RuntimeConfig,
-	WebCachePolicyConfig,
-	WebSourcePageCacheConfig,
-} from '../support/contracts.ts';
-import { resolveTenantRoot } from '../configuration/tenant-config.ts';
 import {
-	DEFAULT_PLUGIN_REFERENCES,
-	DEFAULT_PROVIDER_SELECTIONS,
+DEFAULT_PROVIDER_SELECTIONS
 } from '../plugins/constants.ts';
-import { expectString, hubFieldAliases, localRuntimeFieldAliases, optionalBoolean, optionalEnum, optionalPositiveNumber, optionalRecord, optionalString, optionalStringArray, parseHostingConfig, runtimeFieldAliases } from './deploy-config-field-aliases.ts';
+import type {
+HubConfig,
+LocalRuntimeConfig,
+ManagedServiceConfig,
+ProviderSelections,
+RuntimeConfig
+} from '../support/contracts.ts';
+import { expectString,hubFieldAliases,localRuntimeFieldAliases,optionalBoolean,optionalEnum,optionalPositiveNumber,optionalRecord,optionalString,optionalStringArray,parseHostingConfig,runtimeFieldAliases } from './deploy-config-field-aliases.ts';
 
 export function normalizePlanesFromLegacyHosting(
 	hosting: ReturnType<typeof parseHostingConfig> | undefined,

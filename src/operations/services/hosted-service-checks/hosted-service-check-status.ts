@@ -1,9 +1,6 @@
-import { relative, resolve } from 'node:path';
-import { collectEnvironmentContext, resolveMachineEnvironmentValues } from '../configuration/config-runtime.ts';
-import { configuredRailwayServices } from '../hosting/railway/railway-deploy.ts';
-import { isApiRailwaySourcePolicyService, isImmutableRailwayImageRef } from '../hosting/railway/railway-source-policy.ts';
-import { loadPlatformConfig } from '../../../platform/configuration/config.ts';
+import { relative } from 'node:path';
 import { discoverApplications } from '../../../hosting/apps.ts';
+import { configuredRailwayServices } from '../hosting/railway/railway-deploy.ts';
 
 
 export type HostedServiceCheckStatus = 'passed' | 'failed' | 'skipped' | 'warning';
@@ -101,12 +98,10 @@ export const RAILWAY_SECRET_KEYS_BY_SERVICE: Record<string, string[]> = {
 		'TREESEED_DATABASE_URL',
 		'TREESEED_WEB_SERVICE_SECRET',
 		'TREESEED_PLATFORM_RUNNER_SECRET',
-		'TREESEED_CREDENTIAL_SESSION_SECRET',
 	],
 	operationsRunner: [
 		'TREESEED_DATABASE_URL',
 		'TREESEED_PLATFORM_RUNNER_SECRET',
-		'TREESEED_CREDENTIAL_SESSION_SECRET',
 	],
 	capacityProviderManager: [],
 	capacityProviderRunner: [],

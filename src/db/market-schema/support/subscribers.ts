@@ -1,5 +1,4 @@
-import { sql } from 'drizzle-orm';
-import { bigint, check, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import { index,integer,pgTable,primaryKey,serial,text,uniqueIndex } from 'drizzle-orm/pg-core';
 
 
 // Source of truth for the Treeseed Treeseed PostgreSQL control-plane schema.

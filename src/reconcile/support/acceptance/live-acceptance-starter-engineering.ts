@@ -1,12 +1,12 @@
 import { resolve } from 'node:path';
 import { MarketClient } from '../../../entrypoints/clients/market-client.ts';
 import { runGitText } from '../../../operations/services/operations/git-runner.ts';
-import type { CapacityGovernanceRuntimeConnection } from '../../capacity/capacity-core/live-acceptance-capacity-governance.ts';
 import type { CapacityAcceptanceProof } from '../../capacity/capacity-core/live-acceptance-capacity-context.ts';
 import type { CapacityAcceptanceExecutionInput } from '../../capacity/capacity-core/live-acceptance-capacity-executor.ts';
-import type { RunLiveReconcileTestsOptions } from './live-acceptance.ts';
+import type { CapacityGovernanceRuntimeConnection } from '../../capacity/capacity-core/live-acceptance-capacity-governance.ts';
 import { verifyCapacityAcceptanceTerminal } from '../../capacity/capacity-core/live-acceptance-capacity-terminal.ts';
-import { finalizeLocalStarterAcceptance, provisionLocalStarterCapacity, type LocalStarterCapacityConfig } from '../../runtime/live-acceptance-starter-runtime.ts';
+import { finalizeLocalStarterAcceptance,provisionLocalStarterCapacity,type LocalStarterCapacityConfig } from '../../runtime/live-acceptance-starter-runtime.ts';
+import type { RunLiveReconcileTestsOptions } from './live-acceptance.ts';
 
 const AGENTS = ['architect', 'engineer', 'releaser', 'reporter', 'researcher', 'reviewer', 'technical-writer', 'tester']
 	.map((slug) => `template/src/content/agents/${slug}.mdx`);

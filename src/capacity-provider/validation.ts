@@ -1,13 +1,13 @@
-import {
-	CAPACITY_PROVIDER_ACCESS_TOKEN_REFRESH_SECONDS,
-	CAPACITY_PROVIDER_ACCESS_TOKEN_TTL_SECONDS,
-	CAPACITY_PROVIDER_PROOF_TTL_SECONDS,
-	type CapacityProviderManifestV2,
-	type CapacityProviderProofPayload,
-	type CapacityProviderPublicJwk,
-	type ProviderSupplyOffer,
-} from './contracts/index.ts';
 import { validateResearchSourcePolicy } from '../agent-capacity/validation/research-source-policy.ts';
+import {
+CAPACITY_PROVIDER_ACCESS_TOKEN_REFRESH_SECONDS,
+CAPACITY_PROVIDER_ACCESS_TOKEN_TTL_SECONDS,
+CAPACITY_PROVIDER_PROOF_TTL_SECONDS,
+type CapacityProviderManifestV2,
+type CapacityProviderProofPayload,
+type CapacityProviderPublicJwk,
+type ProviderSupplyOffer,
+} from './contracts/index.ts';
 
 export interface CapacityProviderContractDiagnostic {
 	code: string;

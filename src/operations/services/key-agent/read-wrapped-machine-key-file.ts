@@ -1,10 +1,8 @@
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import { accessSync, chmodSync, constants as fsConstants, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { accessSync,existsSync,constants as fsConstants,readFileSync,rmSync,writeFileSync } from 'node:fs';
+import { createConnection } from 'node:net';
 import { homedir } from 'node:os';
-import { dirname, resolve } from 'node:path';
-import { createConnection, createServer, type Server } from 'node:net';
-import { KEY_AGENT_REQUEST_TIMEOUT_MS, KEY_AGENT_SOCKET_RELATIVE_PATH, KEY_AGENT_IDLE_TIMEOUT_MS, KeyAgentCommand, KeyAgentDiagnostics, KeyAgentError, KeyAgentResponse, KeyAgentSessionState, KeyAgentStatus, WrappedMachineKey, detectSocketKind, ensureParent, isWrappedMachineKeyPayload, pidFilePath, wrapMachineKey } from './treseed-machine-key-passphrase-env.ts';
-import { ok } from './read-legacy-project-machine-key.ts';
+import { dirname,resolve } from 'node:path';
+import { KEY_AGENT_IDLE_TIMEOUT_MS,KEY_AGENT_REQUEST_TIMEOUT_MS,KEY_AGENT_SOCKET_RELATIVE_PATH,KeyAgentCommand,KeyAgentDiagnostics,KeyAgentError,KeyAgentResponse,KeyAgentSessionState,KeyAgentStatus,WrappedMachineKey,detectSocketKind,ensureParent,isWrappedMachineKeyPayload,pidFilePath,wrapMachineKey } from './treseed-machine-key-passphrase-env.ts';
 
 export function readWrappedMachineKeyFile(keyPath: string) {
 	if (!existsSync(keyPath)) {

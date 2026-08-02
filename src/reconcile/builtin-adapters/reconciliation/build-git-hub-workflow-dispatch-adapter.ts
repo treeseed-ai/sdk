@@ -1,12 +1,12 @@
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
-import type { ReconcileAdapter, ReconcileAdapterInput } from "../../support/contracts/contracts.ts";
-import { dispatchReconcileGitHubWorkflow, observeGitHubEnvironment, observeGitHubWorkflowRun } from "../../providers/github-private.ts";
-import { buildDockerImage, inspectDockerAvailability, inspectDockerImage, inspectDockerManifest } from "../../providers/docker-private.ts";
-import { buildGitHubEnv, repositoryFromUnit, workflowName } from '../treedx/graph/build-graph-only-adapter.ts';
-import { genericObservedState, genericResult, genericVerification, noopDiff } from '../hosting/to-deploy-target.ts';
-import { summarizeVerification } from '../support/summarize-verification.ts';
+import { buildDockerImage,inspectDockerAvailability,inspectDockerImage,inspectDockerManifest } from "../../providers/docker-private.ts";
+import { dispatchReconcileGitHubWorkflow,observeGitHubEnvironment,observeGitHubWorkflowRun } from "../../providers/github-private.ts";
+import type { ReconcileAdapter,ReconcileAdapterInput } from "../../support/contracts/contracts.ts";
 import { verificationCheck } from '../hosting/first-railway-domain-string.ts';
+import { genericObservedState,genericResult,genericVerification,noopDiff } from '../hosting/to-deploy-target.ts';
+import { summarizeVerification } from '../support/summarize-verification.ts';
+import { buildGitHubEnv,repositoryFromUnit,workflowName } from '../treedx/graph/build-graph-only-adapter.ts';
 
 export function buildGitHubWorkflowDispatchAdapter(): ReconcileAdapter {
 	return {
@@ -202,8 +202,19 @@ export function buildDockerImageBuildAdapter(): ReconcileAdapter {
 			const inspectedImages = input.observed.live.inspectedImages as Record<string, unknown> | undefined;
 			const inspectedManifests = input.observed.live.inspectedManifests as Record<string, unknown> | undefined;
 			const missing = tags.filter((tag) => !inspectedImages?.[tag] && !inspectedManifests?.[tag]);
+			const expectedClosure = typeof input.unit.spec.sourceClosureDigest === 'string' ? input.unit.spec.sourceClosureDigest : null;
+			const stale = expectedClosure ? tags.filter((tag) => {
+				const image = inspectedImages?.[tag];
+				if (!image || typeof image !== 'object') return true;
+				const config = (image as Record<string, unknown>).Config;
+				const labels = config && typeof config === 'object' ? (config as Record<string, unknown>).Labels : null;
+				return !labels || typeof labels !== 'object'
+					|| (labels as Record<string, unknown>)['org.treeseed.source-closure'] !== expectedClosure;
+			}) : [];
 			return missing.length > 0
 				? { action: 'create', reasons: [`missing docker image tags: ${missing.join(', ')}`], before: input.observed.live, after: input.unit.spec }
+				: stale.length > 0
+					? { action: 'update', reasons: [`docker image source closure changed: ${stale.join(', ')}`], before: input.observed.live, after: input.unit.spec }
 				: noopDiff();
 		},
 		apply(input) {
@@ -233,14 +244,21 @@ export function buildDockerImageBuildAdapter(): ReconcileAdapter {
 			const checks = tags.map((tag) => {
 				const image = inspectDockerImage(tag);
 				const manifest = inspectDockerManifest(tag);
-				const ok = Boolean(image || manifest);
+				const expectedClosure = typeof input.unit.spec.sourceClosureDigest === 'string' ? input.unit.spec.sourceClosureDigest : null;
+				const config = image && typeof image === 'object' ? (image as Record<string, unknown>).Config : null;
+				const labels = config && typeof config === 'object' ? (config as Record<string, unknown>).Labels : null;
+				const closureMatches = !expectedClosure || Boolean(labels && typeof labels === 'object'
+					&& (labels as Record<string, unknown>)['org.treeseed.source-closure'] === expectedClosure);
+				const ok = Boolean(image || manifest) && closureMatches;
 				return verificationCheck(`docker-image:${tag}`, `Docker image ${tag} exists locally or as an inspectable manifest`, 'cli', {
 					exists: ok,
 					configured: input.observed.exists,
 					ready: ok,
 					verified: ok,
 					observed: image ?? manifest,
-					issues: ok ? [] : [`Docker image ${tag} was not found after build.`],
+					issues: ok ? [] : [closureMatches
+						? `Docker image ${tag} was not found after build.`
+						: `Docker image ${tag} does not match the required source closure.`],
 				});
 			});
 			return summarizeVerification(input.unit.unitId, checks.length > 0 ? checks : [

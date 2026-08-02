@@ -1,35 +1,15 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
-import { parse as parseYaml } from 'yaml';
-import { loadCliDeployConfig } from '../agents/runtime-tools.ts';
-import { resolveMachineEnvironmentValues } from '../configuration/config-runtime.ts';
-import { createPersistentDeployTarget, resolveResourceIdentity } from '../hosting/deployment/deploy.ts';
-import { classifyGitMode, runGitText } from '../operations/git-runner.ts';
-import { discoverApplications } from '../../../hosting/apps.ts';
-import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName, railwayTreeDxServiceName } from '../hosting/railway/railway-source-policy.ts';
-import { runPrefixedCommand, sleep, type BootstrapTaskPrefix, type BootstrapWriter } from '../operations/bootstrap-runner.ts';
 import {
-	ensureRailwayEnvironment,
-	ensureRailwayProject,
-	ensureRailwayService,
-	ensureRailwayServiceInstanceConfiguration,
-	ensureRailwayServiceVolume,
-	deployRailwayServiceInstance,
-	getRailwayServiceInstance,
-	listRailwayEnvironments,
-	listRailwayProjects,
-	listRailwayServices,
-	listRailwayVolumes,
-	normalizeRailwayEnvironmentName,
-	railwayGraphqlRequest,
-	resolveRailwayApiToken,
-	resolveRailwayApiUrl,
-	resolveRailwayWorkspace,
-	resolveRailwayWorkspaceContext,
-	upsertRailwayVariables,
+ensureRailwayEnvironment,
+ensureRailwayProject,
+ensureRailwayService,
+ensureRailwayServiceInstanceConfiguration,
+ensureRailwayServiceVolume,
+listRailwayProjects,
+normalizeRailwayEnvironmentName,
+resolveRailwayWorkspaceContext,
+upsertRailwayVariables
 } from '../hosting/railway/railway-api.ts';
-import { elapsedMs, formatDurationMs, type TimingEntry } from '../../../entrypoints/runtime/timing.ts';
-import { WORKER_RUNNER_VOLUME_MOUNT_PATH, configuredEnvValue, deriveRailwayCapacityProviderRunnerVolumeName, deriveRailwayOperationsRunnerVolumeName, deriveRailwayWorkerRunnerVolumeName, normalizeScope, railwayServiceRuntimeStartCommand } from './normalize-scope.ts';
+import { WORKER_RUNNER_VOLUME_MOUNT_PATH,configuredEnvValue,deriveRailwayCapacityProviderRunnerVolumeName,deriveRailwayOperationsRunnerVolumeName,deriveRailwayWorkerRunnerVolumeName,normalizeScope,railwayServiceRuntimeStartCommand } from './normalize-scope.ts';
 
 export async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, service, { env = process.env, writePhase = null, fetchImpl = fetch } = {}) {
 	const writeSyncPhase = (stage, message) => {
@@ -155,9 +135,6 @@ export async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRo
 			...(['api', 'operationsRunner'].includes(service.key) ? {
 				...(configuredEnvValue(env, 'TREESEED_PLATFORM_RUNNER_SECRET') ? {
 					TREESEED_PLATFORM_RUNNER_SECRET: configuredEnvValue(env, 'TREESEED_PLATFORM_RUNNER_SECRET'),
-				} : {}),
-				...(configuredEnvValue(env, 'TREESEED_CREDENTIAL_SESSION_SECRET') ? {
-					TREESEED_CREDENTIAL_SESSION_SECRET: configuredEnvValue(env, 'TREESEED_CREDENTIAL_SESSION_SECRET'),
 				} : {}),
 				...(configuredEnvValue(env, 'TREESEED_WEB_SERVICE_SECRET') ? {
 					TREESEED_WEB_SERVICE_SECRET: configuredEnvValue(env, 'TREESEED_WEB_SERVICE_SECRET'),

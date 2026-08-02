@@ -4,27 +4,9 @@ import {
 	buildProjectRepositoryTopology,
 	isTreeDxCanonicalContent,
 	normalizeProjectRepositoryTopology,
-	normalizeTemplateLaunchRequirements,
 } from '../../../../src/index.ts';
 
 describe('TreeDX market integration contracts', () => {
-	it('accepts knowledge-library template host requirements', () => {
-		const requirements = normalizeTemplateLaunchRequirements({
-			hosts: [{
-				kind: 'host',
-				key: 'knowledgeLibrary',
-				type: 'knowledge-library',
-				required: true,
-				compatibleProviders: ['treedx'],
-				displayName: 'Knowledge Library',
-				purpose: 'Stores project content in TreeDX.',
-				configWrites: [],
-			}],
-		});
-
-		expect(requirements?.hosts?.[0]?.type).toBe('knowledge-library');
-	});
-
 	it('normalizes TreeDX content with filesystem site and project repositories', () => {
 		const instance = buildManagedTreeDxInstance({
 			id: 'treedx_team',

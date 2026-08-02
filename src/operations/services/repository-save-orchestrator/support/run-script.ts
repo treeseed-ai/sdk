@@ -1,83 +1,23 @@
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, resolve, relative } from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
-import { tmpdir } from 'node:os';
-import { classifyGitMode, runGitText } from '../../operations/git-runner.ts';
 import {
-	ensureSshPushUrlForOrigin,
-	remoteWriteUrl,
-	sshPushUrlForRemote,
-	type GitRemoteWriteMode,
-} from '../../repositories/git-remote-policy.ts';
-import {
-	generateRepositoryCommitMessage,
-	type CommitMessageDependencyUpdate,
-	type CommitMessageContext,
-	type CommitMessagePackageChange,
-	type CommitMessageProvider,
-	type CommitMessageProviderMode,
-	type CommitMessageSubmodulePointer,
-} from '../../capacity/providers/commit-message-provider.ts';
-import {
-	createPackageDependencyReference,
-	type DevDependencyReferenceMode,
-	type GitDependencyProtocol,
-	normalizeGitRemoteForDependency,
-	type PackageDependencyReference,
-	type RewrittenDevReference,
-	updateInternalDependencySpecs,
-} from '../../packages/package-reference-policy.ts';
-import {
-	PRODUCTION_BRANCH,
-	branchExists,
-	checkoutBranch,
-	headCommit,
-	pushBranch,
-	remoteBranchExists,
-	STAGING_BRANCH,
+headCommit
 } from '../../operations/git-workflow.ts';
 import {
-	collectMergeConflictReport,
-	currentBranch,
-	formatMergeConflictReport,
-	gitStatusPorcelain,
-	hasMeaningfulChanges,
-	incrementVersion,
-	originRemoteUrl,
-	repoRoot,
-} from '../../treedx/workspaces/workspace-save.ts';
+type PackageDependencyReference
+} from '../../packages/package-reference-policy.ts';
 import {
-	hasCompletePackageCheckout,
-	run,
-	sortWorkspacePackages,
-	workspacePackages,
-} from '../../treedx/workspaces/workspace-tools.ts';
-import { collectDeploymentLockfileWorkspaceIssues, ensureLocalWorkspaceLinks } from '../../treedx/workspaces/workspace-dependency-mode.ts';
-import {
-	createBuildWarningSummary,
-	formatAllowedBuildWarnings,
-	type BuildWarningPolicyOptions,
-} from '../../build/build-warning-policy.js';
-import {
-	readVerificationCache,
-	writeVerificationCache,
+readVerificationCache,
+writeVerificationCache,
 } from '../../support/verification-cache.ts';
 import {
-	discoverPackageAdapters,
-	type PackageCommand,
-} from '../../reconciliation/package-adapters.ts';
-import {
-	discoverManagedRepositories,
-	parseGitmodulesPaths,
-	readTemplateRepositoryManifest,
-	type ManagedRepositoryKind,
-} from '../../support/managed-repositories.ts';
-import { RepositorySaveError, RepositorySaveNode, RepositorySaveOptions, RepositorySaveReport, RepositoryVerificationResult, SaveState, SaveVerifyMode, emitProgress, runGit } from './repo-kind.ts';
-import { runCapturedCommand, runStreamingCommand } from '../runtime/with-short-process-temp-env.ts';
-import { hasAnyVerificationCommand, hasScript, manifestVerifyCommand, runGitDependencySmoke, runProjectVerificationInstallWithRetry } from '../treedx/repositories/sync-root-workspace-lockfile-metadata.ts';
+collectMergeConflictReport,
+formatMergeConflictReport
+} from '../../treedx/workspaces/workspace-save.ts';
 import { remoteBranchExistsSafe } from '../repositories/discover-repository-save-nodes.ts';
+import { runCapturedCommand,runStreamingCommand } from '../runtime/with-short-process-temp-env.ts';
+import { hasAnyVerificationCommand,hasScript,manifestVerifyCommand,runGitDependencySmoke,runProjectVerificationInstallWithRetry } from '../treedx/repositories/sync-root-workspace-lockfile-metadata.ts';
 import { ensureWritableRemote } from './classify-repo-kind.ts';
-import { assertTagStateMatchesHead, tagState } from './tag-state.ts';
+import { RepositorySaveError,RepositorySaveNode,RepositorySaveOptions,RepositorySaveReport,RepositoryVerificationResult,SaveState,SaveVerifyMode,emitProgress,runGit } from './repo-kind.ts';
+import { assertTagStateMatchesHead,tagState } from './tag-state.ts';
 
 export async function runScript(node: RepositorySaveNode, options: RepositorySaveOptions, scriptName: string) {
 	await runStreamingCommand(node, options, 'verify', 'npm', ['run', scriptName]);

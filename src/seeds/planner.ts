@@ -1,5 +1,5 @@
-import type { NormalizedSeedResource, SeedCurrentResource, SeedDiagnostic, SeedEnvironment, SeedManifest, SeedOperationRecipe, SeedOperationRecipePlan, SeedOperationRecipeStep, SeedPlan, SeedPlanAction, SeedPlanActionType, SeedPlanSummary } from './types.js';
 import { normalizeSeedResources } from './normalize.js';
+import type { NormalizedSeedResource,SeedCurrentResource,SeedDiagnostic,SeedEnvironment,SeedManifest,SeedOperationRecipe,SeedOperationRecipePlan,SeedOperationRecipeStep,SeedPlan,SeedPlanAction,SeedPlanActionType,SeedPlanSummary } from './types.js';
 
 const ACTION_TYPES: SeedPlanActionType[] = ['create', 'update', 'unchanged', 'skip', 'delete', 'error'];
 
@@ -114,8 +114,6 @@ export function createSeedPlan(input: {
 
 function actionKindLabel(action: SeedPlanAction) {
 	switch (action.kind) {
-		case 'repositoryHost':
-			return 'repository host';
 		case 'hubRepository':
 			return 'hub repository';
 		case 'catalogArtifact':

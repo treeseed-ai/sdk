@@ -1,12 +1,12 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync,readFileSync,writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { checkoutBranch, headCommit, PRODUCTION_BRANCH, remoteHeadCommit, remoteBranchExists, STAGING_BRANCH } from "../../../operations/services/operations/git-workflow.ts";
-import { collectReleaseHistoryCommits, upsertReleaseChangelog, type ReleaseHistoryCommit } from "../../../operations/services/packages/release-history.ts";
-import { currentBranch, hasMeaningfulChanges, incrementVersion } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
+import { checkoutBranch,headCommit,PRODUCTION_BRANCH,remoteBranchExists,remoteHeadCommit,STAGING_BRANCH } from "../../../operations/services/operations/git-workflow.ts";
 import { rewriteProjectInternalDependenciesToStableVersions } from "../../../operations/services/packages/package-reference-policy.ts";
+import { collectReleaseHistoryCommits,upsertReleaseChangelog,type ReleaseHistoryCommit } from "../../../operations/services/packages/release-history.ts";
+import { currentBranch,hasMeaningfulChanges,incrementVersion } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
 import { workspacePackages } from "../../../operations/services/treedx/workspaces/workspace-tools.ts";
-import { runGit } from '../recovery/workflow-write.ts';
 import { tagCommitSha } from '../recovery/fail-workflow-run.ts';
+import { runGit } from '../recovery/workflow-write.ts';
 import { verifyPublishedReleaseArtifacts } from './collect-published-release-artifact-checks.ts';
 
 export function planRootPackageVersion(root: string, level: string) {

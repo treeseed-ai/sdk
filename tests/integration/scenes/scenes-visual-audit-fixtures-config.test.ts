@@ -68,7 +68,7 @@ describe('scene visual audit fixture config fallbacks', () => {
 		vi.mocked(resolveMachineEnvironmentValues).mockReturnValue({
 			TREESEED_WEB_SERVICE_SECRET: ' machine-secret ',
 		} as never);
-		const requests: Array<{ url: string; serviceId?: string; secret?: string; actorKeys: string[] }> = [];
+		const requests: Array<{ url: string; serviceId?: string; secret?: string; actorKeys: string[]; usernames: string[] }> = [];
 		const baseUrl = await listen(async (request, response) => {
 			const body = await readBody(request);
 			const parsed = body ? JSON.parse(body) : {};
@@ -77,6 +77,7 @@ describe('scene visual audit fixture config fallbacks', () => {
 				serviceId: request.headers['x-treeseed-service-id'] as string | undefined,
 				secret: request.headers['x-treeseed-service-secret'] as string | undefined,
 				actorKeys: Object.keys(parsed.actors ?? {}),
+				usernames: Object.values(parsed.actors ?? {}).map((actor: any) => String(actor.username ?? '')),
 			});
 			response.setHeader('content-type', 'application/json');
 			if (request.url === '/v1/acceptance/seed') {
@@ -93,14 +94,15 @@ describe('scene visual audit fixture config fallbacks', () => {
 
 		expect(await ensureSceneVisualAuditRoleFixtures({
 			baseUrl,
-			roles: ['custom-role', 'owner'],
+			roles: ['custom-role', 'knowledge_reviewer'],
 			projectRoot: process.cwd(),
 			environment: 'staging',
 		})).toEqual([]);
-		expect(requests.find((entry) => entry.url === '/v1/acceptance/seed')).toMatchObject({
+			expect(requests.find((entry) => entry.url === '/v1/acceptance/seed')).toMatchObject({
 			serviceId: 'env-web',
 			secret: 'machine-secret',
-			actorKeys: ['owner'],
+			actorKeys: ['knowledge_reviewer'],
+			usernames: ['visual-knowledge-reviewer'],
 		});
 		expect(resolveMachineEnvironmentValues).toHaveBeenCalledWith(process.cwd(), 'staging');
 	});

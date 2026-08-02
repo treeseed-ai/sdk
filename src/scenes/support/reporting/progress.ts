@@ -1,5 +1,5 @@
+import type { SceneProgressEvent,SceneProgressEventType } from '../../types.ts';
 import { appendSceneJsonl } from '../evidence/artifacts.ts';
-import type { SceneProgressEvent, SceneProgressEventType } from '../../types.ts';
 
 export function createSceneProgress(input: {
 	sceneId: string | null;

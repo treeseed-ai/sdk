@@ -1,7 +1,7 @@
-import { collectPublicPackageReleaseLineState } from "../operations/services/treedx/workspaces/workspace-save.ts";
-import { classifyGitMode, runGitText } from "../operations/services/operations/git-runner.ts";
+import { classifyGitMode,runGitText } from "../operations/services/operations/git-runner.ts";
 import { packageAdapterPlanSummary } from "../operations/services/reconciliation/package-adapters.ts";
 import { inspectWorkspaceDependencyMode } from "../operations/services/treedx/workspaces/workspace-dependency-mode.ts";
+import { collectPublicPackageReleaseLineState } from "../operations/services/treedx/workspaces/workspace-save.ts";
 import type { WorkflowNextStep } from "../operations/workflow.ts";
 import { type WorkflowBranchRole } from "../workflow/policy.ts";
 

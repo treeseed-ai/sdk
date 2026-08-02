@@ -1,8 +1,8 @@
 import type {
-	AgentCapacityEnvelope,
-	AgentExecutionMode,
-	DecisionExecutionInput,
-	WorkdayCapacityEnvelope,
+AgentCapacityEnvelope,
+AgentExecutionMode,
+DecisionExecutionInput,
+WorkdayCapacityEnvelope,
 } from '../capacity/assignments/assignment-records.ts';
 
 export type DecisionExecutionReadinessStatus = 'draft' | 'blocked' | 'ready' | 'stale' | 'waived';

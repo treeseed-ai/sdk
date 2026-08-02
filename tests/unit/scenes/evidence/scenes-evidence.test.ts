@@ -1,7 +1,7 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { mkdtempSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
 	buildSceneEvidenceManifest,
@@ -14,7 +14,7 @@ import {
 	type SceneLocator,
 	type ScenePage,
 } from '../../../../src/scenes/index.ts';
-import { createSceneRunArtifacts, writeSceneRunArtifacts } from '../../../../src/scenes/support/evidence/artifacts.ts';
+import { createSceneRunArtifacts, redactPlaywrightTraceArchive, redactSceneArtifact, writeSceneRunArtifacts } from '../../../../src/scenes/support/evidence/artifacts.ts';
 
 function workspace() {
 	const root = mkdtempSync(resolve(tmpdir(), 'treeseed-scenes-evidence-'));
@@ -120,6 +120,56 @@ async function createRun(root: string) {
 }
 
 describe('scene evidence outputs', () => {
+	it('redacts sensitive fill and structured secret values from normalized scene evidence', () => {
+		const scene = {
+			id: 'secret-evidence',
+			setup: {
+				seed: {
+					inputs: {
+						accountId: 'public-account-id',
+						apiToken: 'provider-secret',
+					},
+				},
+			},
+			workflow: [
+				{ id: 'name', action: { fill: { name: 'displayName', value: 'Visible service name' } } },
+				{ id: 'passphrase', action: { fill: { css: 'input[name="passphrase"]', value: 'Vault secret' } } },
+				{ id: 'credential', action: { fill: { testId: 'credentialValue', value: 'Provider secret' } } },
+			],
+		} as never;
+
+		const redacted = redactSceneArtifact(scene) as any;
+		expect(redacted.setup.seed.inputs).toEqual({
+			accountId: 'public-account-id',
+			apiToken: '[REDACTED]',
+		});
+		expect(redacted.workflow[0].action.fill.value).toBe('Visible service name');
+		expect(redacted.workflow[1].action.fill.value).toBe('[REDACTED]');
+		expect(redacted.workflow[2].action.fill.value).toBe('[REDACTED]');
+		expect(JSON.stringify(redacted)).not.toContain('provider-secret');
+		expect(JSON.stringify(redacted)).not.toContain('Vault secret');
+		expect(JSON.stringify(redacted)).not.toContain('Provider secret');
+	});
+
+	it('rewrites sensitive values inside Playwright trace archives', () => {
+		const root = workspace();
+		const tracePath = resolve(root, 'trace.zip');
+		const traceRoot = resolve(root, 'trace-input');
+		mkdirSync(resolve(traceRoot, 'resources'), { recursive: true });
+		writeFileSync(resolve(traceRoot, 'trace.trace'), '{"method":"fill","value":"provider-secret"}\n');
+		writeFileSync(resolve(traceRoot, 'trace.network'), '{"safe":"ciphertext"}\n');
+		writeFileSync(resolve(traceRoot, 'resources/screenshot.jpeg'), new Uint8Array([1, 2, 3]));
+		execFileSync('zip', ['-q', '-r', tracePath, '.'], { cwd: traceRoot });
+
+		redactPlaywrightTraceArchive(tracePath, ['provider-secret']);
+		const outputRoot = resolve(root, 'trace-output');
+		execFileSync('unzip', ['-q', tracePath, '-d', outputRoot]);
+		expect(readFileSync(resolve(outputRoot, 'trace.trace'), 'utf8')).toContain('[REDACTED]');
+		expect(readFileSync(resolve(outputRoot, 'trace.trace'), 'utf8')).not.toContain('provider-secret');
+		expect(readFileSync(resolve(outputRoot, 'trace.network'), 'utf8')).toContain('ciphertext');
+		expect([...readFileSync(resolve(outputRoot, 'resources/screenshot.jpeg'))]).toEqual([1, 2, 3]);
+	});
+
 	it('builds a deterministic manifest with hashes, exclusions, and recommendations', async () => {
 		const root = workspace();
 		const run = await createRun(root);
@@ -161,6 +211,15 @@ describe('scene evidence outputs', () => {
 	it('writes metadata-only and sanitized evidence artifacts and updates run.json', async () => {
 		const root = workspace();
 		const run = await createRun(root);
+		const storageStatePath = resolve(run.artifacts!.checkpointsRoot, 'open.storage.json');
+		writeFile(storageStatePath, '{"cookies":[{"name":"session","value":"private-session"}]}');
+		const checkpointPath = resolve(run.artifacts!.checkpointsRoot, 'open.json');
+		const checkpoint = JSON.parse(readFileSync(checkpointPath, 'utf8'));
+		checkpoint.artifactPaths.storageStatePath = storageStatePath;
+		writeFile(checkpointPath, JSON.stringify(checkpoint));
+		const sourceRun = JSON.parse(readFileSync(run.artifacts!.runPath, 'utf8'));
+		sourceRun.checkpoints[0].artifactPaths.storageStatePath = storageStatePath;
+		writeFile(run.artifacts!.runPath, JSON.stringify(sourceRun));
 		const metadataOnly = generateSceneEvidence({ projectRoot: root, scene: 'evidence-demo', from: run.artifacts!.runRoot, bundlePolicy: 'metadata-only' });
 		expect(metadataOnly.ok).toBe(true);
 		expect(metadataOnly.paths!.bundleRoot).toBeNull();
@@ -174,6 +233,10 @@ describe('scene evidence outputs', () => {
 		expect(existsSync(resolve(sanitized.paths!.bundleRoot!, 'timeline.json'))).toBe(true);
 		expect(existsSync(resolve(sanitized.paths!.bundleRoot!, 'report.md'))).toBe(true);
 		expect(existsSync(resolve(sanitized.paths!.bundleRoot!, 'playwright', 'trace.zip'))).toBe(false);
+		expect(existsSync(resolve(sanitized.paths!.bundleRoot!, 'checkpoints', 'open.storage.json'))).toBe(false);
+		expect(JSON.stringify(sanitized.manifest)).not.toContain('open.storage.json');
+		expect(readFileSync(resolve(sanitized.paths!.bundleRoot!, 'run.json'), 'utf8')).not.toContain('storageStatePath');
+		expect(readFileSync(resolve(sanitized.paths!.bundleRoot!, 'checkpoints', 'open.json'), 'utf8')).not.toContain('storageStatePath');
 		const updatedRun = JSON.parse(readFileSync(run.artifacts!.runPath, 'utf8'));
 		expect(updatedRun.evidencePaths.evidenceRoot).toBe(sanitized.paths!.evidenceRoot);
 		expect(readFileSync(sanitized.paths!.reportPath, 'utf8')).toContain('Treeseed Scene Evidence');

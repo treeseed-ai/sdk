@@ -241,7 +241,6 @@ surfaces:
 			valuesOverlay: {
 				TREESEED_DATABASE_URL: 'postgres://redacted',
 				TREESEED_PLATFORM_RUNNER_SECRET: 'runner-secret',
-				TREESEED_CREDENTIAL_SESSION_SECRET: 'credential-secret',
 			},
 			observedRailwayServices: {
 				'treeseed-api-staging': {

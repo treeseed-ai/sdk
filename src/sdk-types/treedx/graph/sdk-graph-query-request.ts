@@ -1,18 +1,4 @@
-import type { FieldAliasBinding } from '../../../entrypoints/models/field-aliases.ts';
-import type {
-	CapacityBusinessModel,
-	CapacityLaneUnit,
-	CapacityReservation,
-	NativeUsageObservation,
-} from '../../../agent-capacity/contracts/support/financial-records.ts';
-import type {
-	CapacityExecutionProvider,
-	CapacityExecutionProviderNativeLimit,
-	CapacityExecutionProviderObservation,
-	CapacityProviderMembershipView,
-} from '../../../capacity-provider/contracts/index.ts';
-import { SdkGraphDslRelation, SdkGraphEdge, SdkGraphEdgeType, SdkGraphNode, SdkGraphQueryOptions, SdkGraphQueryStage, SdkGraphQueryView, SdkGraphRankingDiagnostics, SdkGraphSearchOptions, SdkGraphSearchResult, SdkGraphSeed, SdkGraphWhereFilter } from '../../support/sdk-search-request.ts';
-import { ProjectDeploymentKind, ProjectDeploymentStatus, ProjectEnvironmentName, ProjectExecutionOwner, ProjectInfrastructureResourceKind, ProjectInfrastructureResourceProvider, ProjectWebDeploymentAction, HostingKind, HostingRegistration } from '../../support/sdk-model-names.ts';
+import { SdkGraphDslRelation,SdkGraphEdge,SdkGraphEdgeType,SdkGraphNode,SdkGraphQueryOptions,SdkGraphQueryStage,SdkGraphQueryView,SdkGraphRankingDiagnostics,SdkGraphSearchOptions,SdkGraphSearchResult,SdkGraphSeed,SdkGraphWhereFilter } from '../../support/sdk-search-request.ts';
 
 export interface SdkGraphQueryRequest {
 	seedIds?: string[];
@@ -185,70 +171,6 @@ export interface SdkLeaseReleaseRequest {
 	model: string;
 	itemKey: string;
 	leaseToken?: string | null;
-}
-
-export interface UpsertProjectHostingRequest {
-	kind: HostingKind;
-	registration?: HostingRegistration;
-	marketBaseUrl?: string | null;
-	sourceRepoOwner?: string | null;
-	sourceRepoName?: string | null;
-	sourceRepoUrl?: string | null;
-	sourceRepoWorkflowPath?: string | null;
-	projectApiBaseUrl?: string | null;
-	executionOwner?: ProjectExecutionOwner | null;
-	metadata?: Record<string, unknown> | null;
-}
-
-export interface UpsertProjectEnvironmentRequest {
-	deploymentProfile?: HostingKind;
-	baseUrl?: string | null;
-	cloudflareAccountId?: string | null;
-	pagesProjectName?: string | null;
-	workerName?: string | null;
-	r2BucketName?: string | null;
-	d1DatabaseName?: string | null;
-	queueName?: string | null;
-	railwayProjectName?: string | null;
-	metadata?: Record<string, unknown> | null;
-}
-
-export interface UpsertProjectInfrastructureResourceRequest {
-	id?: string;
-	environment: ProjectEnvironmentName;
-	provider: ProjectInfrastructureResourceProvider;
-	resourceKind: ProjectInfrastructureResourceKind;
-	logicalName: string;
-	locator?: string | null;
-	metadata?: Record<string, unknown> | null;
-}
-
-export interface CreateProjectDeploymentRequest {
-	id?: string;
-	environment: ProjectEnvironmentName;
-	deploymentKind: ProjectDeploymentKind;
-	status?: ProjectDeploymentStatus;
-	action?: ProjectWebDeploymentAction | string;
-	platformOperationId?: string | null;
-	retryOfDeploymentId?: string | null;
-	resumedFromDeploymentId?: string | null;
-	idempotencyKey?: string | null;
-	requestedByUserId?: string | null;
-	sourceRef?: string | null;
-	releaseTag?: string | null;
-	commitSha?: string | null;
-	triggeredByType?: string | null;
-	triggeredById?: string | null;
-	repository?: Record<string, unknown> | null;
-	externalWorkflow?: Record<string, unknown> | null;
-	target?: Record<string, unknown> | null;
-	monitor?: Record<string, unknown> | null;
-	summary?: string | null;
-	error?: Record<string, unknown> | null;
-	metadata?: Record<string, unknown> | null;
-	startedAt?: string | null;
-	finishedAt?: string | null;
-	completedAt?: string | null;
 }
 
 export interface CatalogItemFilters {

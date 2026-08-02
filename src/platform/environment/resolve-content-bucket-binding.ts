@@ -1,19 +1,9 @@
-import { randomBytes } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
-import { runRepositoryGit } from '../../operations/services/operations/git-runner.ts';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { existsSync,readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { discoverApplications } from '../../hosting/apps.ts';
-import { githubRepositoryCredentialEnvName } from '../../operations/services/configuration/github-credentials.ts';
-import { discoverPackageAdapters } from '../../operations/services/reconciliation/package-adapters.ts';
-import type { DeployConfig, TenantConfig } from '../support/contracts.ts';
-import { loadDeployConfig } from '../hosting/deploy-config.ts';
-import { loadPlugins, type LoadedPluginRegistration } from '../support/plugins.ts';
-import { loadManifest } from '../configuration/tenant-config.ts';
-import { DEFAULT_MARKET_BASE_URL, NamedPredicateMap, NamedResolverMap, EnvironmentContext, EnvironmentRegistryOverlay, EnvironmentScope, smtpEnabled, turnstileEnabled, webSurfaceEnabled } from './environment-scopes.ts';
-import { apiSurfaceEnabled, codexExecutionSelected, contactEmailDefault, copilotExecutionSelected, formsEnabled, generatedSecret, hostedProjectEnabled, localApiDatabaseUrlDefault, localSmtpHostDefault, localSmtpPortDefault, marketControlPlaneEnabled, processingPlaneEnabled, projectDomainsDefault, projectRegistrationEnabled, railwayManagedEnabled, resolveApiWebServiceId, resolveConfiguredApiBaseUrl, resolveContentBucketName, resolveHostingKind, resolveHostingRegistration, resolveHubMode, resolvePagesPreviewProjectName, resolvePagesProjectName, resolveRuntimeMode, resolveRuntimeRegistration, resolveWebServiceId, selfHostedProjectEnabled } from './api-surface-enabled.ts';
+import { runRepositoryGit } from '../../operations/services/operations/git-runner.ts';
+import { apiSurfaceEnabled,codexExecutionSelected,contactEmailDefault,copilotExecutionSelected,formsEnabled,generatedSecret,hostedProjectEnabled,localApiDatabaseUrlDefault,localSmtpHostDefault,localSmtpPortDefault,marketControlPlaneEnabled,processingPlaneEnabled,projectDomainsDefault,projectRegistrationEnabled,railwayManagedEnabled,resolveApiWebServiceId,resolveConfiguredApiBaseUrl,resolveContentBucketName,resolveHostingKind,resolveHostingRegistration,resolveHubMode,resolvePagesPreviewProjectName,resolvePagesProjectName,resolveRuntimeMode,resolveRuntimeRegistration,resolveWebServiceId,selfHostedProjectEnabled } from './api-surface-enabled.ts';
+import { DEFAULT_MARKET_BASE_URL,EnvironmentContext,EnvironmentRegistryOverlay,EnvironmentScope,NamedPredicateMap,NamedResolverMap,smtpEnabled,turnstileEnabled,webSurfaceEnabled } from './environment-scopes.ts';
 
 export function resolveContentBucketBinding(context: EnvironmentContext) {
 	return context.deployConfig.cloudflare.r2?.binding?.trim() || 'TREESEED_CONTENT_BUCKET';

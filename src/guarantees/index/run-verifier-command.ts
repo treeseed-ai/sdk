@@ -1,11 +1,10 @@
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve, sep } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
-import { GuaranteeDiagnostic, GuaranteeManifest } from './guarantee-schema-version.ts';
-import { GuaranteeVerifierExecutionInput, GuaranteeVerifierExecutionResult, arrayOrEmpty, diagnostic, isRecord } from './guarantee-journey-audit-item.ts';
+import { npmWorkspaceArgs,packageWorkspaceForOwner,validateVitestVerifierOutput,writeCommandEvidence } from './export-guarantees-csv.ts';
+import { arrayOrEmpty,diagnostic,GuaranteeVerifierExecutionInput,GuaranteeVerifierExecutionResult,isRecord } from './guarantee-journey-audit-item.ts';
+import { GuaranteeDiagnostic,GuaranteeManifest } from './guarantee-schema-version.ts';
 import { sceneHasAcceptanceAssertions } from './plan-guarantees.ts';
-import { npmWorkspaceArgs, packageWorkspaceForOwner, validateVitestVerifierOutput, writeCommandEvidence } from './export-guarantees-csv.ts';
 
 export function runVerifierCommand(input: {
 	command: string;

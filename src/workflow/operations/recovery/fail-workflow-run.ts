@@ -1,17 +1,17 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { isAbsolute, relative, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
-import { type GitHubActionsWorkflowGate } from "../../../operations/services/repositories/github-actions-verification.ts";
-import { discoverPackageAdapters } from "../../../operations/services/reconciliation/package-adapters.ts";
+import { existsSync,readFileSync } from 'node:fs';
+import { isAbsolute,relative,resolve } from 'node:path';
 import { collectInternalDevReferenceIssues } from "../../../operations/services/packages/package-reference-policy.ts";
-import { run, workspaceRoot } from "../../../operations/services/treedx/workspaces/workspace-tools.ts";
-import { releaseWorkflowLock, updateWorkflowRunJournal } from "../../runs.ts";
-import { checkedOutWorkspacePackageRepos } from "../../session.ts";
+import { discoverPackageAdapters } from "../../../operations/services/reconciliation/package-adapters.ts";
+import { type GitHubActionsWorkflowGate } from "../../../operations/services/repositories/github-actions-verification.ts";
+import { run } from "../../../operations/services/treedx/workspaces/workspace-tools.ts";
 import type { WorkflowRecovery } from "../../../operations/workflow.ts";
-import { WorkflowError, runGit } from './workflow-write.ts';
+import { releaseWorkflowLock,updateWorkflowRunJournal } from "../../runs.ts";
+import { checkedOutWorkspacePackageRepos } from "../../session.ts";
 import { workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
-import { workflowFileExists } from '../projects/projects-core/connect-market-project.ts';
 import { hostedDeployGate } from '../packages/normalize-release-candidate-mode.ts';
+import { workflowFileExists } from '../support/workflow-helpers.ts';
+import { WorkflowError,runGit } from './workflow-write.ts';
 
 export function failWorkflowRun(
 	root: string,

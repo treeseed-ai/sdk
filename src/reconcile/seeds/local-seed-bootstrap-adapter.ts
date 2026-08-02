@@ -1,12 +1,12 @@
 import { existsSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import type {
-	ObservedUnitState,
-	ReconcileAdapter,
-	ReconcileAdapterInput,
-	ReconcileResult,
-	UnitDiff,
-	UnitVerificationResult,
+ObservedUnitState,
+ReconcileAdapter,
+ReconcileAdapterInput,
+ReconcileResult,
+UnitDiff,
+UnitVerificationResult,
 } from '../support/contracts/contracts.ts';
 
 type LocalSeedModule = {

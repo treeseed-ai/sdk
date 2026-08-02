@@ -1,9 +1,6 @@
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import { accessSync, chmodSync, constants as fsConstants, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, resolve } from 'node:path';
-import { createConnection, createServer, type Server } from 'node:net';
-import { ok } from './read-legacy-project-machine-key.ts';
+import { createCipheriv,createDecipheriv,randomBytes,scryptSync } from 'node:crypto';
+import { chmodSync,existsSync,lstatSync,mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 
 export const TRESEED_MACHINE_KEY_PASSPHRASE_ENV = 'TREESEED_KEY_PASSPHRASE';
 

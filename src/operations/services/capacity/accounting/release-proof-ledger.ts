@@ -1,11 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync,mkdirSync,readFileSync,readdirSync,rmSync,writeFileSync } from 'node:fs';
+import { dirname,resolve } from 'node:path';
 import {
-	computeProofInputHash,
-	proofIdFor,
-	type ProofDriver,
-	type ProofInput,
-	type ProofRecord,
+computeProofInputHash,
+proofIdFor,
+type ProofDriver,
+type ProofInput,
+type ProofRecord,
 } from '../../guarantees/release-proof.ts';
 
 const PROOF_DIR = '.treeseed/workflow/proofs';

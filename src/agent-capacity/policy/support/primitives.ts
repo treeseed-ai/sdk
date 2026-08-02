@@ -1,5 +1,5 @@
-import type { ProviderAssignmentCapabilityHandle, ProviderAssignmentCapabilityHandles, ProviderRepositoryAccessHandle, ProviderSecretUseHandle, ProviderTreeDxWorkspaceHandle, ProviderWorkflowOperationHandle } from '../../contracts/capacity/assignments/assignment-records.ts';
-import type { AgentRuntimeSpec, ExecutionCapabilitySupply, ExecutionResourceNeed } from '../../../types/agents.ts';
+import type { AgentRuntimeSpec,ExecutionCapabilitySupply,ExecutionResourceNeed } from '../../../types/agents.ts';
+import type { ProviderAssignmentCapabilityHandle,ProviderAssignmentCapabilityHandles,ProviderRepositoryAccessHandle,ProviderSecretUseHandle,ProviderTreeDxWorkspaceHandle,ProviderWorkflowOperationHandle } from '../../contracts/capacity/assignments/assignment-records.ts';
 
 export function record(value: unknown): Record<string, unknown> {
 	return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};

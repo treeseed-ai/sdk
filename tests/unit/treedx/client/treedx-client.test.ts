@@ -98,6 +98,7 @@ describe('TreeDxClient', () => {
 		const { client, calls } = mockClient([
 			{ ok: true, repos: [repository] },
 			{ ok: true, repo: repository },
+			{ ok: true, refs: [{ name: 'refs/heads/main', target: 'abc', sha: 'abc', kind: 'branch' }] },
 			{
 				ok: true,
 				repoId: 'repo_1',
@@ -117,6 +118,9 @@ describe('TreeDxClient', () => {
 			createIfMissing: true,
 			defaultRef: 'refs/heads/main',
 		})).resolves.toEqual(repository);
+		await expect(client.listRepositoryRefs()).resolves.toEqual([
+			{ name: 'refs/heads/main', target: 'abc', sha: 'abc', kind: 'branch' },
+		]);
 		await expect(client.readRepositoryFiles({
 			repoId: 'repo_1',
 			ref: 'refs/heads/main',
@@ -126,12 +130,13 @@ describe('TreeDxClient', () => {
 			],
 		})).resolves.toMatchObject({ files: expect.any(Array) });
 
-		expect(calls.map((call) => call.url)).toEqual([
+			expect(calls.map((call) => call.url)).toEqual([
 			'https://treedx.example.test/api/v1/repos',
 			'https://treedx.example.test/api/v1/repos/register',
+			'https://treedx.example.test/api/v1/repos/repo_1/refs',
 			'https://treedx.example.test/api/v1/repos/repo_1/files/read',
 		]);
-		expect(JSON.parse(String(calls[2]?.init.body))).toMatchObject({
+		expect(JSON.parse(String(calls[3]?.init.body))).toMatchObject({
 			ref: 'refs/heads/main',
 			paths: [
 				'src/content/agents/engineer.mdx',

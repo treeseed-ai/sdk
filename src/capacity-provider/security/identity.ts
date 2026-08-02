@@ -1,14 +1,14 @@
 import {
-	createHash,
-	createPrivateKey,
-	generateKeyPairSync,
-	randomUUID,
-	sign,
+createHash,
+createPrivateKey,
+generateKeyPairSync,
+randomUUID,
+sign,
 } from 'node:crypto';
 import type {
-	CapacityProviderProofPayload,
-	CapacityProviderPublicJwk,
-	CapacityProviderSignedProof,
+CapacityProviderProofPayload,
+CapacityProviderPublicJwk,
+CapacityProviderSignedProof,
 } from '../contracts/index.ts';
 import { capacityProviderSecurityDefaults } from '../validation.ts';
 

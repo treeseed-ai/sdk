@@ -1,12 +1,12 @@
-import { MarketClient } from '../../entrypoints/clients/market-client.ts';
 import {
-	capacityProviderPublicIdentity,
-	ProviderProtocolClient,
-	signCapacityProviderProof,
-	type CapacityProviderPrivateJwk,
+capacityProviderPublicIdentity,
+ProviderProtocolClient,
+signCapacityProviderProof,
+type CapacityProviderPrivateJwk,
 } from '../../capacity/providers/capacity-provider.ts';
+import { MarketClient } from '../../entrypoints/clients/market-client.ts';
+import { bindLocalCapacityTreeDxRepository,syncLocalAcceptanceAgentClasses } from '../capacity/capacity-core/live-acceptance-capacity-context.ts';
 import type { CapacityGovernanceRuntimeConnection } from '../capacity/capacity-core/live-acceptance-capacity-governance.ts';
-import { bindLocalCapacityTreeDxRepository, syncLocalAcceptanceAgentClasses } from '../capacity/capacity-core/live-acceptance-capacity-context.ts';
 
 export interface LocalStarterCapacityConfig {
 	starter: 'engineering' | 'research';
@@ -75,15 +75,6 @@ function projectRecord(payload: Record<string, unknown>) {
 	return { id, slug };
 }
 
-async function waitForProjectDeletion(adminClient: MarketClient, teamId: string, projectId: string) {
-	for (let attempt = 0; attempt < 50; attempt += 1) {
-		const projects = await adminClient.projects(teamId);
-		if (!(projects.payload as Array<Record<string, unknown>>).some((entry) => entry.id === projectId)) return;
-		await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
-	}
-	throw new Error(`Starter acceptance project ${projectId} did not reach deleted state.`);
-}
-
 export async function provisionLocalStarterProject(input: {
 	adminClient: MarketClient;
 	runId: string;
@@ -97,10 +88,7 @@ export async function provisionLocalStarterProject(input: {
 		metadata: { liveAcceptance: true, runId: input.runId, ...input.config.projectMetadata },
 	});
 	const project = projectRecord(created.payload);
-	const cleanup = async () => {
-		await input.adminClient.deleteProject(project.id, `DELETE ${project.slug}`);
-		await waitForProjectDeletion(input.adminClient, input.runtime.teamId, project.id);
-	};
+	const cleanup = async () => undefined;
 	try {
 		const binding = await bindLocalCapacityTreeDxRepository(input.adminClient, {
 			projectId: project.id, projectSlug: project.slug, teamId: input.runtime.teamId,

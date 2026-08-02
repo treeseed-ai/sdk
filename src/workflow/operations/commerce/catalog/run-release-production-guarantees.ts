@@ -1,18 +1,17 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { existsSync,mkdirSync,readFileSync,writeFileSync } from 'node:fs';
+import { dirname,resolve } from 'node:path';
+import { runGuarantees } from "../../../../guarantees/index.ts";
+import { packageScriptPath } from "../../../../operations/services/agents/runtime-tools.ts";
 import { collectConfigSeedValues } from "../../../../operations/services/configuration/config-runtime.ts";
 import { recordHostedDeploymentState } from "../../../../operations/services/hosting/deployment/deploy.ts";
-import { PRODUCTION_BRANCH, STAGING_BRANCH } from "../../../../operations/services/operations/git-workflow.ts";
-import { packageScriptPath } from "../../../../operations/services/agents/runtime-tools.ts";
-import { currentBranch, gitStatusPorcelain } from "../../../../operations/services/treedx/workspaces/workspace-save.ts";
-import { workspaceRoot } from "../../../../operations/services/treedx/workspaces/workspace-tools.ts";
 import { runRepositoryGit } from "../../../../operations/services/operations/git-runner.ts";
+import { PRODUCTION_BRANCH,STAGING_BRANCH } from "../../../../operations/services/operations/git-workflow.ts";
+import { currentBranch,gitStatusPorcelain } from "../../../../operations/services/treedx/workspaces/workspace-save.ts";
 import { resolveWorkflowState } from "../../../../operations/workflow-state.ts";
-import { runGuarantees } from "../../../../guarantees/index.ts";
-import { classifyBranchRole, resolveWorkflowPaths } from "../../../policy.ts";
-import type { ConfigInput, WorkflowContext, WorkflowNextStep, WorkflowOperationId } from "../../../../operations/workflow.ts";
-import { WorkflowError, WorkflowErrorCode, WorkflowOperationHelpers } from '../../recovery/workflow-write.ts';
+import type { ConfigInput,WorkflowContext,WorkflowNextStep,WorkflowOperationId } from "../../../../operations/workflow.ts";
+import { classifyBranchRole,resolveWorkflowPaths } from "../../../policy.ts";
+import { WorkflowError,WorkflowErrorCode,WorkflowOperationHelpers } from '../../recovery/workflow-write.ts';
 import { stringRecord } from '../../repositories/gates-for-saved-repository-reports.ts';
 
 export async function runReleaseProductionGuarantees(

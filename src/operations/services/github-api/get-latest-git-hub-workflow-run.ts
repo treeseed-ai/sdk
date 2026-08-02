@@ -1,12 +1,6 @@
-import { Buffer } from 'node:buffer';
-import { spawnSync } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { Octokit } from 'octokit';
-import { createManagedToolEnv, resolveToolBinary } from '../../../entrypoints/runtime/managed-dependencies.ts';
-import { resolveGitHubToken } from '../../../configuration/service-credentials.ts';
 import { createGitHubApiClient } from './create-git-hub-api-client.ts';
-import { GitHubApiClient, GitHubWorkflowJobSummary, GitHubWorkflowProgressEvent, GitHubWorkflowRunSummary, normalizeGitHubApiError, parseGitHubRepositorySlug } from './require.ts';
-import { normalizeWorkflowJob, normalizeWorkflowRun } from './upsert-git-hub-repository-variable-with-gh-cli.ts';
+import { GitHubApiClient,GitHubWorkflowJobSummary,GitHubWorkflowProgressEvent,GitHubWorkflowRunSummary,normalizeGitHubApiError,parseGitHubRepositorySlug } from './require.ts';
+import { normalizeWorkflowJob,normalizeWorkflowRun } from './upsert-git-hub-repository-variable-with-gh-cli.ts';
 
 export async function getLatestGitHubWorkflowRun(
 	repository: string | { owner: string; name: string },

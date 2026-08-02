@@ -1,5 +1,6 @@
-import { TreeDxApiError } from './errors.ts';
-import type { SdkGraphSearchResult, TreeDxAuditEvent, TreeDxAuthMode, TreeDxBlob, TreeDxBlobUploadAbortRequest, TreeDxBlobUploadCompleteRequest, TreeDxBlobUploadCreateRequest, TreeDxBlobUploadPart, TreeDxBlobUploadPartRequest, TreeDxBlobUploadSession, TreeDxBlobDeleteRequest, TreeDxBlobDownload, TreeDxBlobDownloadRequest, TreeDxBlobMutationResult, TreeDxBlobReadRequest, TreeDxBlobUploadRequest, TreeDxBlobWriteRequest, TreeDxCapabilityGrant, TreeDxCommitRequest, TreeDxCommitResult, TreeDxContextRequest, TreeDxContextResult, TreeDxCtxParseRequest, TreeDxCtxParseResult, TreeDxDiff, TreeDxEffectiveScope, TreeDxEffectiveScopeRequest, TreeDxExecRequest, TreeDxExecResult, TreeDxFetchRemoteRequest, TreeDxFetchRemoteResult, TreeDxFederatedContextRequest, TreeDxFederatedContextResult, TreeDxFederatedGraphRequest, TreeDxFederatedGraphResult, TreeDxFederatedQueryRequest, TreeDxFederatedQueryResult, TreeDxFederatedSearchRequest, TreeDxFederatedSearchResult, TreeDxArtifact, TreeDxArtifactCleanupRequest, TreeDxArtifactCleanupResult, TreeDxArtifactDeleteRequest, TreeDxArtifactDownload, TreeDxArtifactExportRequest, TreeDxArtifactGetRequest, TreeDxArtifactListRequest, TreeDxFederationQueryPlan, TreeDxFederationQueryPlanRequest, TreeDxFile, TreeDxFileMutationResult, TreeDxGraphNodeRequest, TreeDxGraphQueryRequest, TreeDxGraphQueryResult, TreeDxGraphRefreshJob, TreeDxGraphRefreshJobRequest, TreeDxGraphRefreshRequest, TreeDxGraphRefreshResult, TreeDxGraphRelatedRequest, TreeDxGraphSearchRequest, TreeDxGraphSubgraphRequest, TreeDxHealth, TreeDxListTreeRequest, TreeDxMigration, TreeDxMigrationRequest, TreeDxMirrorHealthRequest, TreeDxMirrorHealthResult, TreeDxMirrorPromotionRequest, TreeDxMirrorPromotionResult, TreeDxMirrorSyncRequest, TreeDxMirrorSyncResult, TreeDxNode, TreeDxPatchFileRequest, TreeDxReadFileRequest, TreeDxRepository, TreeDxRepositoryPathsRequest, TreeDxRepositoryPlacement, TreeDxRepositoryQueryRequest, TreeDxRepositoryQueryResult, TreeDxRepositoryReadRequest, TreeDxRepositorySearchRequest, TreeDxSearchRequest, TreeDxSearchIndexCompactRequest, TreeDxSearchIndexCompactResult, TreeDxSearchIndexRefreshRequest, TreeDxSearchIndexRefreshResult, TreeDxSearchIndexStatus, TreeDxSearchIndexStatusRequest, TreeDxSearchResult, TreeDxSnapshot, TreeDxSnapshotBuildRequest, TreeDxStorageBackupRequest, TreeDxStorageBackupResult, TreeDxStorageCompactRequest, TreeDxStorageCompactResult, TreeDxStorageMigration, TreeDxStorageMigrationPlanRequest, TreeDxStorageMigrationRollbackRequest, TreeDxStorageRestoreRequest, TreeDxStorageRestoreResult, TreeDxStorageRestoreVerifyRequest, TreeDxStatus, TreeDxTreeEntry, TreeDxClientOptions, TreeDxPushRequest, TreeDxPushResult, TreeDxWhoami, TreeDxWorkspace, TreeDxCreateWorkspaceRequest, TreeDxDeleteFileRequest, TreeDxDeepHealth, TreeDxWorkspaceRequest, TreeDxWriteFileRequest, TreeDxMetrics, TreeDxReadiness, TreeDxRegisterRepositoryRequest, } from '../types.ts';
+import * as extractedMethods from "../client/methods.ts";
+import type { TreeDxWriteFilesRequest, TreeDxWriteFilesResult } from '../types.ts';
+import type { SdkGraphSearchResult,TreeDxArtifact,TreeDxArtifactCleanupRequest,TreeDxArtifactCleanupResult,TreeDxArtifactDeleteRequest,TreeDxArtifactDownload,TreeDxArtifactExportRequest,TreeDxArtifactGetRequest,TreeDxArtifactListRequest,TreeDxAuditEvent,TreeDxAuthMode,TreeDxBlob,TreeDxBlobDeleteRequest,TreeDxBlobDownload,TreeDxBlobDownloadRequest,TreeDxBlobMutationResult,TreeDxBlobReadRequest,TreeDxBlobUploadAbortRequest,TreeDxBlobUploadCompleteRequest,TreeDxBlobUploadCreateRequest,TreeDxBlobUploadPart,TreeDxBlobUploadPartRequest,TreeDxBlobUploadRequest,TreeDxBlobUploadSession,TreeDxBlobWriteRequest,TreeDxCapabilityGrant,TreeDxClientOptions,TreeDxCommitRequest,TreeDxCommitResult,TreeDxContextRequest,TreeDxContextResult,TreeDxCreateWorkspaceRequest,TreeDxCtxParseRequest,TreeDxCtxParseResult,TreeDxDeepHealth,TreeDxDeleteFileRequest,TreeDxDiff,TreeDxEffectiveScope,TreeDxEffectiveScopeRequest,TreeDxExecRequest,TreeDxExecResult,TreeDxFederatedContextRequest,TreeDxFederatedContextResult,TreeDxFederatedGraphRequest,TreeDxFederatedGraphResult,TreeDxFederatedQueryRequest,TreeDxFederatedQueryResult,TreeDxFederatedSearchRequest,TreeDxFederatedSearchResult,TreeDxFederationQueryPlan,TreeDxFederationQueryPlanRequest,TreeDxFetchRemoteRequest,TreeDxFetchRemoteResult,TreeDxFile,TreeDxFileMutationResult,TreeDxGraphNodeRequest,TreeDxGraphQueryRequest,TreeDxGraphQueryResult,TreeDxGraphRefreshJob,TreeDxGraphRefreshJobRequest,TreeDxGraphRefreshRequest,TreeDxGraphRefreshResult,TreeDxGraphRelatedRequest,TreeDxGraphSearchRequest,TreeDxGraphSubgraphRequest,TreeDxHealth,TreeDxListTreeRequest,TreeDxMetrics,TreeDxMigration,TreeDxMigrationRequest,TreeDxMirrorHealthRequest,TreeDxMirrorHealthResult,TreeDxMirrorPromotionRequest,TreeDxMirrorPromotionResult,TreeDxMirrorSyncRequest,TreeDxMirrorSyncResult,TreeDxNode,TreeDxOrphanRefDiscardRequest,TreeDxOrphanRefDiscardResult,TreeDxPatchFileRequest,TreeDxPushRequest,TreeDxPushResult,TreeDxReadFileRequest,TreeDxReadiness,TreeDxRef,TreeDxRefPromotionRequest,TreeDxRefPromotionResult,TreeDxRefRetirementRequest,TreeDxRefRetirementResult,TreeDxRegisterRepositoryRequest,TreeDxRepository,TreeDxRepositoryPathsRequest,TreeDxRepositoryPlacement,TreeDxRepositoryQueryRequest,TreeDxRepositoryQueryResult,TreeDxRepositoryReadRequest,TreeDxRepositorySearchRequest,TreeDxSearchIndexCompactRequest,TreeDxSearchIndexCompactResult,TreeDxSearchIndexRefreshRequest,TreeDxSearchIndexRefreshResult,TreeDxSearchIndexStatus,TreeDxSearchIndexStatusRequest,TreeDxSearchRequest,TreeDxSearchResult,TreeDxSnapshot,TreeDxSnapshotBuildRequest,TreeDxStatus,TreeDxStorageBackupRequest,TreeDxStorageBackupResult,TreeDxStorageCompactRequest,TreeDxStorageCompactResult,TreeDxStorageMigration,TreeDxStorageMigrationPlanRequest,TreeDxStorageMigrationRollbackRequest,TreeDxStorageRestoreRequest,TreeDxStorageRestoreResult,TreeDxStorageRestoreVerifyRequest,TreeDxTreeEntry,TreeDxWhoami,TreeDxWorkspace,TreeDxWorkspaceAbandonResult,TreeDxWorkspaceRequest,TreeDxWriteFileRequest,} from '../types.ts';
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 export function normalizeBaseUrl(baseUrl: string) {
     return baseUrl.replace(/\/+$/u, '');
@@ -49,6 +50,9 @@ export const TREEDX_CLIENT_OPERATION_MAP = {
     syncMirror: 'syncMirror',
     fetchRemote: 'syncRepository',
     push: 'pushRepository',
+    promoteRef: 'promoteRepositoryRef',
+    retireRef: 'retireRepositoryRef',
+    discardOrphanRef: 'discardOrphanRepositoryRef',
     checkMirrorHealth: 'checkMirrorHealth',
     promoteMirror: 'promoteMirror',
     compactStorage: 'compactAdminStorage',
@@ -114,7 +118,6 @@ export const TREEDX_CLIENT_OPERATION_MAP = {
     buildContext: 'buildContext',
     parseContextDsl: 'parseContextQuery',
 } as const;
-import * as extractedMethods from "../client/methods.ts";
 export class TreeDxClient {
     readonly baseUrl: string;
     readonly token?: string;
@@ -187,6 +190,11 @@ export interface TreeDxClient {
     syncMirror(input: TreeDxMirrorSyncRequest): Promise<TreeDxMirrorSyncResult>;
     fetchRemote(input: TreeDxFetchRemoteRequest): Promise<TreeDxFetchRemoteResult>;
     push(input: TreeDxPushRequest): Promise<TreeDxPushResult>;
+    promoteRef(input: TreeDxRefPromotionRequest): Promise<TreeDxRefPromotionResult>;
+    retireRef(input: TreeDxRefRetirementRequest): Promise<TreeDxRefRetirementResult>;
+    discardOrphanRef(input: TreeDxOrphanRefDiscardRequest): Promise<TreeDxOrphanRefDiscardResult>;
+    listRepositoryRefs(repoId?: string): Promise<TreeDxRef[]>;
+    abandonWorkspace(workspaceId: string, expectedHead: string): Promise<TreeDxWorkspaceAbandonResult>;
     checkMirrorHealth(input: TreeDxMirrorHealthRequest): Promise<TreeDxMirrorHealthResult>;
     promoteMirror(input: TreeDxMirrorPromotionRequest): Promise<TreeDxMirrorPromotionResult>;
     compactStorage(input?: TreeDxStorageCompactRequest): Promise<TreeDxStorageCompactResult>;
@@ -219,6 +227,7 @@ export interface TreeDxClient {
     listTree(input: TreeDxListTreeRequest): Promise<TreeDxTreeEntry[]>;
     readFile(input: TreeDxReadFileRequest): Promise<TreeDxFile>;
     writeFile(input: TreeDxWriteFileRequest): Promise<TreeDxFileMutationResult>;
+    writeFiles(input: TreeDxWriteFilesRequest): Promise<TreeDxWriteFilesResult>;
     patchFile(input: TreeDxPatchFileRequest): Promise<TreeDxFileMutationResult>;
     deleteFile(input: TreeDxDeleteFileRequest): Promise<TreeDxFileMutationResult>;
     readBlob(input: TreeDxBlobReadRequest): Promise<TreeDxBlob>;
@@ -295,6 +304,11 @@ TreeDxClient.prototype.downloadArtifact = extractedMethods.downloadArtifactMetho
 TreeDxClient.prototype.syncMirror = extractedMethods.syncMirrorMethod;
 TreeDxClient.prototype.fetchRemote = extractedMethods.fetchRemoteMethod;
 TreeDxClient.prototype.push = extractedMethods.pushMethod;
+TreeDxClient.prototype.promoteRef = extractedMethods.promoteRefMethod;
+TreeDxClient.prototype.retireRef = extractedMethods.retireRefMethod;
+TreeDxClient.prototype.discardOrphanRef = extractedMethods.discardOrphanRefMethod;
+TreeDxClient.prototype.listRepositoryRefs = extractedMethods.listRepositoryRefsMethod;
+TreeDxClient.prototype.abandonWorkspace = extractedMethods.abandonWorkspaceMethod;
 TreeDxClient.prototype.checkMirrorHealth = extractedMethods.checkMirrorHealthMethod;
 TreeDxClient.prototype.promoteMirror = extractedMethods.promoteMirrorMethod;
 TreeDxClient.prototype.compactStorage = extractedMethods.compactStorageMethod;
@@ -318,6 +332,7 @@ TreeDxClient.prototype.closeWorkspace = extractedMethods.closeWorkspaceMethod;
 TreeDxClient.prototype.listTree = extractedMethods.listTreeMethod;
 TreeDxClient.prototype.readFile = extractedMethods.readFileMethod;
 TreeDxClient.prototype.writeFile = extractedMethods.writeFileMethod;
+TreeDxClient.prototype.writeFiles = extractedMethods.writeFilesMethod;
 TreeDxClient.prototype.patchFile = extractedMethods.patchFileMethod;
 TreeDxClient.prototype.deleteFile = extractedMethods.deleteFileMethod;
 TreeDxClient.prototype.readBlob = extractedMethods.readBlobMethod;

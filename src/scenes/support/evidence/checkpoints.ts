@@ -1,6 +1,6 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import type { SceneArtifactPathPlan, SceneCheckpoint } from '../../types.ts';
+import { mkdirSync,writeFileSync } from 'node:fs';
+import { dirname,join } from 'node:path';
+import type { SceneArtifactPathPlan,SceneCheckpoint } from '../../types.ts';
 
 export function createSceneCheckpoint(input: {
 	paths: SceneArtifactPathPlan;

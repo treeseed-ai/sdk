@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { mkdtempSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
 	runScene,
 	waitForSceneOperation,
@@ -192,6 +192,43 @@ describe('scene Phase 3 environment integration', () => {
 		});
 		expect(failed.ok).toBe(false);
 		expect(failed.diagnostics[0]?.code).toBe('scene.operation_failed');
+	});
+
+	it('keeps polling through a transient operation transport failure', async () => {
+		let attempts = 0;
+		const report = await waitForSceneOperation({
+			projectRoot: workspace(), scene: {} as any, environment: 'local', baseUrl: 'http://example.test',
+			spec: { id: 'op_transient', status: ['succeeded'], pollIntervalSeconds: 0.001, timeoutSeconds: 1 },
+			fetchOperation: async () => {
+				attempts += 1;
+				if (attempts === 1) throw new TypeError('fetch failed');
+				return { operation: { id: 'op_transient', status: 'succeeded' } };
+			},
+			sleep: async () => {},
+		});
+		expect(report.ok).toBe(true);
+		expect(attempts).toBe(2);
+	});
+
+	it('uses the managed local service credential for operation evidence polling', async () => {
+		vi.stubEnv('TREESEED_ACCEPTANCE_SERVICE_SECRET', '');
+		vi.stubEnv('TREESEED_WEB_SERVICE_SECRET', '');
+		vi.stubEnv('TREESEED_API_WEB_SERVICE_SECRET', '');
+		const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => new Response(JSON.stringify({
+			operation: { id: 'op_local', status: 'succeeded' },
+		}), { status: 200, headers: { 'content-type': 'application/json' } }));
+		vi.stubGlobal('fetch', fetchMock);
+		const report = await waitForSceneOperation({
+			projectRoot: workspace(), scene: {} as any, environment: 'local', baseUrl: 'http://example.test',
+			spec: { id: 'op_local', status: ['succeeded'] },
+		});
+		expect(report.ok).toBe(true);
+		expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
+			'x-treeseed-service-id': 'web',
+			'x-treeseed-service-secret': 'treeseed-web-service-dev-secret',
+		});
+		vi.unstubAllEnvs();
+		vi.unstubAllGlobals();
 	});
 
 	it('runs operation actions and assertions through linked operation ids', async () => {

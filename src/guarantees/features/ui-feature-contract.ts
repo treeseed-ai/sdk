@@ -1,20 +1,20 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync,readFileSync } from 'node:fs';
+import { dirname,resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import type {
-	GuaranteeDevice,
-	GuaranteeDiagnostic,
-	GuaranteeManifest,
-	LoadedGuarantee,
-} from '../index/guarantee-schema-version.ts';
 import {
-	arrayOrEmpty,
-	diagnostic,
-	isRecord,
-	stringArray,
-	stringValue,
+arrayOrEmpty,
+diagnostic,
+isRecord,
+stringArray,
+stringValue,
 } from '../index/guarantee-journey-audit-item.ts';
-import { readSceneYaml, sceneManifestPathForGuarantee } from '../index/parse-verifier-registry.ts';
+import type {
+GuaranteeDevice,
+GuaranteeDiagnostic,
+GuaranteeManifest,
+LoadedGuarantee,
+} from '../index/guarantee-schema-version.ts';
+import { readSceneYaml,sceneManifestPathForGuarantee } from '../index/parse-verifier-registry.ts';
 
 export const UI_FEATURE_SCHEMA_VERSION = 'treeseed.ui-feature/v1' as const;
 

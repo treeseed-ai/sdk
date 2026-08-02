@@ -1,25 +1,14 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { relative } from 'node:path';
-import type {
-	SceneDiagnostic,
-	SceneVisualAuditCapture,
-	SceneVisualAuditClientError,
-	SceneVisualAuditClientErrorIncident,
-	SceneVisualAuditFinding,
-	SceneVisualAuditFindingOwner,
-	SceneVisualAuditFindingSeverity,
-	SceneVisualAuditManifest,
-	SceneVisualAuditPaths,
-	SceneVisualAuditReview,
-	SceneVisualAuditReviewCategory,
-	SceneVisualAuditReviewDetail,
-	SceneVisualAuditRole,
-	SceneVisualAuditRootCause,
-} from '../types.ts';
+import { mkdirSync,writeFileSync } from 'node:fs';
 import { writeSceneVisualAuditContactSheets } from '../support/visual-audit/visual-audit-contact-sheets.ts';
-import { combinedPriorityQueue, formatSceneVisualAuditAgentBrief, formatSceneVisualAuditFindingsMarkdown, groupBy, issueSummary, jsonl } from './enrich-client-errors.ts';
+import type {
+SceneVisualAuditFindingOwner,
+SceneVisualAuditManifest,
+SceneVisualAuditPaths,
+SceneVisualAuditReview
+} from '../types.ts';
+import { combinedPriorityQueue,formatSceneVisualAuditAgentBrief,formatSceneVisualAuditFindingsMarkdown,groupBy,issueSummary,jsonl } from './enrich-client-errors.ts';
 import { expectedFindingNoise } from './incident-title.ts';
-import { OWNERS, finding, guidance, md, priorityBand, priorityScore, recommendedAction, rel } from './severities.ts';
+import { OWNERS,guidance,md,priorityBand,rel } from './severities.ts';
 
 export function formatOwnerBrief(input: {
 	owner: SceneVisualAuditFindingOwner;

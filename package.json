@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.12.63-dev.staging.20260716T185056Z",
+  "version": "0.12.63-dev.feature-treeseed-guide-editorial-agents.20260802T145810Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -15,6 +15,10 @@
   "type": "module",
   "engines": {
     "node": ">=22"
+  },
+  "overrides": {
+    "libsodium": "0.7.15",
+    "libsodium-sumo": "0.7.15"
   },
   "types": "./dist/index.d.ts",
   "files": [
@@ -77,7 +81,8 @@
     "github-slugger": "^2.0.0",
     "hono": "^4.8.2",
     "ink": "^7.0.0",
-    "libsodium-wrappers": "^0.7.15",
+    "libsodium-wrappers": "0.7.15",
+    "libsodium-wrappers-sumo": "0.7.15",
     "mdast-util-to-string": "^4.0.0",
     "minisearch": "^7.2.0",
     "octokit": "^5.0.3",
@@ -134,6 +139,14 @@
     "./api/auth/d1-provider": {
       "types": "./dist/api/auth/d1-provider.d.ts",
       "default": "./dist/api/auth/d1-provider.js"
+    },
+    "./api/auth/rbac": {
+      "types": "./dist/api/auth/rbac.d.ts",
+      "default": "./dist/api/auth/rbac.js"
+    },
+    "./api/trusted-assertion": {
+      "types": "./dist/api/auth/trusted-assertion.d.ts",
+      "default": "./dist/api/auth/trusted-assertion.js"
     },
     "./workflow": {
       "types": "./dist/operations/workflow.d.ts",
@@ -239,17 +252,21 @@
       "types": "./dist/entrypoints/models/plugin-default.d.ts",
       "default": "./dist/entrypoints/models/plugin-default.js"
     },
-    "./platform/books-data": {
-      "types": "./dist/platform/content/books-data.d.ts",
-      "default": "./dist/platform/content/books-data.js"
-    },
     "./platform/published-content": {
       "types": "./dist/platform/packages/published-content.d.ts",
       "default": "./dist/platform/packages/published-content.js"
     },
-    "./platform/book-export": {
-      "types": "./dist/platform/content/book-export.d.ts",
-      "default": "./dist/platform/content/book-export.js"
+    "./knowledge": {
+      "types": "./dist/knowledge/index.d.ts",
+      "default": "./dist/knowledge/index.js"
+    },
+    "./feedback": {
+      "types": "./dist/feedback/index.d.ts",
+      "default": "./dist/feedback/index.js"
+    },
+    "./knowledge-packs": {
+      "types": "./dist/knowledge-packs/index.d.ts",
+      "default": "./dist/knowledge-packs/index.js"
     },
     "./platform/site-config-schema": {
       "types": "./dist/platform/configuration/site-config-schema.d.ts",
@@ -266,10 +283,6 @@
     "./template-catalog": {
       "types": "./dist/commerce/catalog/template-catalog.d.ts",
       "default": "./dist/commerce/catalog/template-catalog.js"
-    },
-    "./template-launch-requirements": {
-      "types": "./dist/entrypoints/templates/template-launch-requirements.d.ts",
-      "default": "./dist/entrypoints/templates/template-launch-requirements.js"
     },
     "./template-launch-ui": {
       "types": "./dist/entrypoints/templates/template-launch-ui.d.ts",
@@ -375,10 +388,6 @@
     "./operations/github-credentials": {
       "types": "./dist/operations/services/configuration/github-credentials.d.ts",
       "default": "./dist/operations/services/configuration/github-credentials.js"
-    },
-    "./operations/hub-provider-launch": {
-      "types": "./dist/operations/services/capacity/providers/hub-provider-launch.d.ts",
-      "default": "./dist/operations/services/capacity/providers/hub-provider-launch.js"
     },
     "./operations/project-host-operations": {
       "types": "./dist/operations/services/projects/hosting/project-host-operations.d.ts",

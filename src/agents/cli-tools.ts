@@ -1,6 +1,6 @@
 import type {
-	AgentCliAllowTool,
-	AgentCliOptions,
+AgentCliAllowTool,
+AgentCliOptions,
 } from '../types/agents.ts';
 
 const AGENT_CLI_ALLOW_TOOLS = [

@@ -1,7 +1,7 @@
-import { readDevInstance, startManagedDev } from '../../local-dev/managed-dev.ts';
+import { readDevInstance,startManagedDev } from '../../local-dev/managed-dev.ts';
 import { collectDeploymentReadiness } from '../../operations/workflow-support.ts';
-import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
-import type { SceneEnvironmentPrepareOptions, SceneEnvironmentPrepareReport } from '../types.ts';
+import { sceneErrorDiagnostic,sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
+import type { SceneEnvironmentPrepareOptions,SceneEnvironmentPrepareReport } from '../types.ts';
 
 function healthUrl(instance: unknown) {
 	const candidate = instance as { health?: Array<{ kind?: string; url?: string }> } | null;

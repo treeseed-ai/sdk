@@ -1,15 +1,5 @@
 import { execFile } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { serializeFrontmatterDocument, parseFrontmatterDocument } from '../../content/frontmatter.ts';
-import {
-	applyProjectLaunchHostBindingConfig,
-	auditProjectLaunchHostBindingConfig,
-	type ApplyProjectLaunchHostBindingConfigOptions,
-} from '../services/hosting/deployment/template-host-bindings.ts';
-import { changedPaths } from './create-decision-from-governance-proposal.ts';
 
 export const execFileAsync = promisify(execFile);
 
@@ -213,10 +203,6 @@ export interface PlatformRepositoryOperationInput {
 	commitMessage?: string;
 	approvalRequired?: boolean;
 	approvalId?: string;
-	hostBindings?: ApplyProjectLaunchHostBindingConfigOptions['hostBindings'];
-	hostBindingPlans?: ApplyProjectLaunchHostBindingConfigOptions['hostBindingPlans'];
-	launchInput?: ApplyProjectLaunchHostBindingConfigOptions['launchInput'];
-	derived?: ApplyProjectLaunchHostBindingConfigOptions['derived'];
 }
 
 export interface PlatformRepositoryScaffoldFile {

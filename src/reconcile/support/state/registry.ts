@@ -1,18 +1,18 @@
 import { loadPlugins } from '../../../platform/plugins/runtime.ts';
 import type { DeployConfig } from '../../../platform/support/contracts.ts';
-import type { Plugin, PluginEnvironmentContext } from '../../../platform/support/plugin.ts';
-import type { ReconcileAdapter, ReconcileProviderId, ReconcileUnitType } from '../contracts/contracts.ts';
+import type { Plugin,PluginEnvironmentContext } from '../../../platform/support/plugin.ts';
 import {
-	createCapacityProviderReconcileAdapters,
-	createCloudflareReconcileAdapters,
-	createDockerReconcileAdapters,
-	createGitHubReconcileAdapters,
-	createLocalProcessReconcileAdapters,
-	createPackageReconcileAdapters,
-	createRailwayReconcileAdapters,
-	createReleaseGateReconcileAdapters,
+createCapacityProviderReconcileAdapters,
+createCloudflareReconcileAdapters,
+createDockerReconcileAdapters,
+createGitHubReconcileAdapters,
+createLocalProcessReconcileAdapters,
+createPackageReconcileAdapters,
+createRailwayReconcileAdapters,
+createReleaseGateReconcileAdapters,
 } from '../../reconciliation/builtin-adapters.ts';
 import { createLocalSeedBootstrapAdapter } from '../../seeds/local-seed-bootstrap-adapter.ts';
+import type { ReconcileAdapter,ReconcileProviderId,ReconcileUnitType } from '../contracts/contracts.ts';
 
 export type ReconcileRegistry = {
 	adapters: ReconcileAdapter[];

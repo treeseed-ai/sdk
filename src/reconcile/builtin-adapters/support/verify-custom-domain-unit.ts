@@ -1,14 +1,14 @@
 import { resolveCloudflareZoneIdForHost } from "../../../operations/services/hosting/deployment/deploy.ts";
-import { ensureRailwayCustomDomain, deleteRailwayCustomDomain, listRailwayCustomDomains, listRailwayServices } from "../../../operations/services/hosting/railway/railway-api.ts";
-import type { ReconcileAdapterInput, ReconcileResult, ReconcileUnitDiff, UnitVerificationResult } from "../../support/contracts/contracts.ts";
-import { buildCloudflareEnv } from '../reconciliation/build-workflow-meta-adapter.ts';
-import { dnsRecordContentMatches, dnsRecordIdentityMatches, dnsRecordMatches, dnsRecordProxiedMatches, dnsRecordsFromCurrentResult, ensureCloudflareDnsRecord, ensureCloudflarePagesDomain, getCloudflarePagesDomain, listCloudflareDnsRecords, storeCustomDomainState } from './normalize-turnstile-domains.ts';
-import { summarizeVerification, unsupportedVerification } from './summarize-verification.ts';
-import { observeRailwayCustomDomainLive, verificationCheck } from '../hosting/first-railway-domain-string.ts';
-import { observeCustomDomainUnit, observeDnsRecordUnit, resolveDesiredDnsRecords } from '../capacity/providers/capacity-provider-variables-for-service.ts';
-import { findRailwayTopologyEntry, resolveRailwayUnitTopology } from '../hosting/railway-verification-may-settle.ts';
+import { deleteRailwayCustomDomain,ensureRailwayCustomDomain,listRailwayCustomDomains,listRailwayServices } from "../../../operations/services/hosting/railway/railway-api.ts";
+import type { ReconcileAdapterInput,ReconcileResult,ReconcileUnitDiff,UnitVerificationResult } from "../../support/contracts/contracts.ts";
+import { observeCustomDomainUnit,observeDnsRecordUnit,resolveDesiredDnsRecords } from '../capacity/providers/capacity-provider-variables-for-service.ts';
+import { observeRailwayCustomDomainLive,verificationCheck } from '../hosting/first-railway-domain-string.ts';
+import { findRailwayTopologyEntry,resolveRailwayUnitTopology } from '../hosting/railway-verification-may-settle.ts';
 import { traceRailwayReconcile } from '../hosting/resolve-railway-topology-for-scope.ts';
-import { isTransientCloudflareReconcileError, sleepMs } from '../hosting/to-deploy-target.ts';
+import { isTransientCloudflareReconcileError,sleepMs } from '../hosting/to-deploy-target.ts';
+import { buildCloudflareEnv } from '../reconciliation/build-workflow-meta-adapter.ts';
+import { dnsRecordContentMatches,dnsRecordIdentityMatches,dnsRecordMatches,dnsRecordProxiedMatches,dnsRecordsFromCurrentResult,ensureCloudflareDnsRecord,ensureCloudflarePagesDomain,getCloudflarePagesDomain,listCloudflareDnsRecords,storeCustomDomainState } from './normalize-turnstile-domains.ts';
+import { summarizeVerification,unsupportedVerification } from './summarize-verification.ts';
 
 export async function verifyCustomDomainUnit(input: ReconcileAdapterInput): Promise<UnitVerificationResult> {
 	switch (input.unit.unitType) {

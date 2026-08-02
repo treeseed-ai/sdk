@@ -1,26 +1,6 @@
-import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { basename, dirname, resolve as resolvePath } from 'node:path';
-import { parse as parseYaml } from 'yaml';
-import {
-	discoverPackageAdapters,
-	type PackageAdapter,
-} from '../../operations/services/reconciliation/package-adapters.ts';
-import { redactCapacityProviderEnv, validateAndDigestCapacityProviderManifest } from '../../capacity/providers/capacity-provider.ts';
-import { workspaceRoot } from '../../operations/services/treedx/workspaces/workspace-tools.ts';
-import {
-	checkedOutTemplateRepositories,
-	type TemplateRepositoryManifest,
-} from '../../operations/services/support/managed-repositories.ts';
-import { deriveDesiredUnits } from '../../reconcile/reconciliation/desired-state.ts';
-import type { DesiredUnit, ReconcileSelector, ReconcileTarget } from '../../reconcile/support/contracts/contracts.ts';
-import {
-	buildProjectLocalContentResources,
-	type LocalContentMode,
-} from '../content/local-content-materialization.ts';
-import { localTreeDxSeedDigest } from '../treedx/repositories/local-treedx-seed.ts';
-import { DesiredEnvironment, DesiredResource, PackageUnit, TemplateUnit, hashJson, packageUnitRequiredSecretsForGitHubEnvironment } from './desired-environment.ts';
-import { internalPackageDependencies, releasePhaseForEnvironment } from './safe-tree-dx-repository-name.ts';
+import type { ReconcileSelector,ReconcileTarget } from '../../reconcile/support/contracts/contracts.ts';
+import { DesiredEnvironment,DesiredResource,PackageUnit,TemplateUnit,hashJson,packageUnitRequiredSecretsForGitHubEnvironment } from './desired-environment.ts';
+import { internalPackageDependencies,releasePhaseForEnvironment } from './safe-tree-dx-repository-name.ts';
 
 export function releaseGateResources(packages: PackageUnit[], templates: TemplateUnit[], environment: DesiredEnvironment): DesiredResource[] {
 	const phase = releasePhaseForEnvironment(environment);

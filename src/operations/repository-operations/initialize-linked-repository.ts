@@ -1,17 +1,9 @@
-import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, relative, resolve } from 'node:path';
-import { promisify } from 'node:util';
-import { serializeFrontmatterDocument, parseFrontmatterDocument } from '../../content/frontmatter.ts';
-import {
-	applyProjectLaunchHostBindingConfig,
-	auditProjectLaunchHostBindingConfig,
-	type ApplyProjectLaunchHostBindingConfigOptions,
-} from '../services/hosting/deployment/template-host-bindings.ts';
-import { NormalizedPlatformContentInput, PROPOSAL_VERDICT_DECISION_TYPES, PlatformRepositoryOperationInput, WORK_CONTENT_COLLECTION_SET } from './exec-file-async.ts';
-import { addRelationValue, assertAllowedPath, contentRoot, enumValue, normalizePlatformContentInput, normalizePlatformRelationArray, optionalTrimmedString, platformContentRelationPolicy, safeContentPath, safeRepositoryRelativePath, secretLookingText, slugifyPlatformContent } from './platform-repository-verification-error.ts';
-import { changedPaths } from './create-decision-from-governance-proposal.ts';
+import { mkdir,readFile,rm,writeFile } from 'node:fs/promises';
+import { dirname,relative,resolve } from 'node:path';
+import { parseFrontmatterDocument,serializeFrontmatterDocument } from '../../content/frontmatter.ts';
+import { NormalizedPlatformContentInput,PROPOSAL_VERDICT_DECISION_TYPES,PlatformRepositoryOperationInput,WORK_CONTENT_COLLECTION_SET } from './exec-file-async.ts';
+import { addRelationValue,assertAllowedPath,contentRoot,enumValue,normalizePlatformContentInput,normalizePlatformRelationArray,optionalTrimmedString,platformContentRelationPolicy,safeContentPath,safeRepositoryRelativePath,secretLookingText,slugifyPlatformContent } from './platform-repository-verification-error.ts';
 
 export async function initializeLinkedRepository(repoPath: string, input: PlatformRepositoryOperationInput) {
 	const architecture = input.architecture && typeof input.architecture === 'object' && !Array.isArray(input.architecture)

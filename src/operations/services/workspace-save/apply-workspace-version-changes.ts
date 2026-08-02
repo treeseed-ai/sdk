@@ -1,8 +1,7 @@
-import { existsSync, lstatSync, readFileSync, writeFileSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
-import { changedWorkspacePackages, publishableWorkspacePackages, sortWorkspacePackages, workspacePackages, workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
-import { classifyGitMode, runGitText } from '../operations/git-runner.ts';
-import { PUBLIC_RELEASE_PACKAGE_NAMES, compareVersionLines, firstAvailablePatchVersionOnLine, incrementVersion, internalDependencyFields, nextLineFor, parseVersionLine, readPackageJson, runGit, versionForLine, versionLine, writePackageJson } from './run-git.ts';
+import { existsSync,lstatSync,readFileSync } from 'node:fs';
+import { isAbsolute,resolve } from 'node:path';
+import { publishableWorkspacePackages,sortWorkspacePackages,workspacePackages,workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
+import { PUBLIC_RELEASE_PACKAGE_NAMES,compareVersionLines,firstAvailablePatchVersionOnLine,incrementVersion,internalDependencyFields,nextLineFor,parseVersionLine,readPackageJson,runGit,versionForLine,versionLine,writePackageJson } from './run-git.ts';
 
 export function applyWorkspaceVersionChanges(plan) {
 	for (const pkg of plan.packages) {

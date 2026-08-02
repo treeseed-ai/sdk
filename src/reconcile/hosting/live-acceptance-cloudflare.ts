@@ -1,3 +1,4 @@
+import { resolveLiveTestDomain } from '../capacity/providers/live-acceptance-provider-config.ts';
 import type { CanonicalDrift, CanonicalGraphNode } from '../support/state/platform.ts';
 import type {
 	RunLiveReconcileTestsOptions,
@@ -5,17 +6,6 @@ import type {
 	LiveReconcileMode,
 	LiveReconcileScenarioResult,
 } from '../support/acceptance/live-acceptance.ts';
-import {
-	cloudflareId,
-	cloudflareListItems,
-	cloudflareName,
-	cloudflareRawRequest,
-	cloudflareRequest,
-	cloudflareRequestPayload,
-	resolveCloudflareZoneId,
-	withCloudflareTransientRetry,
-} from './live-acceptance-cloudflare-client.ts';
-import { resolveLiveTestDomain } from '../capacity/providers/live-acceptance-provider-config.ts';
 import {
 	PROVIDER_CAPABILITIES,
 	blocking,
@@ -27,6 +17,17 @@ import {
 	waitForLiveObservation,
 } from '../runtime/live-acceptance-runtime.ts';
 import { configuredLiveAcceptanceValue as configuredValue, type LiveAcceptanceEnv } from '../support/acceptance/live-acceptance-values.ts';
+import {
+	cloudflareId,
+	cloudflareListItems,
+	cloudflareName,
+	cloudflareRawRequest,
+	cloudflareRequest,
+	cloudflareRequestPayload,
+	cloudflareTunnelRequest,
+	resolveCloudflareZoneId,
+	withCloudflareTransientRetry,
+} from './live-acceptance-cloudflare-client.ts';
 
 type LiveEnv = LiveAcceptanceEnv;
 type LiveProgress = RunLiveReconcileTestsOptions['onProgress'];
@@ -109,6 +110,15 @@ export async function runCloudflareCleanup(cwd: string, environment: LiveReconci
 		for (const bucket of await list('r2', `/accounts/${accountId}/r2/buckets?per_page=100`, ['buckets'])) {
 			const name = cloudflareName(bucket);
 			if (name.startsWith(prefixRoot)) await attempt('r2', name, () => cloudflareRequest(`/accounts/${accountId}/r2/buckets/${name}`, env, fetchImpl, { method: 'DELETE' }));
+		}
+		try {
+			const tunnels = cloudflareListItems(await cloudflareTunnelRequest(`/accounts/${accountId}/cfd_tunnel?is_deleted=false&per_page=100`, env, fetchImpl));
+			for (const tunnel of tunnels) {
+				const name = cloudflareName(tunnel); const id = cloudflareId(tunnel);
+				if (name.startsWith(prefixRoot) && id) await attempt('tunnel', id, () => cloudflareTunnelRequest(`/accounts/${accountId}/cfd_tunnel/${id}`, env, fetchImpl, { method: 'DELETE' }));
+			}
+		} catch (error) {
+			cleanupDrift.push(blocking('cloudflare', 'tunnel', `Cloudflare cleanup could not inspect Tunnel resources: ${error instanceof Error ? error.message : String(error)}`));
 		}
 		for (const namespace of await list('kv', `/accounts/${accountId}/storage/kv/namespaces?per_page=100`)) {
 			const name = cloudflareName(namespace);
@@ -301,6 +311,16 @@ export async function runCloudflareAcceptance(cwd: string, environment: LiveReco
 			(value) => Boolean(value && typeof value === 'object') || (Array.isArray(value) && value.some((entry) => cloudflareName(entry) === `${prefix}.${domain}`)),
 		);
 	});
+	await attempt('tunnel', 'tunnel', () => cloudflareTunnelRequest(`/accounts/${accountId}/cfd_tunnel`, env, fetchImpl, {
+		method: 'POST', body: JSON.stringify({ name: prefix, config_src: 'cloudflare' }),
+	}), (createdResult) => {
+		const id = cloudflareId(createdResult);
+		return waitForLiveObservation(
+			`Cloudflare Tunnel ${prefix}`,
+			() => cloudflareTunnelRequest(`/accounts/${accountId}/cfd_tunnel?name=${encodeURIComponent(prefix)}&is_deleted=false`, env, fetchImpl),
+			(value) => Array.isArray(value) && value.some((entry) => cloudflareId(entry) === id && cloudflareName(entry) === prefix),
+		);
+	});
 	await attempt('secrets', 'secrets', () => cloudflareRequest(`/accounts/${accountId}/workers/scripts/${prefix}/secrets`, env, fetchImpl, {
 		method: 'PUT',
 		body: JSON.stringify({ name: 'TREESEED_LIVE_TEST_SECRET', text: 'redacted-test-value', type: 'secret_text' }),
@@ -316,4 +336,3 @@ export async function runCloudflareAcceptance(cwd: string, environment: LiveReco
 	const cleanup = await runCloudflareCleanup(cwd, environment, prefix, mode, env, fetchImpl);
 	return { results, cleanupDrift: cleanup.cleanupDrift };
 }
-

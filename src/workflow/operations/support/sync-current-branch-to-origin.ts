@@ -1,17 +1,17 @@
 import { ensureSecretSessionForConfig } from "../../../operations/services/configuration/config-runtime.ts";
-import { branchExists, checkoutBranch, createDeprecatedTaskTag, deleteLocalBranch, deleteRemoteBranch, ensureLocalBranchTracking, gitWorkflowRoot, PRODUCTION_BRANCH, reattachDetachedHeadIfSafe, remoteBranchExists, STAGING_BRANCH, syncBranchWithOrigin } from "../../../operations/services/operations/git-workflow.ts";
-import { collectMergeConflictReport, currentBranch, formatMergeConflictReport, hasMeaningfulChanges } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
-import { changedWorkspacePackages, publishableWorkspacePackages, run, sortWorkspacePackages, workspaceRoot } from "../../../operations/services/treedx/workspaces/workspace-tools.ts";
+import { branchExists,checkoutBranch,createDeprecatedTaskTag,deleteLocalBranch,deleteRemoteBranch,ensureLocalBranchTracking,gitWorkflowRoot,PRODUCTION_BRANCH,reattachDetachedHeadIfSafe,remoteBranchExists,STAGING_BRANCH,syncBranchWithOrigin } from "../../../operations/services/operations/git-workflow.ts";
+import { collectMergeConflictReport,currentBranch,formatMergeConflictReport,hasMeaningfulChanges } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
+import { changedWorkspacePackages,publishableWorkspacePackages,run,sortWorkspacePackages,workspaceRoot } from "../../../operations/services/treedx/workspaces/workspace-tools.ts";
 import { type WorkflowStatusOptions } from "../../../operations/workflow-state.ts";
+import type { WorkflowOperationId } from "../../../operations/workflow.ts";
+import { resolveWorkflowPaths } from "../../policy.ts";
 import { type WorkflowRunCommand } from "../../runs.ts";
 import { checkedOutWorkspacePackageRepos } from "../../session.ts";
-import { resolveWorkflowPaths } from "../../policy.ts";
-import type { WorkflowOperationId } from "../../../operations/workflow.ts";
-import { WorkflowError, WorkflowOperationHelpers, runGit } from '../recovery/workflow-write.ts';
-import { WorkflowRepoReport, resolveProjectRootOrThrow, resolveRepoState, withContextEnv, workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { resolveProjectRootOrThrow,resolveRepoState,withContextEnv,workflowError,WorkflowRepoReport } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { createStatusResult } from '../packages/release-admin-message.ts';
+import { runGit,WorkflowError,WorkflowOperationHelpers } from '../recovery/workflow-write.ts';
 import { workflowSave } from '../workspace-lifecycle/workflow-save.ts';
 import { updateHead } from '../workspace-lifecycle/workflow-switch.ts';
-import { createStatusResult } from '../packages/release-admin-message.ts';
 
 export function syncCurrentBranchToOrigin(operation: WorkflowOperationId, repoDir: string, branch: string) {
 	try {

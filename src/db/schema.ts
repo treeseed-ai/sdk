@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index,integer,sqliteTable,text } from 'drizzle-orm/sqlite-core';
 
 // Source of truth for the SDK/Core D1 schema used by unauthenticated static
 // knowledge-hub runtime surfaces. Market control-plane tables belong in

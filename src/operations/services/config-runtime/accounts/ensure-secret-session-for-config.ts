@@ -1,94 +1,21 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, resolve } from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import type { ApiPrincipal, RemoteConfig, RemoteHost } from '../../../../entrypoints/clients/remote.ts';
 import {
-	getEnvironmentSuggestedValues,
-	isEnvironmentEntryRelevant,
-	isEnvironmentEntryRequired,
-	resolveEnvironmentRegistry,
-	ENVIRONMENT_SCOPES,
-	type EnvironmentPurpose,
-	type EnvironmentValidation,
-	validateEnvironmentValues,
+ENVIRONMENT_SCOPES,
+validateEnvironmentValues,
+type EnvironmentValidation
 } from '../../../../platform/configuration/environment.ts';
-import { loadManifest } from '../../../../platform/configuration/tenant-config.ts';
 import {
-	buildProvisioningSummary,
-	createPersistentDeployTarget,
-	ensureGeneratedWranglerConfig,
-	loadDeployState,
-	provisionCloudflareResources,
-	syncCloudflareSecrets,
-	verifyProvisionedCloudflareResources,
-} from '../../hosting/deployment/deploy.ts';
-import {
-	collectReconcileStatus,
-	reconcileTarget,
-	resolveBootstrapSelection,
-	type BootstrapSystem,
-	type DesiredUnit,
-	type RunnableBootstrapSystem,
-} from '../../../../reconcile/index.ts';
-import {
-	ensureGitHubBootstrapRepository,
-	maybeResolveGitHubRepositorySlug,
-} from '../../repositories/github-automation.ts';
-import {
-	buildRailwayCommandEnv,
-	configuredRailwayServices,
-	validateRailwayDeployPrerequisites,
-} from '../../hosting/railway/railway-deploy.ts';
-import {
-	ensureRailwayEnvironment,
-	ensureRailwayProject,
-	ensureRailwayService,
-	normalizeRailwayEnvironmentName,
-	resolveRailwayWorkspace,
-	resolveRailwayWorkspaceContext,
-	upsertRailwayVariables,
-} from '../../hosting/railway/railway-api.ts';
-import { discoverApplications } from '../../../../hosting/apps.ts';
-import {
-	createGitHubApiClient,
-	ensureGitHubBranchFromBase,
-	listGitHubEnvironmentSecretNames,
-	listGitHubEnvironmentVariableNames,
-} from '../../repositories/github-api.ts';
-import { resolveGitHubCredentialForRepository } from '../../configuration/github-credentials.ts';
-import { loadCliDeployConfig, packageDistScriptRoot, packageScriptPath, resolveWranglerBin, withProcessCwd } from '../../agents/runtime-tools.ts';
-import { PRODUCTION_BRANCH, STAGING_BRANCH } from '../../operations/git-workflow.ts';
-import {
-	createManagedToolEnv,
-	resolveToolBinary,
-	resolveToolCommand,
-} from '../../../../entrypoints/runtime/managed-dependencies.ts';
-import { GITHUB_TOKEN_ENV, resolveGitHubToken, withServiceCredentialEnv } from '../../../../configuration/service-credentials.ts';
-import {
-	filterManagedHostGitHubEnvironment,
-	usesManagedHostOperationRequests,
-} from '../../hosting/audit/managed-host-security.ts';
-import {
-	assertKeyAgentResponse,
-	getKeyAgentPaths,
-	inspectKeyAgentDiagnostics,
-	readWrappedMachineKeyFile,
-	replaceWrappedMachineKey,
-	rotateWrappedMachineKeyPassphrase,
-	KEY_AGENT_IDLE_TIMEOUT_MS,
-	MACHINE_KEY_PASSPHRASE_ENV,
-	KeyAgentError,
-	unwrapMachineKey,
-	type KeyAgentStatus,
+assertKeyAgentResponse,
+KEY_AGENT_IDLE_TIMEOUT_MS,
+KeyAgentError,
+MACHINE_KEY_PASSPHRASE_ENV,
+readWrappedMachineKeyFile,
+type KeyAgentStatus
 } from '../../configuration/key-agent.ts';
-import { inspectKeyAgentStatus, unlockSecretSessionFromEnv, unlockSecretSessionInteractive, unlockSecretSessionWithPassphrase } from '../configuration/inspect-key-agent-status.ts';
-import { getMachineConfigPaths, keyAgentAutoPromptEnabled, requestKeyAgent, useInlineKeyAgentTransport } from '../hosting/load-tenant-deploy-config.ts';
+import { inspectKeyAgentStatus,unlockSecretSessionFromEnv,unlockSecretSessionInteractive,unlockSecretSessionWithPassphrase } from '../configuration/inspect-key-agent-status.ts';
 import { inlineSecretSessions } from '../configuration/machine-config-relative-path.ts';
-import { createConfigReadiness } from '../support/summarize-persistent-readiness.ts';
+import { getMachineConfigPaths,keyAgentAutoPromptEnabled,requestKeyAgent,useInlineKeyAgentTransport } from '../hosting/load-tenant-deploy-config.ts';
 import { collectEnvironmentContext } from '../support/resolve-entry-value-from-buckets.ts';
+import { createConfigReadiness } from '../support/summarize-persistent-readiness.ts';
 
 export async function ensureSecretSessionForConfig({
 	tenantRoot,

@@ -1,4 +1,5 @@
 /** Portable durable records shared by workday control-plane and operator consumers. */
+import type { WorkdayAgentSelection } from '../../../workday.ts';
 
 export type CapacityWorkdayRunStatus =
 	| 'queued'
@@ -89,6 +90,71 @@ export interface CapacityWorkdayEventRecord {
 	refs: Record<string, unknown>;
 	metadata: Record<string, unknown>;
 	createdAt: string;
+}
+
+export type AgentActivityEventSeverity = 'debug' | 'info' | 'warning' | 'error';
+
+/** Compact, ordered workday activity. Full model and tool payloads are retrieved through transcriptRef. */
+export interface AgentActivityEvent {
+	id: string;
+	sequence: number;
+	sourceEventId: string;
+	timestamp: string;
+	teamId: string;
+	projectId: string | null;
+	workdayId: string;
+	assignmentId: string | null;
+	modeRunId: string | null;
+	executionRunId: string | null;
+	agentId: string | null;
+	agentClassId: string | null;
+	activityType: string | null;
+	handlerId: string | null;
+	capacityProviderId: string | null;
+	providerManagerId: string | null;
+	runnerId: string | null;
+	executionProviderId: string | null;
+	eventType: string;
+	severity: AgentActivityEventSeverity;
+	summary: string;
+	transcriptRef: string | null;
+	artifactRefs: Record<string, unknown>[];
+	contextPackDigest: string | null;
+	usageDelta: Record<string, unknown>;
+	durationMs: number | null;
+	errorCategory: string | null;
+	recoveryState: string | null;
+	redactionStatus: string;
+	payloadDigest: string;
+}
+
+export interface CapacityWorkdayScheduleRecord {
+	id: string;
+	teamId: string;
+	projectIds: string[];
+	status: 'active' | 'paused' | 'completed' | 'failed';
+	purpose: string;
+	capacityProviderId: string;
+	agentSelection: WorkdayAgentSelection;
+	cadenceSeconds: number;
+	durationSeconds: number;
+	maxActiveAssignments: number;
+	availableCredits: number;
+	planningOnly: boolean;
+	publicationPolicy: {
+		bookIds: string[];
+		target: 'staging' | 'production';
+		cohortMode: 'accepted';
+		requireTechnicalReview: boolean;
+		requireAudienceReview: boolean;
+		requireGraphReviewWhenStructural: boolean;
+		simulatedHumanApproval: boolean;
+	};
+	lastRunId: string | null;
+	nextRunAt: string;
+	stateVersion: number;
+	createdAt: string;
+	updatedAt: string;
 }
 
 export interface CapacityWorkdayDemandRecord {

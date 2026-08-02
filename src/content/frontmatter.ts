@@ -1,4 +1,4 @@
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { parse as parseYaml,stringify as stringifyYaml } from 'yaml';
 
 export interface ParsedMarkdownDocument {
 	frontmatter: Record<string, unknown>;

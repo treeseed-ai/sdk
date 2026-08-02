@@ -1,21 +1,8 @@
-import type { FieldAliasBinding } from '../../../entrypoints/models/field-aliases.ts';
-import type {
-	CapacityBusinessModel,
-	CapacityLaneUnit,
-	CapacityReservation,
-	NativeUsageObservation,
-} from '../../../agent-capacity/contracts/support/financial-records.ts';
-import type {
-	CapacityExecutionProvider,
-	CapacityExecutionProviderNativeLimit,
-	CapacityExecutionProviderObservation,
-	CapacityProviderMembershipView,
-} from '../../../capacity-provider/contracts/index.ts';
-import { CommerceCapacityAccessLevel, CommerceCapacityAiInvolvementLevel, CommerceCapacityDataAccessLevel, CommerceCapacityHumanInvolvementLevel, CommerceCapacityRuntimeIsolationLevel, CommerceCapacitySecretAccessLevel, CommercePaymentGroupStatus, CommerceSubscriptionStatus, CommerceVendor, StripeConnectedAccount } from '../payments/commerce-subscription-statuses.ts';
-import { CommerceCartStatus, CommerceCheckoutStatus, CommerceGovernanceState, CommerceOrderItemStatus, CommerceOrderStatus, CommerceStripeSyncStatus } from '../governance/commerce-governance-states.ts';
-import { CommerceOfferMode } from '../../support/template-launch-requirements.ts';
-import { CommerceProduct } from '../vendors/commerce-stripe-onboarding-request-input.ts';
+import { CommerceOfferMode } from '../../support/platform-contracts.ts';
+import { CommerceCartStatus,CommerceCheckoutStatus,CommerceGovernanceState,CommerceOrderItemStatus,CommerceOrderStatus,CommerceStripeSyncStatus } from '../governance/commerce-governance-states.ts';
 import { CommerceEntitlement } from '../payments/commerce-entitlement.ts';
+import { CommerceCapacityAccessLevel,CommerceCapacityAiInvolvementLevel,CommerceCapacityDataAccessLevel,CommerceCapacityHumanInvolvementLevel,CommerceCapacityRuntimeIsolationLevel,CommerceCapacitySecretAccessLevel,CommercePaymentGroupStatus,CommerceSubscriptionStatus,CommerceVendor,StripeConnectedAccount } from '../payments/commerce-subscription-statuses.ts';
+import { CommerceProduct } from '../vendors/commerce-stripe-onboarding-request-input.ts';
 
 export interface CommerceCapacityListingInput {
 	capacityProviderId?: string | null;

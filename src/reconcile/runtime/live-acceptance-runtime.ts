@@ -6,7 +6,7 @@ type LiveProgress = RunLiveReconcileTestsOptions['onProgress'];
 
 export const PROVIDER_CAPABILITIES: Record<LiveReconcileProvider, string[]> = {
 	railway: ['project', 'environment', 'service', 'image-service', 'postgres', 'volume', 'domain', 'variables', 'deployment-health', 'capacity-provider-runtime-assignment-proof'],
-	cloudflare: ['pages', 'worker', 'd1', 'r2', 'kv', 'queue', 'dns', 'turnstile', 'secrets', 'cache-rules'],
+	cloudflare: ['pages', 'worker', 'd1', 'r2', 'kv', 'queue', 'dns', 'tunnel', 'turnstile', 'secrets', 'cache-rules'],
 	github: ['environment', 'secret', 'variable', 'workflow-dispatch', 'workflow-observation', 'repository-scoped-token'],
 	local: ['process', 'port', 'local-db', 'local-runner', 'docker-compose-capacity-provider', 'capacity-provider-assignment-proof'],
 };

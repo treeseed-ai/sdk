@@ -29,12 +29,7 @@ function runFilteredNodeBinary(binPath: string, args: string[], options: { cwd: 
 }
 
 process.env.LOCAL_DEV_MODE = process.env.LOCAL_DEV_MODE ?? 'cloudflare';
-const publishedRuntime = process.env.TREESEED_CONTENT_SERVING_MODE === 'published_runtime';
-
 runNodeScript(packageScriptPath('content/patch-starlight-content-path'), [], { cwd: process.cwd() });
-if (!publishedRuntime) {
-	runNodeScript(packageScriptPath('content/aggregate-book'), [], { cwd: process.cwd() });
-}
 runFilteredNodeBinary(resolveAstroBin(), ['build'], {
 	cwd: process.cwd(),
 	env: createProductionBuildEnv({

@@ -1,13 +1,13 @@
-import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { existsSync,readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { DeployConfig } from '../support/contracts.ts';
-import { loadDeployConfig } from '../hosting/deploy-config.ts';
-import { DEFAULT_PLUGIN_PACKAGE } from './constants.ts';
-import type { PluginEnvironmentContext } from '../support/plugin.ts';
 import type { SdkGraphRankingProvider } from '../../entrypoints/models/sdk-types.ts';
+import { loadDeployConfig } from '../hosting/deploy-config.ts';
+import type { DeployConfig } from '../support/contracts.ts';
+import type { PluginEnvironmentContext } from '../support/plugin.ts';
+import { DEFAULT_PLUGIN_PACKAGE } from './constants.ts';
 
 export const require = createRequire(import.meta.url);
 export const runtimeDir = path.dirname(fileURLToPath(import.meta.url));

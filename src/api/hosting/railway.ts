@@ -1,9 +1,9 @@
-import { createServer, type Server } from 'node:http';
-import { Readable } from 'node:stream';
-import type { AddressInfo } from 'node:net';
 import type { Hono } from 'hono';
-import { createApiApp } from '../support/app.ts';
+import { createServer,type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { Readable } from 'node:stream';
 import { resolveApiConfig } from '../configuration/config.ts';
+import { createApiApp } from '../support/app.ts';
 import type { ApiServerOptions } from '../types.ts';
 
 function hasRequestBody(method: string | undefined) {

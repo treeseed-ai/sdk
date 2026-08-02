@@ -1,10 +1,10 @@
 
-import { SceneDiagram, SceneGlossaryTerm, SceneManifest, SceneMotion, SceneTrainingOutputFormat, SceneVisualObject, SceneVisualStyle } from './scene-diagram.ts';
-import { SceneRunReport, SceneTimelineEvent } from './scene-publish-plan-paths.ts';
-import { SceneCheckpoint, SceneRunChapterReport, SceneRunSegmentReport } from './scene-checkpoint.ts';
-import { SceneDeviceProfile, SceneDeviceProfileId, SceneDiagnostic, SceneDiagramPlacement, SceneOverlay } from './scene-schema-version.ts';
-import { SceneRenderFormat, SceneRenderMode } from './scene-validation-report.ts';
-import { SceneDiagramRenderKind, ScenePlugin, SceneRenderProgressEvent } from './scene-timeline-writer.ts';
+import { SceneCheckpoint,SceneRunChapterReport,SceneRunSegmentReport } from './scene-checkpoint.ts';
+import { SceneDiagram,SceneGlossaryTerm,SceneManifest,SceneMotion,SceneTrainingOutputFormat,SceneVisualObject,SceneVisualStyle } from './scene-diagram.ts';
+import { SceneRunReport,SceneTimelineEvent } from './scene-publish-plan-paths.ts';
+import { SceneDeviceProfile,SceneDeviceProfileId,SceneDiagnostic,SceneDiagramPlacement,SceneOverlay } from './scene-schema-version.ts';
+import { SceneDiagramRenderKind,ScenePlugin,SceneRenderProgressEvent } from './scene-timeline-writer.ts';
+import { SceneRenderFormat,SceneRenderMode } from './scene-validation-report.ts';
 
 export type SceneRenderInput = {
 	schemaVersion: 'treeseed.scene.render-input/v1';

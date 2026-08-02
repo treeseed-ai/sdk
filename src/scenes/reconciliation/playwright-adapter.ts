@@ -1,7 +1,7 @@
 import type {
-	SceneBrowserAdapter,
-	SceneBrowserLaunchInput,
-	SceneBrowserSession,
+SceneBrowserAdapter,
+SceneBrowserLaunchInput,
+SceneBrowserSession,
 } from '../types.ts';
 
 function normalizePlaywrightError(error: unknown) {

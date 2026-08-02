@@ -1,25 +1,8 @@
-import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { basename, dirname, resolve as resolvePath } from 'node:path';
-import { parse as parseYaml } from 'yaml';
 import {
-	discoverPackageAdapters,
-	type PackageAdapter,
+type PackageAdapter
 } from '../../operations/services/reconciliation/package-adapters.ts';
-import { redactCapacityProviderEnv, validateAndDigestCapacityProviderManifest } from '../../capacity/providers/capacity-provider.ts';
-import { workspaceRoot } from '../../operations/services/treedx/workspaces/workspace-tools.ts';
-import {
-	checkedOutTemplateRepositories,
-	type TemplateRepositoryManifest,
-} from '../../operations/services/support/managed-repositories.ts';
-import { deriveDesiredUnits } from '../../reconcile/reconciliation/desired-state.ts';
-import type { DesiredUnit, ReconcileSelector, ReconcileTarget } from '../../reconcile/support/contracts/contracts.ts';
-import {
-	buildProjectLocalContentResources,
-	type LocalContentMode,
-} from '../content/local-content-materialization.ts';
-import { localTreeDxSeedDigest } from '../treedx/repositories/local-treedx-seed.ts';
-import { DesiredEnvironment, DesiredResource, TemplateUnit, dockerPlatforms, localDockerPlatform, materializeDockerImageTags, packageReleaseCapability, packageRequiredSecretsForGitHubEnvironment, packageRequiredVariablesForGitHubEnvironment, stringArray, stringRecord, workflowName } from './desired-environment.ts';
+import { DesiredEnvironment,DesiredResource,TemplateUnit,dockerPlatforms,localDockerPlatform,materializeDockerImageTags,packageReleaseCapability,packageRequiredSecretsForGitHubEnvironment,packageRequiredVariablesForGitHubEnvironment,stringArray,stringRecord,workflowName } from './desired-environment.ts';
+import { dockerSourceClosureDigest } from './docker-source-closure.ts';
 
 export function packageResources(adapter: PackageAdapter, environment: DesiredEnvironment): DesiredResource[] {
 	const resources: DesiredResource[] = [];
@@ -149,7 +132,10 @@ export function packageResources(adapter: PackageAdapter, environment: DesiredEn
 		const imageTagTemplates = environment === 'prod'
 			? stringArray(configuredTags.release).length > 0 ? stringArray(configuredTags.release) : ['<version>']
 			: [];
-		const imageTags = materializeDockerImageTags(imageTagTemplates, adapter, branch);
+		const imageTags = environment === 'local'
+			? ['local']
+			: materializeDockerImageTags(imageTagTemplates, adapter, branch);
+		const sourceClosureDigest = dockerSourceClosureDigest(adapter.dir, packageId);
 		const workflowSpec = repository
 			? {
 				packageId,
@@ -215,7 +201,9 @@ export function packageResources(adapter: PackageAdapter, environment: DesiredEn
 				labels: {
 					'org.opencontainers.image.source': repository ? `https://github.com/${repository}` : adapter.relativeDir,
 					'org.treeseed.package': packageId,
+					'org.treeseed.source-closure': sourceClosureDigest,
 				},
+				sourceClosureDigest,
 				buildArgs: {},
 				push: false,
 				load: true,

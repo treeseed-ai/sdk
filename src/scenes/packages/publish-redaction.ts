@@ -1,14 +1,14 @@
-import { parse as parseYaml } from 'yaml';
 import { readFileSync } from 'node:fs';
 import { extname } from 'node:path';
+import { parse as parseYaml } from 'yaml';
 import { sceneErrorDiagnostic } from '../support/reporting/diagnostics.ts';
 import type {
-	SceneDiagnostic,
-	SceneEvidenceArtifactKind,
-	SceneRedactionPolicy,
-	SceneRedactionRule,
-	ScenePublishTarget,
-	SceneRunStatus,
+SceneDiagnostic,
+SceneEvidenceArtifactKind,
+ScenePublishTarget,
+SceneRedactionPolicy,
+SceneRedactionRule,
+SceneRunStatus,
 } from '../types.ts';
 
 const EVIDENCE_ARTIFACT_KINDS = new Set<SceneEvidenceArtifactKind>([

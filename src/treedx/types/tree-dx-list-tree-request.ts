@@ -1,18 +1,3 @@
-import type {
-	SdkContextPack,
-	SdkContextPackRequest,
-	SdkGraphDslParseResult,
-	SdkGraphEdge,
-	SdkGraphNode,
-	SdkGraphQueryRequest,
-	SdkGraphQueryResult,
-	SdkGraphRefreshPayload,
-	SdkGraphRefreshRequest,
-	SdkGraphSearchOptions,
-	SdkGraphSearchResult,
-	SdkGraphTraversalResult,
-} from '../../entrypoints/models/sdk-types.ts';
-import type { components, operations, paths } from '../generated/openapi-types.ts';
 import { TreeDxWorkspaceRequest } from './tree-dx-actor.ts';
 
 export interface TreeDxListTreeRequest extends TreeDxWorkspaceRequest {
@@ -53,6 +38,14 @@ export interface TreeDxWriteFileRequest extends TreeDxWorkspaceRequest {
 	content: string;
 	expectedSha?: string;
 	allowProtected?: boolean;
+}
+
+export interface TreeDxWriteFilesRequest extends TreeDxWorkspaceRequest {
+	files: Array<Omit<TreeDxWriteFileRequest, 'workspaceId'>>;
+}
+
+export interface TreeDxWriteFilesResult {
+	files: TreeDxFileMutationResult[];
 }
 
 export interface TreeDxPatchFileRequest extends TreeDxWorkspaceRequest {
@@ -217,6 +210,8 @@ export interface TreeDxSearchResult {
 export interface TreeDxStatus {
 	workspaceId: string;
 	status: string;
+	branchName?: string;
+	commitSha?: string;
 	changes: Array<Record<string, unknown>>;
 }
 

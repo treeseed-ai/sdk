@@ -1,11 +1,11 @@
 import { loadDeployState } from "../../../operations/services/hosting/deployment/deploy.ts";
-import { configuredRailwayServices } from "../../../operations/services/hosting/railway/railway-deploy.ts";
-import { ensureRailwayEnvironment, ensureRailwayProject, listRailwayEnvironmentServices, getRailwayServiceInstance, getRailwayProject, listRailwayProjects, listRailwayVariables, resolveRailwayWorkspaceContext } from "../../../operations/services/hosting/railway/railway-api.ts";
 import type { RailwayServiceSummary } from "../../../operations/services/hosting/railway/railway-api.ts";
+import { ensureRailwayEnvironment,ensureRailwayProject,getRailwayProject,getRailwayServiceInstance,listRailwayEnvironmentServices,listRailwayProjects,listRailwayVariables,resolveRailwayWorkspaceContext } from "../../../operations/services/hosting/railway/railway-api.ts";
+import { configuredRailwayServices } from "../../../operations/services/hosting/railway/railway-deploy.ts";
 import type { ReconcileAdapterInput } from "../../support/contracts/contracts.ts";
-import { buildRailwayEnv, providerCache, resolveReconcileEnvironmentValues } from '../reconciliation/build-workflow-meta-adapter.ts';
-import { toDeployTarget } from './to-deploy-target.ts';
+import { buildRailwayEnv,providerCache,resolveReconcileEnvironmentValues } from '../reconciliation/build-workflow-meta-adapter.ts';
 import { ensureRailwayEnvironmentForService } from './build-cloudflare-diff.ts';
+import { toDeployTarget } from './to-deploy-target.ts';
 
 export async function resolveRailwayTopologyForScope(
 	input: ReconcileAdapterInput,

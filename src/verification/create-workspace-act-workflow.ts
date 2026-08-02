@@ -1,11 +1,9 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import * as childProcess from 'node:child_process';
-import { basename, relative, resolve } from 'node:path';
+import { existsSync,mkdtempSync,readdirSync,writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
-import { createManagedToolEnv, resolveToolBinary } from '../entrypoints/runtime/managed-dependencies.ts';
-import { check, createActArgs, readPackageManifest } from './verify-driver.ts';
-import type { LocalWorkspaceContext, PackageManifest, VerifyDriver, VerifyDriverOptions, VerifyDriverStatus } from './verify-driver.ts';
+import { relative,resolve } from 'node:path';
+import { resolveToolBinary } from '../entrypoints/runtime/managed-dependencies.ts';
+import type { LocalWorkspaceContext,PackageManifest,VerifyDriver,VerifyDriverOptions,VerifyDriverStatus } from './verify-driver.ts';
+import { check,createActArgs,readPackageManifest } from './verify-driver.ts';
 
 export function createWorkspaceActWorkflow(options: {
 	workspaceRoot: string;

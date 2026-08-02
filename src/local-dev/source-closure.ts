@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
-import { relative, resolve } from 'node:path';
+import { existsSync,lstatSync,readdirSync,readFileSync } from 'node:fs';
+import { relative,resolve } from 'node:path';
 
 const API_RUNTIME_INPUTS = [
 	'packages/api/src',
@@ -26,6 +26,17 @@ const WEB_RUNTIME_INPUTS = [
 	'packages/sdk/package.json',
 ] as const;
 
+const TREEDX_RUNTIME_INPUTS = [
+	'packages/treedx/apps/api/lib',
+	'packages/treedx/apps/api/config',
+	'packages/treedx/apps/api/mix.exs',
+	'packages/treedx/crates/treedx_git/src',
+	'packages/treedx/crates/treedx_graph/src',
+	'packages/treedx/crates/treedx_store/src',
+	'packages/treedx/Cargo.toml',
+	'packages/treedx/Cargo.lock',
+] as const;
+
 function closureFiles(path: string): string[] {
 	if (!existsSync(path)) return [];
 	const stat = lstatSync(path);
@@ -40,9 +51,12 @@ function closureFiles(path: string): string[] {
 export function managedDevSourceClosureDigest(input: {
 	tenantRoot: string;
 	surface: string;
+	runtimeEnv?: Record<string, string>;
 }): string | null {
 	const configuredPaths = input.surface === 'web'
 		? WEB_RUNTIME_INPUTS
+		: input.surface === 'treedx'
+			? TREEDX_RUNTIME_INPUTS
 		: input.surface === 'api' || input.surface === 'operations-runner'
 			? API_RUNTIME_INPUTS
 			: null;
@@ -64,6 +78,14 @@ export function managedDevSourceClosureDigest(input: {
 			hash.update(readFileSync(file));
 			hash.update('\0');
 		}
+	}
+	for (const [key, value] of Object.entries(input.runtimeEnv ?? {})
+		.filter(([key]) => (key.startsWith('TREESEED_') || key === 'LOCAL_DEV_MODE') && key !== 'TREESEED_KEY_PASSPHRASE')
+		.sort(([left], [right]) => left.localeCompare(right))) {
+		hash.update(key);
+		hash.update('\0');
+		hash.update(value);
+		hash.update('\0');
 	}
 	return hash.digest('hex');
 }

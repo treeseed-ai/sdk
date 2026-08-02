@@ -1,9 +1,9 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
-import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { extname, join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { copyFileSync,existsSync,mkdirSync,readFileSync,statSync } from 'node:fs';
+import { extname,join } from 'node:path';
+import type { SceneDiagnostic,SceneRenderInput } from '../../types.ts';
 import { sceneWarningDiagnostic } from '../reporting/diagnostics.ts';
-import type { SceneDiagnostic, SceneRenderInput } from '../../types.ts';
 
 function extensionFor(path: string, mimeType: string) {
 	const extension = extname(path);

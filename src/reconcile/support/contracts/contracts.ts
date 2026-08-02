@@ -49,6 +49,7 @@ export type ReconcileUnitType =
 	| 'local-content-materialization'
 	| 'local-seed-bootstrap'
 	| 'local-process'
+	| 'cloudflare-tunnel'
 	| 'capacity-provider'
 	| 'branch-preview'
 	| 'branch-preview-cleanup'

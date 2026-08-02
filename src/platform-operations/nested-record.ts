@@ -1,8 +1,4 @@
-import {
-	REMOTE_CONTRACT_HEADER,
-	REMOTE_CONTRACT_VERSION,
-} from '../entrypoints/clients/remote.ts';
-import { PlatformOperation, PlatformOperationEvent, PlatformOperationExecutor, PlatformOperationExecutorContext, PlatformOperationNavigationResult, PlatformOperationPollOptions, PlatformOperationPollResult, PlatformOperationRunOnceResult, PlatformOperationRunnerCoreOptions, isPlatformOperationTerminal } from './platform-operation-endpoints.ts';
+import { PlatformOperation,PlatformOperationEvent,PlatformOperationExecutor,PlatformOperationExecutorContext,PlatformOperationNavigationResult,PlatformOperationPollOptions,PlatformOperationPollResult,PlatformOperationRunOnceResult,PlatformOperationRunnerCoreOptions,isPlatformOperationTerminal } from './platform-operation-endpoints.ts';
 
 export function nestedRecord(value: unknown, keys: string[]): Record<string, unknown> | null {
 	let current: unknown = value;

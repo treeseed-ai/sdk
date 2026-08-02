@@ -1,20 +1,20 @@
-import { spawn, spawnSync } from 'node:child_process';
-import { applyEnvironmentToProcess, assertCommandEnvironment, resolveLaunchEnvironment } from "../../../operations/services/configuration/config-runtime.ts";
-import { PRODUCTION_BRANCH, STAGING_BRANCH } from "../../../operations/services/operations/git-workflow.ts";
+import { spawn,spawnSync } from 'node:child_process';
 import { packageScriptPath } from "../../../operations/services/agents/runtime-tools.ts";
+import { applyEnvironmentToProcess,assertCommandEnvironment,resolveLaunchEnvironment } from "../../../operations/services/configuration/config-runtime.ts";
+import { PRODUCTION_BRANCH,STAGING_BRANCH } from "../../../operations/services/operations/git-workflow.ts";
 import { workspaceRoot } from "../../../operations/services/treedx/workspaces/workspace-tools.ts";
+import type { UpdateInput,WorkflowDevInput } from "../../../operations/workflow.ts";
 import { resolveWorkflowSession } from "../../session.ts";
-import type { UpdateInput, WorkflowDevInput } from "../../../operations/workflow.ts";
-import { WorkflowOperationHelpers, ensureWorkflowWorkspaceLinks } from '../recovery/workflow-write.ts';
-import { resolveProjectRootOrThrow, withContextEnv, workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
-import { UpdateConflict, UpdateRepoResult, normalizeUpdateSource, normalizeUpdateStrategy } from './workflow-switch.ts';
-import { buildWorkflowResult, ensureLocalReadinessOrThrow, normalizeExecutionMode } from '../support/create-repo-report.ts';
-import { commitRootUpdateIfNeeded, ensureUpdateRepoReady, mergeUpdateRepo, planUpdateRepo } from '../support/update-ahead-behind.ts';
+import { resolveProjectRootOrThrow,withContextEnv,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
 import { worktreePayload } from '../packages/normalize-release-candidate-mode.ts';
+import { acquireWorkflowRun,completeWorkflowRun,executeJournalStep } from '../packages/prepare-fresh-release-run.ts';
 import { createNextSteps } from '../packages/release-admin-message.ts';
-import { acquireWorkflowRun, completeWorkflowRun, executeJournalStep } from '../packages/prepare-fresh-release-run.ts';
+import { toError } from '../support/workflow-helpers.ts';
 import { failWorkflowRun } from '../recovery/fail-workflow-run.ts';
-import { toError } from '../projects/projects-core/connect-market-project.ts';
+import { WorkflowOperationHelpers,ensureWorkflowWorkspaceLinks } from '../recovery/workflow-write.ts';
+import { buildWorkflowResult,ensureLocalReadinessOrThrow,normalizeExecutionMode } from '../support/create-repo-report.ts';
+import { commitRootUpdateIfNeeded,ensureUpdateRepoReady,mergeUpdateRepo,planUpdateRepo } from '../support/update-ahead-behind.ts';
+import { UpdateConflict,UpdateRepoResult,normalizeUpdateSource,normalizeUpdateStrategy } from './workflow-switch.ts';
 
 export async function workflowUpdate(helpers: WorkflowOperationHelpers, input: UpdateInput = {}) {
 	try {

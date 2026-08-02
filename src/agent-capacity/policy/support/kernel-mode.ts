@@ -1,17 +1,13 @@
-import type { CapacityLedgerEntry, CapacityReservation, CapacityUsageActual } from '../../contracts/support/financial-records.ts';
-import { AGENT_ASSIGNMENT_WORKSPACE_ACCESS_MODES, type AgentAssignmentWorkspaceAccessMode, type AgentCapacityEnvelope, type AgentExecutionMode, type AgentModeRunUsageSettlement, type DecisionExecutionInput, type ProviderAssignment, type ProviderAssignmentCapabilityHandles, type ProviderAssignmentSynthesisSource, type TreeDxProxyHandle, type WorkdayCapacityEnvelope } from '../../contracts/capacity/assignments/assignment-records.ts';
-import type { CapacityGrantV2 } from '../../allocation.ts';
-import type { AgentCapacityPlanRecord, AgentCapacityPlanWorkUnit, DecisionExecutionInputRecord, DecisionPlanningStatus, PlanningInputRequest } from '../../contracts/support/planning-records.ts';
-import type { AgentKernelPolicy, AgentKernelProfile, ProjectAgentClass } from '../../contracts/projects/agents/project-agent-class.ts';
-import type { CapacityExecutionProvider, ProviderAvailabilitySession } from '../../../capacity-provider/contracts/index.ts';
-import type { AgentRuntimeSpec, AgentWorkPackage, ExecutionCapabilityDemand, ExecutionCapabilitySupply, ExecutionProviderDescriptor, ExecutionResourceNeed } from '../../../types/agents.ts';
-import type { AgentCapacityPlan, AgentKernelModeDecision, AgentKernelModeExecutionInput, AgentKernelModeFallback, AgentKernelModeFallbackCode, AgentKernelOutputValidationResult, AgentKernelQueueObservation, BuildExecutionProviderAssignmentExplanationInput, CapacityRuntimeBlockerVm, CapacityRuntimeDiagnosticsResponse, CapacitySettlementInvariantResult, CapacitySettlementInvariantViolation, ExecutionCapabilityGateInput, ExecutionProviderEligibilityResult, ExecutionProviderVisibilitySummary, ProviderAssignmentExplanation, ProviderAssignmentSynthesisCandidate, TreeDxProxyAccessRequest, TreeDxProxyAccessResult } from '../../contracts/runtime/runtime-observability.ts';
-import { arrayValue, booleanDefault, booleanOrNull, collectSupplyMetadataAliases, collectSupplyMetadataCapabilities, firstArray, firstString, handleResourceNeed, isRecord, numberOrNull, preferredCapabilitiesFromAgent, pressureAllows, pushResourceNeed, record, stableStringify, stringList, stringOrNull, uniqueStrings } from './primitives.ts';
-import { createAgentKernelModeFallback, normalizeAgentExecutionMode } from './mode-primitives.ts';
-import { hasAcceptedCapacityPlanProvenance, isDecisionReadyForActing } from './planning.ts';
-import { validateProviderAssignmentCapabilityHandles, validateTreeDxProxyHandle } from '../capacity/assignments/assignment-capability.ts';
+import { type AgentCapacityEnvelope,type AgentExecutionMode,type AgentModeRunUsageSettlement,type DecisionExecutionInput,type ProviderAssignment,type TreeDxProxyHandle } from '../../contracts/capacity/assignments/assignment-records.ts';
+import type { AgentKernelProfile,ProjectAgentClass } from '../../contracts/projects/agents/project-agent-class.ts';
+import type { AgentKernelModeDecision,AgentKernelModeExecutionInput,AgentKernelModeFallback,AgentKernelOutputValidationResult,AgentKernelQueueObservation } from '../../contracts/runtime/runtime-observability.ts';
+import type { CapacityUsageActual } from '../../contracts/support/financial-records.ts';
+import { validateProviderAssignmentCapabilityHandles,validateTreeDxProxyHandle } from '../capacity/assignments/assignment-capability.ts';
 import { isProviderAssignmentLeaseExpired } from '../runtime/runtime-diagnostics.ts';
 import { compileExecutionCapabilityDemand } from './execution-capability.ts';
+import { createAgentKernelModeFallback,normalizeAgentExecutionMode } from './mode-primitives.ts';
+import { hasAcceptedCapacityPlanProvenance,isDecisionReadyForActing } from './planning.ts';
+import { numberOrNull,record,stringList,uniqueStrings } from './primitives.ts';
 
 export function evaluateFallbackQuota(input: { existingCount?: number | null; quota?: number | null }): AgentKernelModeFallback | null {
 	const quota = Number(input.quota);

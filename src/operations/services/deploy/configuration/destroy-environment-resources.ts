@@ -1,36 +1,16 @@
-import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { createInterface } from 'node:readline/promises';
-import { resolveWebCachePolicy } from '../../../../platform/hosting/deploy-config.ts';
-import {
-	deleteRailwayCustomDomain,
-	deleteRailwayEnvironment,
-	deleteRailwayVolume,
-	getRailwayServiceInstance,
-	listRailwayCustomDomains,
-	listRailwayProjects,
-	listRailwayVariables,
-	listRailwayVolumes,
-	normalizeRailwayEnvironmentName,
-	resolveRailwayApiToken,
-	resolveRailwayWorkspace,
-	resolveRailwayWorkspaceContext,
-} from '../../hosting/railway/railway-api.ts';
-import { loadCliDeployConfig, resolveWranglerBin } from '../../agents/runtime-tools.ts';
-import { sdkD1MigrationsRoot } from '../../runtime/runtime-paths.ts';
-import { normalizeTarget, resolveTargetPaths, targetWorkerName } from '../hosting/configured-surface-hosts.ts';
-import { GENERATED_ROOT, STATE_ROOT, loadTenantDeployConfig, primaryHost } from '../support/default-compatibility-date.ts';
+import { rmSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { buildDestroySummary,resolveConfiguredCloudflareAccountId } from '../hosting/assert-cloudflare-cache-purge-succeeded.ts';
+import { cloudflareDestroyVerification,localDockerDestroyVerification,sweepRailwayResources } from '../hosting/cloudflare-destroy-verification.ts';
+import { deleteKvNamespace,deleteTurnstileWidget,deleteWorker,resolveExistingD1ByName,resolveExistingKvIdByName,resolveExistingTurnstileWidget,resourceOperation } from '../hosting/collect-missing-deploy-inputs.ts';
+import { normalizeTarget,resolveTargetPaths,targetWorkerName } from '../hosting/configured-surface-hosts.ts';
+import { deleteD1DatabaseForDestroy,deleteR2Bucket } from '../hosting/delete-cloudflare-api-resource.ts';
 import { loadDeployState } from '../hosting/load-deploy-state.ts';
-import { buildDestroySummary, resolveConfiguredCloudflareAccountId } from '../hosting/assert-cloudflare-cache-purge-succeeded.ts';
-import { listD1Databases, listKvNamespaces, listPagesProjects, listQueues, listR2Buckets, listTurnstileWidgets } from '../support/run-wrangler.ts';
-import { deleteKvNamespace, deleteTurnstileWidget, deleteWorker, resolveExistingD1ByName, resolveExistingKvIdByName, resolveExistingTurnstileWidget, resourceOperation } from '../hosting/collect-missing-deploy-inputs.ts';
-import { deleteD1DatabaseForDestroy, deleteR2Bucket } from '../hosting/delete-cloudflare-api-resource.ts';
-import { deleteDnsRecordsForName, deletePagesCustomDomains, deletePagesDeployments, deletePagesProject } from '../support/pages-domain-name.ts';
-import { deleteCacheRules, destroyRailwayResources } from '../support/delete-cache-rules.ts';
-import { destroyLocalRuntimeResources, sweepCloudflareResources } from '../support/docker-list.ts';
-import { cloudflareDestroyVerification, localDockerDestroyVerification, sweepRailwayResources } from '../hosting/cloudflare-destroy-verification.ts';
+import { GENERATED_ROOT,loadTenantDeployConfig,primaryHost,STATE_ROOT } from '../support/default-compatibility-date.ts';
+import { deleteCacheRules,destroyRailwayResources } from '../support/delete-cache-rules.ts';
+import { destroyLocalRuntimeResources,sweepCloudflareResources } from '../support/docker-list.ts';
+import { deleteDnsRecordsForName,deletePagesCustomDomains,deletePagesDeployments,deletePagesProject } from '../support/pages-domain-name.ts';
+import { listD1Databases,listKvNamespaces,listPagesProjects,listQueues,listR2Buckets,listTurnstileWidgets } from '../support/run-wrangler.ts';
 
 export async function destroyEnvironmentResources(tenantRoot, options = {}) {
 	const target = normalizeTarget(options.scope ?? options.target ?? 'prod');

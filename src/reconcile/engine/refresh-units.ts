@@ -1,24 +1,16 @@
-import { createReconcileRegistry } from '../support/state/registry.ts';
-import type {
-	DesiredUnit,
-	ObservedUnitState,
-	ReconcilePlan,
-	ReconcileResult,
-	ReconcileRunContext,
-	ReconcileSelector,
-	ReconcileStateRecord,
-	ReconcileTarget,
-	ReconcileUnitDiff,
-	UnitPostcondition,
-	UnitPersistedState,
-	UnitVerificationResult,
-} from '../support/contracts/contracts.ts';
 import { deriveDesiredUnits } from '../reconciliation/desired-state.ts';
-import { ensurePersistedUnitState, desiredUnitSpecHash, loadReconcileState, updatePersistedUnitState, writeReconcileState } from '../support/state/state.ts';
-import { reverseTopologicallySortedUnits, topologicallySortDesiredUnits } from '../support/engine/units.ts';
-import { filterDesiredUnitsByBootstrapSystems, type RunnableBootstrapSystem } from '../support/bootstrap-systems.ts';
-import { elapsedMs, formatDurationMs, type TimingEntry } from '../../entrypoints/runtime/timing.ts';
-import { createRunContext, filterUnitsBySelector, runByDependencyLevel, wrapAdapterFailure } from './now-iso.ts';
+import { filterDesiredUnitsByBootstrapSystems,type RunnableBootstrapSystem } from '../support/bootstrap-systems.ts';
+import type {
+DesiredUnit,
+ObservedUnitState,
+ReconcilePlan,
+ReconcileSelector,
+ReconcileTarget
+} from '../support/contracts/contracts.ts';
+import { topologicallySortDesiredUnits } from '../support/engine/units.ts';
+import { createReconcileRegistry } from '../support/state/registry.ts';
+import { ensurePersistedUnitState,loadReconcileState } from '../support/state/state.ts';
+import { createRunContext,filterUnitsBySelector,runByDependencyLevel,wrapAdapterFailure } from './now-iso.ts';
 
 export async function refreshUnits({
 	tenantRoot,
@@ -60,6 +52,7 @@ export async function refreshUnits({
 			wrapAdapterFailure('refresh', unit.provider, unit.unitType, unit.unitId, error);
 		}
 		observations.set(unit.unitId, observed as ObservedUnitState);
+		write?.(`Refreshed ${unit.provider}:${unit.unitType} (${unit.unitId}).`);
 	});
 	return {
 		units,

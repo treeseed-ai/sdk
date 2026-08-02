@@ -1,11 +1,11 @@
 import type {
-	SdkContextPackRequest,
-	SdkGraphDslParseResult,
-	SdkGraphDslRelation,
-	SdkGraphQueryStage,
-	SdkGraphQueryView,
-	SdkGraphSeed,
-	SdkGraphWhereFilter,
+SdkContextPackRequest,
+SdkGraphDslParseResult,
+SdkGraphDslRelation,
+SdkGraphQueryStage,
+SdkGraphQueryView,
+SdkGraphSeed,
+SdkGraphWhereFilter,
 } from '../entrypoints/models/sdk-types.ts';
 
 export const CLAUSE_KEYWORDS = new Set(['for', 'in', 'via', 'depth', 'where', 'limit', 'budget', 'as']);

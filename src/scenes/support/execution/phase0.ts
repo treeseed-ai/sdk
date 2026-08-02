@@ -1,6 +1,6 @@
-import { PHASE0_RUNTIME_CAPABILITIES, PHASE0_MEDIA_EVIDENCE_CAPABILITIES, PHASE0_PUBLICATION_AUDIT_CAPABILITIES } from '../plugins/phase0-capabilities.ts';
 import { join } from 'node:path';
-import type { SceneArtifactPathPlan, ScenePhase0Report } from '../../types.ts';
+import type { SceneArtifactPathPlan,ScenePhase0Report } from '../../types.ts';
+import { PHASE0_MEDIA_EVIDENCE_CAPABILITIES,PHASE0_PUBLICATION_AUDIT_CAPABILITIES,PHASE0_RUNTIME_CAPABILITIES } from '../plugins/phase0-capabilities.ts';
 
 export const SCENE_PLATFORM_NAME = 'central TreeSeed acceptance test harness and demo / educational video generator' as const;
 
@@ -45,11 +45,11 @@ const PHASE0_SDK_EXPORTS = [
 const FILESYSTEM_SAFE_SCENE_ID = /^[a-z0-9][a-z0-9._-]*$/u;
 
 function compactTimestamp(date = new Date()) {
-	return date.toISOString().replace(/[-:]/gu, '').replace(/\.\d{3}Z$/u, 'Z');
+	return date.toISOString().replace(/[-:.]/gu, '');
 }
 
 function defaultRunId(timestamp: string) {
-	return timestamp.toLowerCase().replace(/[^a-z0-9]/gu, '').slice(0, 12) || 'phase0run';
+	return timestamp.toLowerCase().replace(/[^a-z0-9]/gu, '').slice(0, 20) || 'phase0run';
 }
 
 export function createScenePhase0Report(): ScenePhase0Report {

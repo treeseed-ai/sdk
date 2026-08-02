@@ -1,11 +1,11 @@
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync,readFileSync,statSync,writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
 import type {
-	SceneDiagnostic,
-	ScenePublishManifest,
-	ScenePublishPaths,
-	SceneRunReport,
+SceneDiagnostic,
+ScenePublishManifest,
+ScenePublishPaths,
+SceneRunReport,
 } from '../types.ts';
 
 function writeJson(path: string, value: unknown) {

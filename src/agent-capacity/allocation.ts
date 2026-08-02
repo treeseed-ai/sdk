@@ -198,8 +198,8 @@ export interface CapacityAdmissionCounterClaim {
 	release: 'settlement-difference' | 'assignment-terminal';
 }
 
-export { validateCapacityAllocationSetV2, validateCapacityGrantV2 } from './validation/allocation.ts';
-export type { CapacityAllocationDiagnostic, CapacityAllocationValidation } from './validation/allocation.ts';
+export { validateCapacityAllocationSetV2,validateCapacityGrantV2 } from './validation/allocation.ts';
+export type { CapacityAllocationDiagnostic,CapacityAllocationValidation } from './validation/allocation.ts';
 
 export function timestamp(value: string | null | undefined) {
 	const parsed = value ? Date.parse(value) : Number.NaN;

@@ -1,32 +1,13 @@
-import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { basename, dirname, resolve as resolvePath } from 'node:path';
+import { existsSync,readFileSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import {
-	discoverPackageAdapters,
-	type PackageAdapter,
-} from '../../operations/services/reconciliation/package-adapters.ts';
-import { redactCapacityProviderEnv, validateAndDigestCapacityProviderManifest } from '../../capacity/providers/capacity-provider.ts';
-import { workspaceRoot } from '../../operations/services/treedx/workspaces/workspace-tools.ts';
-import {
-	checkedOutTemplateRepositories,
-	type TemplateRepositoryManifest,
-} from '../../operations/services/support/managed-repositories.ts';
-import { deriveDesiredUnits } from '../../reconcile/reconciliation/desired-state.ts';
-import type { DesiredUnit, ReconcileSelector, ReconcileTarget } from '../../reconcile/support/contracts/contracts.ts';
-import {
-	buildProjectLocalContentResources,
-	type LocalContentMode,
-} from '../content/local-content-materialization.ts';
+import { normalizeRepositoryName,projectRepositoryName } from '../../treedx/accounts/repository-name.ts';
+import type { DesiredUnit } from '../../reconcile/support/contracts/contracts.ts';
 import { localTreeDxSeedDigest } from '../treedx/repositories/local-treedx-seed.ts';
-import { INTERNAL_PACKAGE_DEPENDENCY_FIELDS, DesiredEnvironment, DesiredResource, DesiredResourceKind, PackageUnit, TemplateUnit, stringRecord } from './desired-environment.ts';
+import { DesiredEnvironment,DesiredResource,DesiredResourceKind,INTERNAL_PACKAGE_DEPENDENCY_FIELDS,PackageUnit,TemplateUnit,stringRecord } from './desired-environment.ts';
 
 export function safeTreeDxRepositoryName(value: string) {
-	return value
-		.trim()
-		.toLowerCase()
-		.replace(/[^a-z0-9_.-]+/gu, '-')
-		.replace(/^-+|-+$/gu, '') || 'project';
+	return normalizeRepositoryName(value);
 }
 
 export function localTreeDxContentProjects(tenantRoot: string) {
@@ -47,16 +28,13 @@ export function localTreeDxContentProjects(tenantRoot: string) {
 		const checkoutPath = typeof repository.checkoutPath === 'string' && repository.checkoutPath.trim()
 			? repository.checkoutPath.trim()
 			: '.';
-		const seedPaths = [
-			`${contentPath.replace(/\/+$/u, '')}/objectives`,
-			`${contentPath.replace(/\/+$/u, '')}/agents`,
-		];
+		const seedPaths = [contentPath.replace(/\/+$/u, '')];
 		const localRoot = checkoutPath === '.' ? tenantRoot : resolvePath(tenantRoot, checkoutPath);
 		return [{
 			projectKey: typeof project.key === 'string' ? project.key : `project:treeseed/${slug}`,
 			slug,
-			repositoryName: safeTreeDxRepositoryName(`treeseed-${slug}`),
-			repositoryId: safeTreeDxRepositoryName(`treeseed-${slug}`),
+			repositoryName: projectRepositoryName(slug),
+			repositoryId: projectRepositoryName(slug),
 			localRoot,
 			contentPath,
 			defaultRef: 'refs/heads/main',
@@ -75,8 +53,8 @@ export function localTreeDxTemplateContentProjects(tenantRoot: string, templates
 		return [{
 			projectKey: `template:${template.id}`,
 			slug,
-			repositoryName: safeTreeDxRepositoryName(`treeseed-${slug}`),
-			repositoryId: safeTreeDxRepositoryName(`treeseed-${slug}`),
+			repositoryName: projectRepositoryName(slug),
+			repositoryId: projectRepositoryName(slug),
 			localRoot,
 			contentPath,
 			defaultRef: 'refs/heads/main',

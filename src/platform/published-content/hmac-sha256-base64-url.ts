@@ -1,7 +1,5 @@
 import type { DeployConfig } from '../support/contracts.ts';
-import type { CommerceOfferMode } from '../../entrypoints/models/sdk-types.ts';
-import type { CloudflareRuntime, R2BucketLike } from '../../types/cloudflare.ts';
-import { EditorialPreviewTokenPayload, HostedContentMode, PUBLISHED_CONTENT_MANIFEST_SCHEMA_VERSION, PublishedArtifactVersion, PublishedCollectionIndex, PublishedContentEntry, PublishedContentManifest, PublishedContentObjectPointer, PublishedContentVisibility, PublishedManifestTombstone, PublishedOverlayManifest, PublishedRuntimePointers, TeamScopedContentLocator, expectRecord, expectString, getNodeCrypto, isRecord, optionalNumber, optionalString } from './published-content-manifest-schema-version.ts';
+import { EditorialPreviewTokenPayload,HostedContentMode,PUBLISHED_CONTENT_MANIFEST_SCHEMA_VERSION,PublishedArtifactVersion,PublishedCollectionIndex,PublishedContentEntry,PublishedContentManifest,PublishedContentObjectPointer,PublishedContentVisibility,PublishedManifestTombstone,PublishedOverlayManifest,PublishedRuntimePointers,TeamScopedContentLocator,expectRecord,expectString,getNodeCrypto,isRecord,optionalNumber,optionalString } from './published-content-manifest-schema-version.ts';
 
 export function hmacSha256Base64Url(value: string, secret: string) {
 	const crypto = getNodeCrypto();
@@ -43,7 +41,6 @@ export function normalizeRuntimePointers(value: unknown, label: string): Publish
 
 	return {
 		docsHomePath: optionalString(record.docsHomePath),
-		booksRuntime: record.booksRuntime ? normalizeObjectPointer(record.booksRuntime, `${label}.booksRuntime`) : undefined,
 		docsTree: record.docsTree ? normalizeObjectPointer(record.docsTree, `${label}.docsTree`) : undefined,
 		searchIndex: record.searchIndex ? normalizeObjectPointer(record.searchIndex, `${label}.searchIndex`) : undefined,
 	};

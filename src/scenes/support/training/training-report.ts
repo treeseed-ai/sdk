@@ -1,19 +1,19 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { sceneWarningDiagnostic } from '../reporting/diagnostics.ts';
-import { formatSceneCaptionsSrt, formatSceneCaptionsVtt } from './training-captions.ts';
-import {
-	formatSceneGlossaryMarkdown,
-	formatSceneNarrationMarkdown,
-	formatSceneTranscriptMarkdown,
-} from './training-transcript.ts';
+import { mkdirSync,readFileSync,writeFileSync } from 'node:fs';
+import { dirname,join } from 'node:path';
 import type {
-	SceneDiagnostic,
-	SceneManifest,
-	SceneRunReport,
-	SceneTrainingOutputPaths,
-	SceneTrainingOutputs,
+SceneDiagnostic,
+SceneManifest,
+SceneRunReport,
+SceneTrainingOutputPaths,
+SceneTrainingOutputs,
 } from '../../types.ts';
+import { sceneWarningDiagnostic } from '../reporting/diagnostics.ts';
+import { formatSceneCaptionsSrt,formatSceneCaptionsVtt } from './training-captions.ts';
+import {
+formatSceneGlossaryMarkdown,
+formatSceneNarrationMarkdown,
+formatSceneTranscriptMarkdown,
+} from './training-transcript.ts';
 
 function writeJson(path: string, value: unknown) {
 	mkdirSync(dirname(path), { recursive: true });

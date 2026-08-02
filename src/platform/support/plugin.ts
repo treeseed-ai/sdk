@@ -1,18 +1,18 @@
-import type {
-	DeployConfig,
-	PlatformLayerDefinition,
-	PlatformResourceKind,
-	PlatformSurfaceName,
-	TenantConfig,
-} from './contracts.ts';
-import type { EnvironmentRegistryOverlay } from '../configuration/environment.ts';
 import type { SdkGraphRankingProvider } from '../../entrypoints/models/sdk-types.ts';
-import type { ReconcileAdapter } from '../../reconcile/support/contracts/contracts.ts';
 import type {
-	ApplicationHostingProfile,
-	HostAdapter,
-	ServiceTypeAdapter,
+ApplicationHostingProfile,
+HostAdapter,
+ServiceTypeAdapter,
 } from '../../hosting/contracts.ts';
+import type { ReconcileAdapter } from '../../reconcile/support/contracts/contracts.ts';
+import type { EnvironmentRegistryOverlay } from '../configuration/environment.ts';
+import type {
+DeployConfig,
+PlatformLayerDefinition,
+PlatformResourceKind,
+PlatformSurfaceName,
+TenantConfig,
+} from './contracts.ts';
 
 export type SiteLayerDefinition = PlatformLayerDefinition & {
 	kinds?: Array<'pages' | 'styles' | 'components'>;
@@ -48,6 +48,7 @@ export interface RouteCapability {
 	status: RouteStatus;
 	guarantees: string[];
 	description: string;
+	knowledgePageIds?: string[];
 }
 
 export function defineRoute<T extends SiteRouteContribution>(route: T): T {

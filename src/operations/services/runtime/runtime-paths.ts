@@ -1,12 +1,12 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync,readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { agentPackageRoot, corePackageRoot, packageRoot, runtimeRoot, sdkPackageRoot } from '../agents/runtime-tools.ts';
+import { agentPackageRoot,corePackageRoot,packageRoot,runtimeRoot,sdkPackageRoot } from '../agents/runtime-tools.ts';
 
 const pathsRuntimeRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 export const cliPackageRoot = packageRoot;
 const cliRuntimeRoot = runtimeRoot ?? pathsRuntimeRoot;
-export { corePackageRoot, packageRoot };
+export { corePackageRoot,packageRoot };
 export const workspaceRoot = resolve(cliPackageRoot, '..');
 function resolveProjectRoot(localPath: string, workspacePath: string) {
 	return existsSync(localPath) ? localPath : workspacePath;

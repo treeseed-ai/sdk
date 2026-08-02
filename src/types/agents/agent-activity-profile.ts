@@ -1,5 +1,5 @@
 
-import { AgentActivityExecutionConfig, AgentActivityPlanningIntent, AgentActivityPromptConfig, AgentActivityType, AgentBranchPolicy, AgentContentAccessPolicy, AgentOutputContract, AgentQuestionPolicy, AgentToolPolicy, EngineeringHandlerKind, ExecutionProviderKind, ExecutionProviderPressure, ExecutionProviderQuotaVisibility, ExecutionResourceNeedKind } from './agent-trigger-kinds.ts';
+import { AgentActivityExecutionConfig,AgentActivityPlanningIntent,AgentActivityPromptConfig,AgentActivityType,AgentBranchPolicy,AgentContentAccessPolicy,AgentOutputContract,AgentQuestionPolicy,AgentToolPolicy,EngineeringHandlerKind,ExecutionProviderKind,ExecutionProviderPressure,ExecutionProviderQuotaVisibility,ExecutionResourceNeedKind } from './agent-trigger-kinds.ts';
 
 export interface AgentActivityProfile {
 	activityType?: AgentActivityType;

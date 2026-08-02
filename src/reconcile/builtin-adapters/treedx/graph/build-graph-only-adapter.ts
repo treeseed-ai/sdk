@@ -1,10 +1,10 @@
-import { resolveMachineEnvironmentValues } from "../../../../operations/services/configuration/config-runtime.ts";
-import type { ReconcileAdapter, ReconcileAdapterInput, ReconcileUnitType } from "../../../support/contracts/contracts.ts";
-import { resolveGitHubCredentialForRepository } from "../../../../operations/services/configuration/github-credentials.ts";
-import { ensureReconcileGitHubEnvironment, observeGitHubEnvironment, upsertReconcileGitHubSecret, upsertReconcileGitHubVariable } from "../../../providers/github-private.ts";
 import { withDockerhubServiceCredentialEnv } from "../../../../configuration/service-credentials.ts";
-import { genericObservedState, genericResult, genericVerification, noopDiff } from '../../hosting/to-deploy-target.ts';
-import { normalizeEnvironmentValues, resolveReconcileEnvironmentValues } from '../../reconciliation/build-workflow-meta-adapter.ts';
+import { resolveMachineEnvironmentValues } from "../../../../operations/services/configuration/config-runtime.ts";
+import { resolveGitHubCredentialForRepository } from "../../../../operations/services/configuration/github-credentials.ts";
+import { ensureReconcileGitHubEnvironment,observeGitHubEnvironment,upsertReconcileGitHubSecret,upsertReconcileGitHubVariable } from "../../../providers/github-private.ts";
+import type { ReconcileAdapter,ReconcileAdapterInput,ReconcileUnitType } from "../../../support/contracts/contracts.ts";
+import { genericObservedState,genericResult,genericVerification,noopDiff } from '../../hosting/to-deploy-target.ts';
+import { normalizeEnvironmentValues,resolveReconcileEnvironmentValues } from '../../reconciliation/build-workflow-meta-adapter.ts';
 
 export function buildGraphOnlyAdapter(providerId: string, unitTypes: ReconcileUnitType[], description: string): ReconcileAdapter {
 	return {

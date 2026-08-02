@@ -1,7 +1,3 @@
-import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve, sep } from 'node:path';
-import { parse as parseYaml } from 'yaml';
 import { GuaranteeJourneyAuditItem } from './guarantee-journey-audit-item.ts';
 
 export const GUARANTEE_SCHEMA_VERSION = 'treeseed.guarantee/v1' as const;

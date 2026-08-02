@@ -1,13 +1,13 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
-import { sceneErrorDiagnostic } from './diagnostics.ts';
+import { existsSync,readdirSync,readFileSync } from 'node:fs';
+import { basename,join,resolve } from 'node:path';
 import type {
-	SceneCheckpoint,
-	SceneInspectOptions,
-	SceneInspectReport,
-	SceneRunReport,
-	SceneTimelineEvent,
+SceneCheckpoint,
+SceneInspectOptions,
+SceneInspectReport,
+SceneRunReport,
+SceneTimelineEvent,
 } from '../../types.ts';
+import { sceneErrorDiagnostic } from './diagnostics.ts';
 
 function readJson<T>(path: string): T {
 	return JSON.parse(readFileSync(path, 'utf8')) as T;

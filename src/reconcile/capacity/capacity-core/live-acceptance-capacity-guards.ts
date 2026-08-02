@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
+import { CapacityProviderApiError,ProviderProtocolClient } from '../../../capacity/providers/capacity-provider.ts';
 import { MarketClient } from '../../../entrypoints/clients/market-client.ts';
-import { CapacityProviderApiError, ProviderProtocolClient } from '../../../capacity/providers/capacity-provider.ts';
 
 function stableJson(value: unknown): string {
 	if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;

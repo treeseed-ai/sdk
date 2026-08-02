@@ -1,11 +1,11 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { copyFileSync,existsSync,mkdirSync,readFileSync,rmSync,writeFileSync } from 'node:fs';
+import { dirname,resolve } from 'node:path';
 import { runRepositoryGit } from '../operations/services/operations/git-runner.ts';
-import { sortWorkspacePackages, workspacePackages, workspaceRoot } from '../operations/services/treedx/workspaces/workspace-tools.ts';
-import { repoRoot } from '../operations/services/treedx/workspaces/workspace-save.ts';
 import { discoverPackageAdapters } from '../operations/services/reconciliation/package-adapters.ts';
+import { repoRoot } from '../operations/services/treedx/workspaces/workspace-save.ts';
+import { sortWorkspacePackages,workspacePackages,workspaceRoot } from '../operations/services/treedx/workspaces/workspace-tools.ts';
 import type { WorkflowWorktreeMode } from '../operations/workflow.ts';
 
 export type ManagedWorkflowWorktreeMetadata = {

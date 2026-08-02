@@ -1,9 +1,9 @@
-import type { SdkDispatchNamespace, SdkDispatchPolicy } from '../entrypoints/models/sdk-types.ts';
+import type { SdkDispatchNamespace,SdkDispatchPolicy } from '../entrypoints/models/sdk-types.ts';
 import {
-	createContentToolPresets,
-	genericContentInputSchema,
-	type ContentAction,
-	type ContentModel,
+createContentToolPresets,
+genericContentInputSchema,
+type ContentAction,
+type ContentModel,
 } from '../operations/content-operations.ts';
 
 

@@ -1,5 +1,4 @@
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { readSourceModule } from '../../../support/workspace-test-root.ts';
 
 import { tmpdir } from 'node:os';
 
@@ -284,11 +283,6 @@ it('passes hosted SMTP runtime values into generated Wrangler config', () => {
 		expect(wrangler).toContain('TREESEED_SMTP_SECURE = "starttls"');
 		expect(wrangler).not.toContain('smtp-password');
 		expect(secrets.TREESEED_SMTP_PASSWORD).toBe('smtp-password');
-	});
-
-it('syncs Cloudflare Pages secrets during hosted web deploy preparation', () => {
-		const source = readSourceModule(new URL('../../../../src/operations/services/projects/projects-core/project-platform.ts', import.meta.url));
-		expect(source).toContain("syncCloudflareSecrets(tenantRoot, { target, planOnly })");
 	});
 
 it('keeps dispatch local-first when no remote config is supplied', async () => {

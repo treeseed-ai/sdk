@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigint, check, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import { bigint,check,foreignKey,index,integer,pgTable,primaryKey,text,uniqueIndex } from 'drizzle-orm/pg-core';
 import { teams } from '../support/subscribers.ts';
 
 export const betterAuthAccount = pgTable('better_auth_account', {
@@ -30,26 +30,6 @@ export const betterAuthVerification = pgTable('better_auth_verification', {
 	updatedAt: bigint('updatedAt', { mode: 'number' }).notNull(),
 }, (table) => [
 	index('idx_better_auth_verification_identifier').on(table.identifier)
-]);
-
-export const teamWebHosts = pgTable('team_web_hosts', {
-	id: text('id').primaryKey(),
-	teamId: text('team_id').notNull(),
-	provider: text('provider').notNull(),
-	ownership: text('ownership').notNull(),
-	name: text('name').notNull(),
-	accountLabel: text('account_label'),
-	allowedEnvironmentsJson: text('allowed_environments_json').notNull().default('[]'),
-	status: text('status').notNull().default('active'),
-	encryptedPayloadJson: text('encrypted_payload_json'),
-	metadataJson: text('metadata_json'),
-	createdById: text('created_by_id'),
-	updatedById: text('updated_by_id'),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	index('idx_team_web_hosts_team_provider').on(table.teamId, table.provider, table.status),
-	uniqueIndex('idx_team_web_hosts_team_provider_name').on(table.teamId, table.provider, table.name)
 ]);
 
 export const teamInvites = pgTable('team_invites', {

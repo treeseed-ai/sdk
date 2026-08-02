@@ -1,17 +1,16 @@
-import { resolve } from 'node:path';
-import { applyEnvironmentToProcess, assertCommandEnvironment } from "../../../operations/services/configuration/config-runtime.ts";
-import { cleanupDestroyedState, createPersistentDeployTarget, destroyEnvironmentResources, loadDeployState, validateDestroyPrerequisites } from "../../../operations/services/hosting/deployment/deploy.ts";
+import { applyEnvironmentToProcess,assertCommandEnvironment } from "../../../operations/services/configuration/config-runtime.ts";
+import { cleanupDestroyedState,createPersistentDeployTarget,destroyEnvironmentResources,loadDeployState,validateDestroyPrerequisites } from "../../../operations/services/hosting/deployment/deploy.ts";
 import { workspaceRoot } from "../../../operations/services/treedx/workspaces/workspace-tools.ts";
-import { resolveWorkflowSession } from "../../session.ts";
 import type { DestroyInput } from "../../../operations/workflow.ts";
-import { WorkflowOperationHelpers } from '../recovery/workflow-write.ts';
-import { resolveProjectRootOrThrow, withContextEnv, workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
-import { buildWorkflowResult, normalizeExecutionMode } from '../support/create-repo-report.ts';
-import { createNextSteps } from '../packages/release-admin-message.ts';
-import { acquireWorkflowRun, completeWorkflowRun, executeJournalStep, skipJournalStep } from '../packages/prepare-fresh-release-run.ts';
+import { resolveWorkflowSession } from "../../session.ts";
+import { resolveProjectRootOrThrow,withContextEnv,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
 import { resolveDestroyConfirmation } from '../packages/collect-published-release-artifact-checks.ts';
+import { acquireWorkflowRun,completeWorkflowRun,executeJournalStep,skipJournalStep } from '../packages/prepare-fresh-release-run.ts';
+import { createNextSteps } from '../packages/release-admin-message.ts';
+import { toError } from '../support/workflow-helpers.ts';
 import { failWorkflowRun } from '../recovery/fail-workflow-run.ts';
-import { toError } from '../projects/projects-core/connect-market-project.ts';
+import { WorkflowOperationHelpers } from '../recovery/workflow-write.ts';
+import { buildWorkflowResult,normalizeExecutionMode } from '../support/create-repo-report.ts';
 
 export async function workflowDestroy(helpers: WorkflowOperationHelpers, input: DestroyInput) {
 	try {

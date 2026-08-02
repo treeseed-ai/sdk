@@ -1,12 +1,11 @@
-import { Buffer } from 'node:buffer';
 import {
-	createGitHubApiClient,
-	parseGitHubRepositorySlug,
-	type GitHubApiClient,
-	type GitHubWorkflowProgressEvent,
+createGitHubApiClient,
+parseGitHubRepositorySlug,
+type GitHubApiClient,
+type GitHubWorkflowProgressEvent,
 } from '../repositories/github-api.ts';
-import { GitHubActionsRepositoryInspection, GitHubActionsVerificationOptions, GitHubActionsVerificationReport, GitHubActionsVerificationTarget, GitHubActionsWorkflowGate, aggregateWorkflowState } from './git-hub-actions-workflow-state.ts';
-import { collectFailures, inspectCommand, inspectWorkflow, resolveRemoteBranchHead, summarize, workflowMessage } from './resolve-remote-branch-head.ts';
+import { GitHubActionsRepositoryInspection,GitHubActionsVerificationOptions,GitHubActionsVerificationReport,GitHubActionsVerificationTarget,GitHubActionsWorkflowGate,aggregateWorkflowState } from './git-hub-actions-workflow-state.ts';
+import { collectFailures,inspectWorkflow,resolveRemoteBranchHead,summarize,workflowMessage } from './resolve-remote-branch-head.ts';
 
 export async function inspectTarget(
 	client: GitHubApiClient,

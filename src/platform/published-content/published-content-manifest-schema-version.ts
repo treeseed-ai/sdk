@@ -1,6 +1,4 @@
-import type { DeployConfig } from '../support/contracts.ts';
 import type { CommerceOfferMode } from '../../entrypoints/models/sdk-types.ts';
-import type { CloudflareRuntime, R2BucketLike } from '../../types/cloudflare.ts';
 
 
 export const PUBLISHED_CONTENT_MANIFEST_SCHEMA_VERSION = 2;
@@ -90,7 +88,6 @@ export interface CatalogIndexEntry {
 
 export type PublishedRuntimePointers = {
 	docsHomePath?: string;
-	booksRuntime?: PublishedContentObjectPointer;
 	docsTree?: PublishedContentObjectPointer;
 	searchIndex?: PublishedContentObjectPointer;
 };

@@ -1,5 +1,5 @@
-import type { SceneActionHandler } from '../types.ts';
 import { sceneErrorDiagnostic } from '../support/reporting/diagnostics.ts';
+import type { SceneActionHandler } from '../types.ts';
 
 export const clickVisibleSequenceAction: SceneActionHandler = {
 	id: 'clickVisibleSequence',

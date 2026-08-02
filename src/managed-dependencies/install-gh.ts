@@ -1,16 +1,10 @@
-import { createHash } from 'node:crypto';
-import { createWriteStream, existsSync, mkdirSync, mkdtempSync, rmSync, renameSync, chmodSync, copyFileSync, readFileSync, readdirSync } from 'node:fs';
-import { request as httpRequest } from 'node:http';
-import { request as httpsRequest } from 'node:https';
-import { platform as osPlatform, arch as osArch } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { withServiceCredentialEnv } from '../configuration/service-credentials.ts';
-import { GH_CHECKSUMS_SHA256, GH_RELEASE_BASE_URL, GH_VERSION, NPM_PACKAGES, NPM_TOOLS, RAILWAY_RELEASE_BASE_URL, RAILWAY_VERSION, createManagedToolEnv, currentPlatformAsset, currentRailwayPlatformAsset, managedGhBin, managedRailwayBin, report, resolveToolsHome, sha256File } from './dependency-runtime.ts';
-import type { DependencyInstallerOptions, DependencyReport } from './dependency-runtime.ts';
-import { checkCommand, locateSystemBinary, npmToolMissingDetail, resolveNpmToolRuntimeBinary, resolvePackageRoot } from './redact-sensitive-output.ts';
-import { findExtractedGhBinary, parseChecksums } from './run-npm-tool-rebuilds.ts';
+import { chmodSync,copyFileSync,existsSync,mkdirSync,readFileSync,renameSync,rmSync } from 'node:fs';
+import { dirname,resolve } from 'node:path';
+import type { DependencyInstallerOptions,DependencyReport } from './dependency-runtime.ts';
+import { GH_CHECKSUMS_SHA256,GH_RELEASE_BASE_URL,GH_VERSION,NPM_PACKAGES,NPM_TOOLS,RAILWAY_RELEASE_BASE_URL,RAILWAY_VERSION,createManagedToolEnv,currentPlatformAsset,currentRailwayPlatformAsset,managedGhBin,managedRailwayBin,report,resolveToolsHome,sha256File } from './dependency-runtime.ts';
+import { checkCommand,locateSystemBinary,npmToolMissingDetail,resolveNpmToolRuntimeBinary,resolvePackageRoot } from './redact-sensitive-output.ts';
+import { findExtractedGhBinary,parseChecksums } from './run-npm-tool-rebuilds.ts';
 
 export async function installGh(options: Required<Pick<DependencyInstallerOptions, 'env' | 'downloadFile' | 'spawn'>> & Pick<DependencyInstallerOptions, 'tenantRoot' | 'force' | 'write'>): Promise<DependencyReport> {
 	const asset = currentPlatformAsset();

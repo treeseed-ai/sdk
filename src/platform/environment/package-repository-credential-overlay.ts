@@ -1,20 +1,13 @@
-import { randomBytes } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
-import { runRepositoryGit } from '../../operations/services/operations/git-runner.ts';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { parse as parseYaml } from 'yaml';
+import { resolve } from 'node:path';
 import { discoverApplications } from '../../hosting/apps.ts';
 import { githubRepositoryCredentialEnvName } from '../../operations/services/configuration/github-credentials.ts';
 import { discoverPackageAdapters } from '../../operations/services/reconciliation/package-adapters.ts';
-import type { DeployConfig, TenantConfig } from '../support/contracts.ts';
 import { loadDeployConfig } from '../hosting/deploy-config.ts';
-import { loadPlugins, type LoadedPluginRegistration } from '../support/plugins.ts';
-import { loadManifest } from '../configuration/tenant-config.ts';
-import { TENANT_ENVIRONMENT_OVERLAY_PATH, CONFIG_STARTUP_PROFILES, EnvironmentContext, EnvironmentEntry, EnvironmentEntryOverride, EnvironmentEntryYaml, EnvironmentPurpose, EnvironmentRegistryOverlay, EnvironmentScope, ResolvedEnvironmentRegistry, loadOptionalTenantConfig, resolveSdkEnvironmentPath, resolveSiblingPackageEnvironmentPath, webSurfaceEnabled } from './environment-scopes.ts';
-import { PREDICATES, VALUE_RESOLVERS, deepMerge, normalizeOverlay, readPluginEnvironmentOverlay, readYamlOverlayIfPresent } from './resolve-content-bucket-binding.ts';
-import { apiSurfaceEnabled, processingPlaneEnabled } from './api-surface-enabled.ts';
+import type { DeployConfig,TenantConfig } from '../support/contracts.ts';
+import { loadPlugins,type LoadedPluginRegistration } from '../support/plugins.ts';
+import { apiSurfaceEnabled,processingPlaneEnabled } from './api-surface-enabled.ts';
+import { CONFIG_STARTUP_PROFILES,EnvironmentContext,EnvironmentEntry,EnvironmentEntryOverride,EnvironmentEntryYaml,EnvironmentPurpose,EnvironmentRegistryOverlay,EnvironmentScope,ResolvedEnvironmentRegistry,TENANT_ENVIRONMENT_OVERLAY_PATH,loadOptionalTenantConfig,resolveSdkEnvironmentPath,resolveSiblingPackageEnvironmentPath,webSurfaceEnabled } from './environment-scopes.ts';
+import { PREDICATES,VALUE_RESOLVERS,deepMerge,normalizeOverlay,readPluginEnvironmentOverlay,readYamlOverlayIfPresent } from './resolve-content-bucket-binding.ts';
 
 export function packageRepositoryCredentialOverlay(tenantRoot: string): EnvironmentRegistryOverlay {
 	const entries: Record<string, EnvironmentEntryOverride> = {};
@@ -176,6 +169,13 @@ export function collectOverlaySources(context: EnvironmentContext) {
 		const apiOverlay = readYamlOverlayIfPresent(discoveredApiEnvironmentPath);
 		if (apiOverlay) {
 			sources.push({ label: discoveredApiEnvironmentPath, overlay: apiOverlay });
+		}
+	}
+	const discoveredAgentEnvironmentPath = resolveSiblingPackageEnvironmentPath('agent');
+	if (discoveredApiApps.length > 0 && !sources.some((source) => source.label === discoveredAgentEnvironmentPath)) {
+		const agentOverlay = readYamlOverlayIfPresent(discoveredAgentEnvironmentPath);
+		if (agentOverlay) {
+			sources.push({ label: discoveredAgentEnvironmentPath, overlay: agentOverlay });
 		}
 	}
 

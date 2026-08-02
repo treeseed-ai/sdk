@@ -1,36 +1,24 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
-import { basename, dirname, relative, resolve } from 'node:path';
-import { runRepositoryGit } from '../operations/git-runner.ts';
-import {
-	normalizeTemplateId,
-	type SdkTemplateCatalogEntry,
-	type SdkTemplateCatalogResponse,
-	type TemplateLaunchRequirements,
-} from '../../../entrypoints/models/sdk-types.ts';
+import { cpSync,existsSync,mkdirSync,readFileSync,rmSync,writeFileSync } from 'node:fs';
+import { dirname,relative,resolve } from 'node:path';
 import { RemoteTemplateCatalogClient } from '../../../commerce/catalog/template-catalog.ts';
 import {
-	type ProjectLaunchConfigWritePlanItem,
-	type ProjectLaunchLocalHostBindingSummary,
-	type ProjectLaunchResolvedHostBinding,
-	type ProjectLaunchSecretDeploymentPlanItem,
-	normalizeTemplateLaunchRequirements,
-} from '../../../entrypoints/templates/template-launch-requirements.ts';
-import { preserveProjectLaunchHostBindingConfigOverlay } from '../hosting/deployment/template-host-bindings.ts';
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+normalizeTemplateId,
+type SdkTemplateCatalogEntry,
+type SdkTemplateCatalogResponse,
+} from '../../../entrypoints/models/sdk-types.ts';
 import {
-	resolveTemplateCatalogCachePath,
-	resolveTemplateCatalogEndpoint,
+resolveTemplateCatalogCachePath,
+resolveTemplateCatalogEndpoint,
 } from '../configuration/config-runtime.ts';
+import { runRepositoryGit } from '../operations/git-runner.ts';
 import {
-	cliPackageVersion,
-	agentPackageVersion,
-	corePackageVersion,
-	cliPackageRoot,
-	localTemplateArtifactsRoot,
-	sdkPackageVersion,
+agentPackageVersion,
+cliPackageVersion,
+corePackageVersion,
+localTemplateArtifactsRoot,
+sdkPackageVersion
 } from '../runtime/runtime-paths.ts';
-import { ResolvedTemplateDefinition, StarterResolutionInput, TemplateCatalogCache, TemplateCatalogOptions, TemplateProductDefinition, TemplateState, TemplateVariableDefinition, ensureDir, isTextFile, listFiles, loadJsonFile, resolveLocalStarterArtifactRoot } from './template-categories.ts';
+import { ensureDir,isTextFile,listFiles,loadJsonFile,ResolvedTemplateDefinition,resolveLocalStarterArtifactRoot,StarterResolutionInput,TemplateCatalogCache,TemplateCatalogOptions,TemplateProductDefinition,TemplateState,TemplateVariableDefinition } from './template-categories.ts';
 
 export function validateTemplatePlaceholders(definition: ResolvedTemplateDefinition) {
 	const declaredTokens = new Set(definition.manifest.variables.map((variable) => variable.token));

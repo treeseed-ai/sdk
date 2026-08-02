@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { configuredLiveAcceptanceValue as configuredValue, type LiveAcceptanceEnv } from '../../support/acceptance/live-acceptance-values.ts';
+import { configuredLiveAcceptanceValue as configuredValue } from '../../support/acceptance/live-acceptance-values.ts';
 
 function domainFromWorkspace(cwd: string) {
 	try {

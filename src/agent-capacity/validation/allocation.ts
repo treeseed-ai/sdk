@@ -1,6 +1,6 @@
 import type {
-	CapacityAllocationSetV2,
-	CapacityGrantV2,
+CapacityAllocationSetV2,
+CapacityGrantV2,
 } from '../allocation.ts';
 
 export interface CapacityAllocationDiagnostic {

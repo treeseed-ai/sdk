@@ -1,15 +1,10 @@
-import { createHash } from 'node:crypto';
-import { createWriteStream, existsSync, mkdirSync, mkdtempSync, rmSync, renameSync, chmodSync, copyFileSync, readFileSync, readdirSync } from 'node:fs';
-import { request as httpRequest } from 'node:http';
-import { request as httpsRequest } from 'node:https';
-import { platform as osPlatform, arch as osArch } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { withServiceCredentialEnv } from '../configuration/service-credentials.ts';
-import { NPM_PACKAGES, NPM_TOOLS, cleanCommandPathOutput, require } from './dependency-runtime.ts';
-import type { ManagedToolName } from './dependency-runtime.ts';
+import { existsSync,readFileSync } from 'node:fs';
+import { arch as osArch,platform as osPlatform } from 'node:os';
+import { dirname,resolve } from 'node:path';
 import { collectNativeDependencyRepairs } from './collect-native-dependency-repairs.ts';
+import type { ManagedToolName } from './dependency-runtime.ts';
+import { NPM_PACKAGES,NPM_TOOLS,cleanCommandPathOutput,require } from './dependency-runtime.ts';
 
 export function redactSensitiveOutput(output: string) {
 	return output

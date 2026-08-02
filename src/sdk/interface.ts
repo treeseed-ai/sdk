@@ -55,4 +55,4 @@ declare module '../entrypoints/models/sdk.ts' {
 	}
 }
 
-export {};
+export { };

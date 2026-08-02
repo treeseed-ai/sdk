@@ -1,4 +1,4 @@
-import { GITHUB_TOKEN_ENV, resolveGitHubToken } from '../../../configuration/service-credentials.ts';
+import { resolveGitHubToken } from '../../../configuration/service-credentials.ts';
 
 export type GitHubCredentialResolution = {
 	repository: string;

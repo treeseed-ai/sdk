@@ -1,5 +1,5 @@
 
-import { SceneArtifacts, SceneChapter, SceneDeviceConfig, SceneDiagnostic, SceneDiagramPlacement, SceneMode, SceneOverlay, SceneSchemaVersion, SceneSetup, SceneTarget, SceneVisualAuditConfig, SceneWorkflowStep } from './scene-schema-version.ts';
+import { SceneArtifacts,SceneChapter,SceneDeviceConfig,SceneDiagnostic,SceneDiagramPlacement,SceneMode,SceneOverlay,SceneSchemaVersion,SceneSetup,SceneTarget,SceneVisualAuditConfig,SceneWorkflowStep } from './scene-schema-version.ts';
 
 export type SceneDiagram = {
 	id: string;

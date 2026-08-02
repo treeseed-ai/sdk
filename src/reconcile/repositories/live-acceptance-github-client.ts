@@ -1,5 +1,5 @@
 import { runRepositoryGit } from '../../operations/services/operations/git-runner.ts';
-import { configuredLiveAcceptanceValue, type LiveAcceptanceEnv } from '../support/acceptance/live-acceptance-values.ts';
+import { configuredLiveAcceptanceValue,type LiveAcceptanceEnv } from '../support/acceptance/live-acceptance-values.ts';
 
 export function parseGitHubRepository(value: string) {
 	const raw = value.trim()

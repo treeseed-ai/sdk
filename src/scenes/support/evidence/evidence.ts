@@ -1,26 +1,26 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
-import { sceneErrorDiagnostic } from '../reporting/diagnostics.ts';
+import { existsSync,readdirSync,readFileSync,statSync } from 'node:fs';
+import { join,relative } from 'node:path';
 import { writeSceneEvidenceBundle } from '../../build/evidence-bundle.ts';
-import { appendSceneEvidencePaths, writeSceneEvidenceReport } from './evidence-report.ts';
-import { resolveSceneRunRoot } from '../reporting/inspect.ts';
-import { validateScene } from '../execution/planner.ts';
 import type {
-	SceneDiagnostic,
-	SceneEvidenceArtifact,
-	SceneEvidenceArtifactKind,
-	SceneEvidenceBundlePolicy,
-	SceneEvidenceManifest,
-	SceneEvidenceOptions,
-	SceneEvidencePaths,
-	SceneEvidenceRecommendation,
-	SceneEvidenceReport,
-	SceneEvidenceTarget,
-	SceneManifest,
-	SceneRunReport,
-	SceneTimelineEvent,
+SceneDiagnostic,
+SceneEvidenceArtifact,
+SceneEvidenceArtifactKind,
+SceneEvidenceBundlePolicy,
+SceneEvidenceManifest,
+SceneEvidenceOptions,
+SceneEvidencePaths,
+SceneEvidenceRecommendation,
+SceneEvidenceReport,
+SceneEvidenceTarget,
+SceneManifest,
+SceneRunReport,
+SceneTimelineEvent,
 } from '../../types.ts';
+import { validateScene } from '../execution/planner.ts';
+import { sceneErrorDiagnostic } from '../reporting/diagnostics.ts';
+import { resolveSceneRunRoot } from '../reporting/inspect.ts';
+import { appendSceneEvidencePaths,writeSceneEvidenceReport } from './evidence-report.ts';
 
 function readJson<T>(path: string): T {
 	return JSON.parse(readFileSync(path, 'utf8')) as T;
@@ -117,7 +117,9 @@ function discoverEvidenceArtifacts(input: {
 	pushArtifact(artifacts, createArtifact({ runRoot, kind: 'timeline', path: join(runRoot, 'timeline.json'), includedInBundle: true }));
 	pushArtifact(artifacts, createArtifact({ runRoot, kind: 'setup', path: join(runRoot, 'setup.json'), includedInBundle: true }));
 	pushArtifact(artifacts, createArtifact({ runRoot, kind: 'progress', path: join(runRoot, 'progress.jsonl'), includedInBundle: true }));
-	for (const path of listFiles(join(runRoot, 'checkpoints'))) pushArtifact(artifacts, createArtifact({ runRoot, kind: 'checkpoint', path, includedInBundle: true }));
+	for (const path of listFiles(join(runRoot, 'checkpoints')).filter((entry) => entry.endsWith('.json') && !entry.endsWith('.storage.json'))) {
+		pushArtifact(artifacts, createArtifact({ runRoot, kind: 'checkpoint', path, includedInBundle: true }));
+	}
 	for (const path of listFiles(join(runRoot, 'segments')).filter((entry) => entry.endsWith('.json'))) pushArtifact(artifacts, createArtifact({ runRoot, kind: 'segment', path, includedInBundle: true }));
 	for (const path of discoverTrainingOutputs(runRoot)) pushArtifact(artifacts, createArtifact({ runRoot, kind: 'training-output', path, includedInBundle: true }));
 	for (const path of discoverRenderReports(runRoot)) pushArtifact(artifacts, createArtifact({ runRoot, kind: 'render-report', path, includedInBundle: true }));

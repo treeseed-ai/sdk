@@ -1,10 +1,8 @@
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import { accessSync, chmodSync, constants as fsConstants, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, resolve } from 'node:path';
-import { createConnection, createServer, type Server } from 'node:net';
-import { TRESEED_KEY_AGENT_IDLE_TIMEOUT_MS, KeyAgentCommand, KeyAgentError, KeyAgentResponse, KeyAgentSessionState, detectSocketKind, ensureParent, unwrapMachineKey } from './treseed-machine-key-passphrase-env.ts';
-import { clearPidFile, createStatus, getKeyAgentPaths, inspectKeyAgentDiagnostics, maybeExpireSession, readWrappedMachineKeyFile, replaceWrappedMachineKey, requestKeyAgentOverSocket, writePidFile } from './read-wrapped-machine-key-file.ts';
+import { randomBytes } from 'node:crypto';
+import { chmodSync,existsSync,readFileSync,rmSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { clearPidFile,createStatus,getKeyAgentPaths,inspectKeyAgentDiagnostics,maybeExpireSession,readWrappedMachineKeyFile,replaceWrappedMachineKey,requestKeyAgentOverSocket,writePidFile } from './read-wrapped-machine-key-file.ts';
+import { KeyAgentCommand,KeyAgentError,KeyAgentResponse,KeyAgentSessionState,TRESEED_KEY_AGENT_IDLE_TIMEOUT_MS,detectSocketKind,ensureParent,unwrapMachineKey } from './treseed-machine-key-passphrase-env.ts';
 
 export function readLegacyProjectMachineKey(legacyKeyPath: string) {
 	if (!existsSync(legacyKeyPath)) {

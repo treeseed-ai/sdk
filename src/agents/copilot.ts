@@ -1,12 +1,12 @@
-import { approveAll, CopilotClient, type Tool } from '@github/copilot-sdk';
+import { approveAll,CopilotClient,type Tool } from '@github/copilot-sdk';
 import {
-	createManagedToolEnv,
-	resolveToolBinary,
-} from '../entrypoints/runtime/managed-dependencies.ts';
-import {
-	resolveGitHubCopilotToken,
-	resolveGitHubToken,
+resolveGitHubCopilotToken,
+resolveGitHubToken,
 } from '../configuration/service-credentials.ts';
+import {
+createManagedToolEnv,
+resolveToolBinary,
+} from '../entrypoints/runtime/managed-dependencies.ts';
 
 export type CopilotTool = Tool;
 

@@ -1,86 +1,22 @@
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, resolve, relative } from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
-import { tmpdir } from 'node:os';
-import { classifyGitMode, runGitText } from '../../operations/git-runner.ts';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
-	ensureSshPushUrlForOrigin,
-	remoteWriteUrl,
-	sshPushUrlForRemote,
-	type GitRemoteWriteMode,
-} from '../../repositories/git-remote-policy.ts';
-import {
-	generateRepositoryCommitMessage,
-	type CommitMessageDependencyUpdate,
-	type CommitMessageContext,
-	type CommitMessagePackageChange,
-	type CommitMessageProvider,
-	type CommitMessageProviderMode,
-	type CommitMessageSubmodulePointer,
-} from '../../capacity/providers/commit-message-provider.ts';
-import {
-	createPackageDependencyReference,
-	type DevDependencyReferenceMode,
-	type GitDependencyProtocol,
-	normalizeGitRemoteForDependency,
-	type PackageDependencyReference,
-	type RewrittenDevReference,
-	updateInternalDependencySpecs,
-} from '../../packages/package-reference-policy.ts';
-import {
-	PRODUCTION_BRANCH,
-	branchExists,
-	checkoutBranch,
-	headCommit,
-	pushBranch,
-	remoteBranchExists,
-	STAGING_BRANCH,
+headCommit
 } from '../../operations/git-workflow.ts';
+import { collectDeploymentLockfileWorkspaceIssues,ensureLocalWorkspaceLinks } from '../../treedx/workspaces/workspace-dependency-mode.ts';
 import {
-	collectMergeConflictReport,
-	currentBranch,
-	formatMergeConflictReport,
-	gitStatusPorcelain,
-	hasMeaningfulChanges,
-	incrementVersion,
-	originRemoteUrl,
-	repoRoot,
+currentBranch,
+hasMeaningfulChanges
 } from '../../treedx/workspaces/workspace-save.ts';
-import {
-	hasCompletePackageCheckout,
-	run,
-	sortWorkspacePackages,
-	workspacePackages,
-} from '../../treedx/workspaces/workspace-tools.ts';
-import { collectDeploymentLockfileWorkspaceIssues, ensureLocalWorkspaceLinks } from '../../treedx/workspaces/workspace-dependency-mode.ts';
-import {
-	createBuildWarningSummary,
-	formatAllowedBuildWarnings,
-	type BuildWarningPolicyOptions,
-} from '../../build/build-warning-policy.js';
-import {
-	readVerificationCache,
-	writeVerificationCache,
-} from '../../support/verification-cache.ts';
-import {
-	discoverPackageAdapters,
-	type PackageCommand,
-} from '../../reconciliation/package-adapters.ts';
-import {
-	discoverManagedRepositories,
-	parseGitmodulesPaths,
-	readTemplateRepositoryManifest,
-	type ManagedRepositoryKind,
-} from '../../support/managed-repositories.ts';
-import { RepositorySaveError, RepositorySaveNode, RepositorySaveOptions, SaveState, emitProgress, readJson } from '../support/repo-kind.ts';
-import { canManagePackageJsonVersion, createReport, dependencyFields, ensureWritableRemote, packageVersionTagConflictsWithHead, selectPackageVersion } from '../support/classify-repo-kind.ts';
-import { collectSubmodulePointerChanges, commitContextDependencyUpdates, commitContextPackageChanges, ensurePackageTagReady, ensureRemoteAccessBeforeVerification, finalizePackageReference, refreshRepositoryNodePackageMetadata, syncBranchBeforeSave } from '../support/tag-state.ts';
-import { applyPackageVersion, hasNpmLockfile, hasStagedChanges, isRootWorkspaceRepository, shouldSkipNetworkInstall, syncDirectGitDependencyLockfileEntries, updateDependencyReferences, validateStandaloneGitDependencyLockfile } from '../support/has-staged-changes.ts';
-import { runNpmInstallWithRetry, validateRepositoryLockfile } from '../treedx/repositories/sync-root-workspace-lockfile-metadata.ts';
 import { finalizeCleanPackageVersion } from '../packages/finalize-clean-package-version.ts';
-import { finishRepositorySavePublish, pullRebaseFromOrigin, runRepoVerification } from '../support/run-script.ts';
-import { isNoOpGitCommitError, runCapturedCommand } from '../runtime/with-short-process-temp-env.ts';
-import { commitMessageFor, gitDiffSummary } from './discover-repository-save-nodes.ts';
+import { isNoOpGitCommitError,runCapturedCommand } from '../runtime/with-short-process-temp-env.ts';
+import { canManagePackageJsonVersion,createReport,dependencyFields,ensureWritableRemote,packageVersionTagConflictsWithHead,selectPackageVersion } from '../support/classify-repo-kind.ts';
+import { applyPackageVersion,hasNpmLockfile,hasStagedChanges,isRootWorkspaceRepository,shouldSkipNetworkInstall,syncDirectGitDependencyLockfileEntries,updateDependencyReferences,validateStandaloneGitDependencyLockfile } from '../support/has-staged-changes.ts';
+import { RepositorySaveError,RepositorySaveNode,RepositorySaveOptions,SaveState,emitProgress,readJson } from '../support/repo-kind.ts';
+import { finishRepositorySavePublish,pullRebaseFromOrigin,runRepoVerification } from '../support/run-script.ts';
+import { collectSubmodulePointerChanges,commitContextDependencyUpdates,commitContextPackageChanges,ensurePackageTagReady,ensureRemoteAccessBeforeVerification,finalizePackageReference,refreshRepositoryNodePackageMetadata,syncBranchBeforeSave } from '../support/tag-state.ts';
+import { runNpmInstallWithRetry,validateRepositoryLockfile } from '../treedx/repositories/sync-root-workspace-lockfile-metadata.ts';
+import { commitMessageFor,gitDiffSummary } from './discover-repository-save-nodes.ts';
 
 export async function saveOneRepository(
 	node: RepositorySaveNode,

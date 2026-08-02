@@ -1,29 +1,29 @@
 import { existsSync } from 'node:fs';
-import { relative, resolve } from 'node:path';
+import { relative,resolve } from 'node:path';
+import { runRepositoryGit } from '../operations/services/operations/git-runner.ts';
+import { discoverPackageAdapters } from '../operations/services/reconciliation/package-adapters.ts';
 import {
-	currentBranch,
-	gitStatusPorcelain,
-	originRemoteUrl,
-	repoRoot,
+checkedOutManagedWorkflowRepos,
+type ManagedRepositoryKind,
+} from '../operations/services/support/managed-repositories.ts';
+import {
+currentBranch,
+gitStatusPorcelain,
+originRemoteUrl,
+repoRoot,
 } from '../operations/services/treedx/workspaces/workspace-save.ts';
 import {
-	hasCompletePackageCheckout,
-	publishableWorkspacePackages,
-	sortWorkspacePackages,
-	workspacePackages,
-	workspaceRoot,
+hasCompletePackageCheckout,
+publishableWorkspacePackages,
+sortWorkspacePackages,
+workspacePackages,
+workspaceRoot,
 } from '../operations/services/treedx/workspaces/workspace-tools.ts';
-import { discoverPackageAdapters } from '../operations/services/reconciliation/package-adapters.ts';
-import { runRepositoryGit } from '../operations/services/operations/git-runner.ts';
 import {
-	classifyBranchRole,
-	type WorkflowBranchRole,
-	resolveWorkflowPaths,
+classifyBranchRole,
+resolveWorkflowPaths,
+type WorkflowBranchRole,
 } from './policy.ts';
-import {
-	checkedOutManagedWorkflowRepos,
-	type ManagedRepositoryKind,
-} from '../operations/services/support/managed-repositories.ts';
 
 export type WorkflowMode = 'root-only' | 'recursive-workspace';
 

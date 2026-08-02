@@ -1,28 +1,12 @@
-import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { createInterface } from 'node:readline/promises';
-import { resolveWebCachePolicy } from '../../../../platform/hosting/deploy-config.ts';
 import {
-	deleteRailwayCustomDomain,
-	deleteRailwayEnvironment,
-	deleteRailwayVolume,
-	getRailwayServiceInstance,
-	listRailwayCustomDomains,
-	listRailwayProjects,
-	listRailwayVariables,
-	listRailwayVolumes,
-	normalizeRailwayEnvironmentName,
-	resolveRailwayApiToken,
-	resolveRailwayWorkspace,
-	resolveRailwayWorkspaceContext,
+listRailwayProjects,
+resolveRailwayApiToken,
+resolveRailwayWorkspace,
+resolveRailwayWorkspaceContext
 } from '../../hosting/railway/railway-api.ts';
-import { loadCliDeployConfig, resolveWranglerBin } from '../../agents/runtime-tools.ts';
-import { sdkD1MigrationsRoot } from '../../runtime/runtime-paths.ts';
-import { countMatchingCloudflareEntries, dockerList, matchesSweep, matchingDockerEntries, SweepTokens } from '../support/docker-list.ts';
-import { listD1Databases, listDnsRecords, listDnsZones, listKvNamespaces, listPagesProjects, listQueues, listR2Buckets, listTurnstileWidgets, listWorkers } from '../support/run-wrangler.ts';
 import { dockerAvailable } from '../support/delete-cache-rules.ts';
+import { countMatchingCloudflareEntries,dockerList,matchesSweep,matchingDockerEntries,SweepTokens } from '../support/docker-list.ts';
+import { listD1Databases,listDnsRecords,listDnsZones,listKvNamespaces,listPagesProjects,listQueues,listR2Buckets,listTurnstileWidgets,listWorkers } from '../support/run-wrangler.ts';
 import { resourceOperation } from './collect-missing-deploy-inputs.ts';
 
 export function cloudflareDestroyVerification(tenantRoot, deployConfig, state, env) {

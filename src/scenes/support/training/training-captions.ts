@@ -1,8 +1,8 @@
 import type {
-	SceneCaptionCue,
-	SceneManifest,
-	SceneRunReport,
-	SceneTimelineEvent,
+SceneCaptionCue,
+SceneManifest,
+SceneRunReport,
+SceneTimelineEvent,
 } from '../../types.ts';
 
 function clampText(value: string) {

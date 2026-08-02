@@ -1,8 +1,7 @@
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash,timingSafeEqual } from 'node:crypto';
 import type { D1DatabaseLike } from '../../types/cloudflare.ts';
-import type { ApiConfig, ApiCredential, ApiPrincipal, DeviceCodeApproveRequest, DeviceCodePollRequest, DeviceCodePollResponse, DeviceCodeStartRequest, DeviceCodeStartResponse, TokenRefreshRequest, TokenRefreshResponse, TrustedUserAssertionClaims, UserIdentityProfileInput, } from '../types.ts';
-import { DEFAULT_PERMISSIONS, DEFAULT_ROLES } from './rbac.ts';
-import { createAccessToken, nextOpaqueToken, principalFromAccessTokenPayload, verifyAccessToken } from './tokens.ts';
+import type { ApiConfig,ApiCredential,ApiPrincipal,DeviceCodeApproveRequest,DeviceCodePollRequest,DeviceCodePollResponse,DeviceCodeStartRequest,DeviceCodeStartResponse,TokenRefreshRequest,TokenRefreshResponse,TrustedUserAssertionClaims,UserIdentityProfileInput,} from '../types.ts';
+import * as extractedMethods from "./d1-store/methods.ts";
 export function approvalUrl(baseUrl: string, userCode?: string | null) {
     const url = new URL('/auth/device/approve', `${baseUrl.replace(/\/+$/u, '')}/`);
     if (userCode) {
@@ -203,7 +202,6 @@ export function equalHash(left: string, right: string) {
     const rightBuffer = Buffer.from(right);
     return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
-import * as extractedMethods from "./d1-store/methods.ts";
 export class D1AuthStore {
     initializationPromise: Promise<void> | null = null;
     constructor(readonly config: ApiConfig, readonly db: D1DatabaseLike) { }
@@ -229,6 +227,7 @@ export interface D1AuthStore {
     assignRole(userId: string, roleKey: string);
     replaceRoles(userId: string, roleKeys: string[]);
     bootstrapRolesForUser(userId: string, identity: UserIdentityProfileInput);
+    reconcileBootstrapAdmins(): Promise<void>;
     writeAuditEvent(input: {
         actorType: string;
         actorId: string | null;
@@ -308,6 +307,7 @@ D1AuthStore.prototype.principalForUser = extractedMethods.principalForUserMethod
 D1AuthStore.prototype.assignRole = extractedMethods.assignRoleMethod;
 D1AuthStore.prototype.replaceRoles = extractedMethods.replaceRolesMethod;
 D1AuthStore.prototype.bootstrapRolesForUser = extractedMethods.bootstrapRolesForUserMethod;
+D1AuthStore.prototype.reconcileBootstrapAdmins = extractedMethods.reconcileBootstrapAdminsMethod;
 D1AuthStore.prototype.writeAuditEvent = extractedMethods.writeAuditEventMethod;
 D1AuthStore.prototype.userMetadata = extractedMethods.userMetadataMethod;
 D1AuthStore.prototype.syncUser = extractedMethods.syncUserMethod;

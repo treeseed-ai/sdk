@@ -1,21 +1,21 @@
 import { resolve } from 'node:path';
-import { createBranchPreviewDeployTarget, loadDeployState } from "../../../operations/services/hosting/deployment/deploy.ts";
-import { gitWorkflowRoot, headCommit, listTaskBranches, PRODUCTION_BRANCH, STAGING_BRANCH } from "../../../operations/services/operations/git-workflow.ts";
-import { resolveGitHubRepositorySlug } from "../../../operations/services/repositories/github-automation.ts";
-import { inspectGitHubActionsVerification, type GitHubActionsVerificationTarget } from "../../../operations/services/repositories/github-actions-verification.ts";
 import { hostedWorkflowForPackage } from "../../../operations/services/guarantees/release-proof-planner.ts";
-import { renderAdministrativeCommitMessage, type ReleaseHistoryCommit, type ReleaseHistorySummary } from "../../../operations/services/packages/release-history.ts";
-import { loadPlatformConfig } from "../../../platform/configuration/config.ts";
-import { gitStatusPorcelain } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
+import { createBranchPreviewDeployTarget,loadDeployState } from "../../../operations/services/hosting/deployment/deploy.ts";
+import { gitWorkflowRoot,headCommit,listTaskBranches,PRODUCTION_BRANCH,STAGING_BRANCH } from "../../../operations/services/operations/git-workflow.ts";
+import { renderAdministrativeCommitMessage,type ReleaseHistoryCommit,type ReleaseHistorySummary } from "../../../operations/services/packages/release-history.ts";
 import { discoverPackageAdapters } from "../../../operations/services/reconciliation/package-adapters.ts";
+import { inspectGitHubActionsVerification,type GitHubActionsVerificationTarget } from "../../../operations/services/repositories/github-actions-verification.ts";
+import { resolveGitHubRepositorySlug } from "../../../operations/services/repositories/github-automation.ts";
+import { gitStatusPorcelain } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
 import { workspaceRoot } from "../../../operations/services/treedx/workspaces/workspace-tools.ts";
-import { resolveWorkflowState, type WorkflowStatusOptions } from "../../../operations/workflow-state.ts";
+import { resolveWorkflowState,type WorkflowStatusOptions } from "../../../operations/workflow-state.ts";
+import type { CiInput,TaskBranchMetadata,WorkflowNextStep,WorkflowResult } from "../../../operations/workflow.ts";
+import { loadPlatformConfig } from "../../../platform/configuration/config.ts";
 import { readWorkflowRunJournal } from "../../runs.ts";
-import { checkedOutWorkspacePackageRepos, resolveWorkflowSession, type WorkflowSession } from "../../session.ts";
-import type { CiInput, TaskBranchMetadata, WorkflowNextStep, WorkflowResult } from "../../../operations/workflow.ts";
+import { checkedOutWorkspacePackageRepos,resolveWorkflowSession,type WorkflowSession } from "../../session.ts";
+import { ageDays,renderWorkflowStep } from '../commerce/catalog/run-release-production-guarantees.ts';
 import { stringRecord } from '../repositories/gates-for-saved-repository-reports.ts';
-import { ageDays, renderWorkflowStep } from '../commerce/catalog/run-release-production-guarantees.ts';
-import { buildWorkflowResult, submodulePointerForRef } from '../support/create-repo-report.ts';
+import { buildWorkflowResult,submodulePointerForRef } from '../support/create-repo-report.ts';
 
 export function releaseAdminMessage(input: {
 	subject: string;

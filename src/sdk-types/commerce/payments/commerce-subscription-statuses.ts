@@ -1,18 +1,5 @@
-import type { FieldAliasBinding } from '../../../entrypoints/models/field-aliases.ts';
-import type {
-	CapacityBusinessModel,
-	CapacityLaneUnit,
-	CapacityReservation,
-	NativeUsageObservation,
-} from '../../../agent-capacity/contracts/support/financial-records.ts';
-import type {
-	CapacityExecutionProvider,
-	CapacityExecutionProviderNativeLimit,
-	CapacityExecutionProviderObservation,
-	CapacityProviderMembershipView,
-} from '../../../capacity-provider/contracts/index.ts';
-import { CommerceGovernanceState, CommerceStripeAccountStatus, CommerceStripeEnvironment, CommerceStripeOnboardingStatus } from '../governance/commerce-governance-states.ts';
-import { CommerceVendorTrustLevel } from '../../support/template-launch-requirements.ts';
+import { CommerceVendorTrustLevel } from '../../support/platform-contracts.ts';
+import { CommerceGovernanceState,CommerceStripeAccountStatus,CommerceStripeEnvironment,CommerceStripeOnboardingStatus } from '../governance/commerce-governance-states.ts';
 
 export const COMMERCE_SUBSCRIPTION_STATUSES = [
 	'incomplete',

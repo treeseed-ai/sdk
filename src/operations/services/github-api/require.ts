@@ -1,8 +1,5 @@
-import { Buffer } from 'node:buffer';
-import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { Octokit } from 'octokit';
-import { createManagedToolEnv, resolveToolBinary } from '../../../entrypoints/runtime/managed-dependencies.ts';
 import { resolveGitHubToken } from '../../../configuration/service-credentials.ts';
 import { sleep } from './get-latest-git-hub-workflow-run.ts';
 

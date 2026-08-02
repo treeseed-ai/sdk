@@ -1,4 +1,4 @@
-import type { CapacityFailureClassification, CapacityFailureDisposition } from '../../contracts/support/failure-records.ts';
+import type { CapacityFailureClassification,CapacityFailureDisposition } from '../../contracts/support/failure-records.ts';
 
 const OPERATOR_ACTION_CODES = new Set([
 	'capacity_settlement_overrun_requires_approval',

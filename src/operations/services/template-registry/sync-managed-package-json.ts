@@ -1,37 +1,11 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
-import { basename, dirname, relative, resolve } from 'node:path';
-import { runRepositoryGit } from '../operations/git-runner.ts';
+import { existsSync,readFileSync,writeFileSync } from 'node:fs';
+import { basename,resolve } from 'node:path';
+import { parse as parseYaml,stringify as stringifyYaml } from 'yaml';
 import {
-	normalizeTemplateId,
-	type SdkTemplateCatalogEntry,
-	type SdkTemplateCatalogResponse,
-	type TemplateLaunchRequirements,
+normalizeTemplateId
 } from '../../../entrypoints/models/sdk-types.ts';
-import { RemoteTemplateCatalogClient } from '../../../commerce/catalog/template-catalog.ts';
-import {
-	type ProjectLaunchConfigWritePlanItem,
-	type ProjectLaunchLocalHostBindingSummary,
-	type ProjectLaunchResolvedHostBinding,
-	type ProjectLaunchSecretDeploymentPlanItem,
-	normalizeTemplateLaunchRequirements,
-} from '../../../entrypoints/templates/template-launch-requirements.ts';
-import { preserveProjectLaunchHostBindingConfigOverlay } from '../hosting/deployment/template-host-bindings.ts';
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import {
-	resolveTemplateCatalogCachePath,
-	resolveTemplateCatalogEndpoint,
-} from '../configuration/config-runtime.ts';
-import {
-	cliPackageVersion,
-	agentPackageVersion,
-	corePackageVersion,
-	cliPackageRoot,
-	localTemplateArtifactsRoot,
-	sdkPackageVersion,
-} from '../runtime/runtime-paths.ts';
-import { ResolvedTemplateDefinition, StarterHostBindingState, StarterResolutionInput, TemplateCatalogOptions, TemplateCategory, TemplateManifest, TemplateProductDefinition, TemplateState, ensureDir, listTemplateArtifactIds, loadJsonFile, validateTemplateManifest, validateTemplateProductShape } from './template-categories.ts';
-import { copyTemplateTree, loadRemoteTemplateCatalog, loadTemplateState, normalizeTemplateProduct, renderTemplateFile, resolveTemplateDefinitionPaths, resolveVariableValue, writeTemplateState } from './validate-template-placeholders.ts';
+import { ensureDir,listTemplateArtifactIds,loadJsonFile,ResolvedTemplateDefinition,StarterResolutionInput,TemplateCatalogOptions,TemplateCategory,TemplateManifest,TemplateProductDefinition,validateTemplateManifest,validateTemplateProductShape } from './template-categories.ts';
+import { copyTemplateTree,loadRemoteTemplateCatalog,loadTemplateState,normalizeTemplateProduct,renderTemplateFile,resolveTemplateDefinitionPaths,resolveVariableValue,writeTemplateState } from './validate-template-placeholders.ts';
 
 export function syncManagedPackageJson(targetPath: string, sourcePath: string, replacements: Record<string, string>, check: boolean) {
 	const currentJson = existsSync(targetPath) ? loadJsonFile<Record<string, unknown>>(targetPath) : {};
@@ -152,45 +126,8 @@ export async function scaffoldTemplateProject(templateId: string, targetRoot: st
 		installedAt: new Date().toISOString(),
 		lastSyncedAt: new Date().toISOString(),
 		replacements,
-		...(input.hostBindingState ? {
-			hostBindings: input.hostBindingState.hostBindings,
-			hostBindingPlans: input.hostBindingState.hostBindingPlans,
-			hostBindingSummaries: input.hostBindingState.hostBindingSummaries,
-			hostBindingConfig: input.hostBindingState.hostBindingConfig,
-		} : {}),
 	});
 	return definition.product;
-}
-
-export function recordTemplateHostBindingState(siteRoot: string, hostBindingState: StarterHostBindingState) {
-	const state = loadTemplateState(siteRoot);
-	writeTemplateState(siteRoot, {
-		...state,
-		hostBindings: hostBindingState.hostBindings,
-		hostBindingPlans: hostBindingState.hostBindingPlans,
-		hostBindingSummaries: hostBindingState.hostBindingSummaries,
-		hostBindingConfig: hostBindingState.hostBindingConfig,
-	});
-}
-
-export function preserveHostBindingOverlayIfNeeded(relativePath: string, currentContent: string, nextContent: string, state: TemplateState) {
-	if (!state.hostBindingPlans) {
-		return nextContent;
-	}
-	if (
-		relativePath !== 'treeseed.site.yaml'
-		&& relativePath !== 'src/env.yaml'
-		&& relativePath !== 'src/manifest.yaml'
-		&& relativePath !== 'package.json'
-	) {
-		return nextContent;
-	}
-	return preserveProjectLaunchHostBindingConfigOverlay({
-		target: relativePath as 'treeseed.site.yaml' | 'src/env.yaml' | 'src/manifest.yaml' | 'package.json',
-		currentContent,
-		nextContent,
-		hostBindingPlans: state.hostBindingPlans,
-	});
 }
 
 export function structuredTemplateContentMatches(relativePath: string, currentContent: string, nextContent: string) {
@@ -233,16 +170,8 @@ export async function syncTemplateProject(siteRoot: string, options: TemplateCat
 		}
 
 		const currentContent = existsSync(targetPath) ? readFileSync(targetPath, 'utf8') : '';
-		const nextContent = preserveHostBindingOverlayIfNeeded(
-			relativePath,
-			currentContent,
-			renderTemplateFile(sourcePath, state.replacements),
-			state,
-		);
+		const nextContent = renderTemplateFile(sourcePath, state.replacements);
 		if (currentContent === nextContent) {
-			continue;
-		}
-		if (state.hostBindingPlans && structuredTemplateContentMatches(relativePath, currentContent, nextContent)) {
 			continue;
 		}
 		if (!check) {
@@ -273,7 +202,7 @@ export async function syncTemplateProject(siteRoot: string, options: TemplateCat
 	return changes;
 }
 
-export function serializeTemplateRegistryEntry(product: Pick<TemplateProductDefinition, 'id' | 'displayName' | 'description' | 'summary' | 'status' | 'featured' | 'category' | 'tags' | 'publisher' | 'templateVersion' | 'templateApiVersion' | 'minCliVersion' | 'minCoreVersion' | 'fulfillment' | 'launchRequirements'>) {
+export function serializeTemplateRegistryEntry(product: Pick<TemplateProductDefinition, 'id' | 'displayName' | 'description' | 'summary' | 'status' | 'featured' | 'category' | 'tags' | 'publisher' | 'templateVersion' | 'templateApiVersion' | 'minCliVersion' | 'minCoreVersion' | 'fulfillment'>) {
 	return {
 		id: product.id,
 		displayName: product.displayName,
@@ -290,7 +219,6 @@ export function serializeTemplateRegistryEntry(product: Pick<TemplateProductDefi
 		minCoreVersion: product.minCoreVersion,
 		fulfillmentMode: product.fulfillment.mode ?? 'packaged',
 		source: product.fulfillment.source,
-		launchRequirements: product.launchRequirements,
 	};
 }
 

@@ -1,5 +1,5 @@
-import { dirname, join } from 'node:path';
 import { availableParallelism } from 'node:os';
+import { dirname,join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sceneErrorDiagnostic } from '../support/reporting/diagnostics.ts';
 import type { SceneRendererAdapter } from '../types.ts';

@@ -1,9 +1,7 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync,rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import { IacClient } from 'railway';
-import { connectRailwayServiceSourceWithCli, runRailwayCliJson } from '../hosting/railway/railway-cli.ts';
-import { resolveRailwayCredential } from '../../../configuration/service-credentials.ts';
+import { runRailwayCliJson } from '../hosting/railway/railway-cli.ts';
 import { railwayConnectionLabel } from './default-railway-api-url.ts';
 import { listRailwayCustomDomains } from './upsert-railway-variables.ts';
 

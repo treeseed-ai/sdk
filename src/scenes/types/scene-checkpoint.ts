@@ -1,7 +1,7 @@
 
-import { SceneRunStatus } from './scene-validation-report.ts';
-import { SceneDiagnostic, SceneEnvironment, SceneOperationWaitSpec, ScenePhase } from './scene-schema-version.ts';
 import { SceneManifest } from './scene-diagram.ts';
+import { SceneDiagnostic,SceneEnvironment,SceneOperationWaitSpec,ScenePhase } from './scene-schema-version.ts';
+import { SceneRunStatus } from './scene-validation-report.ts';
 import { SceneRunArtifacts } from './scene-visual-audit-finding.ts';
 
 export type SceneCheckpoint = {

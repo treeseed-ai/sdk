@@ -1,7 +1,7 @@
 
+import { SceneEvidenceBundlePolicy,SceneEvidencePhase,SceneEvidenceTarget } from './scene-render-input.ts';
+import { SceneDiagnostic,SceneEnvironment } from './scene-schema-version.ts';
 import { SceneRunStatus } from './scene-validation-report.ts';
-import { SceneDiagnostic, SceneEnvironment } from './scene-schema-version.ts';
-import { SceneEvidenceBundlePolicy, SceneEvidencePhase, SceneEvidenceTarget } from './scene-render-input.ts';
 
 export type SceneEvidenceArtifactKind =
 	| 'run-report'

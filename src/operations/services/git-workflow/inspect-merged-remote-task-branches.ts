@@ -1,13 +1,9 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
-import { run, workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
-import { collectMergeConflictReport, currentBranch, formatMergeConflictReport, gitStatusPorcelain, repoRoot } from '../treedx/workspaces/workspace-save.ts';
-import { ensureSshPushUrlForOrigin } from '../repositories/git-remote-policy.ts';
-import { runRepositoryGit, type GitRunnerMode } from '../operations/git-runner.ts';
-import { createManagedToolEnv, resolveToolBinary } from '../../../entrypoints/runtime/managed-dependencies.ts';
-import { assertCleanWorktree, branchExists, checkoutBranch, fetchOrigin, gitWorkflowRoot, remoteBranchExists, remoteHeadCommit } from './inspect-detached-head-repair.ts';
-import { PRODUCTION_BRANCH, RESERVED_BRANCHES, STAGING_BRANCH, abortInProgressMerge, headCommit, repoHasStagedChanges, resolveGeneratedPackageMetadataConflicts, runGit, runGitAllowFailure } from './staging-branch.ts';
-import { pushBranch, syncBranchWithOrigin } from './checkout-task-branch-from-staging.ts';
+import { createManagedToolEnv,resolveToolBinary } from '../../../entrypoints/runtime/managed-dependencies.ts';
+import { collectMergeConflictReport,currentBranch,formatMergeConflictReport } from '../treedx/workspaces/workspace-save.ts';
+import { run,workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
+import { pushBranch,syncBranchWithOrigin } from './checkout-task-branch-from-staging.ts';
+import { assertCleanWorktree,branchExists,checkoutBranch,fetchOrigin,gitWorkflowRoot,remoteBranchExists,remoteHeadCommit } from './inspect-detached-head-repair.ts';
+import { PRODUCTION_BRANCH,RESERVED_BRANCHES,STAGING_BRANCH,abortInProgressMerge,headCommit,repoHasStagedChanges,resolveGeneratedPackageMetadataConflicts,runGit,runGitAllowFailure } from './staging-branch.ts';
 
 export function inspectMergedRemoteTaskBranches(repoDir) {
 	fetchOrigin(repoDir);

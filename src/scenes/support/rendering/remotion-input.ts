@@ -1,25 +1,25 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync,readdirSync,readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../reporting/diagnostics.ts';
-import { buildSceneRenderDiagrams } from './diagram-validation.ts';
 import { resolveSceneDeviceProfile } from '../../runtime/devices.ts';
-import { resolveSceneRunRoot } from '../reporting/inspect.ts';
-import { validateScene } from '../execution/planner.ts';
-import { listSceneRemotionCompositions } from './remotion-composition-registry.ts';
-import { resolveScenePlugins } from '../plugins/registry.ts';
-import { buildSceneTrainingOutputs } from '../training/training.ts';
 import type {
-	SceneCheckpoint,
-	SceneDiagnostic,
-	SceneManifest,
-	SceneRenderFormat,
-	SceneRenderInput,
-	SceneRenderInputLoadReport,
-	SceneRenderMode,
-	SceneRunReport,
-	SceneRunSegmentReport,
-	SceneTimelineEvent,
+SceneCheckpoint,
+SceneDiagnostic,
+SceneManifest,
+SceneRenderFormat,
+SceneRenderInput,
+SceneRenderInputLoadReport,
+SceneRenderMode,
+SceneRunReport,
+SceneRunSegmentReport,
+SceneTimelineEvent,
 } from '../../types.ts';
+import { validateScene } from '../execution/planner.ts';
+import { resolveScenePlugins } from '../plugins/registry.ts';
+import { sceneErrorDiagnostic,sceneWarningDiagnostic } from '../reporting/diagnostics.ts';
+import { resolveSceneRunRoot } from '../reporting/inspect.ts';
+import { buildSceneTrainingOutputs } from '../training/training.ts';
+import { buildSceneRenderDiagrams } from './diagram-validation.ts';
+import { listSceneRemotionCompositions } from './remotion-composition-registry.ts';
 
 function readJson<T>(path: string): T {
 	return JSON.parse(readFileSync(path, 'utf8')) as T;

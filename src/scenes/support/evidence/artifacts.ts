@@ -1,16 +1,98 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync,mkdtempSync,readdirSync,readFileSync,renameSync,rmSync,statSync,writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname,join,resolve } from 'node:path';
 import type {
-	SceneArtifactPathPlan,
-	SceneManifest,
-	ScenePlanReport,
-	SceneRunArtifacts,
-	SceneRunReport,
-	SceneTimelineEvent,
+SceneArtifactPathPlan,
+SceneManifest,
+ScenePlanReport,
+SceneRunArtifacts,
+SceneRunReport,
+SceneTimelineEvent,
 } from '../../types.ts';
 
 function writeJson(path: string, value: unknown) {
 	writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+const REDACTED_SCENE_VALUE = '[REDACTED]';
+
+function isSensitiveFieldName(value: string) {
+	const normalized = value.replace(/[^a-z0-9]/giu, '').toLowerCase();
+	return ['apikey', 'apitoken', 'clientsecret', 'credential', 'passphrase', 'password', 'privatekey', 'secret', 'token']
+		.some((field) => normalized.includes(field));
+}
+
+export function fillTargetsSensitiveField(fill: Record<string, unknown>) {
+	return ['css', 'label', 'name', 'placeholder', 'testId']
+		.some((key) => isSensitiveFieldName(String(fill[key] ?? '')));
+}
+
+function redactSceneValue(value: unknown, parentKey = ''): unknown {
+	if (Array.isArray(value)) return value.map((entry) => redactSceneValue(entry));
+	if (!value || typeof value !== 'object') {
+		return isSensitiveFieldName(parentKey) ? REDACTED_SCENE_VALUE : value;
+	}
+	const input = value as Record<string, unknown>;
+	const output: Record<string, unknown> = {};
+	for (const [key, entry] of Object.entries(input)) {
+		if (key === 'fill' && entry && typeof entry === 'object' && !Array.isArray(entry)) {
+			const fill = entry as Record<string, unknown>;
+			output[key] = {
+				...fill,
+				value: fillTargetsSensitiveField(fill) ? REDACTED_SCENE_VALUE : redactSceneValue(fill.value, key),
+			};
+			continue;
+		}
+		output[key] = redactSceneValue(entry, key);
+	}
+	return output;
+}
+
+export function redactSceneArtifact(scene: SceneManifest): SceneManifest {
+	return redactSceneValue(scene) as SceneManifest;
+}
+
+export function redactPlaywrightTraceArchive(path: string, sensitiveValues: string[]) {
+	const values = [...new Set(sensitiveValues.filter(Boolean))];
+	if (values.length === 0) return;
+	const extractionRoot = mkdtempSync(join(tmpdir(), 'treeseed-trace-redaction-'));
+	const outputPath = resolve(dirname(path), `.trace-redacted-${process.pid}-${Date.now()}.zip`);
+	let replacements = 0;
+	try {
+		execFileSync('unzip', ['-q', path, '-d', extractionRoot], { stdio: 'ignore' });
+		const pending = [extractionRoot];
+		while (pending.length > 0) {
+			const entryPath = pending.pop()!;
+			if (statSync(entryPath).isDirectory()) {
+				pending.push(...readdirSync(entryPath).map((name) => join(entryPath, name)));
+				continue;
+			}
+			let content = readFileSync(entryPath);
+			for (const value of values) {
+				const secret = Buffer.from(value);
+				let index = content.indexOf(secret);
+				while (index >= 0) {
+					content = Buffer.concat([
+						content.subarray(0, index),
+						Buffer.from(REDACTED_SCENE_VALUE),
+						content.subarray(index + secret.length),
+					]);
+					replacements += 1;
+					index = content.indexOf(secret, index + REDACTED_SCENE_VALUE.length);
+				}
+			}
+			writeFileSync(entryPath, content);
+		}
+		if (replacements === 0) {
+			throw new Error('Playwright trace redaction found no recorded sensitive values; refusing to retain an unverified trace.');
+		}
+		execFileSync('zip', ['-q', '-r', outputPath, '.'], { cwd: extractionRoot, stdio: 'ignore' });
+		renameSync(outputPath, path);
+	} finally {
+		rmSync(extractionRoot, { recursive: true, force: true });
+		rmSync(outputPath, { force: true });
+	}
 }
 
 export function ensureSceneRunDirectories(paths: SceneArtifactPathPlan) {
@@ -69,7 +151,7 @@ export function writeSceneRunArtifacts(input: {
 }) {
 	const artifacts = input.report.artifacts;
 	if (!artifacts) return;
-	writeJson(artifacts.normalizedScenePath, input.scene);
+	writeJson(artifacts.normalizedScenePath, redactSceneArtifact(input.scene));
 	writeJson(artifacts.planPath, input.plan);
 	if (artifacts.setupPath) writeJson(artifacts.setupPath, input.report.setup);
 	writeJson(artifacts.timelinePath, input.timeline);

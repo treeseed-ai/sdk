@@ -1,6 +1,6 @@
 
-import { SceneVisualAuditReviewDetail, SceneVisualAuditRole } from './scene-validation-report.ts';
-import { SceneMotion, SceneOverlayVariant, SceneVisualObject, SceneVisualPoint, SceneVisualRegion, SceneVisualSize, SceneVisualStyle } from './scene-diagram.ts';
+import { SceneMotion,SceneOverlayVariant,SceneVisualObject,SceneVisualPoint,SceneVisualRegion,SceneVisualSize,SceneVisualStyle } from './scene-diagram.ts';
+import { SceneVisualAuditReviewDetail,SceneVisualAuditRole } from './scene-validation-report.ts';
 
 export const SCENE_SCHEMA_VERSION = 'treeseed.scene/v1' as const;
 
@@ -136,6 +136,7 @@ export type SceneSetup = {
 		profile?: string;
 		required: boolean;
 		role?: SceneVisualAuditRole;
+		fixtureRoles?: SceneVisualAuditRole[];
 		seedOnly?: boolean;
 	};
 	seed?: {
@@ -149,6 +150,7 @@ export type SceneArtifacts = {
 	trace: boolean;
 	video: boolean;
 	screenshots: boolean;
+	fullPageScreenshots?: boolean;
 	console: boolean;
 	network: boolean;
 	timeline: boolean;
@@ -207,6 +209,7 @@ export type SceneAction =
 export type SceneExpectation = {
 	visible?: SceneSelector[];
 	notVisible?: SceneSelector[];
+	focused?: SceneSelector;
 	text?: string;
 	notText?: string;
 	urlIncludes?: string;

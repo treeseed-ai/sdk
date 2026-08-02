@@ -1,11 +1,11 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync,readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { validateAndDigestCapacityProviderManifest } from '../../capacity-provider/index.ts';
 import { discoverApplications } from '../../hosting/apps.ts';
-import { discoverPackageAdapters } from '../../operations/services/reconciliation/package-adapters.ts';
 import { collectEnvironmentContext } from '../../operations/services/configuration/config-runtime.ts';
-import { loadDeployConfigFromPath, resolveDeployConfigPathFromRoot } from '../hosting/deploy-config.ts';
+import { discoverPackageAdapters } from '../../operations/services/reconciliation/package-adapters.ts';
+import { loadDeployConfigFromPath,resolveDeployConfigPathFromRoot } from '../hosting/deploy-config.ts';
 import type { DeployConfig } from '../support/contracts.ts';
 
 export type PlatformConfigInput = {

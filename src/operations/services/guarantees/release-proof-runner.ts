@@ -1,13 +1,13 @@
-import {
-	createProofRecord,
-	type ProofDriver,
-	type ProofRecord,
-} from './release-proof.ts';
 import { spawnSync } from 'node:child_process';
-import { maybeResolveGitHubRepositorySlug } from '../repositories/github-automation.ts';
 import { writeProofRecord } from '../capacity/accounting/release-proof-ledger.ts';
-import { buildProofPlan, type ProofPlan, type ProofTarget } from './release-proof-planner.ts';
 import { inspectGitHubActionsVerification } from '../repositories/github-actions-verification.ts';
+import { maybeResolveGitHubRepositorySlug } from '../repositories/github-automation.ts';
+import { buildProofPlan,type ProofPlan,type ProofTarget } from './release-proof-planner.ts';
+import {
+createProofRecord,
+type ProofDriver,
+type ProofRecord,
+} from './release-proof.ts';
 
 export type ProofRunResult = {
 	plan: ProofPlan;

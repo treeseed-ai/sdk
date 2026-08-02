@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
-import { relative, resolve } from 'node:path';
+import { existsSync,lstatSync,readdirSync,readFileSync } from 'node:fs';
+import { relative,resolve } from 'node:path';
 import { managedDevSourceClosureDigest } from '../../local-dev/source-closure.ts';
 
 function filesUnder(path: string): string[] {

@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { AgentOperationGrant, AgentOperationRequest, AgentOperationResult } from './agent-tools.ts';
-import { decideAgentOperationPermission, deniedAgentOperationResult } from './agent-tools.ts';
+import type { AgentOperationGrant,AgentOperationRequest,AgentOperationResult } from './agent-tools.ts';
+import { decideAgentOperationPermission,deniedAgentOperationResult } from './agent-tools.ts';
 
 export const execFileAsync = promisify(execFile);
 

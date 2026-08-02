@@ -1,7 +1,7 @@
-import { spawnSync, type SpawnSyncOptionsWithStringEncoding } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
-import { GitLockDiagnostic, GitLockKind, GitLockProcessHint, GitWorkspaceLockDiagnostics, isWithin, resolveCommonGitDir, resolveGitDir, resolveGitRoot } from './git-runner-mode.ts';
+import { spawnSync } from 'node:child_process';
+import { existsSync,readdirSync,statSync } from 'node:fs';
+import { dirname,relative,resolve } from 'node:path';
+import { GitLockDiagnostic,GitLockKind,GitLockProcessHint,GitWorkspaceLockDiagnostics,isWithin,resolveCommonGitDir,resolveGitDir,resolveGitRoot } from './git-runner-mode.ts';
 
 export function activeGitProcessHints(repoRoot: string, commonGitDir: string | null, gitDir: string | null, lockPath?: string | null): GitLockProcessHint[] {
 	const ps = spawnSync('ps', ['-eo', 'pid=,args='], { encoding: 'utf8', stdio: 'pipe' });

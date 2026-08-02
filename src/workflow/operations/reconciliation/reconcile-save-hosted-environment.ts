@@ -1,18 +1,18 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync,readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { collectReconcileStatus, reconcileTarget } from "../../../reconcile/index.ts";
-import { collectEnvironmentContext, collectConfigSeedValues, setMachineEnvironmentValue } from "../../../operations/services/configuration/config-runtime.ts";
-import { createPersistentDeployTarget, purgeSourcePageCaches } from "../../../operations/services/hosting/deployment/deploy.ts";
-import { highestStableGitTagOnLine } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
-import { discoverPackageAdapters } from "../../../operations/services/reconciliation/package-adapters.ts";
-import { collectLiveHostedServiceChecks } from "../../../operations/services/hosting/audit/live-hosted-service-checks.ts";
-import { configuredRailwayServices, waitForRailwayManagedDeploymentsSettled } from "../../../operations/services/hosting/railway/railway-deploy.ts";
 import { compileHostingGraph } from "../../../hosting/graph.ts";
-import { type WorkflowRunCommand } from "../../runs.ts";
+import { collectConfigSeedValues,collectEnvironmentContext,setMachineEnvironmentValue } from "../../../operations/services/configuration/config-runtime.ts";
+import { collectLiveHostedServiceChecks } from "../../../operations/services/hosting/audit/live-hosted-service-checks.ts";
+import { createPersistentDeployTarget,purgeSourcePageCaches } from "../../../operations/services/hosting/deployment/deploy.ts";
+import { configuredRailwayServices,waitForRailwayManagedDeploymentsSettled } from "../../../operations/services/hosting/railway/railway-deploy.ts";
+import { discoverPackageAdapters } from "../../../operations/services/reconciliation/package-adapters.ts";
+import { highestStableGitTagOnLine } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
 import type { WorkflowOperationId } from "../../../operations/workflow.ts";
-import { WorkflowOperationHelpers } from '../recovery/workflow-write.ts';
-import { selectorFromWorkflowHostingGraph } from '../packages/normalize-release-candidate-mode.ts';
+import { collectReconcileStatus,reconcileTarget } from "../../../reconcile/index.ts";
+import { type WorkflowRunCommand } from "../../runs.ts";
 import { workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { selectorFromWorkflowHostingGraph } from '../packages/normalize-release-candidate-mode.ts';
+import { WorkflowOperationHelpers } from '../recovery/workflow-write.ts';
 import { stringRecord } from '../repositories/gates-for-saved-repository-reports.ts';
 
 export async function reconcileSaveHostedEnvironment(

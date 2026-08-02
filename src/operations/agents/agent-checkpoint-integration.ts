@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process';
 import { realpath } from 'node:fs/promises';
-import { relative, resolve } from 'node:path';
+import { relative,resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { validateAgentArtifactManifest, type AgentArtifactManifest } from '../../agent-capacity/artifacts.ts';
+import { validateAgentArtifactManifest,type AgentArtifactManifest } from '../../agent-capacity/artifacts.ts';
 import type { DecisionAssignmentGraphRecord } from '../../agent-capacity/contracts/support/decision-work.ts';
 
 export const execFileAsync = promisify(execFile);

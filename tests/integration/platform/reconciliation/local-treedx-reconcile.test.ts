@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { createLocalTreeDxReconciliationClient } from '../../../../src/reconcile/builtin-adapters/projects/knowledge/verify-local-tree-dx-project-content.ts';
+import { refreshLocalTreeDxProjectIndexes, syncLocalTreeDxProjectContent } from '../../../../src/reconcile/builtin-adapters/capacity/providers/build-capacity-provider-adapter.ts';
 
 function healthResponse() {
 	return new Response(JSON.stringify({
@@ -61,5 +66,107 @@ describe('local TreeDX reconciliation transport', () => {
 		});
 		await vi.advanceTimersByTimeAsync(120_000);
 		await expectation;
+	});
+
+	it('waits for graph completion and proves search parity with the reconciled commit', async () => {
+		const client = {
+			refreshGraph: vi.fn().mockResolvedValue({ jobId: 'job-1', resolvedRef: 'commit-1', stale: false }),
+			getGraphRefreshJob: vi.fn().mockResolvedValue({ status: 'completed', graphVersion: 'graph-1', stale: false }),
+			refreshSearchIndex: vi.fn().mockResolvedValue({ resolvedRef: 'commit-1', sourceCommit: 'commit-1', indexVersion: 'search-1', stale: false }),
+		};
+		const result = await refreshLocalTreeDxProjectIndexes(client as any, {
+			slug: 'admin', repositoryName: 'treeseed-admin', repositoryId: 'repo-1', localRoot: '/tmp/admin',
+			contentPath: 'docs/src/content', defaultRef: 'refs/heads/main', seedPaths: ['docs/src/content'],
+		}, 'repo-1', 'commit-1');
+
+		expect(client.refreshGraph).toHaveBeenCalledWith(expect.objectContaining({ ref: 'refs/heads/main', forceFull: true }));
+		expect(client.getGraphRefreshJob).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'job-1' }));
+		expect(client.refreshSearchIndex).toHaveBeenCalledWith(expect.objectContaining({ paths: ['docs/src/content/**'] }));
+		expect(result.searchIndex).toMatchObject({ indexVersion: 'search-1' });
+	});
+
+	it('fails closed when search resolves a different commit', async () => {
+		const client = {
+			refreshGraph: vi.fn().mockResolvedValue({ resolvedRef: 'commit-1', graphVersion: 'graph-1', stale: false }),
+			refreshSearchIndex: vi.fn().mockResolvedValue({ resolvedRef: 'stale-commit', indexVersion: 'search-1', stale: false }),
+		};
+		await expect(refreshLocalTreeDxProjectIndexes(client as any, {
+			slug: 'admin', repositoryName: 'treeseed-admin', repositoryId: 'repo-1', localRoot: '/tmp/admin',
+			contentPath: 'docs/src/content', defaultRef: 'refs/heads/main',
+		}, 'repo-1', 'commit-1')).rejects.toThrow('did not resolve the reconciled commit');
+	});
+
+	it('writes only changed seed files and removes stale managed files', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'local-treedx-delta-'));
+		mkdirSync(join(root, 'docs'), { recursive: true });
+		writeFileSync(join(root, 'docs', 'same.md'), 'same');
+		writeFileSync(join(root, 'docs', 'changed.md'), 'new');
+		const client = {
+			listRepositories: vi.fn().mockResolvedValue([{ repoId: 'repo-1', repositoryName: 'example' }]),
+			listRepositoryPaths: vi.fn().mockResolvedValue({
+				resolvedRef: 'base-sha', entries: [{ path: 'docs/same.md' }, { path: 'docs/changed.md' }, { path: 'docs/stale.md' }],
+				page: { hasMore: false },
+			}),
+			readRepositoryFiles: vi.fn().mockResolvedValue({ resolvedRef: 'base-sha', files: [
+				{ path: 'docs/same.md', content: 'same' }, { path: 'docs/changed.md', content: 'old' }, { path: 'docs/stale.md', content: 'stale' },
+			] }),
+			listRepositoryRefs: vi.fn().mockResolvedValue([]),
+			createWorkspace: vi.fn().mockResolvedValue({ workspaceId: 'workspace-1' }),
+			writeFiles: vi.fn().mockResolvedValue({ files: [] }), deleteFile: vi.fn().mockResolvedValue({}),
+			commit: vi.fn().mockResolvedValue({ commitSha: 'commit-1' }), closeWorkspace: vi.fn().mockResolvedValue(undefined),
+			promoteRef: vi.fn().mockResolvedValue({ afterHead: 'commit-1' }), retireRef: vi.fn().mockResolvedValue({ status: 'retired' }),
+			refreshGraph: vi.fn().mockResolvedValue({ graphVersion: 'graph-1', resolvedRef: 'commit-1' }),
+			refreshSearchIndex: vi.fn().mockResolvedValue({ indexVersion: 'search-1', resolvedRef: 'commit-1', stale: false }),
+		};
+		try {
+			const result = await syncLocalTreeDxProjectContent(client as any, {
+				slug: 'example', repositoryName: 'example', repositoryId: 'repo-1', localRoot: root,
+				contentPath: 'docs', seedPaths: ['docs'], defaultRef: 'refs/heads/main',
+			});
+			expect(client.writeFiles).toHaveBeenCalledWith({ workspaceId: 'workspace-1', files: [
+				expect.objectContaining({ path: 'docs/changed.md', content: 'new' }),
+			] });
+			expect(client.deleteFile).toHaveBeenCalledWith({ workspaceId: 'workspace-1', path: 'docs/stale.md' });
+			expect(client.promoteRef).toHaveBeenCalledWith(expect.objectContaining({
+				destinationRef: 'refs/heads/main', expectedDestinationHead: 'base-sha',
+			}));
+			expect(client.retireRef).toHaveBeenCalledWith(expect.objectContaining({ expectedHead: 'commit-1' }));
+			expect(result).toMatchObject({ changedFiles: 1, removedFiles: 1, commitSha: 'commit-1' });
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it('resumes a committed seed ref and promotes it without recreating the workspace', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'local-treedx-resume-'));
+		mkdirSync(join(root, 'docs'), { recursive: true });
+		writeFileSync(join(root, 'docs', 'page.md'), 'desired');
+		const digest = createHash('sha256').update('docs/page.md\0desired\0').digest('hex');
+		const branchName = `refs/heads/treeseed-seed-${digest.slice(0, 24)}`;
+		const client = {
+			listRepositories: vi.fn().mockResolvedValue([{ repoId: 'repo-1', repositoryName: 'example' }]),
+			listRepositoryPaths: vi.fn().mockResolvedValue({ resolvedRef: 'base-sha', entries: [{ path: 'docs/page.md' }], page: { hasMore: false } }),
+			readRepositoryFiles: vi.fn()
+				.mockResolvedValueOnce({ resolvedRef: 'base-sha', files: [{ path: 'docs/page.md', content: 'old' }] })
+				.mockResolvedValueOnce({ resolvedRef: 'commit-1', files: [{ path: 'docs/page.md', content: 'desired' }] }),
+			listRepositoryRefs: vi.fn().mockResolvedValue([
+				{ name: 'refs/heads/main', target: 'base-sha' }, { name: branchName, target: 'commit-1' },
+			]),
+			promoteRef: vi.fn().mockResolvedValue({ afterHead: 'commit-1' }), retireRef: vi.fn().mockResolvedValue({ status: 'retired' }),
+			closeWorkspace: vi.fn().mockResolvedValue(undefined), createWorkspace: vi.fn(),
+			refreshGraph: vi.fn().mockResolvedValue({ graphVersion: 'graph-1', resolvedRef: 'commit-1' }),
+			refreshSearchIndex: vi.fn().mockResolvedValue({ indexVersion: 'search-1', resolvedRef: 'commit-1', stale: false }),
+		};
+		try {
+			const result = await syncLocalTreeDxProjectContent(client as any, {
+				slug: 'example', repositoryName: 'example', repositoryId: 'repo-1', localRoot: root,
+				contentPath: 'docs', seedPaths: ['docs'], defaultRef: 'refs/heads/main',
+			});
+			expect(client.createWorkspace).not.toHaveBeenCalled();
+			expect(client.promoteRef).toHaveBeenCalledWith(expect.objectContaining({ sourceRef: branchName, expectedDestinationHead: 'base-sha' }));
+			expect(result).toMatchObject({ resumed: true, commitSha: 'commit-1' });
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
 	});
 });

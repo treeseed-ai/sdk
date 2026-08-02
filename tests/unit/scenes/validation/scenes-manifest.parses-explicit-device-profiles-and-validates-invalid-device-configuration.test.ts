@@ -24,8 +24,8 @@ function workspace() {
 function validSceneYaml(extra = '') {
 	return `schemaVersion: treeseed.scene/v1
 id: market-project-deploy-demo
-title: Market Project Deployment Demo
-description: Guided workflow proving project deployment.
+title: Team Service Management Demo
+description: Guided workflow proving service connection management.
 audience:
   - operator
 target:

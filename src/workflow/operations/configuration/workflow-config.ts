@@ -1,19 +1,18 @@
 import { resolve } from 'node:path';
-import { planReconciliation } from "../../../reconcile/index.ts";
-import { applyConfigValues, applySafeRepairs, checkProviderConnections, collectConfigContext, collectPrintEnvReport, ensureSecretSessionForConfig, ensureActVerificationTooling, ensureGitignoreEntries, inspectPassphraseEnvDiagnostic, finalizeConfig, getMachineConfigPaths, inspectKeyAgentStatus, rotateMachineKey } from "../../../operations/services/configuration/config-runtime.ts";
-import { formatDependencyFailureDetails, installDependencies } from "../../../entrypoints/runtime/managed-dependencies.ts";
+import { formatDependencyFailureDetails,installDependencies } from "../../../entrypoints/runtime/managed-dependencies.ts";
+import { applyConfigValues,applySafeRepairs,checkProviderConnections,collectConfigContext,collectPrintEnvReport,ensureActVerificationTooling,ensureGitignoreEntries,ensureSecretSessionForConfig,finalizeConfig,getMachineConfigPaths,inspectKeyAgentStatus,inspectPassphraseEnvDiagnostic,rotateMachineKey } from "../../../operations/services/configuration/config-runtime.ts";
+import { buildProvisioningSummary,createPersistentDeployTarget,loadDeployState } from "../../../operations/services/hosting/deployment/deploy.ts";
 import { exportCodebase } from "../../../operations/services/runtime/export-runtime.ts";
-import { buildProvisioningSummary, createPersistentDeployTarget, loadDeployState } from "../../../operations/services/hosting/deployment/deploy.ts";
 import { collectCliPreflight } from "../../../operations/services/treedx/workspaces/workspace-preflight.ts";
 import { resolveWorkflowState } from "../../../operations/workflow-state.ts";
-import { createReconcileRegistry, deriveDesiredUnits, filterDesiredUnitsByBootstrapSystems, resolveBootstrapSelection } from "../../../reconcile/index.ts";
-import type { ConfigInput, ExportInput } from "../../../operations/workflow.ts";
-import { WorkflowOperationHelpers } from '../recovery/workflow-write.ts';
-import { normalizeConfigScopes, resolveProjectRootOrThrow, withContextEnv, workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
-import { connectMarketProject, maybePrint, toError } from '../projects/projects-core/connect-market-project.ts';
-import { buildWorkflowResult } from '../support/create-repo-report.ts';
-import { createNextSteps } from '../packages/release-admin-message.ts';
+import type { ConfigInput,ExportInput } from "../../../operations/workflow.ts";
+import { createReconcileRegistry,deriveDesiredUnits,filterDesiredUnitsByBootstrapSystems,planReconciliation,resolveBootstrapSelection } from "../../../reconcile/index.ts";
+import { normalizeConfigScopes,resolveProjectRootOrThrow,withContextEnv,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
 import { worktreePayload } from '../packages/normalize-release-candidate-mode.ts';
+import { createNextSteps } from '../packages/release-admin-message.ts';
+import { maybePrint,toError } from '../support/workflow-helpers.ts';
+import { WorkflowOperationHelpers } from '../recovery/workflow-write.ts';
+import { buildWorkflowResult } from '../support/create-repo-report.ts';
 
 export async function workflowConfig(helpers: WorkflowOperationHelpers, input: ConfigInput = {}) {
 	try {
@@ -25,7 +24,6 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: C
 			const revealSecrets = input.showSecrets === true;
 			const printEnvOnly = input.printEnvOnly === true;
 			const rotateMachineKeyFlag = input.rotateMachineKey === true;
-			const connectMarketFlag = input.connectMarket === true;
 			const bootstrapOnly = input.bootstrap === true;
 			const bootstrapPreflight = bootstrapOnly && input.preflight === true;
 			const nonInteractive = input.nonInteractive === true;
@@ -106,12 +104,6 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: C
 						]),
 					},
 				);
-			}
-
-			if (connectMarketFlag) {
-				return connectMarketProject(helpers, tenantRoot, input, {
-					scopes, 					sync, 					repairs, 					preflight, 					toolHealth,
-				});
 			}
 
 			if (bootstrapPreflight) {

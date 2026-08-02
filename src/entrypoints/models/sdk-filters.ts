@@ -1,5 +1,5 @@
 import { readCanonicalFieldValue } from './sdk-fields.ts';
-import type { SdkContentEntry, SdkFilterCondition, SdkModelDefinition, SdkSortSpec } from './sdk-types.ts';
+import type { SdkContentEntry,SdkFilterCondition,SdkModelDefinition,SdkSortSpec } from './sdk-types.ts';
 
 function toArray(value: unknown) {
 	if (Array.isArray(value)) {

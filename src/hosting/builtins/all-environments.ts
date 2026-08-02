@@ -1,23 +1,16 @@
 import { existsSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
-import { dirname, resolve } from 'node:path';
+import { dirname,resolve } from 'node:path';
 import { resolveLaunchEnvironment } from '../../operations/services/configuration/config-runtime.ts';
-import { cloudflareApiRequest, resolveCloudflareZoneIdForHost, resolveConfiguredCloudflareAccountId, runWrangler } from '../../operations/services/hosting/deployment/deploy.ts';
+import { resolveConfiguredCloudflareAccountId } from '../../operations/services/hosting/deployment/deploy.ts';
 import type {
-	ApplicationHostingProfile,
-	HostAdapter,
-	HostAdapterOperationInput,
-	HostAdapterOperationResult,
-	HostCapability,
-	HostingEnvironment,
-	HostingStatus,
-	HostingUnit,
-	HostingUnitPlan,
-	HostingVerification,
-	ServicePlacement,
-	ServiceTypeAdapter,
+HostAdapter,
+HostAdapterOperationInput,
+HostAdapterOperationResult,
+HostCapability,
+HostingEnvironment,
+HostingUnitPlan,
+HostingVerification
 } from '../contracts.ts';
-import { serviceType } from './create-cloudflare-host-adapter.ts';
 import { sanitizedUnitConfig } from './create-default-service-type-adapters.ts';
 
 export const ALL_ENVIRONMENTS: HostingEnvironment[] = ['local', 'staging', 'prod'];

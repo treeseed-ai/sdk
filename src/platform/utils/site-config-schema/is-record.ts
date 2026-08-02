@@ -1,6 +1,4 @@
 // @ts-nocheck
-import { parse as parseYaml } from 'yaml';
-import { normalizeAliasedRecord } from '../../../entrypoints/models/field-aliases.ts';
 
 
 /** @typedef {import('../../../entrypoints/models/field-aliases.ts').FieldAliasRegistry} FieldAliasRegistry */

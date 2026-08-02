@@ -1,18 +1,12 @@
-import { createHash } from 'node:crypto';
-import { createWriteStream, existsSync, mkdirSync, mkdtempSync, rmSync, renameSync, chmodSync, copyFileSync, readFileSync, readdirSync } from 'node:fs';
-import { request as httpRequest } from 'node:http';
-import { request as httpsRequest } from 'node:https';
-import { platform as osPlatform, arch as osArch } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { withServiceCredentialEnv } from '../configuration/service-credentials.ts';
-import { GH_VERSION, NPM_PACKAGES, NPM_TOOLS, RAILWAY_VERSION, createManagedToolEnv, managedGhBin, managedRailwayBin, report, resolveToolsHome } from './dependency-runtime.ts';
-import type { DependencyInstallerOptions, DependencyInstallResult, DependencyReport, ToolStatusResult } from './dependency-runtime.ts';
-import { checkGitHubAuth, defaultDownloadFile, invocationForTool, resolveToolBinary, runNpmToolRebuilds } from './run-npm-tool-rebuilds.ts';
-import { checkCommand, locateSystemBinary } from './redact-sensitive-output.ts';
+import { existsSync,mkdirSync } from 'node:fs';
 import { runNpmBootstrap } from './collect-native-dependency-repairs.ts';
-import { installGh, installRailway, statusForNpmPackage, statusForNpmTool, systemStatus } from './install-gh.ts';
+import type { DependencyInstallResult,DependencyInstallerOptions,DependencyReport,ToolStatusResult } from './dependency-runtime.ts';
+import { CLOUDFLARED_VERSION,GH_VERSION,NPM_PACKAGES,NPM_TOOLS,RAILWAY_VERSION,createManagedToolEnv,managedCloudflaredBin,managedGhBin,managedRailwayBin,report,resolveToolsHome } from './dependency-runtime.ts';
+import { installGh,installRailway,statusForNpmPackage,statusForNpmTool,systemStatus } from './install-gh.ts';
+import { installCloudflared } from './install-cloudflared.ts';
+import { checkCommand,locateSystemBinary } from './redact-sensitive-output.ts';
+import { checkGitHubAuth,defaultDownloadFile,invocationForTool,resolveToolBinary,runNpmToolRebuilds } from './run-npm-tool-rebuilds.ts';
 
 export function installGhAct(options: DependencyInstallerOptions): DependencyReport {
 	const env = createManagedToolEnv(options.env ?? process.env);
@@ -100,6 +94,7 @@ export async function installDependencies(options: DependencyInstallerOptions = 
 		systemStatus('git', true, effectiveOptions),
 		await installGh(effectiveOptions),
 		await installRailway(effectiveOptions),
+		await installCloudflared(effectiveOptions),
 		...NPM_TOOLS.map((tool) => statusForNpmTool(tool, effectiveOptions)),
 		...NPM_PACKAGES.map((pkg) => statusForNpmPackage(pkg)),
 		systemStatus('docker', false, effectiveOptions),
@@ -154,10 +149,17 @@ export function collectDependencyStatus(options: DependencyInstallerOptions = {}
 			? `Railway CLI ${RAILWAY_VERSION} is installed in the Treeseed tool cache.`
 			: `Railway CLI ${RAILWAY_VERSION} is not installed in the Treeseed tool cache.`,
 	});
+	const cloudflaredBinary = managedCloudflaredBin(env);
+	const cloudflaredStatus = report({
+		name: 'cloudflared', kind: 'download', version: CLOUDFLARED_VERSION, source: 'managed-cache', binaryPath: cloudflaredBinary,
+		status: existsSync(cloudflaredBinary) ? 'already-present' : 'missing', required: false,
+		detail: existsSync(cloudflaredBinary) ? `cloudflared ${CLOUDFLARED_VERSION} is installed in the Treeseed tool cache.` : 'cloudflared is installed on demand for declared local Tunnel connectivity.',
+	});
 	const reports = [
 		systemStatus('git', true, options),
 		ghStatus,
 		railwayStatus,
+		cloudflaredStatus,
 		...NPM_TOOLS.map((tool) => statusForNpmTool(tool, options)),
 		...NPM_PACKAGES.map((pkg) => statusForNpmPackage(pkg)),
 		systemStatus('docker', false, options),

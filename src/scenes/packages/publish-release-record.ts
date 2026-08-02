@@ -1,5 +1,5 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { mkdirSync,writeFileSync } from 'node:fs';
+import { dirname,join } from 'node:path';
 import type { ScenePublishManifest } from '../types.ts';
 
 function safePathPart(value: string | null) {

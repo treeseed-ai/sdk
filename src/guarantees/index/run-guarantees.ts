@@ -1,16 +1,14 @@
-import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve, sep } from 'node:path';
-import { parse as parseYaml } from 'yaml';
-import { GuaranteeDiagnostic, GuaranteeFilter, GuaranteeManifest, LoadedGuarantee } from './guarantee-schema-version.ts';
-import { GuaranteeExecutionGraphReport, GuaranteeRunReport, GuaranteeRunResult, GuaranteeRunState, GuaranteeSceneExecutor, GuaranteeVerifierExecutionResult, GuaranteeVerifierExecutor, arrayOrEmpty, diagnostic, sortedUnique } from './guarantee-journey-audit-item.ts';
-import { defaultGuaranteeSceneExecutor, releaseBlocking, runGuaranteeSteps, runIdFor, writeGuaranteeRunReport } from './scene-report-evidence-paths.ts';
-import { allVerifierRefs, discoverGuarantees } from './parse-verifier-registry.ts';
-import { planGuarantees } from './plan-guarantees.ts';
-import { relativeEvidencePath, resolveGuaranteeVerifierRefs, verifierDefinitionsByRef } from './export-guarantees-csv.ts';
-import { buildGuaranteeDependencyGraph, refs } from './build-guarantee-dependency-graph.ts';
-import { defaultGuaranteeVerifierExecutor } from './run-verifier-command.ts';
+import { existsSync,mkdirSync,statSync,writeFileSync } from 'node:fs';
+import { dirname,resolve,sep } from 'node:path';
 import { guaranteeSourceClosure } from '../features/guarantee-source-closure.ts';
+import { buildGuaranteeDependencyGraph } from './build-guarantee-dependency-graph.ts';
+import { relativeEvidencePath,resolveGuaranteeVerifierRefs,verifierDefinitionsByRef } from './export-guarantees-csv.ts';
+import { arrayOrEmpty,diagnostic,GuaranteeExecutionGraphReport,GuaranteeRunReport,GuaranteeRunResult,GuaranteeRunState,GuaranteeSceneExecutor,GuaranteeVerifierExecutionResult,GuaranteeVerifierExecutor,sortedUnique } from './guarantee-journey-audit-item.ts';
+import { GuaranteeDiagnostic,GuaranteeFilter,GuaranteeManifest,LoadedGuarantee } from './guarantee-schema-version.ts';
+import { allVerifierRefs,discoverGuarantees } from './parse-verifier-registry.ts';
+import { planGuarantees } from './plan-guarantees.ts';
+import { defaultGuaranteeVerifierExecutor } from './run-verifier-command.ts';
+import { defaultGuaranteeSceneExecutor,releaseBlocking,runGuaranteeSteps,runIdFor,writeGuaranteeRunReport } from './scene-report-evidence-paths.ts';
 
 export async function runGuarantees(input: {
 	workspaceRoot: string;

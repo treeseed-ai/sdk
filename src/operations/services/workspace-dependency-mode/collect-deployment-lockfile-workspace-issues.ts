@@ -1,10 +1,8 @@
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { runRepositoryGit } from '../operations/git-runner.ts';
-import { workspacePackages, workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
-import { DeploymentLockfileWorkspaceIssue, WorkspaceDependencyModeReport, WorkspaceLinksMode, dependencyNames, pathKey, readJson, rootLockfileAllowsWorkspaceLink, safeLstat, safeReadlink, workspaceLinksEnabled } from './dependency-resolution-mode.ts';
-import { collectPackageLockConsistencyIssues, discoverWorkspaceLinks } from './collect-package-lock-consistency-issues.ts';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { workspacePackages,workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
+import { collectPackageLockConsistencyIssues,discoverWorkspaceLinks } from './collect-package-lock-consistency-issues.ts';
+import { dependencyNames,DeploymentLockfileWorkspaceIssue,pathKey,readJson,rootLockfileAllowsWorkspaceLink,safeLstat,safeReadlink,WorkspaceDependencyModeReport,workspaceLinksEnabled,WorkspaceLinksMode } from './dependency-resolution-mode.ts';
 
 export function collectDeploymentLockfileWorkspaceIssues(root = workspaceRoot()): DeploymentLockfileWorkspaceIssue[] {
 	if (!existsSync(resolve(root, 'package.json'))) {

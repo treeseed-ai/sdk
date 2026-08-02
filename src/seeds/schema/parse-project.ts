@@ -1,36 +1,22 @@
-import { errorDiagnostic, warningDiagnostic } from '../errors.js';
+import { errorDiagnostic } from '../errors.js';
 import {
-	SEED_CONTENT_PUBLISH_TARGETS,
-	SEED_CONTENT_RUNTIME_SOURCES,
-	SEED_ENVIRONMENTS,
-	SEED_LOCAL_CONTENT_MATERIALIZATIONS,
-	SEED_PROJECT_TOPOLOGIES,
-	type SeedCatalogArtifactResource,
-	type SeedContentPublishTargetKind,
-	type SeedContentRuntimeSource,
-	type SeedDiagnostic,
-	type SeedEnvironment,
-	type SeedHubRepositoryResource,
-	type SeedLocalContentMaterialization,
-	type SeedManifest,
-	type SeedManifestResources,
-	type SeedOperationRecipe,
-	type SeedOperationRecipeArtifact,
-	type SeedOperationRecipeAssertion,
-	type SeedOperationRecipeChannel,
-	type SeedOperationRecipeCommand,
-	type SeedOperationRecipeStep,
-	type SeedProductResource,
-	type SeedProjectArchitecture,
-	type SeedProjectContentPublishTarget,
-	type SeedProjectRepository,
-	type SeedProjectResource,
-	type SeedProjectTopology,
-	type SeedRepositoryHostResource,
-	type SeedResourceBase,
-	type SeedTeamResource,
+type SeedCatalogArtifactResource,
+type SeedDiagnostic,
+type SeedEnvironment,
+type SeedHubRepositoryResource,
+type SeedOperationRecipe,
+type SeedOperationRecipeArtifact,
+type SeedOperationRecipeAssertion,
+type SeedOperationRecipeChannel,
+type SeedOperationRecipeCommand,
+type SeedOperationRecipeStep,
+type SeedProductResource,
+type SeedProjectRepository,
+type SeedProjectResource
 } from '../types.js';
-import { ALLOWED_RECIPE_CHANNELS, ALLOWED_RECIPE_OPERATIONS, CREDENTIAL_REF_PATTERN, asString, isRecord, keyBase, objectField, parseEnvironments, parseProjectArchitecture, parseRepository, recordArrayField, requireString, stringArrayField } from './resource-buckets.ts';
+import { ALLOWED_RECIPE_CHANNELS,ALLOWED_RECIPE_OPERATIONS,asString,isRecord,keyBase,objectField,parseEnvironments,parseProjectArchitecture,parseRepository,recordArrayField,requireString,stringArrayField } from './resource-buckets.ts';
+
+const CREDENTIAL_REF_PATTERN = /^(?:env|secret|provider-session):[A-Za-z0-9_./:-]+$/u;
 
 export function parseProject(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedProjectResource | null {
 	if (!isRecord(value)) {
@@ -64,35 +50,6 @@ export function parseProject(value: unknown, path: string, diagnostics: SeedDiag
 	};
 }
 
-export function parseRepositoryHost(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedRepositoryHostResource | null {
-	if (!isRecord(value)) {
-		diagnostics.push(errorDiagnostic('seed.invalid_resource', 'Expected repository host resource to be an object.', path));
-		return null;
-	}
-	const credentialRef = asString(value.credentialRef) || undefined;
-	if (credentialRef && !CREDENTIAL_REF_PATTERN.test(credentialRef)) {
-		diagnostics.push(errorDiagnostic('seed.invalid_credential_ref', 'Repository host credentialRef must be env:, secret:, or provider-session:.', `${path}.credentialRef`));
-	}
-	return {
-		...keyBase(value, path, diagnostics),
-		team: requireString(value, 'team', path, diagnostics),
-		provider: requireString(value, 'provider', path, diagnostics),
-		name: requireString(value, 'name', path, diagnostics),
-		ownership: asString(value.ownership) || undefined,
-		accountLabel: asString(value.accountLabel) || undefined,
-		organizationOrOwner: requireString(value, 'organizationOrOwner', path, diagnostics),
-		defaultVisibility: asString(value.defaultVisibility) || undefined,
-		softwareRepositoryNameTemplate: asString(value.softwareRepositoryNameTemplate) || undefined,
-		contentRepositoryNameTemplate: asString(value.contentRepositoryNameTemplate) || undefined,
-		branchPolicy: objectField(value, 'branchPolicy', path, diagnostics),
-		workflowPolicy: objectField(value, 'workflowPolicy', path, diagnostics),
-		allowedProjectKinds: stringArrayField(value, 'allowedProjectKinds', path, diagnostics),
-		status: asString(value.status) || undefined,
-		credentialRef,
-		metadata: objectField(value, 'metadata', path, diagnostics),
-	};
-}
-
 export function parseHubRepository(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedHubRepositoryResource | null {
 	if (!isRecord(value)) {
 		diagnostics.push(errorDiagnostic('seed.invalid_resource', 'Expected hub repository resource to be an object.', path));
@@ -102,7 +59,6 @@ export function parseHubRepository(value: unknown, path: string, diagnostics: Se
 		...keyBase(value, path, diagnostics),
 		project: requireString(value, 'project', path, diagnostics),
 		role: requireString(value, 'role', path, diagnostics),
-		repositoryHost: asString(value.repositoryHost) || undefined,
 		provider: requireString(value, 'provider', path, diagnostics),
 		owner: requireString(value, 'owner', path, diagnostics),
 		name: requireString(value, 'name', path, diagnostics),

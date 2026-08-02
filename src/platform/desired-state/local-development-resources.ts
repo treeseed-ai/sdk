@@ -1,28 +1,18 @@
-import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { basename, dirname, resolve as resolvePath } from 'node:path';
+import { existsSync,readFileSync } from 'node:fs';
+import { basename,resolve as resolvePath } from 'node:path';
 import { parse as parseYaml } from 'yaml';
+import { redactCapacityProviderEnv,validateAndDigestCapacityProviderManifest } from '../../capacity/providers/capacity-provider.ts';
 import {
-	discoverPackageAdapters,
-	type PackageAdapter,
-} from '../../operations/services/reconciliation/package-adapters.ts';
-import { redactCapacityProviderEnv, validateAndDigestCapacityProviderManifest } from '../../capacity/providers/capacity-provider.ts';
-import { workspaceRoot } from '../../operations/services/treedx/workspaces/workspace-tools.ts';
-import {
-	checkedOutTemplateRepositories,
-	type TemplateRepositoryManifest,
-} from '../../operations/services/support/managed-repositories.ts';
-import { deriveDesiredUnits } from '../../reconcile/reconciliation/desired-state.ts';
-import type { DesiredUnit, ReconcileSelector, ReconcileTarget } from '../../reconcile/support/contracts/contracts.ts';
-import {
-	buildProjectLocalContentResources,
-	type LocalContentMode,
+buildProjectLocalContentResources,
+type LocalContentMode,
 } from '../content/local-content-materialization.ts';
-import { localTreeDxSeedDigest } from '../treedx/repositories/local-treedx-seed.ts';
-import { DesiredEnvironment, DesiredResource, TemplateUnit, hashJson, resolveLocalGitCommonDir } from './desired-environment.ts';
-import { localTreeDxContentProjects, localTreeDxTemplateContentProjects } from './safe-tree-dx-repository-name.ts';
+import { DesiredEnvironment,DesiredResource,TemplateUnit,hashJson,resolveLocalGitCommonDir } from './desired-environment.ts';
+import { localTreeDxContentProjects,localTreeDxTemplateContentProjects } from './safe-tree-dx-repository-name.ts';
+import { managedDevSourceClosureDigest } from '../../local-dev/source-closure.ts';
+import { dockerSourceClosureDigest } from './docker-source-closure.ts';
+import type { DeployConfig } from '../support/contracts.ts';
 
-export function localDevelopmentResources(tenantRoot: string, environment: DesiredEnvironment, localContent: LocalContentMode, templates: TemplateUnit[], capacityConfigPath?: string): DesiredResource[] {
+export function localDevelopmentResources(tenantRoot: string, environment: DesiredEnvironment, localContent: LocalContentMode, templates: TemplateUnit[], capacityConfigPath?: string, deployConfig?: DeployConfig): DesiredResource[] {
 	if (environment !== 'local') return [];
 	const composeId = 'local-docker-compose:agent-capacity-provider';
 	const treeDxComposeId = 'local-docker-compose:treedx';
@@ -50,6 +40,8 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 		TREESEED_TREEDX_PROXY_ACTOR_ID: 'treeseed-api',
 		TREESEED_TREEDX_PROXY_TENANT_ID: 'treeseed-control-plane',
 	};
+	const treeDxSourceClosureDigest = managedDevSourceClosureDigest({ tenantRoot, surface: 'treedx' }) ?? 'unavailable';
+	const capacityProviderSourceClosureDigest = dockerSourceClosureDigest(resolvePath(tenantRoot, 'packages/agent'), '@treeseed/agent');
 	const localCapacityProviderTreeDxEnv = {
 		TREESEED_TREEDX_BASE_URL: 'http://host.docker.internal:4000',
 		TREESEED_TREEDX_URL: 'http://host.docker.internal:4000',
@@ -76,6 +68,18 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 		TREESEED_MARKET_PROFILE_LOCAL_URL: 'http://host.docker.internal:3000',
 		TREESEED_MARKET_PROFILE_LOCAL_AUDIENCE: 'http://127.0.0.1:3000',
 	};
+	const tunnel = deployConfig?.cloudflare.tunnel?.local;
+	const tunnelResource: DesiredResource[] = tunnel?.enabled === true ? [{
+		id: 'cloudflare-tunnel:local-connectors', kind: 'cloudflare-tunnel', provider: 'cloudflare', environment,
+		packageId: '@treeseed/sdk', serviceId: 'provider-connectors', logicalName: 'local provider connector tunnel',
+		dependencies: ['local-process:api'], spec: {
+			accountId: deployConfig?.cloudflare.accountId ?? '', zoneId: tunnel.zoneId ?? deployConfig?.cloudflare.zoneId ?? '',
+			name: tunnel.name ?? 'treeseed-local-connectors', hostname: tunnel.hostname ?? '', originUrl: tunnel.originUrl ?? 'http://127.0.0.1:3000',
+			allowedPaths: ['/v1/provider-connectors/github/repository/setup', '/v1/provider-connectors/github/workflow/setup',
+				'/v1/provider-connectors/github/repository/callback', '/v1/provider-connectors/github/workflow/callback',
+				'/v1/provider-webhooks/github/repository', '/v1/provider-webhooks/github/workflow'],
+		}, source: { type: 'package-adapter', id: '@treeseed/sdk' },
+	}] : [];
 	return [
 		{
 			id: apiPostgresComposeId,
@@ -175,6 +179,7 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 				ports: [{ host: 4000, container: 4000 }],
 				env: {
 					TREEDX_ALLOW_DEV_VERIFIER_IN_PROD: 'true',
+					TREESEED_TREEDX_SOURCE_CLOSURE_DIGEST: treeDxSourceClosureDigest,
 					...localTreeDxApiEnv,
 				},
 				volumes: [{ name: 'treeseed-local-treedx-data', mountPath: '/data', sharedLocalOnly: true }],
@@ -198,6 +203,7 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 				roles: ['manager', 'runner'],
 				volumePolicy: 'shared-local',
 				manifestDigest: capacityProviderManifestDigest,
+				sourceClosureDigest: capacityProviderSourceClosureDigest,
 				expectedConnectionCount: capacityProviderConnectionCount,
 				runtimeStatus: {
 					path: '.treeseed/local-capacity-provider/data/runtime/manager.json',
@@ -284,7 +290,7 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 			packageId: '@treeseed/api',
 			serviceId: 'seed-bootstrap',
 			logicalName: 'local Treeseed seed bootstrap',
-			dependencies: ['local-process:api'],
+			dependencies: ['local-process:api', 'local-treedx:team-primary'],
 			spec: {
 				seedName: 'treeseed',
 				environments: 'local',
@@ -296,5 +302,6 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 			source: { type: 'package-adapter' as const, id: '@treeseed/api' },
 		}] : []),
 		...buildProjectLocalContentResources({ tenantRoot, environment, localContent }),
+		...tunnelResource,
 	];
 }

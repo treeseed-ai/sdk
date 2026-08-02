@@ -1,97 +1,35 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, resolve } from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import type { ApiPrincipal, RemoteConfig, RemoteHost } from '../../../../entrypoints/clients/remote.ts';
 import {
-	getEnvironmentSuggestedValues,
-	isEnvironmentEntryRelevant,
-	isEnvironmentEntryRequired,
-	resolveEnvironmentRegistry,
-	ENVIRONMENT_SCOPES,
-	type EnvironmentPurpose,
-	type EnvironmentValidation,
-	validateEnvironmentValues,
+ENVIRONMENT_SCOPES,
+getEnvironmentSuggestedValues,
+validateEnvironmentValues
 } from '../../../../platform/configuration/environment.ts';
-import { loadManifest } from '../../../../platform/configuration/tenant-config.ts';
 import {
-	buildProvisioningSummary,
-	createPersistentDeployTarget,
-	ensureGeneratedWranglerConfig,
-	loadDeployState,
-	provisionCloudflareResources,
-	syncCloudflareSecrets,
-	verifyProvisionedCloudflareResources,
-} from '../../hosting/deployment/deploy.ts';
-import {
-	collectReconcileStatus,
-	reconcileTarget,
-	resolveBootstrapSelection,
-	type BootstrapSystem,
-	type DesiredUnit,
-	type RunnableBootstrapSystem,
+reconcileTarget,
+resolveBootstrapSelection,
+type BootstrapSystem
 } from '../../../../reconcile/index.ts';
 import {
-	ensureGitHubBootstrapRepository,
-	maybeResolveGitHubRepositorySlug,
-} from '../../repositories/github-automation.ts';
+buildProvisioningSummary,
+createPersistentDeployTarget,
+loadDeployState
+} from '../../hosting/deployment/deploy.ts';
 import {
-	buildRailwayCommandEnv,
-	configuredRailwayServices,
-	validateRailwayDeployPrerequisites,
-} from '../../hosting/railway/railway-deploy.ts';
-import {
-	ensureRailwayEnvironment,
-	ensureRailwayProject,
-	ensureRailwayService,
-	normalizeRailwayEnvironmentName,
-	resolveRailwayWorkspace,
-	resolveRailwayWorkspaceContext,
-	upsertRailwayVariables,
+resolveRailwayWorkspace
 } from '../../hosting/railway/railway-api.ts';
-import { discoverApplications } from '../../../../hosting/apps.ts';
+import { PRODUCTION_BRANCH,STAGING_BRANCH } from '../../operations/git-workflow.ts';
 import {
-	createGitHubApiClient,
-	ensureGitHubBranchFromBase,
-	listGitHubEnvironmentSecretNames,
-	listGitHubEnvironmentVariableNames,
+createGitHubApiClient,
+ensureGitHubBranchFromBase
 } from '../../repositories/github-api.ts';
-import { resolveGitHubCredentialForRepository } from '../../configuration/github-credentials.ts';
-import { loadCliDeployConfig, packageDistScriptRoot, packageScriptPath, resolveWranglerBin, withProcessCwd } from '../../agents/runtime-tools.ts';
-import { PRODUCTION_BRANCH, STAGING_BRANCH } from '../../operations/git-workflow.ts';
-import {
-	createManagedToolEnv,
-	resolveToolBinary,
-	resolveToolCommand,
-} from '../../../../entrypoints/runtime/managed-dependencies.ts';
-import { GITHUB_TOKEN_ENV, resolveGitHubToken, withServiceCredentialEnv } from '../../../../configuration/service-credentials.ts';
-import {
-	filterManagedHostGitHubEnvironment,
-	usesManagedHostOperationRequests,
-} from '../../hosting/audit/managed-host-security.ts';
-import {
-	assertKeyAgentResponse,
-	getKeyAgentPaths,
-	inspectKeyAgentDiagnostics,
-	readWrappedMachineKeyFile,
-	replaceWrappedMachineKey,
-	rotateWrappedMachineKeyPassphrase,
-	KEY_AGENT_IDLE_TIMEOUT_MS,
-	MACHINE_KEY_PASSPHRASE_ENV,
-	KeyAgentError,
-	unwrapMachineKey,
-	type KeyAgentStatus,
-} from '../../configuration/key-agent.ts';
+import { maybeResolveGitHubRepositorySlug } from '../../repositories/github-automation.ts';
 import { ConfigScope } from '../accounts/ensure-secret-session-for-config.ts';
-import { collectConfigSeedValues, collectEnvironmentContext, workspaceBootstrapDeployConfig } from '../support/resolve-entry-value-from-buckets.ts';
-import { checkProviderConnections, discoverGitHubEnvironmentSyncTargets, formatProviderConnectionFailures } from '../hosting/check-railway-connection.ts';
+import { checkProviderConnections,discoverGitHubEnvironmentSyncTargets,formatProviderConnectionFailures } from '../hosting/check-railway-connection.ts';
+import { collectConfigSeedValues,collectEnvironmentContext,workspaceBootstrapDeployConfig } from '../support/resolve-entry-value-from-buckets.ts';
+import { formatConfigValidationFailure,summarizePersistentReadiness,summarizeReconciledPersistentReadiness } from '../support/summarize-persistent-readiness.ts';
+import { syncGitHubEnvironment } from './create-git-hub-config-sync-units.ts';
 import { filterValidationForBootstrapSystems } from './list-relevant-config-entries.ts';
-import { formatConfigValidationFailure, summarizePersistentReadiness, summarizeReconciledPersistentReadiness } from '../support/summarize-persistent-readiness.ts';
 import { syncManagedServiceSettingsFromDeployConfig } from './machine-config-relative-path.ts';
 import { applyEnvironmentToProcess } from './resolve-launch-environment.ts';
-import { syncGitHubEnvironment } from './create-git-hub-config-sync-units.ts';
 
 export async function finalizeConfig({
 	tenantRoot,
@@ -252,29 +190,7 @@ export async function finalizeConfig({
 	progress('Syncing managed service settings from treeseed.site.yaml...');
 	syncManagedServiceSettingsFromDeployConfig(tenantRoot);
 
-	const githubSelected = scopes.some((scope) => scope !== 'local' && summary.bootstrapSystemsByScope[scope].runnable.includes('github'));
-	let githubRepository = maybeResolveGitHubRepositorySlug(tenantRoot);
-	if (githubSelected && initializePersistent) {
-		const localSeedValues = collectConfigSeedValues(tenantRoot, 'local', env);
-		const localSuggestedValues = getEnvironmentSuggestedValues({
-			scope: 'local',
-			purpose: 'config',
-			deployConfig: registry.context.deployConfig,
-			tenantConfig: registry.context.tenantConfig,
-			plugins: registry.context.plugins,
-			values: localSeedValues,
-		});
-		const repositoryBootstrap = await ensureGitHubBootstrapRepository(tenantRoot, {
-			values: {
-				...localSuggestedValues,
-				...localSeedValues,
-			},
-			defaultName: registry.context.deployConfig.slug,
-			onProgress: (line) => progress(line),
-		});
-		summary.githubRepository = repositoryBootstrap as Record<string, unknown>;
-		githubRepository = repositoryBootstrap.repository;
-	}
+	const githubRepository = maybeResolveGitHubRepositorySlug(tenantRoot);
 
 	if (initializePersistent) {
 		for (const scope of scopes) {
@@ -323,62 +239,6 @@ export async function finalizeConfig({
 					branchBootstrap,
 					result: {},
 				});
-			}
-			const deploySystems = selection.runnable.filter((system) => system === 'data' || system === 'web' || system === 'api' || system === 'agents');
-			if (deploySystems.length > 0) {
-				progress(`[${scope}][bootstrap][deploy] Deploying ${deploySystems.join(', ')}...`);
-				applyEnvironmentToProcess({ tenantRoot, scope, override: true });
-				process.env.TREESEED_RAILWAY_WORKSPACE = process.env.TREESEED_RAILWAY_WORKSPACE
-					|| scopeSeedValues[scope].TREESEED_RAILWAY_WORKSPACE
-					|| resolveRailwayWorkspace(scopeSeedValues[scope]);
-				const { deployProjectPlatform } = await import('../../projects/projects-core/project-platform.ts');
-				const deployResult = await deployProjectPlatform({
-					tenantRoot,
-					scope,
-					skipProvision: true,
-					bootstrapSystems: deploySystems,
-					bootstrapExecution,
-					env: scopeSeedValues[scope],
-					write: (line, stream) => progress(line, stream),
-				});
-				const deployEntry = summary.deployed.find((entry) => entry.scope === scope);
-				if (deployEntry) {
-					deployEntry.result = deployResult as Record<string, unknown>;
-				} else {
-					summary.deployed.push({
-						scope,
-						branchBootstrap: null,
-						result: deployResult as Record<string, unknown>,
-					});
-				}
-				progress(`[${scope}][bootstrap][verify] Re-verifying after deployment...`);
-				const finalized = await reconcileTarget({
-					tenantRoot,
-					target: createPersistentDeployTarget(scope),
-					env: scopeSeedValues[scope],
-					systems: reconcileSystems,
-					write: (line) => progress(`[${scope}][verify] ${line}`),
-				});
-				const index = summary.reconciled.findIndex((entry) => entry.scope === scope);
-				const nextSummary = {
-					scope,
-					target: scope,
-					units: finalized.units.length,
-					actions: finalized.results.map((result) => ({
-						unitId: result.unit.unitId,
-						unitType: result.unit.unitType,
-						provider: result.unit.provider,
-						action: result.action,
-						verified: result.verification?.verified === true,
-						missing: result.verification?.missing ?? [],
-						drifted: result.verification?.drifted ?? [],
-					})),
-				};
-				if (index >= 0) {
-					summary.reconciled[index] = nextSummary;
-				} else {
-					summary.reconciled.push(nextSummary);
-				}
 			}
 		}
 	}

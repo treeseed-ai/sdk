@@ -1,4 +1,4 @@
-import { classifyGitMode, runGitText } from '../operations/git-runner.ts';
+import { classifyGitMode,runGitText } from '../operations/git-runner.ts';
 
 function runGit(args: string[], options: { cwd: string; capture?: boolean; timeoutMs?: number; maxBuffer?: number }) {
 	return runGitText(args, {

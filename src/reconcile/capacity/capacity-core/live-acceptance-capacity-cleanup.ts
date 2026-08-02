@@ -1,8 +1,8 @@
 import {
-	capacityProviderPublicIdentity,
-	ProviderProtocolClient,
-	signCapacityProviderProof,
-	type CapacityProviderPrivateJwk,
+capacityProviderPublicIdentity,
+ProviderProtocolClient,
+signCapacityProviderProof,
+type CapacityProviderPrivateJwk,
 } from '../../../capacity/providers/capacity-provider.ts';
 import { MarketClient } from '../../../entrypoints/clients/market-client.ts';
 import { assertRevokedCapacityProviderAccess } from './live-acceptance-capacity-guards.ts';

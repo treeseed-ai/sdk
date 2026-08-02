@@ -1,8 +1,7 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync,writeFileSync } from 'node:fs';
 import { readDevLogs } from '../../../local-dev/managed-dev.ts';
+import type { SceneLogCollectOptions,SceneLogReport } from '../../types.ts';
 import { sceneWarningDiagnostic } from './diagnostics.ts';
-import type { SceneLogCollectOptions, SceneLogReport } from '../../types.ts';
 
 const MAX_BYTES = 1024 * 1024;
 const MAX_LINES = 1000;

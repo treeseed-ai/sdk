@@ -1,36 +1,9 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
-import { parse as parseYaml } from 'yaml';
-import { loadCliDeployConfig } from '../agents/runtime-tools.ts';
+import { resolve } from 'node:path';
 import { resolveMachineEnvironmentValues } from '../configuration/config-runtime.ts';
-import { createPersistentDeployTarget, resolveResourceIdentity } from '../hosting/deployment/deploy.ts';
-import { classifyGitMode, runGitText } from '../operations/git-runner.ts';
-import { discoverApplications } from '../../../hosting/apps.ts';
-import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName, railwayTreeDxServiceName } from '../hosting/railway/railway-source-policy.ts';
-import { runPrefixedCommand, sleep, type BootstrapTaskPrefix, type BootstrapWriter } from '../operations/bootstrap-runner.ts';
-import {
-	ensureRailwayEnvironment,
-	ensureRailwayProject,
-	ensureRailwayService,
-	ensureRailwayServiceInstanceConfiguration,
-	ensureRailwayServiceVolume,
-	deployRailwayServiceInstance,
-	getRailwayServiceInstance,
-	listRailwayEnvironments,
-	listRailwayProjects,
-	listRailwayServices,
-	listRailwayVolumes,
-	normalizeRailwayEnvironmentName,
-	railwayGraphqlRequest,
-	resolveRailwayApiToken,
-	resolveRailwayApiUrl,
-	resolveRailwayWorkspace,
-	resolveRailwayWorkspaceContext,
-	upsertRailwayVariables,
-} from '../hosting/railway/railway-api.ts';
-import { elapsedMs, formatDurationMs, type TimingEntry } from '../../../entrypoints/runtime/timing.ts';
-import { HOSTED_PROJECT_SERVICE_KEYS, OPERATIONS_RUNNER_BOOTSTRAP_COUNT, RAILWAY_SERVICE_KEYS, WORKER_RUNNER_BOOTSTRAP_INDEX, WORKER_RUNNER_VOLUME_MOUNT_PATH, configuredApiPublicBaseUrl, defaultRailwayImageRef, deriveRailwayCapacityProviderRunnerServiceName, deriveRailwayOperationsRunnerServiceName, deriveRailwayWorkerRunnerServiceName, envValue, normalizeScheduleExpressions, normalizeScope, railwayImageRefEnvForService, railwayServiceNameSuffix, resolveRailwayEnvironmentForScope } from './normalize-scope.ts';
-import { configuredPublicTreeDxRailwayServices, resolveRailwayCapacityProviderRoot, resolveRailwayServiceSourcePolicy } from './configured-public-tree-dx-railway-services.ts';
+import { createPersistentDeployTarget,resolveResourceIdentity } from '../hosting/deployment/deploy.ts';
+import { apiRailwayDefaultDockerfilePath,isApiRailwaySourcePolicyService,railwayEnvironmentQualifiedServiceName } from '../hosting/railway/railway-source-policy.ts';
+import { configuredPublicTreeDxRailwayServices,resolveRailwayCapacityProviderRoot,resolveRailwayServiceSourcePolicy } from './configured-public-tree-dx-railway-services.ts';
+import { HOSTED_PROJECT_SERVICE_KEYS,OPERATIONS_RUNNER_BOOTSTRAP_COUNT,RAILWAY_SERVICE_KEYS,WORKER_RUNNER_BOOTSTRAP_INDEX,WORKER_RUNNER_VOLUME_MOUNT_PATH,configuredApiPublicBaseUrl,defaultRailwayImageRef,deriveRailwayCapacityProviderRunnerServiceName,deriveRailwayOperationsRunnerServiceName,deriveRailwayWorkerRunnerServiceName,envValue,normalizeScheduleExpressions,normalizeScope,railwayImageRefEnvForService,railwayServiceNameSuffix,resolveRailwayEnvironmentForScope } from './normalize-scope.ts';
 
 export function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, application = null, machineConfigRoot = tenantRoot, envOverlay = {}, options = {}) {
 	const normalizedScope = normalizeScope(scope);

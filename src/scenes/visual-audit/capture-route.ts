@@ -1,39 +1,19 @@
 import { mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { randomUUID } from 'node:crypto';
-import { readDevInstance } from '../../local-dev/managed-dev.ts';
-import { resolveSceneBaseUrl } from '../support/execution/base-url.ts';
-import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
-import { resolveSceneDeviceProfile } from '../runtime/devices.ts';
-import { prepareSceneEnvironment } from '../configuration/environment.ts';
-import { validateScene } from '../support/execution/planner.ts';
-import { writeSceneVisualAuditReport } from '../support/visual-audit/visual-audit-report.ts';
+import { dirname } from 'node:path';
+import { sceneErrorDiagnostic,sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
 import {
-	buildSceneVisualAuditReview,
-	isSceneVisualAuditIgnoredClientError,
-	writeSceneVisualAuditReview,
+isSceneVisualAuditIgnoredClientError
 } from '../support/visual-audit/visual-audit-review.ts';
-import {
-	discoverSceneVisualAuditRoutes,
-	SceneVisualAuditRouteFilename,
-} from '../support/visual-audit/visual-audit-routes.ts';
-import {
-	ensureSceneVisualAuditRoleFixtures,
-	signInSceneVisualAuditRole,
-	validateSceneVisualAuditRoles,
-} from '../testing/visual-audit-fixtures.ts';
 import type {
-	SceneDeviceProfile,
-	SceneVisualAuditClientError,
-	SceneDiagnostic,
-	SceneVisualAuditCapture,
-	SceneVisualAuditManifest,
-	SceneVisualAuditOptions,
-	SceneVisualAuditPaths,
-	SceneVisualAuditReport,
-	SceneVisualAuditRole,
+SceneDeviceProfile,
+SceneDiagnostic,
+SceneVisualAuditCapture,
+SceneVisualAuditClientError,
+SceneVisualAuditManifest,
+SceneVisualAuditPaths,
+SceneVisualAuditRole
 } from '../types.ts';
-import { captureId, captureLooksHealthy, clientErrorId, collectDomSummary, expectedStatusMatches, hasTransientVisualAuditServerError, pathFromUrl, screenshotPath } from './split-diagnostics.ts';
+import { captureId,captureLooksHealthy,clientErrorId,collectDomSummary,expectedStatusMatches,hasTransientVisualAuditServerError,pathFromUrl,screenshotPath } from './split-diagnostics.ts';
 
 export async function captureRoute(input: {
 	page: any;
@@ -116,11 +96,11 @@ export async function captureRoute(input: {
 		if (lastAttemptError) throw lastAttemptError;
 		screenshot = screenshotPath({ paths: input.paths, role: input.role, device: input.device, pathRoot: input.route.pathRoot, path: input.route.path });
 		mkdirSync(dirname(screenshot), { recursive: true });
-		await input.page.screenshot({ path: screenshot, fullPage: false });
+		await input.page.screenshot({ path: screenshot, fullPage: false, caret: 'initial' });
 		if (input.includeFullPage) {
 			fullPageScreenshot = screenshotPath({ paths: input.paths, role: input.role, device: input.device, pathRoot: input.route.pathRoot, path: input.route.path, fullPage: true });
 			mkdirSync(dirname(fullPageScreenshot), { recursive: true });
-			await input.page.screenshot({ path: fullPageScreenshot, fullPage: true });
+			await input.page.screenshot({ path: fullPageScreenshot, fullPage: true, caret: 'initial' });
 		}
 		if (captureLooksHealthy({ url, finalUrl, httpStatus, dom })) {
 			const routePath = pathFromUrl(url);

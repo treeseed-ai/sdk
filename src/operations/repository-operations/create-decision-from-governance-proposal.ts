@@ -1,17 +1,9 @@
-import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
-import { promisify } from 'node:util';
-import { serializeFrontmatterDocument, parseFrontmatterDocument } from '../../content/frontmatter.ts';
-import {
-	applyProjectLaunchHostBindingConfig,
-	auditProjectLaunchHostBindingConfig,
-	type ApplyProjectLaunchHostBindingConfigOptions,
-} from '../services/hosting/deployment/template-host-bindings.ts';
-import { PlatformRepositoryDescriptor, PlatformRepositoryOperationInput, PlatformRepositoryOperationOptions, PlatformRepositoryVerificationResult, execFileAsync } from './exec-file-async.ts';
-import { PlatformRepositoryVerificationError, optionalTrimmedString, runGit, safeContentPath, slugifyPlatformContent } from './platform-repository-verification-error.ts';
-import { readContentRecord, writeContentRecord, writeParsedRecord } from './initialize-linked-repository.ts';
+import { rm } from 'node:fs/promises';
+import { isAbsolute,relative,resolve,sep } from 'node:path';
+import { PlatformRepositoryDescriptor,PlatformRepositoryOperationInput,PlatformRepositoryOperationOptions,PlatformRepositoryVerificationResult,execFileAsync } from './exec-file-async.ts';
+import { readContentRecord,writeContentRecord,writeParsedRecord } from './initialize-linked-repository.ts';
+import { PlatformRepositoryVerificationError,optionalTrimmedString,runGit,safeContentPath,slugifyPlatformContent } from './platform-repository-verification-error.ts';
 
 export async function createDecisionFromGovernanceProposal(repoPath: string, input: PlatformRepositoryOperationInput) {
 	const proposalSnapshot = input.proposalSnapshot && typeof input.proposalSnapshot === 'object' ? input.proposalSnapshot as Record<string, unknown> : {};
@@ -235,19 +227,4 @@ export function outputHref(output: Record<string, unknown>) {
 		}
 	}
 	return null;
-}
-
-export const HOST_BINDING_CONFIG_PATHS = new Set([
-	'treeseed.site.yaml',
-	'src/env.yaml',
-	'src/manifest.yaml',
-	'package.json',
-]);
-
-export function assertHostBindingChangedPaths(changed: string[]) {
-	for (const changedPath of changed) {
-		if (!HOST_BINDING_CONFIG_PATHS.has(changedPath)) {
-			throw new Error(`Host binding repository operation attempted to change unsupported path "${changedPath}".`);
-		}
-	}
 }

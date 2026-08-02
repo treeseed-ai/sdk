@@ -1,20 +1,20 @@
 import type {
-	SdkContextPack,
-	SdkContextPackRequest,
-	SdkGraphDslParseResult,
-	SdkGraphEdge,
-	SdkGraphNode,
-	SdkGraphQueryRequest,
-	SdkGraphQueryResult,
-	SdkGraphRefreshPayload,
-	SdkGraphRefreshRequest,
-	SdkGraphSearchOptions,
-	SdkGraphSearchResult,
-	SdkGraphTraversalResult,
+SdkContextPack,
+SdkContextPackRequest,
+SdkGraphDslParseResult,
+SdkGraphEdge,
+SdkGraphNode,
+SdkGraphQueryRequest,
+SdkGraphQueryResult,
+SdkGraphRefreshPayload,
+SdkGraphRefreshRequest,
+SdkGraphSearchOptions,
+SdkGraphSearchResult,
+SdkGraphTraversalResult,
 } from '../../entrypoints/models/sdk-types.ts';
-import type { components, operations, paths } from '../generated/openapi-types.ts';
-import { TreeDxFetchRemoteRequest } from './tree-dx-context-request.ts';
+import type { components,operations,paths } from '../generated/openapi-types.ts';
 import { TreeDxRepositoryPlacement } from './tree-dx-actor.ts';
+import { TreeDxFetchRemoteRequest } from './tree-dx-context-request.ts';
 
 export interface TreeDxPushRequest extends TreeDxFetchRemoteRequest {
 	refspecs: string[];
@@ -33,6 +33,53 @@ export interface TreeDxPushResult {
 	rejectedRefs: string[];
 	beforeHead?: string | null;
 	afterHead?: string | null;
+}
+
+export interface TreeDxRefPromotionRequest {
+	repoId?: string;
+	sourceRef: string;
+	destinationRef: string;
+	expectedDestinationHead: string;
+}
+
+export interface TreeDxRefPromotionResult {
+	repoId: string;
+	sourceRef: string;
+	destinationRef: string;
+	beforeHead: string;
+	afterHead: string;
+	status: 'promoted' | string;
+}
+
+export interface TreeDxRefRetirementRequest {
+	repoId?: string;
+	ref: string;
+	mergedIntoRef: string;
+	expectedHead: string;
+	expectedMergedIntoHead: string;
+}
+
+export interface TreeDxRefRetirementResult {
+	repoId: string;
+	ref: string;
+	mergedIntoRef: string;
+	head: string;
+	mergedIntoHead: string;
+	status: 'retired' | 'already_retired';
+}
+
+export interface TreeDxOrphanRefDiscardRequest {
+	repoId?: string;
+	ref: string;
+	expectedHead: string;
+	reason: string;
+}
+
+export interface TreeDxOrphanRefDiscardResult {
+	repoId: string;
+	ref: string;
+	head: string;
+	status: 'discarded' | 'already_discarded';
 }
 
 export interface TreeDxMirrorHealthRequest {
@@ -177,21 +224,20 @@ export interface TreeDxMigration {
 }
 
 export type {
-	components as TreeDxOpenApiComponents,
-	operations as TreeDxOpenApiOperations,
-	paths as TreeDxOpenApiPaths,
-	SdkContextPack,
-	SdkContextPackRequest,
-	SdkGraphDslParseResult,
-	SdkGraphEdge,
-	SdkGraphNode,
-	SdkGraphQueryRequest,
-	SdkGraphQueryResult,
-	SdkGraphRefreshPayload,
-	SdkGraphRefreshRequest,
-	SdkGraphSearchOptions,
-	SdkGraphSearchResult,
-	SdkGraphTraversalResult,
+SdkContextPack,
+SdkContextPackRequest,
+SdkGraphDslParseResult,
+SdkGraphEdge,
+SdkGraphNode,
+SdkGraphQueryRequest,
+SdkGraphQueryResult,
+SdkGraphRefreshPayload,
+SdkGraphRefreshRequest,
+SdkGraphSearchOptions,
+SdkGraphSearchResult,
+SdkGraphTraversalResult,components as TreeDxOpenApiComponents,
+operations as TreeDxOpenApiOperations,
+paths as TreeDxOpenApiPaths
 };
 
 export type TreeDxWhoamiResponse = components['schemas']['TreeDxGetWhoamiResponse'];

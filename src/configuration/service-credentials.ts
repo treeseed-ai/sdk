@@ -1,6 +1,7 @@
 export const GITHUB_TOKEN_ENV = 'TREESEED_GITHUB_TOKEN';
 export const GITHUB_COPILOT_TOKEN_ENV = 'TREESEED_GITHUB_COPILOT_TOKEN';
 export const CLOUDFLARE_API_TOKEN_ENV = 'TREESEED_CLOUDFLARE_API_TOKEN';
+export const CLOUDFLARE_TUNNEL_API_TOKEN_ENV = 'TREESEED_CLOUDFLARE_TUNNEL_API_TOKEN';
 export const CLOUDFLARE_ACCOUNT_ID_ENV = 'TREESEED_CLOUDFLARE_ACCOUNT_ID';
 export const RAILWAY_API_TOKEN_ENV = 'TREESEED_RAILWAY_API_TOKEN';
 export const RAILWAY_TOKEN_ENV = 'TREESEED_RAILWAY_TOKEN';
@@ -25,6 +26,15 @@ export function resolveGitHubCopilotToken(env: EnvLike = process.env) {
 
 export function resolveCloudflareApiToken(env: EnvLike = process.env) {
 	return configuredValue(env, CLOUDFLARE_API_TOKEN_ENV);
+}
+
+export function resolveCloudflareTunnelApiToken(env: EnvLike = process.env) {
+	const scoped = configuredValue(env, CLOUDFLARE_TUNNEL_API_TOKEN_ENV);
+	if (scoped) return { token: scoped, source: 'tunnel' as const, fallbackUsed: false };
+	const fallback = resolveCloudflareApiToken(env);
+	return fallback
+		? { token: fallback, source: 'cloudflare-api' as const, fallbackUsed: true }
+		: { token: '', source: 'missing' as const, fallbackUsed: false };
 }
 
 export function resolveCloudflareAccountId(env: EnvLike = process.env) {

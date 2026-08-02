@@ -1,11 +1,11 @@
+import { collectLocalTreeDxSeedFiles,verifyLocalTreeDxSeedFiles } from "../../../../platform/treedx/repositories/local-treedx-seed.ts";
 import { TreeDxClient } from "../../../../treedx/support/client.ts";
-import { collectLocalTreeDxSeedFiles, verifyLocalTreeDxSeedFiles } from "../../../../platform/treedx/repositories/local-treedx-seed.ts";
-import type { ReconcileAdapter, UnitVerificationCheck, UnitVerificationResult } from "../../../support/contracts/contracts.ts";
-import { desiredUnitSpecHash } from "../../../support/state/state.ts";
 import { checkHttpHealth } from "../../../providers/local-private.ts";
-import { LocalTreeDxContentProject, ensureLocalTreeDxProjectRepositoryRef, localTreeDxProjects, mintLocalTreeDxJwt, nonEmptyString, recordValue, syncLocalTreeDxProjectContent, treeDxSeedFileRecord } from '../../capacity/providers/build-capacity-provider-adapter.ts';
-import { genericObservedState, genericResult, noopDiff } from '../../hosting/to-deploy-target.ts';
+import type { ReconcileAdapter,UnitVerificationCheck,UnitVerificationResult } from "../../../support/contracts/contracts.ts";
+import { desiredUnitSpecHash } from "../../../support/state/state.ts";
+import { LocalTreeDxContentProject,ensureLocalTreeDxProjectRepositoryRef,localTreeDxProjects,mintLocalTreeDxJwt,nonEmptyString,recordValue,syncLocalTreeDxProjectContent,treeDxSeedFileRecord } from '../../capacity/providers/build-capacity-provider-adapter.ts';
 import { verificationCheck } from '../../hosting/first-railway-domain-string.ts';
+import { genericObservedState,genericResult,noopDiff } from '../../hosting/to-deploy-target.ts';
 import { summarizeVerification } from '../../support/summarize-verification.ts';
 
 const LOCAL_TREEDX_RECONCILIATION_TIMEOUT_MS = 120_000;
@@ -14,11 +14,12 @@ export function createLocalTreeDxReconciliationClient(
 	baseUrl: string,
 	token: string,
 	fetchImpl?: typeof fetch,
+	timeoutMs = LOCAL_TREEDX_RECONCILIATION_TIMEOUT_MS,
 ) {
 	return new TreeDxClient({
 		baseUrl,
 		token,
-		timeoutMs: LOCAL_TREEDX_RECONCILIATION_TIMEOUT_MS,
+		timeoutMs,
 		...(fetchImpl ? { fetch: fetchImpl } : {}),
 	});
 }
@@ -29,27 +30,31 @@ export async function verifyLocalTreeDxProjectContent(
 	repositoryId: string,
 ) {
 	const desiredFiles = collectLocalTreeDxSeedFiles(project);
-	if (desiredFiles.length === 0) {
-		return {
-			verified: true,
-			desiredFileCount: 0,
-			verifiedFileCount: 0,
-			missingPaths: [] as string[],
-			mismatchedPaths: [] as string[],
-		};
-	}
-	const response = await client.readRepositoryFiles({
-		repoId: repositoryId,
-		ref: project.defaultRef ?? 'refs/heads/main',
-		paths: desiredFiles.map((file) => file.path),
-		encoding: 'utf8',
-		parseFrontmatter: false,
-	});
+	const response = desiredFiles.length
+		? await client.readRepositoryFiles({ repoId: repositoryId, ref: project.defaultRef ?? 'refs/heads/main',
+			paths: desiredFiles.map((file) => file.path), encoding: 'utf8', parseFrontmatter: false })
+		: await client.listRepositoryPaths({ repoId: repositoryId, ref: project.defaultRef ?? 'refs/heads/main',
+			paths: [`${project.contentPath}/**`], limit: 1 });
 	const observedFiles = (Array.isArray(response.files) ? response.files : response.file ? [response.file] : [])
 		.map(treeDxSeedFileRecord);
+	const resolvedRef = typeof response.resolvedRef === 'string' ? response.resolvedRef : '';
+	if (!/^[a-f0-9]{40}$/u.test(resolvedRef)) throw new Error(`TreeDX did not resolve an immutable commit for ${project.slug}.`);
+	const ref = project.defaultRef ?? 'refs/heads/main';
+	const [searchStatus, searchProbe, graphProbe] = await Promise.all([
+		client.getSearchIndexStatus({ repoId: repositoryId, ref }),
+		client.searchRepositoryFiles({ repoId: repositoryId, ref, paths: project.seedPaths?.map((path) => `${path}/**`),
+			query: 'TreeSeed', limit: 1, includeBody: false }),
+		client.queryGraph({ repoId: repositoryId, ref, query: 'TreeSeed', options: { limit: 1 } }),
+	]);
+	if (!searchStatus.ready || searchStatus.stale || searchStatus.resolvedRef !== resolvedRef
+		|| (searchStatus.sourceCommit && searchStatus.sourceCommit !== resolvedRef)
+		|| searchProbe.resolvedRef !== resolvedRef || !graphProbe.graphVersion
+		|| (searchStatus.graphVersion && graphProbe.graphVersion !== searchStatus.graphVersion)) {
+		throw new Error(`TreeDX graph/search state is not at the exact repository commit for ${project.slug}.`);
+	}
 	return {
 		...verifyLocalTreeDxSeedFiles(desiredFiles, observedFiles),
-		ref: project.defaultRef ?? 'refs/heads/main',
+		ref, resolvedRef, graphVersion: graphProbe.graphVersion, searchIndexVersion: searchStatus.indexVersion,
 		seedDigest: project.seedDigest ?? null,
 	};
 }
@@ -69,7 +74,8 @@ export function buildLocalTreeDxAdapter(): ReconcileAdapter {
 			const warnings: string[] = [];
 			if (baseUrl && token) {
 				try {
-					repositories = await createLocalTreeDxReconciliationClient(baseUrl, token).listRepositories();
+					const timeoutMs = input.context.session.get('treeseed:status-only') === true ? 5_000 : LOCAL_TREEDX_RECONCILIATION_TIMEOUT_MS;
+					repositories = await createLocalTreeDxReconciliationClient(baseUrl, token, undefined, timeoutMs).listRepositories();
 				} catch (error) {
 					warnings.push(`TreeDX repositories could not be observed: ${error instanceof Error ? error.message : String(error)}`);
 				}
@@ -140,6 +146,7 @@ export function buildLocalTreeDxAdapter(): ReconcileAdapter {
 			return genericResult(input, { ...input.observed.live, syncedProjects });
 		},
 		async verify(input) {
+			const statusOnly = input.context.session.get('treeseed:status-only') === true;
 			const dependencyResults = input.context.session.get('treeseed:verification-results') as Map<string, UnitVerificationResult> | undefined;
 			const dependencyChecks = input.unit.dependencies.map((dependency) => {
 				const verification = dependencyResults?.get(dependency);
@@ -199,11 +206,17 @@ export function buildLocalTreeDxAdapter(): ReconcileAdapter {
 			const token = nonEmptyString(input.unit.spec.token) || mintLocalTreeDxJwt(recordValue(input.unit.spec.auth));
 			if (baseUrl && token) {
 				const client = createLocalTreeDxReconciliationClient(baseUrl, token);
-				let repositories: unknown[] = [];
-				try {
-					repositories = await client.listRepositories();
-				} catch {
-					repositories = [];
+				let repositories: unknown[] = statusOnly
+					? (Array.isArray(input.observed.live.registeredRepositoryNames)
+						? input.observed.live.registeredRepositoryNames.map((repositoryName) => ({ repositoryName }))
+						: [])
+					: [];
+				if (!statusOnly) {
+					try {
+						repositories = await client.listRepositories();
+					} catch {
+						repositories = [];
+					}
 				}
 				for (const project of localTreeDxProjects(input.unit.spec.projects)) {
 					const repo = repositories.find((entry) => {
@@ -219,7 +232,7 @@ export function buildLocalTreeDxAdapter(): ReconcileAdapter {
 							verified: true,
 							observed: repo,
 						}));
-						if (input.unit.spec.syncSeedContent !== false && repositoryId) {
+						if (!statusOnly && input.unit.spec.syncSeedContent !== false && repositoryId) {
 							try {
 								const content = await verifyLocalTreeDxProjectContent(client, project, repositoryId);
 								repositoryChecks.push(verificationCheck(`treedx-content:${project.slug}`, `TreeDX repository ${project.repositoryId} exposes the exact desired seed content from ${project.defaultRef ?? 'refs/heads/main'}`, 'api', {

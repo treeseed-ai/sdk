@@ -1,5 +1,4 @@
-import { sql } from 'drizzle-orm';
-import { bigint, check, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import { index,integer,pgTable,real,text,uniqueIndex } from 'drizzle-orm/pg-core';
 
 
 export const governanceElectorateSnapshots = pgTable('governance_electorate_snapshots', {
@@ -133,41 +132,6 @@ export const projects = pgTable('projects', {
 	index('idx_projects_team_id').on(table.teamId)
 ]);
 
-export const projectConnections = pgTable('project_connections', {
-	id: text('id').primaryKey(),
-	projectId: text('project_id').notNull().unique(),
-	mode: text('mode').notNull(),
-	projectApiBaseUrl: text('project_api_base_url'),
-	executionOwner: text('execution_owner').notNull(),
-	runnerRegistrationState: text('runner_registration_state').notNull().default('pending'),
-	runnerKeyPrefix: text('runner_key_prefix'),
-	runnerKeyHash: text('runner_key_hash'),
-	runnerRegisteredAt: text('runner_registered_at'),
-	runnerLastSeenAt: text('runner_last_seen_at'),
-	metadataJson: text('metadata_json'),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-});
-
-export const projectCapabilityGrants = pgTable('project_capability_grants', {
-	id: text('id').primaryKey(),
-	projectId: text('project_id').notNull(),
-	label: text('label'),
-	namespace: text('namespace').notNull(),
-	operation: text('operation').notNull(),
-	executionClass: text('execution_class').notNull(),
-	allowedTargetsJson: text('allowed_targets_json').notNull(),
-	defaultDispatchMode: text('default_dispatch_mode').notNull(),
-	approvalPolicyJson: text('approval_policy_json').notNull().default('{}'),
-	resourceScopeJson: text('resource_scope_json').notNull().default('{}'),
-	metadataJson: text('metadata_json').notNull().default('{}'),
-	enabled: integer('enabled').notNull().default(1),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	uniqueIndex('idx_project_capability_grants_project_operation').on(table.projectId, table.namespace, table.operation)
-]);
-
 export const teamApiKeys = pgTable('team_api_keys', {
 	id: text('id').primaryKey(),
 	teamId: text('team_id').notNull(),
@@ -232,23 +196,6 @@ export const remoteJobEvents = pgTable('remote_job_events', {
 	createdAt: text('created_at').notNull(),
 }, (table) => [
 	uniqueIndex('idx_remote_job_events_job_seq').on(table.jobId, table.seq)
-]);
-
-export const knowledgePacks = pgTable('knowledge_packs', {
-	id: text('id').primaryKey(),
-	teamId: text('team_id').notNull(),
-	slug: text('slug').notNull().unique(),
-	name: text('name').notNull(),
-	summary: text('summary'),
-	sourceKind: text('source_kind').notNull(),
-	sourceRef: text('source_ref'),
-	installStrategy: text('install_strategy').notNull(),
-	visibility: text('visibility').notNull(),
-	metadataJson: text('metadata_json'),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	index('idx_knowledge_packs_team_id').on(table.teamId)
 ]);
 
 export const teamStorageLocators = pgTable('team_storage_locators', {

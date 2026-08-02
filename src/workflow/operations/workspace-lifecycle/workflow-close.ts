@@ -1,22 +1,22 @@
-import { assertCleanWorktree, assertFeatureBranch, createDeprecatedTaskTag, deleteLocalBranch, deleteRemoteBranch, STAGING_BRANCH, syncBranchWithOrigin } from "../../../operations/services/operations/git-workflow.ts";
-import { currentBranch, hasMeaningfulChanges } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
+import { assertCleanWorktree,assertFeatureBranch,createDeprecatedTaskTag,deleteLocalBranch,deleteRemoteBranch,STAGING_BRANCH,syncBranchWithOrigin } from "../../../operations/services/operations/git-workflow.ts";
+import { checkedOutManagedWorkflowRepos,type ManagedRepository } from "../../../operations/services/support/managed-repositories.ts";
+import { currentBranch,hasMeaningfulChanges } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
 import { workspaceRoot } from "../../../operations/services/treedx/workspaces/workspace-tools.ts";
-import { resolveWorkflowSession } from "../../session.ts";
-import { checkedOutManagedWorkflowRepos, type ManagedRepository } from "../../../operations/services/support/managed-repositories.ts";
-import { isManagedWorkflowWorktree, managedWorkflowWorktreeMetadata, removeManagedWorkflowWorktree } from "../../worktrees.ts";
 import type { CloseInput } from "../../../operations/workflow.ts";
-import { WorkflowOperationHelpers, ensureWorkflowWorkspaceLinks, unlinkWorkflowWorkspaceLinks } from '../recovery/workflow-write.ts';
-import { resolveProjectRootOrThrow, withContextEnv } from '../commerce/catalog/run-release-production-guarantees.ts';
-import { assertWorkspaceClean, buildWorkflowResult, createManagedWorkflowRepoReports, createWorkspaceRootRepoReport, findReportByName, normalizeExecutionMode } from '../support/create-repo-report.ts';
-import { findAutoResumableTaskRun, rejectImplicitWorkflowResume } from '../repositories/gates-for-saved-repository-reports.ts';
-import { ensureMessage, toError } from '../projects/projects-core/connect-market-project.ts';
+import { resolveWorkflowSession } from "../../session.ts";
+import { isManagedWorkflowWorktree,managedWorkflowWorktreeMetadata,removeManagedWorkflowWorktree } from "../../worktrees.ts";
+import { resolveProjectRootOrThrow,withContextEnv } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { assertSessionBranchSafety,destroyWorkflowBranchPreviewIfPresent } from '../packages/collect-published-release-artifact-checks.ts';
 import { worktreePayload } from '../packages/normalize-release-candidate-mode.ts';
+import { acquireWorkflowRun,completeWorkflowRun,executeJournalStep,skipJournalStep } from '../packages/prepare-fresh-release-run.ts';
 import { createNextSteps } from '../packages/release-admin-message.ts';
-import { cleanupTaskBranchReport, maybeAutoSaveCurrentTaskBranch } from '../support/sync-current-branch-to-origin.ts';
-import { assertSessionBranchSafety, destroyWorkflowBranchPreviewIfPresent } from '../packages/collect-published-release-artifact-checks.ts';
-import { acquireWorkflowRun, completeWorkflowRun, executeJournalStep, skipJournalStep } from '../packages/prepare-fresh-release-run.ts';
-import { updateHead } from './workflow-switch.ts';
+import { ensureMessage,toError } from '../support/workflow-helpers.ts';
 import { failWorkflowRun } from '../recovery/fail-workflow-run.ts';
+import { ensureWorkflowWorkspaceLinks,unlinkWorkflowWorkspaceLinks,WorkflowOperationHelpers } from '../recovery/workflow-write.ts';
+import { findAutoResumableTaskRun,rejectImplicitWorkflowResume } from '../repositories/gates-for-saved-repository-reports.ts';
+import { assertWorkspaceClean,buildWorkflowResult,createManagedWorkflowRepoReports,createWorkspaceRootRepoReport,findReportByName,normalizeExecutionMode } from '../support/create-repo-report.ts';
+import { cleanupTaskBranchReport,maybeAutoSaveCurrentTaskBranch } from '../support/sync-current-branch-to-origin.ts';
+import { updateHead } from './workflow-switch.ts';
 
 export async function workflowClose(helpers: WorkflowOperationHelpers, input: CloseInput) {
 	try {

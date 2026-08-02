@@ -1,10 +1,10 @@
 import { MarketClient } from '../../../entrypoints/clients/market-client.ts';
-import type { CapacityGovernanceRuntimeConnection } from '../../capacity/capacity-core/live-acceptance-capacity-governance.ts';
 import type { CapacityAcceptanceExecutionInput } from '../../capacity/capacity-core/live-acceptance-capacity-executor.ts';
-import type { RunLiveReconcileTestsOptions } from './live-acceptance.ts';
+import type { CapacityGovernanceRuntimeConnection } from '../../capacity/capacity-core/live-acceptance-capacity-governance.ts';
+import { runLocalConcurrentStarterAcceptance } from './live-acceptance-starter-concurrency.ts';
 import { runLocalEngineeringStarterAcceptance } from './live-acceptance-starter-engineering.ts';
 import { runLocalResearchStarterPlanningAcceptance } from './live-acceptance-starter-planning.ts';
-import { runLocalConcurrentStarterAcceptance } from './live-acceptance-starter-concurrency.ts';
+import type { RunLiveReconcileTestsOptions } from './live-acceptance.ts';
 
 export async function runLocalAutonomousStarterAcceptances(input: {
 	adminClient: MarketClient;

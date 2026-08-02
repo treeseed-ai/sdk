@@ -1,12 +1,12 @@
 import { collectEnvironmentContext } from "../../../operations/services/configuration/config-runtime.ts";
-import { buildPublicVars, buildSecretMap, loadDeployState, scopeFromTarget } from "../../../operations/services/hosting/deployment/deploy.ts";
 import { shouldExposeManagedHostRuntimeSecret } from "../../../operations/services/hosting/audit/managed-host-security.ts";
-import { listRailwayCustomDomains, listRailwayServiceDomains } from "../../../operations/services/hosting/railway/railway-api.ts";
-import type { ReconcileAdapterInput, UnitVerificationCheck } from "../../support/contracts/contracts.ts";
-import { normalizeRailwayDomainDnsRecord } from '../support/normalize-turnstile-domains.ts';
-import { findRailwayTopologyEntry, resolveRailwayUnitTopology } from './railway-verification-may-settle.ts';
-import { toDeployTarget } from './to-deploy-target.ts';
+import { buildPublicVars,buildSecretMap,loadDeployState,scopeFromTarget } from "../../../operations/services/hosting/deployment/deploy.ts";
+import { listRailwayCustomDomains,listRailwayServiceDomains } from "../../../operations/services/hosting/railway/railway-api.ts";
+import type { ReconcileAdapterInput,UnitVerificationCheck } from "../../support/contracts/contracts.ts";
 import { resolveReconcileEnvironmentValues } from '../reconciliation/build-workflow-meta-adapter.ts';
+import { normalizeRailwayDomainDnsRecord } from '../support/normalize-turnstile-domains.ts';
+import { findRailwayTopologyEntry,resolveRailwayUnitTopology } from './railway-verification-may-settle.ts';
+import { toDeployTarget } from './to-deploy-target.ts';
 
 export function firstRailwayDomainString(...values: unknown[]) {
 	for (const value of values) {

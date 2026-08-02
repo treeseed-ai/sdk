@@ -5,7 +5,6 @@ export type SeedDiagnosticSeverity = 'error' | 'warning';
 export type SeedPlanActionType = 'create' | 'update' | 'unchanged' | 'skip' | 'delete' | 'error';
 export type SeedResourceKind =
 	| 'team'
-	| 'repositoryHost'
 	| 'project'
 	| 'hubRepository'
 	| 'product'
@@ -67,7 +66,6 @@ export type SeedManifest = {
 
 export type SeedManifestResources = {
 	teams: SeedTeamResource[];
-	repositoryHosts: SeedRepositoryHostResource[];
 	projects: SeedProjectResource[];
 	hubRepositories: SeedHubRepositoryResource[];
 	products: SeedProductResource[];
@@ -106,28 +104,9 @@ export type SeedProjectResource = SeedResourceBase & {
 	metadata?: Record<string, unknown>;
 };
 
-export type SeedRepositoryHostResource = SeedResourceBase & {
-	team: string;
-	provider: string;
-	name: string;
-	ownership?: string;
-	accountLabel?: string;
-	organizationOrOwner: string;
-	defaultVisibility?: string;
-	softwareRepositoryNameTemplate?: string;
-	contentRepositoryNameTemplate?: string;
-	branchPolicy?: Record<string, unknown>;
-	workflowPolicy?: Record<string, unknown>;
-	allowedProjectKinds?: string[];
-	status?: string;
-	credentialRef?: string;
-	metadata?: Record<string, unknown>;
-};
-
 export type SeedHubRepositoryResource = SeedResourceBase & {
 	project: string;
 	role: string;
-	repositoryHost?: string;
 	provider: string;
 	owner: string;
 	name: string;

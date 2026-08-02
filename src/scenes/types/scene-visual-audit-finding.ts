@@ -1,6 +1,6 @@
 
-import { SceneStepStatus, SceneVisualAuditCapture, SceneVisualAuditClientError, SceneVisualAuditFindingOwner, SceneVisualAuditFindingSeverity, SceneVisualAuditReviewCategory, SceneVisualAuditReviewDetail, SceneVisualAuditRole, SceneVisualAuditRoute } from './scene-validation-report.ts';
-import { SceneDeviceProfileId, SceneDiagnostic, SceneEnvironment, SceneSelector } from './scene-schema-version.ts';
+import { SceneDeviceProfileId,SceneDiagnostic,SceneEnvironment,SceneSelector } from './scene-schema-version.ts';
+import { SceneStepStatus,SceneVisualAuditCapture,SceneVisualAuditClientError,SceneVisualAuditFindingOwner,SceneVisualAuditFindingSeverity,SceneVisualAuditReviewCategory,SceneVisualAuditReviewDetail,SceneVisualAuditRole,SceneVisualAuditRoute } from './scene-validation-report.ts';
 
 export type SceneVisualAuditFinding = {
 	id: string;

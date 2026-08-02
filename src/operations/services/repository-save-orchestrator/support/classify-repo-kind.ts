@@ -1,82 +1,29 @@
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, resolve, relative } from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
-import { tmpdir } from 'node:os';
-import { classifyGitMode, runGitText } from '../../operations/git-runner.ts';
+import { basename,relative,resolve } from 'node:path';
 import {
-	ensureSshPushUrlForOrigin,
-	remoteWriteUrl,
-	sshPushUrlForRemote,
-	type GitRemoteWriteMode,
-} from '../../repositories/git-remote-policy.ts';
-import {
-	generateRepositoryCommitMessage,
-	type CommitMessageDependencyUpdate,
-	type CommitMessageContext,
-	type CommitMessagePackageChange,
-	type CommitMessageProvider,
-	type CommitMessageProviderMode,
-	type CommitMessageSubmodulePointer,
-} from '../../capacity/providers/commit-message-provider.ts';
-import {
-	createPackageDependencyReference,
-	type DevDependencyReferenceMode,
-	type GitDependencyProtocol,
-	normalizeGitRemoteForDependency,
-	type PackageDependencyReference,
-	type RewrittenDevReference,
-	updateInternalDependencySpecs,
-} from '../../packages/package-reference-policy.ts';
-import {
-	PRODUCTION_BRANCH,
-	branchExists,
-	checkoutBranch,
-	headCommit,
-	pushBranch,
-	remoteBranchExists,
-	STAGING_BRANCH,
+headCommit
 } from '../../operations/git-workflow.ts';
 import {
-	collectMergeConflictReport,
-	currentBranch,
-	formatMergeConflictReport,
-	gitStatusPorcelain,
-	hasMeaningfulChanges,
-	incrementVersion,
-	originRemoteUrl,
-	repoRoot,
-} from '../../treedx/workspaces/workspace-save.ts';
-import {
-	hasCompletePackageCheckout,
-	run,
-	sortWorkspacePackages,
-	workspacePackages,
-} from '../../treedx/workspaces/workspace-tools.ts';
-import { collectDeploymentLockfileWorkspaceIssues, ensureLocalWorkspaceLinks } from '../../treedx/workspaces/workspace-dependency-mode.ts';
-import {
-	createBuildWarningSummary,
-	formatAllowedBuildWarnings,
-	type BuildWarningPolicyOptions,
-} from '../../build/build-warning-policy.js';
-import {
-	readVerificationCache,
-	writeVerificationCache,
-} from '../../support/verification-cache.ts';
-import {
-	discoverPackageAdapters,
-	type PackageCommand,
+type PackageCommand
 } from '../../reconciliation/package-adapters.ts';
 import {
-	discoverManagedRepositories,
-	parseGitmodulesPaths,
-	readTemplateRepositoryManifest,
-	type ManagedRepositoryKind,
+ensureSshPushUrlForOrigin
+} from '../../repositories/git-remote-policy.ts';
+import {
+parseGitmodulesPaths,
+readTemplateRepositoryManifest,
+type ManagedRepositoryKind
 } from '../../support/managed-repositories.ts';
-import { RepoKind, RepositorySaveNode, RepositorySaveOptions, RepositorySaveReport, emitProgress, runGit } from './repo-kind.ts';
+import {
+hasMeaningfulChanges,
+incrementVersion,
+originRemoteUrl,
+repoRoot
+} from '../../treedx/workspaces/workspace-save.ts';
 import { packageScripts } from '../runtime/with-short-process-temp-env.ts';
-import { tagState } from './tag-state.ts';
-import { tagExists } from './run-script.ts';
 import { planPackageVersion } from './has-staged-changes.ts';
+import { RepoKind,RepositorySaveNode,RepositorySaveOptions,RepositorySaveReport,emitProgress,runGit } from './repo-kind.ts';
+import { tagExists } from './run-script.ts';
+import { tagState } from './tag-state.ts';
 
 export function classifyRepoKind(packageJson: Record<string, unknown> | null, managedKind?: ManagedRepositoryKind): RepoKind {
 	if (managedKind === 'template') return 'template';

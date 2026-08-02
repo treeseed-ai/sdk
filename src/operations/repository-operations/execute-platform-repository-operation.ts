@@ -1,21 +1,10 @@
-import { execFile } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, relative, resolve } from 'node:path';
-import { promisify } from 'node:util';
-import { serializeFrontmatterDocument, parseFrontmatterDocument } from '../../content/frontmatter.ts';
-import {
-	applyProjectLaunchHostBindingConfig,
-	auditProjectLaunchHostBindingConfig,
-	type ApplyProjectLaunchHostBindingConfigOptions,
-} from '../services/hosting/deployment/template-host-bindings.ts';
-import { PlatformRepositoryOperationInput, PlatformRepositoryOperationOptions, PlatformRepositoryOperationResult } from './exec-file-async.ts';
-import { assertHostBindingChangedPaths, assertRepositoryWriteMode, changedPaths, changedPathsFromOutput, commitIfRequested, createDecisionFromGovernanceProposal, outputHref, runVerificationCommands } from './create-decision-from-governance-proposal.ts';
-import { derivePlatformRepositoryKey, syncRepository } from './platform-repository-verification-error.ts';
-import { createDecisionFromProposals, createRelatedContent, initializeLinkedRepository, writeContentRecord } from './initialize-linked-repository.ts';
+import { assertRepositoryWriteMode,changedPaths,changedPathsFromOutput,commitIfRequested,createDecisionFromGovernanceProposal,outputHref,runVerificationCommands } from './create-decision-from-governance-proposal.ts';
+import { PlatformRepositoryOperationInput,PlatformRepositoryOperationOptions,PlatformRepositoryOperationResult } from './exec-file-async.ts';
+import { createDecisionFromProposals,createRelatedContent,initializeLinkedRepository,writeContentRecord } from './initialize-linked-repository.ts';
+import { derivePlatformRepositoryKey,syncRepository } from './platform-repository-verification-error.ts';
 
 export async function executePlatformRepositoryOperation(
-	operation: 'write_content_record' | 'create_related_content' | 'create_decision_from_proposals' | 'create_decision_from_governance_proposal' | 'apply_host_binding_config' | 'audit_host_binding_config' | string,
+	operation: 'write_content_record' | 'create_related_content' | 'create_decision_from_proposals' | 'create_decision_from_governance_proposal' | string,
 	input: PlatformRepositoryOperationInput,
 	options: PlatformRepositoryOperationOptions,
 ): Promise<PlatformRepositoryOperationResult> {
@@ -40,30 +29,6 @@ export async function executePlatformRepositoryOperation(
 		output = await createDecisionFromProposals(repoPath, input);
 	} else if (operation === 'create_decision_from_governance_proposal') {
 		output = await createDecisionFromGovernanceProposal(repoPath, input);
-	} else if (operation === 'apply_host_binding_config') {
-		const hostBindingConfig = applyProjectLaunchHostBindingConfig({
-			projectRoot: repoPath,
-			hostBindings: input.hostBindings,
-			hostBindingPlans: input.hostBindingPlans,
-			launchInput: input.launchInput,
-			derived: input.derived,
-		});
-		output = {
-			hostBindingConfig,
-			changedPaths: hostBindingConfig.targets,
-		};
-	} else if (operation === 'audit_host_binding_config') {
-		const hostBindingAudit = auditProjectLaunchHostBindingConfig({
-			projectRoot: repoPath,
-			hostBindings: input.hostBindings,
-			hostBindingPlans: input.hostBindingPlans,
-			launchInput: input.launchInput,
-			derived: input.derived,
-		});
-		output = {
-			hostBindingAudit,
-			changedPaths: [],
-		};
 	} else if (operation === 'initialize_linked_repository') {
 		output = await initializeLinkedRepository(repoPath, input);
 	} else {
@@ -71,9 +36,6 @@ export async function executePlatformRepositoryOperation(
 	}
 	const gitChanged = await changedPaths(repoPath);
 	const changed = gitChanged.length > 0 ? gitChanged : changedPathsFromOutput(output);
-	if (operation === 'apply_host_binding_config' || operation === 'audit_host_binding_config') {
-		assertHostBindingChangedPaths(changed);
-	}
 	const verification = await runVerificationCommands(repoPath, input.repository);
 	const commit = await commitIfRequested(repoPath, input.repository, input, changed);
 	return {

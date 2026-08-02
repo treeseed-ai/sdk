@@ -1,17 +1,11 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync,mkdirSync,readFileSync,writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, resolve } from 'node:path';
-import type { ApiPrincipal, DeviceCodePollRequest, DeviceCodePollResponse, DeviceCodeStartRequest, DeviceCodeStartResponse, TokenRefreshRequest, TokenRefreshResponse, } from './remote.ts';
-import type { CreateProjectWebDeploymentRequest, CreateProjectWebDeploymentResponse, ProjectDeployment, ProjectDeploymentActionAvailability, ProjectDeploymentEnvironment, ProjectDeploymentEvent, ProjectDeploymentReadiness, ProjectConnection, ProjectRepositoryTopology, ProjectWebDeploymentAction, TreeDxInstance, TreeDxMirror, TreeDxProjectLibraryBinding, TreeDxShareLink, } from '../models/sdk-types.ts';
-import type { GitHubActionsEncryptedSecretDeployment, GitHubActionsSecretPublicKeyMetadata, } from '../../configuration/secrets-capability.ts';
-import type { RepositoryImportPlan } from '../../projects/projects-core/project-import.ts';
-import type { CapacityRuntimeDiagnosticsResponse, WorkdayCapacitySummaryPayload } from '../../capacity/agents/agent-capacity.ts';
-import type { AccountDeletionBlocker, AccountIdentity, AccountNotification, AccountWebSession, AuthAvailabilityResult, NotificationPreferences, PersonalTheme, PersonalThemeDraft, } from '../../accounts/account-contracts.ts';
-import type { ProviderRegistrationRequest, ProviderCredentialIssuanceAuthorization, ProviderTeamCredentialMetadata, ProviderTeamMembership, TeamCapacityRegistrationKeyMetadata, TeamCapacityRegistrationKeyReveal, } from '../../capacity-provider/contracts/index.ts';
-import type { CapacityPage } from '../../capacity/capacity-core/capacity-pagination.ts';
-import { REMOTE_CONTRACT_HEADER, REMOTE_CONTRACT_VERSION, } from './remote.ts';
-import { resolveRemoteSession, setRemoteSession, clearRemoteSession, } from '../../operations/services/configuration/config-runtime.ts';
+import { dirname,resolve } from 'node:path';
+import "../../market-client/interface.ts";
+import * as extractedMethods from "../../market-client/methods.ts";
+import { clearRemoteSession,resolveRemoteSession,setRemoteSession,} from '../../operations/services/configuration/config-runtime.ts';
+import type { ApiPrincipal } from './remote.ts';
 export const DEFAULT_MARKET_BASE_URL = 'https://api.treeseed.dev';
 export const CENTRAL_MARKET_API_BASE_URL_ENV = 'TREESEED_CENTRAL_MARKET_API_BASE_URL';
 export const API_BASE_URL_ENV = 'TREESEED_API_BASE_URL';
@@ -106,34 +100,6 @@ export interface IntegratedMarketCatalogResult<T extends Record<string, unknown>
         status?: number;
         error: string;
     }>;
-}
-export interface MarketProjectDeploymentState {
-    ok: true;
-    project: Record<string, unknown>;
-    launch: Record<string, unknown> | null;
-    environments: unknown[];
-    repositories: unknown[];
-    hosts: unknown[];
-    runner: Record<string, unknown>;
-    latestDeployments: {
-        staging: ProjectDeployment | null;
-        prod: ProjectDeployment | null;
-    };
-    latestMonitors: {
-        staging: Record<string, unknown> | null;
-        prod: Record<string, unknown> | null;
-    };
-    activeOperations: ProjectDeployment[];
-    recentDeployments: ProjectDeployment[];
-    readiness: ProjectDeploymentReadiness;
-    actions: ProjectDeploymentActionAvailability[];
-    target: Record<string, unknown> | null;
-}
-export interface ProjectDeploymentListFilters {
-    environment?: ProjectDeploymentEnvironment | string | null;
-    action?: ProjectWebDeploymentAction | string | null;
-    status?: string | null;
-    limit?: number | string | null;
 }
 export interface MarketClientOptions {
     profile: MarketProfile;
@@ -378,8 +344,6 @@ export class MarketClientError extends Error {
         this.name = 'MarketClientError';
     }
 }
-import * as extractedMethods from "../../market-client/methods.ts";
-import "../../market-client/interface.ts";
 export class MarketClient {
     readonly baseUrl: string;
     readonly accessToken: string | null;

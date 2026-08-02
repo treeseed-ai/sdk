@@ -1,5 +1,5 @@
+import { DEFAULT_PLUGIN_REFERENCES,DEFAULT_PROVIDER_SELECTIONS } from '../plugins/constants.ts';
 import type { DeployConfig } from '../support/contracts.ts';
-import { DEFAULT_PLUGIN_REFERENCES, DEFAULT_PROVIDER_SELECTIONS } from '../plugins/constants.ts';
 
 declare const __TREESEED_DEPLOY_CONFIG__: DeployConfig | undefined;
 

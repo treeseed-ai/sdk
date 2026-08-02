@@ -146,38 +146,6 @@ function canonicalSeed(): SeedManifest {
 				metadata: { visibility: 'private' },
 			}],
 			projects,
-			repositoryHosts: [
-				{
-					key: 'repository-host:treeseed/knowledge-coop-github',
-					team: 'team:treeseed',
-					provider: 'github',
-					name: 'knowledge-coop',
-					ownership: 'treeseed_managed',
-					accountLabel: 'Knowledge Coop GitHub organization',
-					organizationOrOwner: 'knowledge-coop',
-					defaultVisibility: 'private',
-					softwareRepositoryNameTemplate: '{project}',
-					contentRepositoryNameTemplate: '{project}-content',
-					allowedProjectKinds: ['market_app', 'package', 'knowledge_hub'],
-					status: 'active',
-					credentialRef: 'env:TREESEED_GITHUB_TOKEN',
-				},
-				{
-					key: 'repository-host:treeseed/treeseed-ai-github',
-					team: 'team:treeseed',
-					provider: 'github',
-					name: 'treeseed-ai',
-					ownership: 'treeseed_managed',
-					accountLabel: 'TreeSeed AI GitHub organization',
-					organizationOrOwner: 'treeseed-ai',
-					defaultVisibility: 'public',
-					softwareRepositoryNameTemplate: '{project}',
-					contentRepositoryNameTemplate: '{project}-content',
-					allowedProjectKinds: ['market_app', 'package', 'knowledge_hub'],
-					status: 'active',
-					credentialRef: 'env:TREESEED_GITHUB_TOKEN',
-				},
-			],
 			hubRepositories: [],
 			products: ['market-template', 'engineering-template', 'research-template'].map((slug) => ({
 				key: `product:treeseed/${slug}`,
@@ -226,7 +194,6 @@ const manifest: SeedManifest = {
 				name: 'demo',
 			},
 		],
-		repositoryHosts: [],
 		projects: [],
 		hubRepositories: [],
 		products: [],
@@ -243,14 +210,6 @@ it('rejects invalid productized references and inline artifact content', () => {
 			environments: ['local'],
 			resources: {
 				teams: [{ key: 'team:demo', slug: 'demo' }],
-				repositoryHosts: [{
-					key: 'repository-host:demo/github',
-					team: 'team:missing',
-					provider: 'github',
-					name: 'demo',
-					organizationOrOwner: 'demo',
-					credentialRef: 'ghp_inline',
-				}],
 				projects: [],
 				hubRepositories: [{
 					key: 'hub-repository:demo/missing/content',
@@ -274,7 +233,6 @@ it('rejects invalid productized references and inline artifact content', () => {
 		}, diagnostics);
 
 		expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(expect.arrayContaining([
-			'seed.secret_field',
 			'seed.invalid_reference',
 			'seed.inline_artifact_content',
 		]));

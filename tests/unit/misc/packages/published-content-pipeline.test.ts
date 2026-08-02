@@ -26,7 +26,6 @@ function createFixture() {
 			decisions: resolve(root, 'src/content/decisions'),
 			agents: resolve(root, 'src/content/agents'),
 			templates: resolve(root, 'src/content/templates'),
-			knowledge_packs: resolve(root, 'src/content/knowledge_packs'),
 			docs: resolve(root, 'src/content/knowledge'),
 			workdays: resolve(root, 'src/content/workdays'),
 		},
@@ -39,7 +38,6 @@ function createFixture() {
 		site: {
 			models: {
 				workdays: { rendered: false },
-				knowledge_packs: { rendered: false },
 			},
 		},
 	};
@@ -120,16 +118,6 @@ updatedAt: 2026-04-15T00:00:00.000Z
 ---
 Starter template.
 `);
-	writeContentFile(root, 'src/content/knowledge_packs/architecture.mdx', `---
-title: Architecture Pack
-slug: architecture-pack
-listingEnabled: true
-offer:
-  priceModel: free
-updatedAt: 2026-04-13T00:00:00.000Z
----
-Architecture pack.
-`);
 	writeContentFile(root, 'src/content/workdays/2026-04-15-workday-1--report-1.mdx', `---
 title: Workday Report 1
 slug: workdays/2026-04-15/workday-1/report-1
@@ -181,7 +169,7 @@ describe('published content pipeline', () => {
 
 			expect(built.manifest.mode).toBe('production');
 			expect(built.manifest.entries.map((entry) => entry.model)).toEqual(
-				expect.arrayContaining(['pages', 'questions', 'objectives', 'agents', 'templates', 'knowledge_packs', 'docs', 'workdays']),
+				expect.arrayContaining(['pages', 'questions', 'objectives', 'agents', 'templates', 'docs', 'workdays']),
 			);
 			expect(built.manifest.collections).toHaveProperty('templates');
 			expect(built.manifest.runtime).toHaveProperty('docsTree');
@@ -191,11 +179,6 @@ describe('published content pipeline', () => {
 					kind: 'template',
 					slug: 'starter',
 					offerMode: 'subscription',
-				}),
-				expect.objectContaining({
-					kind: 'knowledge_pack',
-					slug: 'architecture-pack',
-					offerMode: 'free',
 				}),
 			]));
 			expect(built.manifest.artifacts).toEqual(expect.arrayContaining([
@@ -226,7 +209,6 @@ describe('published content pipeline', () => {
 			const built = await pipeline.buildProductionRevision();
 			expect(built.manifest.entries).toEqual(expect.arrayContaining([
 				expect.objectContaining({ model: 'workdays' }),
-				expect.objectContaining({ model: 'knowledge_packs' }),
 			]));
 		} finally {
 			rmSync(root, { recursive: true, force: true });

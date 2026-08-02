@@ -1,29 +1,29 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync,readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type {
+SceneDiagnostic,
+SceneManifest,
+SceneRunReport,
+SceneTimelineEvent,
+SceneTrainingOutputFormat,
+SceneTrainingOutputOptions,
+SceneTrainingOutputReport,
+SceneTrainingOutputs,
+} from '../../types.ts';
+import { validateScene } from '../execution/planner.ts';
 import { sceneErrorDiagnostic } from '../reporting/diagnostics.ts';
 import { resolveSceneRunRoot } from '../reporting/inspect.ts';
-import { validateScene } from '../execution/planner.ts';
 import { defaultSceneTrainingConfig } from '../validation/schema.ts';
-import { buildSceneCaptionCues, formatSceneCaptionsSrt, formatSceneCaptionsVtt } from './training-captions.ts';
-import { appendSceneTrainingOutputPaths, writeSceneTrainingOutputs } from './training-report.ts';
+import { buildSceneCaptionCues,formatSceneCaptionsSrt,formatSceneCaptionsVtt } from './training-captions.ts';
+import { appendSceneTrainingOutputPaths,writeSceneTrainingOutputs } from './training-report.ts';
 import {
-	buildSceneChapterClips,
-	buildSceneGlossary,
-	buildSceneNarrationEntries,
-	buildSceneTranscriptEntries,
-	formatSceneNarrationMarkdown,
-	formatSceneTranscriptMarkdown,
+buildSceneChapterClips,
+buildSceneGlossary,
+buildSceneNarrationEntries,
+buildSceneTranscriptEntries,
+formatSceneNarrationMarkdown,
+formatSceneTranscriptMarkdown,
 } from './training-transcript.ts';
-import type {
-	SceneDiagnostic,
-	SceneManifest,
-	SceneRunReport,
-	SceneTimelineEvent,
-	SceneTrainingOutputFormat,
-	SceneTrainingOutputOptions,
-	SceneTrainingOutputReport,
-	SceneTrainingOutputs,
-} from '../../types.ts';
 
 function readJson<T>(path: string): T {
 	return JSON.parse(readFileSync(path, 'utf8')) as T;
@@ -164,8 +164,8 @@ export function generateSceneTrainingOutputs(input: SceneTrainingOutputOptions):
 }
 
 export {
-	formatSceneCaptionsSrt,
-	formatSceneCaptionsVtt,
-	formatSceneNarrationMarkdown,
-	formatSceneTranscriptMarkdown,
+formatSceneCaptionsSrt,
+formatSceneCaptionsVtt,
+formatSceneNarrationMarkdown,
+formatSceneTranscriptMarkdown
 };

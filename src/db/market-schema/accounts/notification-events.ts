@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigint, check, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import { check,index,integer,pgTable,primaryKey,real,serial,text,uniqueIndex } from 'drizzle-orm/pg-core';
 
 
 export const notificationEvents = pgTable('notification_events', {

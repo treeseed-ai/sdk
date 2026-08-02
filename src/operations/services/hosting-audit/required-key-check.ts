@@ -1,34 +1,16 @@
-import net from 'node:net';
-import tls from 'node:tls';
 import {
-	getEnvironmentSuggestedValues,
-	type EnvironmentScope,
-	validateEnvironmentValues,
+validateEnvironmentValues,
+type EnvironmentScope
 } from '../../../platform/configuration/environment.ts';
 import {
-	collectConfigSeedValues,
-	collectEnvironmentContext,
-	checkProviderConnections,
-} from '../configuration/config-runtime.ts';
-import {
-	buildProvisioningSummary,
-	createBranchPreviewDeployTarget,
-	createPersistentDeployTarget,
-	loadDeployState,
-} from '../hosting/deployment/deploy.ts';
-import {
-	currentManagedBranch,
-	PRODUCTION_BRANCH,
-	STAGING_BRANCH,
-} from '../operations/git-workflow.ts';
-import { loadPlatformConfig } from '../../../platform/configuration/config.ts';
-import {
-	collectReconcileStatus,
-	reconcileTarget,
-	type RunnableBootstrapSystem,
+collectReconcileStatus,
+type RunnableBootstrapSystem
 } from '../../../reconcile/index.ts';
-import type { ReconcileTarget } from '../../../reconcile/support/contracts/contracts.ts';
-import { HOST_GROUPS, HostingAuditCheck, HostingAuditHostKind, configCheck, firstValue } from './hosting-audit-environment.ts';
+import {
+checkProviderConnections,
+collectEnvironmentContext
+} from '../configuration/config-runtime.ts';
+import { configCheck,firstValue,HOST_GROUPS,HostingAuditCheck,HostingAuditHostKind } from './hosting-audit-environment.ts';
 
 export function requiredKeyCheck(
 	checks: HostingAuditCheck[],
@@ -82,7 +64,7 @@ export function appendManualConfigChecks(
 			provider: 'github',
 			keys: ['TREESEED_HOSTED_HUBS_GITHUB_TOKEN'],
 			label: 'Repository provider token',
-			remediation: 'Set TREESEED_HOSTED_HUBS_GITHUB_TOKEN for TreeSeed-managed hosted repositories, or provide a team-owned Repository Host session.',
+			remediation: 'Set the repository-scoped GitHub token required by the operator-managed hosting environment.',
 		});
 	}
 	if (hostKinds.includes('web')) {
@@ -92,7 +74,7 @@ export function appendManualConfigChecks(
 			provider: 'cloudflare',
 			keys: ['TREESEED_CLOUDFLARE_API_TOKEN'],
 			label: 'Web provider token',
-			remediation: 'Set TREESEED_CLOUDFLARE_API_TOKEN for TreeSeed-managed Web hosting.',
+			remediation: 'Set TREESEED_CLOUDFLARE_API_TOKEN for the operator-managed Cloudflare environment.',
 		});
 		requiredKeyCheck(checks, values, {
 			id: 'web.cloudflare.account',
@@ -100,7 +82,7 @@ export function appendManualConfigChecks(
 			provider: 'cloudflare',
 			keys: ['TREESEED_CLOUDFLARE_ACCOUNT_ID'],
 			label: 'Web provider account',
-			remediation: 'Set TREESEED_CLOUDFLARE_ACCOUNT_ID for TreeSeed-managed Web hosting.',
+			remediation: 'Set TREESEED_CLOUDFLARE_ACCOUNT_ID for the operator-managed Cloudflare environment.',
 		});
 	}
 	if (hostKinds.includes('email')) {

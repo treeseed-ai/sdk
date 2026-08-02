@@ -1,26 +1,13 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
-import { runRepositoryGit } from '../operations/git-runner.ts';
-import { resolveEnvironmentRegistry } from '../../../platform/configuration/environment.ts';
-import { packageRoot, loadCliDeployConfig } from '../agents/runtime-tools.ts';
 import {
-	filterManagedHostGitHubEnvironment,
-	usesManagedHostOperationRequests,
-} from '../hosting/audit/managed-host-security.ts';
-import {
-	createGitHubApiClient,
-	ensureGitHubRepository,
-	maybeGetGitHubRepository,
-	parseGitHubRepositorySlug,
-	listGitHubRepositorySecretNames,
-	listGitHubRepositoryVariableNames,
-	upsertGitHubRepositorySecret,
-	upsertGitHubRepositoryVariable,
-	waitForGitHubWorkflowRunCompletion,
+createGitHubApiClient,
+listGitHubRepositorySecretNames,
+listGitHubRepositoryVariableNames,
+upsertGitHubRepositorySecret,
+upsertGitHubRepositoryVariable,
+waitForGitHubWorkflowRunCompletion
 } from '../repositories/github-api.ts';
-import { resolveGitHubToken } from '../../../configuration/service-credentials.ts';
-import { getGitHubAutomationMode, maybeResolveGitHubRepositorySlug, resolveGitHubRepositorySlug } from './git-hub-repository-provision-input.ts';
-import { ensureStandardizedGitHubWorkflows, formatMissingSecretsReport, requiredGitHubEnvironment } from './ensure-git-hub-bootstrap-repository.ts';
+import { formatMissingSecretsReport,requiredGitHubEnvironment } from './ensure-git-hub-bootstrap-repository.ts';
+import { maybeResolveGitHubRepositorySlug,resolveGitHubRepositorySlug } from './github-repository-remote.ts';
 
 export function nonEmptyValues(values = {}) {
 	return Object.fromEntries(
@@ -100,19 +87,6 @@ export async function ensureGitHubEnvironment(tenantRoot, { planOnly = false, sc
 			existing: requiredVariables.filter((name) => existingVariables.has(name)),
 			created: createdVariables,
 		},
-	};
-}
-
-export async function ensureGitHubDeployAutomation(tenantRoot, { planOnly = false, valuesOverlay = {} } = {}) {
-	const workflows = ensureStandardizedGitHubWorkflows(tenantRoot);
-	const environment = await ensureGitHubEnvironment(tenantRoot, { planOnly, valuesOverlay });
-	return {
-		mode: getGitHubAutomationMode(),
-		workflow: workflows[0],
-		workflows,
-		secrets: environment.secrets,
-		variables: environment.variables,
-		environment,
 	};
 }
 

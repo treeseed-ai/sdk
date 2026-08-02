@@ -1,18 +1,4 @@
-import type {
-	SdkContextPack,
-	SdkContextPackRequest,
-	SdkGraphDslParseResult,
-	SdkGraphEdge,
-	SdkGraphNode,
-	SdkGraphQueryRequest,
-	SdkGraphQueryResult,
-	SdkGraphRefreshPayload,
-	SdkGraphRefreshRequest,
-	SdkGraphSearchOptions,
-	SdkGraphSearchResult,
-	SdkGraphTraversalResult,
-} from '../../entrypoints/models/sdk-types.ts';
-import type { components, operations, paths } from '../generated/openapi-types.ts';
+import type { components } from '../generated/openapi-types.ts';
 
 
 export interface TreeDxActor {
@@ -224,6 +210,15 @@ export interface TreeDxRef {
 	kind: string;
 }
 
+export interface TreeDxWorkspaceAbandonResult {
+	workspace: TreeDxWorkspace;
+	discardedRef: {
+		ref: string;
+		head: string;
+		status: 'discarded' | 'already_discarded';
+	};
+}
+
 export interface TreeDxRemote {
 	name: string;
 	url?: string | null;
@@ -236,6 +231,7 @@ export interface TreeDxRepositoryStatus {
 }
 
 export interface TreeDxCreateWorkspaceRequest {
+	workspaceId?: string;
 	repoId?: string;
 	baseRef?: string;
 	branchName?: string;

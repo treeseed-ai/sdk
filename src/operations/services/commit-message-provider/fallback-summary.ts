@@ -1,5 +1,5 @@
 
-import { CommitMessageContext, CommitMessageDependencyUpdate, CommitMessagePackageChange, CommitMessageSections, CommitMessageSubmodulePointer, allowedSectionHeadings, allowedTypes, changedPaths, compactValue, danglingSubjectEndings, forbiddenSectionHeadings, formatGroups, inferScope, inferType, lastSummaryWord, normalizeWhitespace, repairSummaryEnding, shortSha, stripControlCharacters, subjectMaxLength, summaryFromHint } from './default-commit-ai-model.ts';
+import { CommitMessageContext,CommitMessageDependencyUpdate,CommitMessagePackageChange,CommitMessageSections,CommitMessageSubmodulePointer,allowedSectionHeadings,allowedTypes,changedPaths,compactValue,danglingSubjectEndings,forbiddenSectionHeadings,formatGroups,inferScope,inferType,lastSummaryWord,normalizeWhitespace,repairSummaryEnding,shortSha,stripControlCharacters,subjectMaxLength,summaryFromHint } from './default-commit-ai-model.ts';
 
 export function fallbackSummary(context: CommitMessageContext, type: string, scope: string) {
 	const hint = summaryFromHint(context.userMessage);

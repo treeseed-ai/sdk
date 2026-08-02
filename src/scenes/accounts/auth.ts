@@ -1,9 +1,9 @@
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
-import { resolveMarketProfile, resolveMarketSession } from '../../entrypoints/clients/market-client.ts';
+import { resolveMarketProfile,resolveMarketSession } from '../../entrypoints/clients/market-client.ts';
 import { findNearestRoot } from '../../operations/workflow-support.ts';
 import { sceneErrorDiagnostic } from '../support/reporting/diagnostics.ts';
-import type { SceneAuthReport, SceneAuthResolveOptions } from '../types.ts';
+import type { SceneAuthReport,SceneAuthResolveOptions } from '../types.ts';
 
 export function resolveSceneAuth(input: SceneAuthResolveOptions): SceneAuthReport {
 	const required = input.scene.setup.auth?.required === true;

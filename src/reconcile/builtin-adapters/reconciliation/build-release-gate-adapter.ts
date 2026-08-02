@@ -1,12 +1,12 @@
-import type { ReconcileAdapter, ReconcileAdapterInput, UnitVerificationResult, ReconcileUnitType } from "../../support/contracts/contracts.ts";
 import { findPackageAdapter } from "../../../operations/services/reconciliation/package-adapters.ts";
-import { dispatchReconcileGitHubWorkflow } from "../../providers/github-private.ts";
-import { ensureTemplateReleaseTag, runHostedReconcileGate, runHostedVerifyGate, runReleaseVerifyCommand, runTemplateReleaseVerifyCommand, writeReleaseRecord } from "../../providers/release-private.ts";
 import { checkedOutTemplateRepositories } from "../../../operations/services/support/managed-repositories.ts";
-import { genericObservedState, genericResult, noopDiff, nowIso } from '../hosting/to-deploy-target.ts';
-import { buildGitHubEnv, workflowName } from '../treedx/graph/build-graph-only-adapter.ts';
+import { dispatchReconcileGitHubWorkflow } from "../../providers/github-private.ts";
+import { ensureTemplateReleaseTag,runHostedReconcileGate,runHostedVerifyGate,runReleaseVerifyCommand,runTemplateReleaseVerifyCommand,writeReleaseRecord } from "../../providers/release-private.ts";
+import type { ReconcileAdapter,ReconcileAdapterInput,ReconcileUnitType,UnitVerificationResult } from "../../support/contracts/contracts.ts";
 import { verificationCheck } from '../hosting/first-railway-domain-string.ts';
+import { genericObservedState,genericResult,noopDiff,nowIso } from '../hosting/to-deploy-target.ts';
 import { summarizeVerification } from '../support/summarize-verification.ts';
+import { buildGitHubEnv,workflowName } from '../treedx/graph/build-graph-only-adapter.ts';
 
 export function buildReleaseGateAdapter(): ReconcileAdapter {
 	const unitTypes: ReconcileUnitType[] = [

@@ -1,32 +1,32 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
+import { parseFrontmatterDocument,serializeFrontmatterDocument } from '../../content/frontmatter.ts';
 import { resolveModelDefinition } from '../../entrypoints/models/model-registry.ts';
-import { parseFrontmatterDocument, serializeFrontmatterDocument } from '../../content/frontmatter.ts';
 import {
-	canonicalizeFrontmatter,
-	normalizeFilterFields,
-	normalizeMutationData,
-	normalizeRecordToCanonicalShape,
-	normalizeSortFields,
-	readCanonicalFieldValue,
+canonicalizeFrontmatter,
+normalizeFilterFields,
+normalizeMutationData,
+normalizeRecordToCanonicalShape,
+normalizeSortFields,
+readCanonicalFieldValue,
 } from '../../entrypoints/models/sdk-fields.ts';
 import type {
-	SdkContentEntry,
-	SdkFilterCondition,
-	SdkFollowRequest,
-	SdkGetRequest,
-	SdkModelDefinition,
-	SdkModelRegistry,
-	SdkMutationRequest,
-	SdkPickRequest,
-	SdkPickResult,
-	SdkSearchRequest,
-	SdkSortSpec,
-	SdkUpdateRequest,
+SdkContentEntry,
+SdkFilterCondition,
+SdkFollowRequest,
+SdkGetRequest,
+SdkModelDefinition,
+SdkModelRegistry,
+SdkMutationRequest,
+SdkPickRequest,
+SdkPickResult,
+SdkSearchRequest,
+SdkSortSpec,
+SdkUpdateRequest,
 } from '../../entrypoints/models/sdk-types.ts';
 import { TreeDxClient } from '../support/client.ts';
 import { TreeDxApiError } from '../support/errors.ts';
-import type { TreeDxCommitResult, TreeDxRepositoryQueryResult } from '../types.ts';
+import type { TreeDxCommitResult } from '../types.ts';
 
 export interface TreeDxRepositoryAdapterOptions {
 	client: TreeDxClient;

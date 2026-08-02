@@ -1,47 +1,33 @@
-import { errorDiagnostic, warningDiagnostic } from '../errors.js';
+import { errorDiagnostic } from '../errors.js';
 import {
-	SEED_CONTENT_PUBLISH_TARGETS,
-	SEED_CONTENT_RUNTIME_SOURCES,
-	SEED_ENVIRONMENTS,
-	SEED_LOCAL_CONTENT_MATERIALIZATIONS,
-	SEED_PROJECT_TOPOLOGIES,
-	type SeedCatalogArtifactResource,
-	type SeedContentPublishTargetKind,
-	type SeedContentRuntimeSource,
-	type SeedDiagnostic,
-	type SeedEnvironment,
-	type SeedHubRepositoryResource,
-	type SeedLocalContentMaterialization,
-	type SeedManifest,
-	type SeedManifestResources,
-	type SeedOperationRecipe,
-	type SeedOperationRecipeArtifact,
-	type SeedOperationRecipeAssertion,
-	type SeedOperationRecipeChannel,
-	type SeedOperationRecipeCommand,
-	type SeedOperationRecipeStep,
-	type SeedProductResource,
-	type SeedProjectArchitecture,
-	type SeedProjectContentPublishTarget,
-	type SeedProjectRepository,
-	type SeedProjectResource,
-	type SeedProjectTopology,
-	type SeedRepositoryHostResource,
-	type SeedResourceBase,
-	type SeedTeamResource,
+SEED_CONTENT_PUBLISH_TARGETS,
+SEED_CONTENT_RUNTIME_SOURCES,
+SEED_ENVIRONMENTS,
+SEED_LOCAL_CONTENT_MATERIALIZATIONS,
+SEED_PROJECT_TOPOLOGIES,
+type SeedContentPublishTargetKind,
+type SeedContentRuntimeSource,
+type SeedDiagnostic,
+type SeedEnvironment,
+type SeedLocalContentMaterialization,
+type SeedProjectArchitecture,
+type SeedProjectContentPublishTarget,
+type SeedProjectRepository,
+type SeedProjectTopology,
+type SeedResourceBase,
+type SeedTeamResource
 } from '../types.js';
 import { validateRepository } from './parse-project.ts';
 
 export const RESOURCE_BUCKETS = [
 	'teams',
-	'repositoryHosts',
 	'projects',
 	'hubRepositories',
 	'products',
 	'catalogArtifacts',
 ] as const;
 
-export const SUPPORTED_BUCKETS = new Set(['teams', 'repositoryHosts', 'projects', 'hubRepositories', 'products', 'catalogArtifacts']);
+export const SUPPORTED_BUCKETS = new Set(['teams', 'projects', 'hubRepositories', 'products', 'catalogArtifacts']);
 
 export const ALLOWED_ENVIRONMENTS = new Set<string>(SEED_ENVIRONMENTS);
 
@@ -67,8 +53,6 @@ export const ALLOWED_RECIPE_OPERATIONS = new Set<string>([
 	'knowledge.publish',
 	'system.health',
 ]);
-
-export const CREDENTIAL_REF_PATTERN = /^(?:env|secret|provider-session):[A-Za-z0-9_./:-]+$/u;
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);

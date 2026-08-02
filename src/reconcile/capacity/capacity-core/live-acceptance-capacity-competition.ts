@@ -15,15 +15,6 @@ function projectRecord(payload: { project?: { id: string; slug: string; teamId: 
 	return { id: project.id, slug: project.slug ?? project.id };
 }
 
-async function waitForProjectDeletion(adminClient: MarketClient, teamId: string, projectId: string) {
-	for (let attempt = 0; attempt < 50; attempt += 1) {
-		const projects = await adminClient.projects(teamId);
-		if (!(projects.payload as Array<Record<string, unknown>>).some((entry) => entry.id === projectId)) return;
-		await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
-	}
-	throw new Error(`Capacity competition project ${projectId} did not reach deleted state.`);
-}
-
 export async function provisionLocalCapacityCompetition(input: {
 	adminClient: MarketClient;
 	apiUrl: string;
@@ -66,10 +57,7 @@ export async function provisionLocalCapacityCompetition(input: {
 		if (workdayCreated) await run('complete competing workday', () => input.adminClient.completeWorkday(workdayId, `${prefix}:workday-complete`));
 		if (sessionCreated) await run('close competing availability', () => providerClient.closeAvailabilitySession(sessionId));
 		if (grantCreated) await run('revoke competing grant', () => input.adminClient.transitionCapacityGrant(input.runtime.teamId, grantId, 'revoke', `${prefix}:grant-revoke`));
-		await run('delete competing project', async () => {
-			await input.adminClient.deleteProject(project.id, `DELETE ${project.slug}`);
-			await waitForProjectDeletion(input.adminClient, input.runtime.teamId, project.id);
-		});
+		// Durable project evidence is removed by the isolated team's aggregate cleanup.
 		if (errors.length) throw new Error(`Capacity competition cleanup failed: ${errors.join('; ')}`);
 	};
 	try {

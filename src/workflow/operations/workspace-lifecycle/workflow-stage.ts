@@ -1,25 +1,25 @@
 import { resolve } from 'node:path';
-import { assertFeatureBranch, mergeBranchDownIntoFeature, promoteCommitToBranchWithExpectedHead, remoteHeadCommit, remoteBranchExists, STAGING_BRANCH, syncBranchWithOrigin } from "../../../operations/services/operations/git-workflow.ts";
 import { runProof } from "../../../operations/services/guarantees/release-proof-runner.ts";
-import { hasMeaningfulChanges, repoRoot } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
+import { assertFeatureBranch,mergeBranchDownIntoFeature,promoteCommitToBranchWithExpectedHead,remoteBranchExists,remoteHeadCommit,STAGING_BRANCH,syncBranchWithOrigin } from "../../../operations/services/operations/git-workflow.ts";
+import { hasMeaningfulChanges,repoRoot } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
 import { workspaceRoot } from "../../../operations/services/treedx/workspaces/workspace-tools.ts";
+import type { StageInput } from "../../../operations/workflow.ts";
 import { resolveWorkflowSession } from "../../session.ts";
 import { managedWorkflowWorktreeMetadata } from "../../worktrees.ts";
-import type { StageInput } from "../../../operations/workflow.ts";
-import { WorkflowOperationHelpers, ensureWorkflowWorkspaceLinks, maybeRunLocalWorkflowCleanup, normalizeSceneArtifactsMode } from '../recovery/workflow-write.ts';
-import { resolveProjectRootOrThrow, withContextEnv, workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
-import { buildWorkflowResult, normalizeExecutionMode, selectWorkflowApplications } from '../support/create-repo-report.ts';
-import { findAutoResumableTaskRun, rejectImplicitWorkflowResume } from '../repositories/gates-for-saved-repository-reports.ts';
-import { ensureMessage, toError } from '../projects/projects-core/connect-market-project.ts';
-import { buildStagePromotionPlan, checkedOutStagePromotionRepos, createStageCandidateManifest, normalizeStageCiMode, normalizeStageCleanupMode, normalizeStageVerifyMode, stageConflictError, stagePreflightBlockers, stagingCandidateWorkflowGates, writeStageCandidateManifest } from '../coordination/staging-candidate-workflow-gates.ts';
-import { helpersForCwd, waitForWorkflowGates, worktreePayload } from '../packages/normalize-release-candidate-mode.ts';
+import { resolveProjectRootOrThrow,withContextEnv,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { buildStagePromotionPlan,checkedOutStagePromotionRepos,createStageCandidateManifest,normalizeStageCiMode,normalizeStageCleanupMode,normalizeStageVerifyMode,stageConflictError,stagePreflightBlockers,stagingCandidateWorkflowGates,writeStageCandidateManifest } from '../coordination/staging-candidate-workflow-gates.ts';
+import { helpersForCwd,waitForWorkflowGates,worktreePayload } from '../packages/normalize-release-candidate-mode.ts';
+import { acquireWorkflowRun,completeWorkflowRun,executeJournalStep,skipJournalStep } from '../packages/prepare-fresh-release-run.ts';
 import { createNextSteps } from '../packages/release-admin-message.ts';
-import { maybeAutoSaveCurrentTaskBranch } from '../support/sync-current-branch-to-origin.ts';
-import { acquireWorkflowRun, completeWorkflowRun, executeJournalStep, skipJournalStep } from '../packages/prepare-fresh-release-run.ts';
-import { workflowSave } from './workflow-save.ts';
-import { StageCandidateManifest } from './workflow-close.ts';
-import { cleanupStageSourceBranches } from '../support/cleanup-stage-source-branches.ts';
+import { ensureMessage,toError } from '../support/workflow-helpers.ts';
 import { failWorkflowRun } from '../recovery/fail-workflow-run.ts';
+import { ensureWorkflowWorkspaceLinks,maybeRunLocalWorkflowCleanup,normalizeSceneArtifactsMode,WorkflowOperationHelpers } from '../recovery/workflow-write.ts';
+import { findAutoResumableTaskRun,rejectImplicitWorkflowResume } from '../repositories/gates-for-saved-repository-reports.ts';
+import { cleanupStageSourceBranches } from '../support/cleanup-stage-source-branches.ts';
+import { buildWorkflowResult,normalizeExecutionMode,selectWorkflowApplications } from '../support/create-repo-report.ts';
+import { maybeAutoSaveCurrentTaskBranch } from '../support/sync-current-branch-to-origin.ts';
+import { StageCandidateManifest } from './workflow-close.ts';
+import { workflowSave } from './workflow-save.ts';
 
 export async function workflowStage(helpers: WorkflowOperationHelpers, input: StageInput) {
 	try {

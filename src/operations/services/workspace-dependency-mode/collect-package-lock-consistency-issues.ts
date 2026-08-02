@@ -1,10 +1,8 @@
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { runRepositoryGit } from '../operations/git-runner.ts';
-import { workspacePackages, workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
-import { DeploymentLockfileWorkspaceIssue, INTERNAL_DEPENDENCY_FIELDS, WorkspaceLink, WorkspaceLinksMode, dependencySpec, dependencySpecsMatch, ensureGitInfoExcludes, internalDependencyNames, linkPathFor, normalizedPathValue, operatorWorkspacePackageNames, packageDirName, pathKey, readJson, readMetadata, safeLstat, safeReadlink, workspaceLinksEnabled, writeMetadata } from './dependency-resolution-mode.ts';
+import { existsSync,mkdirSync,readdirSync,readlinkSync,rmSync,symlinkSync,unlinkSync } from 'node:fs';
+import { dirname,relative,resolve } from 'node:path';
+import { workspacePackages,workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
 import { inspectWorkspaceDependencyMode } from './collect-deployment-lockfile-workspace-issues.ts';
+import { dependencySpec,dependencySpecsMatch,DeploymentLockfileWorkspaceIssue,ensureGitInfoExcludes,INTERNAL_DEPENDENCY_FIELDS,internalDependencyNames,linkPathFor,normalizedPathValue,operatorWorkspacePackageNames,packageDirName,pathKey,readJson,readMetadata,safeLstat,safeReadlink,WorkspaceLink,workspaceLinksEnabled,WorkspaceLinksMode,writeMetadata } from './dependency-resolution-mode.ts';
 
 export function collectPackageLockConsistencyIssues(
 	filePath: string,

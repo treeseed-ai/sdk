@@ -1,17 +1,16 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import { branchExists, headCommit, PRODUCTION_BRANCH, remoteHeadCommit, remoteBranchExists, STAGING_BRANCH, syncBranchWithOrigin } from "../../../operations/services/operations/git-workflow.ts";
-import { type GitHubActionsWorkflowGate } from "../../../operations/services/repositories/github-actions-verification.ts";
-import { currentBranch, hasMeaningfulChanges, originRemoteUrl, repoRoot } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
-import { discoverPackageAdapters } from "../../../operations/services/reconciliation/package-adapters.ts";
+import { existsSync,mkdirSync,readFileSync,writeFileSync } from 'node:fs';
+import { dirname,relative,resolve } from 'node:path';
 import { hostedWorkflowForPackage } from "../../../operations/services/guarantees/release-proof-planner.ts";
-import { run } from "../../../operations/services/treedx/workspaces/workspace-tools.ts";
-import { checkedOutManagedWorkflowRepos, type ManagedRepository } from "../../../operations/services/support/managed-repositories.ts";
+import { branchExists,headCommit,PRODUCTION_BRANCH,remoteBranchExists,remoteHeadCommit,STAGING_BRANCH,syncBranchWithOrigin } from "../../../operations/services/operations/git-workflow.ts";
+import { discoverPackageAdapters } from "../../../operations/services/reconciliation/package-adapters.ts";
+import { type GitHubActionsWorkflowGate } from "../../../operations/services/repositories/github-actions-verification.ts";
+import { checkedOutManagedWorkflowRepos,type ManagedRepository } from "../../../operations/services/support/managed-repositories.ts";
+import { currentBranch,hasMeaningfulChanges,originRemoteUrl,repoRoot } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
 import type { StageInput } from "../../../operations/workflow.ts";
-import { StageCandidateManifest, StageCiMode, StageCleanupMode, StageRepoPlan, StageVerifyMode } from '../workspace-lifecycle/workflow-close.ts';
-import { workflowFileExists } from '../projects/projects-core/connect-market-project.ts';
+import { workflowFileExists } from '../support/workflow-helpers.ts';
 import { WorkflowError } from '../recovery/workflow-write.ts';
+import { StageCandidateManifest,StageCiMode,StageCleanupMode,StageRepoPlan,StageVerifyMode } from '../workspace-lifecycle/workflow-close.ts';
 
 export function stagingCandidateWorkflowGates(root: string, manifest: StageCandidateManifest): GitHubActionsWorkflowGate[] {
 	const gates: GitHubActionsWorkflowGate[] = [];

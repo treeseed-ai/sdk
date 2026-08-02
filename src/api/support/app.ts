@@ -1,14 +1,14 @@
-import crypto from 'node:crypto';
 import { Hono } from 'hono';
-import { REMOTE_CONTRACT_HEADER, REMOTE_CONTRACT_VERSION } from '../../entrypoints/clients/remote.ts';
+import crypto from 'node:crypto';
+import { REMOTE_CONTRACT_HEADER,REMOTE_CONTRACT_VERSION } from '../../entrypoints/clients/remote.ts';
 import { AgentSdk } from '../../entrypoints/models/sdk.ts';
-import { resolveApiConfig } from '../configuration/config.ts';
-import { bearerTokenFromRequest, jsonError, requirePermission, requireScope } from './http.ts';
-import { registerOperationRoutes } from '../operations/operations-routes.ts';
 import { resolveApiRuntimeProviders } from '../capacity/providers/providers.ts';
+import { resolveApiConfig } from '../configuration/config.ts';
+import { registerOperationRoutes } from '../operations/operations-routes.ts';
+import type { ApiPrincipal,ApiServerOptions,AppVariables } from '../types.ts';
+import { bearerTokenFromRequest,jsonError,requirePermission,requireScope } from './http.ts';
 import { registerSdkRoutes } from './sdk-routes.ts';
 import { loadTemplateCatalog } from './templates.ts';
-import type { ApiPrincipal, ApiServerOptions, AppVariables } from '../types.ts';
 
 function mergeApiOptions(options: ApiServerOptions) {
 	const baseConfig = resolveApiConfig();

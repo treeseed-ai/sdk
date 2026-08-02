@@ -1,12 +1,12 @@
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync,mkdirSync,rmSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { ReconcileAdapter, ReconcileAdapterInput, UnitVerificationCheck } from "../../support/contracts/contracts.ts";
-import { localComposeDriftReasons, localComposeReconciledSpecHash, localComposeRequiredPathWarnings, localComposeRuntimeConfigDrift, localComposeServiceReady, observeLocalComposeRequiredPaths, parseLocalComposeServices, waitForLocalComposeServices } from "../../runtime/local-compose-state.ts";
+import { inspectDockerAvailability,runDockerCompose } from "../../providers/docker-private.ts";
+import { localComposeDriftReasons,localComposeReconciledSpecHash,localComposeRequiredPathWarnings,localComposeRuntimeConfigDrift,localComposeServiceReady,observeLocalComposeRequiredPaths,parseLocalComposeServices,waitForLocalComposeServices } from "../../runtime/local-compose-state.ts";
+import type { ReconcileAdapter,ReconcileAdapterInput,UnitVerificationCheck } from "../../support/contracts/contracts.ts";
 import { desiredUnitSpecHash } from "../../support/state/state.ts";
-import { inspectDockerAvailability, runDockerCompose } from "../../providers/docker-private.ts";
-import { buildLocalComposeLaunchEnv, checkHttpHealthWithRetry, localComposeBuildPolicy, runLocalComposePrepareCommand } from '../build/local-compose-build-policy.ts';
-import { genericObservedState, genericResult, noopDiff } from '../hosting/to-deploy-target.ts';
+import { buildLocalComposeLaunchEnv,checkHttpHealthWithRetry,localComposeBuildPolicy,runLocalComposePrepareCommand } from '../build/local-compose-build-policy.ts';
 import { verificationCheck } from '../hosting/first-railway-domain-string.ts';
+import { genericObservedState,genericResult,noopDiff } from '../hosting/to-deploy-target.ts';
 import { summarizeVerification } from '../support/summarize-verification.ts';
 
 export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
@@ -131,6 +131,7 @@ export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
 			});
 		},
 		async verify(input) {
+			const statusOnly = input.context.session.get('treeseed:status-only') === true;
 			const healthChecks = Array.isArray(input.unit.spec.healthChecks) ? input.unit.spec.healthChecks as Array<Record<string, unknown>> : [];
 			const checks: UnitVerificationCheck[] = [];
 			const requiredPaths = Array.isArray(input.observed.live.requiredPaths)
@@ -157,8 +158,8 @@ export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
 			let firstObservation = true;
 			const serviceWait = await waitForLocalComposeServices({
 				serviceNames: [...declaredServices],
-				attempts: typeof input.unit.spec.serviceHealthAttempts === 'number' ? input.unit.spec.serviceHealthAttempts : undefined,
-				intervalMs: typeof input.unit.spec.serviceHealthIntervalMs === 'number' ? input.unit.spec.serviceHealthIntervalMs : undefined,
+				attempts: statusOnly ? 1 : typeof input.unit.spec.serviceHealthAttempts === 'number' ? input.unit.spec.serviceHealthAttempts : undefined,
+				intervalMs: statusOnly ? 100 : typeof input.unit.spec.serviceHealthIntervalMs === 'number' ? input.unit.spec.serviceHealthIntervalMs : undefined,
 				observe: () => {
 					if (firstObservation) {
 						firstObservation = false;
@@ -200,7 +201,7 @@ export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
 			}
 			for (const healthCheck of healthChecks) {
 				if (healthCheck.kind === 'http' && typeof healthCheck.url === 'string') {
-					const attempts = typeof healthCheck.attempts === 'number' && Number.isFinite(healthCheck.attempts)
+					const attempts = statusOnly ? 1 : typeof healthCheck.attempts === 'number' && Number.isFinite(healthCheck.attempts)
 						? Math.max(1, Math.floor(healthCheck.attempts))
 						: undefined;
 					const intervalMs = typeof healthCheck.intervalMs === 'number' && Number.isFinite(healthCheck.intervalMs)

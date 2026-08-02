@@ -1,9 +1,9 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { dirname, resolve } from 'node:path';
+import { mkdirSync,writeFileSync } from 'node:fs';
+import { dirname,resolve } from 'node:path';
+import { resolveToolBinary } from '../../../../entrypoints/runtime/managed-dependencies.ts';
 import { collectConfigSeedValues } from '../../configuration/config-runtime.ts';
 import { createTempDir } from './workspace-tools.ts';
-import { resolveToolBinary } from '../../../../entrypoints/runtime/managed-dependencies.ts';
 
 function runCapture(command, args, options = {}) {
 	const result = spawnSync(command, args, {

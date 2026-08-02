@@ -116,6 +116,19 @@ describe('scene Phase 0 foundation', () => {
 		expect(plan.checkpointsRoot).toBe(`${plan.runRoot}/checkpoints`);
 	});
 
+	it('keeps generated run identities distinct within the same minute', () => {
+		const first = planSceneArtifactPaths({
+			workspaceRoot: '/workspace/market', sceneId: 'knowledge-publication', timestamp: '20260801T034757715Z',
+		});
+		const second = planSceneArtifactPaths({
+			workspaceRoot: '/workspace/market', sceneId: 'knowledge-publication', timestamp: '20260801T034758011Z',
+		});
+
+		expect(first.runId).toBe('20260801t034757715z');
+		expect(second.runId).toBe('20260801t034758011z');
+		expect(first.runId).not.toBe(second.runId);
+	});
+
 	it('rejects scene ids that are not safe for artifact paths', () => {
 		expect(() => planSceneArtifactPaths({
 			workspaceRoot: '/workspace/market',

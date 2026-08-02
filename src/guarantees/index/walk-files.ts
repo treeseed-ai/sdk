@@ -1,9 +1,7 @@
-import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve, sep } from 'node:path';
-import { parse as parseYaml } from 'yaml';
-import { EXCLUDED_DIRS, GUARANTEE_ID_PATTERN, KNOWN_DEVICES, KNOWN_GATES, KNOWN_STATUSES, KNOWN_SURFACES, TAXONOMY_PATTERN, diagnostic, isRecord, numberArray, numberValue, readYamlFile, stringArray, stringValue } from './guarantee-journey-audit-item.ts';
-import { GUARANTEE_SCHEMA_VERSION, GuaranteeDevice, GuaranteeDiagnostic, GuaranteeGate, GuaranteeManifest, GuaranteeRunContract, GuaranteeSceneContract, GuaranteeStatus, GuaranteeSurface, GuaranteeVerifierContract, LoadedGuarantee } from './guarantee-schema-version.ts';
+import { existsSync,readdirSync,readFileSync } from 'node:fs';
+import { dirname,relative,resolve,sep } from 'node:path';
+import { diagnostic,EXCLUDED_DIRS,GUARANTEE_ID_PATTERN,isRecord,KNOWN_DEVICES,KNOWN_GATES,KNOWN_STATUSES,KNOWN_SURFACES,numberArray,numberValue,readYamlFile,stringArray,stringValue,TAXONOMY_PATTERN } from './guarantee-journey-audit-item.ts';
+import { GUARANTEE_SCHEMA_VERSION,GuaranteeDevice,GuaranteeDiagnostic,GuaranteeGate,GuaranteeManifest,GuaranteeRunContract,GuaranteeSceneContract,GuaranteeStatus,GuaranteeSurface,GuaranteeVerifierContract,LoadedGuarantee } from './guarantee-schema-version.ts';
 import { allVerifierRefs } from './parse-verifier-registry.ts';
 
 export function walkFiles(root: string, predicate: (path: string) => boolean): string[] {

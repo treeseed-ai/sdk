@@ -1,28 +1,12 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { parse as parseYaml } from 'yaml';
 import type { FieldAliasRegistry } from '../../entrypoints/models/field-aliases.ts';
 import { normalizeAliasedRecord } from '../../entrypoints/models/field-aliases.ts';
-import type {
-	DeployConfig,
-	ExportConfig,
-	HubConfig,
-	LocalRuntimeConfig,
-	ManagedServiceConfig,
-	ManagedServicesConfig,
-	PlatformSurfacesConfig,
-	ProcessingConfig,
-	PluginReference,
-	ProviderSelections,
-	RuntimeConfig,
-	WebCachePolicyConfig,
-	WebSourcePageCacheConfig,
-} from '../support/contracts.ts';
-import { resolveTenantRoot } from '../configuration/tenant-config.ts';
 import {
-	DEFAULT_PLUGIN_REFERENCES,
-	DEFAULT_PROVIDER_SELECTIONS,
+DEFAULT_PLUGIN_REFERENCES
 } from '../plugins/constants.ts';
+import type {
+PluginReference,
+WebCachePolicyConfig
+} from '../support/contracts.ts';
 
 
 export const deployConfigFieldAliases: FieldAliasRegistry = {

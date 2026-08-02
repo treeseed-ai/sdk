@@ -1,10 +1,10 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync,readFileSync } from 'node:fs';
+import { dirname,resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import type { FieldAliasRegistry } from '../../entrypoints/models/field-aliases.ts';
 import { normalizeAliasedRecord } from '../../entrypoints/models/field-aliases.ts';
-import type { ContentCollection, FeatureName, TenantConfig } from '../support/contracts.ts';
+import type { ContentCollection,FeatureName,TenantConfig } from '../support/contracts.ts';
 
 function resolvePackageRoot() {
 	const moduleUrl = typeof import.meta?.url === 'string' ? import.meta.url : null;

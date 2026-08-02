@@ -1,37 +1,18 @@
-import { errorDiagnostic, warningDiagnostic } from '../errors.js';
+import { errorDiagnostic,warningDiagnostic } from '../errors.js';
 import {
-	SEED_CONTENT_PUBLISH_TARGETS,
-	SEED_CONTENT_RUNTIME_SOURCES,
-	SEED_ENVIRONMENTS,
-	SEED_LOCAL_CONTENT_MATERIALIZATIONS,
-	SEED_PROJECT_TOPOLOGIES,
-	type SeedCatalogArtifactResource,
-	type SeedContentPublishTargetKind,
-	type SeedContentRuntimeSource,
-	type SeedDiagnostic,
-	type SeedEnvironment,
-	type SeedHubRepositoryResource,
-	type SeedLocalContentMaterialization,
-	type SeedManifest,
-	type SeedManifestResources,
-	type SeedOperationRecipe,
-	type SeedOperationRecipeArtifact,
-	type SeedOperationRecipeAssertion,
-	type SeedOperationRecipeChannel,
-	type SeedOperationRecipeCommand,
-	type SeedOperationRecipeStep,
-	type SeedProductResource,
-	type SeedProjectArchitecture,
-	type SeedProjectContentPublishTarget,
-	type SeedProjectRepository,
-	type SeedProjectResource,
-	type SeedProjectTopology,
-	type SeedRepositoryHostResource,
-	type SeedResourceBase,
-	type SeedTeamResource,
+type SeedCatalogArtifactResource,
+type SeedDiagnostic,
+type SeedHubRepositoryResource,
+type SeedManifest,
+type SeedManifestResources,
+type SeedOperationRecipe,
+type SeedOperationRecipeStep,
+type SeedProductResource,
+type SeedProjectResource,
+type SeedTeamResource
 } from '../types.js';
-import { RESOURCE_BUCKETS, SUPPORTED_BUCKETS, asString, isRecord, parseEnvironments, parseTeam, requireString } from './resource-buckets.ts';
-import { parseCatalogArtifact, parseHubRepository, parseOperationRecipe, parseProduct, parseProject, parseRepositoryHost, walkForSecrets } from './parse-project.ts';
+import { parseCatalogArtifact,parseHubRepository,parseOperationRecipe,parseProduct,parseProject,walkForSecrets } from './parse-project.ts';
+import { RESOURCE_BUCKETS,SUPPORTED_BUCKETS,asString,isRecord,parseEnvironments,parseTeam,requireString } from './resource-buckets.ts';
 
 export function arrayBucket(resources: Record<string, unknown>, bucket: string, diagnostics: SeedDiagnostic[]) {
 	const value = resources[bucket];
@@ -58,7 +39,6 @@ export function validateResourceKeys(manifest: SeedManifest, diagnostics: SeedDi
 		seen.set(key, path);
 	};
 	manifest.resources.teams.forEach((team, index) => visit(team.key, `resources.teams[${index}].key`));
-	manifest.resources.repositoryHosts.forEach((host, index) => visit(host.key, `resources.repositoryHosts[${index}].key`));
 	manifest.resources.projects.forEach((project, index) => visit(project.key, `resources.projects[${index}].key`));
 	manifest.resources.hubRepositories.forEach((repository, index) => visit(repository.key, `resources.hubRepositories[${index}].key`));
 	manifest.resources.products.forEach((product, index) => visit(product.key, `resources.products[${index}].key`));
@@ -68,18 +48,13 @@ export function validateResourceKeys(manifest: SeedManifest, diagnostics: SeedDi
 export function validateReferences(manifest: SeedManifest, diagnostics: SeedDiagnostic[]) {
 	const teamKeys = new Set(manifest.resources.teams.map((team) => team.key));
 	const projectKeys = new Set(manifest.resources.projects.map((project) => project.key));
-	const repositoryHostKeys = new Set(manifest.resources.repositoryHosts.map((host) => host.key));
 	const productKeys = new Set(manifest.resources.products.map((product) => product.key));
 
-	manifest.resources.repositoryHosts.forEach((host, index) => {
-		if (!teamKeys.has(host.team)) diagnostics.push(errorDiagnostic('seed.invalid_reference', `Unknown team reference: ${host.team}.`, `resources.repositoryHosts[${index}].team`));
-	});
 	manifest.resources.projects.forEach((project, index) => {
 		if (!teamKeys.has(project.team)) diagnostics.push(errorDiagnostic('seed.invalid_reference', `Unknown team reference: ${project.team}.`, `resources.projects[${index}].team`));
 	});
 	manifest.resources.hubRepositories.forEach((repository, index) => {
 		if (!projectKeys.has(repository.project)) diagnostics.push(errorDiagnostic('seed.invalid_reference', `Unknown project reference: ${repository.project}.`, `resources.hubRepositories[${index}].project`));
-		if (repository.repositoryHost && !repositoryHostKeys.has(repository.repositoryHost)) diagnostics.push(errorDiagnostic('seed.invalid_reference', `Unknown repository host reference: ${repository.repositoryHost}.`, `resources.hubRepositories[${index}].repositoryHost`));
 	});
 	manifest.resources.products.forEach((product, index) => {
 		if (!teamKeys.has(product.team)) diagnostics.push(errorDiagnostic('seed.invalid_reference', `Unknown team reference: ${product.team}.`, `resources.products[${index}].team`));
@@ -92,7 +67,6 @@ export function validateReferences(manifest: SeedManifest, diagnostics: SeedDiag
 export function allResourceKeys(manifest: SeedManifest) {
 	return new Set([
 		...manifest.resources.teams.map((team) => team.key),
-		...manifest.resources.repositoryHosts.map((host) => host.key),
 		...manifest.resources.projects.map((project) => project.key),
 		...manifest.resources.hubRepositories.map((repository) => repository.key),
 		...manifest.resources.products.map((product) => product.key),
@@ -201,7 +175,6 @@ export function parseSeedManifest(value: unknown, diagnostics: SeedDiagnostic[])
 
 	const resources: SeedManifestResources = {
 		teams: arrayBucket(resourcesValue, 'teams', diagnostics).map((entry, index) => parseTeam(entry, `resources.teams[${index}]`, diagnostics)).filter((team): team is SeedTeamResource => Boolean(team)),
-		repositoryHosts: arrayBucket(resourcesValue, 'repositoryHosts', diagnostics).map((entry, index) => parseRepositoryHost(entry, `resources.repositoryHosts[${index}]`, diagnostics)).filter((host): host is SeedRepositoryHostResource => Boolean(host)),
 		projects: arrayBucket(resourcesValue, 'projects', diagnostics).map((entry, index) => parseProject(entry, `resources.projects[${index}]`, diagnostics)).filter((project): project is SeedProjectResource => Boolean(project)),
 		hubRepositories: arrayBucket(resourcesValue, 'hubRepositories', diagnostics).map((entry, index) => parseHubRepository(entry, `resources.hubRepositories[${index}]`, diagnostics)).filter((repository): repository is SeedHubRepositoryResource => Boolean(repository)),
 		products: arrayBucket(resourcesValue, 'products', diagnostics).map((entry, index) => parseProduct(entry, `resources.products[${index}]`, diagnostics)).filter((product): product is SeedProductResource => Boolean(product)),

@@ -1,9 +1,9 @@
-import { readDevInstance } from '../../../local-dev/managed-dev.ts';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { readDevInstance } from '../../../local-dev/managed-dev.ts';
 import { loadDeployConfigFromPath } from '../../../platform/hosting/deploy-config.ts';
+import type { SceneBaseUrlResolution,SceneEnvironment,SceneEnvironmentPrepareReport,SceneManifest } from '../../types.ts';
 import { sceneErrorDiagnostic } from '../reporting/diagnostics.ts';
-import type { SceneBaseUrlResolution, SceneEnvironment, SceneEnvironmentPrepareReport, SceneManifest } from '../../types.ts';
 
 export function resolveSceneBaseUrl(input: {
 	projectRoot: string;

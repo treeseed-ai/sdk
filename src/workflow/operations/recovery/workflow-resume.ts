@@ -1,23 +1,21 @@
 import { existsSync } from 'node:fs';
-import { currentBranch } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
-import { run } from "../../../operations/services/treedx/workspaces/workspace-tools.ts";
-import { archiveWorkflowRun, classifyWorkflowRunJournal, inspectWorkflowLock, listWorkflowRunJournals, readWorkflowRunJournal, releaseWorkflowLock, updateWorkflowRunJournal } from "../../runs.ts";
+import type { CloseInput,DestroyInput,RecoverInput,ReleaseInput,ResumeInput,SaveInput,StageInput,SwitchInput,UpdateInput } from "../../../operations/workflow.ts";
+import { archiveWorkflowRun,classifyWorkflowRunJournal,countWorkflowRunJournals,inspectWorkflowLock,listRecentWorkflowRunJournals,listWorkflowRunJournals,readWorkflowRunJournal,releaseWorkflowLock,updateWorkflowRunJournal } from "../../runs.ts";
 import { resolveWorkflowSession } from "../../session.ts";
-import type { CloseInput, DestroyInput, ReleaseInput, RecoverInput, ResumeInput, SaveInput, StageInput, SwitchInput, UpdateInput } from "../../../operations/workflow.ts";
-import { WorkflowOperationHelpers } from './workflow-write.ts';
-import { resolveProjectRootOrThrow, withContextEnv, workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
-import { buildWorkflowResult, createWorkspacePackageReports, createWorkspaceRootRepoReport } from '../support/create-repo-report.ts';
-import { acceptedPublishedReleaseHeads } from '../packages/prepare-fresh-release-run.ts';
-import { helpersForCwd } from '../packages/normalize-release-candidate-mode.ts';
-import { workflowSwitch } from '../workspace-lifecycle/workflow-switch.ts';
-import { workflowSave } from '../workspace-lifecycle/workflow-save.ts';
-import { workflowUpdate } from '../workspace-lifecycle/workflow-update.ts';
-import { workflowClose } from '../workspace-lifecycle/workflow-close.ts';
-import { workflowStage } from '../workspace-lifecycle/workflow-stage.ts';
-import { workflowRelease } from '../release/workflow-release.ts';
+import { resolveProjectRootOrThrow,withContextEnv,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
 import { workflowDestroy } from '../coordination/workflow-destroy.ts';
-import { nextPendingJournalStep, toError } from '../projects/projects-core/connect-market-project.ts';
+import { helpersForCwd } from '../packages/normalize-release-candidate-mode.ts';
+import { acceptedPublishedReleaseHeads } from '../packages/prepare-fresh-release-run.ts';
 import { createNextSteps } from '../packages/release-admin-message.ts';
+import { nextPendingJournalStep,toError } from '../support/workflow-helpers.ts';
+import { workflowRelease } from '../release/workflow-release.ts';
+import { buildWorkflowResult,createWorkspacePackageReports,createWorkspaceRootRepoReport } from '../support/create-repo-report.ts';
+import { workflowClose } from '../workspace-lifecycle/workflow-close.ts';
+import { workflowSave } from '../workspace-lifecycle/workflow-save.ts';
+import { workflowStage } from '../workspace-lifecycle/workflow-stage.ts';
+import { workflowSwitch } from '../workspace-lifecycle/workflow-switch.ts';
+import { workflowUpdate } from '../workspace-lifecycle/workflow-update.ts';
+import { WorkflowOperationHelpers } from './workflow-write.ts';
 
 export async function workflowResume(helpers: WorkflowOperationHelpers, input: ResumeInput) {
 	try {
@@ -116,9 +114,12 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 				?? locks.find((entry) => entry.inspection.stale)?.inspection
 				?? locks[0]!.inspection;
 			const hasActiveLock = locks.some((entry) => entry.inspection.active);
+			const recoveryJournals = input.pruneStale === true
+				? listWorkflowRunJournals(root)
+				: listRecentWorkflowRunJournals(root, 200);
 			const orphanedRunningRuns = hasActiveLock
 				? []
-				: listWorkflowRunJournals(root).filter((journal) => journal.status === 'running');
+				: recoveryJournals.filter((journal) => journal.status === 'running');
 			const prunedOrphanedRuns = input.pruneStale === true
 				? orphanedRunningRuns.map((journal) => {
 					const classification = {
@@ -140,7 +141,7 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 					}));
 					return null;
 				}).filter((entry): entry is never => entry !== null);
-			const journals = listWorkflowRunJournals(root);
+			const journals = recoveryJournals;
 			const actionableJournals = journals.filter((journal) =>
 				journal.status !== 'completed' && !journal.classification?.archivedAt);
 			const session = resolveWorkflowSession(root);
@@ -155,7 +156,7 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 			}));
 			const markedObsoleteRun = input.obsoleteRunId
 				? (() => {
-					const journal = journals.find((candidate) => candidate.runId === input.obsoleteRunId);
+					const journal = readWorkflowRunJournal(root, input.obsoleteRunId!);
 					if (!journal) {
 						workflowError('recover', 'validation_failed', `Treeseed recover could not find workflow run ${input.obsoleteRunId}.`);
 					}
@@ -204,7 +205,8 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 					locks: locks.map((entry) => ({ scope: entry.scope, ...entry.inspection })),
 					clearedStaleLocks, 					interruptedRuns, 					staleRuns, 					obsoleteRuns,
 					prunedRuns: [...prunedOrphanedRuns, ...prunedRuns],
-					markedObsoleteRun, 					selectedRun, 					runCount: journals.length,
+					markedObsoleteRun, 					selectedRun, 					runCount: countWorkflowRunJournals(root),
+					scannedRunCount: journals.length,
 				},
 				{
 					includeFinalState: false,

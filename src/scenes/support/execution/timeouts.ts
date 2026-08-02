@@ -1,4 +1,14 @@
-import type { SceneDiagnostic } from '../../types.ts';
+import type { SceneAction,SceneDiagnostic,SceneWorkflowStep } from '../../types.ts';
+
+function actionTimeoutFloorSeconds(action: SceneAction) {
+	if (!('waitForOperation' in action) || !action.waitForOperation.timeoutSeconds) return 0;
+	const pollingGrace = Math.max(1, action.waitForOperation.pollIntervalSeconds ?? 2);
+	return action.waitForOperation.timeoutSeconds + pollingGrace;
+}
+
+export function resolveSceneStepTimeoutSeconds(step: SceneWorkflowStep, defaultSeconds: number) {
+	return Math.max(step.timeoutSeconds ?? defaultSeconds, actionTimeoutFloorSeconds(step.action));
+}
 
 export async function withSceneTimeout<T>(input: {
 	promise: Promise<T>;

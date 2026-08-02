@@ -52,7 +52,11 @@ class FakeAdapter implements SceneBrowserAdapter {
 	launches: SceneBrowserLaunchInput[] = [];
 	async launch(input: SceneBrowserLaunchInput): Promise<SceneBrowserSession> {
 		this.launches.push(input);
-		return { page: this.page, close: async () => {} };
+		return {
+			page: this.page,
+			saveStorageState: async (path) => writeFileSync(path, JSON.stringify({ cookies: [], origins: [] }), 'utf8'),
+			close: async () => {},
+		};
 	}
 }
 
@@ -200,18 +204,24 @@ workflow:
 	it('resumes from a resumable checkpoint and rejects non-resumable checkpoints', async () => {
 		const root = workspace();
 		writeScene(root, 'long-demo', longScene());
-		const first = await runScene({ projectRoot: root, scene: 'long-demo', browserAdapter: new FakeAdapter(), sleep: async () => {}, timestamp: '20260614T120000Z', runId: 'source' });
+		const firstAdapter = new FakeAdapter();
+		const first = await runScene({ projectRoot: root, scene: 'long-demo', browserAdapter: firstAdapter, sleep: async () => {}, timestamp: '20260614T120000Z', runId: 'source' });
+		const resumedAdapter = new FakeAdapter();
 		const resumed = await resumeScene({
 			projectRoot: root,
 			run: first.artifacts!.runRoot,
 			fromCheckpoint: 'open',
-			browserAdapter: new FakeAdapter(),
+			browserAdapter: resumedAdapter,
 			sleep: async () => {},
 			timestamp: '20260614T130000Z',
 			runId: 'resumed',
 		});
 		expect(resumed.resumedFrom?.checkpointId).toBe('open');
-		expect(resumed.artifacts?.runRoot).toContain('20260614T130000Z-resumed');
+		expect(resumed.artifacts?.runRoot).toContain('20260614T130000Z-source');
+		const storageStatePath = first.checkpoints.find((checkpoint) => checkpoint.id === 'open')?.artifactPaths.checkpointPath.replace(/\.json$/u, '.storage.json');
+		expect(storageStatePath).toMatch(/open\.storage\.json$/u);
+		expect(existsSync(storageStatePath!)).toBe(true);
+		expect(resumedAdapter.launches[0]?.storageStatePath).toBe(storageStatePath);
 
 		writeScene(root, 'not-resumable', `schemaVersion: treeseed.scene/v1
 id: not-resumable

@@ -1,12 +1,12 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync,writeFileSync } from 'node:fs';
 import { relative } from 'node:path';
 import type {
-	SceneVisualAuditCapture,
-	SceneVisualAuditFinding,
-	SceneVisualAuditManifest,
-	SceneVisualAuditPaths,
-	SceneVisualAuditReview,
-	SceneVisualAuditRootCause,
+SceneVisualAuditCapture,
+SceneVisualAuditFinding,
+SceneVisualAuditManifest,
+SceneVisualAuditPaths,
+SceneVisualAuditReview,
+SceneVisualAuditRootCause,
 } from '../../types.ts';
 
 function esc(value: unknown) {

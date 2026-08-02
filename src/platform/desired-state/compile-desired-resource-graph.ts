@@ -1,29 +1,20 @@
-import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { basename, dirname, resolve as resolvePath } from 'node:path';
-import { parse as parseYaml } from 'yaml';
 import {
-	discoverPackageAdapters,
-	type PackageAdapter,
+discoverPackageAdapters
 } from '../../operations/services/reconciliation/package-adapters.ts';
-import { redactCapacityProviderEnv, validateAndDigestCapacityProviderManifest } from '../../capacity/providers/capacity-provider.ts';
-import { workspaceRoot } from '../../operations/services/treedx/workspaces/workspace-tools.ts';
 import {
-	checkedOutTemplateRepositories,
-	type TemplateRepositoryManifest,
+checkedOutTemplateRepositories
 } from '../../operations/services/support/managed-repositories.ts';
+import { workspaceRoot } from '../../operations/services/treedx/workspaces/workspace-tools.ts';
 import { deriveDesiredUnits } from '../../reconcile/reconciliation/desired-state.ts';
-import type { DesiredUnit, ReconcileSelector, ReconcileTarget } from '../../reconcile/support/contracts/contracts.ts';
+import type { DesiredUnit,ReconcileSelector,ReconcileTarget } from '../../reconcile/support/contracts/contracts.ts';
 import {
-	buildProjectLocalContentResources,
-	type LocalContentMode,
+type LocalContentMode
 } from '../content/local-content-materialization.ts';
-import { localTreeDxSeedDigest } from '../treedx/repositories/local-treedx-seed.ts';
-import { DesiredResource, DesiredResourceEdge, DesiredResourceGraph, environmentFromTarget, hashJson, packageUnitFromAdapter, reconcileIdentityForGraph, templateUnitFromRepository } from './desired-environment.ts';
-import { resourceFromUnit } from './safe-tree-dx-repository-name.ts';
-import { packageResources, templateResources } from './package-resources.ts';
+import { DesiredResource,DesiredResourceEdge,DesiredResourceGraph,environmentFromTarget,hashJson,packageUnitFromAdapter,reconcileIdentityForGraph,templateUnitFromRepository } from './desired-environment.ts';
 import { localDevelopmentResources } from './local-development-resources.ts';
-import { branchPreviewResources, releaseGateResources, resourceMatchesSelector } from './release-gate-resources.ts';
+import { packageResources,templateResources } from './package-resources.ts';
+import { branchPreviewResources,releaseGateResources,resourceMatchesSelector } from './release-gate-resources.ts';
+import { resourceFromUnit } from './safe-tree-dx-repository-name.ts';
 
 export function compileDesiredResourceGraph({
 	tenantRoot = workspaceRoot(),
@@ -45,7 +36,7 @@ export function compileDesiredResourceGraph({
 		...derived.units.map((unit) => resourceFromUnit(unit, environment)),
 		...packageAdapters.flatMap((adapter) => packageResources(adapter, environment)),
 		...templateResources(templates, environment),
-		...localDevelopmentResources(tenantRoot, environment, localContent, templates, capacityConfigPath),
+		...localDevelopmentResources(tenantRoot, environment, localContent, templates, capacityConfigPath, derived.deployConfig),
 		...branchPreviewResources(target, environment),
 		...releaseGateResources(packages, templates, environment),
 	];

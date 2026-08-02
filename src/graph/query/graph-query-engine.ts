@@ -1,29 +1,25 @@
 import path from 'node:path';
 import type {
-	SdkContextPack,
-	SdkContextPackRequest,
-	SdkGraphDslRelation,
-	SdkGraphEdge,
-	SdkGraphEdgeType,
-	SdkGraphNode,
-	SdkGraphQueryOptions,
-	SdkGraphQueryRequest,
-	SdkGraphQueryResult,
-	SdkGraphQueryView,
-	SdkGraphPathExplanation,
-	SdkGraphRankingProvider,
-	SdkGraphSearchOptions,
-	SdkGraphSearchResult,
-	SdkGraphSeed,
-	SdkGraphSeedResolution,
-	SdkGraphTraversalResult,
-	SdkGraphWhereFilter,
+SdkContextPack,
+SdkContextPackRequest,
+SdkGraphEdge,
+SdkGraphNode,
+SdkGraphPathExplanation,
+SdkGraphQueryOptions,
+SdkGraphQueryRequest,
+SdkGraphQueryResult,
+SdkGraphRankingProvider,
+SdkGraphSearchOptions,
+SdkGraphSearchResult,
+SdkGraphSeed,
+SdkGraphSeedResolution,
+SdkGraphTraversalResult
 } from '../../entrypoints/models/sdk-types.ts';
 import type { GraphBuildState } from '../build.ts';
 import { parseGraphDsl } from '../dsl.ts';
 import { DEFAULT_GRAPH_RANKING_PROVIDER } from '../ranking.ts';
 import { normalizeText } from '../schema.ts';
-import { RELATION_TO_EDGE_TYPE, dedupeResults, excerptForView, matchesNodeOptions, nodeContentPath, nodeMatchesScope, nodeMatchesWhere, nodeMetadataType, normalizeScopePath, stripExt, tokenEstimate } from './relation-to-edge-type.ts';
+import { RELATION_TO_EDGE_TYPE,dedupeResults,excerptForView,matchesNodeOptions,nodeContentPath,nodeMatchesScope,nodeMatchesWhere,nodeMetadataType,normalizeScopePath,stripExt,tokenEstimate } from './relation-to-edge-type.ts';
 import { statefulIds } from './stateful-ids.ts';
 
 export class GraphQueryEngine {

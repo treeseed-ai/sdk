@@ -1,41 +1,16 @@
-import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
-import { findBuiltInSceneAction, findBuiltInSceneAssertion } from '../support/plugins/registry.ts';
+import { sceneErrorDiagnostic,sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
 import {
-	SCENE_BROWSERS,
-	SCENE_ENVIRONMENTS,
-	SCENE_SCHEMA_VERSION,
-	type SceneAction,
-	type SceneArtifacts,
-	type SceneBrowser,
-	type SceneChapter,
-	type SceneDeviceConfig,
-	type SceneDeviceProfile,
-	type SceneDiagram,
-	type SceneDiagnostic,
-	type SceneEnvironment,
-	type SceneExpectation,
-	type SceneManifest,
-	type SceneMode,
-	type SceneMotion,
-	type SceneOverlay,
-	type SceneOverlayVariant,
-	type SceneRenderConfig,
-	type SceneRenderEvidenceFit,
-	type SceneRuntimeConfig,
-	type SceneSelector,
-	type SceneSetup,
-	type SceneTarget,
-	type SceneTrainingConfig,
-	type SceneVisualAuditConfig,
-	type SceneVisualObject,
-	type SceneVisualPoint,
-	type SceneVisualRegion,
-	type SceneVisualSize,
-	type SceneVisualStyle,
-	type SceneWorkflowStep,
+type SceneDiagnostic,
+type SceneDiagram,
+type SceneMode,
+type SceneRenderConfig,
+type SceneRenderEvidenceFit,
+type SceneRuntimeConfig,
+type SceneTrainingConfig,
+type SceneVisualAuditConfig
 } from '../types.ts';
-import { CAPTION_FORMATS, DIAGRAM_PLACEMENTS, EVIDENCE_FITS, FILESYSTEM_SAFE_SCENE_ID, NARRATION_STYLES, TRANSCRIPT_FORMATS, arrayField, asString, booleanField, enumArrayField, isRecord, nullablePositiveNumberField, objectField, optionalString, positiveNumberField, requireString, stringArrayField } from './filesystem-safe-scene-id.ts';
-import { parseMotion, parseVisualObjects, parseVisualStyle } from './parse-workflow.ts';
+import { CAPTION_FORMATS,DIAGRAM_PLACEMENTS,EVIDENCE_FITS,FILESYSTEM_SAFE_SCENE_ID,NARRATION_STYLES,TRANSCRIPT_FORMATS,arrayField,asString,booleanField,enumArrayField,isRecord,nullablePositiveNumberField,objectField,optionalString,positiveNumberField,requireString,stringArrayField } from './filesystem-safe-scene-id.ts';
+import { parseMotion,parseVisualObjects,parseVisualStyle } from './parse-workflow.ts';
 
 export function parseDiagrams(value: unknown, stepIds: Set<string>, diagnostics: SceneDiagnostic[]) {
 	const diagrams: SceneDiagram[] = [];

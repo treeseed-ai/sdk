@@ -1,6 +1,6 @@
 
-import { CommitMessageContext, CommitMessageOptions, CommitMessageProviderMode, CommitMessageResult, DEFAULT_COMMIT_AI_MODEL, changedPaths, defaultMaxDiffChars, defaultTimeoutMs, envValue, formatGroups, parseNumber } from './default-commit-ai-model.ts';
-import { assertCommitTemplate, cloudflareEndpoint, dependencyUpdateBullet, generateFallbackCommitMessage, packageChangeBullet, pointerUpdateBullet } from './fallback-summary.ts';
+import { CommitMessageContext,CommitMessageOptions,CommitMessageProviderMode,CommitMessageResult,DEFAULT_COMMIT_AI_MODEL,changedPaths,defaultMaxDiffChars,defaultTimeoutMs,envValue,formatGroups,parseNumber } from './default-commit-ai-model.ts';
+import { assertCommitTemplate,cloudflareEndpoint,dependencyUpdateBullet,generateFallbackCommitMessage,packageChangeBullet,pointerUpdateBullet } from './fallback-summary.ts';
 
 export function contextLines(context: CommitMessageContext) {
 	const paths = changedPaths(context.changedFiles);

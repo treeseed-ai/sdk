@@ -1,8 +1,8 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
+import { existsSync,readFileSync } from 'node:fs';
+import { isAbsolute,resolve } from 'node:path';
 import { parseDocument } from 'yaml';
+import type { LoadedSceneDocument,SceneDiagnostic } from '../../types.ts';
 import { sceneErrorDiagnostic } from '../reporting/diagnostics.ts';
-import type { LoadedSceneDocument, SceneDiagnostic } from '../../types.ts';
 
 const FILESYSTEM_SAFE_SCENE_ID = /^[a-z0-9][a-z0-9._-]*$/u;
 

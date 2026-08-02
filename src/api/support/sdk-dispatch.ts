@@ -1,13 +1,13 @@
 import type { RemoteSdkOperationRequest } from '../../entrypoints/clients/remote.ts';
+import { executeSdkOperation,findSdkOperation,listSdkOperationNames } from '../../entrypoints/models/sdk-dispatch.ts';
 import type { AgentSdk } from '../../entrypoints/models/sdk.ts';
 import { AgentSdk as AgentSdkClass } from '../../entrypoints/models/sdk.ts';
-import { executeSdkOperation, findSdkOperation, listSdkOperationNames } from '../../entrypoints/models/sdk-dispatch.ts';
 import type { ApiConfig } from '../types.ts';
 
 export {
-	executeSdkOperation,
-	findSdkOperation,
-	listSdkOperationNames,
+executeSdkOperation,
+findSdkOperation,
+listSdkOperationNames
 };
 
 export function resolveSdkInstance(

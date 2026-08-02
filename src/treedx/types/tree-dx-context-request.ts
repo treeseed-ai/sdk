@@ -1,20 +1,10 @@
 import type {
-	SdkContextPack,
-	SdkContextPackRequest,
-	SdkGraphDslParseResult,
-	SdkGraphEdge,
-	SdkGraphNode,
-	SdkGraphQueryRequest,
-	SdkGraphQueryResult,
-	SdkGraphRefreshPayload,
-	SdkGraphRefreshRequest,
-	SdkGraphSearchOptions,
-	SdkGraphSearchResult,
-	SdkGraphTraversalResult,
+SdkContextPack,
+SdkContextPackRequest,
+SdkGraphDslParseResult
 } from '../../entrypoints/models/sdk-types.ts';
-import type { components, operations, paths } from '../generated/openapi-types.ts';
-import { TreeDxContextBudgetDiagnostics, TreeDxContextMode } from './tree-dx-exec-result.ts';
 import { TreeDxMirror } from './tree-dx-actor.ts';
+import { TreeDxContextBudgetDiagnostics,TreeDxContextMode } from './tree-dx-exec-result.ts';
 
 export interface TreeDxContextRequest extends SdkContextPackRequest {
 	repoId?: string;
@@ -187,6 +177,10 @@ export interface TreeDxArtifactCleanupRequest {
 export interface TreeDxArtifactCleanupResult {
 	deletedCount: number;
 	retentionDays: number;
+	workspaces?: {
+		expiredWorkspaceIds: string[];
+		releasedLeaseIds: string[];
+	};
 }
 
 export interface TreeDxSnapshot {

@@ -1,14 +1,14 @@
-import { sceneErrorDiagnostic } from '../reporting/diagnostics.ts';
-import { createBuiltInScenePluginRegistry } from '../plugins/registry.ts';
 import type {
-	SceneDiagnostic,
-	SceneDiagramDefinition,
-	SceneManifest,
-	ScenePluginRegistry,
-	SceneRenderDiagram,
-	SceneRunReport,
-	SceneTimelineEvent,
+SceneDiagnostic,
+SceneDiagramDefinition,
+SceneManifest,
+ScenePluginRegistry,
+SceneRenderDiagram,
+SceneRunReport,
+SceneTimelineEvent,
 } from '../../types.ts';
+import { createBuiltInScenePluginRegistry } from '../plugins/registry.ts';
+import { sceneErrorDiagnostic } from '../reporting/diagnostics.ts';
 
 const PLACEMENTS = new Set(['overlay', 'interstitial', 'standalone']);
 

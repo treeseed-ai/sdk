@@ -1,6 +1,6 @@
-import { TreeDxClient, type TreeDxClientOptions } from './client.ts';
 import { TreeDxFederatedClient } from '../federation/federated-client.ts';
-import { TreeDxRegistryClient, type TreeDxRegistryClientOptions } from './registry-client.ts';
+import { TreeDxClient,type TreeDxClientOptions } from './client.ts';
+import { TreeDxRegistryClient,type TreeDxRegistryClientOptions } from './registry-client.ts';
 
 export interface AgentSdkTreeDxOptions {
 	enabled: boolean;

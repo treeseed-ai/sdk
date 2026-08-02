@@ -112,4 +112,36 @@ describe('managed dev process ownership', () => {
 		expect(process.kill).toHaveBeenCalledWith(-43121, 'SIGTERM');
 		expect(spawn).toHaveBeenCalledOnce();
 	});
+
+	it('changes the API source closure when configured runtime values change', () => {
+		const cwd = mkdtempSync(resolve(tmpdir(), 'treeseed-managed-dev-env-'));
+		const [original] = createIntegratedDevPlan({
+			cwd,
+			surfaces: 'api',
+			env: { TREESEED_API_BOOTSTRAP_ADMIN_ALLOWLIST: 'first@example.test' },
+		}).processes;
+		const [updated] = createIntegratedDevPlan({
+			cwd,
+			surfaces: 'api',
+			env: { TREESEED_API_BOOTSTRAP_ADMIN_ALLOWLIST: 'second@example.test' },
+		}).processes;
+
+		expect(original?.sourceClosureDigest).not.toBe(updated?.sourceClosureDigest);
+	});
+
+	it('pins both canonical service credential names in local API and web processes', () => {
+		const cwd = mkdtempSync(resolve(tmpdir(), 'treeseed-managed-dev-service-'));
+		const processes = createIntegratedDevPlan({ cwd, surfaces: 'web,api', env: {
+			TREESEED_WEB_SERVICE_ID: 'stale-id', TREESEED_WEB_SERVICE_SECRET: 'stale-secret',
+			TREESEED_API_WEB_SERVICE_ID: 'stale-api-id', TREESEED_API_WEB_SERVICE_SECRET: 'stale-api-secret',
+		} }).processes;
+		for (const processSpec of processes.filter((item) => item.surface === 'web' || item.surface === 'api')) {
+			expect(processSpec.env).toMatchObject({
+				TREESEED_WEB_SERVICE_ID: 'web',
+				TREESEED_WEB_SERVICE_SECRET: 'treeseed-web-service-dev-secret',
+				TREESEED_API_WEB_SERVICE_ID: 'web',
+				TREESEED_API_WEB_SERVICE_SECRET: 'treeseed-web-service-dev-secret',
+			});
+		}
+	});
 });

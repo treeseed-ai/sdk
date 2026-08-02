@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
+import { loadDeployState,resolveResourceIdentity,writeDeployState } from '../../../operations/services/hosting/deployment/deploy.ts';
 import { loadPlatformConfig } from '../../../platform/configuration/config.ts';
-import { loadDeployState, resolveResourceIdentity, writeDeployState } from '../../../operations/services/hosting/deployment/deploy.ts';
-import type { DesiredUnit, ReconcileStateRecord, ReconcileTarget, UnitPersistedState } from '../contracts/contracts.ts';
+import type { DesiredUnit,ReconcileStateRecord,ReconcileTarget,UnitPersistedState } from '../contracts/contracts.ts';
 import { targetKey } from '../engine/units.ts';
 
 function stableHash(value: unknown) {

@@ -19,7 +19,7 @@ describe('local TreeDX seed desired state', () => {
 		writeFileSync(join(agents, 'zeta.mdx'), 'zeta\n');
 		writeFileSync(join(objectives, 'alpha.md'), 'alpha\n');
 		writeFileSync(join(objectives, 'ignored.txt'), 'ignored\n');
-		const source = { localRoot, contentPath, seedPaths: [`${contentPath}/objectives`, `${contentPath}/agents`] };
+		const source = { localRoot, contentPath, seedPaths: [contentPath] };
 
 		expect(collectLocalTreeDxSeedFiles(source).map((file) => file.path)).toEqual([
 			'docs/src/content/agents/zeta.mdx',

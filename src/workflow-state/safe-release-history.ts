@@ -1,5 +1,5 @@
 import type { DeployConfig } from "../platform/support/contracts.ts";
-import { WorkflowState, runGit } from './branch-role.ts';
+import { WorkflowState,runGit } from './branch-role.ts';
 
 export function safeReleaseHistory(repoDir: string | null): WorkflowState['releaseHistory'] {
 	if (!repoDir) {

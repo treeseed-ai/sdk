@@ -1,24 +1,14 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { basename, dirname, resolve as resolvePath } from 'node:path';
-import { parse as parseYaml } from 'yaml';
+import { existsSync,readFileSync,statSync } from 'node:fs';
+import { dirname,resolve as resolvePath } from 'node:path';
 import {
-	discoverPackageAdapters,
-	type PackageAdapter,
+type PackageAdapter
 } from '../../operations/services/reconciliation/package-adapters.ts';
-import { redactCapacityProviderEnv, validateAndDigestCapacityProviderManifest } from '../../capacity/providers/capacity-provider.ts';
-import { workspaceRoot } from '../../operations/services/treedx/workspaces/workspace-tools.ts';
 import {
-	checkedOutTemplateRepositories,
-	type TemplateRepositoryManifest,
+checkedOutTemplateRepositories,
+type TemplateRepositoryManifest,
 } from '../../operations/services/support/managed-repositories.ts';
-import { deriveDesiredUnits } from '../../reconcile/reconciliation/desired-state.ts';
-import type { DesiredUnit, ReconcileSelector, ReconcileTarget } from '../../reconcile/support/contracts/contracts.ts';
-import {
-	buildProjectLocalContentResources,
-	type LocalContentMode,
-} from '../content/local-content-materialization.ts';
-import { localTreeDxSeedDigest } from '../treedx/repositories/local-treedx-seed.ts';
+import type { DesiredUnit,ReconcileTarget } from '../../reconcile/support/contracts/contracts.ts';
 
 
 export type DesiredEnvironment = 'local' | 'staging' | 'prod';
@@ -66,6 +56,7 @@ export type DesiredResourceKind =
 	| 'railway-volume'
 	| 'railway-domain'
 	| 'local-process'
+	| 'cloudflare-tunnel'
 	| 'local-docker-compose'
 	| 'local-treedx'
 	| 'local-content-materialization'

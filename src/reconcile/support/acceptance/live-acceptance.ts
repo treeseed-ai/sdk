@@ -1,12 +1,4 @@
-import {
-	type CanonicalAction,
-	type CanonicalDrift,
-	type CanonicalGraphNode,
-	type CanonicalPostcondition,
-	type CanonicalReconcileReport,
-} from '../state/platform.ts';
-import type { DesiredResource } from '../../../platform/reconciliation/desired-state.ts';
-import type { ReconcileSelector } from '../contracts/contracts.ts';
+import { resolveGitHubCredentialForRepository } from '../../../operations/services/configuration/github-credentials.ts';
 import {
 	listRailwayEnvironments,
 	listRailwayProjects,
@@ -15,14 +7,14 @@ import {
 	listRailwayVolumes,
 	resolveRailwayWorkspaceContext,
 } from '../../../operations/services/hosting/railway/railway-api.ts';
-import { resolveGitHubCredentialForRepository } from '../../../operations/services/configuration/github-credentials.ts';
-import { cloudflareRequest } from '../../hosting/live-acceptance-cloudflare-client.ts';
+import type { DesiredResource } from '../../../platform/reconciliation/desired-state.ts';
 import type { CapacityAcceptanceExecutionInput, CapacityAcceptanceExecutionResult } from '../../capacity/capacity-core/live-acceptance-capacity-executor.ts';
+import { cloudflareRequest, cloudflareTunnelRequest } from '../../hosting/live-acceptance-cloudflare-client.ts';
 import { runCloudflareAcceptance, runCloudflareCleanup } from '../../hosting/live-acceptance-cloudflare.ts';
-import { runLocalAcceptance, runLocalCleanup } from '../../runtime/live-acceptance-local.ts';
+import { runRailwayAcceptance, runRailwayCleanup } from '../../hosting/live-acceptance-railway.ts';
 import { githubRequest, resolveCurrentGitHubRepository } from '../../repositories/live-acceptance-github-client.ts';
 import { runGitHubAcceptance, runGitHubCleanup } from '../../repositories/live-acceptance-github.ts';
-import { runRailwayAcceptance, runRailwayCleanup } from '../../hosting/live-acceptance-railway.ts';
+import { runLocalAcceptance, runLocalCleanup } from '../../runtime/live-acceptance-local.ts';
 import {
 	PROVIDER_CAPABILITIES,
 	emitProgress,
@@ -31,6 +23,13 @@ import {
 	scenario,
 	shortRunId,
 } from '../../runtime/live-acceptance-runtime.ts';
+import type { ReconcileSelector } from '../contracts/contracts.ts';
+import {
+	type CanonicalAction,
+	type CanonicalDrift,
+	type CanonicalGraphNode,
+	type CanonicalReconcileReport,
+} from '../state/platform.ts';
 import { configuredLiveAcceptanceValue as configuredValue, type LiveAcceptanceEnv } from './live-acceptance-values.ts';
 
 export type LiveReconcileProvider = 'railway' | 'cloudflare' | 'github' | 'local';
@@ -325,7 +324,7 @@ async function runSmokeProvider({
 			['secrets', `/accounts/${accountId}/workers/services?per_page=1`],
 			['cache-rules', '/zones?per_page=1'],
 		];
-		return Promise.all(checks.map(async ([capability, path]) => {
+		const results = await Promise.all(checks.map(async ([capability, path]) => {
 			try {
 				await cloudflareRequest(path, env, fetchImpl);
 				return scenario({ provider, mode, prefix, capability, ok: true, phase: 'smoke', action: 'noop', reason: 'Cloudflare API surface is reachable.', locators: { accountId } });
@@ -333,6 +332,13 @@ async function runSmokeProvider({
 				return scenario({ provider, mode, prefix, capability, ok: false, phase: 'blocked', action: 'blocked', reason: error instanceof Error ? error.message : String(error), locators: { accountId } });
 			}
 		}));
+		try {
+			await cloudflareTunnelRequest(`/accounts/${accountId}/cfd_tunnel?is_deleted=false&per_page=1`, env, fetchImpl);
+			results.push(scenario({ provider, mode, prefix, capability: 'tunnel', ok: true, phase: 'smoke', action: 'noop', reason: 'Cloudflare Tunnel API surface is reachable.', locators: { accountId } }));
+		} catch (error) {
+			results.push(scenario({ provider, mode, prefix, capability: 'tunnel', ok: false, phase: 'blocked', action: 'blocked', reason: error instanceof Error ? error.message : String(error), locators: { accountId } }));
+		}
+		return results;
 	}
 	if (provider === 'github') {
 		let repository = '';

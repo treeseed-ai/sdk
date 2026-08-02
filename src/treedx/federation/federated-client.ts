@@ -1,18 +1,18 @@
 import { TreeDxClient } from '../support/client.ts';
 import { TreeDxApiError } from '../support/errors.ts';
-import { TreeDxRegistryClient, type TreeDxRegistryClientOptions } from '../support/registry-client.ts';
+import { TreeDxRegistryClient,type TreeDxRegistryClientOptions } from '../support/registry-client.ts';
 import type {
-	TreeDxFederatedContextRequest,
-	TreeDxFederatedContextResult,
-	TreeDxFederatedGraphRequest,
-	TreeDxFederatedGraphResult,
-	TreeDxFederatedQueryRequest,
-	TreeDxFederatedQueryResult,
-	TreeDxFederatedSearchRequest,
-	TreeDxFederatedSearchResult,
-	TreeDxFederationQueryPlan,
-	TreeDxFederationQueryPlanRequest,
-	TreeDxRepositoryPlacement,
+TreeDxFederatedContextRequest,
+TreeDxFederatedContextResult,
+TreeDxFederatedGraphRequest,
+TreeDxFederatedGraphResult,
+TreeDxFederatedQueryRequest,
+TreeDxFederatedQueryResult,
+TreeDxFederatedSearchRequest,
+TreeDxFederatedSearchResult,
+TreeDxFederationQueryPlan,
+TreeDxFederationQueryPlanRequest,
+TreeDxRepositoryPlacement,
 } from '../types.ts';
 
 export interface TreeDxFederatedClientOptions {

@@ -1,14 +1,14 @@
+import type {
+ScenePlugin,
+ScenePluginCategory,
+ScenePluginRegistry,
+ScenePluginResolution,
+ScenePluginSummary,
+SceneRuntimePluginContext,
+SceneRuntimePluginContextInput,
+} from '../../types.ts';
 import { sceneErrorDiagnostic } from '../reporting/diagnostics.ts';
 import { resolveSceneLocator } from '../validation/selectors.ts';
-import type {
-	ScenePlugin,
-	ScenePluginCategory,
-	ScenePluginRegistry,
-	ScenePluginResolution,
-	ScenePluginSummary,
-	SceneRuntimePluginContext,
-	SceneRuntimePluginContextInput,
-} from '../../types.ts';
 
 function categories(plugin: ScenePlugin): ScenePluginCategory[] {
 	const values: ScenePluginCategory[] = [];

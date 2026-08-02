@@ -1,4 +1,4 @@
-import { createHmac, randomUUID } from 'node:crypto';
+import { createHmac,randomUUID } from 'node:crypto';
 
 export interface TreeDxHs256TokenInput {
 	secret: string;

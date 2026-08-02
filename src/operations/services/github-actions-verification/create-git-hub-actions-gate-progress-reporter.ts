@@ -1,12 +1,8 @@
-import { Buffer } from 'node:buffer';
 import {
-	createGitHubApiClient,
-	parseGitHubRepositorySlug,
-	type GitHubApiClient,
-	type GitHubWorkflowProgressEvent,
+type GitHubWorkflowProgressEvent
 } from '../repositories/github-api.ts';
 import { GitHubActionsWorkflowGate } from './git-hub-actions-workflow-state.ts';
-import { formatCompactedGitHubActionsGateProgress, formatGitHubActionsGateProgress, progressCompactKey } from './inspect-target.ts';
+import { formatCompactedGitHubActionsGateProgress,formatGitHubActionsGateProgress,progressCompactKey } from './inspect-target.ts';
 
 export function createGitHubActionsGateProgressReporter(
 	gate: GitHubActionsWorkflowGate,

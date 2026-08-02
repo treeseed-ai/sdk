@@ -1,63 +1,63 @@
-import type { TreeDxClient } from './client.ts';
+import type { ContentStore } from '../../content/content-store.ts';
+import type {
+SdkContentEntry,
+SdkContextPackRequest,
+SdkFollowRequest,
+SdkGetRequest,
+SdkGraphQueryRequest,
+SdkGraphSearchOptions,
+SdkMutationRequest,
+SdkPickRequest,
+SdkSearchRequest,
+} from '../../entrypoints/models/sdk-types.ts';
 import type { TreeDxFederatedClient } from '../federation/federated-client.ts';
 import type { TreeDxGraphAdapter } from '../graph/graph-adapter.ts';
-import type { TreeDxQueryAdapter } from '../reconciliation/query-adapter.ts';
-import type { TreeDxRegistryClient } from './registry-client.ts';
-import type { TreeDxRepositoryAdapter } from '../reconciliation/repository-adapter.ts';
-import type { TreeDxWorkspaceAdapter } from '../workspaces/workspace-adapter.ts';
-import type { ContentStore } from '../../content/content-store.ts';
 import type { ContentGraphRuntime } from '../graph/graph.ts';
+import type { TreeDxQueryAdapter } from '../reconciliation/query-adapter.ts';
+import type { TreeDxRepositoryAdapter } from '../reconciliation/repository-adapter.ts';
 import type {
-	SdkContentEntry,
-	SdkContextPackRequest,
-	SdkFollowRequest,
-	SdkGetRequest,
-	SdkGraphQueryRequest,
-	SdkGraphSearchOptions,
-	SdkMutationRequest,
-	SdkPickRequest,
-	SdkSearchRequest,
-} from '../../entrypoints/models/sdk-types.ts';
-import type {
-	TreeDxArtifact,
-	TreeDxArtifactDownload,
-	TreeDxArtifactExportRequest,
-	TreeDxCommitRequest,
-	TreeDxCommitResult,
-	TreeDxCreateWorkspaceRequest,
-	TreeDxDiff,
-	TreeDxExecRequest,
-	TreeDxExecResult,
-	TreeDxFederatedContextRequest,
-	TreeDxFederatedContextResult,
-	TreeDxFederatedGraphRequest,
-	TreeDxFederatedGraphResult,
-	TreeDxFederatedQueryRequest,
-	TreeDxFederatedQueryResult,
-	TreeDxFederatedSearchRequest,
-	TreeDxFederatedSearchResult,
-	TreeDxFile,
-	TreeDxFileMutationResult,
-	TreeDxListTreeRequest,
-	TreeDxPatchFileRequest,
-	TreeDxReadFileRequest,
-	TreeDxRepositoryPathsRequest,
-	TreeDxRepositoryPlacement,
-	TreeDxRepositoryQueryRequest,
-	TreeDxRepositoryQueryResult,
-	TreeDxRepositoryReadRequest,
-	TreeDxRepositorySearchRequest,
-	TreeDxSearchRequest,
-	TreeDxSearchResult,
-	TreeDxSnapshot,
-	TreeDxSnapshotBuildRequest,
-	TreeDxStatus,
-	TreeDxTreeEntry,
-	TreeDxWorkspace,
-	TreeDxWorkspaceRequest,
-	TreeDxWriteFileRequest,
-	TreeDxDeleteFileRequest,
+TreeDxArtifact,
+TreeDxArtifactDownload,
+TreeDxArtifactExportRequest,
+TreeDxCommitRequest,
+TreeDxCommitResult,
+TreeDxCreateWorkspaceRequest,
+TreeDxDeleteFileRequest,
+TreeDxDiff,
+TreeDxExecRequest,
+TreeDxExecResult,
+TreeDxFederatedContextRequest,
+TreeDxFederatedContextResult,
+TreeDxFederatedGraphRequest,
+TreeDxFederatedGraphResult,
+TreeDxFederatedQueryRequest,
+TreeDxFederatedQueryResult,
+TreeDxFederatedSearchRequest,
+TreeDxFederatedSearchResult,
+TreeDxFile,
+TreeDxFileMutationResult,
+TreeDxListTreeRequest,
+TreeDxPatchFileRequest,
+TreeDxReadFileRequest,
+TreeDxRepositoryPathsRequest,
+TreeDxRepositoryPlacement,
+TreeDxRepositoryQueryRequest,
+TreeDxRepositoryQueryResult,
+TreeDxRepositoryReadRequest,
+TreeDxRepositorySearchRequest,
+TreeDxSearchRequest,
+TreeDxSearchResult,
+TreeDxSnapshot,
+TreeDxSnapshotBuildRequest,
+TreeDxStatus,
+TreeDxTreeEntry,
+TreeDxWorkspace,
+TreeDxWorkspaceRequest,
+TreeDxWriteFileRequest,
 } from '../types.ts';
+import type { TreeDxWorkspaceAdapter } from '../workspaces/workspace-adapter.ts';
+import type { TreeDxClient } from './client.ts';
+import type { TreeDxRegistryClient } from './registry-client.ts';
 
 export interface AuthPort {
 	whoami(): Promise<unknown>;

@@ -1,17 +1,3 @@
-import type { ProjectConnection, ProjectLaunchHostBindingInput, RemoteJobStatus } from '../../entrypoints/models/sdk-types.ts';
-
-export const PROJECT_TEAM_CAPABILITIES = [
-	'launch_projects',
-	'edit_direct',
-	'manage_workstreams',
-	'stage_releases',
-	'publish_releases',
-	'publish_market_listings',
-	'manage_products',
-	'manage_billing',
-	'approve_remote_execution',
-] as const;
-
 export const PROJECT_JOB_STATUSES = [
 	'queued',
 	'running',
@@ -55,7 +41,6 @@ export const AGENT_MESSAGE_KINDS = [
 	'release_readiness',
 ] as const;
 
-export type TeamCapability = (typeof PROJECT_TEAM_CAPABILITIES)[number];
 export type ProjectJobStatus = (typeof PROJECT_JOB_STATUSES)[number];
 export type WorkstreamState = (typeof WORKSTREAM_STATES)[number];
 export type ReleaseState = (typeof RELEASE_STATES)[number];
@@ -181,20 +166,6 @@ export interface AgentMessageRecord {
 	metadata?: Record<string, unknown>;
 }
 
-export interface ProjectConnectionStatus {
-	projectId: string;
-	connection: ProjectConnection | null;
-	connected: boolean;
-	hubMode?: 'treeseed_hosted' | 'customer_hosted' | null;
-	runtimeMode?: 'none' | 'byo_attached' | 'treeseed_managed' | null;
-	runtimeRegistration?: 'optional' | 'required' | 'none' | null;
-	runtimeAttached?: boolean;
-	runtimeReady?: boolean;
-	runnerReady: boolean;
-	projectApiReady: boolean;
-	mode: ProjectConnection['mode'] | 'disconnected';
-}
-
 export interface ProjectOverviewSummary {
 	projectId: string;
 	teamId: string;
@@ -213,7 +184,6 @@ export interface ProjectOverviewSummary {
 		agents: number;
 		releases: number;
 	};
-	connection: ProjectConnectionStatus;
 	nextBestAction: string;
 	recentActivity: Array<{
 		kind: string;
@@ -259,44 +229,6 @@ export interface InboxItem {
 	updatedAt: string;
 }
 
-export interface LaunchProjectRequest {
-	teamId: string;
-	name: string;
-	slug: string;
-	summary?: string | null;
-	sourceKind: 'blank' | 'template' | 'knowledge_pack';
-	sourceRef?: string | null;
-	hostingMode: 'managed' | 'hybrid' | 'self_hosted';
-	repositoryHostId?: string | null;
-	repositoryHostConfig?: Record<string, unknown> | null;
-	cloudflareHostId?: string | null;
-	cloudflareHostMode?: 'team_owned' | 'treeseed_managed' | null;
-	cloudflareHostConfig?: Record<string, unknown> | null;
-	emailHostId?: string | null;
-	emailHostMode?: 'team_owned' | 'treeseed_managed' | null;
-	emailHostConfig?: Record<string, unknown> | null;
-	hostBindings?: Record<string, ProjectLaunchHostBindingInput>;
-	targetEnvironments?: Array<'local' | 'staging' | 'prod'>;
-	publicSite?: boolean;
-	repoProvider?: 'github';
-	repoVisibility?: 'private' | 'public';
-	enableDefaultAgents?: boolean;
-	initialObjectives?: string[];
-}
-
-export interface LaunchProjectResult {
-	project: {
-		id: string;
-		teamId: string;
-		slug: string;
-		name: string;
-		description: string | null;
-	};
-	connection: ProjectConnection | null;
-	launchJobId: string | null;
-	overview: ProjectOverviewSummary | null;
-}
-
 export function normalizeProjectJobStatus(status: string | null | undefined): ProjectJobStatus {
 	switch (String(status ?? '').trim()) {
 		case 'running':
@@ -316,8 +248,4 @@ export function normalizeProjectJobStatus(status: string | null | undefined): Pr
 		default:
 			return 'queued';
 	}
-}
-
-export function normalizeRemoteJobStatus(status: RemoteJobStatus): ProjectJobStatus {
-	return normalizeProjectJobStatus(status);
 }

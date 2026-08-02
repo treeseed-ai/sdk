@@ -1,8 +1,8 @@
 import { join } from 'node:path';
 import type {
-	SceneExternalPublishTarget,
-	ScenePublishedArtifact,
-	ScenePublishDestination,
+SceneExternalPublishTarget,
+ScenePublishDestination,
+ScenePublishedArtifact,
 } from '../types.ts';
 
 export const DEFAULT_SCENE_PUBLICATION_TARGETS: SceneExternalPublishTarget[] = [

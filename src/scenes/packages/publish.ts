@@ -1,31 +1,31 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
-import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
+import { copyFileSync,existsSync,mkdirSync,readFileSync,statSync,writeFileSync } from 'node:fs';
+import { dirname,join,relative } from 'node:path';
 import { generateSceneEvidence } from '../support/evidence/evidence.ts';
-import { resolveSceneRunRoot } from '../support/reporting/inspect.ts';
 import { validateScene } from '../support/execution/planner.ts';
-import {
-	createDefaultSceneRedactionPolicy,
-	readSceneRedactionPolicyFile,
-	resolveSceneRedactionRule,
-	validateSceneRedactionPolicy,
-} from './publish-redaction.ts';
-import { appendScenePublishPaths, writeScenePublishReport } from './publish-report.ts';
-import { SceneReleaseEvidenceRecordPath, writeSceneReleaseEvidenceRecord } from './publish-release-record.ts';
+import { sceneErrorDiagnostic,sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
+import { resolveSceneRunRoot } from '../support/reporting/inspect.ts';
 import type {
-	SceneDiagnostic,
-	SceneEvidenceArtifact,
-	SceneEvidenceManifest,
-	SceneManifest,
-	ScenePublishedArtifact,
-	ScenePublishManifest,
-	ScenePublishOptions,
-	ScenePublishPaths,
-	ScenePublishReport,
-	ScenePublishTarget,
-	SceneRedactionPolicy,
-	SceneRunReport,
+SceneDiagnostic,
+SceneEvidenceArtifact,
+SceneEvidenceManifest,
+SceneManifest,
+ScenePublishedArtifact,
+ScenePublishManifest,
+ScenePublishOptions,
+ScenePublishPaths,
+ScenePublishReport,
+ScenePublishTarget,
+SceneRedactionPolicy,
+SceneRunReport,
 } from '../types.ts';
+import {
+createDefaultSceneRedactionPolicy,
+readSceneRedactionPolicyFile,
+resolveSceneRedactionRule,
+validateSceneRedactionPolicy,
+} from './publish-redaction.ts';
+import { SceneReleaseEvidenceRecordPath,writeSceneReleaseEvidenceRecord } from './publish-release-record.ts';
+import { appendScenePublishPaths,writeScenePublishReport } from './publish-report.ts';
 
 function readJson<T>(path: string): T {
 	return JSON.parse(readFileSync(path, 'utf8')) as T;

@@ -1,4 +1,4 @@
-import { AGENT_ACTIVITY_TYPES, AGENT_HANDLER_KINDS, type AgentActivityProfile, type AgentActivityType } from '../../types/agents.ts';
+import { AGENT_ACTIVITY_TYPES,AGENT_HANDLER_KINDS,type AgentActivityProfile,type AgentActivityType } from '../../types/agents.ts';
 
 export interface AgentActivityProfileDiagnostic { code: string; path: string; message: string }
 export interface AgentActivityProfileValidation { ok: boolean; diagnostics: AgentActivityProfileDiagnostic[] }

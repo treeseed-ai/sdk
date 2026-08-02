@@ -1,12 +1,12 @@
 import {
-	findOperation,
+findOperation,
 } from '../../operations/operations-registry.ts';
 import type {
-	SdkDispatchCapability,
-	SdkDispatchExecutionClass,
-	SdkDispatchNamespace,
-	SdkDispatchPolicy,
-	SdkDispatchTarget,
+SdkDispatchCapability,
+SdkDispatchExecutionClass,
+SdkDispatchNamespace,
+SdkDispatchPolicy,
+SdkDispatchTarget,
 } from '../models/sdk-types.ts';
 
 function capability(

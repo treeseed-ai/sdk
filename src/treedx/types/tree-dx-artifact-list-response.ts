@@ -1,18 +1,4 @@
-import type {
-	SdkContextPack,
-	SdkContextPackRequest,
-	SdkGraphDslParseResult,
-	SdkGraphEdge,
-	SdkGraphNode,
-	SdkGraphQueryRequest,
-	SdkGraphQueryResult,
-	SdkGraphRefreshPayload,
-	SdkGraphRefreshRequest,
-	SdkGraphSearchOptions,
-	SdkGraphSearchResult,
-	SdkGraphTraversalResult,
-} from '../../entrypoints/models/sdk-types.ts';
-import type { components, operations, paths } from '../generated/openapi-types.ts';
+import type { components } from '../generated/openapi-types.ts';
 
 
 export type TreeDxArtifactListResponse = components['schemas']['TreeDxListArtifactsResponse'];

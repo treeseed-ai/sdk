@@ -1,11 +1,8 @@
 import { Buffer } from 'node:buffer';
 import {
-	createGitHubApiClient,
-	parseGitHubRepositorySlug,
-	type GitHubApiClient,
-	type GitHubWorkflowProgressEvent,
+parseGitHubRepositorySlug,
+type GitHubApiClient
 } from '../repositories/github-api.ts';
-import { inspectCommand } from './resolve-remote-branch-head.ts';
 
 export type GitHubActionsWorkflowState = 'success' | 'failure' | 'pending' | 'missing' | 'not_pushed' | 'error';
 

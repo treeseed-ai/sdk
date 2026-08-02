@@ -21,7 +21,6 @@ export type ContentCollection =
 	| 'books'
 	| 'docs'
 	| 'templates'
-	| 'knowledge_packs'
 	| 'workdays';
 
 export interface FeatureModules {
@@ -49,7 +48,6 @@ export interface ContentMap {
 	books: string;
 	docs: string;
 	templates?: string;
-	knowledge_packs?: string;
 	workdays?: string;
 	[key: string]: string | undefined;
 }
@@ -66,29 +64,7 @@ export interface TenantSiteConfig {
 	models?: Partial<Record<ContentCollection, TenantSiteModelConfig>>;
 }
 
-export interface BookDefinition {
-	order: number;
-	slug: string;
-	title: string;
-	description: string;
-	summary: string;
-	sectionLabel: string;
-	basePath: string;
-	landingPath: string;
-	outlinePath?: string;
-	downloadFileName: string;
-	downloadHref: string;
-	downloadTitle: string;
-	exportRoots?: string[];
-	sidebarItems: Array<{
-		label: string;
-		link?: string;
-		autogenerate?: { directory: string };
-		items?: BookDefinition['sidebarItems'];
-	}>;
-	tags?: string[];
-	id?: string;
-}
+export type { BookDefinition } from '../../knowledge/contracts.ts';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
@@ -399,6 +375,15 @@ export interface DeployConfig {
 		queueBinding?: string;
 		pages?: CloudflarePagesConfig;
 		r2?: CloudflareR2Config;
+		tunnel?: {
+			local?: {
+				enabled?: boolean;
+				name?: string;
+				hostname?: string;
+				zoneId?: string;
+				originUrl?: string;
+			};
+		};
 	};
 	plugins: PluginReference[];
 	providers: ProviderSelections;

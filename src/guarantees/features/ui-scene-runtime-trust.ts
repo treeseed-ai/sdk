@@ -1,5 +1,5 @@
-import type { GuaranteeDiagnostic } from '../index/guarantee-schema-version.ts';
 import { diagnostic } from '../index/guarantee-journey-audit-item.ts';
+import type { GuaranteeDiagnostic } from '../index/guarantee-schema-version.ts';
 
 type ObservedError = {
 	message?: string;

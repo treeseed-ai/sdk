@@ -1,14 +1,14 @@
-import { stepOffset } from './training-captions.ts';
 import type {
-	SceneChapterClipManifest,
-	SceneGlossaryTerm,
-	SceneManifest,
-	SceneNarrationScriptEntry,
-	SceneRunReport,
-	SceneTimelineEvent,
-	SceneTrainingNarrationStyle,
-	SceneTranscriptEntry,
+SceneChapterClipManifest,
+SceneGlossaryTerm,
+SceneManifest,
+SceneNarrationScriptEntry,
+SceneRunReport,
+SceneTimelineEvent,
+SceneTrainingNarrationStyle,
+SceneTranscriptEntry,
 } from '../../types.ts';
+import { stepOffset } from './training-captions.ts';
 
 const BUILT_IN_GLOSSARY: Record<string, string> = {
 	reconciliation: 'Exact-state comparison and repair from declared Treeseed desired state to observed live state.',

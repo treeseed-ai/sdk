@@ -1,5 +1,4 @@
-import { sql } from 'drizzle-orm';
-import { bigint, check, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import { index,integer,pgTable,text,uniqueIndex } from 'drizzle-orm/pg-core';
 
 
 export const commerceSubscriptions = pgTable('commerce_subscriptions', {

@@ -1,20 +1,20 @@
 import { TreeDxClient } from '../support/client.ts';
 import { TreeDxApiError } from '../support/errors.ts';
 import type {
-	SdkContextPack,
-	SdkContextPackRequest,
-	SdkGraphDslParseResult,
-	SdkGraphNode,
-	SdkGraphQueryOptions,
-	SdkGraphQueryRequest,
-	SdkGraphQueryResult,
-	SdkGraphRefreshPayload,
-	SdkGraphSearchOptions,
-	SdkGraphSearchResult,
-	SdkGraphSeedResolution,
-	SdkGraphTraversalResult,
-	TreeDxGraphQueryResult,
-	TreeDxGraphRefreshRequest,
+SdkContextPack,
+SdkContextPackRequest,
+SdkGraphDslParseResult,
+SdkGraphNode,
+SdkGraphQueryOptions,
+SdkGraphQueryRequest,
+SdkGraphQueryResult,
+SdkGraphRefreshPayload,
+SdkGraphSearchOptions,
+SdkGraphSearchResult,
+SdkGraphSeedResolution,
+SdkGraphTraversalResult,
+TreeDxGraphQueryResult,
+TreeDxGraphRefreshRequest,
 } from '../types.ts';
 
 export interface TreeDxGraphAdapterOptions {

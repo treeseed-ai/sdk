@@ -1,18 +1,6 @@
 import type { FieldAliasBinding } from '../../entrypoints/models/field-aliases.ts';
-import type {
-	CapacityBusinessModel,
-	CapacityLaneUnit,
-	CapacityReservation,
-	NativeUsageObservation,
-} from '../../agent-capacity/contracts/support/financial-records.ts';
-import type {
-	CapacityExecutionProvider,
-	CapacityExecutionProviderNativeLimit,
-	CapacityExecutionProviderObservation,
-	CapacityProviderMembershipView,
-} from '../../capacity-provider/contracts/index.ts';
-import { SdkComparableAs, SdkModelName, SdkOperation, SdkPickStrategy, SdkStorageBackend } from './sdk-model-names.ts';
-import { SdkFilterCondition, SdkSortSpec } from '../configuration/sdk-dispatch-credential-source.ts';
+import { SdkFilterCondition,SdkSortSpec } from '../configuration/sdk-dispatch-credential-source.ts';
+import { SdkComparableAs,SdkModelName,SdkOperation,SdkPickStrategy,SdkStorageBackend } from './sdk-model-names.ts';
 
 export interface SdkSearchRequest {
 	model: SdkModelName;

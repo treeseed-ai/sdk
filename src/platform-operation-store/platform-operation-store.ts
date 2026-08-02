@@ -1,14 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { NodeSqliteD1Database } from '../db/node-sqlite.ts';
 import {
-	type PlatformOperation,
-	type PlatformOperationEvent,
-	type PlatformRunnerClaimRequest,
-	type PlatformRunnerHeartbeatRequest,
-	type PlatformRunnerJobUpdateRequest,
-	type PlatformRunnerRegistrationRequest,
+type PlatformRunnerClaimRequest,
+type PlatformRunnerHeartbeatRequest,
+type PlatformRunnerJobUpdateRequest,
+type PlatformRunnerRegistrationRequest
 } from '../operations/platform-operations.ts';
-import { PLATFORM_OPERATION_SCHEMA_SQL, PlatformOperationStoreOptions, RelationalDatabaseAdapter, isoNow, normalizeOperationCapabilities, parseJson, repositoryKey, repositoryWorkspacePath, rowEvent, rowOperation } from './database-provider.ts';
+import { PLATFORM_OPERATION_SCHEMA_SQL,PlatformOperationStoreOptions,RelationalDatabaseAdapter,isoNow,normalizeOperationCapabilities,parseJson,repositoryKey,repositoryWorkspacePath,rowEvent,rowOperation } from './database-provider.ts';
 
 export class PlatformOperationStore {
 	private initialized = false;

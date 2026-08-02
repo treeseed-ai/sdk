@@ -1,29 +1,29 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
-import {
-	DEFAULT_SCENE_PUBLICATION_TARGETS,
-	createScenePublishDestinations,
-	destinationIdsForScenePublishedArtifact,
-	isSceneExternalPublishTarget,
-} from './publish-destinations.ts';
-import { resolveSceneRunRoot } from '../support/reporting/inspect.ts';
+import { copyFileSync,existsSync,mkdirSync,readFileSync,writeFileSync } from 'node:fs';
+import { dirname,join } from 'node:path';
 import { validateScene } from '../support/execution/planner.ts';
-import { publishSceneEvidence } from './publish.ts';
-import { appendScenePublishPlanPaths, writeScenePublishPlanReport } from './publish-plan-report.ts';
+import { sceneErrorDiagnostic,sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
+import { resolveSceneRunRoot } from '../support/reporting/inspect.ts';
 import type {
-	SceneDiagnostic,
-	SceneExternalPublishTarget,
-	SceneManifest,
-	ScenePublishManifest,
-	ScenePublishPlanArtifact,
-	ScenePublishPlanManifest,
-	ScenePublishPlanMode,
-	ScenePublishPlanOptions,
-	ScenePublishPlanPaths,
-	ScenePublishPlanReport,
-	SceneRunReport,
+SceneDiagnostic,
+SceneExternalPublishTarget,
+SceneManifest,
+ScenePublishManifest,
+ScenePublishPlanArtifact,
+ScenePublishPlanManifest,
+ScenePublishPlanMode,
+ScenePublishPlanOptions,
+ScenePublishPlanPaths,
+ScenePublishPlanReport,
+SceneRunReport,
 } from '../types.ts';
+import {
+DEFAULT_SCENE_PUBLICATION_TARGETS,
+createScenePublishDestinations,
+destinationIdsForScenePublishedArtifact,
+isSceneExternalPublishTarget,
+} from './publish-destinations.ts';
+import { appendScenePublishPlanPaths,writeScenePublishPlanReport } from './publish-plan-report.ts';
+import { publishSceneEvidence } from './publish.ts';
 
 function readJson<T>(path: string): T {
 	return JSON.parse(readFileSync(path, 'utf8')) as T;

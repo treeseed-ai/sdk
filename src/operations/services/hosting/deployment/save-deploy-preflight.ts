@@ -1,8 +1,8 @@
 import { spawnSync } from 'node:child_process';
 import { packageScriptPath } from '../../agents/runtime-tools.ts';
-import { applyEnvironmentToProcess, assertCommandEnvironment } from '../../configuration/config-runtime.ts';
-import { collectCliPreflight } from '../../treedx/workspaces/workspace-preflight.ts';
+import { applyEnvironmentToProcess,assertCommandEnvironment } from '../../configuration/config-runtime.ts';
 import { requiredGitHubEnvironment } from '../../repositories/github-automation.ts';
+import { collectCliPreflight } from '../../treedx/workspaces/workspace-preflight.ts';
 
 function runStep(label, scriptName, { cwd, env } = {}) {
 	const startedAt = Date.now();

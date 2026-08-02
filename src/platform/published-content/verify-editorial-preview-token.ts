@@ -1,8 +1,6 @@
-import type { DeployConfig } from '../support/contracts.ts';
-import type { CommerceOfferMode } from '../../entrypoints/models/sdk-types.ts';
-import type { CloudflareRuntime, R2BucketLike } from '../../types/cloudflare.ts';
-import { EditorialPreviewTokenPayload, PublishContentObjectInput, PublishedArtifactVersion, PublishedContentEntry, PublishedContentManifest, PublishedContentObjectPointer, PublishedManifestTombstone, PublishedOverlayManifest, PublishedRuntimePointers, expectString } from './published-content-manifest-schema-version.ts';
-import { base64UrlDecode, canonicalEntryPath, hmacSha256Base64Url, parsePublishedContentManifest, parsePublishedOverlayManifest } from './hmac-sha256-base64-url.ts';
+import type { CloudflareRuntime,R2BucketLike } from '../../types/cloudflare.ts';
+import { base64UrlDecode,canonicalEntryPath,hmacSha256Base64Url,parsePublishedContentManifest,parsePublishedOverlayManifest } from './hmac-sha256-base64-url.ts';
+import { EditorialPreviewTokenPayload,PublishContentObjectInput,PublishedArtifactVersion,PublishedContentEntry,PublishedContentManifest,PublishedContentObjectPointer,PublishedManifestTombstone,PublishedOverlayManifest,PublishedRuntimePointers,expectString } from './published-content-manifest-schema-version.ts';
 
 export function verifyEditorialPreviewToken(token: string, secret: string): EditorialPreviewTokenPayload | null {
 	const [encodedPayload, signature] = String(token ?? '').split('.');
@@ -137,7 +135,6 @@ export function collectManifestPointers(manifest: PublishedContentManifest | Pub
 	for (const artifact of manifest.artifacts ?? []) {
 		pointers.push(artifact.content);
 	}
-	if (manifest.runtime?.booksRuntime) pointers.push(manifest.runtime.booksRuntime);
 	if (manifest.runtime?.docsTree) pointers.push(manifest.runtime.docsTree);
 	if (manifest.runtime?.searchIndex) pointers.push(manifest.runtime.searchIndex);
 	return pointers;

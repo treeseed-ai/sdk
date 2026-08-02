@@ -1,12 +1,9 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import * as childProcess from 'node:child_process';
-import { basename, relative, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
+import { basename,resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createManagedToolEnv, resolveToolBinary } from '../entrypoints/runtime/managed-dependencies.ts';
-import { check, createActArgs, defaultWrite, run, runActCommand } from './verify-driver.ts';
+import { resolveToolBinary } from '../entrypoints/runtime/managed-dependencies.ts';
+import { createWorkspaceActWorkflow,getVerifyDriverStatus } from './create-workspace-act-workflow.ts';
 import type { VerifyDriverOptions } from './verify-driver.ts';
-import { createWorkspaceActWorkflow, getVerifyDriverStatus } from './create-workspace-act-workflow.ts';
+import { check,createActArgs,defaultWrite,run,runActCommand } from './verify-driver.ts';
 
 export function runVerifyDriver(options: VerifyDriverOptions = {}) {
 	const write = options.write ?? defaultWrite;

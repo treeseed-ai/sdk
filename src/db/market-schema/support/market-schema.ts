@@ -1,26 +1,33 @@
-import { sql } from 'drizzle-orm';
-import { bigint, check, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from 'drizzle-orm/pg-core';
-import { agentMessages, agentRuns, apiTokens, auditEvents, authSessions, contactSubmissions, deviceCodes, permissions, rolePermissions, roles, runtimeEnvelopes, serviceCredentials, subscribers, teamMemberships, teamRoleBindings, teams, userEmailAddresses, userIdentities, userRoleBindings, users, webSessions } from './subscribers.ts';
-import { commonsDecisions, commonsDelegations, commonsGovernanceEvents, commonsParticipants, commonsProposalBackings, commonsProposalVotes, commonsProposals, commonsQuestions, commonsWeightSnapshots, governanceProposalVersions, governanceProposals, projectGovernancePolicies, teamGovernancePolicies } from '../governance/commons/commons-participants.ts';
-import { entitlements, governanceDecisions, governanceDelegations, governanceElectorateSnapshots, governanceEvents, governanceProposalVotes, governanceVoteEvents, knowledgePacks, projectCapabilityGrants, projectConnections, projects, remoteJobEvents, remoteJobs, teamApiKeys, teamStorageLocators } from '../governance/policy/governance-electorate-snapshots.ts';
-import { catalogArtifactVersions, catalogItemCollaborators, catalogItems, commerceContributions, commerceGovernancePolicies, commerceOwnershipRecords, commerceOwnershipTransfers, commerceProducts, commerceStewardshipAssignments, commerceVendors } from '../commerce/catalog/catalog-items.ts';
-import { commerceCartItems, commerceCarts, commerceCheckouts, commerceGovernanceEvents, commerceOffers, commerceOrderItems, commerceOrders, commercePaymentGroups, commercePrices, commerceProductVersions } from '../commerce/catalog/commerce-product-versions.ts';
-import { commerceBuyerStripeCustomers, commerceEntitlements, commerceFulfillmentEvents, commerceRefunds, commerceServiceContracts, commerceServiceEvents, commerceServiceQuotes, commerceServiceRequests, commerceSubscriptions } from '../commerce/payments/commerce-subscriptions.ts';
-import { betterAuthSession, betterAuthUser, commerceCapacityListingInquiries, commerceCapacityListings, commerceWebhookEvents, projectDeploymentEvents, projectDeployments, projectEnvironments, projectHosting, projectInfrastructureResources, projectSummarySnapshots, teamInboxItems } from '../commerce/capacity/commerce-capacity-listings.ts';
-import { betterAuthAccount, betterAuthVerification, capacityExecutionProviders, capacityProviderLanes, capacityProviderRegistrationRequests, capacityProviderTeamMemberships, capacityProviders, teamCapacityRegistrationKeys, teamInvites, teamWebHosts } from '../accounts/better-auth-account.ts';
-import { capacityAdmissionCounters, capacityAuditEvents, capacityGrants, capacityOperationReceipts, capacityProviderAccessTokens, capacityProviderProofNonces, capacityProviderRegistrationRateLimits, capacityProviderTeamCredentials, capacityReservationCounterClaims, capacityReservations } from '../capacity/providers/capacity-provider-team-credentials.ts';
-import { capacityAllocationSets, capacityLedgerEntries, capacityProviderAssignments, capacityUsageActuals, projectAgentClasses, providerAvailabilitySessions } from '../capacity/accounting/capacity-ledger-entries.ts';
-import { approvalRequests, githubRepositoryGrants, hubContentSources, hubRepositories, repositoryHosts, treeDxCredentialIssuanceRecords, treeDxInstances, workflowDispatchRecords, workflowOperationRecords } from '../capacity/allocations/github-repository-grants.ts';
-import { authProviderStates, authReauthenticationGrants, hubLaunchEvents, hubLaunches, hubWorkspaceLinks, projectUpdatePlans, providerCredentialSessions, treeDxDeployments, treeDxMirrors, treeDxProjectLibraries, treeDxShares, userNotificationGlobalContentTypes, userNotificationPreferences, userNotificationProjectContentTypes, userNotificationProjectOverrides, userPersonalThemes, userPreferences } from '../projects/knowledge/tree-dx-project-libraries.ts';
-import { agentCapacityPlans, capacityWorkdayEvents, clientEncryptedEscrowRecords, secretMetadataRecords, treeDxProxyHandles, workdayCapacityEnvelopes } from '../capacity/workdays/capacity-workday-events.ts';
-import { creditConversionProfiles, cursorState, leaseState, marketAuthCredentials, marketAuthPasswordResets, marketOperationRunners, messageQueue, notificationEmailDeliveries, notificationEvents, platformOperationEvents, platformOperations, platformRepositoryClaims, runtimeRecords, seedRuns, userNotifications } from '../accounts/notification-events.ts';
-import { agentFallbackOutputs, agentModeRuns, capacityWorkdayRuns, decisionAssignmentGraphs, decisionExecutionInputs, decisionPlanningStatuses, deliverableContracts, deliverableManifests, planningInputRequests, structuredAgentEstimates } from '../agents/agent-mode-runs.ts';
+import { betterAuthAccount,betterAuthVerification,capacityExecutionProviders,capacityProviderLanes,capacityProviderRegistrationRequests,capacityProviderTeamMemberships,capacityProviders,teamCapacityRegistrationKeys,teamInvites } from '../accounts/better-auth-account.ts';
+import { creditConversionProfiles,cursorState,leaseState,marketAuthCredentials,marketAuthPasswordResets,marketOperationRunners,messageQueue,notificationEmailDeliveries,notificationEvents,platformOperationEvents,platformOperations,platformRepositoryClaims,runtimeRecords,seedRuns,userNotifications } from '../accounts/notification-events.ts';
+import { credentialEnvelopes,externalVaultBindings,secretOperationLeases,teamServiceCapabilityBindings,teamServiceConnections,teamServiceCredentialProfiles,teamVaultGrants,teamVaults,userVaultKeys } from '../accounts/team-services.ts';
+import { agentFallbackOutputs,agentModeRuns,capacityWorkdayRuns,decisionAssignmentGraphs,decisionExecutionInputs,decisionPlanningStatuses,deliverableContracts,deliverableManifests,planningInputRequests,structuredAgentEstimates } from '../agents/agent-mode-runs.ts';
+import { capacityAllocationSets,capacityLedgerEntries,capacityProviderAssignments,capacityUsageActuals,projectAgentClasses,providerAvailabilitySessions } from '../capacity/accounting/capacity-ledger-entries.ts';
+import { approvalRequests,hubContentSources,hubRepositories,treeDxInstances } from '../projects/knowledge/project-knowledge-governance.ts';
+import { projectRemoteRepositoryBindings,projectWorkflowOperations,providerConnectorAuthorizations,providerCredentialAuthorities,providerWebhookDeliveries,remoteCredentialDeliveries,remoteGitOperationGrants,workflowConfigurationDeliveries,workflowConfigurationRecords,workflowOperationRuns } from '../projects/integrations/provider-operations.ts';
+import { bookCollections,knowledgeAuthoringWorkspaces,knowledgePackBuilds,knowledgePublications,knowledgeReviewComments,knowledgeReviews,knowledgeWorkspacePresence } from '../projects/knowledge/knowledge-collaboration.ts';
+import { capacityAdmissionCounters,capacityAuditEvents,capacityGrants,capacityOperationReceipts,capacityProviderAccessTokens,capacityProviderProofNonces,capacityProviderRegistrationRateLimits,capacityProviderTeamCredentials,capacityReservationCounterClaims,capacityReservations } from '../capacity/providers/capacity-provider-team-credentials.ts';
+import { agentCapacityPlans,capacityWorkdayEvents,capacityWorkdaySchedules,treeDxProxyHandles,workdayCapacityEnvelopes } from '../capacity/workdays/capacity-workday-events.ts';
+import { betterAuthSession,betterAuthUser,commerceCapacityListingInquiries,commerceCapacityListings,commerceWebhookEvents,projectSummarySnapshots,teamInboxItems } from '../commerce/capacity/commerce-capacity-listings.ts';
+import { catalogArtifactVersions,catalogItemCollaborators,catalogItems,commerceContributions,commerceGovernancePolicies,commerceOwnershipRecords,commerceOwnershipTransfers,commerceProducts,commerceStewardshipAssignments,commerceVendors } from '../commerce/catalog/catalog-items.ts';
+import { commerceCartItems,commerceCarts,commerceCheckouts,commerceGovernanceEvents,commerceOffers,commerceOrderItems,commerceOrders,commercePaymentGroups,commercePrices,commerceProductVersions } from '../commerce/catalog/commerce-product-versions.ts';
+import { commerceBuyerStripeCustomers,commerceEntitlements,commerceFulfillmentEvents,commerceRefunds,commerceServiceContracts,commerceServiceEvents,commerceServiceQuotes,commerceServiceRequests,commerceSubscriptions } from '../commerce/payments/commerce-subscriptions.ts';
+import { commonsDecisions,commonsDelegations,commonsGovernanceEvents,commonsParticipants,commonsProposalBackings,commonsProposalVotes,commonsProposals,commonsQuestions,commonsWeightSnapshots,governanceProposalVersions,governanceProposals,projectGovernancePolicies,teamGovernancePolicies } from '../governance/commons/commons-participants.ts';
+import { entitlements,governanceDecisions,governanceDelegations,governanceElectorateSnapshots,governanceEvents,governanceProposalVotes,governanceVoteEvents,projects,remoteJobEvents,remoteJobs,teamApiKeys,teamStorageLocators } from '../governance/policy/governance-electorate-snapshots.ts';
+import { authProviderStates,authReauthenticationGrants,treeDxDeployments,treeDxMirrors,treeDxProjectLibraries,treeDxShares,userNotificationGlobalContentTypes,userNotificationPreferences,userNotificationProjectContentTypes,userNotificationProjectOverrides,userPersonalThemes,userPreferences } from '../projects/knowledge/tree-dx-project-libraries.ts';
+import { agentMessages,agentRuns,apiTokens,auditEvents,authSessions,contactSubmissions,deviceCodes,permissions,rolePermissions,roles,runtimeEnvelopes,serviceCredentials,subscribers,teamMemberships,teamRoleBindings,teams,userEmailAddresses,userIdentities,userRoleBindings,users,webSessions } from './subscribers.ts';
+import { feedbackAttachments,feedbackExportItems,feedbackExports,feedbackStatusEvents,feedbackSubmissions } from './feedback.ts';
 
 export const MarketSchema = {
 	subscribers,
 	agentRuns,
 	agentMessages,
 	contactSubmissions,
+	feedbackSubmissions,
+	feedbackAttachments,
+	feedbackStatusEvents,
+	feedbackExports,
+	feedbackExportItems,
 	runtimeEnvelopes,
 	users,
 	userIdentities,
@@ -58,13 +65,10 @@ export const MarketSchema = {
 	governanceDecisions,
 	governanceEvents,
 	projects,
-	projectConnections,
-	projectCapabilityGrants,
 	teamApiKeys,
 	entitlements,
 	remoteJobs,
 	remoteJobEvents,
-	knowledgePacks,
 	teamStorageLocators,
 	catalogItems,
 	catalogArtifactVersions,
@@ -98,18 +102,31 @@ export const MarketSchema = {
 	commerceCapacityListings,
 	commerceCapacityListingInquiries,
 	commerceWebhookEvents,
-	projectHosting,
-	projectEnvironments,
-	projectInfrastructureResources,
-	projectDeployments,
-	projectDeploymentEvents,
 	projectSummarySnapshots,
 	teamInboxItems,
 	betterAuthUser,
 	betterAuthSession,
 	betterAuthAccount,
 	betterAuthVerification,
-	teamWebHosts,
+	teamServiceConnections,
+	teamServiceCapabilityBindings,
+	teamServiceCredentialProfiles,
+	teamVaults,
+	userVaultKeys,
+	teamVaultGrants,
+	credentialEnvelopes,
+	externalVaultBindings,
+	secretOperationLeases,
+	providerCredentialAuthorities,
+	projectRemoteRepositoryBindings,
+	projectWorkflowOperations,
+	workflowOperationRuns,
+	remoteGitOperationGrants,
+	remoteCredentialDeliveries,
+	providerWebhookDeliveries,
+	providerConnectorAuthorizations,
+	workflowConfigurationRecords,
+	workflowConfigurationDeliveries,
 	teamInvites,
 	capacityProviders,
 	capacityExecutionProviders,
@@ -130,7 +147,13 @@ export const MarketSchema = {
 	capacityLedgerEntries,
 	capacityUsageActuals,
 	approvalRequests,
-	repositoryHosts,
+	bookCollections,
+	knowledgeAuthoringWorkspaces,
+	knowledgePackBuilds,
+	knowledgePublications,
+	knowledgeReviewComments,
+	knowledgeReviews,
+	knowledgeWorkspacePresence,
 	hubRepositories,
 	hubContentSources,
 	treeDxInstances,
@@ -138,17 +161,6 @@ export const MarketSchema = {
 	treeDxMirrors,
 	treeDxShares,
 	treeDxDeployments,
-	secretMetadataRecords,
-	clientEncryptedEscrowRecords,
-	githubRepositoryGrants,
-	workflowOperationRecords,
-	workflowDispatchRecords,
-	treeDxCredentialIssuanceRecords,
-	hubLaunches,
-	hubLaunchEvents,
-	hubWorkspaceLinks,
-	projectUpdatePlans,
-	providerCredentialSessions,
 	userPreferences,
 	authProviderStates,
 	authReauthenticationGrants,
@@ -178,6 +190,7 @@ export const MarketSchema = {
 	deliverableManifests,
 	capacityWorkdayRuns,
 	capacityWorkdayEvents,
+	capacityWorkdaySchedules,
 	workdayCapacityEnvelopes,
 	capacityProviderAssignments,
 	agentModeRuns,

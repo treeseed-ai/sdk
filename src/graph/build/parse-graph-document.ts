@@ -1,40 +1,18 @@
-import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import GithubSlugger from 'github-slugger';
-import { toString } from 'mdast-util-to-string';
-import { unified } from 'unified';
-import remarkMdx from 'remark-mdx';
-import remarkParse from 'remark-parse';
 import { parseFrontmatterDocument } from '../../content/frontmatter.ts';
 import { resolveModelDefinition } from '../../entrypoints/models/model-registry.ts';
-import { readCanonicalFieldValue } from '../../entrypoints/models/sdk-fields.ts';
-import type { SdkGraphEdge, SdkGraphNode, SdkModelDefinition, SdkModelRegistry } from '../../entrypoints/models/sdk-types.ts';
+import type { SdkModelDefinition,SdkModelRegistry } from '../../entrypoints/models/sdk-types.ts';
 import {
-	AUTHORED_GRAPH_EDGE_TYPES,
-	computeEdgeId,
-	computeModelSignature,
-	createEntityNodeId,
-	createFileNodeId,
-	emptyGraphMetrics,
-	emptyGraphValidation,
-	ensureArray,
-	graphSnapshotRoot,
-	normalizeText,
-	resolveGraphModelConfig,
-	type AuthoredGraphEdgeType,
-	type GraphDelta,
-	type GraphFileCatalogEntry,
-	type GraphMetrics,
-	type GraphSnapshot,
-	type GraphValidation,
-	type ParsedGraphDocument,
-	type ParsedGraphHeading,
-	type ParsedGraphLink,
-	type ParsedGraphSection,
-	GRAPH_SNAPSHOT_VERSION,
-	sha1,
+createEntityNodeId,
+createFileNodeId,
+ensureArray,
+normalizeText,
+resolveGraphModelConfig,
+type GraphFileCatalogEntry,
+type ParsedGraphDocument,
+type ParsedGraphSection
 } from '../schema.ts';
-import { GRAPH_FRONTMATTER_RELATION_FIELDS, buildSections, extractMarkdownArtifacts, inferSlug, normalizeReferenceValue, readGraphField, stripMarkdownExtension } from './md-node.ts';
+import { GRAPH_FRONTMATTER_RELATION_FIELDS,buildSections,extractMarkdownArtifacts,inferSlug,normalizeReferenceValue,readGraphField,stripMarkdownExtension } from './md-node.ts';
 
 export function parseGraphDocument(definition: SdkModelDefinition, filePath: string, source: string): ParsedGraphDocument {
 	const parsed = parseFrontmatterDocument(source);

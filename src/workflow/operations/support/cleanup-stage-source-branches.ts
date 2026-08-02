@@ -1,8 +1,8 @@
-import { branchExists, deleteLocalBranch, deleteRemoteBranchIfMerged, STAGING_BRANCH, syncBranchWithOrigin } from "../../../operations/services/operations/git-workflow.ts";
-import { currentBranch, repoRoot } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
-import { managedWorkflowWorktreeMetadata, removeManagedWorkflowWorktree } from "../../worktrees.ts";
-import { StageCandidateManifest } from '../workspace-lifecycle/workflow-close.ts';
+import { branchExists,deleteLocalBranch,deleteRemoteBranchIfMerged,STAGING_BRANCH,syncBranchWithOrigin } from "../../../operations/services/operations/git-workflow.ts";
+import { currentBranch,repoRoot } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
+import { managedWorkflowWorktreeMetadata,removeManagedWorkflowWorktree } from "../../worktrees.ts";
 import { checkedOutStagePromotionRepos } from '../coordination/staging-candidate-workflow-gates.ts';
+import { StageCandidateManifest } from '../workspace-lifecycle/workflow-close.ts';
 
 export function cleanupStageSourceBranches(root: string, branchName: string, manifest: StageCandidateManifest) {
 	const results: Array<Record<string, unknown>> = [];

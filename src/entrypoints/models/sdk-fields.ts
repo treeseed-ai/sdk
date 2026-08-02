@@ -1,12 +1,12 @@
 import {
-	resolveAliasedField,
-	type FieldAliasRegistry,
+resolveAliasedField,
+type FieldAliasRegistry,
 } from './field-aliases.ts';
 import type {
-	SdkModelDefinition,
-	SdkModelFieldBinding,
-	SdkSortSpec,
-	SdkFilterCondition,
+SdkFilterCondition,
+SdkModelDefinition,
+SdkModelFieldBinding,
+SdkSortSpec,
 } from './sdk-types.ts';
 
 function isRecord(value: unknown): value is Record<string, unknown> {

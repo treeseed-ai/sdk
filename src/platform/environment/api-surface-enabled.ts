@@ -1,18 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
-import { runRepositoryGit } from '../../operations/services/operations/git-runner.ts';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { parse as parseYaml } from 'yaml';
-import { discoverApplications } from '../../hosting/apps.ts';
-import { githubRepositoryCredentialEnvName } from '../../operations/services/configuration/github-credentials.ts';
-import { discoverPackageAdapters } from '../../operations/services/reconciliation/package-adapters.ts';
-import type { DeployConfig, TenantConfig } from '../support/contracts.ts';
-import { loadDeployConfig } from '../hosting/deploy-config.ts';
-import { loadPlugins, type LoadedPluginRegistration } from '../support/plugins.ts';
-import { loadManifest } from '../configuration/tenant-config.ts';
-import { EnvironmentContext, EnvironmentScope, managedServiceEnabled, webSurfaceEnabled, workflowPlaneAllows } from './environment-scopes.ts';
+import { EnvironmentContext,EnvironmentScope,managedServiceEnabled,webSurfaceEnabled,workflowPlaneAllows } from './environment-scopes.ts';
 
 export function apiSurfaceEnabled(context: EnvironmentContext) {
 	if (!workflowPlaneAllows('processing')) {

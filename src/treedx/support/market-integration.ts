@@ -1,9 +1,9 @@
 import type {
-	ProjectContentRepositoryTopology,
-	ProjectFilesystemRepositoryTopology,
-	ProjectRepositoryTopology,
-	TreeDxInstance,
-	TreeDxProjectLibraryBinding,
+ProjectContentRepositoryTopology,
+ProjectFilesystemRepositoryTopology,
+ProjectRepositoryTopology,
+TreeDxInstance,
+TreeDxProjectLibraryBinding,
 } from '../../entrypoints/models/sdk-types.ts';
 
 export const TREEDX_DOCKER_IMAGE = 'treeseed/treedx:latest' as const;
@@ -94,6 +94,7 @@ export function buildProjectRepositoryTopology(input: {
 				repositoryId: input.binding.repositoryId ?? null,
 				baseUrl: input.instance.baseUrl ?? null,
 			},
+			remote: null,
 			r2: {
 				bucketName: input.binding.r2BucketName ?? null,
 				manifestKey: input.binding.r2ManifestKey ?? null,
@@ -108,6 +109,7 @@ export function normalizeProjectRepositoryTopology(value: unknown): ProjectRepos
 	const record = objectValue(value);
 	const content = objectValue(record.contentRepository);
 	const treeDx = objectValue(content.treeDx);
+	const remote = content.remote ? objectValue(content.remote) : null;
 	const site = normalizeFilesystemRepository(record.siteRepository, 'site');
 	const project = record.projectRepository ? normalizeFilesystemRepository(record.projectRepository, 'project') : null;
 	const instanceId = cleanString(treeDx.instanceId);
@@ -131,10 +133,35 @@ export function normalizeProjectRepositoryTopology(value: unknown): ProjectRepos
 				repositoryId: cleanString(treeDx.repositoryId),
 				baseUrl: cleanString(treeDx.baseUrl),
 			},
+			remote: remote ? normalizeRemoteRepository(remote) : null,
 			r2: objectValue(content.r2),
 		} as ProjectContentRepositoryTopology,
 		siteRepository: site,
 		projectRepository: project,
+	};
+}
+
+function normalizeRemoteRepository(record: Record<string, unknown>): NonNullable<ProjectContentRepositoryTopology['remote']> {
+	const required = [
+		'bindingId', 'serviceConnectionId', 'capabilityBindingId', 'providerId', 'providerRepositoryId',
+		'owner', 'name', 'cloneUrl', 'defaultRef', 'publicationRef', 'authorityId',
+	] as const;
+	const values = Object.fromEntries(required.map((key) => [key, cleanString(record[key])])) as Record<(typeof required)[number], string | null>;
+	const missing = required.filter((key) => !values[key]);
+	if (missing.length) throw new Error(`Project remote repository binding is missing: ${missing.join(', ')}.`);
+	const version = Number(record.version ?? 1);
+	if (!Number.isInteger(version) || version < 1) throw new Error('Project remote repository binding version must be a positive integer.');
+	return {
+		...(values as Record<(typeof required)[number], string>),
+		expectedHead: cleanString(record.expectedHead),
+		observedHead: cleanString(record.observedHead),
+		grantStatus: ['ready', 'missing', 'suspended', 'reauthorization-required'].includes(String(record.grantStatus))
+			? record.grantStatus as NonNullable<ProjectContentRepositoryTopology['remote']>['grantStatus']
+			: 'missing',
+		drift: ['none', 'remote-ahead', 'remote-behind', 'diverged', 'unavailable', 'unknown'].includes(String(record.drift))
+			? record.drift as NonNullable<ProjectContentRepositoryTopology['remote']>['drift']
+			: 'unknown',
+		version,
 	};
 }
 

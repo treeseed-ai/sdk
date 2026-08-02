@@ -146,38 +146,6 @@ function canonicalSeed(): SeedManifest {
 				metadata: { visibility: 'private' },
 			}],
 			projects,
-			repositoryHosts: [
-				{
-					key: 'repository-host:treeseed/knowledge-coop-github',
-					team: 'team:treeseed',
-					provider: 'github',
-					name: 'knowledge-coop',
-					ownership: 'treeseed_managed',
-					accountLabel: 'Knowledge Coop GitHub organization',
-					organizationOrOwner: 'knowledge-coop',
-					defaultVisibility: 'private',
-					softwareRepositoryNameTemplate: '{project}',
-					contentRepositoryNameTemplate: '{project}-content',
-					allowedProjectKinds: ['market_app', 'package', 'knowledge_hub'],
-					status: 'active',
-					credentialRef: 'env:TREESEED_GITHUB_TOKEN',
-				},
-				{
-					key: 'repository-host:treeseed/treeseed-ai-github',
-					team: 'team:treeseed',
-					provider: 'github',
-					name: 'treeseed-ai',
-					ownership: 'treeseed_managed',
-					accountLabel: 'TreeSeed AI GitHub organization',
-					organizationOrOwner: 'treeseed-ai',
-					defaultVisibility: 'public',
-					softwareRepositoryNameTemplate: '{project}',
-					contentRepositoryNameTemplate: '{project}-content',
-					allowedProjectKinds: ['market_app', 'package', 'knowledge_hub'],
-					status: 'active',
-					credentialRef: 'env:TREESEED_GITHUB_TOKEN',
-				},
-			],
 			hubRepositories: [],
 			products: ['market-template', 'engineering-template', 'research-template'].map((slug) => ({
 				key: `product:treeseed/${slug}`,
@@ -226,7 +194,6 @@ const manifest: SeedManifest = {
 				name: 'demo',
 			},
 		],
-		repositoryHosts: [],
 		projects: [],
 		hubRepositories: [],
 		products: [],
@@ -244,15 +211,6 @@ it('validates productized resource buckets and plans them deterministically', ()
 			environments: ['local'],
 			resources: {
 				teams: [{ key: 'team:demo', slug: 'demo' }],
-				repositoryHosts: [{
-					key: 'repository-host:demo/github',
-					team: 'team:demo',
-					provider: 'github',
-					name: 'demo',
-					ownership: 'treeseed_managed',
-					organizationOrOwner: 'demo',
-					credentialRef: 'provider-session:github-demo',
-				}],
 				projects: [{
 					key: 'project:demo/site',
 					team: 'team:demo',
@@ -270,7 +228,6 @@ it('validates productized resource buckets and plans them deterministically', ()
 				hubRepositories: [{
 					key: 'hub-repository:demo/site/content',
 					project: 'project:demo/site',
-					repositoryHost: 'repository-host:demo/github',
 					role: 'content',
 					provider: 'github',
 					owner: 'demo',
@@ -307,13 +264,12 @@ it('validates productized resource buckets and plans them deterministically', ()
 		});
 		expect(plan.actions.map((action) => action.kind)).toEqual([
 			'team',
-			'repositoryHost',
 			'project',
 			'hubRepository',
 			'product',
 			'catalogArtifact',
 		]);
-		expect(plan.summary.create).toBe(6);
+		expect(plan.summary.create).toBe(5);
 		expect(plan.actions.find((action) => action.key === 'project:demo/site')?.payload.architecture).toEqual(singleRepositorySiteArchitecture);
 	});
 });

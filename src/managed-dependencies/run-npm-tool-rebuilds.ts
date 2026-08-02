@@ -1,16 +1,12 @@
-import { createHash } from 'node:crypto';
-import { createWriteStream, existsSync, mkdirSync, mkdtempSync, rmSync, renameSync, chmodSync, copyFileSync, readFileSync, readdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { createWriteStream,existsSync,mkdirSync,readdirSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import { platform as osPlatform, arch as osArch } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { withServiceCredentialEnv } from '../configuration/service-credentials.ts';
-import { createManagedToolEnv, managedGhBin, managedRailwayBin, tokenEnv } from './dependency-runtime.ts';
-import type { DependencyInstallerOptions, DependencyInstallResult, ManagedToolName, NpmInstallReport, ToolInvocation, ToolStatusResult } from './dependency-runtime.ts';
-import { npmToolsMissingRuntime, resolveNpmRebuildCommand } from './collect-native-dependency-repairs.ts';
-import { findNpmTool, locateSystemBinary, redactSensitiveOutput, resolveNpmToolRuntimeBinary } from './redact-sensitive-output.ts';
+import { basename,dirname,resolve } from 'node:path';
+import { npmToolsMissingRuntime,resolveNpmRebuildCommand } from './collect-native-dependency-repairs.ts';
+import type { DependencyInstallerOptions,DependencyInstallResult,ManagedToolName,NpmInstallReport,ToolInvocation,ToolStatusResult } from './dependency-runtime.ts';
+import { createManagedToolEnv,managedCloudflaredBin,managedGhBin,managedRailwayBin,tokenEnv } from './dependency-runtime.ts';
+import { findNpmTool,locateSystemBinary,redactSensitiveOutput,resolveNpmToolRuntimeBinary } from './redact-sensitive-output.ts';
 
 export function runNpmToolRebuilds(options: Required<Pick<DependencyInstallerOptions, 'env' | 'spawn'>> & Pick<DependencyInstallerOptions, 'tenantRoot' | 'write'>): NpmInstallReport[] {
 	const missingRuntimeTools = npmToolsMissingRuntime();
@@ -90,6 +86,10 @@ export function resolveToolBinary(toolName: ManagedToolName, options: { env?: No
 	}
 	if (toolName === 'railway') {
 		const managed = managedRailwayBin(options.env);
+		return existsSync(managed) ? managed : null;
+	}
+	if (toolName === 'cloudflared') {
+		const managed = managedCloudflaredBin(options.env);
 		return existsSync(managed) ? managed : null;
 	}
 	const npmTool = findNpmTool(toolName);

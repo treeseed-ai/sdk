@@ -1,12 +1,12 @@
-import { createBuiltInScenePlugins } from './builtin-plugins.ts';
-import { createScenePluginRegistry, pluginResolutionFromRegistry, summarizeScenePlugins } from './plugins.ts';
 import type {
-	SceneActionDefinition,
-	SceneAssertionDefinition,
-	SceneDiagramDefinition,
-	ScenePlugin,
-	SceneRendererDefinition,
+SceneActionDefinition,
+SceneAssertionDefinition,
+SceneDiagramDefinition,
+ScenePlugin,
+SceneRendererDefinition,
 } from '../../types.ts';
+import { createBuiltInScenePlugins } from './builtin-plugins.ts';
+import { createScenePluginRegistry,pluginResolutionFromRegistry,summarizeScenePlugins } from './plugins.ts';
 
 export function createBuiltInScenePluginRegistry() {
 	return createScenePluginRegistry(createBuiltInScenePlugins());

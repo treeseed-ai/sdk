@@ -1,24 +1,17 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { relative } from 'node:path';
 import type {
-	SceneDiagnostic,
-	SceneVisualAuditCapture,
-	SceneVisualAuditClientError,
-	SceneVisualAuditClientErrorIncident,
-	SceneVisualAuditFinding,
-	SceneVisualAuditFindingOwner,
-	SceneVisualAuditFindingSeverity,
-	SceneVisualAuditManifest,
-	SceneVisualAuditPaths,
-	SceneVisualAuditReview,
-	SceneVisualAuditReviewCategory,
-	SceneVisualAuditReviewDetail,
-	SceneVisualAuditRole,
-	SceneVisualAuditRootCause,
+SceneDiagnostic,
+SceneVisualAuditCapture,
+SceneVisualAuditClientError,
+SceneVisualAuditClientErrorIncident,
+SceneVisualAuditFinding,
+SceneVisualAuditManifest,
+SceneVisualAuditPaths,
+SceneVisualAuditReview,
+SceneVisualAuditReviewDetail,
+SceneVisualAuditRootCause
 } from '../types.ts';
-import { writeSceneVisualAuditContactSheets } from '../support/visual-audit/visual-audit-contact-sheets.ts';
-import { CATEGORIES, EnrichedClientError, OWNERS, SEVERITIES, captureFindings, countMap, isSceneVisualAuditIgnoredClientError, md, priorityBand, priorityScore, recommendedAction, rel } from './severities.ts';
-import { architectureFindings, buildClientErrorIncidents, buildRootCauses, expectedFindingNoise, filteredFindings, incidentFindings } from './incident-title.ts';
+import { architectureFindings,buildClientErrorIncidents,buildRootCauses,expectedFindingNoise,filteredFindings,incidentFindings } from './incident-title.ts';
+import { CATEGORIES,EnrichedClientError,OWNERS,SEVERITIES,captureFindings,countMap,isSceneVisualAuditIgnoredClientError,md,priorityBand,rel } from './severities.ts';
 
 export function enrichClientErrors(captures: SceneVisualAuditCapture[]): EnrichedClientError[] {
 	return captures.flatMap((capture) => (capture.clientErrors ?? [])

@@ -1,37 +1,14 @@
-import { mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 import { readDevInstance } from '../../local-dev/managed-dev.ts';
-import { resolveSceneBaseUrl } from '../support/execution/base-url.ts';
-import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
-import { resolveSceneDeviceProfile } from '../runtime/devices.ts';
-import { prepareSceneEnvironment } from '../configuration/environment.ts';
-import { validateScene } from '../support/execution/planner.ts';
-import { writeSceneVisualAuditReport } from '../support/visual-audit/visual-audit-report.ts';
+import { sceneErrorDiagnostic } from '../support/reporting/diagnostics.ts';
 import {
-	buildSceneVisualAuditReview,
-	isSceneVisualAuditIgnoredClientError,
-	writeSceneVisualAuditReview,
-} from '../support/visual-audit/visual-audit-review.ts';
-import {
-	discoverSceneVisualAuditRoutes,
-	SceneVisualAuditRouteFilename,
+SceneVisualAuditRouteFilename
 } from '../support/visual-audit/visual-audit-routes.ts';
-import {
-	ensureSceneVisualAuditRoleFixtures,
-	signInSceneVisualAuditRole,
-	validateSceneVisualAuditRoles,
-} from '../testing/visual-audit-fixtures.ts';
 import type {
-	SceneDeviceProfile,
-	SceneVisualAuditClientError,
-	SceneDiagnostic,
-	SceneVisualAuditCapture,
-	SceneVisualAuditManifest,
-	SceneVisualAuditOptions,
-	SceneVisualAuditPaths,
-	SceneVisualAuditReport,
-	SceneVisualAuditRole,
+SceneDiagnostic,
+SceneVisualAuditClientError,
+SceneVisualAuditPaths
 } from '../types.ts';
 
 

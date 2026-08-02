@@ -1,32 +1,20 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
+import { existsSync,readFileSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
-import { workspacePackages, workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
-import { runRepositoryGit } from '../operations/git-runner.ts';
-import { resolveLaunchEnvironment } from '../configuration/config-runtime.ts';
-import { resolveGitHubCredentialForRepository } from '../configuration/github-credentials.ts';
-import {
-	createGitHubApiClient,
-	getLatestGitHubWorkflowRun,
-} from '../repositories/github-api.ts';
-import { resolveDockerhubToken, resolveDockerhubUsername } from '../../../configuration/service-credentials.ts';
 import { inspectContentStructure } from '../../../platform/content/content-runtime-source.ts';
 import type {
-	SeedContentPublishTargetKind,
-	SeedContentRuntimeSource,
-	SeedLocalContentMaterialization,
-	SeedProjectArchitecture,
-	SeedProjectResource,
-	SeedProjectTopology,
+SeedContentPublishTargetKind,
+SeedContentRuntimeSource,
+SeedLocalContentMaterialization,
+SeedProjectArchitecture,
+SeedProjectTopology
 } from '../../../seeds/types.ts';
 import {
-	SEED_CONTENT_PUBLISH_TARGETS,
-	SEED_CONTENT_RUNTIME_SOURCES,
-	SEED_LOCAL_CONTENT_MATERIALIZATIONS,
-	SEED_PROJECT_TOPOLOGIES,
+SEED_CONTENT_PUBLISH_TARGETS,
+SEED_CONTENT_RUNTIME_SOURCES,
+SEED_LOCAL_CONTENT_MATERIALIZATIONS,
+SEED_PROJECT_TOPOLOGIES,
 } from '../../../seeds/types.ts';
-import { branchSlug } from './beam-package-adapter.ts';
-import { stringRecord, stringValue } from './deployment-source-mode-for-branch.ts';
+import { stringRecord,stringValue } from './deployment-source-mode-for-branch.ts';
 
 export type PackageKind = 'node-typescript' | 'beam-elixir-rust';
 
@@ -108,7 +96,15 @@ export type PackageManifestDocument = {
 	requiredVariables?: unknown;
 	workflowTemplateVersion?: unknown;
 	projectArchitecture?: unknown;
+	contentContributions?: unknown;
 	capabilities?: unknown;
+};
+
+export type PackageContentContribution = {
+	model: 'help';
+	path: string;
+	runtime: 'published';
+	ownerPackage: string;
 };
 
 export type PackageDevelopmentImagePlan = {
@@ -246,6 +242,18 @@ export function normalizePackageSlug(id: string) {
 		.replace(/^treeseed-/u, '')
 		.replace(/[^a-z0-9]+/gu, '-')
 		.replace(/^-+|-+$/gu, '') || 'package';
+}
+
+export function normalizeContentContributions(value: unknown, packageId: string): PackageContentContribution[] {
+	if (!Array.isArray(value)) return [];
+	return value.flatMap((item) => {
+		const record = stringRecord(item);
+		const model = stringValue(record.model);
+		const path = stringValue(record.path);
+		const runtime = stringValue(record.runtime);
+		if (model !== 'help' || !path || runtime !== 'published') return [];
+		return [{ model, path, runtime, ownerPackage: packageId }];
+	});
 }
 
 export function enumValue<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {

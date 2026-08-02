@@ -47,7 +47,8 @@ describe('scene visual audit', () => {
 		expect(paths).toContain('/');
 		expect(paths).not.toContain('/${slug}');
 		expect(paths).toContain('/books');
-		expect(paths).toContain('/books/market-architecture');
+		expect(paths).not.toContain('/books/market-architecture');
+		expect(paths).not.toContain('/books/platform-architecture-development');
 		expect(paths).not.toContain('/books/visual-audit');
 		expect(paths).toContain('/auth/register');
 		expect(paths).toContain('/auth/sign-in');

@@ -1,7 +1,7 @@
-import { queueId, queueName } from "../../../operations/services/hosting/deployment/deploy.ts";
-import type { ObservedUnitState, ReconcileAdapterInput } from "../../support/contracts/contracts.ts";
-import { cloudflareObservationSnapshot, findTurnstileWidget } from '../support/normalize-turnstile-domains.ts';
+import { queueId,queueName } from "../../../operations/services/hosting/deployment/deploy.ts";
+import type { ObservedUnitState,ReconcileAdapterInput } from "../../support/contracts/contracts.ts";
 import { hasLiveResourceId } from '../reconciliation/build-workflow-meta-adapter.ts';
+import { cloudflareObservationSnapshot,findTurnstileWidget } from '../support/normalize-turnstile-domains.ts';
 import { noopObservedState } from './to-deploy-target.ts';
 
 export function observeCloudflareUnit(input: ReconcileAdapterInput): ObservedUnitState {

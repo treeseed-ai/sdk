@@ -1,14 +1,14 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync,writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { listSceneDeviceProfiles, resolveSceneDeviceProfile } from './devices.ts';
-import { validateScene } from '../support/execution/planner.ts';
 import { runScene } from '../operations/runner.ts';
+import { validateScene } from '../support/execution/planner.ts';
 import type {
-	SceneDeviceMatrixOptions,
-	SceneDeviceMatrixReport,
-	SceneDeviceProfileId,
-	SceneDiagnostic,
+SceneDeviceMatrixOptions,
+SceneDeviceMatrixReport,
+SceneDeviceProfileId,
+SceneDiagnostic,
 } from '../types.ts';
+import { listSceneDeviceProfiles,resolveSceneDeviceProfile } from './devices.ts';
 
 function splitDiagnostics(diagnostics: SceneDiagnostic[], severity: 'error' | 'warning') {
 	return diagnostics.filter((entry) => entry.severity === severity);

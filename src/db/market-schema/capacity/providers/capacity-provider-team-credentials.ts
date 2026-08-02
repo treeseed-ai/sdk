@@ -1,9 +1,9 @@
 import { sql } from 'drizzle-orm';
-import { bigint, check, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from 'drizzle-orm/pg-core';
-import { capacityExecutionProviders, capacityProviderCredentialIssuanceAuthorizations, capacityProviderLanes, capacityProviderTeamMemberships, capacityProviders } from '../../accounts/better-auth-account.ts';
-import { teams } from '../../support/subscribers.ts';
+import { check,foreignKey,index,integer,pgTable,primaryKey,real,text,uniqueIndex } from 'drizzle-orm/pg-core';
+import { capacityExecutionProviders,capacityProviderCredentialIssuanceAuthorizations,capacityProviderLanes,capacityProviderTeamMemberships,capacityProviders } from '../../accounts/better-auth-account.ts';
 import { projects } from '../../governance/policy/governance-electorate-snapshots.ts';
-import { capacityAllocationSets, projectAgentClasses } from '../accounting/capacity-ledger-entries.ts';
+import { teams } from '../../support/subscribers.ts';
+import { capacityAllocationSets,projectAgentClasses } from '../accounting/capacity-ledger-entries.ts';
 
 export const capacityProviderTeamCredentials = pgTable('capacity_provider_team_credentials', {
 	id: text('id').primaryKey(),

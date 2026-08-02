@@ -1,12 +1,7 @@
-import { randomUUID } from 'node:crypto';
 import { NodeSqliteD1Database } from '../db/node-sqlite.ts';
 import {
-	type PlatformOperation,
-	type PlatformOperationEvent,
-	type PlatformRunnerClaimRequest,
-	type PlatformRunnerHeartbeatRequest,
-	type PlatformRunnerJobUpdateRequest,
-	type PlatformRunnerRegistrationRequest,
+type PlatformOperation,
+type PlatformOperationEvent
 } from '../operations/platform-operations.ts';
 import { PlatformOperationStore } from './platform-operation-store.ts';
 

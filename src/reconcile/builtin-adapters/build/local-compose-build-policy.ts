@@ -1,10 +1,10 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, statSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import type { ObservedUnitState, ReconcileAdapterInput } from '../../support/contracts/contracts.ts';
+import { existsSync,mkdirSync,statSync } from 'node:fs';
+import { dirname,resolve } from 'node:path';
 import { resolveGitHubCredentialForRepository } from '../../../operations/services/configuration/github-credentials.ts';
-import { checkHttpHealth } from '../../providers/local-private.ts';
 import { runRepositoryGit } from '../../../operations/services/operations/git-runner.ts';
+import { checkHttpHealth } from '../../providers/local-private.ts';
+import type { ObservedUnitState,ReconcileAdapterInput } from '../../support/contracts/contracts.ts';
 import { genericObservedState } from '../hosting/to-deploy-target.ts';
 
 export function localComposeBuildPolicy(input: ReconcileAdapterInput): 'never' | 'missing' | 'always' {
@@ -49,7 +49,7 @@ export function buildLocalComposeLaunchEnv(input: ReconcileAdapterInput) {
 		...input.context.launchEnv,
 		TREESEED_PROVIDER_HOST_DATA_DIR: '.treeseed/local-capacity-provider/data',
 		TREESEED_PROVIDER_ENVIRONMENT: 'local',
-		TREESEED_AGENT_IMAGE_TAG: 'latest',
+		TREESEED_AGENT_IMAGE_TAG: 'local',
 		...(typeof input.unit.spec.env === 'object' && input.unit.spec.env ? input.unit.spec.env as Record<string, string> : {}),
 	};
 }

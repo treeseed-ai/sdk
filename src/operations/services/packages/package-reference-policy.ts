@@ -1,8 +1,8 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync,readFileSync,writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { discoverPackageAdapters } from '../reconciliation/package-adapters.ts';
-import { workspacePackages, workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
+import { workspacePackages,workspaceRoot } from '../treedx/workspaces/workspace-tools.ts';
 
 export type DevDependencyReferenceMode = 'git-commit';
 export type GitDependencyProtocol = 'preserve-origin' | 'https' | 'ssh';

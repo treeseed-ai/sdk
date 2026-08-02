@@ -1,5 +1,5 @@
 import type { AgentExecutionMode } from '../../contracts/capacity/assignments/assignment-records.ts';
-import type { AgentKernelModeFallback, AgentKernelModeFallbackCode } from '../../contracts/runtime/runtime-observability.ts';
+import type { AgentKernelModeFallback,AgentKernelModeFallbackCode } from '../../contracts/runtime/runtime-observability.ts';
 
 export function isAgentExecutionMode(value: unknown): value is AgentExecutionMode {
 	return value === 'planning' || value === 'acting';

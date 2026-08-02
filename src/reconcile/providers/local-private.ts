@@ -1,4 +1,4 @@
-import { runManagedDev, type ManagedDevAction, type ManagedDevOptions } from '../../local-dev/managed-dev.ts';
+import { runManagedDev,type ManagedDevAction,type ManagedDevOptions } from '../../local-dev/managed-dev.ts';
 
 export function runManagedDevAction(input: { tenantRoot: string; action: ManagedDevAction; surfaces: string[]; options?: Record<string, unknown>; env?: NodeJS.ProcessEnv }) {
 	return runManagedDev({

@@ -1,40 +1,19 @@
-import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
-import { findBuiltInSceneAction, findBuiltInSceneAssertion } from '../support/plugins/registry.ts';
+import { findBuiltInSceneAction,findBuiltInSceneAssertion } from '../support/plugins/registry.ts';
+import { sceneErrorDiagnostic,sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
 import {
-	SCENE_BROWSERS,
-	SCENE_ENVIRONMENTS,
-	SCENE_SCHEMA_VERSION,
-	type SceneAction,
-	type SceneArtifacts,
-	type SceneBrowser,
-	type SceneChapter,
-	type SceneDeviceConfig,
-	type SceneDeviceProfile,
-	type SceneDiagram,
-	type SceneDiagnostic,
-	type SceneEnvironment,
-	type SceneExpectation,
-	type SceneManifest,
-	type SceneMode,
-	type SceneMotion,
-	type SceneOverlay,
-	type SceneOverlayVariant,
-	type SceneRenderConfig,
-	type SceneRenderEvidenceFit,
-	type SceneRuntimeConfig,
-	type SceneSelector,
-	type SceneSetup,
-	type SceneTarget,
-	type SceneTrainingConfig,
-	type SceneVisualAuditConfig,
-	type SceneVisualObject,
-	type SceneVisualPoint,
-	type SceneVisualRegion,
-	type SceneVisualSize,
-	type SceneVisualStyle,
-	type SceneWorkflowStep,
+type SceneAction,
+type SceneArtifacts,
+type SceneDeviceConfig,
+type SceneDeviceProfile,
+type SceneDiagnostic,
+type SceneEnvironment,
+type SceneExpectation,
+type SceneMode,
+type SceneSelector,
+type SceneSetup,
+type SceneTarget
 } from '../types.ts';
-import { DEVICE_BROWSER_CHROME, DEVICE_ORIENTATIONS, FILESYSTEM_SAFE_SCENE_ID, arrayField, asString, booleanField, isRecord, objectField, optionalString, parseBrowser, parseEnvironment, parseSelector, positiveNumberField, requireString, stringArrayField } from './filesystem-safe-scene-id.ts';
+import { DEVICE_BROWSER_CHROME,DEVICE_ORIENTATIONS,FILESYSTEM_SAFE_SCENE_ID,arrayField,asString,booleanField,isRecord,objectField,optionalString,parseBrowser,parseEnvironment,parseSelector,positiveNumberField,requireString,stringArrayField } from './filesystem-safe-scene-id.ts';
 
 export function parseAction(value: unknown, path: string, diagnostics: SceneDiagnostic[]): SceneAction | null {
 	if (!isRecord(value)) {
@@ -139,6 +118,10 @@ export function parseExpectation(value: unknown, path: string, diagnostics: Scen
 		const notVisible = arrayField(value, 'notVisible', path, diagnostics) ?? [];
 		expectation.notVisible = notVisible.map((entry, index) => parseSelector(entry, `${path}.notVisible[${index}]`, diagnostics)).filter((entry): entry is SceneSelector => Boolean(entry));
 	}
+	if (value.focused !== undefined) {
+		const focused = parseSelector(value.focused, `${path}.focused`, diagnostics);
+		if (focused) expectation.focused = focused;
+	}
 	if (value.text !== undefined) expectation.text = asString(value.text);
 	if (value.notText !== undefined) expectation.notText = asString(value.notText);
 	if (value.urlIncludes !== undefined) expectation.urlIncludes = asString(value.urlIncludes);
@@ -161,7 +144,7 @@ export function parseExpectation(value: unknown, path: string, diagnostics: Scen
 
 export function expectationKeys(expectation: SceneExpectation | undefined) {
 	if (!expectation) return [];
-	return ['visible', 'notVisible', 'text', 'notText', 'urlIncludes', 'operation'].filter((key) => expectation[key as keyof SceneExpectation] !== undefined);
+	return ['visible', 'notVisible', 'focused', 'text', 'notText', 'urlIncludes', 'operation'].filter((key) => expectation[key as keyof SceneExpectation] !== undefined);
 }
 
 export function actionCanOmitExpectation(action: SceneAction | null) {
@@ -281,7 +264,9 @@ export function parseSetup(value: unknown, targetEnvironment: SceneEnvironment, 
 	const dev = objectField(record, 'dev', 'setup', diagnostics);
 	if (dev) setup.dev = { required: booleanField(dev, 'required', false, 'setup.dev', diagnostics), command: optionalString(dev, 'command'), reuseExisting: booleanField(dev, 'reuseExisting', true, 'setup.dev', diagnostics) };
 	const auth = objectField(record, 'auth', 'setup', diagnostics);
-	if (auth) setup.auth = { profile: optionalString(auth, 'profile'), required: booleanField(auth, 'required', false, 'setup.auth', diagnostics), seedOnly: booleanField(auth, 'seedOnly', false, 'setup.auth', diagnostics), ...(optionalString(auth, 'role') ? { role: optionalString(auth, 'role') } : {}) };
+	if (auth) setup.auth = { profile: optionalString(auth, 'profile'), required: booleanField(auth, 'required', false, 'setup.auth', diagnostics), seedOnly: booleanField(auth, 'seedOnly', false, 'setup.auth', diagnostics),
+		fixtureRoles: stringArrayField(auth, 'fixtureRoles', 'setup.auth', diagnostics),
+		...(optionalString(auth, 'role') ? { role: optionalString(auth, 'role') } : {}) };
 	const seed = objectField(record, 'seed', 'setup', diagnostics);
 	if (seed) {
 		const environments = (arrayField(seed, 'environments', 'setup.seed', diagnostics) ?? [targetEnvironment])
@@ -297,6 +282,7 @@ export function parseArtifacts(value: unknown, diagnostics: SceneDiagnostic[]): 
 		trace: booleanField(record, 'trace', true, 'artifacts', diagnostics),
 		video: booleanField(record, 'video', false, 'artifacts', diagnostics),
 		screenshots: booleanField(record, 'screenshots', true, 'artifacts', diagnostics),
+		fullPageScreenshots: booleanField(record, 'fullPageScreenshots', true, 'artifacts', diagnostics),
 		console: booleanField(record, 'console', true, 'artifacts', diagnostics),
 		network: booleanField(record, 'network', true, 'artifacts', diagnostics),
 		timeline: booleanField(record, 'timeline', true, 'artifacts', diagnostics),

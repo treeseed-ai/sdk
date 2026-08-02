@@ -1,11 +1,11 @@
 
-import { SceneEvidencePaths, SceneExternalPublishTarget, ScenePublishPaths, ScenePublishPlanManifest, ScenePublishPlanMode, ScenePublishPlanPhase } from './scene-evidence-artifact-kind.ts';
-import { SceneBrowser, SceneCapability, SceneDeviceProfile, SceneDiagnostic, SceneEnvironment } from './scene-schema-version.ts';
-import { SceneRenderInput, SceneTrainingOutputPaths } from './scene-render-input.ts';
-import { SceneRenderMode, SceneRunOptions, SceneRunPhase, SceneRunStatus } from './scene-validation-report.ts';
+import { SceneCheckpoint,SceneOperationWaitReport,SceneRunChapterReport,SceneRunSegmentReport,SceneRunSetupReport } from './scene-checkpoint.ts';
 import { SceneRenderEvidenceFit } from './scene-diagram.ts';
-import { SceneAssertionRunReport, SceneRunArtifacts, SceneRunStepReport } from './scene-visual-audit-finding.ts';
-import { SceneCheckpoint, SceneOperationWaitReport, SceneRunChapterReport, SceneRunSegmentReport, SceneRunSetupReport } from './scene-checkpoint.ts';
+import { SceneEvidencePaths,SceneExternalPublishTarget,ScenePublishPaths,ScenePublishPlanManifest,ScenePublishPlanMode,ScenePublishPlanPhase } from './scene-evidence-artifact-kind.ts';
+import { SceneRenderInput,SceneTrainingOutputPaths } from './scene-render-input.ts';
+import { SceneBrowser,SceneCapability,SceneDeviceProfile,SceneDiagnostic,SceneEnvironment } from './scene-schema-version.ts';
+import { SceneRenderMode,SceneRunOptions,SceneRunPhase,SceneRunStatus } from './scene-validation-report.ts';
+import { SceneAssertionRunReport,SceneRunArtifacts,SceneRunStepReport } from './scene-visual-audit-finding.ts';
 
 export type ScenePublishPlanPaths = {
 	publishPlanRoot: string;

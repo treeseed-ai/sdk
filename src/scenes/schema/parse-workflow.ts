@@ -1,41 +1,19 @@
-import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
-import { findBuiltInSceneAction, findBuiltInSceneAssertion } from '../support/plugins/registry.ts';
+import { sceneErrorDiagnostic,sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
 import {
-	SCENE_BROWSERS,
-	SCENE_ENVIRONMENTS,
-	SCENE_SCHEMA_VERSION,
-	type SceneAction,
-	type SceneArtifacts,
-	type SceneBrowser,
-	type SceneChapter,
-	type SceneDeviceConfig,
-	type SceneDeviceProfile,
-	type SceneDiagram,
-	type SceneDiagnostic,
-	type SceneEnvironment,
-	type SceneExpectation,
-	type SceneManifest,
-	type SceneMode,
-	type SceneMotion,
-	type SceneOverlay,
-	type SceneOverlayVariant,
-	type SceneRenderConfig,
-	type SceneRenderEvidenceFit,
-	type SceneRuntimeConfig,
-	type SceneSelector,
-	type SceneSetup,
-	type SceneTarget,
-	type SceneTrainingConfig,
-	type SceneVisualAuditConfig,
-	type SceneVisualObject,
-	type SceneVisualPoint,
-	type SceneVisualRegion,
-	type SceneVisualSize,
-	type SceneVisualStyle,
-	type SceneWorkflowStep,
+type SceneChapter,
+type SceneDiagnostic,
+type SceneMotion,
+type SceneOverlay,
+type SceneOverlayVariant,
+type SceneVisualObject,
+type SceneVisualPoint,
+type SceneVisualRegion,
+type SceneVisualSize,
+type SceneVisualStyle,
+type SceneWorkflowStep
 } from '../types.ts';
-import { FILESYSTEM_SAFE_CHECKPOINT_ID, FILESYSTEM_SAFE_SCENE_ID, MOTION_EASINGS, MOTION_UNITS, OVERLAY_VARIANTS, VISUAL_OBJECT_TYPES, VISUAL_REGIONS, VISUAL_SHADOWS, VISUAL_TONES, VISUAL_UNITS, arrayField, asString, booleanField, finiteNumberField, isRecord, objectField, optionalString, parseSelector, positiveNumberField, requireString } from './filesystem-safe-scene-id.ts';
-import { actionCanOmitExpectation, expectationKeys, parseAction, parseExpectation } from './parse-action.ts';
+import { FILESYSTEM_SAFE_CHECKPOINT_ID,FILESYSTEM_SAFE_SCENE_ID,MOTION_EASINGS,MOTION_UNITS,OVERLAY_VARIANTS,VISUAL_OBJECT_TYPES,VISUAL_REGIONS,VISUAL_SHADOWS,VISUAL_TONES,VISUAL_UNITS,arrayField,asString,booleanField,finiteNumberField,isRecord,objectField,optionalString,parseSelector,positiveNumberField,requireString } from './filesystem-safe-scene-id.ts';
+import { actionCanOmitExpectation,expectationKeys,parseAction,parseExpectation } from './parse-action.ts';
 
 export function parseWorkflow(value: unknown, diagnostics: SceneDiagnostic[]) {
 	if (!Array.isArray(value)) {

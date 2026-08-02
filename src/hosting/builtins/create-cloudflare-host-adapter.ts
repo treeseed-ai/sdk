@@ -1,24 +1,13 @@
-import { existsSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
-import { dirname, resolve } from 'node:path';
-import { resolveLaunchEnvironment } from '../../operations/services/configuration/config-runtime.ts';
-import { cloudflareApiRequest, resolveCloudflareZoneIdForHost, resolveConfiguredCloudflareAccountId, runWrangler } from '../../operations/services/hosting/deployment/deploy.ts';
 import type {
-	ApplicationHostingProfile,
-	HostAdapter,
-	HostAdapterOperationInput,
-	HostAdapterOperationResult,
-	HostCapability,
-	HostingEnvironment,
-	HostingStatus,
-	HostingUnit,
-	HostingUnitPlan,
-	HostingVerification,
-	ServicePlacement,
-	ServiceTypeAdapter,
+HostAdapter,
+HostAdapterOperationInput,
+HostCapability,
+HostingEnvironment,
+ServicePlacement,
+ServiceTypeAdapter
 } from '../contracts.ts';
-import { ALL_ENVIRONMENTS, PROVIDER_ENVIRONMENTS, cloudflarePagesBranchName, cloudflarePagesBuildCommand, cloudflarePagesBuildOutputDir, cloudflarePagesDeploymentUrl, cloudflarePagesDomain, cloudflarePagesProjectName, createReconcilerOwnedHostAdapter, reconcilerOwnedStatus } from './all-environments.ts';
-import { cloudflarePagesDnsTarget, cloudflarePagesDomainName, observeCloudflarePagesDeployment, observeCloudflarePagesDns, observeCloudflarePagesDomain, observeCloudflarePagesProject, probeCloudflarePagesPublicUrl } from './probe-cloudflare-pages-public-url.ts';
+import { ALL_ENVIRONMENTS,PROVIDER_ENVIRONMENTS,cloudflarePagesBranchName,cloudflarePagesBuildCommand,cloudflarePagesBuildOutputDir,cloudflarePagesDeploymentUrl,cloudflarePagesDomain,cloudflarePagesProjectName,createReconcilerOwnedHostAdapter,reconcilerOwnedStatus } from './all-environments.ts';
+import { cloudflarePagesDnsTarget,cloudflarePagesDomainName,observeCloudflarePagesDeployment,observeCloudflarePagesDns,observeCloudflarePagesDomain,observeCloudflarePagesProject,probeCloudflarePagesPublicUrl } from './probe-cloudflare-pages-public-url.ts';
 
 export function createCloudflareHostAdapter(): HostAdapter {
 	const base = createReconcilerOwnedHostAdapter('cloudflare', 'Cloudflare', [

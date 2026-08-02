@@ -1,28 +1,28 @@
-import { resolveWorkflowState, type WorkflowStatusOptions } from './workflow-state.ts';
+import {
+workflowCi,
+workflowClose,
+workflowConfig,
+workflowDestroy,
+workflowDev,
+WorkflowError,
+workflowExport,
+workflowProof,
+workflowRecover,
+workflowRelease,
+workflowReleaseCandidate,
+workflowResume,
+workflowSave,
+workflowStage,
+workflowStatus,
+workflowSwitch,
+workflowTasks,
+workflowUpdate,
+type WorkflowErrorCode,
+} from '../workflow/operations.ts';
+import { resolveWorkflowPaths } from '../workflow/policy.ts';
 import { listTaskBranches } from './services/operations/git-workflow.ts';
 import type { GitHubActionsVerificationReport } from './services/repositories/github-actions-verification.ts';
-import { resolveWorkflowPaths } from '../workflow/policy.ts';
-import {
-	WorkflowError,
-	type WorkflowErrorCode,
-	workflowClose,
-	workflowCi,
-	workflowConfig,
-	workflowDestroy,
-	workflowDev,
-	workflowExport,
-	workflowRecover,
-	workflowReleaseCandidate,
-	workflowProof,
-	workflowRelease,
-	workflowResume,
-	workflowSave,
-	workflowStage,
-	workflowStatus,
-	workflowSwitch,
-	workflowTasks,
-	workflowUpdate,
-} from '../workflow/operations.ts';
+import { resolveWorkflowState,type WorkflowStatusOptions } from './workflow-state.ts';
 
 export type WorkflowOperationId =
 	| 'status'
@@ -285,15 +285,6 @@ export type ConfigInput = {
 	printEnvOnly?: boolean;
 	showSecrets?: boolean;
 	rotateMachineKey?: boolean;
-	connectMarket?: boolean;
-	marketBaseUrl?: string;
-	marketTeamId?: string;
-	marketTeamSlug?: string;
-	marketProjectId?: string;
-	marketProjectSlug?: string;
-	marketProjectApiBaseUrl?: string;
-	marketAccessToken?: string;
-	rotateRunnerToken?: boolean;
 	installMissingTooling?: boolean;
 	nonInteractive?: boolean;
 };

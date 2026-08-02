@@ -1,17 +1,17 @@
-import { checkoutBranch, headCommit, PRODUCTION_BRANCH, pushBranch, remoteHeadCommit, remoteBranchExists, STAGING_BRANCH, syncBranchWithOrigin } from "../../../../operations/services/operations/git-workflow.ts";
-import type { ProofDriver } from "../../../../operations/services/guarantees/release-proof.ts";
 import { runProof } from "../../../../operations/services/guarantees/release-proof-runner.ts";
+import type { ProofDriver } from "../../../../operations/services/guarantees/release-proof.ts";
+import { checkoutBranch,headCommit,PRODUCTION_BRANCH,pushBranch,remoteBranchExists,remoteHeadCommit,STAGING_BRANCH,syncBranchWithOrigin } from "../../../../operations/services/operations/git-workflow.ts";
 import { type ReleaseHistorySummary } from "../../../../operations/services/packages/release-history.ts";
-import { collectMergeConflictReport, currentBranch, formatMergeConflictReport, hasMeaningfulChanges, highestStableGitTagOnLine, originRemoteUrl, repoRoot } from "../../../../operations/services/treedx/workspaces/workspace-save.ts";
-import { workspacePackages } from "../../../../operations/services/treedx/workspaces/workspace-tools.ts";
 import { type ManagedRepository } from "../../../../operations/services/support/managed-repositories.ts";
+import { collectMergeConflictReport,currentBranch,formatMergeConflictReport,hasMeaningfulChanges,highestStableGitTagOnLine,originRemoteUrl,repoRoot } from "../../../../operations/services/treedx/workspaces/workspace-save.ts";
+import { workspacePackages } from "../../../../operations/services/treedx/workspaces/workspace-tools.ts";
 import type { WorkflowOperationId } from "../../../../operations/workflow.ts";
-import { ReleaseCandidateMode, WorkflowError, runGit } from '../../recovery/workflow-write.ts';
-import { commitAllIfChanged, promoteCommitToProductionBranch, releaseHistoryCommits, versionLines } from '../../packages/plan-root-package-version.ts';
-import { releaseAdminMessage } from '../../packages/release-admin-message.ts';
-import { syncAllCheckedOutPackageRepos } from '../../support/sync-current-branch-to-origin.ts';
 import { checkedOutReleaseHelperRepos } from '../../coordination/staging-candidate-workflow-gates.ts';
 import { normalizeReleaseCandidateMode } from '../../packages/normalize-release-candidate-mode.ts';
+import { commitAllIfChanged,promoteCommitToProductionBranch,releaseHistoryCommits,versionLines } from '../../packages/plan-root-package-version.ts';
+import { releaseAdminMessage } from '../../packages/release-admin-message.ts';
+import { ReleaseCandidateMode,runGit,WorkflowError } from '../../recovery/workflow-write.ts';
+import { syncAllCheckedOutPackageRepos } from '../../support/sync-current-branch-to-origin.ts';
 import { workflowError } from './run-release-production-guarantees.ts';
 
 export function backMergeProductionIntoStaging(repoDir: string, repoName: string, message?: string) {

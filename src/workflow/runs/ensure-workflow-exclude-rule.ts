@@ -1,9 +1,8 @@
-import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync,existsSync,fstatSync,mkdirSync,openSync,readFileSync,readSync,rmSync,writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
-import { dirname, resolve } from 'node:path';
-import type { WorkflowMode } from '../session.ts';
-import { ACTIVE_WORKFLOW_RUNS, LOCK_STALE_AFTER_MS, WorkflowExecutionMode, WorkflowLockInspection, WorkflowLockRecord, WorkflowLockScope, WorkflowRunCommand, WorkflowRunJournal, WorkflowRunStatus, installWorkflowSignalHandlers, nowIso, resolveGitDir, workflowControlRoot, workflowLockPath, workflowLockScopeForCommand, workflowRunPath, workflowRunsRoot } from './workflow-run-command.ts';
+import { dirname,resolve } from 'node:path';
 import { updateWorkflowRunJournal } from './update-workflow-run-journal.ts';
+import { ACTIVE_WORKFLOW_RUNS,LOCK_STALE_AFTER_MS,WorkflowExecutionMode,WorkflowLockInspection,WorkflowLockRecord,WorkflowLockScope,WorkflowRunCommand,WorkflowRunJournal,WorkflowRunStatus,installWorkflowSignalHandlers,nowIso,resolveGitDir,workflowControlRoot,workflowLockPath,workflowLockScopeForCommand,workflowRunPath,workflowRunsRoot } from './workflow-run-command.ts';
 
 export function ensureWorkflowExcludeRule(root: string) {
 	const gitDir = resolveGitDir(root);
@@ -258,5 +257,24 @@ export function archivedWorkflowRunSummary(path: string) {
 			classifiedAt,
 			archivedAt,
 		},
+	} satisfies WorkflowRunJournal;
+}
+
+export function boundedWorkflowRunSummary(path: string) {
+	const { head } = readFileEnds(path, 128 * 1024);
+	const status = jsonStringField(head, 'status') as WorkflowRunStatus | null;
+	const runId = jsonStringField(head, 'runId');
+	const command = jsonStringField(head, 'command') as WorkflowRunCommand | null;
+	const executionMode = jsonStringField(head, 'executionMode') as WorkflowExecutionMode | null;
+	const createdAt = jsonStringField(head, 'createdAt');
+	const updatedAt = jsonStringField(head, 'updatedAt');
+	if (!runId || !command || !executionMode || !status || !createdAt || !updatedAt) return null;
+	return {
+		schemaVersion: 1, kind: 'treeseed.workflow.run', runId, command, executionMode, status,
+		createdAt, updatedAt, resumable: false, input: {},
+		session: { root: '', mode: 'root-only', branchName: null, repos: [] },
+		steps: [],
+		failure: status === 'failed' ? { code: 'bounded_recovery_summary', message: 'Large workflow journal requires explicit run-id inspection before resume.', at: updatedAt } : null,
+		result: null,
 	} satisfies WorkflowRunJournal;
 }

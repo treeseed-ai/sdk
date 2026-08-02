@@ -1,15 +1,15 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { checkoutBranch } from "../../../operations/services/operations/git-workflow.ts";
-import { currentBranch, repoRoot } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
-import { type RepositorySaveReport } from "../../../operations/services/repositories/repository-save-orchestrator.ts";
 import { discoverPackageAdapters } from "../../../operations/services/reconciliation/package-adapters.ts";
+import { type RepositorySaveReport } from "../../../operations/services/repositories/repository-save-orchestrator.ts";
 import { type WorkspaceLinksMode } from "../../../operations/services/treedx/workspaces/workspace-dependency-mode.ts";
-import { archiveWorkflowRun, classifyWorkflowRunJournal, listInterruptedWorkflowRuns, type WorkflowRunJournal } from "../../runs.ts";
+import { currentBranch,repoRoot } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
+import { archiveWorkflowRun,classifyWorkflowRunJournal,listInterruptedWorkflowRuns,type WorkflowRunJournal } from "../../runs.ts";
 import { checkedOutWorkspacePackageRepos } from "../../session.ts";
-import { DiscoveredPackageAdapter, hostedWorkflowsForSavedRepository } from '../projects/projects-core/connect-market-project.ts';
-import { WorkflowOperationHelpers, ensureWorkflowWorkspaceLinks, runGit } from '../recovery/workflow-write.ts';
-import { WorkflowRepoReport, workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { WorkflowRepoReport,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { DiscoveredPackageAdapter,hostedWorkflowsForSavedRepository } from '../support/workflow-helpers.ts';
+import { WorkflowOperationHelpers,ensureWorkflowWorkspaceLinks,runGit } from '../recovery/workflow-write.ts';
 
 export function gatesForSavedRepositoryReports(root: string, reports: RepositorySaveReport[]) {
 	const adapterByPath = new Map(discoverPackageAdapters(root).map((adapter) => [resolve(adapter.dir), adapter]));

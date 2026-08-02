@@ -1,9 +1,9 @@
 import { sceneErrorDiagnostic } from '../support/reporting/diagnostics.ts';
 import { defaultSceneDeviceConfig } from '../support/validation/schema.ts';
 import type {
-	SceneDeviceProfile,
-	SceneDiagnostic,
-	SceneManifest,
+SceneDeviceProfile,
+SceneDiagnostic,
+SceneManifest,
 } from '../types.ts';
 
 export { defaultSceneDeviceConfig };

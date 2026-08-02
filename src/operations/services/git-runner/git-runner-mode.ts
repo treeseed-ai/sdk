@@ -1,7 +1,6 @@
-import { spawnSync, type SpawnSyncOptionsWithStringEncoding } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
-import { activeGitProcessHints } from './active-git-process-hints.ts';
+import { spawnSync,type SpawnSyncOptionsWithStringEncoding } from 'node:child_process';
+import { existsSync,mkdirSync,readFileSync,rmSync,writeFileSync } from 'node:fs';
+import { dirname,relative,resolve } from 'node:path';
 
 export type GitRunnerMode = 'read' | 'mutate';
 

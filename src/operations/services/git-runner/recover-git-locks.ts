@@ -1,8 +1,6 @@
-import { spawnSync, type SpawnSyncOptionsWithStringEncoding } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
-import { RunOptions, GitBatchOperation, GitLockDiagnostic, GitLockError, GitRunnerResult, GitWorkspaceLockDiagnostics, acquireMutationLock, gitSync, resolveCommonGitDir, resolveGitRoot } from './git-runner-mode.ts';
-import { absentDiagnostic, inspectGitLocks, presentLocks, workspaceGitRepositories } from './active-git-process-hints.ts';
+import { rmSync } from 'node:fs';
+import { absentDiagnostic,inspectGitLocks,presentLocks,workspaceGitRepositories } from './active-git-process-hints.ts';
+import { GitBatchOperation,GitLockDiagnostic,GitLockError,GitRunnerResult,GitWorkspaceLockDiagnostics,RunOptions,acquireMutationLock,gitSync,resolveCommonGitDir,resolveGitRoot } from './git-runner-mode.ts';
 
 export function recoverGitLocks(cwd: string, { execute = false, all = false }: { execute?: boolean; all?: boolean } = {}): GitLockDiagnostic | GitWorkspaceLockDiagnostics {
 	if (all) {

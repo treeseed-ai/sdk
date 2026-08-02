@@ -1,22 +1,14 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
 import { relative } from 'node:path';
 import type {
-	SceneDiagnostic,
-	SceneVisualAuditCapture,
-	SceneVisualAuditClientError,
-	SceneVisualAuditClientErrorIncident,
-	SceneVisualAuditFinding,
-	SceneVisualAuditFindingOwner,
-	SceneVisualAuditFindingSeverity,
-	SceneVisualAuditManifest,
-	SceneVisualAuditPaths,
-	SceneVisualAuditReview,
-	SceneVisualAuditReviewCategory,
-	SceneVisualAuditReviewDetail,
-	SceneVisualAuditRole,
-	SceneVisualAuditRootCause,
+SceneVisualAuditCapture,
+SceneVisualAuditClientError,
+SceneVisualAuditFinding,
+SceneVisualAuditFindingOwner,
+SceneVisualAuditFindingSeverity,
+SceneVisualAuditManifest,
+SceneVisualAuditReviewCategory,
+SceneVisualAuditRole
 } from '../types.ts';
-import { writeSceneVisualAuditContactSheets } from '../support/visual-audit/visual-audit-contact-sheets.ts';
 
 
 export const SEVERITIES: SceneVisualAuditFindingSeverity[] = ['blocking', 'high', 'medium', 'low', 'info'];

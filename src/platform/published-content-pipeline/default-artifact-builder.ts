@@ -1,46 +1,26 @@
-import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { basename, extname, join, relative, resolve } from 'node:path';
-import { unified } from 'unified';
-import remarkParse from 'remark-parse';
-import { toString } from 'mdast-util-to-string';
-import { parseFrontmatterDocument } from '../../content/frontmatter.ts';
-import type { DeployConfig, TenantConfig } from '../support/contracts.ts';
-import { buildTenantBookRuntime } from '../content/books-data.ts';
-import { exportBookLibrary, exportBookPackage } from '../content/book-export.ts';
-import { COMMERCE_OFFER_MODES, type CommerceOfferMode } from '../../entrypoints/models/sdk-types.ts';
-import {
-	PUBLISHED_CONTENT_MANIFEST_SCHEMA_VERSION,
-	resolvePublishedContentPreviewTtlHours,
-	resolveTeamScopedContentLocator,
-	type PublishContentObjectInput,
-	type PublishedArtifactVersion,
-	type PublishedCollectionIndex,
-	type PublishedContentEntry,
-	type PublishedContentManifest,
-	type PublishedContentObjectPointer,
-	type PublishedOverlayManifest,
-	type PublishedRuntimePointers,
-	type PublishedManifestTombstone,
-	type PublishedContentVisibility,
-} from '../packages/published-content.ts';
+import { basename,extname } from 'node:path';
 import type { CatalogIndexEntry } from '../packages/published-content.ts';
-import { ArtifactBuilder, CollectionIndexBuilder, ContentSource, EntryRenderer, PublishedContentPipeline, PublishedContentPipelineContext, RuntimeBundleBuilder, artifactSignature, canonicalArtifactKey, canonicalEntryPath, entrySignature, objectInputForFile, resolveCommerceOfferMode, stableHash } from './resolve-commerce-offer-mode.ts';
-import { DefaultCollectionIndexBuilder, DefaultEntryRenderer, DefaultRuntimeBundleBuilder, FilesystemContentSource, collectGeneratedArtifacts } from './list-markdown-files.ts';
+import {
+PUBLISHED_CONTENT_MANIFEST_SCHEMA_VERSION,
+resolvePublishedContentPreviewTtlHours,
+resolveTeamScopedContentLocator,
+type PublishContentObjectInput,
+type PublishedArtifactVersion,
+type PublishedContentEntry,
+type PublishedContentManifest,
+type PublishedContentObjectPointer,
+type PublishedManifestTombstone,
+type PublishedRuntimePointers
+} from '../packages/published-content.ts';
+import type { TenantConfig } from '../support/contracts.ts';
+import { DefaultCollectionIndexBuilder,DefaultEntryRenderer,DefaultRuntimeBundleBuilder,FilesystemContentSource,collectGeneratedArtifacts } from './list-markdown-files.ts';
+import { ArtifactBuilder,CollectionIndexBuilder,ContentSource,EntryRenderer,PublishedContentPipeline,PublishedContentPipelineContext,RuntimeBundleBuilder,artifactSignature,canonicalArtifactKey,canonicalEntryPath,entrySignature,objectInputForFile,resolveCommerceOfferMode,stableHash } from './resolve-commerce-offer-mode.ts';
 
 export class DefaultArtifactBuilder implements ArtifactBuilder {
 	async build(context: PublishedContentPipelineContext, entries: PublishedContentEntry[]) {
 		const artifacts: PublishedArtifactVersion[] = [];
 		const objects: PublishContentObjectInput[] = [];
 		const catalog: CatalogIndexEntry[] = [];
-
-		if (context.tenantConfig.content.books && existsSync(String(context.tenantConfig.content.books))) {
-			const runtime = buildTenantBookRuntime(context.tenantConfig, { projectRoot: context.projectRoot });
-			for (const book of runtime.BOOKS) {
-				await exportBookPackage(book.slug, { projectRoot: context.projectRoot });
-			}
-			await exportBookLibrary({ projectRoot: context.projectRoot });
-		}
 
 		for (const filePath of collectGeneratedArtifacts(context.projectRoot)) {
 			const artifact = objectInputForFile(context.teamId, filePath, 'artifacts');
@@ -49,7 +29,7 @@ export class DefaultArtifactBuilder implements ArtifactBuilder {
 			artifacts.push({
 				id: `${itemId}-${String(context.sourceCommit ?? 'current').slice(0, 12) || context.generatedAt}`,
 				itemId,
-				kind: itemId === 'treeseed-knowledge' ? 'knowledge_pack' : 'book_export',
+				kind: 'knowledge_pack',
 				version: String(context.sourceCommit ?? context.generatedAt).slice(0, 12) || context.generatedAt,
 				label: itemId,
 				visibility: 'public',
@@ -90,11 +70,11 @@ export class DefaultArtifactBuilder implements ArtifactBuilder {
 			});
 		}
 
-		for (const entry of entries.filter((candidate) => candidate.model === 'templates' || candidate.model === 'knowledge_packs')) {
+		for (const entry of entries.filter((candidate) => candidate.model === 'templates')) {
 			catalog.push({
 				id: `${entry.model}:${entry.id}`,
 				teamId: context.teamId,
-				kind: entry.model === 'templates' ? 'template' : 'knowledge_pack',
+				kind: 'template',
 				slug: entry.slug,
 				title: entry.title ?? entry.slug,
 				summary: entry.summary,
@@ -153,7 +133,7 @@ export function collectReferencedObjectKeys(entries: PublishedContentEntry[], ar
 	for (const artifact of artifacts) {
 		keys.add(artifact.content.objectKey);
 	}
-	for (const pointer of [runtime?.booksRuntime, runtime?.docsTree, runtime?.searchIndex]) {
+	for (const pointer of [runtime?.docsTree, runtime?.searchIndex]) {
 		if (pointer?.objectKey) keys.add(pointer.objectKey);
 	}
 	return keys;
@@ -164,7 +144,7 @@ export function changedRuntimePointers(
 	nextRuntime: PublishedRuntimePointers,
 ) {
 	const changed = new Set<string>();
-	for (const key of ['booksRuntime', 'docsTree', 'searchIndex'] as const) {
+	for (const key of ['docsTree', 'searchIndex'] as const) {
 		const nextPointer = nextRuntime[key];
 		if (!nextPointer?.objectKey) {
 			continue;

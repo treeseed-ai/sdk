@@ -1,10 +1,10 @@
 import { existsSync } from 'node:fs';
-import type { ReconcileAdapter } from "../../support/contracts/contracts.ts";
-import { runManagedDevAction } from "../../providers/local-private.ts";
 import { runRepositoryGit } from "../../../operations/services/operations/git-runner.ts";
-import { expectedLocalContentOrigin, localContentGitEnvironment, localContentObservedState, localContentSpecRecord, localContentSpecString, originMatches, runLocalContentClone } from '../build/local-compose-build-policy.ts';
-import { genericObservedState, genericResult, noopDiff, nowIso } from '../hosting/to-deploy-target.ts';
+import { runManagedDevAction } from "../../providers/local-private.ts";
+import type { ReconcileAdapter } from "../../support/contracts/contracts.ts";
+import { expectedLocalContentOrigin,localContentGitEnvironment,localContentObservedState,localContentSpecRecord,localContentSpecString,originMatches,runLocalContentClone } from '../build/local-compose-build-policy.ts';
 import { verificationCheck } from '../hosting/first-railway-domain-string.ts';
+import { genericObservedState,genericResult,noopDiff,nowIso } from '../hosting/to-deploy-target.ts';
 import { summarizeVerification } from '../support/summarize-verification.ts';
 
 export function buildLocalContentMaterializationAdapter(): ReconcileAdapter {

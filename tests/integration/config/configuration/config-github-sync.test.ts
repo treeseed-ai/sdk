@@ -9,11 +9,9 @@ const listGitHubEnvironmentVariableNamesMock = vi.fn();
 const listGitHubEnvironmentVariablesMock = vi.fn();
 const upsertGitHubEnvironmentSecretMock = vi.fn();
 const upsertGitHubEnvironmentVariableMock = vi.fn();
-const ensureGitHubBootstrapRepositoryMock = vi.fn();
 const maybeResolveGitHubRepositorySlugMock = vi.fn((root: string) => root.includes('/packages/api') ? 'treeseed-ai/api' : 'owner/repo');
 
 vi.mock('../../../../src/operations/services/repositories/github-automation.ts', () => ({
-	ensureGitHubBootstrapRepository: ensureGitHubBootstrapRepositoryMock,
 	maybeResolveGitHubRepositorySlug: maybeResolveGitHubRepositorySlugMock,
 }));
 
@@ -258,7 +256,6 @@ describe('config GitHub environment sync reconciliation', () => {
 		const secretNames = new Set<string>();
 		const variableNames = new Set<string>();
 		maybeResolveGitHubRepositorySlugMock.mockClear();
-		ensureGitHubBootstrapRepositoryMock.mockReset().mockResolvedValue({ repository: 'owner/repo', created: false });
 		ensureGitHubActionsEnvironmentMock.mockReset().mockResolvedValue({});
 		listGitHubEnvironmentSecretNamesMock.mockReset().mockImplementation(async () => new Set(secretNames));
 		listGitHubEnvironmentVariableNamesMock.mockReset().mockImplementation(async () => new Set(variableNames));

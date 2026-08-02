@@ -17,7 +17,37 @@ function createAuthHarness() {
 	return { provider, sqlite };
 }
 
+function createAuthProvider(sqlite: NodeSqliteD1Database, bootstrapAdminAllowlist = '') {
+	return new D1AuthProvider(resolveApiConfig({
+		HOST: '127.0.0.1',
+		PORT: '3000',
+		TREESEED_API_AUTH_SECRET: 'test-auth-secret',
+		TREESEED_API_REPO_ROOT: process.cwd(),
+		TREESEED_API_BOOTSTRAP_ADMIN_ALLOWLIST: bootstrapAdminAllowlist,
+	}), { db: sqlite });
+}
+
 describe('D1 auth session state', () => {
+	it('reconciles an existing allowlisted user when the configured API starts', async () => {
+		const sqlite = new NodeSqliteD1Database(join(mkdtempSync(join(tmpdir(), 'bootstrap-admin-')), 'auth.sqlite'));
+		try {
+			const originalProvider = createAuthProvider(sqlite);
+			const user = await originalProvider.createUser({ email: 'original-admin@example.test' });
+			expect(user.principal.roles).toEqual(['member']);
+
+			const configuredProvider = createAuthProvider(sqlite, 'original-admin@example.test');
+			const session = await configuredProvider.issueUserSession(user.principal.id);
+			expect(session.principal.roles).toContain('platform_admin');
+
+			const events = await sqlite.prepare(
+				`SELECT event_type FROM audit_events WHERE target_id = ? AND event_type = ?`,
+			).bind(user.principal.id, 'auth.bootstrap_admin').all();
+			expect(events.results).toHaveLength(1);
+		} finally {
+			sqlite.close();
+		}
+	});
+
 	it('adopts existing acceptance users by username when retrying a partial seed', async () => {
 		const { provider, sqlite } = createAuthHarness();
 		try {

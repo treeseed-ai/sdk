@@ -1,5 +1,5 @@
-import type { WorkflowResult } from '../../../workflow.ts';
 import { WorkflowError } from '../../../../workflow/operations.ts';
+import type { WorkflowResult } from '../../../workflow.ts';
 
 export type SaveScriptArgs = {
 	hotfix: boolean;

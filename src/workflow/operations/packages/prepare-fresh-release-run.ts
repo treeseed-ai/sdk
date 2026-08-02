@@ -1,14 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { PRODUCTION_BRANCH, remoteHeadCommit, STAGING_BRANCH } from "../../../operations/services/operations/git-workflow.ts";
-import { currentBranch, hasMeaningfulChanges } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
-import { acquireWorkflowLock, archiveWorkflowRun, classifyWorkflowRunJournal, createWorkflowRunJournal, generateWorkflowRunId, listInterruptedWorkflowRuns, readWorkflowRunJournal, refreshWorkflowLock, releaseWorkflowLock, updateWorkflowRunJournal, type WorkflowRunCommand, type WorkflowRunJournal, type WorkflowRunStep } from "../../runs.ts";
-import { checkedOutWorkspacePackageRepos, type WorkflowSession } from "../../session.ts";
+import { PRODUCTION_BRANCH,remoteHeadCommit,STAGING_BRANCH } from "../../../operations/services/operations/git-workflow.ts";
+import { hasMeaningfulChanges } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
 import type { WorkflowContext } from "../../../operations/workflow.ts";
-import { WorkflowRepoReport, workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
-import { releasePlanHead, releasePlanMatchesCurrentHeads, releaseRunHasCompletedMutation, stringRecord } from '../repositories/gates-for-saved-repository-reports.ts';
-import { ActiveWorkflowRun, nextPendingJournalStep, workflowSessionSnapshot } from '../projects/projects-core/connect-market-project.ts';
+import { acquireWorkflowLock,archiveWorkflowRun,classifyWorkflowRunJournal,createWorkflowRunJournal,generateWorkflowRunId,listInterruptedWorkflowRuns,readWorkflowRunJournal,refreshWorkflowLock,releaseWorkflowLock,updateWorkflowRunJournal,type WorkflowRunCommand,type WorkflowRunJournal,type WorkflowRunStep } from "../../runs.ts";
+import { checkedOutWorkspacePackageRepos,type WorkflowSession } from "../../session.ts";
+import { workflowError,WorkflowRepoReport } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { ActiveWorkflowRun,nextPendingJournalStep,workflowSessionSnapshot } from '../support/workflow-helpers.ts';
 import { tagCommitSha } from '../recovery/fail-workflow-run.ts';
+import { releasePlanHead,releasePlanMatchesCurrentHeads,releaseRunHasCompletedMutation,stringRecord } from '../repositories/gates-for-saved-repository-reports.ts';
 import { remoteTagCommit } from './plan-root-package-version.ts';
 
 export function prepareFreshReleaseRun(

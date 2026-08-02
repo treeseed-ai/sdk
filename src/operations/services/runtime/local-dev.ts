@@ -1,13 +1,13 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn,spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import { resolveToolCommand } from '../../../entrypoints/runtime/managed-dependencies.ts';
 import { runLocalD1Migrations as applyLocalD1Migrations } from '../persistence/d1-migration.ts';
 import {
-	fixtureRoot,
-	fixtureWranglerConfig,
-	corePackageRoot,
-	sdkD1MigrationsRoot,
+corePackageRoot,
+fixtureRoot,
+fixtureWranglerConfig,
+sdkD1MigrationsRoot,
 } from './runtime-paths.ts';
-import { resolveToolCommand } from '../../../entrypoints/runtime/managed-dependencies.ts';
 
 function mergeEnv(extraEnv = {}) {
 	return { ...process.env, ...extraEnv };
@@ -60,7 +60,6 @@ export function prepareCloudflareLocalRuntime({ envOverrides = {}, persistTo, ou
 	};
 
 	runNodeScript('./scripts/content/patch-starlight-content-path.ts');
-	runNodeScript('./scripts/content/aggregate-book.ts');
 	runLocalD1Migration(persistTo);
 	const astroArgs = ['astro', 'build', '--root', fixtureRoot];
 	if (outDir) {

@@ -1,7 +1,7 @@
-import { serializeFrontmatterDocument, parseFrontmatterDocument } from '../content/frontmatter.ts';
-import { buildBuiltinModelRegistry, resolveModelDefinition } from '../entrypoints/models/model-registry.ts';
-import { canonicalizeFrontmatter, normalizeMutationData } from '../entrypoints/models/sdk-fields.ts';
-import type { SdkModelDefinition, SdkModelRegistry } from '../entrypoints/models/sdk-types.ts';
+import { parseFrontmatterDocument,serializeFrontmatterDocument } from '../content/frontmatter.ts';
+import { buildBuiltinModelRegistry,resolveModelDefinition } from '../entrypoints/models/model-registry.ts';
+import { canonicalizeFrontmatter,normalizeMutationData } from '../entrypoints/models/sdk-fields.ts';
+import type { SdkModelDefinition,SdkModelRegistry } from '../entrypoints/models/sdk-types.ts';
 
 export type ContentAction =
 	| 'describe'
@@ -273,7 +273,10 @@ export function renderContentRecord(input: RenderContentInput): RenderedContentR
 		'relatedProposals', 'related_proposals',
 		'relatedDecisions', 'related_decisions',
 	];
-	const subjectEntry = subjectFields.flatMap((field) => {
+	const requestedSubjectFields = (input.relations ?? [])
+		.map((relation) => relation.field)
+		.filter((field) => subjectFields.includes(field));
+	const subjectEntry = [...new Set([...requestedSubjectFields, ...subjectFields])].flatMap((field) => {
 		const value = frontmatter[field];
 		const candidate = Array.isArray(value) ? value[0] : value;
 		return typeof candidate === 'string' && candidate.trim() ? [{ field, id: candidate.trim() }] : [];

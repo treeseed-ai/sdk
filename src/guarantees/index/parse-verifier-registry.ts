@@ -1,11 +1,10 @@
-import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve, sep } from 'node:path';
+import { existsSync,readFileSync } from 'node:fs';
+import { dirname,resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { GUARANTEE_VERIFIERS_SCHEMA_VERSION, GuaranteeDiagnostic, GuaranteeFilter, GuaranteeManifest, GuaranteePlanEntry, GuaranteeRegistryReport, GuaranteeVerifierDefinition, GuaranteeVerifierKind, GuaranteeVerifierRegistry, LoadedGuarantee, LoadedGuaranteeVerifierRegistry } from './guarantee-schema-version.ts';
-import { KNOWN_VERIFIER_KINDS, TAXONOMY_PATTERN, arrayOrEmpty, diagnostic, isRecord, normalizeGuaranteeTaxonomy, numberValue, readYamlFile, stringArray, stringValue } from './guarantee-journey-audit-item.ts';
-import { loadGuaranteeManifest, nearestPackageRoot, ownerPackageFromRoot, walkFiles } from './walk-files.ts';
 import { validateGuaranteeRegistry } from './build-guarantee-dependency-graph.ts';
+import { arrayOrEmpty,diagnostic,isRecord,KNOWN_VERIFIER_KINDS,normalizeGuaranteeTaxonomy,numberValue,readYamlFile,stringArray,stringValue,TAXONOMY_PATTERN } from './guarantee-journey-audit-item.ts';
+import { GUARANTEE_VERIFIERS_SCHEMA_VERSION,GuaranteeDiagnostic,GuaranteeFilter,GuaranteeManifest,GuaranteePlanEntry,GuaranteeRegistryReport,GuaranteeVerifierDefinition,GuaranteeVerifierKind,GuaranteeVerifierRegistry,LoadedGuarantee,LoadedGuaranteeVerifierRegistry } from './guarantee-schema-version.ts';
+import { loadGuaranteeManifest,nearestPackageRoot,ownerPackageFromRoot,walkFiles } from './walk-files.ts';
 
 export function parseVerifierRegistry(value: unknown, diagnostics: GuaranteeDiagnostic[], sourcePath: string): GuaranteeVerifierRegistry | null {
 	if (!isRecord(value)) {

@@ -1,9 +1,9 @@
 import { sql } from 'drizzle-orm';
-import { bigint, check, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import { check,foreignKey,index,integer,pgTable,real,text,uniqueIndex } from 'drizzle-orm/pg-core';
 import { capacityWorkdayRuns } from '../../agents/agent-mode-runs.ts';
-import { teams } from '../../support/subscribers.ts';
 import { projects } from '../../governance/policy/governance-electorate-snapshots.ts';
-import { capacityAllocationSets, capacityProviderAssignments, projectAgentClasses } from '../accounting/capacity-ledger-entries.ts';
+import { teams } from '../../support/subscribers.ts';
+import { capacityAllocationSets,capacityProviderAssignments,projectAgentClasses } from '../accounting/capacity-ledger-entries.ts';
 
 export const capacityWorkdayEvents = pgTable('capacity_workday_events', {
 	id: text('id').primaryKey(),
@@ -31,6 +31,38 @@ export const capacityWorkdayEvents = pgTable('capacity_workday_events', {
 	index('idx_capacity_workday_events_project').on(table.projectId, table.createdAt),
 	check('chk_capacity_workday_events_index', sql`${table.eventIndex} >= 0`),
 	check('chk_capacity_workday_events_status', sql`${table.status} IN ('recorded','active','completed','warning','error','failed')`)
+]);
+
+export const capacityWorkdaySchedules = pgTable('capacity_workday_schedules', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	capacityProviderId: text('capacity_provider_id').notNull(),
+	status: text('status').notNull().default('active'),
+	purpose: text('purpose').notNull(),
+	projectIdsJson: text('project_ids_json').notNull().default('[]'),
+	agentSelectionJson: text('agent_selection_json').notNull().default('{}'),
+	cadenceSeconds: integer('cadence_seconds').notNull(),
+	durationSeconds: integer('duration_seconds').notNull(),
+	maxActiveAssignments: integer('max_active_assignments').notNull(),
+	availableCredits: real('available_credits').notNull(),
+	planningOnly: integer('planning_only').notNull().default(1),
+	publicationPolicyJson: text('publication_policy_json').notNull().default('{}'),
+	lastRunId: text('last_run_id'),
+	nextRunAt: text('next_run_at').notNull(),
+	stateVersion: integer('state_version').notNull().default(1),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_capacity_workday_schedules_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
+	index('idx_capacity_workday_schedules_due').on(table.status, table.nextRunAt),
+	index('idx_capacity_workday_schedules_team').on(table.teamId, table.updatedAt),
+	check('chk_capacity_workday_schedules_status', sql`${table.status} IN ('active','paused','completed','failed')`),
+	check('chk_capacity_workday_schedules_cadence', sql`${table.cadenceSeconds} >= 60`),
+	check('chk_capacity_workday_schedules_duration', sql`${table.durationSeconds} >= 60`),
+	check('chk_capacity_workday_schedules_concurrency', sql`${table.maxActiveAssignments} >= 1`),
+	check('chk_capacity_workday_schedules_credits', sql`${table.availableCredits} > 0`),
+	check('chk_capacity_workday_schedules_planning', sql`${table.planningOnly} IN (0,1)`),
+	check('chk_capacity_workday_schedules_version', sql`${table.stateVersion} >= 1`),
 ]);
 
 export const capacityWorkdayParticipationCycles = pgTable('capacity_workday_participation_cycles', {
@@ -210,49 +242,4 @@ export const treeDxProjectProxyAudit = pgTable('treedx_project_proxy_audit', {
 	index('idx_treedx_project_proxy_audit_project').on(table.projectId, table.createdAt),
 	index('idx_treedx_project_proxy_audit_assignment').on(table.assignmentId, table.createdAt),
 	index('idx_treedx_project_proxy_audit_result').on(table.projectId, table.resultStatus, table.createdAt)
-]);
-
-export const secretMetadataRecords = pgTable('secret_metadata_records', {
-	id: text('id').primaryKey(),
-	teamId: text('team_id').notNull(),
-	projectId: text('project_id'),
-	name: text('name').notNull(),
-	secretClass: text('secret_class').notNull(),
-	custodyMode: text('custody_mode').notNull(),
-	ownerKind: text('owner_kind').notNull(),
-	status: text('status').notNull().default('active'),
-	githubSecretTargetJson: text('github_secret_target_json').notNull().default('{}'),
-	escrowRecordId: text('escrow_record_id'),
-	apiDecryptable: integer('api_decryptable').notNull().default(0),
-	plaintextAllowed: integer('plaintext_allowed').notNull().default(0),
-	failClosedCode: text('fail_closed_code'),
-	metadataJson: text('metadata_json').notNull().default('{}'),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-	tombstonedAt: text('tombstoned_at'),
-}, (table) => [
-	index('idx_secret_metadata_team_project').on(table.teamId, table.projectId, table.status),
-	index('idx_secret_metadata_custody').on(table.custodyMode, table.status),
-	uniqueIndex('idx_secret_metadata_team_name').on(table.teamId, table.projectId, table.name)
-]);
-
-export const clientEncryptedEscrowRecords = pgTable('client_encrypted_escrow_records', {
-	id: text('id').primaryKey(),
-	teamId: text('team_id').notNull(),
-	projectId: text('project_id'),
-	secretId: text('secret_id').notNull(),
-	status: text('status').notNull().default('active'),
-	ciphertextRef: text('ciphertext_ref').notNull(),
-	algorithm: text('algorithm').notNull(),
-	wrappingKeyId: text('wrapping_key_id').notNull(),
-	createdByClientId: text('created_by_client_id'),
-	expiresAt: text('expires_at'),
-	migratedTo: text('migrated_to'),
-	metadataJson: text('metadata_json').notNull().default('{}'),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-	tombstonedAt: text('tombstoned_at'),
-}, (table) => [
-	index('idx_client_encrypted_escrow_secret').on(table.secretId, table.status),
-	index('idx_client_encrypted_escrow_project').on(table.teamId, table.projectId, table.status)
 ]);

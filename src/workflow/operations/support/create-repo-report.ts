@@ -1,14 +1,14 @@
-import { assertCleanWorktrees, headCommit } from "../../../operations/services/operations/git-workflow.ts";
-import { createWorkflowTimer, type WorkflowTiming } from "../../../operations/services/operations/workflow-timing.ts";
-import { currentBranch, gitStatusPorcelain, hasMeaningfulChanges, repoRoot } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
+import { discoverApplications } from "../../../hosting/apps.ts";
 import { type HostingAuditEnvironment } from "../../../operations/services/hosting/audit/hosting-audit.ts";
 import { collectDeploymentReadiness } from "../../../operations/services/hosting/deployment/deployment-readiness.ts";
-import { discoverApplications } from "../../../hosting/apps.ts";
-import { checkedOutWorkspacePackageRepos } from "../../session.ts";
+import { assertCleanWorktrees,headCommit } from "../../../operations/services/operations/git-workflow.ts";
+import { createWorkflowTimer,type WorkflowTiming } from "../../../operations/services/operations/workflow-timing.ts";
 import { checkedOutManagedWorkflowRepos } from "../../../operations/services/support/managed-repositories.ts";
-import type { WorkflowExecutionMode, WorkflowFact, WorkflowNextStep, WorkflowOperationId, WorkflowRecovery, WorkflowResult } from "../../../operations/workflow.ts";
-import { WorkflowRepoReport, resolveWorkflowStateSnapshot, workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
-import { WorkflowOperationHelpers, WorkflowStatePayload, runGit } from '../recovery/workflow-write.ts';
+import { currentBranch,gitStatusPorcelain,hasMeaningfulChanges,repoRoot } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
+import type { WorkflowExecutionMode,WorkflowFact,WorkflowNextStep,WorkflowOperationId,WorkflowRecovery,WorkflowResult } from "../../../operations/workflow.ts";
+import { checkedOutWorkspacePackageRepos } from "../../session.ts";
+import { WorkflowRepoReport,resolveWorkflowStateSnapshot,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { WorkflowOperationHelpers,WorkflowStatePayload,runGit } from '../recovery/workflow-write.ts';
 
 export function createRepoReport(name: string, path: string, branch: string | null, dirty: boolean): WorkflowRepoReport {
 	return {

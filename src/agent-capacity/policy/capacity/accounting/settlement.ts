@@ -1,12 +1,6 @@
-import type { CapacityLedgerEntry, CapacityReservation, CapacityUsageActual } from '../../../contracts/support/financial-records.ts';
-import { AGENT_ASSIGNMENT_WORKSPACE_ACCESS_MODES, type AgentAssignmentWorkspaceAccessMode, type AgentCapacityEnvelope, type AgentExecutionMode, type AgentModeRunUsageSettlement, type DecisionExecutionInput, type ProviderAssignment, type ProviderAssignmentCapabilityHandles, type ProviderAssignmentSynthesisSource, type TreeDxProxyHandle, type WorkdayCapacityEnvelope } from '../../../contracts/capacity/assignments/assignment-records.ts';
-import type { CapacityGrantV2 } from '../../../allocation.ts';
-import type { AgentCapacityPlanRecord, AgentCapacityPlanWorkUnit, DecisionExecutionInputRecord, DecisionPlanningStatus, PlanningInputRequest } from '../../../contracts/support/planning-records.ts';
-import type { AgentKernelPolicy, AgentKernelProfile, ProjectAgentClass } from '../../../contracts/projects/agents/project-agent-class.ts';
-import type { CapacityExecutionProvider, ProviderAvailabilitySession } from '../../../../capacity-provider/contracts/index.ts';
-import type { AgentRuntimeSpec, AgentWorkPackage, ExecutionCapabilityDemand, ExecutionCapabilitySupply, ExecutionProviderDescriptor, ExecutionResourceNeed } from '../../../../types/agents.ts';
-import type { AgentCapacityPlan, AgentKernelModeDecision, AgentKernelModeExecutionInput, AgentKernelModeFallback, AgentKernelModeFallbackCode, AgentKernelOutputValidationResult, AgentKernelQueueObservation, BuildExecutionProviderAssignmentExplanationInput, CapacityRuntimeBlockerVm, CapacityRuntimeDiagnosticsResponse, CapacitySettlementInvariantResult, CapacitySettlementInvariantViolation, ExecutionCapabilityGateInput, ExecutionProviderEligibilityResult, ExecutionProviderVisibilitySummary, ProviderAssignmentExplanation, ProviderAssignmentSynthesisCandidate, TreeDxProxyAccessRequest, TreeDxProxyAccessResult } from '../../../contracts/runtime/runtime-observability.ts';
-import { arrayValue, booleanDefault, booleanOrNull, collectSupplyMetadataAliases, collectSupplyMetadataCapabilities, firstArray, firstString, handleResourceNeed, isRecord, numberOrNull, preferredCapabilitiesFromAgent, pressureAllows, pushResourceNeed, record, stableStringify, stringList, stringOrNull, uniqueStrings } from '../../support/primitives.ts';
+import { type ProviderAssignment } from '../../../contracts/capacity/assignments/assignment-records.ts';
+import type { CapacitySettlementInvariantResult,CapacitySettlementInvariantViolation } from '../../../contracts/runtime/runtime-observability.ts';
+import type { CapacityLedgerEntry,CapacityReservation } from '../../../contracts/support/financial-records.ts';
 import { hasAcceptedCapacityPlanProvenance } from '../../support/planning.ts';
 
 export function validateCapacitySettlementInvariant(input: {

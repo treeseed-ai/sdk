@@ -1,19 +1,15 @@
-import type { FieldAliasBinding } from '../../entrypoints/models/field-aliases.ts';
 import type {
-	CapacityBusinessModel,
-	CapacityLaneUnit,
-	CapacityReservation,
-	NativeUsageObservation,
+CapacityReservation
 } from '../../agent-capacity/contracts/support/financial-records.ts';
 import type {
-	CapacityExecutionProvider,
-	CapacityExecutionProviderNativeLimit,
-	CapacityExecutionProviderObservation,
-	CapacityProviderMembershipView,
+CapacityExecutionProvider,
+CapacityExecutionProviderNativeLimit,
+CapacityExecutionProviderObservation,
+CapacityProviderMembershipView,
 } from '../../capacity-provider/contracts/index.ts';
-import { CapacityApprovalState, PlannedTaskNode, TaskPlanProposal } from '../projects/deployments/create-project-web-deployment-request.ts';
-import { ProjectEnvironmentName, RemoteJobRequestedByType, RemoteJobStatus, SdkDispatchExecutionClass, SdkDispatchNamespace, SdkDispatchPolicy, SdkDispatchTarget } from './sdk-model-names.ts';
-import { SdkDispatchCapability } from './template-launch-requirements.ts';
+import { CapacityApprovalState,PlannedTaskNode,TaskPlanProposal } from './task-planning.ts';
+import { SdkDispatchCapability } from './platform-contracts.ts';
+import { ProjectEnvironmentName,RemoteJobRequestedByType,RemoteJobStatus,SdkDispatchExecutionClass,SdkDispatchNamespace,SdkDispatchPolicy,SdkDispatchTarget } from './sdk-model-names.ts';
 
 export interface PlanningPolicy {
 	maxDownstreamTasks: number;

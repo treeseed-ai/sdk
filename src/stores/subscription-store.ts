@@ -1,11 +1,11 @@
 import type {
-	SdkMutationRequest,
-	SdkSearchRequest,
-	SdkSubscriptionEntity,
-	SdkUpdateRequest,
+SdkMutationRequest,
+SdkSearchRequest,
+SdkSubscriptionEntity,
+SdkUpdateRequest,
 } from '../entrypoints/models/sdk-types.ts';
 import { assertExpectedVersion } from '../packages/sdk-version.ts';
-import { SqliteStoreBase, toSqlValue } from './helpers.ts';
+import { SqliteStoreBase,toSqlValue } from './helpers.ts';
 
 function subscriptionFromRow(row: Record<string, unknown>): SdkSubscriptionEntity {
 	return {

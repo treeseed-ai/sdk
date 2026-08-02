@@ -1,7 +1,7 @@
-import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { existsSync,readdirSync,rmSync,statSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join,resolve } from 'node:path';
 
 export type LocalCleanupMode = 'standard' | 'aggressive';
 

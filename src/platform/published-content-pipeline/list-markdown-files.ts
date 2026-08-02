@@ -1,31 +1,14 @@
-import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { basename, extname, join, relative, resolve } from 'node:path';
-import { unified } from 'unified';
-import remarkParse from 'remark-parse';
-import { toString } from 'mdast-util-to-string';
+import { existsSync,readFileSync,readdirSync,statSync } from 'node:fs';
+import { basename,extname,join,resolve } from 'node:path';
 import { parseFrontmatterDocument } from '../../content/frontmatter.ts';
-import type { DeployConfig, TenantConfig } from '../support/contracts.ts';
-import { buildTenantBookRuntime } from '../content/books-data.ts';
-import { exportBookLibrary, exportBookPackage } from '../content/book-export.ts';
-import { COMMERCE_OFFER_MODES, type CommerceOfferMode } from '../../entrypoints/models/sdk-types.ts';
 import {
-	PUBLISHED_CONTENT_MANIFEST_SCHEMA_VERSION,
-	resolvePublishedContentPreviewTtlHours,
-	resolveTeamScopedContentLocator,
-	type PublishContentObjectInput,
-	type PublishedArtifactVersion,
-	type PublishedCollectionIndex,
-	type PublishedContentEntry,
-	type PublishedContentManifest,
-	type PublishedContentObjectPointer,
-	type PublishedOverlayManifest,
-	type PublishedRuntimePointers,
-	type PublishedManifestTombstone,
-	type PublishedContentVisibility,
+type PublishContentObjectInput,
+type PublishedCollectionIndex,
+type PublishedContentEntry,
+type PublishedRuntimePointers
 } from '../packages/published-content.ts';
-import type { CatalogIndexEntry } from '../packages/published-content.ts';
-import { CollectionIndexBuilder, ContentSource, ContentSourceEntry, EntryRenderer, PublishedContentPipelineContext, RenderedContentEntry, RuntimeBundleBuilder, inferStatus, inferSummary, inferTitle, inferVisibility, markdownText, normalizeRelativeMarkdownPath, normalizeSlug, objectInputForJson } from './resolve-commerce-offer-mode.ts';
+import type { TenantConfig } from '../support/contracts.ts';
+import { CollectionIndexBuilder,ContentSource,ContentSourceEntry,EntryRenderer,PublishedContentPipelineContext,RenderedContentEntry,RuntimeBundleBuilder,inferStatus,inferSummary,inferTitle,inferVisibility,markdownText,normalizeRelativeMarkdownPath,normalizeSlug,objectInputForJson } from './resolve-commerce-offer-mode.ts';
 
 export function listMarkdownFiles(rootPath: string): string[] {
 	if (!existsSync(rootPath)) {
@@ -176,15 +159,7 @@ export class DefaultRuntimeBundleBuilder implements RuntimeBundleBuilder {
 		const objects: PublishContentObjectInput[] = [];
 		const runtime: PublishedRuntimePointers = {};
 
-		if (context.tenantConfig.content.books && existsSync(String(context.tenantConfig.content.books))) {
-			const booksRuntime = buildTenantBookRuntime(context.tenantConfig, {
-				projectRoot: context.projectRoot,
-			});
-			const pointer = objectInputForJson(context.teamId, 'objects', booksRuntime);
-			objects.push(pointer.object);
-			runtime.booksRuntime = pointer.pointer;
-			runtime.docsHomePath = booksRuntime.LINKS.home;
-		}
+		if (entries.some((entry) => entry.model === 'books')) runtime.docsHomePath = '/books/';
 
 		const docsTree = buildDocsTree(entries);
 		if (docsTree.length > 0) {
@@ -220,6 +195,6 @@ export function collectGeneratedArtifacts(projectRoot: string) {
 	}
 	return readdirSync(outputRoot)
 		.map((entry) => resolve(outputRoot, entry))
-		.filter((filePath) => statSync(filePath).isFile() && extname(filePath).toLowerCase() === '.md')
+		.filter((filePath) => statSync(filePath).isFile() && extname(filePath).toLowerCase() === '.zip')
 		.sort((left, right) => left.localeCompare(right));
 }

@@ -14,6 +14,7 @@ export const CAPACITY_PROVIDER_ENDPOINTS = {
 	assignmentSettle: (assignmentId: string) => `/v1/provider/assignments/${encodeURIComponent(assignmentId)}/settle`,
 	assignmentModeRuns: (assignmentId: string) => `/v1/provider/assignments/${encodeURIComponent(assignmentId)}/mode-runs`,
 	assignmentWorkflowOperationDispatch: (assignmentId: string, operationId: string) => `/v1/provider/assignments/${encodeURIComponent(assignmentId)}/workflow-operations/${encodeURIComponent(operationId)}/dispatch`,
+	assignmentWorkflowRun: (assignmentId: string, runId: string) => `/v1/provider/assignments/${encodeURIComponent(assignmentId)}/workflow-runs/${encodeURIComponent(runId)}`,
 	assignmentExplanation: (assignmentId: string) => `/v1/provider/assignments/${encodeURIComponent(assignmentId)}/explanation`,
 } as const;
 

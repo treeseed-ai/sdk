@@ -131,6 +131,7 @@ surfaces:
 describe('scene visual audit fixture critical coverage', () => {
 	it('validates built-in roles and unknown role diagnostics', () => {
 		expect(SceneVisualAuditUserForRole('owner')).toMatchObject({ email: 'visual.owner@treeseed.io', password: VISUAL_AUDIT_PASSWORD });
+		expect(SceneVisualAuditUserForRole('platform_admin')).toMatchObject({ email: 'visual.platform-admin@treeseed.io', password: VISUAL_AUDIT_PASSWORD });
 		expect(SceneVisualAuditUserForRole('anonymous')).toBeNull();
 		expect(validateSceneVisualAuditRoles(['anonymous', 'owner', 'custom-role' as never]).map((entry) => entry.code)).toEqual(['scene.visual_audit_role_unknown']);
 	});

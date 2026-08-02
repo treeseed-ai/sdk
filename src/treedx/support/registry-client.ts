@@ -1,5 +1,5 @@
+import type { TreeDxClientOptions,TreeDxNode,TreeDxRepositoryPlacement } from '../types.ts';
 import { TreeDxClient } from './client.ts';
-import type { TreeDxClientOptions, TreeDxNode, TreeDxRepositoryPlacement } from '../types.ts';
 
 export interface TreeDxRegistryClientOptions extends TreeDxClientOptions {}
 

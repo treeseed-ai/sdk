@@ -1,8 +1,8 @@
-import { readFileSync, existsSync } from 'node:fs';
-import { dirname, extname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn,spawnSync } from 'node:child_process';
+import { existsSync,readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { dirname,extname,resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadDeployConfigFromPath } from '../../../platform/hosting/deploy-config.ts';
 
 const require = createRequire(import.meta.url);

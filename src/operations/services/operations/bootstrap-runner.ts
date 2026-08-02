@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { elapsedMs, formatDurationMs, type TimingEntry } from '../../../entrypoints/runtime/timing.ts';
+import { elapsedMs,formatDurationMs,type TimingEntry } from '../../../entrypoints/runtime/timing.ts';
 
 export type BootstrapExecution = 'parallel' | 'sequential';
 export type BootstrapStream = 'stdout' | 'stderr';

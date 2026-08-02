@@ -20,25 +20,6 @@ function runSuffix(runId: string) {
 	return runId.replace(/[^a-z0-9]/giu, '').toLowerCase().slice(-14) || 'run';
 }
 
-async function waitForProjectDeletion(adminClient: MarketClient, teamId: string, projectId: string) {
-	for (let attempt = 0; attempt < 50; attempt += 1) {
-		const projects = await adminClient.projects(teamId);
-		if (!(projects.payload as Array<Record<string, unknown>>).some((entry) => entry.id === projectId)) return;
-		await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
-	}
-	throw new Error(`Capacity acceptance project ${projectId} did not reach deleted state.`);
-}
-
-async function waitForTeamDeletionReadiness(adminClient: MarketClient, teamId: string) {
-	let blockers: Array<Record<string, unknown>> = [];
-	for (let attempt = 0; attempt < 300; attempt += 1) {
-		blockers = (await adminClient.teamDeletionBlockers(teamId)).payload;
-		if (blockers.length === 0) return;
-		await new Promise((resolveDelay) => setTimeout(resolveDelay, 200));
-	}
-	throw new Error(`Capacity acceptance team ${teamId} still has deletion blockers after project cleanup: ${blockers.map((entry) => `${String(entry.code)}:${String(entry.id ?? '')}`).join(', ')}.`);
-}
-
 async function terminalizeProjectCapacity(
 	adminClient: MarketClient,
 	teamId: string,
@@ -85,13 +66,9 @@ export async function deleteLocalCapacityAcceptanceTeam(
 	const projects = await adminClient.projects(team.id);
 	for (const project of projects.payload as Array<Record<string, unknown>>) {
 		const projectId = typeof project.id === 'string' ? project.id : '';
-		const projectSlug = typeof project.slug === 'string' ? project.slug : projectId;
 		if (!projectId) continue;
 		await terminalizeProjectCapacity(adminClient, team.id, projectId);
-		await adminClient.deleteProject(projectId, `DELETE ${projectSlug}`);
-		await waitForProjectDeletion(adminClient, team.id, projectId);
 	}
-	await waitForTeamDeletionReadiness(adminClient, team.id);
 	const deleted = await adminClient.deleteTeamPermanently(team.id, {
 		confirmation: team.name,
 		localAcceptanceCleanup: true,

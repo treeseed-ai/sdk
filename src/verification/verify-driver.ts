@@ -1,9 +1,8 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import * as childProcess from 'node:child_process';
-import { basename, relative, resolve } from 'node:path';
+import { existsSync,mkdirSync,readFileSync,rmSync,statSync,writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
-import { createManagedToolEnv, resolveToolBinary } from '../entrypoints/runtime/managed-dependencies.ts';
+import { resolve } from 'node:path';
+import { createManagedToolEnv } from '../entrypoints/runtime/managed-dependencies.ts';
 
 
 export type VerifyDriver = 'auto' | 'act' | 'direct';

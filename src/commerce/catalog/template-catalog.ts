@@ -1,10 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type {
-	SdkTemplateCatalogEntry,
-	SdkTemplateCatalogResponse,
+SdkTemplateCatalogEntry,
+SdkTemplateCatalogResponse,
 } from '../../entrypoints/models/sdk-types.ts';
-import { normalizeTemplateLaunchRequirements } from '../../entrypoints/templates/template-launch-requirements.ts';
 
 export interface RemoteTemplateCatalogClientOptions {
 	endpoint: string;
@@ -116,7 +115,6 @@ function normalizeTemplateCatalogEntry(value: unknown): SdkTemplateCatalogEntry 
 		relatedBooks: optionalStringArray(record.relatedBooks, 'relatedBooks') ?? [],
 		relatedKnowledge: optionalStringArray(record.relatedKnowledge, 'relatedKnowledge') ?? [],
 		relatedObjectives: optionalStringArray(record.relatedObjectives, 'relatedObjectives') ?? [],
-		launchRequirements: normalizeTemplateLaunchRequirements(record.launchRequirements, 'launchRequirements'),
 	};
 }
 

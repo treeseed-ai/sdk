@@ -1,9 +1,9 @@
 import { sql } from 'drizzle-orm';
-import { bigint, check, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from 'drizzle-orm/pg-core';
-import { teams } from '../support/subscribers.ts';
+import { check,foreignKey,index,integer,pgTable,text,uniqueIndex } from 'drizzle-orm/pg-core';
+import { capacityExecutionProviders,capacityProviders } from '../accounts/better-auth-account.ts';
+import { capacityProviderAssignments,projectAgentClasses } from '../capacity/accounting/capacity-ledger-entries.ts';
 import { projects } from '../governance/policy/governance-electorate-snapshots.ts';
-import { capacityProviderAssignments, projectAgentClasses } from '../capacity/accounting/capacity-ledger-entries.ts';
-import { capacityExecutionProviders, capacityProviders } from '../accounts/better-auth-account.ts';
+import { teams } from '../support/subscribers.ts';
 
 export const agentModeRuns = pgTable('agent_mode_runs', {
 	id: text('id').primaryKey(),

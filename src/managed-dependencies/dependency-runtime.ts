@@ -1,11 +1,9 @@
-import { createHash } from 'node:crypto';
-import { createWriteStream, existsSync, mkdirSync, mkdtempSync, rmSync, renameSync, chmodSync, copyFileSync, readFileSync, readdirSync } from 'node:fs';
-import { request as httpRequest } from 'node:http';
-import { request as httpsRequest } from 'node:https';
-import { platform as osPlatform, arch as osArch } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { arch as osArch,platform as osPlatform } from 'node:os';
+import { resolve } from 'node:path';
 import { withServiceCredentialEnv } from '../configuration/service-credentials.ts';
 
 
@@ -16,6 +14,7 @@ export type ManagedToolName =
 	| 'gh'
 	| 'wrangler'
 	| 'railway'
+	| 'cloudflared'
 	| 'copilot'
 	| 'copilot-sdk'
 	| 'copilot-language-server'
@@ -96,7 +95,7 @@ export type PlatformAsset = {
 	platform: 'linux' | 'darwin';
 	arch: 'x64' | 'arm64';
 	assetName: string;
-	archiveKind: 'tar.gz' | 'zip';
+	archiveKind: 'tar.gz' | 'zip' | 'binary';
 };
 
 export type VerifiedPlatformAsset = PlatformAsset & {
@@ -151,6 +150,15 @@ export const RAILWAY_ASSETS: VerifiedPlatformAsset[] = [
 	},
 ];
 
+export const CLOUDFLARED_VERSION = '2026.7.3';
+export const CLOUDFLARED_RELEASE_BASE_URL = `https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}`;
+export const CLOUDFLARED_ASSETS: VerifiedPlatformAsset[] = [
+	{ platform: 'linux', arch: 'x64', assetName: 'cloudflared-linux-amd64', archiveKind: 'binary', sha256: '9d71c677db00134c1bd4144b7783486b654ad281b1ea62b4972098d19f770f17' },
+	{ platform: 'linux', arch: 'arm64', assetName: 'cloudflared-linux-arm64', archiveKind: 'binary', sha256: '65259e652a7bea08bf5df603233ab22b8bf3116af8df9f9206209af6a1b955c0' },
+	{ platform: 'darwin', arch: 'x64', assetName: 'cloudflared-darwin-amd64.tgz', archiveKind: 'tar.gz', sha256: 'e88fe5874d42a94f49a7ea59cabc3722d2962d0449232b0f3b1a426a712e275c' },
+	{ platform: 'darwin', arch: 'arm64', assetName: 'cloudflared-darwin-arm64.tgz', archiveKind: 'tar.gz', sha256: 'f35c50089cd25f77a4cb5a2152036bc26db15aa31fbe11f7995d2e42a4ed6257' },
+];
+
 export const NPM_TOOLS: Array<{
 	name: Extract<ManagedToolName, 'wrangler' | 'copilot' | 'copilot-language-server'>;
 	packageName: string;
@@ -195,6 +203,7 @@ export function resolveToolsHome(env: NodeJS.ProcessEnv = process.env) {
 export function createManagedToolEnv(env: NodeJS.ProcessEnv = process.env) {
 	const toolsHome = resolveToolsHome(env);
 	const ghBinDir = resolve(toolsHome, 'gh', GH_VERSION, platformKey(), 'bin');
+	const cloudflaredBinDir = resolve(toolsHome, 'cloudflared', CLOUDFLARED_VERSION, platformKey(), 'bin');
 	const pathKey = process.platform === 'win32' ? 'Path' : 'PATH';
 	const existingPath = env[pathKey] ?? env.PATH ?? '';
 	return {
@@ -202,7 +211,7 @@ export function createManagedToolEnv(env: NodeJS.ProcessEnv = process.env) {
 		GH_CONFIG_DIR: env.TREESEED_GH_CONFIG_DIR ?? resolve(toolsHome, 'gh-config'),
 		GH_PROMPT_DISABLED: '1',
 		GH_NO_UPDATE_NOTIFIER: '1',
-		[pathKey]: [ghBinDir, existingPath].filter(Boolean).join(process.platform === 'win32' ? ';' : ':'),
+		[pathKey]: [ghBinDir, cloudflaredBinDir, existingPath].filter(Boolean).join(process.platform === 'win32' ? ';' : ':'),
 	};
 }
 
@@ -230,12 +239,22 @@ export function currentRailwayPlatformAsset(): VerifiedPlatformAsset | null {
 	return RAILWAY_ASSETS.find((asset) => asset.platform === platform && asset.arch === arch) ?? null;
 }
 
+export function currentCloudflaredPlatformAsset(): VerifiedPlatformAsset | null {
+	const platform = osPlatform(); const arch = osArch();
+	if ((platform !== 'linux' && platform !== 'darwin') || (arch !== 'x64' && arch !== 'arm64')) return null;
+	return CLOUDFLARED_ASSETS.find((asset) => asset.platform === platform && asset.arch === arch) ?? null;
+}
+
 export function managedGhBin(env: NodeJS.ProcessEnv = process.env) {
 	return resolve(resolveToolsHome(env), 'gh', GH_VERSION, platformKey(), 'bin', 'gh');
 }
 
 export function managedRailwayBin(env: NodeJS.ProcessEnv = process.env) {
 	return resolve(resolveToolsHome(env), 'railway', RAILWAY_VERSION, platformKey(), 'bin', 'railway');
+}
+
+export function managedCloudflaredBin(env: NodeJS.ProcessEnv = process.env) {
+	return resolve(resolveToolsHome(env), 'cloudflared', CLOUDFLARED_VERSION, platformKey(), 'bin', 'cloudflared');
 }
 
 export function tokenEnv(env: NodeJS.ProcessEnv = process.env) {

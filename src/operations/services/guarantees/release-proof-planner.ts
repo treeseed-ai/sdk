@@ -1,16 +1,16 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { basename, resolve } from 'node:path';
-import { discoverPackageAdapters, type PackageAdapter, type PackageCommand } from '../reconciliation/package-adapters.ts';
-import { classifyGitMode, runGitText } from '../operations/git-runner.ts';
+import { existsSync,readFileSync } from 'node:fs';
+import { basename,resolve } from 'node:path';
+import { findReusableProof,readProofLedger } from '../capacity/accounting/release-proof-ledger.ts';
+import { classifyGitMode,runGitText } from '../operations/git-runner.ts';
+import { discoverPackageAdapters,type PackageAdapter,type PackageCommand } from '../reconciliation/package-adapters.ts';
 import {
-	computeProofInputHash,
-	type ProofDriver,
-	type ProofInput,
-	type ProofRecord,
-	type ProofSubject,
+computeProofInputHash,
+type ProofDriver,
+type ProofInput,
+type ProofRecord,
+type ProofSubject,
 } from './release-proof.ts';
-import { findReusableProof, readProofLedger } from '../capacity/accounting/release-proof-ledger.ts';
 
 export type ProofTarget = 'local' | 'staging' | 'prod';
 export type ProofPlanMode = 'plan' | 'run' | 'status' | 'failures' | 'explain';

@@ -1,10 +1,10 @@
 import { MarketClient } from '../../../entrypoints/clients/market-client.ts';
-import type { CapacityGovernanceRuntimeConnection } from '../../capacity/capacity-core/live-acceptance-capacity-governance.ts';
 import type { CapacityAcceptanceProof } from '../../capacity/capacity-core/live-acceptance-capacity-context.ts';
-import type { RunLiveReconcileTestsOptions } from './live-acceptance.ts';
 import type { CapacityAcceptanceExecutionInput } from '../../capacity/capacity-core/live-acceptance-capacity-executor.ts';
+import type { CapacityGovernanceRuntimeConnection } from '../../capacity/capacity-core/live-acceptance-capacity-governance.ts';
 import { verifyCapacityAcceptanceTerminal } from '../../capacity/capacity-core/live-acceptance-capacity-terminal.ts';
-import { finalizeLocalStarterAcceptance, provisionLocalStarterCapacity, type LocalStarterCapacityConfig } from '../../runtime/live-acceptance-starter-runtime.ts';
+import { finalizeLocalStarterAcceptance,provisionLocalStarterCapacity,type LocalStarterCapacityConfig } from '../../runtime/live-acceptance-starter-runtime.ts';
+import type { RunLiveReconcileTestsOptions } from './live-acceptance.ts';
 
 const RESEARCH_AGENT_PATHS = ['researcher', 'reviewer', 'technical-writer', 'reporter']
 	.map((slug) => `template/src/content/agents/${slug}.mdx`);

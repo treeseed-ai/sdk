@@ -1,10 +1,8 @@
-import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { hostname } from 'node:os';
-import { dirname, resolve } from 'node:path';
-import type { WorkflowMode } from '../session.ts';
-import { archivedWorkflowRunSummary, readWorkflowRunJournal, safeJsonParse, writeWorkflowRunJournal } from './ensure-workflow-exclude-rule.ts';
-import { gateCacheMatches, updateWorkflowRunJournal } from './update-workflow-run-journal.ts';
-import { WorkflowExecutionMode, WorkflowGateCacheEntry, WorkflowLockScope, WorkflowRunCommand, WorkflowRunJournal, WorkflowRunStep, nowIso, workflowRunsRoot } from './workflow-run-command.ts';
+import { existsSync,readdirSync,statSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { archivedWorkflowRunSummary,boundedWorkflowRunSummary,readWorkflowRunJournal,safeJsonParse,writeWorkflowRunJournal } from './ensure-workflow-exclude-rule.ts';
+import { gateCacheMatches,updateWorkflowRunJournal } from './update-workflow-run-journal.ts';
+import { WorkflowExecutionMode,WorkflowGateCacheEntry,WorkflowLockScope,WorkflowRunCommand,WorkflowRunJournal,WorkflowRunStep,nowIso,workflowRunsRoot } from './workflow-run-command.ts';
 
 export function getCachedSuccessfulWorkflowGate(
 	root: string,
@@ -109,6 +107,8 @@ export function listWorkflowRunJournalsForScope(root: string, scope: WorkflowLoc
 				if (statSync(path).size > 5 * 1024 * 1024) {
 					const archivedSummary = archivedWorkflowRunSummary(path);
 					if (archivedSummary) return archivedSummary;
+					const boundedSummary = boundedWorkflowRunSummary(path);
+					if (boundedSummary) return boundedSummary;
 				}
 			} catch {
 				return null;
@@ -127,6 +127,16 @@ export function listWorkflowRunJournals(root: string) {
 		byId.set(journal.runId, journal);
 	}
 	return [...byId.values()].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+}
+
+export function countWorkflowRunJournals(root: string) {
+	const names = new Set<string>();
+	for (const scope of ['worktree', 'shared'] as const) {
+		const runsDir = workflowRunsRoot(root, null, scope);
+		if (!existsSync(runsDir)) continue;
+		for (const entry of readdirSync(runsDir)) if (entry.endsWith('.json')) names.add(entry);
+	}
+	return names.size;
 }
 
 export function listRecentWorkflowRunJournalsForScope(root: string, scope: WorkflowLockScope, limit: number) {
@@ -152,6 +162,8 @@ export function listRecentWorkflowRunJournalsForScope(root: string, scope: Workf
 				if (statSync(entry.path).size > 5 * 1024 * 1024) {
 					const archivedSummary = archivedWorkflowRunSummary(entry.path);
 					if (archivedSummary) return archivedSummary;
+					const boundedSummary = boundedWorkflowRunSummary(entry.path);
+					if (boundedSummary) return boundedSummary;
 				}
 			} catch {
 				return null;

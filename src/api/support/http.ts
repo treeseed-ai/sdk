@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
-import type { ApiPrincipal, ApiScope } from '../../entrypoints/clients/remote.ts';
-import type { AppVariables } from '../types.ts';
+import type { ApiPrincipal,ApiScope } from '../../entrypoints/clients/remote.ts';
 import { permissionGranted } from '../auth/rbac.ts';
+import type { AppVariables } from '../types.ts';
 
 export type ApiContext = Context<{ Variables: AppVariables }>;
 

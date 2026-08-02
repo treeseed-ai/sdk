@@ -1,11 +1,8 @@
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import { accessSync, chmodSync, constants as fsConstants, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, resolve } from 'node:path';
-import { createConnection, createServer, type Server } from 'node:net';
+import { timingSafeEqual } from 'node:crypto';
+import { rmSync } from 'node:fs';
 import { readLegacyProjectMachineKey } from './read-legacy-project-machine-key.ts';
-import { KeyAgentError } from './treseed-machine-key-passphrase-env.ts';
 import { replaceWrappedMachineKey } from './read-wrapped-machine-key-file.ts';
+import { KeyAgentError } from './treseed-machine-key-passphrase-env.ts';
 
 export function migrateLegacyProjectMachineKeyToWrapped(keyPath: string, legacyKeyPath: string, passphrase: string) {
 	const legacyProjectKey = readLegacyProjectMachineKey(legacyKeyPath);

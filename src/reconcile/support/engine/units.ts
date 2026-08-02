@@ -1,4 +1,4 @@
-import type { DesiredUnit, ReconcileTarget, ReconcileUnitId, ReconcileUnitType } from '../contracts/contracts.ts';
+import type { DesiredUnit,ReconcileTarget,ReconcileUnitId,ReconcileUnitType } from '../contracts/contracts.ts';
 
 export const TRESEED_RECONCILE_UNIT_TYPES: ReconcileUnitType[] = [
 	'web-ui',

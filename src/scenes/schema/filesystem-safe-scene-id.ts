@@ -1,38 +1,11 @@
-import { sceneErrorDiagnostic, sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
-import { findBuiltInSceneAction, findBuiltInSceneAssertion } from '../support/plugins/registry.ts';
+import { sceneErrorDiagnostic,sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
 import {
-	SCENE_BROWSERS,
-	SCENE_ENVIRONMENTS,
-	SCENE_SCHEMA_VERSION,
-	type SceneAction,
-	type SceneArtifacts,
-	type SceneBrowser,
-	type SceneChapter,
-	type SceneDeviceConfig,
-	type SceneDeviceProfile,
-	type SceneDiagram,
-	type SceneDiagnostic,
-	type SceneEnvironment,
-	type SceneExpectation,
-	type SceneManifest,
-	type SceneMode,
-	type SceneMotion,
-	type SceneOverlay,
-	type SceneOverlayVariant,
-	type SceneRenderConfig,
-	type SceneRenderEvidenceFit,
-	type SceneRuntimeConfig,
-	type SceneSelector,
-	type SceneSetup,
-	type SceneTarget,
-	type SceneTrainingConfig,
-	type SceneVisualAuditConfig,
-	type SceneVisualObject,
-	type SceneVisualPoint,
-	type SceneVisualRegion,
-	type SceneVisualSize,
-	type SceneVisualStyle,
-	type SceneWorkflowStep,
+SCENE_BROWSERS,
+SCENE_ENVIRONMENTS,
+type SceneBrowser,
+type SceneDiagnostic,
+type SceneEnvironment,
+type SceneSelector
 } from '../types.ts';
 
 

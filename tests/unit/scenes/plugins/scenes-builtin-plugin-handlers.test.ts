@@ -159,7 +159,11 @@ describe('built-in scene plugin handlers', () => {
 		expect((await registry.actions.get('fill')!.run({ action: {}, step, context: ctx } as never)).diagnostics[0]?.code).toBe('scene.invalid_action');
 		expect(ctx.resolveSelector().fill).toBeDefined();
 		expect((await registry.actions.get('select')!.run({ action: { select: { label: 'Mode', value: 'auto' } }, step, context: ctx } as never)).ok).toBe(true);
-		expect((await registry.actions.get('select')!.run({ action: { select: { css: 'select[name="mode"]', internal: true, label: 'Automatic' } }, step, context: ctx } as never)).ok).toBe(true);
+		const hiddenInternalSelect = locator(false);
+		const hiddenSelectContext = context({ resolveSelector: vi.fn(() => hiddenInternalSelect) });
+		expect((await registry.actions.get('select')!.run({ action: { select: { css: 'select[name="mode"]', internal: true, label: 'Automatic' } }, step, context: hiddenSelectContext } as never)).ok).toBe(true);
+		expect(hiddenInternalSelect.evaluate).toHaveBeenCalledOnce();
+		expect(hiddenInternalSelect.selectOption).not.toHaveBeenCalled();
 		expect((await registry.actions.get('select')!.run({ action: { select: { label: 'Mode' } }, step, context: ctx } as never)).ok).toBe(true);
 		expect((await registry.actions.get('select')!.run({ action: { select: { label: 'Mode' } }, step, context: { ...ctx, resolveSelector: () => ({ waitFor: async () => undefined }) } } as never)).ok).toBe(false);
 		expect((await registry.actions.get('select')!.run({ action: {}, step, context: ctx } as never)).diagnostics[0]?.code).toBe('scene.invalid_action');
@@ -186,7 +190,9 @@ describe('built-in scene plugin handlers', () => {
 
 	it('runs browser and operation assertions', async () => {
 		const registry = createBuiltInScenePluginRegistry();
-		expect((await registry.assertions.get('visible')!.run({ value: [{ text: 'Hello' }], step, context: context() } as never)).status).toBe('passed');
+		const delayedLocator = locator();
+		expect((await registry.assertions.get('visible')!.run({ value: [{ text: 'Hello' }], step, context: context({ resolveSelector: () => delayedLocator, scene: { id: 'scene-a', runtime: { timeouts: { stepSeconds: 90 } } } }) } as never)).status).toBe('passed');
+		expect(delayedLocator.waitFor).toHaveBeenCalledWith({ state: 'visible', timeout: 30_000 });
 		expect((await registry.assertions.get('visible')!.run({ value: [], step, context: context() } as never)).status).toBe('passed');
 		expect((await registry.assertions.get('visible')!.run({ value: null, step, context: context() } as never)).status).toBe('passed');
 		expect((await registry.assertions.get('visible')!.run({ value: [{ text: 'Missing' }], step, context: context({ resolveSelector: () => locator(false) }) } as never)).status).toBe('failed');
@@ -199,7 +205,9 @@ describe('built-in scene plugin handlers', () => {
 		} as never);
 		expect(nullAssertion).toMatchObject({ status: 'failed', message: 'Assertion failed.' });
 		expect((await registry.assertions.get('urlIncludes')!.run({ value: '/app', step, context: context() } as never)).status).toBe('passed');
-		const now = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValue(10_000);
+		const eventualUrl = vi.fn().mockReturnValueOnce('http://local/loading').mockReturnValue('http://local/ready');
+		expect((await registry.assertions.get('urlIncludes')!.run({ value: '/ready', step, context: context({ session: { page: { url: eventualUrl } } }) } as never)).status).toBe('passed');
+		const now = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValue(30_000);
 		expect((await registry.assertions.get('urlIncludes')!.run({ value: '/missing', step, context: context({ session: { page: { url: () => 'http://local/app' } } }) } as never)).status).toBe('failed');
 		now.mockRestore();
 		const opContext = context();

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { isAbsolute, relative, resolve } from 'node:path';
+import { isAbsolute,relative,resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { releaseAgentWorktree } from '../../../operations/packages/agent-worktree-release.ts';
 

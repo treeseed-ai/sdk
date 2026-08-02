@@ -1,12 +1,12 @@
 import { resolveMachineEnvironmentValues } from "../../../operations/services/configuration/config-runtime.ts";
-import { cloudflareApiRequest, listD1Databases, queueName, resolveConfiguredCloudflareAccountId, scopeFromTarget } from "../../../operations/services/hosting/deployment/deploy.ts";
-import type { ReconcileAdapter, ReconcileAdapterInput, ReconcileUnitType } from "../../support/contracts/contracts.ts";
-import { runHostedReconcileGate, runHostedVerifyGate } from "../../providers/release-private.ts";
-import { workflowFingerprint } from './build-release-gate-adapter.ts';
-import { genericObservedState, genericResult, noopDiff, nowIso, sleepMs, toDeployTarget } from '../hosting/to-deploy-target.ts';
-import { summarizeVerification } from '../support/summarize-verification.ts';
+import { cloudflareApiRequest,listD1Databases,queueName,resolveConfiguredCloudflareAccountId,scopeFromTarget } from "../../../operations/services/hosting/deployment/deploy.ts";
+import { runHostedReconcileGate,runHostedVerifyGate } from "../../providers/release-private.ts";
+import type { ReconcileAdapter,ReconcileAdapterInput,ReconcileUnitType } from "../../support/contracts/contracts.ts";
 import { verificationCheck } from '../hosting/first-railway-domain-string.ts';
+import { genericObservedState,genericResult,noopDiff,nowIso,sleepMs,toDeployTarget } from '../hosting/to-deploy-target.ts';
 import { listCloudflareQueuesViaApi } from '../support/normalize-turnstile-domains.ts';
+import { summarizeVerification } from '../support/summarize-verification.ts';
+import { workflowFingerprint } from './build-release-gate-adapter.ts';
 
 export function buildWorkflowMetaAdapter(): ReconcileAdapter {
 	const unitTypes: ReconcileUnitType[] = [
