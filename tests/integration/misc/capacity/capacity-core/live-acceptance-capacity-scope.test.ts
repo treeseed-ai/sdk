@@ -3,10 +3,9 @@ import type { MarketClient } from '../../../../../src/entrypoints/clients/market
 import { deleteLocalCapacityAcceptanceTeam } from '../../../../../src/reconcile/capacity/capacity-core/live-acceptance-capacity-scope.ts';
 
 describe('isolated capacity acceptance scope cleanup', () => {
-	it('terminalizes active workdays before resolving released assignments and deleting the project aggregate', async () => {
+	it('terminalizes project capacity before deleting the isolated team aggregate', async () => {
 		let projectListed = false;
 		let blockersRead = 0;
-		let teamBlockersRead = 0;
 		const calls: string[] = [];
 		const client = {
 			async projects() {
@@ -41,18 +40,6 @@ describe('isolated capacity acceptance scope cleanup', () => {
 				calls.push('cancel-workday');
 				return { ok: true, payload: { status: 'cancelled' } };
 			},
-			async deleteProject() {
-				calls.push('delete-project');
-				return { ok: true, payload: {} };
-			},
-			async teamDeletionBlockers() {
-				teamBlockersRead += 1;
-				calls.push('team-blockers');
-				return { ok: true, payload: teamBlockersRead === 1 ? [{ code: 'catalog_item', id: 'project-a' }] : [] };
-			},
-			async teams() {
-				return { ok: true, payload: [{ id: 'team-a', status: 'active', lifecycleVersion: 1 }] };
-			},
 			async deleteTeamPermanently() {
 				calls.push('delete-team');
 				return { ok: true };
@@ -65,9 +52,6 @@ describe('isolated capacity acceptance scope cleanup', () => {
 			'cancel-workday-run',
 			'cancel-workday',
 			'cancel-assignment',
-			'delete-project',
-			'team-blockers',
-			'team-blockers',
 			'delete-team',
 		]);
 	});

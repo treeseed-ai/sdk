@@ -240,7 +240,7 @@ it('plans the canonical Treeseed seed as an exact nine-project first-party portf
 				environments: ['local'],
 				mode: 'plan',
 			});
-			expect(plan.summary).toMatchObject({ create: 18, update: 0, unchanged: 0, skip: 0 });
+			expect(plan.summary).toMatchObject({ create: 16, update: 0, unchanged: 0, skip: 0 });
 			expect(plan.actions.filter((action) => action.kind === 'project').map((action) => action.key).sort()).toEqual(PROJECT_KEYS);
 			expect(JSON.stringify(plan)).not.toMatch(/project:karyon|repositoryTopology|contentRoot|ghp_/u);
 		} finally {

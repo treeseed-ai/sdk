@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defaultCiWorkflows } from '../../../src/workflow/operations/packages/release-admin-message.ts';
 import { validateStagingWorkflowContracts } from '../../../src/workflow/operations/recovery/fail-workflow-run.ts';
 import { gateForSavedRootReport } from '../../../src/workflow/operations/repositories/gates-for-saved-repository-reports.ts';
-import { hostedWorkflowsForSavedRepository } from '../../../src/workflow/operations/projects/projects-core/connect-market-project.ts';
+import { hostedWorkflowsForSavedRepository } from '../../../src/workflow/operations/support/workflow-helpers.ts';
 import type { RepositorySaveReport } from '../../../src/operations/services/repositories/repository-save-orchestrator.ts';
 
 function savedMarketReport(path = '/workspace/market'): RepositorySaveReport {

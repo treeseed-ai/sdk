@@ -241,6 +241,7 @@ describe('live reconciliation acceptance harness', () => {
 			if (url.includes('/d1/database')) return Response.json({ success: true, result: [] });
 			if (url.includes('/queues')) return Response.json({ success: true, result: { queues: [] } });
 			if (url.includes('/challenges/widgets')) return Response.json({ success: true, result: [] });
+			if (url.includes('/cfd_tunnel')) return Response.json({ success: true, result: [] });
 			if (url.includes('/dns_records')) return Response.json({ success: true, result: [] });
 			throw new Error(`Unexpected Cloudflare request: ${method} ${url}`);
 		}) as unknown as typeof fetch;

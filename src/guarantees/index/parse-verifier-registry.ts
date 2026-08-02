@@ -67,8 +67,9 @@ export function loadGuaranteeVerifierRegistry(input: { workspaceRoot: string; pa
 
 export function discoverGuarantees(input: { workspaceRoot: string; filter?: GuaranteeFilter } = { workspaceRoot: process.cwd() }): GuaranteeRegistryReport {
 	const workspaceRoot = resolve(input.workspaceRoot);
-	const guaranteePaths = walkFiles(workspaceRoot, (filePath) => filePath.endsWith('.guarantee.yaml'));
-	const verifierPaths = walkFiles(workspaceRoot, (filePath) => filePath.endsWith('.verifiers.yaml'));
+	const manifestPaths = walkFiles(workspaceRoot, (filePath) => /\.(?:guarantee|verifiers)\.yaml$/u.test(filePath));
+	const guaranteePaths = manifestPaths.filter((filePath) => filePath.endsWith('.guarantee.yaml'));
+	const verifierPaths = manifestPaths.filter((filePath) => filePath.endsWith('.verifiers.yaml'));
 	const guarantees = guaranteePaths.map((path) => loadGuaranteeManifest({ workspaceRoot, path }));
 	const verifierRegistries = verifierPaths.map((path) => loadVerifierRegistry(workspaceRoot, path));
 	return validateGuaranteeRegistry({ workspaceRoot, guarantees, verifierRegistries, filter: input.filter });

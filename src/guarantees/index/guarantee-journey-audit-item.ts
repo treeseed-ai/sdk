@@ -237,7 +237,16 @@ export const KNOWN_DEVICES = new Set<GuaranteeDevice>(['desktop_chromium', 'desk
 
 export const KNOWN_VERIFIER_KINDS = new Set<GuaranteeVerifierKind>(['apiAcceptanceCase', 'vitestCase', 'nodeScript', 'packageScript', 'scene', 'manualEvidence', 'todo']);
 
-export const EXCLUDED_DIRS = new Set(['node_modules', 'dist', 'build', '.treeseed', 'coverage']);
+export const EXCLUDED_DIRS = new Set([
+	'.astro',
+	'.git',
+	'.treeseed',
+	'build',
+	'coverage',
+	'dist',
+	'node_modules',
+	'target',
+]);
 
 export function diagnostic(severity: GuaranteeDiagnosticSeverity, code: string, message: string, path?: string, sourcePath?: string): GuaranteeDiagnostic {
 	return { severity, code, message, ...(path ? { path } : {}), ...(sourcePath ? { sourcePath } : {}) };
