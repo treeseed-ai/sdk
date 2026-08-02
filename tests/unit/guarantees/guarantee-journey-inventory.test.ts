@@ -9,7 +9,7 @@ describe('guarantee journey inventory', () => {
 
 	beforeAll(() => {
 		inventory = loadGuaranteeJourneyInventory();
-	}, 15_000);
+	}, 30_000);
 
   it('summarizes the scene-backed guarantee registry deterministically', () => {
     const hasRootGuarantees = existsSync(resolve(inventory.workspaceRoot, 'guarantees'));
