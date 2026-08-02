@@ -166,24 +166,55 @@ export function pullRebaseFromOrigin(node: RepositorySaveNode, options: Reposito
 export function pushCurrentBranch(node: RepositorySaveNode, options: RepositorySaveOptions, branch: string, tagName?: string | null) {
 	ensureWritableRemote(node, options);
 	const remoteBranchExists = remoteBranchExistsSafe(node.path, branch);
+	const localHead = headCommit(node.path);
+	let remoteHead: string | null = null;
+	let branchAlreadyPublished = false;
+	if (remoteBranchExists) {
+		runCapturedCommand(node, options, 'push', 'git', ['fetch', 'origin', `refs/heads/${branch}:refs/remotes/origin/${branch}`]);
+		remoteHead = runGit(['rev-parse', '--verify', `refs/remotes/origin/${branch}`], { cwd: node.path, capture: true }).trim();
+		if (localHead === remoteHead) {
+			branchAlreadyPublished = true;
+		} else {
+			try {
+				runGit(['merge-base', '--is-ancestor', localHead, remoteHead], { cwd: node.path, capture: true });
+				branchAlreadyPublished = true;
+			} catch {
+				try {
+					runGit(['merge-base', '--is-ancestor', remoteHead, localHead], { cwd: node.path, capture: true });
+				} catch {
+					throw new RepositorySaveError(`Cannot publish ${node.name}: origin/${branch} diverged from the verified local commit.`, {
+						details: { branch, localHead, remoteHead },
+					});
+				}
+			}
+		}
+	}
 	let pushedTag = false;
-	const args = remoteBranchExists
-		? ['push', 'origin', branch]
-		: ['push', '-u', 'origin', branch];
+	const args = branchAlreadyPublished
+		? ['push', 'origin']
+		: remoteBranchExists
+			? ['push', 'origin', branch]
+			: ['push', '-u', 'origin', branch];
 	if (tagName) {
 		const state = tagState(node.path, tagName);
-		assertTagStateMatchesHead(node, tagName, state, headCommit(node.path));
+		assertTagStateMatchesHead(node, tagName, state, localHead);
 		if (!state.remoteExists) {
 			args.push(tagName);
 			pushedTag = true;
 		}
 	}
-	runCapturedCommand(node, options, 'push', 'git', args);
+	if (!branchAlreadyPublished || pushedTag) {
+		runCapturedCommand(node, options, 'push', 'git', args);
+	} else {
+		emitProgress(options, node, 'push', `Skipped origin/${branch}; it already contains verified commit ${localHead.slice(0, 12)}.`);
+	}
 	return {
 		createdRemoteBranch: !remoteBranchExists,
 		pushed: true,
 		pushedTag,
 		combinedBranchAndTagPush: pushedTag,
+		branchAlreadyPublished,
+		remoteHead,
 	};
 }
 
