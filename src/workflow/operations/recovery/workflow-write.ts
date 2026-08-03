@@ -11,6 +11,7 @@ import { resolveWorkflowState } from "../../../operations/workflow-state.ts";
 import type { SaveInput,TaskBranchMetadata,WorkflowCiMode,WorkflowContext,WorkflowOperationId,WorkflowReleaseCandidateMode,WorkflowResult } from "../../../operations/workflow.ts";
 import { checkedOutWorkspacePackageRepos } from "../../session.ts";
 import { normalizeExecutionMode } from '../support/create-repo-report.ts';
+import { inspectWorkspacePackageArtifacts,recordWorkspacePackageArtifacts } from './workspace-artifact-state.ts';
 
 export type WorkflowWrite = NonNullable<WorkflowContext['write']>;
 
@@ -123,10 +124,16 @@ export function ensureWorkflowWorkspacePackageArtifacts(root: string, helpers: W
 		const packageDir = resolve(root, entry.dir);
 		if (!existsSync(resolve(packageDir, 'package.json'))) continue;
 		if (!readPackageScript(root, entry.dir, 'build:dist')) continue;
-		const missing = entry.artifacts.filter((artifact) => !existsSync(resolve(packageDir, artifact)));
-		if (missing.length === 0) continue;
-		helpers.write(`[workspace][build] Building ${entry.name} artifacts for local workspace links.`);
+		const revision = headCommit(packageDir);
+		const inspection = inspectWorkspacePackageArtifacts(root, {
+			packageName: entry.name,
+			revision,
+			artifactPaths: entry.artifacts.map((artifact) => resolve(packageDir, artifact)),
+		});
+		if (inspection.current) continue;
+		helpers.write(`[workspace][build] Building ${entry.name} artifacts for local workspace links (${inspection.reason}).`);
 		run('npm', ['--prefix', packageDir, 'run', 'build:dist'], { cwd: root });
+		recordWorkspacePackageArtifacts(root, entry.name, revision);
 	}
 }
 

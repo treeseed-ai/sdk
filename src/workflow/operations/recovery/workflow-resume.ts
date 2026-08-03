@@ -110,16 +110,17 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 			const locks = (['worktree', 'shared'] as const).map((scope) => ({
 				scope, 				inspection: inspectWorkflowLock(root, { scope }),
 			}));
+			const activeRunIds = new Set(locks
+				.filter((entry) => entry.inspection.active && entry.inspection.lock?.runId)
+				.map((entry) => entry.inspection.lock!.runId));
 			const lock = locks.find((entry) => entry.inspection.active)?.inspection
 				?? locks.find((entry) => entry.inspection.stale)?.inspection
 				?? locks[0]!.inspection;
-			const hasActiveLock = locks.some((entry) => entry.inspection.active);
 			const recoveryJournals = input.pruneStale === true
 				? listWorkflowRunJournals(root)
 				: listRecentWorkflowRunJournals(root, 200);
-			const orphanedRunningRuns = hasActiveLock
-				? []
-				: recoveryJournals.filter((journal) => journal.status === 'running');
+			const orphanedRunningRuns = recoveryJournals
+				.filter((journal) => journal.status === 'running' && !activeRunIds.has(journal.runId));
 			const prunedOrphanedRuns = input.pruneStale === true
 				? orphanedRunningRuns.map((journal) => {
 					const classification = {
@@ -143,7 +144,9 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 				}).filter((entry): entry is never => entry !== null);
 			const journals = recoveryJournals;
 			const actionableJournals = journals.filter((journal) =>
-				journal.status !== 'completed' && !journal.classification?.archivedAt);
+				journal.status !== 'completed'
+				&& !journal.classification?.archivedAt
+				&& !activeRunIds.has(journal.runId));
 			const session = resolveWorkflowSession(root);
 			const currentHeads = Object.fromEntries(
 				[createWorkspaceRootRepoReport(root), ...createWorkspacePackageReports(root)]

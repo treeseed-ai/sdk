@@ -15,6 +15,7 @@ import { resolveWorkflowPaths } from '../../../../src/workflow/policy.ts';
 import { acquireWorkflowLock, createWorkflowRunJournal, releaseWorkflowLock, updateWorkflowRunJournal } from '../../../../src/workflow/runs.ts';
 import { runWorkspaceSavePreflight } from '../../../../src/operations/services/hosting/deployment/save-deploy-preflight.ts';
 import { inspectDetachedHeadRepair, mergeBranchIntoTarget, reattachDetachedHeadIfSafe } from '../../../../src/operations/services/operations/git-workflow.ts';
+import { inspectWorkspacePackageArtifacts, recordWorkspacePackageArtifacts } from '../../../../src/workflow/operations/recovery/workspace-artifact-state.ts';
 import {
 	createDefaultMachineConfig,
 	ensureSecretSessionForConfig,
@@ -210,6 +211,18 @@ it('requires explicit resume for the newest failed same-branch save', async () =
 it('surfaces active workflow locks through recover and blocks concurrent mutating commands', async () => {
 		const { work } = createWorkflowRepo();
 		const workflow = workflowFor(work);
+		createWorkflowRunJournal(work, {
+			runId: 'save-lock-test',
+			command: 'save',
+			input: { message: 'active save' },
+			session: {
+				root: work,
+				mode: 'root-only',
+				branchName: git(work, ['branch', '--show-current']),
+				repos: [{ name: '@treeseed/market', path: work, branchName: git(work, ['branch', '--show-current']) }],
+			},
+			steps: [{ id: 'save-root', description: 'Save root', repoName: '@treeseed/market', repoPath: work, branch: null, resumable: true }],
+		});
 		const lock = acquireWorkflowLock(work, 'save', 'save-lock-test');
 		expect(lock.acquired).toBe(true);
 
@@ -217,6 +230,9 @@ it('surfaces active workflow locks through recover and blocks concurrent mutatin
 			const recoverResult = await workflow.recover();
 			expect(recoverResult.payload.lock.active).toBe(true);
 			expect(recoverResult.payload.lock.lock?.runId).toBe('save-lock-test');
+			expect(recoverResult.payload.interruptedRuns).toEqual([]);
+			expect(recoverResult.payload.staleRuns).toEqual([]);
+			expect(recoverResult.payload.obsoleteRuns).toEqual([]);
 			await expect(workflow.switchTask({ branch: 'feature/blocked-lock' })).rejects.toMatchObject({
 				code: 'workflow_locked',
 			});
@@ -224,4 +240,28 @@ it('surfaces active workflow locks through recover and blocks concurrent mutatin
 			releaseWorkflowLock(work, 'save-lock-test');
 		}
 	}, 360000);
+
+it('rebuilds workspace artifacts when their package revision changes', () => {
+	const root = mkdtempSync(join(tmpdir(), 'treeseed-workspace-artifacts-'));
+	const artifact = resolve(root, 'packages', 'sdk', 'dist', 'index.js');
+	mkdirSync(resolve(artifact, '..'), { recursive: true });
+	writeFileSync(artifact, 'export {};\n', 'utf8');
+
+	expect(inspectWorkspacePackageArtifacts(root, {
+		packageName: '@treeseed/sdk',
+		revision: 'revision-one',
+		artifactPaths: [artifact],
+	})).toMatchObject({ current: false, reason: 'missing-state' });
+	recordWorkspacePackageArtifacts(root, '@treeseed/sdk', 'revision-one');
+	expect(inspectWorkspacePackageArtifacts(root, {
+		packageName: '@treeseed/sdk',
+		revision: 'revision-one',
+		artifactPaths: [artifact],
+	})).toMatchObject({ current: true, reason: 'current' });
+	expect(inspectWorkspacePackageArtifacts(root, {
+		packageName: '@treeseed/sdk',
+		revision: 'revision-two',
+		artifactPaths: [artifact],
+	})).toMatchObject({ current: false, reason: 'revision-changed', recordedRevision: 'revision-one' });
+});
 });
