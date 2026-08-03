@@ -16,6 +16,7 @@ import { workflowStage } from '../workspace-lifecycle/workflow-stage.ts';
 import { workflowSwitch } from '../workspace-lifecycle/workflow-switch.ts';
 import { workflowUpdate } from '../workspace-lifecycle/workflow-update.ts';
 import { WorkflowOperationHelpers } from './workflow-write.ts';
+import { recoverFailedSaveRebases } from './recover-save-integration.ts';
 
 export async function workflowResume(helpers: WorkflowOperationHelpers, input: ResumeInput) {
 	try {
@@ -119,6 +120,7 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 			const recoveryJournals = input.pruneStale === true
 				? listWorkflowRunJournals(root)
 				: listRecentWorkflowRunJournals(root, 200);
+			const integrationRecovery = recoverFailedSaveRebases(recoveryJournals);
 			const orphanedRunningRuns = recoveryJournals
 				.filter((journal) => journal.status === 'running' && !activeRunIds.has(journal.runId));
 			const prunedOrphanedRuns = input.pruneStale === true
@@ -207,6 +209,7 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 					lock,
 					locks: locks.map((entry) => ({ scope: entry.scope, ...entry.inspection })),
 					clearedStaleLocks, 					interruptedRuns, 					staleRuns, 					obsoleteRuns,
+					integrationRecovery,
 					prunedRuns: [...prunedOrphanedRuns, ...prunedRuns],
 					markedObsoleteRun, 					selectedRun, 					runCount: countWorkflowRunJournals(root),
 					scannedRunCount: journals.length,

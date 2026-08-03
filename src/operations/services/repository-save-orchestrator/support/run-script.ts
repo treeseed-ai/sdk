@@ -149,6 +149,19 @@ export function pullRebaseFromOrigin(node: RepositorySaveNode, options: Reposito
 	}
 	try {
 		runCapturedCommand(node, options, 'rebase', 'git', ['fetch', 'origin', `refs/heads/${branch}:refs/remotes/origin/${branch}`]);
+		const localHead = headCommit(node.path);
+		const remoteHead = runGit(['rev-parse', '--verify', `refs/remotes/origin/${branch}`], { cwd: node.path, capture: true }).trim();
+		try {
+			runGit(['merge-base', '--is-ancestor', remoteHead, localHead], { cwd: node.path, capture: true });
+			emitProgress(options, node, 'rebase', `Skipped rebase because local HEAD already contains origin/${branch}.`);
+			return {
+				remoteBranchExisted: true,
+				pulledRebase: false,
+				remoteAlreadyContained: true,
+			};
+		} catch {
+			// The local branch does not yet contain the remote head, so integration is required.
+		}
 		runCapturedCommand(node, options, 'rebase', 'git', ['rebase', `refs/remotes/origin/${branch}`]);
 		return {
 			remoteBranchExisted: true,
@@ -156,9 +169,21 @@ export function pullRebaseFromOrigin(node: RepositorySaveNode, options: Reposito
 		};
 	} catch (error) {
 		const report = collectMergeConflictReport(node.path);
-		throw new RepositorySaveError(formatMergeConflictReport(report, node.path, branch), {
+		let rebaseAborted = false;
+		if (report.rebaseInProgress) {
+			try {
+				runGit(['rebase', '--abort'], { cwd: node.path });
+				rebaseAborted = true;
+			} catch {
+				// Preserve the original conflict report when Git cannot restore the pre-rebase state.
+			}
+		}
+		const recoveryDetail = rebaseAborted
+			? '\nTreeseed restored the exact pre-rebase commit; resolve the divergence through `trsd update` before saving again.'
+			: '';
+		throw new RepositorySaveError(`${formatMergeConflictReport(report, node.path, branch)}${recoveryDetail}`, {
 			exitCode: 12,
-			details: { branch, report, originalError: error instanceof Error ? error.message : String(error) },
+			details: { branch, report, rebaseAborted, originalError: error instanceof Error ? error.message : String(error) },
 		});
 	}
 }

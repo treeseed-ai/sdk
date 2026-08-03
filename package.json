@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.12.63-dev.bugfix-stage-worktree-recovery.20260803T042758Z",
+  "version": "0.12.63-dev.feature-treeseed-guide-editorial-agents.20260803T063235Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
