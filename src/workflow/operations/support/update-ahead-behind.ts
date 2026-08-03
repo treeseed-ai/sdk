@@ -4,6 +4,7 @@ import { type WorkflowSession } from "../../session.ts";
 import { workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
 import { WorkflowError } from '../recovery/workflow-write.ts';
 import { UpdateRepoResult,UpdateStrategy,gitOutput,localRemoteRefExists,sourceBranchExists,updateChangedFiles,updateConflictedFiles,updateHead,updateStatusLines } from '../workspace-lifecycle/workflow-switch.ts';
+import { resolveGeneratedDependencyMergeConflict } from './resolve-generated-dependency-conflict.ts';
 
 export function updateAheadBehind(repoDir: string, branch: string, sourceRef: string) {
 	if (!localRemoteRefExists(repoDir, sourceRef.replace(/^origin\//u, ''))) {
@@ -126,12 +127,17 @@ export function mergeUpdateRepo(input: {
 	});
 	if (merge.status !== 0) {
 		const conflict = formatUpdateConflict(input.name, input.repoDir, input.sourceBranch, input.branch);
-		throw new WorkflowError('update', 'merge_conflict', conflict.message, {
-			details: {
-				repo: input.name, 				path: input.repoDir, 				files: conflict.files, 				status: conflict.status, 				sourceBranch: input.sourceBranch, 				targetBranch: input.branch,
-			},
-			exitCode: 12,
-		});
+		const generatedResolution = input.strategy === 'merge'
+			? resolveGeneratedDependencyMergeConflict(input.repoDir, conflict.files)
+			: null;
+		if (!generatedResolution) {
+			throw new WorkflowError('update', 'merge_conflict', conflict.message, {
+				details: {
+					repo: input.name, 					path: input.repoDir, 					files: conflict.files, 					status: conflict.status, 					sourceBranch: input.sourceBranch, 					targetBranch: input.branch,
+				},
+				exitCode: 12,
+			});
+		}
 	}
 	const afterHead = updateHead(input.repoDir);
 	const changed = beforeHead !== afterHead;
