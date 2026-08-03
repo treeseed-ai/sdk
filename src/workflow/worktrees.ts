@@ -4,6 +4,7 @@ import { copyFileSync,existsSync,mkdirSync,readFileSync,rmSync,writeFileSync } f
 import { dirname,resolve } from 'node:path';
 import { runRepositoryGit } from '../operations/services/operations/git-runner.ts';
 import { discoverPackageAdapters } from '../operations/services/reconciliation/package-adapters.ts';
+import { checkedOutTemplateRepositories } from '../operations/services/support/managed-repositories.ts';
 import { repoRoot } from '../operations/services/treedx/workspaces/workspace-save.ts';
 import { sortWorkspacePackages,workspacePackages,workspaceRoot } from '../operations/services/treedx/workspaces/workspace-tools.ts';
 import type { WorkflowWorktreeMode } from '../operations/workflow.ts';
@@ -127,6 +128,15 @@ export function checkoutManagedPackageBranches(worktreePath: string, branchName:
 			name: adapter.id,
 			packageJson: {},
 			relativeDir: adapter.relativeDir,
+		});
+	}
+	for (const template of checkedOutTemplateRepositories(worktreePath)) {
+		if (packages.has(template.name)) continue;
+		packages.set(template.name, {
+			dir: template.dir,
+			name: template.name,
+			packageJson: {},
+			relativeDir: template.relativeDir,
 		});
 	}
 	for (const pkg of sortWorkspacePackages([...packages.values()])) {

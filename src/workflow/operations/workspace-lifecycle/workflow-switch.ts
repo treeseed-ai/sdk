@@ -1,5 +1,5 @@
 import { classifyGitMode,runGitOk,runRepositoryGit } from "../../../operations/services/operations/git-runner.ts";
-import { assertCleanWorktree,branchExists,checkoutNewTaskBranchWithChanges,checkoutTaskBranchFromStaging,headCommit,PRODUCTION_BRANCH,remoteBranchExists,STAGING_BRANCH } from "../../../operations/services/operations/git-workflow.ts";
+import { assertCleanWorktree,branchExists,checkoutNewTaskBranchWithChanges,checkoutTaskBranchFromStaging,headCommit,PRODUCTION_BRANCH,reconcileCleanDetachedSubmodules,remoteBranchExists,STAGING_BRANCH } from "../../../operations/services/operations/git-workflow.ts";
 import { checkedOutManagedWorkflowRepos } from "../../../operations/services/support/managed-repositories.ts";
 import { currentBranch,hasMeaningfulChanges } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
 import { workspaceRoot } from "../../../operations/services/treedx/workspaces/workspace-tools.ts";
@@ -27,13 +27,14 @@ export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: S
 			if (!branchName) {
 				workflowError('switch', 'validation_failed', 'Treeseed switch requires a branch name.');
 			}
+			const executionMode = normalizeExecutionMode(input);
+			if (executionMode !== 'plan') reconcileCleanDetachedSubmodules(root);
 			reattachRepairablePackageRepos(root, [branchName, STAGING_BRANCH, PRODUCTION_BRANCH], {
 				operation: 'switch', 				onProgress: (line, stream) => helpers.write(line, stream), 				throwOnBlocker: true,
 			});
 			const session = resolveWorkflowSession(root);
 			const preview = input.preview === true;
 			const adoptChanges = input.adoptChanges === true;
-			const executionMode = normalizeExecutionMode(input);
 			if (executionMode !== 'plan' && !adoptChanges && shouldDispatchSwitchToManagedWorktree(root, input, helpers.context.env)) {
 				const managed = ensureManagedWorkflowWorktree({
 					root, 					branchName, 					mode: input.worktreeMode, 					env: helpers.context.env,
@@ -140,8 +141,9 @@ export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: S
 					if (!report) {
 						continue;
 					}
+					const shouldAdoptRepoChanges = adoptChanges && hasMeaningfulChanges(managedRepo.dir);
 					const packageSwitch = await executeJournalStep(root, workflowRun.runId, `switch-${report.name}`, () =>
-						(adoptChanges ? checkoutNewTaskBranchWithChanges : checkoutTaskBranchFromStaging)(managedRepo.dir, branchName, {
+						(shouldAdoptRepoChanges ? checkoutNewTaskBranchWithChanges : checkoutTaskBranchFromStaging)(managedRepo.dir, branchName, {
 							createIfMissing: input.createIfMissing !== false, 							pushIfCreated: false,
 						}),
 					);
