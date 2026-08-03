@@ -16,6 +16,7 @@ import { acquireWorkflowLock, createWorkflowRunJournal, releaseWorkflowLock, upd
 import { runWorkspaceSavePreflight } from '../../../../src/operations/services/hosting/deployment/save-deploy-preflight.ts';
 import { inspectDetachedHeadRepair, mergeBranchIntoTarget, reattachDetachedHeadIfSafe } from '../../../../src/operations/services/operations/git-workflow.ts';
 import { inspectWorkspacePackageArtifacts, recordWorkspacePackageArtifacts } from '../../../../src/workflow/operations/recovery/workspace-artifact-state.ts';
+import { resolveGeneratedDependencyMergeConflict } from '../../../../src/workflow/operations/support/resolve-generated-dependency-conflict.ts';
 import {
 	createDefaultMachineConfig,
 	ensureSecretSessionForConfig,
@@ -283,5 +284,62 @@ it('rebuilds workspace artifacts when their package revision changes', () => {
 		revision: 'revision-two',
 		artifactPaths: [artifact],
 	})).toMatchObject({ current: false, reason: 'revision-changed', recordedRevision: 'revision-one' });
+});
+
+it('resolves generated dependency conflicts while preserving task-side pins', () => {
+	const root = mkdtempSync(join(tmpdir(), 'treeseed-generated-merge-'));
+	git(root, ['init']);
+	git(root, ['config', 'user.email', 'test@example.com']);
+	git(root, ['config', 'user.name', 'Test']);
+	const writeDependencies = (sdkRevision: string) => {
+		writeFileSync(resolve(root, 'package.json'), `${JSON.stringify({
+			name: 'merge-fixture',
+			dependencies: { '@treeseed/sdk': `github:treeseed-ai/sdk#${sdkRevision}` },
+		}, null, 2)}\n`, 'utf8');
+		writeFileSync(resolve(root, 'package-lock.json'), `${JSON.stringify({ lockfileVersion: 3, sdkRevision }, null, 2)}\n`, 'utf8');
+	};
+	writeDependencies('base');
+	git(root, ['add', '.']);
+	git(root, ['commit', '-m', 'base']);
+	git(root, ['branch', 'staging']);
+	git(root, ['checkout', 'staging']);
+	writeDependencies('staging');
+	git(root, ['add', '.']);
+	git(root, ['commit', '-m', 'staging dependency']);
+	const stagingRevision = git(root, ['rev-parse', 'HEAD']);
+	git(root, ['checkout', '-b', 'feature', 'HEAD~1']);
+	writeDependencies('feature');
+	git(root, ['add', '.']);
+	git(root, ['commit', '-m', 'feature dependency']);
+	spawnSync('git', ['merge', '--no-edit', 'staging'], { cwd: root, encoding: 'utf8' });
+
+	const result = resolveGeneratedDependencyMergeConflict(root, ['package-lock.json', 'package.json']);
+
+	expect(result).toMatchObject({ resolved: true, strategy: 'preserve-verified-task-generated-state' });
+	expect(JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')).dependencies['@treeseed/sdk']).toContain('#feature');
+	expect(git(root, ['merge-base', '--is-ancestor', stagingRevision, 'HEAD'])).toBe('');
+});
+
+it('does not hide source conflicts behind generated dependency resolution', () => {
+	const root = mkdtempSync(join(tmpdir(), 'treeseed-unsafe-merge-'));
+	git(root, ['init']);
+	git(root, ['config', 'user.email', 'test@example.com']);
+	git(root, ['config', 'user.name', 'Test']);
+	writeFileSync(resolve(root, 'source.ts'), 'export const value = "base";\n', 'utf8');
+	git(root, ['add', '.']);
+	git(root, ['commit', '-m', 'base']);
+	git(root, ['branch', 'staging']);
+	git(root, ['checkout', 'staging']);
+	writeFileSync(resolve(root, 'source.ts'), 'export const value = "staging";\n', 'utf8');
+	git(root, ['add', '.']);
+	git(root, ['commit', '-m', 'staging source']);
+	git(root, ['checkout', '-b', 'feature', 'HEAD~1']);
+	writeFileSync(resolve(root, 'source.ts'), 'export const value = "feature";\n', 'utf8');
+	git(root, ['add', '.']);
+	git(root, ['commit', '-m', 'feature source']);
+	spawnSync('git', ['merge', '--no-edit', 'staging'], { cwd: root, encoding: 'utf8' });
+
+	expect(resolveGeneratedDependencyMergeConflict(root, ['source.ts'])).toBeNull();
+	expect(existsSync(resolve(root, '.git', 'MERGE_HEAD'))).toBe(true);
 });
 });
