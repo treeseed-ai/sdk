@@ -74,7 +74,27 @@ it('adopts dirty staging work into a new recovery branch without rewriting files
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('recovery/save-stage-release');
 		expect(readFileSync(resolve(work, 'recovery.txt'), 'utf8')).toBe('root recovery\n');
 		expect(readFileSync(resolve(work, 'packages', 'sdk', 'recovery.txt'), 'utf8')).toBe('sdk recovery\n');
-	}, 360000);
+}, 360000);
+
+it('adopts dirty staging work while attaching clean detached repositories normally', async () => {
+	const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+	git(work, ['checkout', 'staging']);
+	const sdkRoot = resolve(work, 'packages', 'sdk');
+	for (const dirName of ['ui', 'core', 'admin', 'cli', 'agent', 'api', 'treedx']) {
+		git(resolve(work, 'packages', dirName), ['checkout', 'staging']);
+	}
+	git(sdkRoot, ['checkout', '--detach', 'origin/staging']);
+	writeFileSync(resolve(work, 'recovery.txt'), 'root recovery\n');
+
+	await workflowFor(work).switchTask({
+		branch: 'recovery/detached-clean-package',
+		adoptChanges: true,
+		worktreeMode: 'off',
+	});
+
+	expect(git(sdkRoot, ['branch', '--show-current'])).toBe('recovery/detached-clean-package');
+	expect(readFileSync(resolve(work, 'recovery.txt'), 'utf8')).toBe('root recovery\n');
+}, 360000);
 
 it('does not auto-resume a failed save when the workspace has new edits', async () => {
 		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });

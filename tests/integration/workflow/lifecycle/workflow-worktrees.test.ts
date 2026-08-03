@@ -60,6 +60,14 @@ function createPackageRepo(root: string, name: string) {
 	return { origin, work };
 }
 
+function addSubmodule(work: string, origin: string, relativePath: string) {
+	git(work, ['-c', 'protocol.file.allow=always', 'submodule', 'add', origin, relativePath]);
+	git(work, ['config', 'protocol.file.allow', 'always']);
+	git(work, ['add', '-A']);
+	git(work, ['commit', '-m', `add ${relativePath} submodule`]);
+	git(work, ['push', 'origin', 'staging']);
+}
+
 describe('workflow managed worktrees', () => {
 	it('creates and resumes a managed worktree from staging', () => {
 		const { work } = createRepo();
@@ -175,6 +183,31 @@ artifacts:
 		}
 
 		expect(git(resolve(created.worktreePath, 'packages/treedx'), ['branch', '--show-current'])).toBe('feature/treedx-worktree');
+	}, 30000);
+
+	it('attaches template submodules to the requested managed-worktree branch', () => {
+		const { root, work } = createRepo();
+		const template = createPackageRepo(root, 'engineering-template');
+		writeFileSync(resolve(template.work, 'treeseed.template.yaml'), 'id: engineering\nname: Engineering\n', 'utf8');
+		git(template.work, ['add', '-A']);
+		git(template.work, ['commit', '-m', 'add template manifest']);
+		git(template.work, ['push', 'origin', 'staging']);
+		addSubmodule(work, template.origin, 'starters/engineering');
+
+		const previousProtocol = process.env.GIT_ALLOW_PROTOCOL;
+		process.env.GIT_ALLOW_PROTOCOL = 'file:git:ssh:https';
+		try {
+			const created = ensureManagedWorkflowWorktree({
+				root: work,
+				branchName: 'feature/template-worktree',
+				mode: 'on',
+			});
+			expect(git(resolve(created.worktreePath, 'starters/engineering'), ['branch', '--show-current']))
+				.toBe('feature/template-worktree');
+		} finally {
+			if (previousProtocol == null) delete process.env.GIT_ALLOW_PROTOCOL;
+			else process.env.GIT_ALLOW_PROTOCOL = previousProtocol;
+		}
 	}, 30000);
 
 	it('rejects duplicate same-branch ownership in another active worktree', () => {
