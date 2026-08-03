@@ -40,22 +40,31 @@ export async function verifyLocalTreeDxProjectContent(
 	const resolvedRef = typeof response.resolvedRef === 'string' ? response.resolvedRef : '';
 	if (!/^[a-f0-9]{40}$/u.test(resolvedRef)) throw new Error(`TreeDX did not resolve an immutable commit for ${project.slug}.`);
 	const ref = project.defaultRef ?? 'refs/heads/main';
-	const [searchStatus, searchProbe, graphProbe] = await Promise.all([
+	const frontmatterSource = desiredFiles.find((file) => /^---\r?\n/u.test(file.content));
+	const [searchStatus, searchProbe, graphProbe, frontmatterProbe] = await Promise.all([
 		client.getSearchIndexStatus({ repoId: repositoryId, ref }),
 		client.searchRepositoryFiles({ repoId: repositoryId, ref, paths: project.seedPaths?.map((path) => `${path}/**`),
 			query: 'TreeSeed', limit: 1, includeBody: false }),
 		client.queryGraph({ repoId: repositoryId, ref, query: 'TreeSeed', options: { limit: 1 } }),
+		frontmatterSource
+			? client.readRepositoryFiles({ repoId: repositoryId, ref, paths: [frontmatterSource.path], encoding: 'utf8', parseFrontmatter: true })
+			: Promise.resolve(null),
 	]);
+	const parsedFile = recordValue(frontmatterProbe?.file ?? (Array.isArray(frontmatterProbe?.files) ? frontmatterProbe.files[0] : null));
+	const parsedFrontmatter = recordValue(parsedFile.frontmatter);
+	const frontmatterVerified = !frontmatterSource
+		|| (Object.keys(parsedFrontmatter).length > 0 && !parsedFile.frontmatterError && frontmatterProbe?.resolvedRef === resolvedRef);
 	if (!searchStatus.ready || searchStatus.stale || searchStatus.resolvedRef !== resolvedRef
 		|| (searchStatus.sourceCommit && searchStatus.sourceCommit !== resolvedRef)
 		|| searchProbe.resolvedRef !== resolvedRef || !graphProbe.graphVersion
-		|| (searchStatus.graphVersion && graphProbe.graphVersion !== searchStatus.graphVersion)) {
+		|| (searchStatus.graphVersion && graphProbe.graphVersion !== searchStatus.graphVersion)
+		|| !frontmatterVerified) {
 		throw new Error(`TreeDX graph/search state is not at the exact repository commit for ${project.slug}.`);
 	}
 	return {
 		...verifyLocalTreeDxSeedFiles(desiredFiles, observedFiles),
 		ref, resolvedRef, graphVersion: graphProbe.graphVersion, searchIndexVersion: searchStatus.indexVersion,
-		seedDigest: project.seedDigest ?? null,
+		seedDigest: project.seedDigest ?? null, frontmatterVerified,
 	};
 }
 

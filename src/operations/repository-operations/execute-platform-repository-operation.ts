@@ -12,7 +12,7 @@ export async function executePlatformRepositoryOperation(
 		throw new Error('Repository operation requires a repository descriptor with name and cloneUrl.');
 	}
 	assertRepositoryWriteMode(input, options);
-	const { repoPath, branch: baseBranch } = await syncRepository(input.repository, options.workspaceRoot);
+	const { repoPath, branch: baseBranch } = await syncRepository(input.repository, options.workspaceRoot, options.operationId);
 	let output: Record<string, unknown>;
 	if (operation === 'write_content_record') {
 		const collection = String(input.collection ?? '');

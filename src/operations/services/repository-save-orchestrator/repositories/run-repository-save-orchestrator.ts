@@ -111,6 +111,7 @@ export async function runRepositorySaveOrchestrator(options: RepositorySaveOptio
 		? (state.reports.get(rootNode.id) ?? createReport(rootNode))
 		: createReport({
 			id: '.',
+			checkoutAliases: ['.'],
 			name: '@treeseed/market',
 			path: gitRoot,
 			relativePath: '.',

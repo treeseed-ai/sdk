@@ -153,3 +153,20 @@ export type * from '../projects/projects-core/project-workflow.ts';
 export type * from '../operations/operations-types.ts';
 
 export type * from '../operations/workflow.ts';
+
+export {
+repositoryIdentityKey,
+resolveRepositoryIdentity,
+type RepositoryIdentity,
+type RepositoryIdentityProvider
+} from '../repositories/repository-identity.ts';
+
+export {
+assertIsolatedRepositoryStorage,
+repositoryStorageOverlap,
+type ManagedRepositoryStorageMarker,
+type RepositoryCheckoutRecord,
+type RepositoryCustody,
+type RepositoryHandoff,
+type RepositoryRefLease
+} from '../repositories/repository-custody.ts';

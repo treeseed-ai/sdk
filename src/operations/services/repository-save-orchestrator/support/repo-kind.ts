@@ -47,6 +47,7 @@ export type ReleaseBumpLevel = 'major' | 'minor' | 'patch';
 
 export type RepositorySaveNode = {
 	id: string;
+	checkoutAliases: string[];
 	name: string;
 	path: string;
 	relativePath: string;

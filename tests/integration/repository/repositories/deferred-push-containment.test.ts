@@ -16,6 +16,7 @@ function testTempBase() {
 function node(path: string, remoteUrl: string): RepositorySaveNode {
 	return {
 		id: path,
+		checkoutAliases: [path],
 		name: 'shared-fixture',
 		path,
 		relativePath: path,

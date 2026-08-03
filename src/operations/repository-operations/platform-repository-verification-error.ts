@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname,isAbsolute,relative,resolve,sep } from 'node:path';
 import { CONTENT_COLLECTION_SET,CONTENT_DEFAULTS,CONTENT_RELATION_POLICIES,DECISION_TYPE_VALUES,NormalizedPlatformContentInput,PlatformRepositoryClaim,PlatformRepositoryClaimInput,PlatformRepositoryDescriptor,PlatformRepositoryVerificationResult,execFileAsync } from './exec-file-async.ts';
+import { resolveRepositoryIdentity } from '../../repositories/repository-identity.ts';
 
 export class PlatformRepositoryVerificationError extends Error {
 	readonly verification: PlatformRepositoryVerificationResult;
@@ -147,15 +148,36 @@ export function normalizePlatformContentInput(collection: string, body: Record<s
 }
 
 export function derivePlatformRepositoryKey(repository: PlatformRepositoryDescriptor) {
-	return [repository.provider ?? 'git', repository.owner ?? 'local', repository.name]
-		.join('-')
+	try {
+		return resolveRepositoryIdentity(repository.cloneUrl).canonicalKey;
+	} catch {
+		return [repository.provider ?? 'git', repository.owner ?? 'local', repository.name]
+			.join('-')
+			.toLowerCase()
+			.replace(/[^a-z0-9.-]+/gu, '-')
+			.replace(/^-+|-+$/gu, '') || 'repository';
+	}
+}
+
+function platformRepositoryStorageKey(repository: PlatformRepositoryDescriptor) {
+	return derivePlatformRepositoryKey(repository)
+		.replace(/[^a-z0-9.-]+/giu, '-')
 		.toLowerCase()
-		.replace(/[^a-z0-9.-]+/gu, '-')
 		.replace(/^-+|-+$/gu, '') || 'repository';
 }
 
 export function resolvePlatformRepositoryWorkspacePath(workspaceRoot: string, repository: PlatformRepositoryDescriptor) {
-	return resolve(workspaceRoot, 'repositories', derivePlatformRepositoryKey(repository), 'repo');
+	return resolve(workspaceRoot, 'repositories', platformRepositoryStorageKey(repository), 'repo');
+}
+
+export function resolvePlatformOperationCheckoutPath(workspaceRoot: string, operationId: string) {
+	const safeOperationId = operationId.replace(/[^A-Za-z0-9_.-]+/gu, '-').replace(/^-+|-+$/gu, '');
+	if (!safeOperationId) throw new Error('Platform repository operation id is invalid.');
+	return resolve(workspaceRoot, 'operations', safeOperationId, 'checkout');
+}
+
+export function resolvePlatformRepositoryMirrorPath(workspaceRoot: string, repository: PlatformRepositoryDescriptor) {
+	return resolve(workspaceRoot, 'repositories', platformRepositoryStorageKey(repository), 'mirror.git');
 }
 
 export function createPlatformRepositoryClaim(input: PlatformRepositoryClaimInput): PlatformRepositoryClaim {
@@ -186,10 +208,28 @@ export async function runGit(args: string[], cwd: string) {
 	return `${result.stdout}${result.stderr}`.trim();
 }
 
-export async function syncRepository(repository: PlatformRepositoryDescriptor, workspaceRoot: string) {
-	const repoPath = resolvePlatformRepositoryWorkspacePath(workspaceRoot, repository);
+export async function syncRepository(repository: PlatformRepositoryDescriptor, workspaceRoot: string, operationId?: string) {
+	const repoPath = operationId
+		? resolvePlatformOperationCheckoutPath(workspaceRoot, operationId)
+		: resolvePlatformRepositoryWorkspacePath(workspaceRoot, repository);
 	const branch = repository.defaultBranch || 'staging';
 	await mkdir(dirname(repoPath), { recursive: true });
+	if (operationId) {
+		const mirrorPath = resolvePlatformRepositoryMirrorPath(workspaceRoot, repository);
+		await mkdir(dirname(mirrorPath), { recursive: true });
+		if (!existsSync(mirrorPath)) {
+			await runGit(['clone', '--mirror', repository.cloneUrl, mirrorPath], workspaceRoot);
+		} else {
+			await runGit(['remote', 'set-url', 'origin', repository.cloneUrl], mirrorPath);
+			await runGit(['fetch', 'origin', '+refs/heads/*:refs/heads/*', '--prune'], mirrorPath);
+		}
+		if (!existsSync(resolve(repoPath, '.git'))) {
+			try { await runGit(['clone', '--branch', branch, '--single-branch', mirrorPath, repoPath], workspaceRoot); }
+			catch { await runGit(['clone', mirrorPath, repoPath], workspaceRoot); await runGit(['checkout', branch], repoPath).catch(() => ''); }
+			await runGit(['remote', 'set-url', 'origin', repository.cloneUrl], repoPath);
+		}
+		return { repoPath, branch, mirrorPath };
+	}
 	if (!existsSync(resolve(repoPath, '.git'))) {
 		try {
 			await runGit(['clone', '--branch', branch, '--single-branch', repository.cloneUrl, repoPath], workspaceRoot);

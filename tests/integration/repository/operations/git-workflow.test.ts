@@ -280,4 +280,19 @@ describe('git workflow task helpers', () => {
 		})).toThrow(/origin\/staging moved/u);
 		expect(git(work, ['rev-parse', 'origin/staging'])).not.toBe(featureHead);
 	});
+
+	it('resumes exact staging promotion when a prior attempt already pushed the desired commit', () => {
+		const { work } = makeRepo();
+		const before = git(work, ['rev-parse', 'origin/staging']);
+		const featureHead = git(work, ['rev-parse', 'feature/search-filters']);
+		git(work, ['push', 'origin', `${featureHead}:refs/heads/staging`]);
+
+		const result = promoteCommitToBranchWithExpectedHead(work, {
+			commitSha: featureHead,
+			targetBranch: 'staging',
+			expectedBefore: before,
+		});
+
+		expect(result).toMatchObject({ pushed: false, verified: true, actualBefore: featureHead });
+	});
 });

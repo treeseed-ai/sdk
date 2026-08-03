@@ -214,6 +214,17 @@ export function promoteCommitToBranchWithExpectedHead(repoDir: string, input: {
 	const targetBranch = input.targetBranch ?? STAGING_BRANCH;
 	fetchOrigin(repoDir);
 	const actualBefore = remoteBranchExists(repoDir, targetBranch) ? remoteHeadCommit(repoDir, targetBranch) : null;
+	if (actualBefore === input.commitSha) {
+		return {
+			repoDir,
+			targetBranch,
+			expectedBefore: input.expectedBefore,
+			actualBefore,
+			commitSha: input.commitSha,
+			pushed: false,
+			verified: true,
+		};
+	}
 	if (actualBefore !== input.expectedBefore) {
 		throw new Error(`Refusing to promote ${targetBranch}; origin/${targetBranch} moved from ${input.expectedBefore ?? '(missing)'} to ${actualBefore ?? '(missing)'}.`);
 	}

@@ -1,11 +1,14 @@
 import { runRepositoryGit } from '../operations/git-runner.ts';
+import { resolveRepositoryIdentity } from '../../../repositories/repository-identity.ts';
 
 export function parseGitHubRepositoryFromRemote(remoteUrl: string | null | undefined) {
 	if (!remoteUrl) return null;
-	const sshMatch = remoteUrl.match(/^git@github\.com:([^/]+)\/(.+?)(?:\.git)?$/u);
-	if (sshMatch) return `${sshMatch[1]}/${sshMatch[2]}`;
-	const httpsMatch = remoteUrl.match(/^https:\/\/github\.com\/([^/]+)\/(.+?)(?:\.git)?$/u);
-	return httpsMatch ? `${httpsMatch[1]}/${httpsMatch[2]}` : null;
+	try {
+		const identity = resolveRepositoryIdentity(remoteUrl);
+		return identity.provider === 'github' ? `${identity.owner}/${identity.repository}` : null;
+	} catch {
+		return null;
+	}
 }
 
 export function resolveGitHubRepositorySlug(tenantRoot: string) {

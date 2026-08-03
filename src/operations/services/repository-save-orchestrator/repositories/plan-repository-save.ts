@@ -70,6 +70,7 @@ export function planRepositorySave(options: RepositorySaveOptions): RepositorySa
 			const branch = node.branch || options.branch;
 			const notes = [
 				`${branchModeLabel(node.branchMode)} on top-level ${options.branch}`,
+				...(node.checkoutAliases.length > 1 ? [`canonical repository target for ${node.checkoutAliases.join(', ')}`] : []),
 				...(current && current !== branch ? [`current branch ${current} will be switched to ${branch}`] : []),
 				...(node.kind === 'package' && plannedVersion?.includes('-dev.')
 					? ['development and staging dependency refs use the package commit SHA; no Git tag is created']
@@ -149,6 +150,7 @@ export async function refreshAndValidateRootWorkspaceLockfileForSave(options: {
 	const packageJson = existsSync(packageJsonPath) ? readJson(packageJsonPath) : null;
 	const node: RepositorySaveNode = {
 		id: '.',
+		checkoutAliases: ['.'],
 		name: repoDisplayName(repoDir, packageJson),
 		path: repoDir,
 		relativePath: '.',

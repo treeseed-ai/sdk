@@ -8,6 +8,7 @@ import { buildLocalComposeLaunchEnv,checkHttpHealthWithRetry,localComposeBuildPo
 import { verificationCheck } from '../hosting/first-railway-domain-string.ts';
 import { genericObservedState,genericResult,noopDiff } from '../hosting/to-deploy-target.ts';
 import { summarizeVerification } from '../support/summarize-verification.ts';
+import { ensureManagedRepositoryStorage,managedRepositoryStorageStatus } from './managed-repository-storage.ts';
 
 export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
 	return {
@@ -17,6 +18,7 @@ export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
 			return unitType === 'local-docker-compose' && providerId === 'local';
 		},
 		refresh(input) {
+			const managedStorage = managedRepositoryStorageStatus(input.context.tenantRoot, input.unit.spec.managedStorage);
 			const composeFiles = resolveLocalComposeFiles(input);
 			const composeFilesExist = composeFiles.length > 0 && composeFiles.every((composeFile) => existsSync(composeFile));
 			const cwd = resolve(input.context.tenantRoot, String(input.unit.spec.cwd ?? '.'));
@@ -42,6 +44,7 @@ export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
 					...missingComposeFiles.map((composeFile) => `Compose file is missing: ${composeFile}`),
 					...requiredPathWarnings,
 					...docker.warnings,
+					...managedStorage.issues,
 				]),
 				status: prerequisitesAvailable ? (hasContainers ? 'ready' : 'pending') : 'error',
 				live: {
@@ -56,6 +59,7 @@ export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
 					ps,
 					hasContainers,
 					configHash: config?.stdout?.trim() || null,
+					managedStorage,
 					requiredPaths,
 				},
 			};
@@ -64,6 +68,9 @@ export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
 			if (!input.observed.exists) return { action: 'blocked', reasons: input.observed.warnings, before: input.observed.live, after: input.unit.spec };
 			if (input.unit.spec.resetData === true) {
 				return { action: 'update', reasons: ['disposable compose data reset requested'], before: input.observed.live, after: input.unit.spec };
+			}
+			if ((input.observed.live.managedStorage as { ready?: boolean } | undefined)?.ready === false) {
+				return { action: 'update', reasons: ['managed repository storage requires reconciliation'], before: input.observed.live, after: input.unit.spec };
 			}
 			if (input.unit.spec.forceRecreate === true) {
 				return { action: 'update', reasons: ['compose force recreate requested'], before: input.observed.live, after: input.unit.spec };
@@ -111,6 +118,7 @@ export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
 			}
 			if (reset) resetLocalComposeDataDir(input);
 			ensureLocalComposeDataDir(input);
+			ensureManagedRepositoryStorage(input.context.tenantRoot, input.unit.spec.managedStorage);
 			const result = runDockerCompose({
 				composeFiles,
 				projectName,

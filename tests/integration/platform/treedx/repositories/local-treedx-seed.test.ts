@@ -7,6 +7,7 @@ import {
 	localTreeDxSeedDigest,
 	verifyLocalTreeDxSeedFiles,
 } from '../../../../../src/platform/treedx/repositories/local-treedx-seed.ts';
+import { verifyLocalTreeDxProjectContent } from '../../../../../src/reconcile/builtin-adapters/projects/knowledge/verify-local-tree-dx-project-content.ts';
 
 describe('local TreeDX seed desired state', () => {
 	it('is stable across traversal order and changes for content additions, edits, and deletions', () => {
@@ -56,5 +57,30 @@ describe('local TreeDX seed desired state', () => {
 			missingPaths: ['src/content/agents/researcher.mdx'],
 			mismatchedPaths: ['src/content/agents/engineer.mdx'],
 		});
+	});
+
+	it('requires TreeDX to parse seeded Markdown frontmatter at the exact reconciled commit', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-local-treedx-frontmatter-'));
+		const contentPath = 'src/content/knowledge';
+		mkdirSync(join(root, contentPath), { recursive: true });
+		writeFileSync(join(root, contentPath, 'guide.md'), '---\nid: guide.seed\ntitle: Seed Guide\n---\n\n# Seed Guide\n');
+		const commit = 'a'.repeat(40);
+		const client = {
+			readRepositoryFiles: async (input: { parseFrontmatter?: boolean }) => ({ resolvedRef: commit, files: [{
+				path: `${contentPath}/guide.md`, content: '---\nid: guide.seed\ntitle: Seed Guide\n---\n\n# Seed Guide\n',
+				...(input.parseFrontmatter ? { frontmatter: { id: 'guide.seed', title: 'Seed Guide' }, body: '# Seed Guide\n' } : {}),
+			}] }),
+			getSearchIndexStatus: async () => ({ ready: true, stale: false, resolvedRef: commit, sourceCommit: commit, indexVersion: 'index-1', graphVersion: 'graph-1' }),
+			searchRepositoryFiles: async () => ({ resolvedRef: commit, results: [] }),
+			queryGraph: async () => ({ graphVersion: 'graph-1', results: [] }),
+		};
+		try {
+			await expect(verifyLocalTreeDxProjectContent(client as never, {
+				slug: 'guide', repositoryName: 'guide', localRoot: root, contentPath,
+				seedPaths: [contentPath], defaultRef: 'refs/heads/main',
+			}, 'repo-guide')).resolves.toMatchObject({ verified: true, frontmatterVerified: true, resolvedRef: commit });
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
 	});
 });

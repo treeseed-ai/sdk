@@ -6,8 +6,10 @@ generateRepositoryCommitMessage
 import {
 PRODUCTION_BRANCH,
 branchExists,
+headCommit,
 remoteBranchExists
 } from '../../operations/git-workflow.ts';
+import { repositoryIdentityKey } from '../../../../repositories/repository-identity.ts';
 import {
 discoverPackageAdapters
 } from '../../reconciliation/package-adapters.ts';
@@ -63,7 +65,7 @@ export function discoverRepositorySaveNodes(
 		}
 	}
 
-	const nodes = [...repoDirs.entries()].map(([relativePath, repoDir]) => {
+	const discoveredNodes = [...repoDirs.entries()].map(([relativePath, repoDir]) => {
 		const packageJsonPath = resolve(repoDir, 'package.json');
 		const packageJson = existsSync(packageJsonPath) ? readJson(packageJsonPath) : null;
 		const adapter = packageAdaptersByDir.get(resolve(repoDir)) ?? null;
@@ -79,6 +81,7 @@ export function discoverRepositorySaveNodes(
 				: 'package-dev-save';
 		return {
 			id: relativePath,
+			checkoutAliases: [relativePath],
 			name: managed?.kind === 'template' || managed?.kind === 'fixture'
 				? managed.name
 				: adapter?.id ?? repoDisplayName(repoDir, packageJson),
@@ -102,17 +105,50 @@ export function discoverRepositorySaveNodes(
 			plannedDependencySpec: null,
 		} satisfies RepositorySaveNode;
 	});
+	const nodes = deduplicateRepositorySaveNodes(discoveredNodes);
 
 	return deriveRepositoryGraph(root, nodes);
+}
+
+function deduplicateRepositorySaveNodes(nodes: RepositorySaveNode[]) {
+	const groups = new Map<string, RepositorySaveNode[]>();
+	for (const node of nodes) {
+		const identityKey = repositoryIdentityKey(node.remoteUrl);
+		const key = node.id === '.' || !identityKey
+			? `checkout:${node.id}`
+			: `repository:${identityKey}`;
+		groups.set(key, [...(groups.get(key) ?? []), node]);
+	}
+	return [...groups.values()].map((group) => {
+		if (group.length === 1) return group[0]!;
+		const heads = new Set(group.map((node) => headCommit(node.path)));
+		if (heads.size !== 1) {
+			throw new RepositorySaveError(`Repository aliases do not resolve to one exact revision: ${group.map((node) => node.relativePath).join(', ')}.`, {
+				details: { aliases: group.map((node) => ({ path: node.relativePath, head: headCommit(node.path), remoteUrl: node.remoteUrl })) },
+			});
+		}
+		const dirty = group.filter((node) => node.dirty);
+		if (dirty.length > 1) {
+			throw new RepositorySaveError(`Repository aliases contain changes in more than one checkout: ${dirty.map((node) => node.relativePath).join(', ')}.`, {
+				details: { aliases: group.map((node) => ({ path: node.relativePath, dirty: node.dirty, remoteUrl: node.remoteUrl })) },
+			});
+		}
+		const representative = dirty[0] ?? [...group].sort((left, right) => left.relativePath.localeCompare(right.relativePath))[0]!;
+		return {
+			...representative,
+			checkoutAliases: group.map((node) => node.relativePath).sort(),
+		};
+	});
 }
 
 export function deriveRepositoryGraph(root: string, nodes: RepositorySaveNode[]) {
 	const byPackageName = new Map(nodes
 		.filter((node) => node.kind === 'package')
 		.map((node) => [String(node.packageJson?.name), node]));
-	const byId = new Map(nodes.map((node) => [node.id, node]));
+	const byId = new Map(nodes.flatMap((node) => node.checkoutAliases.map((id) => [id, node] as const)));
 	const dependencies = new Map(nodes.map((node) => [node.id, new Set<string>()]));
 	const dependents = new Map(nodes.map((node) => [node.id, new Set<string>()]));
+	const submoduleDependencies = new Map(nodes.map((node) => [node.id, new Set<string>()]));
 
 	for (const node of nodes) {
 		for (const field of dependencyFields(node.packageJson)) {
@@ -132,6 +168,7 @@ export function deriveRepositoryGraph(root: string, nodes: RepositorySaveNode[])
 			if (!dependency || dependency.id === node.id) continue;
 			dependencies.get(node.id)?.add(dependency.id);
 			dependents.get(dependency.id)?.add(node.id);
+			submoduleDependencies.get(node.id)?.add(dependency.id);
 		}
 	}
 
@@ -139,9 +176,7 @@ export function deriveRepositoryGraph(root: string, nodes: RepositorySaveNode[])
 		...node,
 		dependencies: [...(dependencies.get(node.id) ?? [])].sort(),
 		dependents: [...(dependents.get(node.id) ?? [])].sort(),
-		submoduleDependencies: [...(dependencies.get(node.id) ?? [])]
-			.filter((id) => node.id === '.' || id.startsWith(`${node.id}/`))
-			.sort(),
+		submoduleDependencies: [...(submoduleDependencies.get(node.id) ?? [])].sort(),
 	}));
 }
 

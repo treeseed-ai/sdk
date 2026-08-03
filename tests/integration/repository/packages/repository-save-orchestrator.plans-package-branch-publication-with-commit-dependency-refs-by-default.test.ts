@@ -7,6 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 import { fileURLToPath } from 'node:url';
+import { pathToFileURL } from 'node:url';
 
 import { describe, expect, it, vi } from 'vitest';
 
@@ -36,6 +37,7 @@ function git(cwd: string, args: string[]) {
 function node(input: Partial<RepositorySaveNode> & Pick<RepositorySaveNode, 'id' | 'name'>): RepositorySaveNode {
 	return {
 		id: input.id,
+		checkoutAliases: [input.id],
 		name: input.name,
 		path: `/tmp/${input.id}`,
 		relativePath: input.id,
@@ -61,6 +63,46 @@ function writeJson(path: string, value: Record<string, unknown>) {
 	writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 describe('repository save orchestrator helpers', () => {
+it('plans one repository target for equivalent submodule checkout aliases', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-alias-root-'));
+		const origin = mkdtempSync(join(tmpdir(), 'treeseed-save-alias-origin-'));
+		const source = mkdtempSync(join(tmpdir(), 'treeseed-save-alias-source-'));
+		git(origin, ['init', '--bare']);
+		git(source, ['init', '-b', 'staging']);
+		git(source, ['config', 'user.email', 'test@example.com']);
+		git(source, ['config', 'user.name', 'Test User']);
+		git(source, ['remote', 'add', 'origin', origin]);
+		writeFileSync(resolve(source, 'README.md'), 'shared fixture\n', 'utf8');
+		git(source, ['add', '-A']);
+		git(source, ['commit', '-m', 'chore: initial']);
+		git(source, ['push', '-u', 'origin', 'staging']);
+
+		git(root, ['init', '-b', 'staging']);
+		git(root, ['config', 'user.email', 'test@example.com']);
+		git(root, ['config', 'user.name', 'Test User']);
+		for (const path of ['packages/one/.fixtures/treeseed-fixtures', 'packages/two/.fixtures/treeseed-fixtures']) {
+			mkdirSync(dirname(resolve(root, path)), { recursive: true });
+			git(root, ['clone', '--branch', 'staging', origin, path]);
+		}
+		git(resolve(root, 'packages/two/.fixtures/treeseed-fixtures'), ['remote', 'set-url', 'origin', pathToFileURL(origin).href]);
+		writeFileSync(resolve(root, '.gitmodules'), [
+			'[submodule "one"]',
+			'\tpath = packages/one/.fixtures/treeseed-fixtures',
+			`\turl = ${origin}`,
+			'[submodule "two"]',
+			'\tpath = packages/two/.fixtures/treeseed-fixtures',
+			`\turl = ${pathToFileURL(origin).href}`,
+			'',
+		].join('\n'), 'utf8');
+
+		const fixtures = discoverRepositorySaveNodes(root, root, 'staging').filter((entry) => entry.kind === 'fixture');
+		expect(fixtures).toHaveLength(1);
+		expect(fixtures[0]?.checkoutAliases).toEqual([
+			'packages/one/.fixtures/treeseed-fixtures',
+			'packages/two/.fixtures/treeseed-fixtures',
+		]);
+	});
+
 it('plans package branch publication with commit dependency refs by default', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-plan-package-push-'));
 		const origin = mkdtempSync(join(tmpdir(), 'treeseed-save-plan-package-push-origin-'));

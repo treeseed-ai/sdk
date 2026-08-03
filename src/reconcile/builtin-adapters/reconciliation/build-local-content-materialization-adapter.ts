@@ -1,11 +1,19 @@
 import { existsSync } from 'node:fs';
 import { runRepositoryGit } from "../../../operations/services/operations/git-runner.ts";
 import { runManagedDevAction } from "../../providers/local-private.ts";
-import type { ReconcileAdapter } from "../../support/contracts/contracts.ts";
+import type { ReconcileAdapter,ReconcileAdapterInput } from "../../support/contracts/contracts.ts";
 import { expectedLocalContentOrigin,localContentGitEnvironment,localContentObservedState,localContentSpecRecord,localContentSpecString,originMatches,runLocalContentClone } from '../build/local-compose-build-policy.ts';
 import { verificationCheck } from '../hosting/first-railway-domain-string.ts';
 import { genericObservedState,genericResult,noopDiff,nowIso } from '../hosting/to-deploy-target.ts';
 import { summarizeVerification } from '../support/summarize-verification.ts';
+import { ensureManagedRepositoryStorage,managedRepositoryStorageStatus } from './managed-repository-storage.ts';
+
+function localProcessEnvironment(input: ReconcileAdapterInput) {
+	const configured = input.unit.spec.env && typeof input.unit.spec.env === 'object' && !Array.isArray(input.unit.spec.env)
+		? input.unit.spec.env as Record<string, string>
+		: {};
+	return { ...input.context.launchEnv, ...configured };
+}
 
 export function buildLocalContentMaterializationAdapter(): ReconcileAdapter {
 	return {
@@ -123,6 +131,7 @@ export function buildLocalProcessAdapter(): ReconcileAdapter {
 			return unitType === 'local-process' && providerId === 'local';
 		},
 		async refresh(input) {
+			const managedStorage = managedRepositoryStorageStatus(input.context.tenantRoot, input.unit.spec.managedStorage);
 			const surfaces = Array.isArray(input.unit.spec.surfaces)
 				? input.unit.spec.surfaces.filter((entry): entry is string => typeof entry === 'string')
 				: [String(input.unit.spec.processId ?? input.unit.logicalName)];
@@ -131,7 +140,7 @@ export function buildLocalProcessAdapter(): ReconcileAdapter {
 				action: 'status',
 				surfaces,
 				options: typeof input.unit.spec.options === 'object' && input.unit.spec.options ? input.unit.spec.options as Record<string, unknown> : {},
-				env: input.context.launchEnv,
+				env: localProcessEnvironment(input),
 			});
 			const safeStatus = sanitizeManagedDevObservation(status);
 			const instances = Array.isArray(safeStatus.parsed?.instances)
@@ -150,10 +159,14 @@ export function buildLocalProcessAdapter(): ReconcileAdapter {
 					...input.unit.spec,
 					status: safeStatus,
 					sourceClosureDrift,
+					managedStorage,
 				},
 			};
 		},
 		diff(input) {
+			if ((input.observed.live.managedStorage as { ready?: boolean } | undefined)?.ready === false) {
+				return { action: 'update', reasons: ['managed repository storage requires reconciliation'], before: input.observed.live, after: input.unit.spec };
+			}
 			if (input.unit.spec.action === 'restart') {
 				return { action: 'update', reasons: ['local process restart requested'], before: input.observed.live, after: input.unit.spec };
 			}
@@ -166,6 +179,7 @@ export function buildLocalProcessAdapter(): ReconcileAdapter {
 		},
 		async apply(input) {
 			if (input.diff.action === 'noop') return genericResult(input);
+			ensureManagedRepositoryStorage(input.context.tenantRoot, input.unit.spec.managedStorage);
 			const surfaces = Array.isArray(input.unit.spec.surfaces)
 				? input.unit.spec.surfaces.filter((entry): entry is string => typeof entry === 'string')
 				: [String(input.unit.spec.processId ?? input.unit.logicalName)];
@@ -174,7 +188,7 @@ export function buildLocalProcessAdapter(): ReconcileAdapter {
 				action: input.unit.spec.action === 'restart' || input.diff.action === 'update' ? 'restart' : 'start',
 				surfaces,
 				options: typeof input.unit.spec.options === 'object' && input.unit.spec.options ? input.unit.spec.options as Record<string, unknown> : {},
-				env: input.context.launchEnv,
+				env: localProcessEnvironment(input),
 			});
 			return genericResult(input, { ...input.observed.live, managedDev: result });
 		},
@@ -184,7 +198,7 @@ export function buildLocalProcessAdapter(): ReconcileAdapter {
 				action: 'status',
 				surfaces: Array.isArray(input.unit.spec.surfaces) ? input.unit.spec.surfaces.filter((entry): entry is string => typeof entry === 'string') : [],
 				options: typeof input.unit.spec.options === 'object' && input.unit.spec.options ? input.unit.spec.options as Record<string, unknown> : {},
-				env: input.context.launchEnv,
+				env: localProcessEnvironment(input),
 			});
 			const safeStatus = sanitizeManagedDevObservation(status);
 			return summarizeVerification(input.unit.unitId, [
@@ -208,7 +222,7 @@ export function buildLocalProcessAdapter(): ReconcileAdapter {
 					action: 'stop',
 					surfaces,
 					options: typeof input.unit.spec.options === 'object' && input.unit.spec.options ? input.unit.spec.options as Record<string, unknown> : {},
-					env: input.context.launchEnv,
+					env: localProcessEnvironment(input),
 				});
 			}
 			return genericResult({

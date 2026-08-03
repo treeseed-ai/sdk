@@ -36,6 +36,7 @@ function git(cwd: string, args: string[]) {
 function node(input: Partial<RepositorySaveNode> & Pick<RepositorySaveNode, 'id' | 'name'>): RepositorySaveNode {
 	return {
 		id: input.id,
+		checkoutAliases: [input.id],
 		name: input.name,
 		path: `/tmp/${input.id}`,
 		relativePath: input.id,

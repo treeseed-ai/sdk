@@ -18,6 +18,10 @@ import { collectSubmodulePointerChanges,commitContextDependencyUpdates,commitCon
 import { runNpmInstallWithRetry,validateRepositoryLockfile } from '../treedx/repositories/sync-root-workspace-lockfile-metadata.ts';
 import { commitMessageFor,gitDiffSummary } from './discover-repository-save-nodes.ts';
 
+function recordFinalizedCommit(state: SaveState, node: RepositorySaveNode, commitSha: string | null) {
+	for (const path of node.checkoutAliases) state.finalizedCommits.set(path, commitSha);
+}
+
 export async function saveOneRepository(
 	node: RepositorySaveNode,
 	options: RepositorySaveOptions,
@@ -125,7 +129,7 @@ export async function saveOneRepository(
 			await finishRepositorySavePublish(node, options, state, report, { branch, rebase });
 			report.commitSha = headCommit(node.path);
 		}
-		state.finalizedCommits.set(node.relativePath, report.commitSha);
+		recordFinalizedCommit(state, node, report.commitSha);
 		return report;
 	}
 
@@ -146,7 +150,7 @@ export async function saveOneRepository(
 			await finishRepositorySavePublish(node, options, state, report, { branch, rebase });
 			report.commitSha = headCommit(node.path);
 		}
-		state.finalizedCommits.set(node.relativePath, report.commitSha);
+		recordFinalizedCommit(state, node, report.commitSha);
 		return report;
 	}
 	const { changedFiles, diff } = gitDiffSummary(node.path);
@@ -190,7 +194,7 @@ export async function saveOneRepository(
 			await finishRepositorySavePublish(node, options, state, report, { branch, rebase });
 			report.commitSha = headCommit(node.path);
 		}
-		state.finalizedCommits.set(node.relativePath, report.commitSha);
+		recordFinalizedCommit(state, node, report.commitSha);
 		return report;
 	}
 	report.committed = true;
@@ -227,7 +231,7 @@ export async function saveOneRepository(
 	}
 	report.commitSha = headCommit(node.path);
 	report.skippedReason = null;
-	state.finalizedCommits.set(node.relativePath, report.commitSha);
+	recordFinalizedCommit(state, node, report.commitSha);
 	emitProgress(options, node, 'done', `Saved ${report.commitSha?.slice(0, 12) ?? 'current HEAD'}.`);
 	return report;
 }

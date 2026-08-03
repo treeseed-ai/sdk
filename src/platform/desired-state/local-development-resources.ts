@@ -1,12 +1,12 @@
 import { existsSync,readFileSync } from 'node:fs';
-import { basename,resolve as resolvePath } from 'node:path';
+import { resolve as resolvePath } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { redactCapacityProviderEnv,validateAndDigestCapacityProviderManifest } from '../../capacity/providers/capacity-provider.ts';
 import {
 buildProjectLocalContentResources,
 type LocalContentMode,
 } from '../content/local-content-materialization.ts';
-import { DesiredEnvironment,DesiredResource,TemplateUnit,hashJson,resolveLocalGitCommonDir } from './desired-environment.ts';
+import { DesiredEnvironment,DesiredResource,TemplateUnit,hashJson } from './desired-environment.ts';
 import { localTreeDxContentProjects,localTreeDxTemplateContentProjects } from './safe-tree-dx-repository-name.ts';
 import { managedDevSourceClosureDigest } from '../../local-dev/source-closure.ts';
 import { dockerSourceClosureDigest } from './docker-source-closure.ts';
@@ -25,9 +25,9 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 		: null;
 	const capacityProviderManifestDigest = capacityProviderManifestState?.digest ?? null;
 	const capacityProviderConnectionCount = capacityProviderManifestState?.manifest.connections.length ?? 0;
+	const operationsRunnerDataDir = resolvePath(tenantRoot, '.treeseed/local-operations-runner/data');
 	const localSeedPath = resolvePath(tenantRoot, 'seeds/treeseed.yaml');
 	const localSeedModulePath = resolvePath(tenantRoot, 'packages/api/src/market/seeds/apply.ts');
-	const localGitCommonDir = resolveLocalGitCommonDir(tenantRoot);
 	const hostCodexAuthFile = [
 		process.env.TREESEED_CODEX_AUTH_FILE,
 		process.env.CODEX_AUTH_FILE,
@@ -54,13 +54,6 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 		...(hostCodexAuthFile ? {
 			TREESEED_HOST_CODEX_AUTH_FILE: hostCodexAuthFile,
 			TREESEED_CODEX_AUTH_FILE: '/data/codex/auth.json',
-		} : {}),
-		...(localGitCommonDir ? {
-			TREESEED_PROVIDER_WORKSPACE_ABSOLUTE_CONTAINER: tenantRoot,
-			TREESEED_PROVIDER_WORKSPACE_GITDIR_CONTAINER: `/.treeseed/worktrees/${basename(tenantRoot)}`,
-			TREESEED_MARKET_GIT_COMMON_DIR_HOST: localGitCommonDir,
-			TREESEED_MARKET_GIT_COMMON_DIR_ABSOLUTE_CONTAINER: localGitCommonDir,
-			TREESEED_MARKET_GIT_COMMON_DIR_ROOT_CONTAINER: '/.git',
 		} : {}),
 		TREESEED_PROVIDER_CONTAINER_UID: String(process.getuid?.() ?? 1000),
 		TREESEED_PROVIDER_CONTAINER_GID: String(process.getgid?.() ?? 1000),
@@ -90,7 +83,7 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 			serviceId: 'api-postgres',
 			logicalName: 'local API PostgreSQL compose',
 			dependencies: [],
-			spec: {
+				spec: {
 				composeFile: 'packages/api/compose.postgres.yml',
 				projectName: 'treeseed-local-api-postgres',
 				cwd: '.',
@@ -153,6 +146,11 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 				projectRepositoryAccessMode: 'filesystem',
 				baseUrl: 'http://127.0.0.1:4000',
 				dataDir: '.treeseed/local-treedx/data',
+				managedStorage: {
+					custody: 'treedx',
+					hostPath: resolvePath(tenantRoot, '.treeseed/local-treedx/data'),
+					servicePath: '/var/lib/treedx',
+				},
 				healthEndpoint: 'http://127.0.0.1:4000/api/v1/health',
 				auth: localTreeDxApiEnv,
 				projects: [
@@ -176,13 +174,19 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 				projectName: 'treeseed-local-treedx',
 				cwd: 'packages/treedx',
 				dataDir: '.treeseed/local-treedx/data',
+				managedStorage: {
+					custody: 'treedx',
+					hostPath: resolvePath(tenantRoot, '.treeseed/local-treedx/data'),
+					servicePath: '/var/lib/treedx',
+				},
 				ports: [{ host: 4000, container: 4000 }],
 				env: {
 					TREEDX_ALLOW_DEV_VERIFIER_IN_PROD: 'true',
+					TREESEED_TREEDX_HOST_DATA_DIR: resolvePath(tenantRoot, '.treeseed/local-treedx/data'),
 					TREESEED_TREEDX_SOURCE_CLOSURE_DIGEST: treeDxSourceClosureDigest,
 					...localTreeDxApiEnv,
 				},
-				volumes: [{ name: 'treeseed-local-treedx-data', mountPath: '/data', sharedLocalOnly: true }],
+				volumes: [{ name: 'treeseed-local-treedx-data', mountPath: '/var/lib/treedx', sharedLocalOnly: true }],
 				healthChecks: [
 					{ id: 'treedx-api', kind: 'http', url: 'http://127.0.0.1:4000/api/v1/health', attempts: 240, intervalMs: 2_000 },
 				],
@@ -232,6 +236,11 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 				projectName: 'treeseed-capacity-provider',
 				cwd: '.',
 				dataDir: '.treeseed/local-capacity-provider/data',
+				managedStorage: {
+					custody: 'capacity-provider',
+					hostPath: capacityProviderDataDir,
+					servicePath: '/data',
+				},
 				manifestDigest: capacityProviderManifestDigest,
 				buildPolicy: 'missing',
 				devMode: 'typescript',
@@ -279,7 +288,17 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 				stateDir: '.treeseed/dev',
 				logDir: '.treeseed/logs',
 				cwd: id === 'market-web' ? '.' : 'packages/api',
-			},
+				...(id === 'operations-runner' ? {
+					managedStorage: {
+						custody: 'operations-runner',
+						hostPath: operationsRunnerDataDir,
+						servicePath: operationsRunnerDataDir,
+					},
+					env: {
+						TREESEED_PLATFORM_RUNNER_DATA_DIR: operationsRunnerDataDir,
+					},
+				} : {}),
+				},
 			source: { type: 'package-adapter' as const, id },
 		})),
 		...(existsSync(localSeedPath) && existsSync(localSeedModulePath) ? [{

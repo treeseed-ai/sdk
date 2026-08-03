@@ -198,7 +198,7 @@ describe('canonical desired resource graph', () => {
 			kind: 'local-seed-bootstrap',
 			provider: 'local',
 			packageId: '@treeseed/api',
-			dependencies: ['local-process:api'],
+			dependencies: ['local-process:api', 'local-treedx:team-primary'],
 			spec: expect.objectContaining({
 				seedName: 'treeseed',
 				environments: 'local',
@@ -219,6 +219,14 @@ describe('canonical desired resource graph', () => {
 		const capacityProviderCompose = graph.resources.find((entry) => entry.id === 'local-docker-compose:agent-capacity-provider');
 		expect(capacityProviderCompose?.spec).toEqual(expect.objectContaining({
 			manifestDigest: capacityProvider?.spec.manifestDigest,
+			managedStorage: expect.objectContaining({ custody: 'capacity-provider', servicePath: '/data' }),
+		}));
+		expect(graph.resources.find((entry) => entry.id === 'local-docker-compose:treedx')?.spec).toEqual(expect.objectContaining({
+			managedStorage: expect.objectContaining({ custody: 'treedx', servicePath: '/var/lib/treedx' }),
+		}));
+		expect(graph.resources.find((entry) => entry.id === 'local-process:operations-runner')?.spec).toEqual(expect.objectContaining({
+			managedStorage: expect.objectContaining({ custody: 'operations-runner' }),
+			env: expect.objectContaining({ TREESEED_PLATFORM_RUNNER_DATA_DIR: expect.stringContaining('/.treeseed/local-operations-runner/data') }),
 		}));
 		expect(capacityProvider?.spec).not.toHaveProperty('healthEndpoint');
 		const mailpit = graph.resources.find((entry) => entry.id === 'local-docker-compose:mailpit');

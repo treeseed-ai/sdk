@@ -44,7 +44,7 @@ export async function finalizeCleanPackageVersion(
 	report.dependencySpec = reference.spec;
 	state.finalizedVersions.set(node.name, version);
 	state.finalizedReferences.set(node.name, reference);
-	state.finalizedCommits.set(node.relativePath, head);
+	for (const path of node.checkoutAliases) state.finalizedCommits.set(path, head);
 
 	if (finalizedRemotely) {
 		report.pushed = true;
@@ -68,7 +68,7 @@ export async function finalizeCleanPackageVersion(
 	report.dependencySpec = reference.spec;
 	report.skippedReason = 'finalized-partial-save';
 	report.commitSha = headCommit(node.path);
-	state.finalizedCommits.set(node.relativePath, report.commitSha);
+	for (const path of node.checkoutAliases) state.finalizedCommits.set(path, report.commitSha);
 	await finishRepositorySavePublish(node, options, state, report, {
 		branch,
 		rebase: {

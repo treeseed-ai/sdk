@@ -11,6 +11,7 @@ import type { StageInput } from "../../../operations/workflow.ts";
 import { workflowFileExists } from '../support/workflow-helpers.ts';
 import { WorkflowError } from '../recovery/workflow-write.ts';
 import { StageCandidateManifest,StageCiMode,StageCleanupMode,StageRepoPlan,StageVerifyMode } from '../workspace-lifecycle/workflow-close.ts';
+import { repositoryIdentityKey } from '../../../repositories/repository-identity.ts';
 
 export function stagingCandidateWorkflowGates(root: string, manifest: StageCandidateManifest): GitHubActionsWorkflowGate[] {
 	const gates: GitHubActionsWorkflowGate[] = [];
@@ -109,7 +110,8 @@ export function dedupeManagedReposByRemote(repos: ManagedRepository[]) {
 	const seen = new Set<string>();
 	const deduped: ManagedRepository[] = [];
 	for (const repo of repos) {
-		const key = repo.remoteUrl ? `remote:${repo.remoteUrl}` : `path:${repo.dir}`;
+		const identityKey = repositoryIdentityKey(repo.remoteUrl);
+		const key = identityKey ? `remote:${identityKey}` : `path:${resolve(repo.dir)}`;
 		if (seen.has(key)) continue;
 		seen.add(key);
 		deduped.push(repo);

@@ -52,8 +52,9 @@ describe('platform repository operations', () => {
 		const fixture = createRepo();
 		try {
 			const key = derivePlatformRepositoryKey(fixture.descriptor);
-			expect(key).toBe('local-treeseed-fixture');
-			expect(resolvePlatformRepositoryWorkspacePath('/data/runner-01', fixture.descriptor)).toBe('/data/runner-01/repositories/local-treeseed-fixture/repo');
+			const storageKey = key.replace(/[^a-z0-9.-]+/giu, '-').toLowerCase();
+			expect(key).toMatch(/^local\//u);
+			expect(resolvePlatformRepositoryWorkspacePath('/data/runner-01', fixture.descriptor)).toBe(`/data/runner-01/repositories/${storageKey}/repo`);
 			const claim = createPlatformRepositoryClaim({
 				repository: fixture.descriptor,
 				runnerId: 'runner-01',
@@ -61,10 +62,10 @@ describe('platform repository operations', () => {
 				leaseSeconds: 90,
 			});
 			expect(claim).toMatchObject({
-				id: 'local-treeseed-fixture:runner-01',
+				id: `${key}:runner-01`,
 				repositoryKey: key,
 				runnerId: 'runner-01',
-				workspacePath: '/data/runner-01/repositories/local-treeseed-fixture/repo',
+				workspacePath: `/data/runner-01/repositories/${storageKey}/repo`,
 				claimState: 'active',
 				branch: 'staging',
 			});
@@ -88,11 +89,11 @@ describe('platform repository operations', () => {
 				collection: 'notes',
 				normalized,
 				payload: { title: 'Runner note' },
-			}, { workspaceRoot: fixture.workspace });
+			}, { workspaceRoot: fixture.workspace, operationId: 'operation-write-note' });
 			expect(result.changedPaths).toContain('src/content/notes/runner-note.mdx');
 			expect(result.href).toBe('/app/work/notes/runner-note');
 			expect(result.repository).toMatchObject({
-				key: 'local-treeseed-fixture',
+				key: derivePlatformRepositoryKey(fixture.descriptor),
 				provider: 'local',
 				owner: 'treeseed',
 				name: 'fixture',
@@ -108,6 +109,8 @@ describe('platform repository operations', () => {
 				href: '/app/work/notes/runner-note',
 			});
 			const written = resolve(result.repositoryPath, 'src/content/notes/runner-note.mdx');
+			expect(result.repositoryPath).toBe(resolve(fixture.workspace, 'operations/operation-write-note/checkout'));
+			expect(existsSync(resolve(fixture.workspace, 'repositories', derivePlatformRepositoryKey(fixture.descriptor).replace(/[^a-z0-9.-]+/giu, '-').toLowerCase(), 'mirror.git'))).toBe(true);
 			expect(readFileSync(written, 'utf8')).toContain('title: Runner note');
 			expect(existsSync(resolve(fixture.repo, 'src/content/notes/runner-note.mdx'))).toBe(false);
 		} finally {
@@ -441,7 +444,7 @@ describe('platform repository operations', () => {
 					commands: [expect.objectContaining({ exitCode: 7 })],
 				},
 			});
-			expect(git(resolve(fixture.workspace, 'repositories/local-treeseed-fixture/repo'), ['branch', '--list', 'treeseed/failing-verification'])).toBe('');
+			expect(git(resolvePlatformRepositoryWorkspacePath(fixture.workspace, fixture.descriptor), ['branch', '--list', 'treeseed/failing-verification'])).toBe('');
 		} finally {
 			rmSync(fixture.root, { recursive: true, force: true });
 		}

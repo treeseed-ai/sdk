@@ -214,6 +214,7 @@ export interface PlatformRepositoryScaffoldFile {
 export interface PlatformRepositoryOperationOptions {
 	workspaceRoot: string;
 	environment?: string;
+	operationId?: string;
 }
 
 export interface NormalizedPlatformContentInput {
