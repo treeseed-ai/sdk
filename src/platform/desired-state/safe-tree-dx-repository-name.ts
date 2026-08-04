@@ -34,9 +34,11 @@ export function localTreeDxContentProjects(tenantRoot: string) {
 		const repositoryFiles = ['AGENTS.md', 'package.json', ...(existsSync(localRoot) ? readdirSync(localRoot) : []).filter((path) => /^treeseed\..+\.ya?ml$/iu.test(path))]
 			.filter((path) => existsSync(resolvePath(localRoot, path)));
 		const repositoryGuaranteesPath = resolvePath(localRoot, 'guarantees');
+		const agentContractsPath = resolvePath(localRoot, '.treeseed', 'agents', 'artifacts');
 		const seedPaths = [...(existsSync(repositoryDocsPath)
 			? normalizedContentPath === 'docs' || normalizedContentPath.startsWith('docs/') ? ['docs'] : [normalizedContentPath, 'docs']
-			: [normalizedContentPath]), ...(existsSync(repositoryGuaranteesPath) ? ['guarantees'] : []), ...repositoryFiles];
+			: [normalizedContentPath]), ...(existsSync(repositoryGuaranteesPath) ? ['guarantees'] : []),
+			...(existsSync(agentContractsPath) ? ['.treeseed/agents/artifacts'] : []), ...repositoryFiles];
 		return [{
 			projectKey: typeof project.key === 'string' ? project.key : `project:treeseed/${slug}`,
 			slug,

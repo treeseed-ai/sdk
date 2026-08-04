@@ -3,18 +3,20 @@ import { verifyCapacityAcceptanceTerminal } from '../../reconcile/capacity/capac
 
 const TRANSIENT = /fetch failed|timed out|econnreset|econnrefused|socket|temporarily unavailable|http 429|http 5\d\d/iu;
 
-export async function retryAgentLabTerminalVerification<T>(operation: () => Promise<T>, maxAttempts = 5): Promise<T> {
-	let lastError: unknown = new Error('Agent Lab terminal verification was not attempted.');
+export async function retryAgentLabControlPlaneOperation<T>(operation: () => Promise<T>, maxAttempts = 8): Promise<T> {
+	let lastError: unknown = new Error('Agent Lab control-plane operation was not attempted.');
 	for (let attempt = 1; attempt <= Math.max(1, maxAttempts); attempt += 1) {
-		try {
-			return await operation();
-		} catch (error) {
+		try { return await operation(); } catch (error) {
 			lastError = error;
 			if (!TRANSIENT.test(error instanceof Error ? error.message : String(error)) || attempt === maxAttempts) throw error;
-			await new Promise((resolve) => setTimeout(resolve, Math.min(2_000, 200 * (2 ** (attempt - 1)))));
+			await new Promise((resolve) => setTimeout(resolve, Math.min(5_000, 250 * (2 ** (attempt - 1)))));
 		}
 	}
 	throw lastError;
+}
+
+export async function retryAgentLabTerminalVerification<T>(operation: () => Promise<T>, maxAttempts = 5): Promise<T> {
+	return retryAgentLabControlPlaneOperation(operation, maxAttempts);
 }
 
 export function verifyAgentLabTerminal(input: {
