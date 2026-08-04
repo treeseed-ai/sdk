@@ -41,7 +41,19 @@ export function assertionsFor(day: AgentLabWorkdaySnapshot, expectedAgents: stri
 	];
 }
 
-async function hydrateArtifacts(client: MarketClient, projectId: string, repositoryId: string, executions: AgentLabWorkdaySnapshot['executions']) {
+function artifactKey(value: Row) {
+	return `${text(value.contentPath ?? value.path)}:${text(value.ref ?? value.commitSha)}`;
+}
+
+export async function hydrateAgentLabArtifacts(
+	client: MarketClient,
+	projectId: string,
+	repositoryId: string,
+	executions: AgentLabWorkdaySnapshot['executions'],
+	previous: AgentLabWorkdaySnapshot['executions'] = [],
+) {
+	const hydrated = new Map(previous.flatMap((execution) => execution.artifacts.map((entry) => [artifactKey(record(entry)), record(entry)] as const))
+		.filter(([, artifact]) => typeof artifact.content === 'string'));
 	return Promise.all(executions.map(async (execution) => {
 		const lifecycle = record(execution.assignment.lifecycleOutput ?? execution.assignment.lifecycle_output_json);
 		const manifest = record(lifecycle.artifactManifest);
@@ -51,6 +63,8 @@ async function hydrateArtifacts(client: MarketClient, projectId: string, reposit
 		})).values()].filter((entry) => text(entry.contentPath ?? entry.path));
 		const artifacts = await Promise.all(unique.map(async (reference) => {
 			const path = text(reference.contentPath ?? reference.path); const ref = text(reference.ref ?? reference.commitSha);
+			const cached = hydrated.get(artifactKey(reference));
+			if (cached) return { ...reference, ...cached };
 			try {
 				const response = await client.treeDxReadRepositoryFiles(projectId, repositoryId, { paths: [path], ref, encoding: 'utf8', parseFrontmatter: true });
 				const file = (Array.isArray(record(response.payload).files) ? record(response.payload).files : []).map(record).find((entry) => text(entry.path) === path) ?? {};
@@ -86,7 +100,8 @@ export async function refreshAgentLabWorkday(input: {
 			: { collectionError: 'No durable capacity workday identity is available yet.' };
 		const observed = await input.client.workdayRun(input.teamId, input.day.workdayRunId!);
 		const run = record(observed.payload.run); const status = text(run.status) as AgentLabWorkdaySnapshot['status'];
-		const executions = await hydrateArtifacts(input.client, input.projectId, input.repositoryId, applyAgentLabAccounting(await collectAgentLabExecutions(input.client, events, assignments), accounting));
+		const executions = await hydrateAgentLabArtifacts(input.client, input.projectId, input.repositoryId,
+			applyAgentLabAccounting(await collectAgentLabExecutions(input.client, events, assignments), accounting), input.day.executions);
 		return {
 			...input.day, status: status || input.day.status, startedAt: text(run.startedAt) || input.day.startedAt,
 			finishedAt: text(run.completedAt) || (TERMINAL.has(status) ? new Date().toISOString() : null), activity: events,

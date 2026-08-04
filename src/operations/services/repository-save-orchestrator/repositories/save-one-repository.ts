@@ -13,6 +13,7 @@ import { isNoOpGitCommitError,runCapturedCommand } from '../runtime/with-short-p
 import { canManagePackageJsonVersion,createReport,dependencyFields,ensureWritableRemote,packageVersionTagConflictsWithHead,selectPackageVersion } from '../support/classify-repo-kind.ts';
 import { applyPackageVersion,hasNpmLockfile,hasStagedChanges,isRootWorkspaceRepository,shouldSkipNetworkInstall,syncDirectGitDependencyLockfileEntries,updateDependencyReferences,validateStandaloneGitDependencyLockfile } from '../support/has-staged-changes.ts';
 import { RepositorySaveError,RepositorySaveNode,RepositorySaveOptions,SaveState,emitProgress,readJson } from '../support/repo-kind.ts';
+import { classifyRepositoryChanges,repositoryChangedPaths } from '../support/change-classification.ts';
 import { finishRepositorySavePublish,pullRebaseFromOrigin,runRepoVerification } from '../support/run-script.ts';
 import { collectSubmodulePointerChanges,commitContextDependencyUpdates,commitContextPackageChanges,ensurePackageTagReady,ensureRemoteAccessBeforeVerification,finalizePackageReference,refreshRepositoryNodePackageMetadata,syncBranchBeforeSave } from '../support/tag-state.ts';
 import { runNpmInstallWithRetry,validateRepositoryLockfile } from '../treedx/repositories/sync-root-workspace-lockfile-metadata.ts';
@@ -60,9 +61,16 @@ export async function saveOneRepository(
 		: gitDependencyRefreshReferences.map((reference) => `${reference.packageName}@${reference.installSpec ?? reference.spec}`);
 	const submodulePointers = collectSubmodulePointerChanges(node, state.finalizedCommits);
 	const submodulesChanged = submodulePointers.length > 0;
+	node.changeKind = classifyRepositoryChanges(repositoryChangedPaths(node.path), node.contentPath ?? null);
+	const contentOnly = node.changeKind === 'content' && !dependencyChanged && !submodulesChanged;
+	if (!contentOnly && node.changeKind === 'content') node.changeKind = 'mixed';
+	report.changeKind = node.changeKind;
+	if (contentOnly) {
+		emitProgress(options, node, 'classify', `Content-only change under ${node.contentPath}; code verification and package versioning are not required.`);
+	}
 	const packageHasMeaningfulChanges = hasMeaningfulChanges(node.path);
 	const packageNeedsVersion = canManagePackageJsonVersion(node) && (
-		packageHasMeaningfulChanges
+		(packageHasMeaningfulChanges && !contentOnly)
 		|| dependencyChanged
 		|| submodulesChanged
 		|| packageVersionTagConflictsWithHead(node, options)
@@ -103,7 +111,7 @@ export async function saveOneRepository(
 		validateStandaloneGitDependencyLockfile(node, options);
 	}
 
-	if (hasNpmLockfile(node.path) && (node.kind === 'project' || packageNeedsVersion || dependencyChanged || submodulesChanged)) {
+	if (!contentOnly && hasNpmLockfile(node.path) && (node.kind === 'project' || packageNeedsVersion || dependencyChanged || submodulesChanged)) {
 		const lockfileIssues = collectDeploymentLockfileWorkspaceIssues(node.path);
 		if (node.kind === 'project' && lockfileIssues.length > 0 && !shouldSkipNetworkInstall()) {
 			emitProgress(options, node, 'lockfile', 'Refreshing package-lock.json before validation.');
@@ -215,7 +223,7 @@ export async function saveOneRepository(
 	report.verification = await runRepoVerification(node, options, verifyMode);
 	report.verified = report.verification.status === 'passed';
 
-	if (canManagePackageJsonVersion(node)) {
+	if (canManagePackageJsonVersion(node) && !contentOnly) {
 		const version = plannedVersion ?? String((readJson(resolve(node.path, 'package.json')).version ?? report.version ?? ''));
 		const reference = finalizePackageReference(node, version, options);
 		const tagMessage = reference.tagName ? ensurePackageTagReady(node, options, reference.tagName, branch, options.workflowRunId) : null;

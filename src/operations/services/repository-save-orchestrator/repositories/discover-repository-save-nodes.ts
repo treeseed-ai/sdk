@@ -28,6 +28,7 @@ workspacePackages
 import { packageScripts,runCapturedCommand } from '../runtime/with-short-process-temp-env.ts';
 import { classifyRepoKind,dependencyFields,emptyManifestVerifyCommands,isIndependentGitRepo,originRemoteUrlSafe,parseGitmodules,repoDisplayName,repoIdForPath,templateVerifyCommands } from '../support/classify-repo-kind.ts';
 import { RepoBranchMode,RepositoryCommitMessageContext,RepositorySaveError,RepositorySaveNode,RepositorySaveOptions,emitProgress,readJson,runGit } from '../support/repo-kind.ts';
+import { classifyRepositoryChanges,contentPathForRepository,repositoryChangedPaths } from '../support/change-classification.ts';
 
 export function discoverRepositorySaveNodes(
 	root: string,
@@ -79,6 +80,8 @@ export function discoverRepositorySaveNodes(
 			: options.stablePackageRelease === true && repoBranch === PRODUCTION_BRANCH
 				? 'package-release-main'
 				: 'package-dev-save';
+		const contentPath = contentPathForRepository({ adapter, relativePath, repoDir });
+		const changeKind = classifyRepositoryChanges(repositoryChangedPaths(repoDir), contentPath);
 		return {
 			id: relativePath,
 			checkoutAliases: [relativePath],
@@ -103,6 +106,8 @@ export function discoverRepositorySaveNodes(
 			plannedVersion: null,
 			plannedTag: null,
 			plannedDependencySpec: null,
+			contentPath,
+			changeKind,
 		} satisfies RepositorySaveNode;
 	});
 	const nodes = deduplicateRepositorySaveNodes(discoveredNodes);

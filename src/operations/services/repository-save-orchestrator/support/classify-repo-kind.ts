@@ -238,5 +238,6 @@ export function createReport(node: RepositorySaveNode): RepositorySaveReport {
 		commitMessageProvider: null,
 		commitMessageFallbackUsed: false,
 		commitMessageError: null,
+		changeKind: node.changeKind ?? 'clean',
 	};
 }

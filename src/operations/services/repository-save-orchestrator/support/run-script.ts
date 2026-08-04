@@ -75,6 +75,10 @@ export async function runCachedScript(node: RepositorySaveNode, options: Reposit
 }
 
 export async function runRepoVerification(node: RepositorySaveNode, options: RepositorySaveOptions, verifyMode: SaveVerifyMode): Promise<RepositoryVerificationResult> {
+	if (node.changeKind === 'content') {
+		emitProgress(options, node, 'verify', `Skipped code verification for content-only changes under ${node.contentPath}.`);
+		return { mode: verifyMode, status: 'skipped', primary: null, fallbackUsed: false, error: null };
+	}
 	if (verifyMode === 'skip') {
 		emitProgress(options, node, 'verify', 'Skipped verification by request.');
 		return { mode: verifyMode, status: 'skipped', primary: null, fallbackUsed: false, error: null };

@@ -24,6 +24,8 @@ export type RepoBranchMode = 'package-release-main' | 'package-dev-save' | 'proj
 
 export type SaveVerifyMode = 'action-first' | 'local-only' | 'skip';
 
+export type RepositoryChangeKind = 'clean' | 'content' | 'code' | 'mixed';
+
 export function runGit(args: string[], options: { cwd: string; capture?: boolean; timeoutMs?: number; maxBuffer?: number }) {
 	return runGitText(args, {
 		cwd: options.cwd,
@@ -65,6 +67,8 @@ export type RepositorySaveNode = {
 	plannedVersion: string | null;
 	plannedTag: string | null;
 	plannedDependencySpec: string | null;
+	contentPath?: string | null;
+	changeKind?: RepositoryChangeKind;
 };
 
 export type RepositorySaveReport = {
@@ -94,6 +98,7 @@ export type RepositorySaveReport = {
 	commitMessageProvider: 'cloudflare-workers-ai' | 'fallback' | null;
 	commitMessageFallbackUsed: boolean;
 	commitMessageError: string | null;
+	changeKind: RepositoryChangeKind;
 };
 
 export type RepositoryVerificationResult = {

@@ -140,7 +140,9 @@ export function repoPlanCommands(
 			: `skip pull --rebase # origin/${branch} does not exist yet`,
 	);
 	const verifyMode = options.verifyMode ?? 'action-first';
-	if (verifyMode === 'skip') {
+	if (node.changeKind === 'content') {
+		commands.push(`skip code verification # content-only change under ${node.contentPath}`);
+	} else if (verifyMode === 'skip') {
 		commands.push(node.kind === 'package' ? 'skip package verification' : 'skip project verification');
 	} else if (hasScript(node, 'verify:action') || hasScript(node, 'verify:local') || hasScript(node, 'verify')) {
 		if (verifyMode === 'local-only') {

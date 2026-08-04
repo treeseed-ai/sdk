@@ -48,7 +48,9 @@ export function planRepositorySave(options: RepositorySaveOptions): RepositorySa
 				return dependency?.dirty || Boolean(dependency?.plannedVersion);
 			});
 			const dirty = hasMeaningfulChanges(node.path);
-			const packageNeedsVersion = canManagePackageJsonVersion(node) && (dirty || dependencyChanged || submoduleChanged);
+			const contentOnly = node.changeKind === 'content' && !dependencyChanged && !submoduleChanged;
+			if (!contentOnly && node.changeKind === 'content') node.changeKind = 'mixed';
+			const packageNeedsVersion = canManagePackageJsonVersion(node) && ((!contentOnly && dirty) || dependencyChanged || submoduleChanged);
 			const currentVersion = typeof node.packageJson?.version === 'string' ? node.packageJson.version : null;
 			const plannedVersion = packageNeedsVersion ? selectPackageVersion(node, options).version : null;
 			let plannedDependencySpec: string | null = null;
@@ -75,6 +77,7 @@ export function planRepositorySave(options: RepositorySaveOptions): RepositorySa
 				...(node.kind === 'package' && plannedVersion?.includes('-dev.')
 					? ['development and staging dependency refs use the package commit SHA; no Git tag is created']
 					: []),
+				...(contentOnly ? [`content-only change under ${node.contentPath}; publish through the content pipeline without code verification or package versioning`] : []),
 			];
 			const repoPlan: RepositorySavePlanRepo = {
 				id: node.id,
