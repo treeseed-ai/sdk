@@ -12,6 +12,11 @@ function running(instance: unknown) {
 	return Boolean((instance as { running?: boolean } | null)?.running);
 }
 
+export function isReusableSceneDevInstance(instance: unknown) {
+	const candidate = instance as { running?: boolean; sourceClosureMatches?: boolean } | null;
+	return Boolean(candidate?.running && candidate.sourceClosureMatches);
+}
+
 export async function prepareSceneEnvironment(input: SceneEnvironmentPrepareOptions): Promise<SceneEnvironmentPrepareReport> {
 	const diagnostics = [];
 	let readiness: unknown | null = null;
@@ -38,7 +43,7 @@ export async function prepareSceneEnvironment(input: SceneEnvironmentPrepareOpti
 	if (requested) {
 		const existing = readDevInstance({ cwd: input.projectRoot, surface: 'web' });
 		const existingApi = readDevInstance({ cwd: input.projectRoot, surface: 'api' });
-		if (running(existing) && healthUrl(existing) && running(existingApi) && healthUrl(existingApi)) {
+		if (isReusableSceneDevInstance(existing) && healthUrl(existing) && isReusableSceneDevInstance(existingApi) && healthUrl(existingApi)) {
 			reused = true;
 			instances = [existing, existingApi];
 			baseUrl = healthUrl(existing);

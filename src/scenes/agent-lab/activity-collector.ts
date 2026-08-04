@@ -70,7 +70,7 @@ export function applyAgentLabAccounting(executions: AgentLabExecution[], account
 	});
 }
 
-export async function readAgentLabAssignments(input: { client: MarketClient; teamId: string; workdayRunId: string }) {
+export async function readAgentLabAssignments(input: { client: MarketClient; teamId: string; workdayRunId: string; assignmentIds?: Set<string> }) {
 	const items: Row[] = [];
 	let cursor: string | null = null;
 	for (;;) {
@@ -86,7 +86,8 @@ export async function readAgentLabAssignments(input: { client: MarketClient; tea
 		cursor = text(page.nextCursor);
 	}
 	return items
-		.filter((entry) => text(entry.workdayRunId ?? entry.workday_run_id ?? record(entry.metadata).workdayRunId) === input.workdayRunId)
+		.filter((entry) => input.assignmentIds?.has(text(entry.id) ?? '') === true
+			|| text(entry.workdayRunId ?? entry.workday_run_id ?? record(entry.metadata).workdayRunId) === input.workdayRunId)
 		.map((entry) => {
 			const decisionInput = record(entry.decisionInput ?? entry.decision_input_json);
 			const activityType = text(record(entry.metadata).activityType)

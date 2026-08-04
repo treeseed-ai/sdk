@@ -62,6 +62,22 @@ describe('capacity provider membership protocol', () => {
 		expect(calls[1]?.init?.headers).toMatchObject({ authorization: 'Bearer short-lived-token', 'idempotency-key': 'settlement-a' });
 	});
 
+	it('resolves fresh access authority for every long-running provider request', async () => {
+		const authorizations: string[] = [];
+		let generation = 0;
+		const client = new ProviderProtocolClient({
+			marketUrl: 'https://market.test',
+			accessTokenProvider: async () => `refreshed-token-${++generation}`,
+			fetchImpl: async (_input, init) => {
+				authorizations.push(String((init?.headers as Record<string, string>).authorization));
+				return new Response(JSON.stringify({ ok: true, payload: {} }), { status: 200, headers: { 'content-type': 'application/json' } });
+			},
+		});
+		await client.reportAssignmentUsage('assignment-a', { usageDimension: 'tokens' }, 'usage-a');
+		await client.settleAssignment('assignment-a', { actualCredits: 2 }, 'settlement-a');
+		expect(authorizations).toEqual(['Bearer refreshed-token-1', 'Bearer refreshed-token-2']);
+	});
+
 	it('uses the same canonical transport for unauthenticated onboarding and membership credential auth', async () => {
 		const calls: Array<{ url: string; init?: RequestInit }> = [];
 		const client = new ProviderProtocolClient({

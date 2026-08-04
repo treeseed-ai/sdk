@@ -31,6 +31,7 @@ buildCapacityProviderAuthHeaders,
 export interface ProviderProtocolClientOptions {
 	marketUrl: string;
 	accessToken?: string;
+	accessTokenProvider?: () => Promise<string>;
 	fetchImpl?: typeof fetch;
 	userAgent?: string;
 	requestTimeoutMs?: number;
@@ -87,6 +88,7 @@ export function assertAvailabilitySessionEnvelope(value: unknown): asserts value
 export class ProviderProtocolClient {
 	private readonly marketUrl: string;
 	private accessToken?: string;
+	private readonly accessTokenProvider?: () => Promise<string>;
 	private readonly fetchImpl: typeof fetch;
 	private readonly userAgent?: string;
 	private readonly requestTimeoutMs: number;
@@ -94,14 +96,19 @@ export class ProviderProtocolClient {
 	constructor(options: ProviderProtocolClientOptions) {
 		this.marketUrl = normalizeBaseUrl(options.marketUrl);
 		this.accessToken = options.accessToken?.trim() || undefined;
+		this.accessTokenProvider = options.accessTokenProvider;
 		this.fetchImpl = options.fetchImpl ?? fetch;
 		this.userAgent = options.userAgent;
 		this.requestTimeoutMs = Math.max(1_000, Number(options.requestTimeoutMs ?? 30_000) || 30_000);
 	}
 
 	private async requestJson<T>(path: string, options: { method?: 'GET' | 'POST'; body?: unknown; headers?: Record<string, string>; authorization?: string | null } = {}): Promise<T> {
+		const currentAccessToken = options.authorization === undefined && this.accessTokenProvider
+			? (await this.accessTokenProvider()).trim()
+			: this.accessToken ?? '';
+		if (currentAccessToken) this.accessToken = currentAccessToken;
 		const authorization = options.authorization === undefined
-			? buildCapacityProviderAuthHeaders(this.accessToken ?? '').authorization
+			? buildCapacityProviderAuthHeaders(currentAccessToken).authorization
 			: options.authorization;
 		const headers: Record<string, string> = {
 			accept: 'application/json',

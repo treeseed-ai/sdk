@@ -300,7 +300,12 @@ export function createProductionAgentLabExecutor(options: {
 						semanticRefreshPending = false;
 						semanticRefreshInFlight = true;
 						semanticRefreshQueue = (async () => {
-							const assignments = await readAgentLabAssignments({ client, teamId: scope!.teamId, workdayRunId });
+							const assignments = await readAgentLabAssignments({
+								client,
+								teamId: scope!.teamId,
+								workdayRunId,
+								assignmentIds: new Set(day.activity.map((entry) => entry.assignmentId).filter((value): value is string => Boolean(value))),
+							});
 							const providerExecutions = await readAgentLabProviderExecutions({
 								client, teamId: scope!.teamId,
 								assignmentIds: new Set(assignments.map((entry) => text(entry.id))),

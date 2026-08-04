@@ -71,7 +71,12 @@ export async function refreshAgentLabWorkday(input: {
 		const byId = new Map(input.day.activity.map((entry) => [entry.id, entry]));
 		for (const event of activity.items) byId.set(event.id, event);
 		const events = [...byId.values()].sort((left, right) => left.sequence - right.sequence);
-		const assignments = await readAgentLabAssignments({ client: input.client, teamId: input.teamId, workdayRunId: input.day.workdayRunId! });
+		const assignments = await readAgentLabAssignments({
+			client: input.client,
+			teamId: input.teamId,
+			workdayRunId: input.day.workdayRunId!,
+			assignmentIds: new Set(events.map((entry) => entry.assignmentId).filter((value): value is string => Boolean(value))),
+		});
 		const providerExecutions = await readAgentLabProviderExecutions({ client: input.client, teamId: input.teamId, assignmentIds: new Set(assignments.map((entry) => text(entry.id))) });
 		const durableWorkdayId = assignments.map((assignment) => text(record(assignment.capacityEnvelope ?? assignment.capacity_envelope_json).workDayId)).find(Boolean);
 		const accounting = durableWorkdayId

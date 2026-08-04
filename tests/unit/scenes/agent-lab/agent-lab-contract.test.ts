@@ -111,6 +111,19 @@ describe('production Agent Lab scene contract', () => {
 			.resolves.toEqual([expect.objectContaining({ mode: 'planning', activityType: 'reviewing' })]);
 	});
 
+	it('collects assignments linked by durable activity when project workdays have distinct ids', async () => {
+		const client = { request: async () => ({ payload: { items: [
+			{ id: 'assignment-linked', metadata: {}, decisionInput: { input: { activityType: 'estimating' } } },
+			{ id: 'assignment-unrelated', metadata: {} },
+		], page: { hasMore: false } } }) };
+		await expect(readAgentLabAssignments({
+			client: client as never,
+			teamId: 'team-1',
+			workdayRunId: 'portfolio-run-1',
+			assignmentIds: new Set(['assignment-linked']),
+		})).resolves.toEqual([expect.objectContaining({ id: 'assignment-linked', activityType: 'estimating' })]);
+	});
+
 	it('deduplicates diagnostics around a bounded human-readable cause instead of embedding runner payloads', () => {
 		const diagnostic = agentLabDiagnostic(new Error(`Provider runner completed 1 assignments instead of 2: [{"payload":"${'x'.repeat(2_000)}"}]`));
 		expect(diagnostic).toBe('Provider runner completed 1 assignments instead of 2');

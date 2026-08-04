@@ -13,6 +13,7 @@ import {
 	type SceneLocator,
 	type ScenePage,
 } from '../../../../src/scenes/index.ts';
+import { isReusableSceneDevInstance } from '../../../../src/scenes/configuration/environment.ts';
 
 function workspace() {
 	const root = mkdtempSync(resolve(tmpdir(), 'treeseed-scenes-env-'));
@@ -83,6 +84,13 @@ class FakeAdapter implements SceneBrowserAdapter {
 }
 
 describe('scene Phase 3 environment integration', () => {
+	it('reuses managed development only when the running process matches current source', () => {
+		expect(isReusableSceneDevInstance({ running: true, sourceClosureMatches: true })).toBe(true);
+		expect(isReusableSceneDevInstance({ running: true, sourceClosureMatches: false })).toBe(false);
+		expect(isReusableSceneDevInstance({ running: false, sourceClosureMatches: true })).toBe(false);
+		expect(isReusableSceneDevInstance(null)).toBe(false);
+	});
+
 	it('does not request local dev when setup.dev.required is false', async () => {
 		const root = workspace();
 		writeScene(root, 'phase-three', sceneWithSetup());
