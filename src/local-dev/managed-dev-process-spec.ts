@@ -19,6 +19,17 @@ function apiCommand(tenantRoot: string, script: 'api' | 'runner') {
 	};
 }
 
+function localTreeDxEnvironment() {
+	return {
+		TREESEED_TREEDX_URL: 'http://127.0.0.1:4000',
+		TREESEED_TREEDX_JWT_ISSUER: 'https://api.treeseed.local/treedx',
+		TREESEED_TREEDX_JWT_AUDIENCE: 'treedx-local',
+		TREESEED_TREEDX_JWT_HS256_SECRET: 'treeseed-local-treedx-jwt-secret',
+		TREESEED_TREEDX_PROXY_ACTOR_ID: 'treeseed-api',
+		TREESEED_TREEDX_PROXY_TENANT_ID: 'treeseed-control-plane',
+	};
+}
+
 function localApiEnvironment(apiPort: number, webPort: number) {
 	const apiBaseUrl = `http://127.0.0.1:${apiPort}`;
 	return {
@@ -36,12 +47,7 @@ function localApiEnvironment(apiPort: number, webPort: number) {
 		TREESEED_WEB_SERVICE_ID: 'web',
 		TREESEED_WEB_SERVICE_SECRET: 'treeseed-web-service-dev-secret',
 		TREESEED_API_WEB_ASSERTION_SECRET: 'treeseed-web-assertion-dev-secret',
-		TREESEED_TREEDX_URL: 'http://127.0.0.1:4000',
-		TREESEED_TREEDX_JWT_ISSUER: 'https://api.treeseed.local/treedx',
-		TREESEED_TREEDX_JWT_AUDIENCE: 'treedx-local',
-		TREESEED_TREEDX_JWT_HS256_SECRET: 'treeseed-local-treedx-jwt-secret',
-		TREESEED_TREEDX_PROXY_ACTOR_ID: 'treeseed-api',
-		TREESEED_TREEDX_PROXY_TENANT_ID: 'treeseed-control-plane',
+		...localTreeDxEnvironment(),
 		TREESEED_SMTP_HOST: '127.0.0.1',
 		TREESEED_SMTP_PORT: '1025',
 		TREESEED_SMTP_USERNAME: '',
@@ -124,6 +130,7 @@ export function buildManagedDevProcessSpec(input: {
 				TREESEED_KNOWLEDGE_CONTENT_ROOT: resolve(input.tenantRoot, 'packages/admin/docs/src/content/knowledge'),
 				TREESEED_BOOK_CONTENT_ROOT: resolve(input.tenantRoot, 'packages/admin/docs/src/content/books'),
 				...env,
+				...localTreeDxEnvironment(),
 				TREESEED_WEB_SERVICE_ID: 'web',
 				TREESEED_WEB_SERVICE_SECRET: 'treeseed-web-service-dev-secret',
 				TREESEED_API_WEB_SERVICE_ID: 'web',
@@ -145,7 +152,7 @@ export function buildManagedDevProcessSpec(input: {
 			id,
 			surface: input.surface,
 			...apiCommand(input.tenantRoot, 'runner'),
-			env: { ...localApiEnvironment(apiPort, webPort), ...env,
+			env: { ...localApiEnvironment(apiPort, webPort), ...env, ...localTreeDxEnvironment(),
 				TREESEED_WEB_SERVICE_ID: 'web', TREESEED_WEB_SERVICE_SECRET: 'treeseed-web-service-dev-secret',
 				TREESEED_API_WEB_SERVICE_ID: 'web', TREESEED_API_WEB_SERVICE_SECRET: 'treeseed-web-service-dev-secret',
 				PORT: String(runnerPort) },

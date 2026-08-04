@@ -53,6 +53,9 @@ export function normalizeSeedResources(manifest: SeedManifest, selected: SeedEnv
 			},
 		});
 	}
+	for (const member of manifest.resources.teamMemberships) {
+		resources.push({ kind: 'teamMembership', key: member.key, label: member.email, environments: selectedEnvironments(member, manifest, selected), payload: { teamKey: member.team, email: member.email, roles: member.roles, missingUser: member.missingUser, metadata: ownership(manifest, member.key) } });
+	}
 
 	for (const project of manifest.resources.projects) {
 		resources.push({

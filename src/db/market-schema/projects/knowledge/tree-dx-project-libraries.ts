@@ -86,6 +86,8 @@ export const userPreferences = pgTable('user_preferences', {
 	colorScheme: text('color_scheme').notNull().default('fern'),
 	themeMode: text('theme_mode').notNull().default('system'),
 	timeZone: text('time_zone').notNull().default('UTC'),
+	realTimeUpdates: integer('real_time_updates').notNull().default(1),
+	realTimePollingIntervalSeconds: integer('real_time_polling_interval_seconds').notNull().default(5),
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 });

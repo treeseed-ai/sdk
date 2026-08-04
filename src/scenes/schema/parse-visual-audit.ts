@@ -9,6 +9,7 @@ type SceneVisualAuditConfig
 } from '../types.ts';
 import { FILESYSTEM_SAFE_SCENE_ID,TOP_LEVEL_FIELDS,booleanField,isRecord,objectField,optionalString,parseJourney,requireString,stringArrayField } from './filesystem-safe-scene-id.ts';
 import { expectationKeys,parseArtifacts,parseDevices,parseMode,parseSetup,parseTarget } from './parse-action.ts';
+import { parseAgentLab } from './parse-agent-lab.ts';
 import { defaultSceneVisualAuditConfig,parseDiagrams,parseRender,parseRuntime,parseTraining } from './parse-diagrams.ts';
 import { parseChapters,parseOverlays,parseWorkflow } from './parse-workflow.ts';
 
@@ -113,6 +114,10 @@ export function parseSceneManifest(value: unknown, diagnostics: SceneDiagnostic[
 	const devices = parseDevices(value.devices, target, diagnostics);
 	const mode = parseMode(value.mode, diagnostics);
 	const workflow = parseWorkflow(value.workflow, diagnostics);
+	const agentLab = parseAgentLab(value.agentLab, diagnostics);
+	const journey = parseJourney(value, diagnostics);
+	if (journey?.kind === 'agent-lab' && !agentLab) diagnostics.push(sceneErrorDiagnostic('scene.agent_lab_required', 'Agent Lab journeys require agentLab configuration.', 'agentLab'));
+	if (agentLab && journey?.kind !== 'agent-lab') diagnostics.push(sceneErrorDiagnostic('scene.agent_lab_journey_required', 'agentLab configuration requires journey.kind: agent-lab.', 'journey.kind'));
 	if (workflow.length > 10 && !Array.isArray(value.chapters)) diagnostics.push(sceneErrorDiagnostic('scene.missing_chapters', 'Scenes with more than 10 workflow steps must define chapters.', 'chapters'));
 	const stepIds = new Set(workflow.map((step) => step.id));
 	return {
@@ -121,7 +126,7 @@ export function parseSceneManifest(value: unknown, diagnostics: SceneDiagnostic[
 		title,
 		description: optionalString(value, 'description'),
 		audience: stringArrayField(value, 'audience', 'manifest', diagnostics),
-		journey: parseJourney(value, diagnostics),
+		journey,
 		mode,
 		target,
 		devices,
@@ -135,5 +140,6 @@ export function parseSceneManifest(value: unknown, diagnostics: SceneDiagnostic[
 		runtime: parseRuntime(value.runtime, mode, diagnostics),
 		training: parseTraining(value.training, stepIds, diagnostics),
 		visualAudit: parseVisualAudit(value.visualAudit, diagnostics),
+		...(agentLab ? { agentLab } : {}),
 	};
 }

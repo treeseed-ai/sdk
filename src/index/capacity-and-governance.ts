@@ -3,6 +3,7 @@ export * from '../capacity/agents/agent-capacity.ts';
 export type * from '../capacity-provider/contracts/index.ts';
 
 export * from '../governance/policy/governance.ts';
+export * from '../governance/policy/proposal-readiness.ts';
 
 export * from '../configuration/secrets-capability.ts';
 

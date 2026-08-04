@@ -28,7 +28,7 @@ export function hasAuthenticatedCommittedContentReferences(contentReferences: un
 
 export async function verifyCapacityAcceptanceTerminal(input: {
 	adminClient: MarketClient;
-	config: ReturnType<typeof capacityAcceptanceConfig>;
+	config: Pick<ReturnType<typeof capacityAcceptanceConfig>, 'teamId' | 'projectId'>;
 	assignmentId: string;
 	minimumArtifactCount?: number;
 }) {

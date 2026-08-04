@@ -3,15 +3,16 @@ import { AGENT_ACTIVITY_TYPES,AGENT_HANDLER_KINDS,type AgentActivityProfile,type
 export interface AgentActivityProfileDiagnostic { code: string; path: string; message: string }
 export interface AgentActivityProfileValidation { ok: boolean; diagnostics: AgentActivityProfileDiagnostic[] }
 
-const PROFILE_KEYS = new Set(['activityType', 'enabled', 'handler', 'prompt', 'branchPolicy', 'contentAccess', 'tools', 'outputs', 'planningIntent', 'questionPolicy', 'execution']);
+const PROFILE_KEYS = new Set(['activityType', 'enabled', 'handler', 'prompt', 'branchPolicy', 'contentAccess', 'tools', 'inputs', 'outputs', 'planningIntent', 'questionPolicy', 'execution']);
 const PROMPT_KEYS = new Set(['system', 'task', 'templates']);
 const TOOL_KEYS = new Set(['allowed', 'denied']);
-const OUTPUT_KEYS = new Set(['messageTypes', 'modelMutations']);
+const INPUT_KEYS = new Set(['artifactContracts', 'signalContracts']);
+const OUTPUT_KEYS = new Set(['messageTypes', 'modelMutations', 'artifactContracts', 'signalContracts']);
 const EXECUTION_KEYS = new Set(['providerPreference', 'maxRuntimeSeconds', 'maxRetries', 'verificationRequired', 'allowedPaths', 'forbiddenPaths']);
 const CONTENT_ACCESS_KEYS = new Set(['read', 'write', 'commit']);
 const CONTENT_SCOPE_KEYS = new Set(['models', 'actions', 'books', 'paths', 'relations']);
 const QUESTION_KEYS = new Set(['defaultAnswerPolicy', 'blockExecutionWhenCreated']);
-const PLANNING_INTENT_KEYS = new Set(['objective', 'artifactKind', 'subjectModel', 'subjectId', 'includeWorkdayArtifacts']);
+const PLANNING_INTENT_KEYS = new Set(['objective', 'artifactKind', 'subjectModel', 'subjectId', 'includeWorkdayArtifacts', 'stage', 'requiresArtifactKinds']);
 const QUESTION_POLICY_KEYS = new Set(['kind', 'teamId', 'requiredRoles', 'allowedRoles', 'allowedAgentClasses', 'teamMemberId', 'projectId', 'agentSlug']);
 const BRANCH_KEYS: Record<string, Set<string>> = {
 	'read-only': new Set(['kind', 'base']),
@@ -51,6 +52,7 @@ export function validateAgentActivityProfilesConfiguration(value: unknown): Agen
 		}
 		validateBranch(raw.branchPolicy, `${path}.branchPolicy`, add);
 		validateStringLists(raw.tools, TOOL_KEYS, ['allowed'], `${path}.tools`, add);
+		if (raw.inputs !== undefined) validateStringLists(raw.inputs, INPUT_KEYS, [], `${path}.inputs`, add);
 		validateStringLists(raw.outputs, OUTPUT_KEYS, ['messageTypes', 'modelMutations'], `${path}.outputs`, add);
 		validatePlanningIntent(raw.planningIntent, `${path}.planningIntent`, add);
 		validateContentAccess(raw.contentAccess, `${path}.contentAccess`, add);
@@ -70,6 +72,8 @@ function validatePlanningIntent(value: unknown, path: string, add: Add) {
 	}
 	if (value.subjectId !== undefined && value.subjectId !== null && (typeof value.subjectId !== 'string' || !value.subjectId.trim())) add('agent_activity_planning_intent_text_invalid', `${path}.subjectId`, `${path}.subjectId must be a non-empty string or null.`);
 	if (value.includeWorkdayArtifacts !== undefined && typeof value.includeWorkdayArtifacts !== 'boolean') add('agent_activity_planning_intent_boolean_invalid', `${path}.includeWorkdayArtifacts`, `${path}.includeWorkdayArtifacts must be boolean.`);
+	if (value.stage !== undefined && !['discovery', 'synthesis', 'evaluation', 'closeout'].includes(String(value.stage))) add('agent_activity_planning_stage_invalid', `${path}.stage`, `${path}.stage must be discovery, synthesis, evaluation, or closeout.`);
+	if (value.requiresArtifactKinds !== undefined && !strings(value.requiresArtifactKinds)) add('agent_activity_string_list_invalid', `${path}.requiresArtifactKinds`, `${path}.requiresArtifactKinds must contain unique non-empty strings.`);
 }
 
 function validateStringLists(value: unknown, keys: Set<string>, required: string[], path: string, add: Add) {

@@ -3,6 +3,7 @@ ProviderAssignmentLifecycleRequest,
 ProviderAssignmentLifecycleResult,
 ProviderNextAssignmentRequest,
 } from '../capacity/agents/agent-capacity.ts';
+import type { ProviderRuntimeEventInput } from '../agent-capacity/contracts/capacity/workdays/workday-records.ts';
 import {
 REMOTE_CONTRACT_HEADER,
 REMOTE_CONTRACT_VERSION,
@@ -266,6 +267,10 @@ export class ProviderProtocolClient {
 
 	createAssignmentModeRun(assignmentId: string, request: Record<string, unknown>) {
 		return this.requestOkJson<{ ok: true; payload: Record<string, unknown> }>(CAPACITY_PROVIDER_ENDPOINTS.assignmentModeRuns(assignmentId), { method: 'POST', body: request });
+	}
+
+	createAssignmentEvent(assignmentId: string, request: ProviderRuntimeEventInput) {
+		return this.requestOkJson<{ ok: true; payload: Record<string, unknown> }>(CAPACITY_PROVIDER_ENDPOINTS.assignmentEvents(assignmentId), { method: 'POST', body: request });
 	}
 
 	dispatchAssignmentWorkflowOperation(assignmentId: string, operationId: string, request: Record<string, unknown>) {

@@ -21,13 +21,14 @@ import { validateRepository } from './parse-project.ts';
 
 export const RESOURCE_BUCKETS = [
 	'teams',
+	'teamMemberships',
 	'projects',
 	'hubRepositories',
 	'products',
 	'catalogArtifacts',
 ] as const;
 
-export const SUPPORTED_BUCKETS = new Set(['teams', 'projects', 'hubRepositories', 'products', 'catalogArtifacts']);
+export const SUPPORTED_BUCKETS = new Set(RESOURCE_BUCKETS);
 
 export const ALLOWED_ENVIRONMENTS = new Set<string>(SEED_ENVIRONMENTS);
 
@@ -177,6 +178,20 @@ export function parseTeam(value: unknown, path: string, diagnostics: SeedDiagnos
 		profileSummary: asString(value.profileSummary) || undefined,
 		metadata: objectField(value, 'metadata', path, diagnostics),
 	};
+}
+
+export function parseTeamMembership(value: unknown, path: string, diagnostics: SeedDiagnostic[]) {
+	if (!isRecord(value)) {
+		diagnostics.push(errorDiagnostic('seed.invalid_resource', 'Expected team membership resource to be an object.', path));
+		return null;
+	}
+	const email = asString(value.email).toLowerCase();
+	const roles = stringArrayField(value, 'roles', path, diagnostics) ?? [];
+	if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email)) diagnostics.push(errorDiagnostic('seed.invalid_email', 'Team membership email must be valid.', `${path}.email`));
+	if (!roles.length) diagnostics.push(errorDiagnostic('seed.missing_roles', 'Team membership requires at least one role.', `${path}.roles`));
+	if (roles.some((role) => !/^[a-z][a-z0-9_]*$/u.test(role))) diagnostics.push(errorDiagnostic('seed.invalid_role', 'Team membership roles must be role keys.', `${path}.roles`));
+	if (value.missingUser !== undefined && value.missingUser !== 'defer') diagnostics.push(errorDiagnostic('seed.invalid_missing_user_policy', 'missingUser must be defer.', `${path}.missingUser`));
+	return { ...keyBase(value, path, diagnostics), team: requireString(value, 'team', path, diagnostics), email, roles: [...new Set(roles)].sort(), missingUser: 'defer' as const };
 }
 
 export function parseRepository(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedProjectRepository {

@@ -15,6 +15,8 @@ export type SceneEvidenceArtifactKind =
 	| 'render-report'
 	| 'render-video'
 	| 'training-output'
+	| 'agent-lab-report'
+	| 'sanitized-transcript'
 	| 'log-summary';
 
 export type SceneEvidenceArtifact = {

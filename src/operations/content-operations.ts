@@ -2,6 +2,7 @@ import { parseFrontmatterDocument,serializeFrontmatterDocument } from '../conten
 import { buildBuiltinModelRegistry,resolveModelDefinition } from '../entrypoints/models/model-registry.ts';
 import { canonicalizeFrontmatter,normalizeMutationData } from '../entrypoints/models/sdk-fields.ts';
 import type { SdkModelDefinition,SdkModelRegistry } from '../entrypoints/models/sdk-types.ts';
+import { evaluateGovernanceProposalReadiness } from '../governance/policy/proposal-readiness.ts';
 
 export type ContentAction =
 	| 'describe'
@@ -186,6 +187,13 @@ function contentPathFor(definition: SdkModelDefinition, slug: string, placement?
 	const ext = extensionFor(definition.name);
 	const root = normalizedContentRoot(contentRoot);
 	if (placement?.path) {
+		const repositoryPath = placement.path.replace(/\\/gu, '/').replace(/^\.\//u, '').replace(/\/+$/u, '');
+		if (repositoryPath.startsWith(`${root}/`)) {
+			if (repositoryPath.split('/').includes('..') || !/^[A-Za-z0-9._/-]+$/u.test(repositoryPath)) {
+				throw new Error('placement.path must be a safe repository-relative content path.');
+			}
+			return /\.mdx?$/iu.test(repositoryPath) ? repositoryPath : `${repositoryPath}.${ext}`;
+		}
 		const safePath = slugifyContent(placement.path).replace(/\.(md|mdx)$/iu, '');
 		if (!safePath) throw new Error('placement.path must resolve to a safe content path.');
 		return `${root}/${collection}/${safePath}.${ext}`;
@@ -323,6 +331,21 @@ export function validateContentRecord(model: string, source: string, registry: S
 	};
 }
 
+export function validateProposalContentForSubmission(source: string) {
+	const parsed = parseFrontmatterDocument(source);
+	const frontmatter = parsed.frontmatter ?? {};
+	const readiness = evaluateGovernanceProposalReadiness({
+		title: String(frontmatter.title ?? ''), summary: String(frontmatter.summary ?? frontmatter.description ?? ''), body: parsed.body,
+		relatedObjectives: (frontmatter.relatedObjectives ?? frontmatter.related_objectives) as string[],
+		evidenceRefs: (frontmatter.evidenceRefs ?? frontmatter.evidence_refs) as string[], plan: frontmatter.plan,
+		contentProvenance: { contentPath: 'pending-commit', commitSha: 'pending-commit', digest: 'pending-commit' },
+	});
+	const diagnostics: ContentDiagnostic[] = readiness.missingContent.map((field) => ({ severity: 'error', code: 'proposal_plan_incomplete', field, message: `Agent proposal requires ${field}.` }));
+	if (typeof frontmatter.primaryContributor !== 'string' && typeof frontmatter.primary_contributor !== 'string') diagnostics.push({ severity: 'error', code: 'proposal_plan_incomplete', field: 'primary contributor', message: 'Agent proposal requires its author identity.' });
+	if (!['editorial','structural','implementation','strategy','policy','research'].includes(String(frontmatter.proposalType ?? frontmatter.proposal_type ?? ''))) diagnostics.push({ severity: 'error', code: 'proposal_plan_incomplete', field: 'proposal type', message: 'Agent proposal requires a supported proposal classification.' });
+	return { ok: diagnostics.length === 0, readiness, diagnostics };
+}
+
 const GENERIC_MODEL_SCHEMA = { type: 'string' };
 const STRING_ARRAY_SCHEMA = { type: 'array', items: { type: 'string' } };
 
@@ -334,7 +357,12 @@ export function genericContentInputSchema(action: ContentAction): Record<string,
 		title: { type: 'string' },
 		fields: { type: 'object', additionalProperties: true },
 		body: { type: 'string' },
-		query: { type: 'string' },
+		query: {
+			type: 'string',
+			maxLength: 200,
+			description: 'A short targeted search query. Use exact read operations for known IDs or paths instead of concatenating record identifiers.',
+		},
+		...(action === 'read' ? { path: { type: 'string', description: 'Exact repository-relative content path when the record uses hierarchical placement.' } } : {}),
 		filters: { type: 'array', items: { type: 'object', additionalProperties: true } },
 		relations: {
 			type: 'array',

@@ -214,6 +214,19 @@ export function compileDecisionAssignmentGraphFromEstimates(input: {
 	}
 	for (const estimate of estimates) {
 		const nodeId = estimate.workUnitId || `estimate:${estimate.id}:work`;
+		const outputContractId = `${input.projectId}:${input.decisionId}:estimate:${estimate.id}:deliverable`;
+		const primaryOutput = estimate.expectedOutputs.find((output) => output.required !== false) ?? estimate.expectedOutputs[0];
+		contractMap.set(outputContractId, {
+			id: outputContractId,
+			teamId: input.teamId,
+			projectId: input.projectId,
+			decisionId: input.decisionId,
+			deliverableType: primaryOutput?.outputType ?? 'assignment_deliverable',
+			producerAgentClasses: [estimate.agentClass],
+			acceptanceCriteria: estimate.acceptanceCriteria,
+			status: 'required',
+			metadata: { sourceEstimateId: estimate.id, sourceNodeId: nodeId },
+		});
 		const artifactDependencies = estimate.dependencies.filter((dependency) => dependency.type === 'artifact' && dependency.deliverableType);
 		const requiredDeliverableContractIds = artifactDependencies.map((dependency) => dependencyToContractId(input.projectId, input.decisionId, dependency));
 		const inputRefs = estimate.dependencies.flatMap((dependency) => (dependency.contentRefs ?? []).map((ref): ContentRef => ({ model: 'note', collection: 'notes', slug: ref, id: ref })));
@@ -232,6 +245,7 @@ export function compileDecisionAssignmentGraphFromEstimates(input: {
 			status: 'pending',
 			metadata: {
 				estimateId: estimate.id,
+				producesDeliverableContractId: outputContractId,
 				confidence: estimate.confidence,
 				riskLevel: estimate.riskLevel,
 				humanInputDependencies: estimate.dependencies.filter((dependency) => dependency.type === 'human-input'),

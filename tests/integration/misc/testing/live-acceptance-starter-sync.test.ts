@@ -24,6 +24,9 @@ describe('live acceptance starter agent synchronization', () => {
 
 		expect(createProjectAgentClass).toHaveBeenCalledWith('project-one', expect.objectContaining({
 			id: 'project-one:researcher', slug: 'researcher',
+			handlerRefs: { agents: [expect.objectContaining({
+				slug: 'researcher', contentPath: 'template/src/content/agents/researcher.mdx',
+			})] },
 		}), 'capacity-acceptance:run-one:project-one:agent-class-create:researcher');
 		expect(synchronized.resolvedRef).toBe('0123456789abcdef0123456789abcdef01234567');
 	});

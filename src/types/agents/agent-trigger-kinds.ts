@@ -182,6 +182,13 @@ export interface AgentPermissionPolicy {
 export interface AgentOutputContract {
 	messageTypes: string[];
 	modelMutations: string[];
+	artifactContracts?: string[];
+	signalContracts?: string[];
+}
+
+export interface AgentInputContract {
+	artifactContracts?: string[];
+	signalContracts?: string[];
 }
 
 export interface AgentToolPolicy {
@@ -253,4 +260,6 @@ export interface AgentActivityPlanningIntent {
 	subjectModel?: string;
 	subjectId?: string | null;
 	includeWorkdayArtifacts?: boolean;
+	stage?: 'discovery' | 'synthesis' | 'evaluation' | 'closeout';
+	requiresArtifactKinds?: string[];
 }

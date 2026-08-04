@@ -15,6 +15,27 @@ export {
 runScene
 } from './operations/runner.ts';
 export {
+BUILT_IN_AGENT_LAB_PRESENTATIONS,
+resolveAgentLabPresentation
+} from './agent-lab/report-adapters.ts';
+export {
+agentClassPalette,
+agentLabTotals,
+hasFailedAgentLabContentTool,
+initialAgentLabSnapshot,
+sanitizeAgentLabSnapshot,
+sanitizeAgentLabValue
+} from './agent-lab/report-model.ts';
+export {
+	AGENT_SIMULATOR_PORT,
+startAgentLabLiveReport,
+startAgentLabReportViewer,
+writeAgentLabHtml
+} from './agent-lab/report-writer.ts';
+export {
+createProductionAgentLabExecutor
+} from './agent-lab/production-lifecycle.ts';
+export {
 formatScenePublishPlanMarkdownReport,
 writeScenePublishPlanReport
 } from './packages/publish-plan-report.ts';
@@ -192,9 +213,13 @@ runSceneVisualAudit
 export {
 SCENE_BROWSERS,
 SCENE_ENVIRONMENTS,
-SCENE_SCHEMA_VERSION
+SCENE_SCHEMA_VERSION,
+AGENT_LAB_PRESENTATIONS
 } from './types.ts';
 export type {
+AgentLabAssertion,AgentLabExecution,AgentLabExecutionEvidence,AgentLabExecutor,AgentLabExecutorInput,AgentLabPresentation,
+AgentLabPresentationAdapter,AgentLabRunUpdate,AgentLabSceneConfig,AgentLabSnapshot,AgentLabTranscriptItem,
+AgentLabWorkdayConfig,AgentLabWorkdaySnapshot,
 LoadedSceneDocument,
 SceneActionDefinition,
 SceneActionHandler,

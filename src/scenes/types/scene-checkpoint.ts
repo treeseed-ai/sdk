@@ -125,6 +125,7 @@ export type SceneSeedReport = {
 	plan: unknown | null;
 	result: unknown | null;
 	diagnostics: SceneDiagnostic[];
+	seeds?: Array<{ seedName: string; mode: 'plan' | 'apply'; environments: SceneEnvironment[]; manifestDigest: string | null; plan: unknown; result: unknown }>;
 };
 
 export type SceneOperationWaitReport = {

@@ -7,6 +7,14 @@ import {
 } from '../../../src/operations/content-operations.ts';
 
 describe('content operations', () => {
+	it('exposes exact hierarchical paths for model-aware reads', () => {
+		const schema = genericContentInputSchema('read') as { properties: Record<string, unknown> };
+		expect(schema.properties.path).toMatchObject({ type: 'string' });
+	});
+	it('advertises the TreeDX search query boundary to execution providers', () => {
+		const schema = genericContentInputSchema('query') as { properties: { query: Record<string, unknown> } };
+		expect(schema.properties.query).toMatchObject({ type: 'string', maxLength: 200 });
+	});
 	it('requires a structured non-empty relation for content link tools', () => {
 		const schema = genericContentInputSchema('link') as {
 			required: string[];
@@ -67,6 +75,16 @@ describe('content operations', () => {
 			contentRoot: 'docs/src/content',
 		});
 		expect(record.path).toBe('docs/src/content/notes/package-planning-note.mdx');
+	});
+
+	it('preserves an exact repository-relative knowledge placement and extension', () => {
+		const record = renderContentRecord({
+			model: 'knowledge',
+			title: 'Agent Lab Guide Writing',
+			contentRoot: 'src/content',
+			placement: { path: 'src/content/knowledge/treeseed-guide/foundation/agent-lab-guide-writing.mdx' },
+		});
+		expect(record.path).toBe('src/content/knowledge/treeseed-guide/foundation/agent-lab-guide-writing.mdx');
 	});
 
 	it('preserves existing linked frontmatter and body during partial updates', () => {

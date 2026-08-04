@@ -231,6 +231,7 @@ export type SceneRunArtifacts = {
 	runPath: string;
 	timelinePath: string;
 	markdownReportPath: string;
+	htmlReportPath?: string | null;
 	playwrightTracePath: string | null;
 	screenshotPaths: string[];
 	viewportScreenshotPaths?: string[];

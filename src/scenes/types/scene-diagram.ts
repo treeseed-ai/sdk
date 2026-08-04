@@ -1,5 +1,6 @@
 
 import { SceneArtifacts,SceneChapter,SceneDeviceConfig,SceneDiagnostic,SceneDiagramPlacement,SceneMode,SceneOverlay,SceneSchemaVersion,SceneSetup,SceneTarget,SceneVisualAuditConfig,SceneWorkflowStep } from './scene-schema-version.ts';
+import type { AgentLabSceneConfig } from './scene-agent-lab.ts';
 
 export type SceneDiagram = {
 	id: string;
@@ -228,7 +229,7 @@ export type SceneManifest = {
 	description?: string;
 	audience: string[];
 	journey?: {
-		kind: 'service' | 'page' | 'visual-audit';
+		kind: 'service' | 'page' | 'visual-audit' | 'agent-lab';
 		proves?: string[];
 		minimumSteps?: number;
 		requiresInteractiveAction?: boolean;
@@ -248,6 +249,7 @@ export type SceneManifest = {
 	runtime: SceneRuntimeConfig;
 	training: SceneTrainingConfig;
 	visualAudit: SceneVisualAuditConfig;
+	agentLab?: AgentLabSceneConfig;
 };
 
 export type LoadedSceneDocument = {

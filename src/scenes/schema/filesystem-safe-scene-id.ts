@@ -11,7 +11,7 @@ type SceneSelector
 
 export const FILESYSTEM_SAFE_SCENE_ID = /^[a-z0-9][a-z0-9._-]*$/u;
 
-export const TOP_LEVEL_FIELDS = new Set(['schemaVersion', 'id', 'title', 'description', 'audience', 'journey', 'mode', 'target', 'devices', 'setup', 'artifacts', 'workflow', 'chapters', 'overlays', 'diagrams', 'render', 'runtime', 'training', 'visualAudit', 'xScenario']);
+export const TOP_LEVEL_FIELDS = new Set(['schemaVersion', 'id', 'title', 'description', 'audience', 'journey', 'mode', 'target', 'devices', 'setup', 'artifacts', 'workflow', 'chapters', 'overlays', 'diagrams', 'render', 'runtime', 'training', 'visualAudit', 'agentLab', 'xScenario']);
 
 export const FILESYSTEM_SAFE_CHECKPOINT_ID = /^[a-z0-9][a-z0-9._-]*$/u;
 
@@ -164,9 +164,9 @@ export function parseJourney(record: Record<string, unknown>, diagnostics: Scene
 	const journey = objectField(record, 'journey', 'manifest', diagnostics);
 	if (!journey) return undefined;
 	const kind = optionalString(journey, 'kind');
-	if (kind && !['service', 'page', 'visual-audit'].includes(kind)) diagnostics.push(sceneErrorDiagnostic('scene.invalid_journey_kind', `Unsupported journey kind: ${kind}.`, 'journey.kind'));
+	if (kind && !['service', 'page', 'visual-audit', 'agent-lab'].includes(kind)) diagnostics.push(sceneErrorDiagnostic('scene.invalid_journey_kind', `Unsupported journey kind: ${kind}.`, 'journey.kind'));
 	return {
-		kind: (kind === 'page' || kind === 'visual-audit' ? kind : 'service') as 'service' | 'page' | 'visual-audit',
+		kind: (['page', 'visual-audit', 'agent-lab'].includes(kind ?? '') ? kind : 'service') as 'service' | 'page' | 'visual-audit' | 'agent-lab',
 		proves: stringArrayField(journey, 'proves', 'journey', diagnostics),
 		minimumSteps: positiveNumberField(journey, 'minimumSteps', undefined, 'journey', diagnostics),
 		requiresInteractiveAction: booleanField(journey, 'requiresInteractiveAction', false, 'journey', diagnostics),

@@ -92,6 +92,8 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
 				repoId: { type: 'string' },
 				query: { type: 'string' },
 				paths: { type: 'array', items: { type: 'string' } },
+				maxNodes: { type: 'integer', minimum: 1, maximum: 64 },
+				maxTokens: { type: 'integer', minimum: 256, maximum: 12000 },
 			},
 			additionalProperties: false,
 		},
@@ -201,7 +203,7 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
 	{
 		id: 'treeseed.status',
 		title: 'TreeSeed status',
-		description: 'Inspect TreeSeed workspace and runtime status through SDK dispatch.',
+		description: 'Inspect the current assignment and workday runtime status through the provider-authorized API.',
 		inputSchema: EMPTY_OBJECT_SCHEMA,
 		outputSchema: GENERIC_RESULT_SCHEMA,
 		executionTarget: 'sdk_dispatch',

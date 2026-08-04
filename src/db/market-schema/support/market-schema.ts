@@ -1,4 +1,5 @@
 import { betterAuthAccount,betterAuthVerification,capacityExecutionProviders,capacityProviderLanes,capacityProviderRegistrationRequests,capacityProviderTeamMemberships,capacityProviders,teamCapacityRegistrationKeys,teamInvites } from '../accounts/better-auth-account.ts';
+import { agentLabViewState } from '../accounts/agent-lab-view-state.ts';
 import { creditConversionProfiles,cursorState,leaseState,marketAuthCredentials,marketAuthPasswordResets,marketOperationRunners,messageQueue,notificationEmailDeliveries,notificationEvents,platformOperationEvents,platformOperations,platformRepositoryClaims,runtimeRecords,seedRuns,userNotifications } from '../accounts/notification-events.ts';
 import { credentialEnvelopes,externalVaultBindings,secretOperationLeases,teamServiceCapabilityBindings,teamServiceConnections,teamServiceCredentialProfiles,teamVaultGrants,teamVaults,userVaultKeys } from '../accounts/team-services.ts';
 import { agentFallbackOutputs,agentModeRuns,capacityWorkdayRuns,decisionAssignmentGraphs,decisionExecutionInputs,decisionPlanningStatuses,deliverableContracts,deliverableManifests,planningInputRequests,structuredAgentEstimates } from '../agents/agent-mode-runs.ts';
@@ -19,6 +20,7 @@ import { agentMessages,agentRuns,apiTokens,auditEvents,authSessions,contactSubmi
 import { feedbackAttachments,feedbackExportItems,feedbackExports,feedbackStatusEvents,feedbackSubmissions } from './feedback.ts';
 
 export const MarketSchema = {
+	agentLabViewState,
 	subscribers,
 	agentRuns,
 	agentMessages,

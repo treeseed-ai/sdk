@@ -2572,6 +2572,8 @@ CREATE TABLE "user_preferences" (
 	"color_scheme" text DEFAULT 'fern' NOT NULL,
 	"theme_mode" text DEFAULT 'system' NOT NULL,
 	"time_zone" text DEFAULT 'UTC' NOT NULL,
+	"real_time_updates" integer DEFAULT 1 NOT NULL,
+	"real_time_polling_interval_seconds" integer DEFAULT 5 NOT NULL,
 	"created_at" text NOT NULL,
 	"updated_at" text NOT NULL
 );

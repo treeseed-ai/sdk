@@ -123,6 +123,7 @@ export function createSceneRunArtifacts(input: {
 		runPath: input.paths.runPath,
 		timelinePath: input.paths.timelinePath,
 		markdownReportPath: input.paths.markdownReportPath,
+		htmlReportPath: input.paths.htmlReportPath,
 		playwrightTracePath: input.playwrightTracePath ?? null,
 		screenshotPaths: input.screenshotPaths ?? [],
 		viewportScreenshotPaths: input.viewportScreenshotPaths ?? [],

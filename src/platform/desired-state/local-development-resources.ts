@@ -10,6 +10,7 @@ import { DesiredEnvironment,DesiredResource,TemplateUnit,hashJson } from './desi
 import { localTreeDxContentProjects,localTreeDxTemplateContentProjects } from './safe-tree-dx-repository-name.ts';
 import { managedDevSourceClosureDigest } from '../../local-dev/source-closure.ts';
 import { dockerSourceClosureDigest } from './docker-source-closure.ts';
+import { scopedLocalTunnelIdentity } from './local-tunnel-identity.ts';
 import type { DeployConfig } from '../support/contracts.ts';
 
 export function localDevelopmentResources(tenantRoot: string, environment: DesiredEnvironment, localContent: LocalContentMode, templates: TemplateUnit[], capacityConfigPath?: string, deployConfig?: DeployConfig): DesiredResource[] {
@@ -20,13 +21,14 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 	const mailpitComposeId = 'local-docker-compose:mailpit';
 	const capacityProviderDataDir = resolvePath(tenantRoot, '.treeseed/local-capacity-provider/data');
 	const capacityProviderManifest = capacityConfigPath ? resolvePath(tenantRoot, capacityConfigPath) : resolvePath(tenantRoot, 'treeseed.capacity-provider.yaml');
+	const capacityProviderRuntimeManifest = resolvePath(capacityProviderDataDir, 'runtime/provider-manifest.yaml');
 	const capacityProviderManifestState = existsSync(capacityProviderManifest)
 		? validateAndDigestCapacityProviderManifest(parseYaml(readFileSync(capacityProviderManifest, 'utf8')))
 		: null;
 	const capacityProviderManifestDigest = capacityProviderManifestState?.digest ?? null;
-	const capacityProviderConnectionCount = capacityProviderManifestState?.manifest.connections.length ?? 0;
 	const operationsRunnerDataDir = resolvePath(tenantRoot, '.treeseed/local-operations-runner/data');
 	const localSeedPath = resolvePath(tenantRoot, 'seeds/treeseed.yaml');
+	const capacityProviderConnectionCount = existsSync(localSeedPath) ? 1 : capacityProviderManifestState?.manifest.connections.length ?? 0;
 	const localSeedModulePath = resolvePath(tenantRoot, 'packages/api/src/market/seeds/apply.ts');
 	const hostCodexAuthFile = [
 		process.env.TREESEED_CODEX_AUTH_FILE,
@@ -49,7 +51,7 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 	};
 	const localCapacityProviderEnv = {
 		...localCapacityProviderTreeDxEnv,
-		TREESEED_CAPACITY_PROVIDER_MANIFEST: capacityProviderManifest,
+		TREESEED_CAPACITY_PROVIDER_MANIFEST: capacityProviderRuntimeManifest,
 		TREESEED_PROVIDER_HOST_DATA_DIR: capacityProviderDataDir,
 		...(hostCodexAuthFile ? {
 			TREESEED_HOST_CODEX_AUTH_FILE: hostCodexAuthFile,
@@ -62,12 +64,17 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 		TREESEED_MARKET_PROFILE_LOCAL_AUDIENCE: 'http://127.0.0.1:3000',
 	};
 	const tunnel = deployConfig?.cloudflare.tunnel?.local;
+	const tunnelIdentity = tunnel?.enabled === true
+		? scopedLocalTunnelIdentity(tenantRoot, tunnel.name ?? 'treeseed-local-connectors', tunnel.hostname ?? '')
+		: null;
 	const tunnelResource: DesiredResource[] = tunnel?.enabled === true ? [{
 		id: 'cloudflare-tunnel:local-connectors', kind: 'cloudflare-tunnel', provider: 'cloudflare', environment,
 		packageId: '@treeseed/sdk', serviceId: 'provider-connectors', logicalName: 'local provider connector tunnel',
 		dependencies: ['local-process:api'], spec: {
 			accountId: deployConfig?.cloudflare.accountId ?? '', zoneId: tunnel.zoneId ?? deployConfig?.cloudflare.zoneId ?? '',
-			name: tunnel.name ?? 'treeseed-local-connectors', hostname: tunnel.hostname ?? '', originUrl: tunnel.originUrl ?? 'http://127.0.0.1:3000',
+			name: tunnelIdentity!.name, hostname: tunnelIdentity!.hostname,
+			baseName: tunnelIdentity!.baseName, baseHostname: tunnelIdentity!.baseHostname,
+			deploymentScope: tunnelIdentity!.scope, originUrl: tunnel.originUrl ?? 'http://127.0.0.1:3000',
 			allowedPaths: ['/v1/provider-connectors/github/repository/setup', '/v1/provider-connectors/github/workflow/setup',
 				'/v1/provider-connectors/github/repository/callback', '/v1/provider-connectors/github/workflow/callback',
 				'/v1/provider-webhooks/github/repository', '/v1/provider-webhooks/github/workflow'],
@@ -226,7 +233,7 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 			packageId: '@treeseed/agent',
 			serviceId: 'agent-capacity-provider',
 			logicalName: 'agent capacity provider compose',
-			dependencies: ['local-process:api', treeDxComposeId],
+			dependencies: ['local-process:api', treeDxComposeId, ...(existsSync(localSeedPath) && existsSync(localSeedModulePath) ? ['local-seed-bootstrap:treeseed'] : [])],
 			spec: {
 				composeFile: 'packages/agent/compose.capacity-provider.yml',
 				composeFiles: [
@@ -245,7 +252,7 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 				buildPolicy: 'missing',
 				devMode: 'typescript',
 				requiredHostPaths: [{
-					path: capacityProviderManifest,
+					path: capacityProviderRuntimeManifest,
 					kind: 'file',
 					description: 'Capacity provider manifest',
 				}],

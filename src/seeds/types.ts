@@ -5,6 +5,7 @@ export type SeedDiagnosticSeverity = 'error' | 'warning';
 export type SeedPlanActionType = 'create' | 'update' | 'unchanged' | 'skip' | 'delete' | 'error';
 export type SeedResourceKind =
 	| 'team'
+	| 'teamMembership'
 	| 'project'
 	| 'hubRepository'
 	| 'product'
@@ -61,15 +62,45 @@ export type SeedManifest = {
 	defaultEnvironments?: SeedEnvironment[];
 	environments: SeedEnvironment[];
 	resources: SeedManifestResources;
+	runtime: SeedRuntimePrerequisites;
 	operationRecipes: SeedOperationRecipe[];
 };
 
 export type SeedManifestResources = {
 	teams: SeedTeamResource[];
+	teamMemberships: SeedTeamMembershipResource[];
 	projects: SeedProjectResource[];
 	hubRepositories: SeedHubRepositoryResource[];
 	products: SeedProductResource[];
 	catalogArtifacts: SeedCatalogArtifactResource[];
+};
+
+export type SeedTeamMembershipResource = SeedResourceBase & {
+	team: string;
+	email: string;
+	roles: string[];
+	missingUser: 'defer';
+};
+
+export type SeedCapacityProviderPrerequisite = SeedResourceBase & {
+	team: string;
+	manifest: string;
+	connectionId: string;
+	approval: 'trusted-local-owner';
+	projects: string[];
+	allowedModes: Array<'planning' | 'acting'>;
+	executionProviderIds: string[];
+};
+
+export type SeedAgentLabServicePrincipalPrerequisite = SeedResourceBase & {
+	team: string;
+	name: string;
+	roles: ['team_owner'];
+};
+
+export type SeedRuntimePrerequisites = {
+	capacityProviders: SeedCapacityProviderPrerequisite[];
+	agentLabServicePrincipals: SeedAgentLabServicePrincipalPrerequisite[];
 };
 
 export type SeedTeamResource = SeedResourceBase & {
@@ -213,6 +244,7 @@ export type SeedPlan = {
 	environments: SeedEnvironment[];
 	summary: SeedPlanSummary;
 	actions: SeedPlanAction[];
+	runtime: SeedRuntimePrerequisites;
 	recipes: SeedOperationRecipePlan[];
 	diagnostics: SeedDiagnostic[];
 	manifestPath: string;

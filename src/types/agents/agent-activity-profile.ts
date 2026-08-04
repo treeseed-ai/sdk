@@ -1,5 +1,5 @@
 
-import { AgentActivityExecutionConfig,AgentActivityPlanningIntent,AgentActivityPromptConfig,AgentActivityType,AgentBranchPolicy,AgentContentAccessPolicy,AgentOutputContract,AgentQuestionPolicy,AgentToolPolicy,EngineeringHandlerKind,ExecutionProviderKind,ExecutionProviderPressure,ExecutionProviderQuotaVisibility,ExecutionResourceNeedKind } from './agent-trigger-kinds.ts';
+import { AgentActivityExecutionConfig,AgentActivityPlanningIntent,AgentActivityPromptConfig,AgentActivityType,AgentBranchPolicy,AgentContentAccessPolicy,AgentInputContract,AgentOutputContract,AgentQuestionPolicy,AgentToolPolicy,EngineeringHandlerKind,ExecutionProviderKind,ExecutionProviderPressure,ExecutionProviderQuotaVisibility,ExecutionResourceNeedKind } from './agent-trigger-kinds.ts';
 
 export interface AgentActivityProfile {
 	activityType?: AgentActivityType;
@@ -9,6 +9,7 @@ export interface AgentActivityProfile {
 	branchPolicy: AgentBranchPolicy;
 	contentAccess?: AgentContentAccessPolicy;
 	tools: AgentToolPolicy;
+	inputs?: AgentInputContract;
 	outputs: AgentOutputContract;
 	planningIntent?: AgentActivityPlanningIntent;
 	questionPolicy?: AgentQuestionPolicy;

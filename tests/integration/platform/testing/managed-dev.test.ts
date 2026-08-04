@@ -144,4 +144,22 @@ describe('managed dev process ownership', () => {
 			});
 		}
 	});
+
+	it('pins local TreeDX trust instead of inheriting hosted credentials', () => {
+		const cwd = mkdtempSync(resolve(tmpdir(), 'treeseed-managed-dev-treedx-'));
+		const processes = createIntegratedDevPlan({ cwd, surfaces: 'api,operations-runner', env: {
+			TREESEED_TREEDX_URL: 'https://hosted.invalid',
+			TREESEED_TREEDX_JWT_ISSUER: 'hosted-issuer',
+			TREESEED_TREEDX_JWT_AUDIENCE: 'hosted-audience',
+			TREESEED_TREEDX_JWT_HS256_SECRET: 'hosted-secret',
+		} }).processes;
+		for (const processSpec of processes) {
+			expect(processSpec.env).toMatchObject({
+				TREESEED_TREEDX_URL: 'http://127.0.0.1:4000',
+				TREESEED_TREEDX_JWT_ISSUER: 'https://api.treeseed.local/treedx',
+				TREESEED_TREEDX_JWT_AUDIENCE: 'treedx-local',
+				TREESEED_TREEDX_JWT_HS256_SECRET: 'treeseed-local-treedx-jwt-secret',
+			});
+		}
+	});
 });

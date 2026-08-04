@@ -23,8 +23,8 @@ function desiredIngress(input: ReconcileAdapterInput) {
 	return [...paths.map((path) => ({ hostname, path: `^${path.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}$`, service: origin })), { service: 'http_status:404' }];
 }
 
-function findTunnel(input: ReconcileAdapterInput, env: Record<string, string>) {
-	const accountId = String(env.CLOUDFLARE_ACCOUNT_ID); const name = String(input.unit.spec.name);
+function findTunnel(input: ReconcileAdapterInput, env: Record<string, string>, requestedName?: string) {
+	const accountId = String(env.CLOUDFLARE_ACCOUNT_ID); const name = requestedName ?? String(input.unit.spec.name);
 	const payload = cloudflareApiRequest(`/accounts/${encodeURIComponent(accountId)}/cfd_tunnel?name=${encodeURIComponent(name)}&is_deleted=false`, { env, allowFailure: true });
 	return resultItems(payload).find((entry: any) => entry?.name === name) ?? null;
 }
@@ -45,18 +45,27 @@ function tunnelMutationError(error: unknown, source: string) {
 	return new Error(`Cloudflare rejected Tunnel reconciliation using the ${credential}. Configure Account · Cloudflare Tunnel · Edit and the declared hostname's DNS · Edit permissions, then reconcile again. Provider response: ${reason}`);
 }
 
+export function tunnelConnectorApplyAction(input: { requestedAction: unknown; diffAction: string; connectorReady: boolean }) {
+	return input.requestedAction === 'restart' || input.diffAction === 'update' || input.connectorReady ? 'restart' : 'start';
+}
+
 async function observe(input: ReconcileAdapterInput) {
 	const configured = values(input); const warnings = configured.credential.fallbackUsed ? ['Using broader TREESEED_CLOUDFLARE_API_TOKEN fallback for Tunnel reconciliation.'] : [];
 	if (!configured.accountId || !configured.credential.token) return { exists: false, status: 'error' as const, live: {}, locators: {}, warnings: [...warnings, 'Cloudflare account ID and Tunnel API token are required.'] };
 	try {
 		const tunnel = findTunnel(input, configured.env); const zoneId = resolveZone(input, configured.env);
 		const dns = findDns(zoneId, String(input.unit.spec.hostname), configured.env);
+		const baseName = String(input.unit.spec.baseName ?? ''); const baseHostname = String(input.unit.spec.baseHostname ?? '');
+		const legacyTunnel = baseName && baseName !== input.unit.spec.name ? findTunnel(input, configured.env, baseName) : null;
+		const legacyDns = baseHostname && baseHostname !== input.unit.spec.hostname ? findDns(zoneId, baseHostname, configured.env) : null;
+		if (legacyTunnel || legacyDns) warnings.push('Retaining legacy unscoped Tunnel resources because their ownership may be shared; the scoped deployment does not adopt or mutate them.');
 		const configuration = tunnel ? cloudflareApiRequest(`/accounts/${encodeURIComponent(configured.accountId)}/cfd_tunnel/${encodeURIComponent(tunnel.id)}/configurations`, { env: configured.env, allowFailure: true })?.result ?? null : null;
 		const connector = await checkHttpHealth('http://127.0.0.1:20241/ready', 1_000);
 		return { exists: Boolean(tunnel), status: tunnel ? 'ready' as const : 'pending' as const,
 			live: { tunnel: tunnel ? { id: tunnel.id, name: tunnel.name, status: tunnel.status, connections: tunnel.connections?.length ?? 0 } : null,
 				zoneId, dns: dns ? { id: dns.id, name: dns.name, content: dns.content, proxied: dns.proxied } : null,
 				configuration: configuration ? { version: configuration.version, ingress: configuration.config?.ingress ?? [] } : null, connector,
+				legacy: legacyTunnel || legacyDns ? { tunnel: legacyTunnel ? { id: legacyTunnel.id, name: legacyTunnel.name, status: legacyTunnel.status, connections: legacyTunnel.connections?.length ?? 0 } : null, dns: legacyDns ? { id: legacyDns.id, name: legacyDns.name, content: legacyDns.content, proxied: legacyDns.proxied } : null, retentionReason: 'ownership-may-be-shared' } : null,
 				credentialSource: configured.credential.source }, locators: { tunnelId: tunnel?.id ?? null, dnsRecordId: dns?.id ?? null, zoneId: zoneId || null }, warnings };
 	} catch (error) {
 		return { exists: false, status: 'error' as const, live: {}, locators: {}, warnings: [...warnings, error instanceof Error ? error.message : String(error)] };
@@ -69,7 +78,9 @@ export function buildCloudflareTunnelAdapter(): ReconcileAdapter {
 		supports(unitType, providerId) { return unitType === 'cloudflare-tunnel' && providerId === 'cloudflare'; },
 		validate(input) {
 			const hostname = String(input.unit.spec.hostname ?? ''); const origin = String(input.unit.spec.originUrl ?? '');
+			const scope = String(input.unit.spec.deploymentScope ?? '');
 			if (!/^[a-z0-9.-]+$/u.test(hostname) || !hostname.includes('.')) throw new Error('Local Tunnel requires a valid hostname.');
+			if (!/^[a-f0-9]{12}$/u.test(scope) || input.unit.spec.name === input.unit.spec.baseName || hostname === input.unit.spec.baseHostname) throw new Error('Local Tunnel name and hostname must carry the opaque deployment scope.');
 			if (!/^http:\/\/127\.0\.0\.1:\d+$/u.test(origin)) throw new Error('Local Tunnel origin must be an explicit loopback HTTP endpoint.');
 			if (!Array.isArray(input.unit.spec.allowedPaths) || input.unit.spec.allowedPaths.length !== 6) throw new Error('Local Tunnel must declare exactly the provider setup, callback, and webhook paths.');
 		},
@@ -106,16 +117,18 @@ export function buildCloudflareTunnelAdapter(): ReconcileAdapter {
 			const zoneId = resolveZone(input, configured.env); if (!zoneId) throw new Error('Cloudflare zone for the Tunnel hostname is unavailable.');
 			const hostname = String(input.unit.spec.hostname); const existingDns: any = findDns(zoneId, hostname, configured.env);
 			const dnsBody = { type: 'CNAME', name: hostname, content: `${tunnel.id}.cfargotunnel.com`, proxied: true, ttl: 1 };
-			cloudflareApiRequest(existingDns ? `/zones/${encodeURIComponent(zoneId)}/dns_records/${encodeURIComponent(existingDns.id)}` : `/zones/${encodeURIComponent(zoneId)}/dns_records`, { method: existingDns ? 'PUT' : 'POST', env: configured.env, body: dnsBody });
+			const reconciledDns = cloudflareApiRequest(existingDns ? `/zones/${encodeURIComponent(zoneId)}/dns_records/${encodeURIComponent(existingDns.id)}` : `/zones/${encodeURIComponent(zoneId)}/dns_records`, { method: existingDns ? 'PUT' : 'POST', env: configured.env, body: dnsBody })?.result;
 			const token = cloudflareApiRequest(`/accounts/${encodeURIComponent(configured.accountId)}/cfd_tunnel/${encodeURIComponent(tunnel.id)}/token`, { env: configured.env })?.result;
 			if (typeof token !== 'string' || !token) throw new Error('Cloudflare did not return the connector token.');
-			const managed = await runManagedDevAction({ tenantRoot: input.context.tenantRoot, action: input.unit.spec.connectorAction === 'restart' || input.diff.action === 'update' ? 'restart' : 'start', surfaces: ['cloudflare-tunnel'], options: {}, env: { ...input.context.launchEnv, TUNNEL_TOKEN: token } });
-			return genericResult(input, { tunnel: { id: tunnel.id, name: tunnel.name }, zoneId, connector: managed.parsed });
+			const managed = await runManagedDevAction({ tenantRoot: input.context.tenantRoot, action: tunnelConnectorApplyAction({ requestedAction: input.unit.spec.connectorAction, diffAction: input.diff.action, connectorReady: (input.observed.live.connector as any)?.ok === true }), surfaces: ['cloudflare-tunnel'], options: {}, env: { ...input.context.launchEnv, TUNNEL_TOKEN: token } });
+			const result = genericResult(input, { tunnel: { id: tunnel.id, name: tunnel.name }, hostname, zoneId, connector: managed.parsed });
+			return { ...result, resourceLocators: { tunnelId: tunnel.id, dnsRecordId: reconciledDns?.id ?? existingDns?.id ?? null, zoneId } };
 		},
 		async verify(input) {
 			const live = await observe(input); const tunnel = live.live.tunnel as any; const dns = live.live.dns as any; const ready = await checkHttpHealth('http://127.0.0.1:20241/ready', 5_000);
 			const connectorShouldRun = input.unit.spec.connectorAction !== 'stop';
 			const checks = [
+				verificationCheck('tunnel-identity', 'Tunnel name and hostname are isolated to this local deployment', 'derived', { exists: true, configured: /^[a-f0-9]{12}$/u.test(String(input.unit.spec.deploymentScope ?? '')), ready: input.unit.spec.name !== input.unit.spec.baseName && input.unit.spec.hostname !== input.unit.spec.baseHostname, verified: /^[a-f0-9]{12}$/u.test(String(input.unit.spec.deploymentScope ?? '')) && input.unit.spec.name !== input.unit.spec.baseName && input.unit.spec.hostname !== input.unit.spec.baseHostname, observed: { name: input.unit.spec.name, hostname: input.unit.spec.hostname, deploymentScope: input.unit.spec.deploymentScope }, issues: input.unit.spec.name !== input.unit.spec.baseName && input.unit.spec.hostname !== input.unit.spec.baseHostname ? [] : ['Tunnel remote identity is not deployment-scoped.'] }),
 				verificationCheck('tunnel-live', 'Cloudflare reports the declared Tunnel', 'api', { exists: Boolean(tunnel), configured: Boolean(tunnel), ready: tunnel?.status === 'healthy', verified: tunnel?.status === 'healthy', observed: tunnel, issues: tunnel?.status === 'healthy' ? [] : ['Tunnel is not healthy.'] }),
 				verificationCheck('tunnel-dns', 'Tunnel hostname resolves through the declared proxied CNAME', 'api', { exists: Boolean(dns), configured: dns?.proxied === true, ready: dns?.content === `${tunnel?.id}.cfargotunnel.com`, verified: dns?.proxied === true && dns?.content === `${tunnel?.id}.cfargotunnel.com`, observed: dns, issues: dns?.proxied === true && dns?.content === `${tunnel?.id}.cfargotunnel.com` ? [] : ['Tunnel DNS is missing or drifted.'] }),
 				verificationCheck('tunnel-connector', connectorShouldRun ? 'Local cloudflared connector is ready' : 'Local cloudflared connector is stopped', 'api', { exists: connectorShouldRun ? ready.ok : true, configured: true, ready: connectorShouldRun ? ready.ok : !ready.ok, verified: connectorShouldRun ? ready.ok : !ready.ok, observed: ready, issues: (connectorShouldRun ? ready.ok : !ready.ok) ? [] : [connectorShouldRun ? 'Local cloudflared connector is not ready.' : 'Local cloudflared connector remained running.'] }),

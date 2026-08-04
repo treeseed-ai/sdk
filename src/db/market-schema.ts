@@ -1,4 +1,5 @@
 export * from './market-schema/accounts/better-auth-account.ts';
+export * from './market-schema/accounts/agent-lab-view-state.ts';
 export * from './market-schema/accounts/notification-events.ts';
 export * from './market-schema/accounts/team-services.ts';
 export * from './market-schema/agents/agent-mode-runs.ts';

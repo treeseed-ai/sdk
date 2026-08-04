@@ -106,6 +106,10 @@ export function createSeedPlan(input: {
 		environments: input.environments,
 		summary,
 		actions,
+		runtime: {
+			capacityProviders: input.manifest.runtime.capacityProviders.filter((provider) => (provider.environments?.length ? provider.environments : input.manifest.environments).some((environment) => input.environments.includes(environment))),
+			agentLabServicePrincipals: input.manifest.runtime.agentLabServicePrincipals.filter((principal) => (principal.environments?.length ? principal.environments : input.manifest.environments).some((environment) => input.environments.includes(environment))),
+		},
 		recipes,
 		diagnostics: input.diagnostics ?? [],
 		manifestPath: input.manifestPath,

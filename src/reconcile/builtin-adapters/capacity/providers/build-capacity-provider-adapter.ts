@@ -188,7 +188,7 @@ export async function ensureLocalTreeDxProjectRepository(client: TreeDxClient, p
 
 function projectIndexPaths(project: LocalTreeDxContentProject) {
 	return project.seedPaths?.length
-		? project.seedPaths.map((seedPath) => `${seedPath.replace(/\/+$/u, '')}/**`)
+		? project.seedPaths.map((seedPath) => /\.[a-z0-9]+$/iu.test(seedPath) ? seedPath : `${seedPath.replace(/\/+$/u, '')}/**`)
 		: [`${project.contentPath.replace(/\/+$/u, '')}/**`];
 }
 
@@ -232,7 +232,7 @@ async function localTreeDxSeedDelta(client: TreeDxClient, project: LocalTreeDxCo
 		repoId: repositoryId,
 		ref,
 		paths: projectIndexPaths(project),
-		extensions: ['.md', '.mdx'],
+		extensions: ['.json', '.md', '.mdx', '.toml', '.yaml', '.yml'],
 		limit: 500,
 	});
 	if (paths.page?.hasMore) {

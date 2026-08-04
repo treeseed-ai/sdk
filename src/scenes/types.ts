@@ -1,4 +1,5 @@
 export * from './types/scene-checkpoint.ts';
+export * from './types/scene-agent-lab.ts';
 export * from './types/scene-diagram.ts';
 export * from './types/scene-evidence-artifact-kind.ts';
 export * from './types/scene-publish-plan-paths.ts';

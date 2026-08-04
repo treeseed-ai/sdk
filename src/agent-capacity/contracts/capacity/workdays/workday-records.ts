@@ -128,6 +128,18 @@ export interface AgentActivityEvent {
 	payloadDigest: string;
 }
 
+export interface ProviderRuntimeEventInput {
+	id: string;
+	eventType: `provider.${string}`;
+	status: 'recorded' | 'active' | 'completed' | 'warning' | 'error' | 'failed';
+	component: 'provider-manager' | 'provider-runner' | 'lease' | 'execution-provider' | 'recovery';
+	message: string;
+	createdAt?: string;
+	context?: Record<string, unknown>;
+	refs?: Record<string, unknown>;
+	metrics?: Record<string, unknown>;
+}
+
 export interface CapacityWorkdayScheduleRecord {
 	id: string;
 	teamId: string;

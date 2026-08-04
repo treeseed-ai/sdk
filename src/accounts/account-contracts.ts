@@ -94,7 +94,11 @@ export interface AccountIdentity {
 
 export interface AccountPreferences {
 	timeZone: string;
+	realTimeUpdates: boolean;
+	realTimePollingIntervalSeconds: 2 | 5 | 15 | 30;
 }
+
+export type AccountPreferencesUpdate = Partial<AccountPreferences>;
 
 export interface AccountWebSession {
 	id: string;

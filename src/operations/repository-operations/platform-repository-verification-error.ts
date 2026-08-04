@@ -103,7 +103,7 @@ export function normalizePlatformContentInput(collection: string, body: Record<s
 		frontmatter.relatedObjectives = normalizePlatformRelationArray(body.relatedObjectives);
 	} else if (collection === 'proposals') {
 		frontmatter.primaryContributor = optionalTrimmedString(body.primaryContributor) ?? frontmatter.primaryContributor;
-		frontmatter.proposalType = enumValue(body.proposalType, ['strategy', 'policy', 'implementation', 'research'], String(frontmatter.proposalType));
+		frontmatter.proposalType = enumValue(body.proposalType, ['strategy', 'policy', 'implementation', 'research', 'editorial', 'structural'], String(frontmatter.proposalType));
 		frontmatter.motivation = optionalTrimmedString(body.motivation) ?? description;
 		frontmatter.relatedObjectives = normalizePlatformRelationArray(body.relatedObjectives);
 		frontmatter.relatedQuestions = normalizePlatformRelationArray(body.relatedQuestions);

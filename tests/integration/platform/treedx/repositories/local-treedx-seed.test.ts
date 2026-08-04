@@ -35,6 +35,18 @@ describe('local TreeDX seed desired state', () => {
 		expect(localTreeDxSeedDigest(source)).not.toBe(edited);
 	});
 
+	it('collects explicit repository manifest files beside content roots', () => {
+		const localRoot = mkdtempSync(join(tmpdir(), 'treedx-seed-manifest-'));
+		mkdirSync(join(localRoot, 'src/content'), { recursive: true });
+		writeFileSync(join(localRoot, 'src/content/page.md'), '# Page\n');
+		writeFileSync(join(localRoot, 'package.json'), '{"name":"example"}\n');
+		try {
+			expect(collectLocalTreeDxSeedFiles({ localRoot, contentPath: 'src/content', seedPaths: ['src/content', 'package.json'] }).map((file) => file.path)).toEqual(['package.json', 'src/content/page.md']);
+		} finally {
+			rmSync(localRoot, { recursive: true, force: true });
+		}
+	});
+
 	it('requires every desired path to exist with byte-exact content', () => {
 		const desired = [
 			{ path: 'src/content/agents/engineer.mdx', content: 'engineer\n' },

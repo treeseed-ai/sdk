@@ -1,4 +1,4 @@
-import { existsSync,readFileSync } from 'node:fs';
+import { existsSync,readFileSync,readdirSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { normalizeRepositoryName,projectRepositoryName } from '../../treedx/accounts/repository-name.ts';
@@ -28,8 +28,15 @@ export function localTreeDxContentProjects(tenantRoot: string) {
 		const checkoutPath = typeof repository.checkoutPath === 'string' && repository.checkoutPath.trim()
 			? repository.checkoutPath.trim()
 			: '.';
-		const seedPaths = [contentPath.replace(/\/+$/u, '')];
 		const localRoot = checkoutPath === '.' ? tenantRoot : resolvePath(tenantRoot, checkoutPath);
+		const normalizedContentPath = contentPath.replace(/\/+$/u, '');
+		const repositoryDocsPath = resolvePath(localRoot, 'docs');
+		const repositoryFiles = ['AGENTS.md', 'package.json', ...(existsSync(localRoot) ? readdirSync(localRoot) : []).filter((path) => /^treeseed\..+\.ya?ml$/iu.test(path))]
+			.filter((path) => existsSync(resolvePath(localRoot, path)));
+		const repositoryGuaranteesPath = resolvePath(localRoot, 'guarantees');
+		const seedPaths = [...(existsSync(repositoryDocsPath)
+			? normalizedContentPath === 'docs' || normalizedContentPath.startsWith('docs/') ? ['docs'] : [normalizedContentPath, 'docs']
+			: [normalizedContentPath]), ...(existsSync(repositoryGuaranteesPath) ? ['guarantees'] : []), ...repositoryFiles];
 		return [{
 			projectKey: typeof project.key === 'string' ? project.key : `project:treeseed/${slug}`,
 			slug,

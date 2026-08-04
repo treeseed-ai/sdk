@@ -1,6 +1,7 @@
 
 import { SceneAuthResolver,SceneEnvironmentAdapter,SceneLogCollector,SceneOperationWaiter,ScenePauseController,ScenePluginSummary,SceneProgressEvent,SceneSeedRunner } from './scene-checkpoint.ts';
 import { SceneExecutionMode,SceneManifest } from './scene-diagram.ts';
+import type { AgentLabExecutor,AgentLabPresentationAdapter } from './scene-agent-lab.ts';
 import { SceneBrowserAdapter,SceneRunReport } from './scene-publish-plan-paths.ts';
 import { SceneArtifactPathPlan,SceneBrowser,SceneDeviceProfileId,SceneDiagnostic,SceneEnvironment } from './scene-schema-version.ts';
 import { ScenePlugin } from './scene-timeline-writer.ts';
@@ -94,6 +95,9 @@ export type SceneRunOptions = {
 	pauseController?: ScenePauseController;
 	onProgress?: (event: SceneProgressEvent) => void;
 	sleep?: (ms: number) => Promise<void>;
+	agentLabExecutor?: AgentLabExecutor;
+	agentLabPresentations?: AgentLabPresentationAdapter[];
+	onAgentLabReportReady?: (input: { url: string; path: string }) => Promise<void> | void;
 };
 
 export type SceneDeviceMatrixOptions = {

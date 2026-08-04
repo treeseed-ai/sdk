@@ -267,12 +267,13 @@ export function parseSetup(value: unknown, targetEnvironment: SceneEnvironment, 
 	if (auth) setup.auth = { profile: optionalString(auth, 'profile'), required: booleanField(auth, 'required', false, 'setup.auth', diagnostics), seedOnly: booleanField(auth, 'seedOnly', false, 'setup.auth', diagnostics),
 		fixtureRoles: stringArrayField(auth, 'fixtureRoles', 'setup.auth', diagnostics),
 		...(optionalString(auth, 'role') ? { role: optionalString(auth, 'role') } : {}) };
-	const seed = objectField(record, 'seed', 'setup', diagnostics);
-	if (seed) {
-		const environments = (arrayField(seed, 'environments', 'setup.seed', diagnostics) ?? [targetEnvironment])
-			.map((entry, index) => parseEnvironment(entry, `setup.seed.environments[${index}]`, diagnostics, targetEnvironment));
-		setup.seed = { name: optionalString(seed, 'name'), environments: [...new Set(environments)], apply: booleanField(seed, 'apply', false, 'setup.seed', diagnostics) };
-	}
+	const seeds = arrayField(record, 'seeds', 'setup', diagnostics) ?? [];
+	setup.seeds = seeds.filter(isRecord).map((seed, index) => {
+		const path = `setup.seeds[${index}]`;
+		const environments = (arrayField(seed, 'environments', path, diagnostics) ?? [targetEnvironment])
+			.map((entry, environmentIndex) => parseEnvironment(entry, `${path}.environments[${environmentIndex}]`, diagnostics, targetEnvironment));
+		return { name: requireString(seed, 'name', path, diagnostics), environments: [...new Set(environments)], apply: booleanField(seed, 'apply', false, path, diagnostics) };
+	});
 	return setup;
 }
 

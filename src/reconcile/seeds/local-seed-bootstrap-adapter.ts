@@ -8,6 +8,8 @@ ReconcileResult,
 UnitDiff,
 UnitVerificationResult,
 } from '../support/contracts/contracts.ts';
+import { reconcileLocalSeedRuntime } from '../../seeds/runtime/local-capacity.ts';
+import type { SeedPlan } from '../../seeds/types.ts';
 
 type LocalSeedModule = {
 	planLocalSeedFromCli(input: Record<string, unknown>): Promise<Record<string, unknown>>;
@@ -133,11 +135,18 @@ export function createLocalSeedBootstrapAdapter(): ReconcileAdapter {
 				localOnly: true,
 				actor: { actorType: 'service', id: 'local-seed-reconciler' },
 			});
+			const appliedRecord = record(applied);
+			const appliedPlan = appliedRecord.plan as SeedPlan | undefined;
+			const accessToken = input.context.launchEnv.TREESEED_CAPACITY_ACCEPTANCE_ADMIN_TOKEN?.trim()
+				|| 'tsk_local_treeseed_acceptance_admin';
+			const runtime = appliedPlan
+				? await reconcileLocalSeedRuntime({ projectRoot: input.context.tenantRoot, plan: appliedPlan, accessToken, env: input.context.launchEnv })
+				: { providers: [] };
 			const converged = await observe(input);
 			if (converged.status !== 'ready' || Number(converged.live.pendingMutations ?? 0) !== 0) {
 				throw new Error(`Local seed apply did not converge: ${Number(converged.live.pendingMutations ?? 0)} mutation(s) remain.`);
 			}
-			return result(input, { ...converged.live, applied: record(applied.result) });
+			return result(input, { ...converged.live, applied: record(appliedRecord.result), runtime });
 		},
 		async verify(input): Promise<UnitVerificationResult> {
 			const pending = Number(input.observed.live.pendingMutations ?? 0);

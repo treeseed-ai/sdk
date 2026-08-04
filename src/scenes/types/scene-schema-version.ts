@@ -139,11 +139,11 @@ export type SceneSetup = {
 		fixtureRoles?: SceneVisualAuditRole[];
 		seedOnly?: boolean;
 	};
-	seed?: {
-		name?: string;
+	seeds?: Array<{
+		name: string;
 		environments: SceneEnvironment[];
 		apply: boolean;
-	};
+	}>;
 };
 
 export type SceneArtifacts = {

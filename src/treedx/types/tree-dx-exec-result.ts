@@ -34,6 +34,10 @@ export interface TreeDxRepositoryReadRequest {
 	encoding?: 'utf8' | 'base64';
 	parseFrontmatter?: boolean;
 	allowProtected?: boolean;
+	/** Bounds encoded content returned by a single-path read. Maximum 196,608 bytes. */
+	maxBytes?: number;
+	/** Resumes a bounded read at a server-returned UTF-8 byte boundary. */
+	offsetBytes?: number;
 }
 
 export interface TreeDxRepositoryPathsRequest {

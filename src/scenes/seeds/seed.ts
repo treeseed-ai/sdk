@@ -1,91 +1,93 @@
-import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { MarketClient,resolveMarketProfile,resolveMarketSession } from '../../entrypoints/clients/market-client.ts';
+import { MarketClient, resolveMarketProfile, resolveMarketSession } from '../../entrypoints/clients/market-client.ts';
 import { findNearestRoot } from '../../operations/workflow-support.ts';
-import { loadAndPlanSeed } from '../../seeds/index.ts';
+import { loadAndPlanSeed, reconcileLocalSeedRuntime } from '../../seeds/index.ts';
+import type { SeedPlan } from '../../seeds/types.ts';
 import { sceneErrorDiagnostic } from '../support/reporting/diagnostics.ts';
-import type { SceneSeedOptions,SceneSeedReport } from '../types.ts';
+import type { SceneSeedOptions, SceneSeedReport } from '../types.ts';
 
-type LocalSeedRunner = (input: Record<string, unknown>) => Promise<{ plan?: unknown; result?: unknown } & Record<string, unknown>>;
+type LocalSeedRunner = (input: Record<string, unknown>) => Promise<{ plan?: SeedPlan; result?: unknown } & Record<string, unknown>>;
 
 function redacted(value: unknown): unknown {
 	if (Array.isArray(value)) return value.map(redacted);
-	if (value && typeof value === 'object') {
-		const out: Record<string, unknown> = {};
-		for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-			out[key] = /token|secret|key|password/iu.test(key) ? '<redacted>' : redacted(entry);
-		}
-		return out;
-	}
+	if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+		.map(([key, entry]) => [key, /token|secret|password|credential/iu.test(key) ? '<redacted>' : redacted(entry)]));
 	return value;
 }
 
+function digest(path: string) {
+	return existsSync(path) ? createHash('sha256').update(readFileSync(path)).digest('hex') : null;
+}
+
 async function loadLocalSeedRunner(projectRoot: string): Promise<LocalSeedRunner | null> {
-	const applyModulePath = resolve(projectRoot, 'src', 'lib', 'market', 'seeds', 'apply.js');
-	if (!existsSync(applyModulePath)) return null;
-	const module = await import(pathToFileURL(applyModulePath).href) as {
-		applyLocalSeedViaApiFromCli?: LocalSeedRunner;
-		applyLocalSeedFromCli?: LocalSeedRunner;
-	};
-	return module.applyLocalSeedViaApiFromCli ?? module.applyLocalSeedFromCli ?? null;
+	const paths = [
+		resolve(projectRoot, 'src/lib/market/seeds/apply.js'),
+		resolve(projectRoot, 'packages/api/dist/market/seeds/apply.js'),
+		resolve(projectRoot, 'packages/api/src/market/seeds/apply.ts'),
+	];
+	const path = paths.find(existsSync);
+	if (!path) return null;
+	const loaded = path.endsWith('.ts')
+		? await (await import('tsx/esm/api')).tsImport(path, import.meta.url) as Record<string, unknown>
+		: await import(pathToFileURL(path).href) as Record<string, unknown>;
+	return (loaded.applyLocalSeedViaApiFromCli ?? loaded.applyLocalSeedFromCli) as LocalSeedRunner | null;
+}
+
+function conflictDiagnostics(plans: SeedPlan[]) {
+	const resources = new Map<string, string>();
+	const diagnostics = [];
+	for (const plan of plans) for (const action of plan.actions) {
+		const identity = `${action.kind}:${action.key}`;
+		const normalized = JSON.stringify(action.payload, Object.keys(action.payload).sort());
+		const prior = resources.get(identity);
+		if (prior && prior !== normalized) diagnostics.push(sceneErrorDiagnostic('scene.seed_resource_conflict', `Seed ${plan.seed} conflicts with an earlier prerequisite for ${identity}.`, 'setup.seeds'));
+		else resources.set(identity, normalized);
+	}
+	return diagnostics;
 }
 
 export async function planOrApplySceneSeed(input: SceneSeedOptions): Promise<SceneSeedReport> {
-	const setup = input.scene.setup.seed;
-	if (!setup?.name) {
-		return { ok: true, requested: false, seedName: null, mode: 'none', environments: [], plan: null, result: null, diagnostics: [] };
+	const requested = input.scene.setup.seeds ?? [];
+	if (!requested.length) return { ok: true, requested: false, seedName: null, mode: 'none', environments: [], plan: null, result: null, diagnostics: [], seeds: [] };
+	const planned = requested.map((seed) => ({ seed, loaded: loadAndPlanSeed({
+		projectRoot: input.projectRoot, seedName: seed.name,
+		environments: (seed.environments.length ? seed.environments : [input.environment]).join(','), mode: seed.apply ? 'apply' : 'plan',
+	}) }));
+	const diagnostics = planned.flatMap(({ seed, loaded }) => loaded.diagnostics.map((entry) => ({ ...entry, path: entry.path ? `setup.seeds.${seed.name}.${entry.path}` : `setup.seeds.${seed.name}` })));
+	const plans = planned.flatMap((entry) => entry.loaded.plan ? [entry.loaded.plan] : []);
+	diagnostics.push(...conflictDiagnostics(plans));
+	if (plans.length !== requested.length || diagnostics.some((entry) => entry.severity === 'error')) {
+		return { ok: false, requested: true, seedName: requested.map((entry) => entry.name).join(','), mode: requested.some((entry) => entry.apply) ? 'apply' : 'plan', environments: [...new Set(requested.flatMap((entry) => entry.environments))], plan: plans, result: null, diagnostics, seeds: [] };
 	}
-	const environments = setup.environments.length > 0 ? setup.environments : [input.environment];
-	const mode = setup.apply ? 'apply' : 'plan';
-	const planned = loadAndPlanSeed({
-		projectRoot: input.projectRoot,
-		seedName: setup.name,
-		environments: environments.join(','),
-		mode,
-	});
-	const diagnostics = [...planned.diagnostics.map((entry) => ({
-		severity: entry.severity,
-		code: entry.code.startsWith('scene.') ? entry.code : `seed.${entry.code}`,
-		message: entry.message,
-		path: entry.path ? `setup.seed.${entry.path}` : 'setup.seed',
-	}))];
-	if (!planned.plan) {
-		diagnostics.push(sceneErrorDiagnostic('scene.seed_plan_failed', `Seed "${setup.name}" could not be planned.`, 'setup.seed'));
-		return { ok: false, requested: true, seedName: setup.name, mode, environments, plan: null, result: null, diagnostics };
-	}
-	if (!setup.apply) {
-		return { ok: !diagnostics.some((entry) => entry.severity === 'error'), requested: true, seedName: setup.name, mode: 'plan', environments, plan: planned.plan, result: null, diagnostics };
-	}
+	const reports: NonNullable<SceneSeedReport['seeds']> = [];
+	const projectRoot = findNearestRoot(input.projectRoot) ?? input.projectRoot;
+	const profile = resolveMarketProfile(input.scene.setup.auth?.profile ?? input.environment);
+	const authRoot = resolve(projectRoot, '.treeseed/auth');
+	const session = resolveMarketSession(authRoot, profile.id);
+	const localToken = input.env?.TREESEED_CAPACITY_ACCEPTANCE_ADMIN_TOKEN?.trim() || 'tsk_local_treeseed_acceptance_admin';
 	try {
-		if (environments.some((environment) => environment !== 'local')) {
-			const profile = resolveMarketProfile(input.scene.setup.auth?.profile ?? null);
-			const authRoot = findNearestRoot(input.projectRoot) ?? input.projectRoot;
-			const session = resolveMarketSession(authRoot, profile.id);
-			if (!session?.accessToken) {
-				throw sceneErrorDiagnostic('scene.auth_required', `Not logged in to market "${profile.id}". Run treeseed auth:login --market ${profile.id}.`, 'setup.auth');
+		for (let index = 0; index < planned.length; index += 1) {
+			const { seed, loaded } = planned[index]!;
+			const plan = loaded.plan!;
+			let result: unknown = null;
+			if (seed.apply && input.environment !== 'local') {
+				if (!session?.accessToken) throw new Error(`Not logged in to market "${profile.id}".`);
+				result = await new MarketClient({ profile, accessToken: session.accessToken, userAgent: 'treeseed-scene' }).applySeed(seed.name, { environments: seed.environments });
+			} else if (seed.apply) {
+				const runner = await loadLocalSeedRunner(projectRoot);
+				if (!runner) throw new Error('Local seed apply service is not available in this project.');
+				const applied = await runner({ projectRoot, seedName: seed.name, environments: seed.environments.join(','), plan, env: input.env, accessToken: localToken });
+				const runtime = await reconcileLocalSeedRuntime({ projectRoot, plan: applied.plan ?? plan, accessToken: localToken, env: input.env as NodeJS.ProcessEnv });
+				result = { ...(applied.result && typeof applied.result === 'object' ? applied.result : { apply: applied.result }), runtime };
 			}
-			const client = new MarketClient({ profile, accessToken: session.accessToken, userAgent: 'treeseed-scene' });
-			const result = await client.applySeed(setup.name, { environments });
-			return { ok: true, requested: true, seedName: setup.name, mode: 'apply', environments, plan: planned.plan, result: redacted(result), diagnostics };
+			reports.push({ seedName: seed.name, mode: seed.apply ? 'apply' : 'plan', environments: seed.environments, manifestDigest: digest(loaded.manifestPath), plan, result: redacted(result) });
 		}
-		const runner = await loadLocalSeedRunner(input.projectRoot);
-		if (!runner) {
-			diagnostics.push(sceneErrorDiagnostic('scene.seed_apply_failed', 'Local seed apply service is not available in this project.', 'setup.seed'));
-			return { ok: false, requested: true, seedName: setup.name, mode: 'apply', environments, plan: planned.plan, result: null, diagnostics };
-		}
-		const applied = await runner({
-			projectRoot: input.projectRoot,
-			seedName: setup.name,
-			environments: environments.join(','),
-			plan: planned.plan,
-			env: input.env,
-		});
-		return { ok: true, requested: true, seedName: setup.name, mode: 'apply', environments, plan: applied.plan ?? planned.plan, result: redacted(applied.result ?? applied), diagnostics };
+		return { ok: true, requested: true, seedName: reports.map((entry) => entry.seedName).join(','), mode: requested.some((entry) => entry.apply) ? 'apply' : 'plan', environments: [...new Set(reports.flatMap((entry) => entry.environments))], plan: plans, result: reports.map((entry) => entry.result), diagnostics, seeds: reports };
 	} catch (error) {
-		const diagnostic = error && typeof error === 'object' && 'code' in error
-			? error as ReturnType<typeof sceneErrorDiagnostic>
-			: sceneErrorDiagnostic('scene.seed_apply_failed', error instanceof Error ? error.message : String(error ?? 'Seed apply failed.'), 'setup.seed');
-		return { ok: false, requested: true, seedName: setup.name, mode: 'apply', environments, plan: planned.plan, result: null, diagnostics: [...diagnostics, diagnostic] };
+		diagnostics.push(sceneErrorDiagnostic('scene.seed_apply_failed', error instanceof Error ? error.message : String(error), 'setup.seeds'));
+		return { ok: false, requested: true, seedName: requested.map((entry) => entry.name).join(','), mode: requested.some((entry) => entry.apply) ? 'apply' : 'plan', environments: [...new Set(requested.flatMap((entry) => entry.environments))], plan: plans, result: reports.map((entry) => entry.result), diagnostics, seeds: reports };
 	}
 }

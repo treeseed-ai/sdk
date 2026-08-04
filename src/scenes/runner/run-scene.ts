@@ -23,6 +23,7 @@ import { ensureSceneVisualAuditRoleFixtures,signInSceneVisualAuditRole } from ".
 import type { SceneAssertionRunReport,SceneBrowserSession,SceneDiagnostic,SceneObservedError,SceneOperationWaitReport,SceneRunOptions,SceneRunReport,SceneRunSetupReport,SceneRunStepReport } from "../types.ts";
 import { appendBlockedSceneLogs,canContinueAfterFailure,duration,now,planForInput,playwrightDiagnostic,registerScenePageObservers,reportFromBlock,resolveCapture,sceneWithRunOverrides,splitDiagnostics,validationForInput } from './now.ts';
 import { createSceneTraceEvidence } from './trace-evidence.ts';
+import { runAgentLabScene } from '../agent-lab/run-agent-lab-scene.ts';
 export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> {
 	const startedAt = now(), validation = validationForInput(input);
 	if (!validation.ok || !validation.scene) {
@@ -48,8 +49,8 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 			diagnostics: plan.diagnostics,
 		});
 	}
-	const paths = plan.artifactPaths;
-	const scene = sceneWithRunOverrides(validation.scene, { ...input, runId: paths.runId });
+	if (validation.scene.journey?.kind === 'agent-lab' && validation.scene.agentLab) return runAgentLabScene({ options: input, validation, plan });
+	const paths = plan.artifactPaths, scene = sceneWithRunOverrides(validation.scene, { ...input, runId: plan.artifactPaths.runId });
 	const browser = input.browser ?? scene.target.browser;
 	const deviceResolution = resolveSceneDeviceProfile({ scene, device: input.device });
 	if (!deviceResolution.profile && deviceResolution.diagnostics.some((entry) => entry.severity === 'error')) {
@@ -94,9 +95,10 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 	const authResolver = input.authResolver ?? environmentProvider?.resolveAuth ?? resolveSceneAuth;
 	const authReport = authResolver({ projectRoot: input.projectRoot, scene, environment: plan.environment });
 	const seedRunner = input.seedRunner ?? environmentProvider?.prepareSeed ?? planOrApplySceneSeed;
-	const seedMode = scene.setup.seed?.apply ? 'apply' : scene.setup.seed?.name ? 'plan' : 'none';
-	if (seedMode === 'apply') timeline.push('seed.apply.start', { seed: scene.setup.seed?.name ?? null });
-	else if (seedMode === 'plan') timeline.push('seed.plan.start', { seed: scene.setup.seed?.name ?? null });
+	const configuredSeeds = scene.setup.seeds ?? [];
+	const seedMode = configuredSeeds.some((entry) => entry.apply) ? 'apply' : configuredSeeds.length ? 'plan' : 'none';
+	if (seedMode === 'apply') timeline.push('seed.apply.start', { seeds: configuredSeeds.map((entry) => entry.name) });
+	else if (seedMode === 'plan') timeline.push('seed.plan.start', { seeds: configuredSeeds.map((entry) => entry.name) });
 	const seedReport = await seedRunner({ projectRoot: input.projectRoot, scene, environment: plan.environment, auth: authReport, env: process.env });
 	if (seedMode === 'apply') timeline.push('seed.apply.end', { ok: seedReport.ok, seed: seedReport.seedName });
 	else if (seedMode === 'plan') timeline.push('seed.plan.end', { ok: seedReport.ok, seed: seedReport.seedName });
@@ -493,7 +495,6 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 		blockers: splitDiagnostics(diagnostics, 'error'),
 		diagnostics,
 	};
-	writeSceneMarkdownReport(report);
-	writeSceneRunArtifacts({ scene, plan, report, timeline: timeline.events });
+	writeSceneMarkdownReport(report); writeSceneRunArtifacts({ scene, plan, report, timeline: timeline.events });
 	return report;
 }

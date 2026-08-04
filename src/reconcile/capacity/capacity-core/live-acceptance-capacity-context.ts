@@ -4,6 +4,7 @@ generateCapacityProviderIdentity,
 ProviderProtocolClient,
 signCapacityProviderProof,
 } from '../../../capacity/providers/capacity-provider.ts';
+import { createHash } from 'node:crypto';
 import { MarketClient } from '../../../entrypoints/clients/market-client.ts';
 import { mintTreeDxHs256Token } from '../../../treedx/accounts/auth.ts';
 import { TreeDxClient } from '../../../treedx/support/client.ts';
@@ -100,6 +101,18 @@ function activityMode(value: unknown) {
 	return (value as Record<string, unknown>).activityType === 'acting' ? 'acting' : 'planning';
 }
 
+function activityCapabilities(activities: Record<string, unknown>) {
+	const required = ['repo_read', 'agent_mode_run'];
+	for (const value of Object.values(activities)) {
+		if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+		const execution = (value as Record<string, unknown>).execution;
+		if (!execution || typeof execution !== 'object' || Array.isArray(execution)) continue;
+		const configured = (execution as Record<string, unknown>).requiredCapabilities;
+		if (Array.isArray(configured)) required.push(...configured.map(String).filter(Boolean));
+	}
+	return [...new Set(required)];
+}
+
 export async function syncLocalAcceptanceAgentClasses(adminClient: MarketClient, input: {
 	projectId: string;
 	repositoryId: string;
@@ -131,13 +144,14 @@ export async function syncLocalAcceptanceAgentClasses(adminClient: MarketClient,
 		const scopedClassId = `${input.projectId}:${classId}`;
 		const body = {
 			id: scopedClassId, slug: classId, name: String(frontmatter.name ?? frontmatter.title ?? classId), status: 'active',
-			allowedModes, requiredCapabilities: [classId],
-			handlerRefs: { agents: [{ slug: agentSlug, activities }] },
+			allowedModes, requiredCapabilities: activityCapabilities(activities),
+			handlerRefs: { agents: [{ slug: agentSlug, contentPath: file.path, activities }] },
 			metadata: { source: 'treedx_starter_agent_content_sync', contentPath: file.path, template: frontmatter.template ?? null },
 		};
+		const revision = createHash('sha256').update(JSON.stringify(body)).digest('hex').slice(0, 16);
 		results.push(await (record
-			? adminClient.updateProjectAgentClass(input.projectId, String(record.id), body, `capacity-acceptance:${input.runId}:${input.projectId}:agent-class-update:${classId}`)
-			: adminClient.createProjectAgentClass(input.projectId, body, `capacity-acceptance:${input.runId}:${input.projectId}:agent-class-create:${classId}`)));
+			? adminClient.updateProjectAgentClass(input.projectId, String(record.id), body, `capacity-acceptance:${input.runId}:${input.projectId}:agent-class-update:${classId}:${revision}`)
+			: adminClient.createProjectAgentClass(input.projectId, body, `capacity-acceptance:${input.runId}:${input.projectId}:agent-class-create:${classId}:${revision}`)));
 	}
 	return { agentClasses: results, resolvedRef };
 }
@@ -169,16 +183,21 @@ export async function syncLocalAcceptanceAgentClass(adminClient: MarketClient, i
 		: adminClient.createProjectAgentClass(input.projectId, body, `capacity-acceptance:${input.runId}:agent-class-create`);
 }
 
-export async function provisionLocalCapacityAcceptanceProvider(input: { adminClient: MarketClient; apiUrl: string; teamId: string; runId: string; fetchImpl: typeof fetch }) {
+export async function provisionLocalCapacityAcceptanceProvider(input: {
+	adminClient: MarketClient; apiUrl: string; teamId: string; runId: string; fetchImpl: typeof fetch;
+	capabilities?: string[]; maxConcurrentRunners?: number; purpose?: string;
+}) {
 	const privateJwk = generateCapacityProviderIdentity();
 	const publicJwk = capacityProviderPublicIdentity(privateJwk);
+	const capabilities = [...new Set(input.capabilities ?? ['planning', 'agent_mode_run', 'repo_read', 'usage_report'])];
+	const maxConcurrentRunners = input.maxConcurrentRunners ?? 1;
 	const protocol = new ProviderProtocolClient({ marketUrl: input.apiUrl, fetchImpl: input.fetchImpl, userAgent: `treeseed-live-acceptance/${input.runId}` });
 	const key = await input.adminClient.revealTeamCapacityRegistrationKey(input.teamId);
 	const unsigned = {
 		schemaVersion: 1 as const, displayName: `Treeseed isolated acceptance ${input.runId}`, publicJwk,
-		capabilitySummary: ['planning', 'agent_mode_run', 'repo_read', 'usage_report'],
-		supplyOffer: { weight: 1, maxConcurrentRunners: 1, capabilities: ['planning', 'agent_mode_run', 'repo_read', 'usage_report'] },
-		metadata: { liveAcceptance: true, runId: input.runId },
+		capabilitySummary: capabilities,
+		supplyOffer: { weight: 1, maxConcurrentRunners, capabilities },
+		metadata: { liveAcceptance: true, runId: input.runId, purpose: input.purpose ?? 'capacity-acceptance' },
 	};
 	const registrationProof = await signCapacityProviderProof({ privateJwk, publicJwk, method: 'POST', path: '/v1/provider-registrations', audience: input.apiUrl, body: unsigned });
 	const request = await protocol.register(key.payload.registrationKey, { ...unsigned, proof: registrationProof }, `capacity-acceptance:${input.runId}:register`);

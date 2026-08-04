@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync,readFileSync,readdirSync } from 'node:fs';
+import { existsSync,readFileSync,readdirSync,statSync } from 'node:fs';
 import { relative,resolve } from 'node:path';
 
 export interface LocalTreeDxSeedSource {
@@ -23,18 +23,19 @@ export interface LocalTreeDxSeedVerification {
 
 export function collectLocalTreeDxSeedFiles(source: LocalTreeDxSeedSource): LocalTreeDxSeedFile[] {
 	const files: LocalTreeDxSeedFile[] = [];
-	const visit = (absoluteDir: string) => {
-		if (!existsSync(absoluteDir)) return;
-		for (const entry of readdirSync(absoluteDir, { withFileTypes: true })) {
-			const absolutePath = resolve(absoluteDir, entry.name);
+	const supported = /\.(?:json|md|mdx|toml|ya?ml)$/iu;
+	const addFile = (absolutePath: string) => {
+		if (!supported.test(absolutePath)) return;
+		files.push({ path: relative(source.localRoot, absolutePath).replace(/\\/gu, '/'), content: readFileSync(absolutePath, 'utf8') });
+	};
+	const visit = (absolutePath: string) => {
+		if (!existsSync(absolutePath)) return;
+		if (statSync(absolutePath).isFile()) { addFile(absolutePath); return; }
+		for (const entry of readdirSync(absolutePath, { withFileTypes: true })) {
+			const childPath = resolve(absolutePath, entry.name);
 			if (entry.isDirectory()) {
-				visit(absolutePath);
-			} else if (entry.isFile() && /\.(md|mdx)$/iu.test(entry.name)) {
-				files.push({
-					path: relative(source.localRoot, absolutePath).replace(/\\/gu, '/'),
-					content: readFileSync(absolutePath, 'utf8'),
-				});
-			}
+				visit(childPath);
+			} else if (entry.isFile()) addFile(childPath);
 		}
 	};
 	for (const seedPath of source.seedPaths?.length ? source.seedPaths : [source.contentPath]) {

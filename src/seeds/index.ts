@@ -7,6 +7,8 @@ import type { SeedPlan } from './types.js';
 
 export { formatSeedDiagnostics,hasSeedErrors } from './errors.js';
 export { formatSeedPlan } from './planner.js';
+export { reconcileLocalSeedRuntime } from './runtime/local-capacity.js';
+export type { LocalSeedRuntimeResult } from './runtime/local-capacity.js';
 export type * from './types.js';
 
 export function loadAndPlanSeed(input: {

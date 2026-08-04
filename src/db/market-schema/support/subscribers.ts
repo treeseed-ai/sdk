@@ -224,6 +224,27 @@ export const teamRoleBindings = pgTable('team_role_bindings', {
 	createdAt: text('created_at').notNull(),
 });
 
+export const seedTeamMembershipClaims = pgTable('seed_team_membership_claims', {
+	id: text('id').primaryKey(),
+	seedName: text('seed_name').notNull(),
+	resourceKey: text('resource_key').notNull(),
+	teamId: text('team_id').notNull(),
+	normalizedEmail: text('normalized_email').notNull(),
+	rolesJson: text('roles_json').notNull().default('[]'),
+	status: text('status').notNull().default('pending'),
+	userId: text('user_id'),
+	membershipId: text('membership_id'),
+	bindingIdsJson: text('binding_ids_json').notNull().default('[]'),
+	boundAt: text('bound_at'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_seed_team_membership_claim_resource').on(table.seedName, table.resourceKey),
+	index('idx_seed_team_membership_claim_email').on(table.normalizedEmail, table.status),
+	foreignKey({ name: 'fk_seed_team_membership_claim_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_seed_team_membership_claim_membership', columns: [table.membershipId], foreignColumns: [teamMemberships.id] }).onDelete('set null'),
+]);
+
 export const webSessions = pgTable('web_sessions', {
 	id: text('id').primaryKey(),
 	userId: text('user_id').notNull(),

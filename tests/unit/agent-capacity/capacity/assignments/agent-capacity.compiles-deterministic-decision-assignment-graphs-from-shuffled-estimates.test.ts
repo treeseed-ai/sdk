@@ -99,10 +99,16 @@ it('compiles deterministic decision assignment graphs from shuffled estimates', 
 
 		expect(first.diagnostics.filter((entry) => entry.severity === 'error')).toEqual([]);
 		expect(first.graph).toEqual(second.graph);
-		expect(first.graph.deliverableContracts).toEqual([expect.objectContaining({
+		expect(first.graph.deliverableContracts).toContainEqual(expect.objectContaining({
 			deliverableType: 'architecture_spec',
 			producerAgentClasses: ['architect'],
-		})]);
+		}));
+		expect(first.graph.deliverableContracts).toEqual(expect.arrayContaining([
+			expect.objectContaining({ deliverableType: 'implementation_report', producerAgentClasses: ['engineer'] }),
+			expect.objectContaining({ deliverableType: 'test_report', producerAgentClasses: ['tester'] }),
+		]));
+		expect(first.graph.nodes.filter((node) => ['engineer', 'tester'].includes(node.targetAgentClass))
+			.every((node) => Boolean(node.metadata?.producesDeliverableContractId))).toBe(true);
 		expect(first.graph.edges).toEqual([expect.objectContaining({
 			edgeType: 'blocks-start',
 			reason: 'Architecture spec required.',

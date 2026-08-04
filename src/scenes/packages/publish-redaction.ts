@@ -23,6 +23,8 @@ const EVIDENCE_ARTIFACT_KINDS = new Set<SceneEvidenceArtifactKind>([
 	'render-report',
 	'render-video',
 	'training-output',
+	'agent-lab-report',
+	'sanitized-transcript',
 	'log-summary',
 ]);
 
@@ -73,6 +75,8 @@ export function createDefaultSceneRedactionPolicy(target: ScenePublishTarget): S
 			include('screenshot', 'Only screenshots already selected by sanitized evidence are safe for publication.'),
 			include('render-report', 'Render report metadata is safe for local evidence publication.'),
 			include('training-output', 'Deterministic training sidecars are safe for local evidence publication.'),
+			include('agent-lab-report', 'The standalone Agent Lab report contains the sanitized production evidence snapshot.'),
+			include('sanitized-transcript', 'Agent Lab transcript evidence is recursively redacted before it is written.'),
 		],
 	};
 }

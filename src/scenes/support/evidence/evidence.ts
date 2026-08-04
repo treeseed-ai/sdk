@@ -117,6 +117,8 @@ function discoverEvidenceArtifacts(input: {
 	pushArtifact(artifacts, createArtifact({ runRoot, kind: 'timeline', path: join(runRoot, 'timeline.json'), includedInBundle: true }));
 	pushArtifact(artifacts, createArtifact({ runRoot, kind: 'setup', path: join(runRoot, 'setup.json'), includedInBundle: true }));
 	pushArtifact(artifacts, createArtifact({ runRoot, kind: 'progress', path: join(runRoot, 'progress.jsonl'), includedInBundle: true }));
+	pushArtifact(artifacts, createArtifact({ runRoot, kind: 'agent-lab-report', path: join(runRoot, 'report.html'), includedInBundle: true, redactionStatus: 'sanitized' }));
+	pushArtifact(artifacts, createArtifact({ runRoot, kind: 'sanitized-transcript', path: join(runRoot, 'agent-lab-snapshot.json'), includedInBundle: true, redactionStatus: 'sanitized' }));
 	for (const path of listFiles(join(runRoot, 'checkpoints')).filter((entry) => entry.endsWith('.json') && !entry.endsWith('.storage.json'))) {
 		pushArtifact(artifacts, createArtifact({ runRoot, kind: 'checkpoint', path, includedInBundle: true }));
 	}
