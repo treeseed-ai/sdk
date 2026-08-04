@@ -55,6 +55,7 @@ function snapshot(): AgentLabSnapshot {
 		finishedAt: null, providerId: 'provider-1', providerManagerId: 'manager-1', runnerId: 'runner-1', executionProviderId: 'codex',
 		transcript: [{ id: 't1', timestamp: '2026-08-03T14:00:00.000Z', type: 'status', text: 'Inspecting evidence', status: 'running', payload: { authorization: 'Bearer secret', tool: 'treedx.read' } }],
 		evidence: [{ id: 'e1', timestamp: '2026-08-03T14:00:00.000Z', kind: 'tool-call', label: 'TreeDX read', status: 'running', summary: 'Inspecting evidence', detail: { tool: 'treedx.read' } }],
+		signals: [{ code: 'evidence-ready', severity: 'info', message: 'Discovery evidence is ready.', metadata: { source: 'agent_activity_contract' } }],
 		artifacts: [], usage: {}, error: null, assignment: {},
 		credits: { estimated: 0, requested: 0, reserved: 0, actual: 0, released: 0, refunded: 0, overrun: 0 },
 	}];
@@ -168,6 +169,8 @@ describe('production Agent Lab scene contract', () => {
 			expect(html).not.toMatch(/https?:\/\/(?!127\.0\.0\.1)/u);
 			expect(html).toContain('<dialog id="command-dialog"');
 			expect(html).toContain('Context window');
+			expect(html).toContain('Handoff signals');
+			expect(html).toContain('evidence-ready');
 			expect(html).toContain('overflow-anchor:none');
 			expect(html).toContain('const __name=function(target){return target;}');
 			expect(html).toContain('route.delete(key)');
@@ -253,6 +256,15 @@ describe('production Agent Lab scene contract', () => {
 		const client = { request: async () => ({ entries: [{ id: 'mode-1', mode: 'planning', status: 'running' }], page: { hasMore: false } }) };
 		const [execution] = await collectAgentLabExecutions(client as never, [event as never], [{ id: 'assignment-1', metadata: { activityType: 'estimating' } }]);
 		expect(execution?.activityType).toBe('estimating');
+	});
+
+	it('projects validated artifact-manifest signals for readable downstream handoffs', async () => {
+		const event = snapshot().workdays[0]!.activity[0]!;
+		const client = { request: async () => ({ entries: [{ id: 'mode-1', mode: 'planning', status: 'completed', metadata_json: { source: 'agent_kernel_mode_runtime' } }], page: { hasMore: false } }) };
+		const [execution] = await collectAgentLabExecutions(client as never, [event as never], [{
+			id: 'assignment-1', lifecycleOutput: { artifactManifest: { signals: [{ code: 'evidence-ready', severity: 'info', metadata: { source: 'agent_activity_contract' } }] } },
+		}]);
+		expect(execution?.signals).toEqual([{ code: 'evidence-ready', severity: 'info', metadata: { source: 'agent_activity_contract' } }]);
 	});
 
 	it('maps requested and durable accounting credits without treating zero as missing', async () => {

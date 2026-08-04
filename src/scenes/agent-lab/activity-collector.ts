@@ -324,6 +324,10 @@ function executionFromEvents(events: AgentActivityEvent[], transcript: Row[], as
 	const requestedCapacity = record(assignmentInput.capacity);
 	const assignedActivityType = text(record(assignment.metadata).activityType) ?? text(record(decisionInput.metadata).activityType) ?? text(record(decisionInput.input).activityType);
 	const lifecycle = record(assignment.lifecycleOutput ?? assignment.lifecycle_output_json);
+	const terminalOutputs = record(terminalRecord?.outputs_json ?? terminalRecord?.outputs);
+	const manifests = [record(lifecycle.artifactManifest), record(terminalOutputs.artifactManifest), record(record(terminalOutputs.outputs).artifactManifest)];
+	const signals = [...new Map(manifests.flatMap((manifest) => Array.isArray(manifest.signals) ? manifest.signals.map(record) : [])
+		.map((signal) => [`${text(signal.code) ?? ''}:${JSON.stringify(signal.metadata ?? {})}`, signal])).values()];
 	const requested = number(decisionInput.requestedCredits ?? envelope.requestedCredits ?? assignment.requestedCredits ?? envelope.reservedCredits);
 	const estimated = number(decisionInput.estimatedCredits ?? requestedCapacity.expectedCredits ?? envelope.expectedCredits ?? requested);
 	const reserved = number(envelope.reservedCredits ?? assignment.reservedCredits ?? requested);
@@ -346,6 +350,7 @@ function executionFromEvents(events: AgentActivityEvent[], transcript: Row[], as
 		executionProviderId: events.find((entry) => entry.executionProviderId)?.executionProviderId ?? null,
 		transcript: transcript.map((entry, index) => transcriptItem(entry, first.id, index)),
 		evidence: executionEvidence(transcript, first.assignmentId ?? first.id),
+		signals,
 		artifacts: events.flatMap((entry) => entry.artifactRefs),
 		usage: Object.assign({}, ...events.map((entry) => entry.usageDelta)),
 		error: status === 'failed' ? { category: terminalRecord?.fallback_reason ?? null, summary: record(terminalRecord?.outputs_json).summary ?? null } : null,

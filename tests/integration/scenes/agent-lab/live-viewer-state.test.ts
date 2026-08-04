@@ -60,7 +60,7 @@ function viewerSnapshot(): AgentLabSnapshot {
 			id: `evidence-${index}`, timestamp: new Date(Date.parse(day.startedAt!) + index * 1_000).toISOString(),
 			kind: 'agent-message', label: `Agent message ${index}`, status: 'recorded', summary: `Evidence ${index}`,
 			detail: { message: `Complete provider-emitted message ${index}` },
-		}))], artifacts: [], usage: {}, error: null,
+		}))], signals: [{ code: 'evidence-ready', severity: 'info' }], artifacts: [], usage: {}, error: null,
 		assignment: { title: 'Plan the Guide update', decisionInput: { activityType: 'planning' } },
 		credits: { estimated: 1, requested: 1, reserved: 1, actual: 0, released: 0, refunded: 0, overrun: 0 },
 	}];

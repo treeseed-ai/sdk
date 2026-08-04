@@ -33,7 +33,9 @@ export function assertionsFor(day: AgentLabWorkdaySnapshot, expectedAgents: stri
 		{ id: 'agent-coverage', label: 'Every selected production agent completed', status: result(expectedAgents.every((agent) => completedAgents.has(agent))), detail: `${completedAgents.size}/${expectedAgents.length} agents completed and verified` },
 		{ id: 'profile-coverage', label: 'Every required activity profile completed', status: result(expectedProfiles.every((profile) => completedProfiles.has(profile))), detail: `${expectedProfiles.filter((profile) => completedProfiles.has(profile)).length}/${expectedProfiles.length} profiles completed and verified` },
 		{ id: 'kernel', label: 'AgentKernel produced durable mode-run evidence', status: day.activity.some((entry) => entry.modeRunId) ? 'passed' as const : 'pending' as const },
-		{ id: 'treedx', label: 'TreeDX evidence captured without failed content operations', status: result(!failedContentTool && completed.some((entry) => entry.artifacts.length > 0 || entry.transcript.some((item) => JSON.stringify(item.payload).includes('treedx')))) },
+		{ id: 'treedx', label: 'TreeDX content integrity', status: result(!failedContentTool && completed.some((entry) => entry.artifacts.length > 0 || entry.transcript.some((item) => JSON.stringify(item.payload).includes('treedx')))), detail: failedContentTool
+			? 'The native execution completed, but at least one TreeDX or content operation failed. Inspect the assignment timeline to distinguish broken relations, unavailable context, authorization, and mutation failures.'
+			: 'TreeDX evidence was captured without failed content operations.' },
 		...(governanceRequired ? [{ id: 'governance', label: 'A real proposal vote authorized acting', status: result(acceptedGovernance), detail: acceptedGovernance ? 'Accepted decision provenance is attached to acting assignments.' : 'No accepted proposal vote is recorded.' }] : []),
 		{ id: 'settlement', label: 'Every required profile settled exactly once', status: result(expectedProfiles.every((profile) => completedProfiles.has(profile))), detail: `${verifiedAssignments.size} assignment settlement(s) verified` },
 	];

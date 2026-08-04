@@ -64,6 +64,7 @@ export type AgentLabExecution = {
 	executionProviderId: string | null;
 	transcript: AgentLabTranscriptItem[];
 	evidence: AgentLabExecutionEvidence[];
+	signals: Record<string, unknown>[];
 	artifacts: Record<string, unknown>[];
 	usage: Record<string, unknown>;
 	error: Record<string, unknown> | null;

@@ -40,6 +40,7 @@ function localApiEnvironment(apiPort: number, webPort: number) {
 		TREESEED_CAPACITY_ACCEPTANCE_ADMIN_TOKEN: 'tsk_local_treeseed_acceptance_admin',
 		TREESEED_CAPACITY_ACCEPTANCE_AGENT_CLASS_ID: 'planning',
 		TREESEED_CAPACITY_ACCEPTANCE_ENVIRONMENT: 'local',
+		TREESEED_CAPACITY_GOVERNANCE_SECRET: 'treeseed-local-capacity-governance-secret',
 		TREESEED_API_PROVIDER_AUTH: 'market-postgres',
 		TREESEED_API_AUTH_SECRET: 'treeseed-api-dev-secret',
 		TREESEED_API_WEB_SERVICE_ID: 'web',
