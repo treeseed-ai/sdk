@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import {
 headCommit
 } from '../../operations/git-workflow.ts';
+import type { PackageDependencyReference } from '../../packages/package-reference-policy.ts';
 import { collectDeploymentLockfileWorkspaceIssues,ensureLocalWorkspaceLinks } from '../../treedx/workspaces/workspace-dependency-mode.ts';
 import {
 currentBranch,
@@ -10,7 +11,7 @@ hasMeaningfulChanges
 } from '../../treedx/workspaces/workspace-save.ts';
 import { finalizeCleanPackageVersion } from '../packages/finalize-clean-package-version.ts';
 import { isNoOpGitCommitError,runCapturedCommand } from '../runtime/with-short-process-temp-env.ts';
-import { canManagePackageJsonVersion,createReport,dependencyFields,ensureWritableRemote,packageVersionTagConflictsWithHead,selectPackageVersion } from '../support/classify-repo-kind.ts';
+import { canManagePackageJsonVersion,createReport,dependencyFields,ensureWritableRemote,packageVersionTagConflictsWithHead,remoteBranchCommitSafe,selectPackageVersion } from '../support/classify-repo-kind.ts';
 import { applyPackageVersion,hasNpmLockfile,hasStagedChanges,isRootWorkspaceRepository,shouldSkipNetworkInstall,syncDirectGitDependencyLockfileEntries,updateDependencyReferences,validateStandaloneGitDependencyLockfile } from '../support/has-staged-changes.ts';
 import { RepositorySaveError,RepositorySaveNode,RepositorySaveOptions,SaveState,emitProgress,readJson } from '../support/repo-kind.ts';
 import { classifyRepositoryChanges,repositoryChangedPaths } from '../support/change-classification.ts';
@@ -21,6 +22,13 @@ import { commitMessageFor,gitDiffSummary } from './discover-repository-save-node
 
 function recordFinalizedCommit(state: SaveState, node: RepositorySaveNode, commitSha: string | null) {
 	for (const path of node.checkoutAliases) state.finalizedCommits.set(path, commitSha);
+}
+
+export function dependencyReferenceIsPublished(reference: PackageDependencyReference) {
+	if (reference.mode !== 'dev-git-commit' || !reference.sourcePath) return true;
+	const expectedCommit = (reference.manifestSpec ?? reference.spec).slice((reference.manifestSpec ?? reference.spec).lastIndexOf('#') + 1);
+	const branch = currentBranch(reference.sourcePath);
+	return Boolean(branch && remoteBranchCommitSafe(reference.sourcePath, branch) === expectedCommit);
 }
 
 export async function saveOneRepository(
@@ -48,7 +56,8 @@ export async function saveOneRepository(
 	}));
 	const gitDependencyRefreshReferences = [...state.finalizedReferences.values()]
 		.filter((reference) => reference.mode === 'dev-git-commit' && directDependencyNames.has(reference.packageName));
-	const deferredGitDependencyValidation = options.deferPushUntilVerified === true && gitDependencyRefreshReferences.length > 0;
+	const deferredGitDependencyValidation = options.deferPushUntilVerified === true
+		&& gitDependencyRefreshReferences.some((reference) => !dependencyReferenceIsPublished(reference));
 	const lockfileGitDependenciesSynced = syncDirectGitDependencyLockfileEntries(node, options, gitDependencyRefreshReferences);
 	if (!isRootWorkspaceRepository(node, options) && (
 		lockfileGitDependenciesSynced

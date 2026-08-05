@@ -13,6 +13,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
 	applyPackageVersion,
 	discoverRepositorySaveNodes,
+	dependencyReferenceIsPublished,
 	initialPackageDependencyReferences,
 	nextDevVersion,
 	planRepositorySave,
@@ -84,6 +85,31 @@ it('seeds dependency metadata from clean checked-out packages', () => {
 		sourcePath: root,
 		spec: expect.stringContaining(git(root, ['rev-parse', 'HEAD'])),
 	});
+});
+
+it('detects when an exact Git dependency commit is available remotely', () => {
+	const root = mkdtempSync(join(tmpdir(), 'treeseed-published-reference-'));
+	const origin = mkdtempSync(join(tmpdir(), 'treeseed-published-reference-origin-'));
+	git(origin, ['init', '--bare']);
+	git(root, ['init', '-b', 'feature/demo']);
+	git(root, ['config', 'user.email', 'test@example.com']);
+	git(root, ['config', 'user.name', 'Test User']);
+	git(root, ['remote', 'add', 'origin', origin]);
+	writeFileSync(resolve(root, 'README.md'), 'published\n', 'utf8');
+	git(root, ['add', '-A']);
+	git(root, ['commit', '-m', 'chore: published']);
+	git(root, ['push', '-u', 'origin', 'feature/demo']);
+	const commit = git(root, ['rev-parse', 'HEAD']);
+	const reference = {
+		packageName: '@treeseed/demo', version: '1.0.0', spec: `github:treeseed-ai/demo#${commit}`,
+		manifestSpec: `github:treeseed-ai/demo#${commit}`, installSpec: `github:treeseed-ai/demo#${commit}`,
+		tagName: null, remoteUrl: 'git@github.com:treeseed-ai/demo.git', sourcePath: root, mode: 'dev-git-commit' as const,
+	};
+	expect(dependencyReferenceIsPublished(reference)).toBe(true);
+	writeFileSync(resolve(root, 'README.md'), 'local only\n', 'utf8');
+	git(root, ['add', '-A']);
+	git(root, ['commit', '-m', 'chore: local']);
+	expect(dependencyReferenceIsPublished({ ...reference, spec: `github:treeseed-ai/demo#${git(root, ['rev-parse', 'HEAD'])}`, manifestSpec: `github:treeseed-ai/demo#${git(root, ['rev-parse', 'HEAD'])}` })).toBe(false);
 });
 
 it('finalizes a clean package with an interrupted dev version as a commit ref without creating a tag', async () => {
