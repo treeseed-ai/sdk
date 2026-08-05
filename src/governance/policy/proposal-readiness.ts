@@ -45,7 +45,9 @@ export interface GovernanceProposalReadiness {
 }
 
 function strings(value: unknown): string[] {
-	return Array.isArray(value) ? [...new Set(value.map(String).map((entry) => entry.trim()).filter(Boolean))] : [];
+	return Array.isArray(value)
+		? [...new Set(value.filter((entry): entry is string => typeof entry === 'string').map((entry) => entry.trim()).filter(Boolean))]
+		: [];
 }
 
 function substantive(value: unknown): boolean {

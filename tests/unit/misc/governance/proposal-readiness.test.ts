@@ -25,6 +25,15 @@ describe('proposal readiness', () => {
 		expect(result.missingContent).toContain('immutable TreeDX provenance');
 	});
 
+	it('rejects structured objects where canonical evidence reference strings are required', () => {
+		const result = evaluateGovernanceProposalReadiness({
+			...complete,
+			evidenceRefs: [{ path: 'src/content/notes/evidence.mdx', revision: 'abc' }] as unknown as string[],
+		});
+		expect(result.contentReady).toBe(false);
+		expect(result.missingContent).toContain('research evidence');
+	});
+
 	it('requires estimate, independent review, and resolved blockers for voting', () => {
 		const content = evaluateGovernanceProposalReadiness(complete);
 		expect(content.contentReady).toBe(true);
