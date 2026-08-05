@@ -1,4 +1,3 @@
-import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
 headCommit
@@ -31,6 +30,14 @@ export function dependencyReferenceIsPublished(reference: PackageDependencyRefer
 	return Boolean(branch && remoteBranchCommitSafe(reference.sourcePath, branch) === expectedCommit);
 }
 
+export function shouldValidateGitDependencyLockfile(
+	references: PackageDependencyReference[],
+	deferPushUntilVerified: boolean,
+) {
+	return references.length > 0
+		&& (!deferPushUntilVerified || references.every(dependencyReferenceIsPublished));
+}
+
 export async function saveOneRepository(
 	node: RepositorySaveNode,
 	options: RepositorySaveOptions,
@@ -56,13 +63,17 @@ export async function saveOneRepository(
 	}));
 	const gitDependencyRefreshReferences = [...state.finalizedReferences.values()]
 		.filter((reference) => reference.mode === 'dev-git-commit' && directDependencyNames.has(reference.packageName));
-	const deferredGitDependencyValidation = options.deferPushUntilVerified === true
-		&& gitDependencyRefreshReferences.some((reference) => !dependencyReferenceIsPublished(reference));
+	const validateGitDependencyLockfile = shouldValidateGitDependencyLockfile(
+		gitDependencyRefreshReferences,
+		options.deferPushUntilVerified === true,
+	);
+	const deferredGitDependencyValidation = gitDependencyRefreshReferences.length > 0
+		&& !validateGitDependencyLockfile;
 	const lockfileGitDependenciesSynced = syncDirectGitDependencyLockfileEntries(node, options, gitDependencyRefreshReferences);
-	if (!isRootWorkspaceRepository(node, options) && (
-		lockfileGitDependenciesSynced
-		|| (gitDependencyRefreshReferences.length > 0 && !existsSync(resolve(node.path, 'package-lock.json')))
-	) && !deferredGitDependencyValidation) {
+	if (
+		!isRootWorkspaceRepository(node, options)
+		&& validateGitDependencyLockfile
+	) {
 		validateStandaloneGitDependencyLockfile(node, options);
 	}
 	const gitDependencyRefreshSpecs = lockfileGitDependenciesSynced
