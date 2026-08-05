@@ -70,7 +70,9 @@ export async function saveOneRepository(
 	);
 	const deferredGitDependencyValidation = gitDependencyRefreshReferences.length > 0
 		&& !validateGitDependencyLockfile;
-	const lockfileGitDependenciesSynced = syncDirectGitDependencyLockfileEntries(node, options, gitDependencyRefreshReferences);
+	const lockfileGitDependenciesSynced = validateGitDependencyLockfile
+		? false
+		: syncDirectGitDependencyLockfileEntries(node, options, gitDependencyRefreshReferences);
 	if (
 		!isRootWorkspaceRepository(node, options)
 		&& validateGitDependencyLockfile
