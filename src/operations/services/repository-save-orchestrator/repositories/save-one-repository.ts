@@ -10,7 +10,7 @@ hasMeaningfulChanges
 } from '../../treedx/workspaces/workspace-save.ts';
 import { finalizeCleanPackageVersion } from '../packages/finalize-clean-package-version.ts';
 import { isNoOpGitCommitError,runCapturedCommand } from '../runtime/with-short-process-temp-env.ts';
-import { canManagePackageJsonVersion,createReport,dependencyFields,ensureWritableRemote,packageVersionTagConflictsWithHead,remoteBranchCommitSafe,selectPackageVersion } from '../support/classify-repo-kind.ts';
+import { canManagePackageJsonVersion,createReport,dependencyFields,ensureWritableRemote,packageVersionTagConflictsWithHead,remoteBranchCommitSafe,remoteRefCommitExistsSafe,selectPackageVersion } from '../support/classify-repo-kind.ts';
 import { applyPackageVersion,hasNpmLockfile,hasStagedChanges,isRootWorkspaceRepository,shouldSkipNetworkInstall,syncDirectGitDependencyLockfileEntries,updateDependencyReferences,validateStandaloneGitDependencyLockfile } from '../support/has-staged-changes.ts';
 import { RepositorySaveError,RepositorySaveNode,RepositorySaveOptions,SaveState,emitProgress,readJson } from '../support/repo-kind.ts';
 import { classifyRepositoryChanges,repositoryChangedPaths } from '../support/change-classification.ts';
@@ -27,7 +27,8 @@ export function dependencyReferenceIsPublished(reference: PackageDependencyRefer
 	if (reference.mode !== 'dev-git-commit' || !reference.sourcePath) return true;
 	const expectedCommit = (reference.manifestSpec ?? reference.spec).slice((reference.manifestSpec ?? reference.spec).lastIndexOf('#') + 1);
 	const branch = currentBranch(reference.sourcePath);
-	return Boolean(branch && remoteBranchCommitSafe(reference.sourcePath, branch) === expectedCommit);
+	return Boolean(branch && remoteBranchCommitSafe(reference.sourcePath, branch) === expectedCommit)
+		|| remoteRefCommitExistsSafe(reference.sourcePath, expectedCommit);
 }
 
 export function shouldValidateGitDependencyLockfile(

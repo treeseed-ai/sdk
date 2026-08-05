@@ -171,6 +171,15 @@ export function remoteBranchCommitSafe(cwd: string, branch: string) {
 	}
 }
 
+export function remoteRefCommitExistsSafe(cwd: string, commit: string) {
+	try {
+		const output = runGit(['ls-remote', 'origin'], { cwd, capture: true });
+		return output.split(/\r?\n/u).some((line) => line.startsWith(`${commit}\t`));
+	} catch {
+		return false;
+	}
+}
+
 export function canManagePackageJsonVersion(node: RepositorySaveNode) {
 	return node.kind === 'package' && Boolean(node.packageJsonPath) && typeof node.packageJson?.version === 'string';
 }
