@@ -76,8 +76,7 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 	const recordingVideo = Boolean(videoDir);
 	const capture = resolveCapture({ scene, device, runtimeMode: runtime.mode, recording: Boolean(videoDir) });
 	const artifacts = createSceneRunArtifacts({ paths, playwrightTracePath: tracePath });
-	writeFileSync(artifacts.consoleLogPath!, '', 'utf8');
-	writeFileSync(artifacts.networkLogPath!, '', 'utf8');
+	writeFileSync(artifacts.consoleLogPath!, '', 'utf8'); writeFileSync(artifacts.networkLogPath!, '', 'utf8');
 	writeFileSync(artifacts.errorsLogPath!, '', 'utf8');
 	writeFileSync(artifacts.progressPath!, '', 'utf8');
 	const timeline = createSceneTimeline({ sceneId: scene.id, runId: paths.runId, startedAtMs: startedAt.getTime() });
