@@ -1,5 +1,6 @@
 import { resolveMachineEnvironmentValues } from '../../operations/services/configuration/config-runtime.ts';
 import { apiRailwayDefaultDockerfilePath,isApiRailwaySourcePolicyService,railwayEnvironmentQualifiedServiceName,railwayTreeDxServiceName } from '../../operations/services/hosting/railway/railway-source-policy.ts';
+import { publicTreeDxRuntimeEnvironment } from '../../platform/treedx/runtime-environment.ts';
 import type {
 ApplicationHostingProfile,
 HostingEnvironment,
@@ -222,6 +223,7 @@ export function buildProfileFromDeployConfig(input: HostingGraphInput): Applicat
 	if (config.hosting?.kind === 'treeseed_control_plane') {
 		const treeDxNodePool = publicTreeDxNodePool(config);
 		const treeDxSourcePolicy = publicTreeDxSourcePolicy(input, config, launchEnv);
+		const treeDxEnvironment = publicTreeDxRuntimeEnvironment(config.publicTreeDxFederation?.railway);
 		const treeDxNodeUnits = Array.from({ length: treeDxNodePool.bootstrapCount }, (_, offset) => {
 			const nodeIndex = offset + 1;
 			const logicalServiceName = indexedName('public-treedx-node', nodeIndex);
@@ -246,41 +248,9 @@ export function buildProfileFromDeployConfig(input: HostingGraphInput): Applicat
 					volumeName: `${serviceName}-volume`,
 					volumeMountPath: '/data',
 					runtimeMode: 'replicated',
-					environmentVariables: {
-						PORT: '4000',
-						TREEDX_DATA_DIR: '/data',
-						TREEDX_AUTH_MODE: 'connected',
-						TREEDX_AUTH_VERIFIER: 'hs256_dev',
-						TREEDX_ALLOW_DEV_VERIFIER_IN_PROD: 'true',
-						TREEDX_EXEC_BACKEND: 'container_sandbox',
-						TREEDX_FEDERATION_MODE: 'connected_library',
-						TREEDX_JWT_AUDIENCE: 'treedx-public-federation',
-						TREEDX_JWT_ISSUER: 'https://api.treeseed.local/treedx',
-						TREEDX_BOOTSTRAP_TRUST_ACTOR_ID: 'treeseed-api',
-						TREEDX_BOOTSTRAP_TRUST_TENANT_ID: 'treeseed-control-plane',
-						TREEDX_BOOTSTRAP_TRUST_REPO_IDS: '*',
-						TREEDX_BOOTSTRAP_TRUST_REFS: '*',
-						TREEDX_BOOTSTRAP_TRUST_PATHS: '**',
-						TREEDX_SCOPE: 'public_federation',
-					},
+					environmentVariables: treeDxEnvironment,
 				},
-				variableRefs: [
-					'PORT',
-					'TREEDX_DATA_DIR',
-					'TREEDX_AUTH_MODE',
-					'TREEDX_AUTH_VERIFIER',
-					'TREEDX_ALLOW_DEV_VERIFIER_IN_PROD',
-					'TREEDX_EXEC_BACKEND',
-					'TREEDX_FEDERATION_MODE',
-					'TREEDX_JWT_AUDIENCE',
-					'TREEDX_JWT_ISSUER',
-					'TREEDX_BOOTSTRAP_TRUST_ACTOR_ID',
-					'TREEDX_BOOTSTRAP_TRUST_TENANT_ID',
-					'TREEDX_BOOTSTRAP_TRUST_REPO_IDS',
-					'TREEDX_BOOTSTRAP_TRUST_REFS',
-					'TREEDX_BOOTSTRAP_TRUST_PATHS',
-					'TREEDX_SCOPE',
-				],
+				variableRefs: Object.keys(treeDxEnvironment),
 				secretRefs: ['TREEDX_SECRET_KEY_BASE', 'TREEDX_ADMIN_TOKEN', 'TREEDX_JWT_HS256_SECRET'],
 				environments: {
 					local: { hostId: 'local-docker', projectGroupId: 'public-treedx-federation' },

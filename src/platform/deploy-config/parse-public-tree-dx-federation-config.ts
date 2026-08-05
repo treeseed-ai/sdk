@@ -9,6 +9,14 @@ WebCachePolicyConfig
 import { DEFAULT_SOURCE_PAGE_PURGE_PATHS,optionalBoolean,optionalEnum,optionalNonNegativeNumber,optionalPositiveNumber,optionalRecord,optionalString,optionalStringArray,processingFieldAliases,webCachePolicyFieldAliases,webSurfaceCacheFieldAliases } from './deploy-config-field-aliases.ts';
 import { parseLocalRuntimeConfig,parseManagedServiceConfig,parseServiceEnvironmentConfig } from './normalize-planes-from-legacy-hosting.ts';
 
+function optionalPositiveInteger(value: unknown, label: string) {
+	const parsed = optionalPositiveNumber(value, label);
+	if (parsed !== undefined && !Number.isInteger(parsed)) {
+		throw new Error(`Invalid deploy config: expected ${label} to be a positive integer when provided.`);
+	}
+	return parsed;
+}
+
 export function parsePublicTreeDxFederationConfig(value: unknown) {
 	const record = optionalRecord(value, 'publicTreeDxFederation');
 	if (!record) {
@@ -16,6 +24,16 @@ export function parsePublicTreeDxFederationConfig(value: unknown) {
 	}
 	const railway = optionalRecord(record.railway, 'publicTreeDxFederation.railway') ?? {};
 	const nodePool = optionalRecord(railway.nodePool, 'publicTreeDxFederation.railway.nodePool') ?? {};
+	const runtime = optionalRecord(railway.runtime, 'publicTreeDxFederation.railway.runtime') ?? {};
+	const repositoryQueries = optionalRecord(railway.repositoryQueries, 'publicTreeDxFederation.railway.repositoryQueries') ?? {};
+	const graphQueries = optionalRecord(railway.graphQueries, 'publicTreeDxFederation.railway.graphQueries') ?? {};
+	const cacheMemoryFraction = optionalPositiveNumber(
+		runtime.cacheMemoryFraction,
+		'publicTreeDxFederation.railway.runtime.cacheMemoryFraction',
+	);
+	if (cacheMemoryFraction !== undefined && cacheMemoryFraction > 1) {
+		throw new Error('Invalid deploy config: expected publicTreeDxFederation.railway.runtime.cacheMemoryFraction to be at most 1.');
+	}
 	return {
 		railway: {
 			nodePool: {
@@ -27,6 +45,21 @@ export function parsePublicTreeDxFederationConfig(value: unknown) {
 					nodePool.maxNodes,
 					'publicTreeDxFederation.railway.nodePool.maxNodes',
 				),
+			},
+			runtime: {
+				cpuBudget: optionalPositiveInteger(runtime.cpuBudget, 'publicTreeDxFederation.railway.runtime.cpuBudget'),
+				memoryBudgetMb: optionalPositiveInteger(runtime.memoryBudgetMb, 'publicTreeDxFederation.railway.runtime.memoryBudgetMb'),
+				cacheMemoryFraction,
+			},
+			repositoryQueries: {
+				poolSize: optionalPositiveInteger(repositoryQueries.poolSize, 'publicTreeDxFederation.railway.repositoryQueries.poolSize'),
+				maxQueue: optionalPositiveInteger(repositoryQueries.maxQueue, 'publicTreeDxFederation.railway.repositoryQueries.maxQueue'),
+				queueTimeoutMs: optionalPositiveInteger(repositoryQueries.queueTimeoutMs, 'publicTreeDxFederation.railway.repositoryQueries.queueTimeoutMs'),
+			},
+			graphQueries: {
+				poolSize: optionalPositiveInteger(graphQueries.poolSize, 'publicTreeDxFederation.railway.graphQueries.poolSize'),
+				maxQueue: optionalPositiveInteger(graphQueries.maxQueue, 'publicTreeDxFederation.railway.graphQueries.maxQueue'),
+				queueTimeoutMs: optionalPositiveInteger(graphQueries.queueTimeoutMs, 'publicTreeDxFederation.railway.graphQueries.queueTimeoutMs'),
 			},
 		},
 	};

@@ -87,6 +87,19 @@ export interface KnowledgePageSummary {
 	canonicalPath?: string;
 }
 
+export interface KnowledgeNavigationEntry extends KnowledgePageSummary {
+	order: number;
+	parentId?: string;
+	revision: string;
+}
+
+export interface KnowledgeReaderResponse {
+	book: BookDefinition;
+	navigation: KnowledgeNavigationEntry[];
+	page: KnowledgePageDefinition | null;
+	revision: string;
+}
+
 export interface KnowledgeContextRequest {
 	pageId?: string;
 	capabilityId?: string;

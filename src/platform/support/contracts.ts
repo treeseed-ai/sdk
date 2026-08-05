@@ -311,6 +311,21 @@ export interface PublicTreeDxFederationConfig {
 			bootstrapCount?: number;
 			maxNodes?: number;
 		};
+		runtime?: {
+			cpuBudget?: number;
+			memoryBudgetMb?: number;
+			cacheMemoryFraction?: number;
+		};
+		repositoryQueries?: {
+			poolSize?: number;
+			maxQueue?: number;
+			queueTimeoutMs?: number;
+		};
+		graphQueries?: {
+			poolSize?: number;
+			maxQueue?: number;
+			queueTimeoutMs?: number;
+		};
 	};
 }
 
