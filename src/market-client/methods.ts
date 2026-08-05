@@ -66,6 +66,7 @@ import { requeueCapacityAssignmentMethod } from "./capacity/assignments/lifecycl
 import { cancelCapacityAssignmentMethod } from "./capacity/assignments/retirement/cancel-capacity-assignment.ts";
 import { capacityAuditEventsMethod } from "./capacity/capacity-core/contracts/capacity-audit-events.ts";
 import { capacityEvidencePageMethod } from "./capacity/observability/contracts/capacity-evidence-page.ts";
+import { agentLabActivityMethod,agentLabEntitiesMethod,agentLabMetricSeriesMethod,agentLabOverviewMethod,agentLabWorkdayContextMethod,updateAgentLabTargetsMethod } from "./capacity/observability/contracts/agent-lab.ts";
 import { projectCapacityDiagnosticsMethod } from "./capacity/observability/contracts/project-capacity-diagnostics.ts";
 import { projectCapacityRuntimeDiagnosticsMethod } from "./capacity/observability/contracts/project-capacity-runtime-diagnostics.ts";
 import { capacityPlanMethod } from "./capacity/planning/contracts/capacity-plan.ts";
@@ -317,6 +318,12 @@ export function installMarketClientMethods(prototype: MarketClient) {
   prototype.capacityUsage = capacityUsageMethod;
   prototype.capacityLedger = capacityLedgerMethod;
   prototype.capacityEvidencePage = capacityEvidencePageMethod;
+  prototype.agentLabWorkdayContext = agentLabWorkdayContextMethod;
+  prototype.agentLabOverview = agentLabOverviewMethod;
+  prototype.agentLabActivity = agentLabActivityMethod;
+  prototype.agentLabMetricSeries = agentLabMetricSeriesMethod;
+  prototype.agentLabEntities = agentLabEntitiesMethod;
+  prototype.updateAgentLabTargets = updateAgentLabTargetsMethod;
   prototype.projectCapacityDiagnostics = projectCapacityDiagnosticsMethod;
   prototype.projectAgentClasses = projectAgentClassesMethod;
   prototype.createProjectAgentClass = createProjectAgentClassMethod;
