@@ -5,6 +5,7 @@ export function webAppearanceMethod(this: MarketClient) {
         payload: {
             scheme: string;
             mode: string;
+            workspace: { enabled: boolean; scheme: string; mode: 'inherit' | 'light' | 'dark' | 'system' };
         };
     }>('/v1/auth/web/appearance', { requireAuth: true });
 }
