@@ -80,6 +80,26 @@ export function syncDirectGitDependencyLockfileEntries(
 			for (const nested of Object.values(record)) visitDependencyMaps(nested);
 		};
 		visitDependencyMaps(lockfile);
+		const sourceLockfilePath = reference.sourcePath ? resolve(reference.sourcePath, 'package-lock.json') : null;
+		const sourceLockfile = sourceLockfilePath && existsSync(sourceLockfilePath) ? readJson(sourceLockfilePath) : null;
+		const sourcePackages = sourceLockfile?.packages && typeof sourceLockfile.packages === 'object' && !Array.isArray(sourceLockfile.packages)
+			? sourceLockfile.packages as Record<string, Record<string, unknown>>
+			: null;
+		const sourceRoot = sourcePackages?.[''];
+		const copyMissingDependencyClosure = (dependencies: unknown) => {
+			if (!sourcePackages || !dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) return;
+			for (const dependencyName of Object.keys(dependencies as Record<string, unknown>)) {
+				const entryKey = `node_modules/${dependencyName}`;
+				const sourceEntry = sourcePackages[entryKey];
+				if (!sourceEntry) continue;
+				if (!packageEntries[entryKey]) {
+					packageEntries[entryKey] = structuredClone(sourceEntry);
+					changed = true;
+				}
+				copyMissingDependencyClosure(sourceEntry.dependencies);
+				copyMissingDependencyClosure(sourceEntry.optionalDependencies);
+			}
+		};
 		for (const [entryKey, entry] of Object.entries(packageEntries)) {
 			if (entryKey !== `node_modules/${reference.packageName}` && !entryKey.endsWith(`/node_modules/${reference.packageName}`)) continue;
 			const nextResolved = normalizeGitRemoteForDependency(reference.remoteUrl ?? '', 'ssh');
@@ -95,6 +115,15 @@ export function syncDirectGitDependencyLockfileEntries(
 			if ('integrity' in entry) {
 				delete entry.integrity;
 				changed = true;
+			}
+			for (const field of ['dependencies', 'optionalDependencies'] as const) {
+				const sourceDependencies = sourceRoot?.[field];
+				if (!sourceDependencies || typeof sourceDependencies !== 'object' || Array.isArray(sourceDependencies)) continue;
+				if (JSON.stringify(entry[field] ?? {}) !== JSON.stringify(sourceDependencies)) {
+					entry[field] = structuredClone(sourceDependencies);
+					changed = true;
+				}
+				copyMissingDependencyClosure(sourceDependencies);
 			}
 		}
 	}

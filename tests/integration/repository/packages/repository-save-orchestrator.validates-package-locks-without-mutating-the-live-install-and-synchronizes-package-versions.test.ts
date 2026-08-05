@@ -20,6 +20,7 @@ import {
 	repositorySaveWaves,
 	runRepositorySaveOrchestrator,
 	runStreamingCommand,
+	syncDirectGitDependencyLockfileEntries,
 	validateStandaloneGitDependencyLockfile,
 	type RepositorySaveNode,
 } from '../../../../src/operations/services/repositories/repository-save-orchestrator.ts';
@@ -63,6 +64,39 @@ function writeJson(path: string, value: Record<string, unknown>) {
 	writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 describe('repository save orchestrator helpers', () => {
+it('copies newly introduced runtime dependency closure into consumer locks during an atomic save', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-dependency-closure-'));
+		const sdkRoot = resolve(root, 'sdk');
+		const consumerRoot = resolve(root, 'consumer');
+		const spec = 'github:treeseed-ai/sdk#abc123';
+		writeJson(resolve(sdkRoot, 'package-lock.json'), {
+			lockfileVersion: 3,
+			packages: {
+				'': { dependencies: { 'new-runtime': '1.0.0' } },
+				'node_modules/new-runtime': { version: '1.0.0', dependencies: { 'runtime-core': '1.0.0' } },
+				'node_modules/runtime-core': { version: '1.0.0' },
+			},
+		});
+		const packageJson = { name: '@treeseed/consumer', dependencies: { '@treeseed/sdk': spec } };
+		writeJson(resolve(consumerRoot, 'package-lock.json'), {
+			lockfileVersion: 3,
+			packages: {
+				'': packageJson,
+				'node_modules/@treeseed/sdk': { version: '1.0.0', resolved: 'old', dependencies: {} },
+			},
+		});
+		const consumer = node({ id: consumerRoot, name: '@treeseed/consumer', path: consumerRoot, packageJson });
+
+		expect(syncDirectGitDependencyLockfileEntries(consumer, {}, [{
+			packageName: '@treeseed/sdk', version: '1.0.1', spec, manifestSpec: spec, installSpec: spec,
+			tagName: null, remoteUrl: 'git@github.com:treeseed-ai/sdk.git', sourcePath: sdkRoot, mode: 'dev-git-commit',
+		}])).toBe(true);
+		const lock = JSON.parse(readFileSync(resolve(consumerRoot, 'package-lock.json'), 'utf8'));
+		expect(lock.packages['node_modules/@treeseed/sdk'].dependencies).toEqual({ 'new-runtime': '1.0.0' });
+		expect(lock.packages['node_modules/new-runtime'].version).toBe('1.0.0');
+		expect(lock.packages['node_modules/runtime-core'].version).toBe('1.0.0');
+	});
+
 it('validates package locks without mutating the live install and synchronizes package versions', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-isolated-lock-'));
 		const packageJsonPath = resolve(root, 'package.json');
