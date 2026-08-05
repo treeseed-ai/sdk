@@ -89,14 +89,14 @@ export interface UtilityEstimate {
 	qualityScore: number;
 	riskPenalty: number;
 	utilityScore: number;
-	utilityPerCredit: number;
+	utilityPerAgentSecond: number;
 	source: string;
 	metadata?: Record<string, unknown>;
 }
 
 export interface UtilityPolicy {
 	minimumUtilityScore: number | null;
-	minimumUtilityPerCredit: number | null;
+	minimumUtilityPerAgentSecond: number | null;
 	riskPenaltyFactor: number;
 	deadlineWindowHours: number;
 	maintenanceWeight: number;
@@ -116,8 +116,8 @@ export interface PredictiveReservePolicy {
 
 export interface ReservePrediction {
 	reservePercent: number;
-	reserveCredits: number;
-	activelyAllocatableCredits: number;
+	reserveSeconds: number;
+	activelyAllocatableSeconds: number;
 	reasons: string[];
 	signals: Record<string, unknown>;
 }
@@ -142,20 +142,20 @@ export interface HybridExecutionPlan {
 }
 
 export interface WorkdayBudgetEnvelope {
-	dailyCreditBudget: number;
-	usedCredits: number;
-	queuedCredits: number;
-	reserveBufferCredits: number;
-	recoveryBudgetCredits: number;
-	activelyAllocatableCredits: number;
-	remainingCredits: number;
+	dailyAgentSeconds: number;
+	usedSeconds: number;
+	queuedSeconds: number;
+	reserveBufferSeconds: number;
+	recoverySeconds: number;
+	activelyAllocatableSeconds: number;
+	remainingSeconds: number;
 }
 
 export interface TaskAdmissionPolicy {
-	planningThresholdCredits: number;
-	approvalThresholdCredits: number;
+	planningThresholdSeconds: number;
+	approvalThresholdSeconds: number;
 	reserveBufferPercent: number;
-	recoveryBudgetCredits: number;
+	recoverySeconds: number;
 	maxDownstreamTasks: number;
 	maxPlanningDepth: number;
 	maxAdmittedPlanTasksPerCycle: number;
@@ -173,10 +173,10 @@ export interface TaskAdmissionPolicy {
 export interface TaskAdmissionDecision {
 	outcome: TaskAdmissionOutcome;
 	taskSignature: string;
-	estimatedCreditsP50: number;
-	estimatedCreditsP90: number;
-	reservedCredits: number;
-	baseReservedCredits?: number;
+	estimatedSecondsP50: number;
+	estimatedSecondsP90: number;
+	reservedSeconds: number;
+	baseReservedSeconds?: number;
 	executionProfileId?: string | null;
 	costMultiplier?: number | null;
 	reasons: string[];
@@ -217,8 +217,8 @@ export interface PlannedTaskNode {
 	priority?: number | null;
 	taskSignature?: string | null;
 	payload?: Record<string, unknown>;
-	estimatedCreditsP50?: number | null;
-	estimatedCreditsP90?: number | null;
+	estimatedSecondsP50?: number | null;
+	estimatedSecondsP90?: number | null;
 	risk?: TaskRiskClass | null;
 	mutationScope?: TaskMutationScope | null;
 	confidence?: CapacityEstimateConfidence | null;
@@ -236,8 +236,8 @@ export interface TaskPlanProposal {
 	parentTaskId?: string | null;
 	planningDepth: number;
 	tasks: PlannedTaskNode[];
-	totalEstimatedCreditsP50: number;
-	totalEstimatedCreditsP90: number;
+	totalEstimatedSecondsP50: number;
+	totalEstimatedSecondsP90: number;
 	createdAt?: string | null;
 	metadata?: Record<string, unknown>;
 }

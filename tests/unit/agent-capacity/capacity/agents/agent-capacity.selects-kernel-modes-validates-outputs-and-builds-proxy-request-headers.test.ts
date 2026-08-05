@@ -43,13 +43,13 @@ it('selects kernel modes, validates outputs, and builds proxy request headers', 
 		expect(selectAgentKernelModeDecision({
 			planningReady: 1,
 			actingReady: 2,
-			planningBudgetCredits: 10,
-			actingBudgetCredits: 1,
+			planningBudgetSeconds: 600,
+			actingBudgetSeconds: 60,
 		})).toMatchObject({ kind: 'mode', mode: 'acting', reason: 'acting_queue_ready' });
 		expect(selectAgentKernelModeDecision({
 			planningReady: 1,
 			actingReady: 0,
-			planningBudgetCredits: 10,
+			planningBudgetSeconds: 600,
 		})).toMatchObject({ kind: 'mode', mode: 'planning' });
 		expect(selectAgentKernelModeDecision({ fallbackReady: 1 })).toMatchObject({ kind: 'fallback' });
 		expect(selectAgentKernelModeDecision({})).toMatchObject({ kind: 'idle' });

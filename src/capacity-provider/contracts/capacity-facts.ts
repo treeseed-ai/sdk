@@ -61,8 +61,8 @@ export interface CapacityProviderNativeCapacity {
 }
 
 export interface CapacityProviderBudgetCapacity {
-	dailyCreditBudget?: number | null;
-	monthlyCreditBudget?: number | null;
+	dailyAgentSecondsLimit?: number | null;
+	monthlyAgentSecondsLimit?: number | null;
 	maxConcurrentWorkdays?: number | null;
 	maxConcurrentRunners?: number | null;
 	nativeCapacity?: CapacityProviderNativeCapacity;

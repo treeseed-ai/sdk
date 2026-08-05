@@ -139,8 +139,8 @@ export const capacityGrants = pgTable('capacity_grants', {
 	laneIdsJson: text('lane_ids_json').notNull().default('[]'),
 	capabilitiesJson: text('capabilities_json').notNull().default('[]'),
 	allowedModesJson: text('allowed_modes_json').notNull().default('[]'),
-	dailyCreditLimit: real('daily_credit_limit'),
-	monthlyCreditLimit: real('monthly_credit_limit'),
+	dailyAgentSecondsLimit: integer('daily_agent_seconds_limit'),
+	monthlyAgentSecondsLimit: integer('monthly_agent_seconds_limit'),
 	maxConcurrentAssignments: integer('max_concurrent_assignments'),
 	unmetered: integer('unmetered').notNull().default(0),
 	expiresAt: text('expires_at'),
@@ -157,8 +157,8 @@ export const capacityGrants = pgTable('capacity_grants', {
 	index('idx_capacity_grants_provider').on(table.capacityProviderId, table.status),
 	check('chk_capacity_grants_status', sql`${table.status} IN ('planned', 'active', 'paused', 'revoked', 'expired')`),
 	check('chk_capacity_grants_unmetered', sql`${table.unmetered} IN (0, 1)`),
-	check('chk_capacity_grants_daily_limit', sql`${table.dailyCreditLimit} IS NULL OR ${table.dailyCreditLimit} >= 0`),
-	check('chk_capacity_grants_monthly_limit', sql`${table.monthlyCreditLimit} IS NULL OR ${table.monthlyCreditLimit} >= 0`),
+	check('chk_capacity_grants_daily_time_limit', sql`${table.dailyAgentSecondsLimit} IS NULL OR ${table.dailyAgentSecondsLimit} >= 0`),
+	check('chk_capacity_grants_monthly_time_limit', sql`${table.monthlyAgentSecondsLimit} IS NULL OR ${table.monthlyAgentSecondsLimit} >= 0`),
 	check('chk_capacity_grants_concurrency', sql`${table.maxConcurrentAssignments} IS NULL OR ${table.maxConcurrentAssignments} >= 0`)
 ]);
 
@@ -185,8 +185,12 @@ export const capacityReservations = pgTable('capacity_reservations', {
 	state: text('state').notNull().default('reserved'),
 	usageReportToken: text('usage_report_token'),
 	settlementToken: text('settlement_token'),
-	reservedCredits: real('reserved_credits').notNull(),
-	consumedCredits: real('consumed_credits').notNull().default(0),
+	requestedSeconds: integer('requested_seconds').notNull(),
+	reservedSeconds: integer('reserved_seconds').notNull(),
+	activeSeconds: integer('active_seconds').notNull().default(0),
+	elapsedSeconds: integer('elapsed_seconds').notNull().default(0),
+	releasedSeconds: integer('released_seconds').notNull().default(0),
+	overrunSeconds: integer('overrun_seconds').notNull().default(0),
 	nativeUnit: text('native_unit'),
 	reservedNativeAmount: real('reserved_native_amount'),
 	consumedNativeAmount: real('consumed_native_amount'),
@@ -217,8 +221,7 @@ export const capacityReservations = pgTable('capacity_reservations', {
 	check('chk_capacity_reservations_allocation_version', sql`${table.allocationVersion} >= 1`),
 	check('chk_capacity_reservations_mode', sql`${table.mode} IN ('planning', 'acting')`),
 	check('chk_capacity_reservations_state', sql`${table.state} IN ('reserved', 'consuming', 'consumed', 'released', 'expired', 'failed', 'overran_pending_approval', 'continuation_required')`),
-	check('chk_capacity_reservations_reserved_credits', sql`${table.reservedCredits} > 0`),
-	check('chk_capacity_reservations_consumed_credits', sql`${table.consumedCredits} >= 0`)
+	check('chk_capacity_reservations_time', sql`${table.requestedSeconds} > 0 AND ${table.reservedSeconds} > 0 AND ${table.activeSeconds} >= 0 AND ${table.elapsedSeconds} >= 0 AND ${table.releasedSeconds} >= 0 AND ${table.overrunSeconds} >= 0`)
 ]);
 
 export const capacityAdmissionCounters = pgTable('capacity_admission_counters', {

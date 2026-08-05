@@ -20,7 +20,8 @@ export const capacityLedgerEntries = pgTable('capacity_ledger_entries', {
 	workDayId: text('work_day_id'),
 	taskId: text('task_id'),
 	phase: text('phase').notNull(),
-	credits: real('credits').notNull(),
+	activeSeconds: integer('active_seconds').notNull(),
+	elapsedSeconds: integer('elapsed_seconds').notNull(),
 	providerUnits: real('provider_units'),
 	usd: real('usd'),
 	source: text('source').notNull(),
@@ -38,7 +39,7 @@ export const capacityLedgerEntries = pgTable('capacity_ledger_entries', {
 	uniqueIndex('idx_capacity_ledger_reservation_phase').on(table.reservationId, table.phase),
 	index('idx_capacity_ledger_assignment').on(table.assignmentId, table.createdAt),
 	index('idx_capacity_ledger_project_workday_created').on(table.projectId, table.workDayId, table.createdAt),
-	check('chk_capacity_ledger_credits', sql`${table.credits} >= 0`)
+	check('chk_capacity_ledger_time', sql`${table.activeSeconds} >= 0 AND ${table.elapsedSeconds} >= 0`)
 ]);
 
 export const capacityUsageActuals = pgTable('capacity_usage_actuals', {
@@ -62,6 +63,7 @@ export const capacityUsageActuals = pgTable('capacity_usage_actuals', {
 	inputTokens: integer('input_tokens'),
 	outputTokens: integer('output_tokens'),
 	cachedInputTokens: integer('cached_input_tokens'),
+	reasoningTokens: integer('reasoning_tokens'),
 	quotaMinutes: real('quota_minutes'),
 	wallMinutes: real('wall_minutes'),
 	filesOpened: integer('files_opened'),
@@ -70,10 +72,9 @@ export const capacityUsageActuals = pgTable('capacity_usage_actuals', {
 	diffLinesRemoved: integer('diff_lines_removed'),
 	testRuns: integer('test_runs'),
 	retryCount: integer('retry_count'),
-	actualCredits: real('actual_credits').notNull(),
+	activeSeconds: integer('active_seconds').notNull(),
+	elapsedSeconds: integer('elapsed_seconds').notNull(),
 	actualUsd: real('actual_usd'),
-	creditFormulaVersion: text('credit_formula_version').notNull().default('treeseed.actual-credits.v1'),
-	actualCreditSource: text('actual_credit_source').notNull().default('central_calculator'),
 	nativeUsageJson: text('native_usage_json').notNull().default('{}'),
 	metadataJson: text('metadata_json').notNull().default('{}'),
 	createdAt: text('created_at').notNull(),
@@ -91,7 +92,7 @@ export const capacityUsageActuals = pgTable('capacity_usage_actuals', {
 	index('idx_capacity_usage_actuals_project_signature_profile').on(table.projectId, table.taskSignature, table.executionProfileId, table.createdAt),
 	index('idx_capacity_usage_actuals_execution_provider').on(table.executionProviderId, table.createdAt),
 	index('idx_capacity_usage_actuals_lane').on(table.laneId, table.createdAt),
-	check('chk_capacity_usage_actuals_credits', sql`${table.actualCredits} >= 0`),
+	check('chk_capacity_usage_actuals_time', sql`${table.activeSeconds} >= 0 AND ${table.elapsedSeconds} >= 0`),
 	check('chk_capacity_usage_actuals_assignment_attempt', sql`${table.assignmentAttempt} >= 0`),
 	check('chk_capacity_usage_actuals_accounting_mode', sql`${table.accountingMode} IN ('informational', 'incremental', 'aggregate')`)
 ]);

@@ -1,5 +1,6 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync,lstatSync,readdirSync,readFileSync } from 'node:fs';
+import { existsSync,lstatSync,readdirSync } from 'node:fs';
 import { relative,resolve } from 'node:path';
 
 const API_RUNTIME_INPUTS = [
@@ -8,7 +9,9 @@ const API_RUNTIME_INPUTS = [
 	'packages/api/package.json',
 	'packages/api/tsconfig.json',
 	'packages/sdk/dist',
+	'packages/sdk/drizzle/market',
 	'packages/sdk/package.json',
+	'packages/sdk/src',
 ] as const;
 
 const WEB_RUNTIME_INPUTS = [
@@ -18,13 +21,58 @@ const WEB_RUNTIME_INPUTS = [
 	'treeseed.site.yaml',
 	'packages/admin/dist',
 	'packages/admin/package.json',
+	'packages/admin/src',
 	'packages/core/dist',
 	'packages/core/package.json',
+	'packages/core/src',
 	'packages/ui/dist',
 	'packages/ui/package.json',
+	'packages/ui/src',
 	'packages/sdk/dist',
 	'packages/sdk/package.json',
+	'packages/sdk/src',
 ] as const;
+
+const WEB_BUILD_ORDER = ['packages/sdk','packages/ui','packages/core','packages/admin'] as const;
+
+function newestMtime(path: string): number {
+	if (!existsSync(path)) return 0;
+	const stat = lstatSync(path);
+	if (stat.isFile()) return stat.mtimeMs;
+	if (!stat.isDirectory() || stat.isSymbolicLink()) return 0;
+	return readdirSync(path).reduce((latest, entry) => Math.max(latest, newestMtime(resolve(path, entry))), 0);
+}
+
+export function managedDevStaleRuntimePackages(input: { tenantRoot:string; surfaces:string[] }) {
+	const required = new Set<string>();
+	if (input.surfaces.some((surface) => ['api', 'operations-runner'].includes(surface))) required.add('packages/sdk');
+	if (input.surfaces.includes('web')) WEB_BUILD_ORDER.forEach((entry) => required.add(entry));
+	return WEB_BUILD_ORDER.filter((packagePath) => {
+		if (!required.has(packagePath)) return false;
+		const root = resolve(input.tenantRoot, packagePath);
+		const source = Math.max(
+			newestMtime(resolve(root, 'src')),
+			newestMtime(resolve(root, 'package.json')),
+			packagePath === 'packages/sdk' ? newestMtime(resolve(root, 'drizzle')) : 0,
+		);
+		const output = newestMtime(resolve(root, 'dist'));
+		return output <= 0 || output < source;
+	});
+}
+
+export function ensureManagedDevRuntimeBuilds(input: { tenantRoot:string; surfaces:string[] }) {
+	const rebuilt: string[] = [];
+	for (const packagePath of managedDevStaleRuntimePackages(input)) {
+		const root = resolve(input.tenantRoot, packagePath);
+		try {
+			execFileSync('npm', ['--prefix', root, 'run', 'build:dist'], { cwd: input.tenantRoot, stdio: 'inherit' });
+			rebuilt.push(packagePath);
+		} catch (error) {
+			throw new Error(`Managed development could not rebuild stale runtime package ${packagePath}.`, { cause: error });
+		}
+	}
+	return rebuilt;
+}
 
 const TREEDX_RUNTIME_INPUTS = [
 	'packages/treedx/apps/api/lib',
@@ -73,9 +121,12 @@ export function managedDevSourceClosureDigest(input: {
 			continue;
 		}
 		for (const file of files) {
+			const stat = lstatSync(file);
 			hash.update(relative(input.tenantRoot, file));
 			hash.update('\0');
-			hash.update(readFileSync(file));
+			hash.update(String(stat.size));
+			hash.update('\0');
+			hash.update(String(stat.mtimeMs));
 			hash.update('\0');
 		}
 	}

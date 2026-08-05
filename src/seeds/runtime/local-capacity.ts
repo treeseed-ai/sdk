@@ -171,14 +171,15 @@ async function provisionConnection(input: {
 	const publicJwk = capacityProviderPublicIdentity(privateJwk);
 	const protocol = new ProviderProtocolClient({ marketUrl: input.apiUrl, userAgent: 'treeseed-seed-runtime/1' });
 	const executionProviders = input.baseManifest.executionProviders.filter((entry) => input.provider.executionProviderIds.includes(entry.id));
+	const maxConcurrentRunners = Math.max(1, ...executionProviders.map((entry) => Number(entry.nativeLimits.maxConcurrentRunners ?? 1)).filter(Number.isFinite));
 	const capabilities = [...new Set([...executionProviders.flatMap((entry) => entry.capabilities), ...input.projectCapabilities])].sort();
-	const capabilityDigest = createHash('sha256').update(capabilities.join('\0')).digest('hex');
+	const capabilityDigest = createHash('sha256').update(`${capabilities.join('\0')}\0${maxConcurrentRunners}`).digest('hex');
 	if (!state?.membershipId || !state.providerId || !state.credentialId || !state.generatedCredentialRef || state.teamId !== input.teamId) {
 		const key = await input.client.revealTeamCapacityRegistrationKey(input.teamId);
 		const body = {
 			schemaVersion: 1 as const, displayName: input.baseManifest.identity.displayName, publicJwk,
 			capabilitySummary: capabilities,
-			supplyOffer: { weight: 1, maxConcurrentRunners: 1, capabilities },
+			supplyOffer: { weight: 1, maxConcurrentRunners, capabilities },
 			metadata: { seedRuntime: true, seedResourceKey: input.provider.key },
 		};
 		const proof = await signCapacityProviderProof({ privateJwk, publicJwk, method: 'POST', path: '/v1/provider-registrations', audience: input.apiUrl, body });
@@ -203,18 +204,18 @@ async function provisionConnection(input: {
 	const connection = {
 		id: input.provider.connectionId, marketProfile: 'local', marketAudience: input.apiUrl, teamId: String(state.teamId),
 		providerId: String(state.providerId), membershipId: String(state.membershipId), membershipCredentialRef: String(state.generatedCredentialRef),
-		membershipCredentialId: String(state.credentialId), offer: { weight: 1, maxConcurrentRunners: 1, capabilities },
+		membershipCredentialId: String(state.credentialId), offer: { weight: 1, maxConcurrentRunners, capabilities },
 	};
 	const runtimeManifest = { ...input.baseManifest, executionProviders, connections: [connection] };
 	await atomicWrite(input.runtimeManifestPath, stringify(runtimeManifest));
-	return { providerId: connection.providerId, membershipId: connection.membershipId, capabilities };
+	return { providerId: connection.providerId, membershipId: connection.membershipId, capabilities, maxConcurrentRunners };
 }
 
-async function reconcilePolicy(input: { client: MarketClient; provider: SeedCapacityProviderPrerequisite; teamId: string; projectIds: string[]; providerId: string; membershipId: string; capabilities: string[] }) {
+async function reconcilePolicy(input: { client: MarketClient; provider: SeedCapacityProviderPrerequisite; teamId: string; projectIds: string[]; providerId: string; membershipId: string; capabilities: string[]; maxConcurrentRunners: number }) {
 	const existingGrants = (await input.client.capacityGrants(input.teamId, { limit: 200 })).payload.items.map(object);
 	const grantIds: string[] = [];
 	for (const projectId of input.projectIds) {
-		const id = stableId('seed-grant', `${input.provider.key}:${projectId}:${input.capabilities.join(',')}`);
+		const id = stableId('seed-grant', `${input.provider.key}:${projectId}:${input.capabilities.join(',')}:time-v2:${input.maxConcurrentRunners}`);
 		grantIds.push(id);
 		const overlaps = existingGrants.filter((grant) =>
 			string(grant.id) !== id
@@ -234,7 +235,7 @@ async function reconcilePolicy(input: { client: MarketClient; provider: SeedCapa
 			await input.client.createCapacityGrant(input.teamId, {
 				schemaVersion: 2, id, membershipId: input.membershipId, providerId: input.providerId, projectId, environment: 'local', status: 'planned',
 				executionProviderIds: input.provider.executionProviderIds, laneIds: [], capabilities: input.capabilities,
-				allowedModes: input.provider.allowedModes, dailyCreditLimit: 100, monthlyCreditLimit: 3_000, maxConcurrentAssignments: 1,
+				allowedModes: input.provider.allowedModes, dailyAgentSecondsLimit: 28_800, monthlyAgentSecondsLimit: 864_000, maxConcurrentAssignments: input.maxConcurrentRunners,
 				metadata: { seedRuntime: true, seedResourceKey: input.provider.key },
 			}, `seed-runtime:${id}:create`);
 			await input.client.transitionCapacityGrant(input.teamId, id, 'activate', `seed-runtime:${id}:activate`);

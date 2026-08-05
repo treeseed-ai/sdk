@@ -151,7 +151,8 @@ export interface CapacityWorkdayScheduleRecord {
 	cadenceSeconds: number;
 	durationSeconds: number;
 	maxActiveAssignments: number;
-	availableCredits: number;
+	availableSeconds: number;
+	timePolicy: import('../../support/time-capacity.ts').WorkdayTimePolicy;
 	planningOnly: boolean;
 	publicationPolicy: {
 		bookIds: string[];
@@ -186,7 +187,7 @@ export interface CapacityWorkdayDemandRecord {
 	capacityPlanId: string | null;
 	status: CapacityWorkdayDemandStatus;
 	priority: number;
-	requestedCredits: number;
+	requestedSeconds: number;
 	idempotencyKey: string;
 	claimToken: string | null;
 	assignmentId: string | null;

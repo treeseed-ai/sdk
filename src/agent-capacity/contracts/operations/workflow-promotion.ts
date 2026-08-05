@@ -12,7 +12,7 @@ export interface EngineeringWorkflowPromotionConfigV1 {
 	includeArchitecture?: boolean;
 	requireLinkedProposal?: boolean;
 	requireRevisionCycle?: boolean;
-	credits?: Partial<Record<'research' | 'architecture' | 'test' | 'implementation' | 'verification' | 'review' | 'documentation' | 'release' | 'operations', number>>;
+	seconds?: Partial<Record<'research' | 'architecture' | 'test' | 'implementation' | 'verification' | 'review' | 'documentation' | 'release' | 'operations', number>>;
 	metadata?: Record<string, unknown>;
 }
 

@@ -35,8 +35,8 @@ export function validateEngineeringWorkflowPromotionConfig(
 	if (input.requireRevisionCycle != null && typeof input.requireRevisionCycle !== 'boolean') {
 		diagnostics.push({ code: 'revision_cycle_invalid', path: 'requireRevisionCycle', message: 'requireRevisionCycle must be boolean when supplied.' });
 	}
-	for (const [stage, amount] of Object.entries(input.credits ?? {})) {
-		if (!Number.isFinite(amount) || Number(amount) <= 0) diagnostics.push({ code: 'credit_invalid', path: `credits.${stage}`, message: 'Stage credits must be positive finite numbers.' });
+	for (const [stage, amount] of Object.entries(input.seconds ?? {})) {
+		if (!Number.isFinite(amount) || Number(amount) <= 0) diagnostics.push({ code: 'time_invalid', path: `seconds.${stage}`, message: 'Stage agent time must be positive finite seconds.' });
 	}
 	return { ok: diagnostics.length === 0, diagnostics };
 }

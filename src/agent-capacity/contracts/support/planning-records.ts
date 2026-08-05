@@ -91,8 +91,8 @@ export interface AgentCapacityPlanWorkUnit {
 	agentId?: string | null;
 	handlerId?: string | null;
 	workDayId?: string | null;
-	expectedCredits: number;
-	highCredits: number;
+	expectedSeconds: number;
+	highSeconds: number;
 	requiredCapabilities: string[];
 	dependencies: string[];
 	blockers: string[];
@@ -113,8 +113,8 @@ export interface AgentCapacityPlanRecord {
 	scopeHash: string;
 	allocationSetId?: string | null;
 	workDayId?: string | null;
-	expectedCredits: number;
-	highCredits: number;
+	expectedSeconds: number;
+	highSeconds: number;
 	workUnits: AgentCapacityPlanWorkUnit[];
 	capabilityNeeds: string[];
 	environmentNeeds: string[];

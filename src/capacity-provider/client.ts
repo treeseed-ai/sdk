@@ -280,6 +280,10 @@ export class ProviderProtocolClient {
 		return this.requestOkJson<{ ok: true; payload: Record<string, unknown> }>(CAPACITY_PROVIDER_ENDPOINTS.assignmentEvents(assignmentId), { method: 'POST', body: request });
 	}
 
+	publishAssignmentSignal(assignmentId: string, request: Record<string, unknown>) {
+		return this.requestOkJson<{ ok: true; payload: Record<string, unknown> }>(CAPACITY_PROVIDER_ENDPOINTS.assignmentSignals(assignmentId), { method: 'POST', body: request });
+	}
+
 	dispatchAssignmentWorkflowOperation(assignmentId: string, operationId: string, request: Record<string, unknown>) {
 		return this.requestOkJson<{ ok: true; payload: Record<string, unknown> }>(CAPACITY_PROVIDER_ENDPOINTS.assignmentWorkflowOperationDispatch(assignmentId, operationId), { method: 'POST', body: request });
 	}

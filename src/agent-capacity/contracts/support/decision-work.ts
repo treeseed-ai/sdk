@@ -39,9 +39,9 @@ export interface StructuredAgentEstimate {
 	workUnitId?: string | null;
 	agentClass: string;
 	agentId?: string | null;
-	minCredits: number;
-	expectedCredits: number;
-	maxCredits: number;
+	minSeconds: number;
+	expectedSeconds: number;
+	maxSeconds: number;
 	confidence: AgentEstimateConfidence;
 	riskLevel: AgentEstimateRiskLevel;
 	assumptions: string[];
@@ -135,7 +135,7 @@ export interface DecisionAssignmentGraphNode {
 	requiredDeliverableContractIds: string[];
 	inputRefs: ContentRef[];
 	outputRequirements: AgentOutputRequirement[];
-	capacity: { expectedCredits: number; maxCredits: number };
+	capacity: { expectedSeconds: number; maxSeconds: number };
 	status: 'pending' | 'ready' | 'leased' | 'running' | 'blocked' | 'completed' | 'failed' | 'cancelled';
 	metadata?: Record<string, unknown>;
 }
@@ -200,7 +200,7 @@ export interface EngineeringAssignmentGraphInput {
 	roles: EngineeringAssignmentGraphRoles;
 	includeResearch?: boolean;
 	includeArchitecture?: boolean;
-	credits?: Partial<Record<'research' | 'architecture' | 'test' | 'implementation' | 'verification' | 'review' | 'documentation' | 'release' | 'operations', number>>;
+	seconds?: Partial<Record<'research' | 'architecture' | 'test' | 'implementation' | 'verification' | 'review' | 'documentation' | 'release' | 'operations', number>>;
 	compiledAt?: string | null;
 }
 

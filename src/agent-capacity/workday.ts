@@ -115,11 +115,11 @@ export function selectFairPlanningAgentCycles<T extends WorkdayPlanningAgent>(pr
 	return selected;
 }
 
-export function evaluateWorkdayContinuation(input: { status: string; now: string; deadlineAt?: string | null; totalCredits: number; committedCredits: number; usefulEligibleWork: boolean }) {
+export function evaluateWorkdayContinuation(input: { status: string; now: string; deadlineAt?: string | null; totalSeconds: number; committedSeconds: number; usefulEligibleWork: boolean }) {
 	if (input.status !== 'active' && input.status !== 'running') return { continue: false, reason: 'workday_not_active' as const };
 	const deadline = input.deadlineAt ? Date.parse(input.deadlineAt) : Number.POSITIVE_INFINITY;
 	if (Number.isFinite(deadline) && deadline <= Date.parse(input.now)) return { continue: false, reason: 'duration_bound_reached' as const };
-	if (input.totalCredits - input.committedCredits <= 0) return { continue: false, reason: 'budget_bound_reached' as const };
+	if (input.totalSeconds - input.committedSeconds <= 0) return { continue: false, reason: 'budget_bound_reached' as const };
 	if (!input.usefulEligibleWork) return { continue: false, reason: 'no_useful_eligible_work' as const };
 	return { continue: true, reason: 'within_duration_and_budget' as const };
 }

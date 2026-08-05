@@ -14,7 +14,7 @@ export interface LocalStarterCapacityConfig {
 	agentPaths: string[];
 	capabilities: string[];
 	allowedModes: Array<'planning' | 'acting'>;
-	credits: number;
+	agentSeconds: number;
 	durationSeconds?: number;
 	parameters: Record<string, unknown> | ((input: { projectId: string; projectSlug: string; allocationSetId: string; repositoryRef: string }) => Record<string, unknown>);
 	projectMetadata: Record<string, unknown>;
@@ -23,9 +23,9 @@ export interface LocalStarterCapacityConfig {
 const LIVE_PROVIDER_ASSIGNMENT_BUDGET_SECONDS = 600;
 const TERMINAL_WORKDAY_RUN_STATUSES = new Set(['completed', 'cancelled', 'failed', 'degraded']);
 
-export function localStarterDurationSeconds(config: Pick<LocalStarterCapacityConfig, 'credits' | 'durationSeconds'>) {
+export function localStarterDurationSeconds(config: Pick<LocalStarterCapacityConfig, 'agentSeconds' | 'durationSeconds'>) {
 	const durationSeconds = config.durationSeconds
-		?? config.credits * LIVE_PROVIDER_ASSIGNMENT_BUDGET_SECONDS;
+		?? Math.max(LIVE_PROVIDER_ASSIGNMENT_BUDGET_SECONDS, config.agentSeconds);
 	if (!Number.isInteger(durationSeconds) || durationSeconds <= 0) {
 		throw new Error('Starter acceptance duration must be a positive whole number of seconds.');
 	}
@@ -175,11 +175,11 @@ export async function provisionLocalStarterCapacity(input: {
 		const executionProvider = {
 			id: 'codex', adapter: 'codex', status: 'available',
 			capabilities: input.config.capabilities, maxConcurrentRunners: 1, activeRunners: 0,
-			nativeLimits: { availableCredits: input.config.credits }, lanes: [],
+			nativeLimits: { availableAgentSeconds: input.config.agentSeconds }, lanes: [],
 		};
 		let availability = await protocol.createAvailabilitySession({
 			environment: 'local', status: 'open', capabilities: input.config.capabilities, grants: [],
-			nativeLimits: { availableCredits: input.config.credits, maxConcurrentRunners: 1 },
+			nativeLimits: { availableAgentSeconds: input.config.agentSeconds, maxConcurrentRunners: 1 },
 			runnerPressure: { activeRunners: 0, maxConcurrentRunners: 1 },
 			metadata: { liveAcceptance: true, runId: input.runId, starter: input.config.starter }, executionProviders: [executionProvider],
 		});
@@ -190,7 +190,7 @@ export async function provisionLocalStarterCapacity(input: {
 			schemaVersion: 2, id: grantId, membershipId: input.runtime.membershipId, providerId: input.runtime.providerId,
 			projectId: project.id, environment: 'local', status: 'planned', executionProviderIds: ['codex'], laneIds: [],
 			capabilities: input.config.capabilities, allowedModes: input.config.allowedModes,
-			dailyCreditLimit: input.config.credits, monthlyCreditLimit: input.config.credits, maxConcurrentAssignments: 1,
+			dailyAgentSecondsLimit: input.config.agentSeconds, monthlyAgentSecondsLimit: input.config.agentSeconds, maxConcurrentAssignments: 1,
 			metadata: { liveAcceptance: true, runId: input.runId, starter: input.config.starter },
 		}, `${key}:grant-create`);
 		grantCreated = true;
@@ -209,7 +209,7 @@ export async function provisionLocalStarterCapacity(input: {
 		availability = await protocol.refreshAvailabilitySession(sessionId, {
 			expectedSequence: availability.payload.sequence, environment: 'local', status: 'open', capabilities: input.config.capabilities,
 			grants: [{ grantId, projectId: project.id, teamId: input.runtime.teamId, grantScope: 'project' }],
-			nativeLimits: { availableCredits: input.config.credits, maxConcurrentRunners: 1 }, runnerPressure: { activeRunners: 0, maxConcurrentRunners: 1 },
+			nativeLimits: { availableAgentSeconds: input.config.agentSeconds, maxConcurrentRunners: 1 }, runnerPressure: { activeRunners: 0, maxConcurrentRunners: 1 },
 			metadata: { liveAcceptance: true, runId: input.runId, starter: input.config.starter }, executionProviders: [executionProvider],
 		});
 		const configuredParameters = typeof input.config.parameters === 'function'
@@ -217,7 +217,7 @@ export async function provisionLocalStarterCapacity(input: {
 			: input.config.parameters;
 		await input.adminClient.createWorkdayRun(input.runtime.teamId, {
 			id: workdayRunId, capacityProviderId: input.runtime.providerId, environment: 'local', status: 'running',
-			parameters: { projects: [project.slug], durationSeconds, allocationSetId: allocation.payload.id, availableCredits: input.config.credits, ...configuredParameters },
+			parameters: { projects: [project.slug], durationSeconds, allocationSetId: allocation.payload.id, availableSeconds: input.config.agentSeconds, ...configuredParameters },
 		});
 		runCreated = true;
 		return {
@@ -269,7 +269,7 @@ export async function provisionLocalStarterPortfolioCapacity(input: {
 	const projects = provisions.map((result) => (result as PromiseFulfilledResult<Awaited<ReturnType<typeof provisionLocalStarterProject>>>).value);
 	const bootstrapProtocol = new ProviderProtocolClient({ marketUrl: input.apiUrl, fetchImpl: input.fetchImpl });
 	let protocol = bootstrapProtocol;
-	const credits = input.configs.reduce((total, config) => total + config.credits, 0);
+	const agentSeconds = input.configs.reduce((total, config) => total + config.agentSeconds, 0);
 	const capabilities = [...new Set(input.configs.flatMap((config) => config.capabilities))];
 	const grants: Array<{ grantId: string; projectId: string; teamId: string; grantScope: 'project' }> = [];
 	const workdayRunIds: string[] = [];
@@ -310,11 +310,11 @@ export async function provisionLocalStarterPortfolioCapacity(input: {
 		protocol = new ProviderProtocolClient({ marketUrl: input.apiUrl, accessToken: access.accessToken, fetchImpl: input.fetchImpl });
 		const executionProvider = {
 			id: 'codex', adapter: 'codex', status: 'available', capabilities, maxConcurrentRunners: 2, activeRunners: 0,
-			nativeLimits: { availableCredits: credits, maxConcurrentRunners: 2 }, lanes: [],
+			nativeLimits: { availableAgentSeconds: agentSeconds, maxConcurrentRunners: 2 }, lanes: [],
 		};
 		let availability = await protocol.createAvailabilitySession({
 			environment: 'local', status: 'open', capabilities, grants: [],
-			nativeLimits: { availableCredits: credits, maxConcurrentRunners: 2 },
+			nativeLimits: { availableAgentSeconds: agentSeconds, maxConcurrentRunners: 2 },
 			runnerPressure: { activeRunners: 0, maxConcurrentRunners: 2 },
 			metadata: { liveAcceptance: true, runId: input.runId, concurrentStarters: true }, executionProviders: [executionProvider],
 		});
@@ -329,7 +329,7 @@ export async function provisionLocalStarterPortfolioCapacity(input: {
 				schemaVersion: 2, id: grantId, membershipId: input.runtime.membershipId, providerId: input.runtime.providerId,
 				projectId: project.id, environment: 'local', status: 'planned', executionProviderIds: ['codex'], laneIds: [],
 				capabilities: config.capabilities, allowedModes: config.allowedModes,
-				dailyCreditLimit: config.credits, monthlyCreditLimit: config.credits, maxConcurrentAssignments: 1,
+				dailyAgentSecondsLimit: config.agentSeconds, monthlyAgentSecondsLimit: config.agentSeconds, maxConcurrentAssignments: 1,
 				metadata: { liveAcceptance: true, runId: input.runId, concurrentStarters: true, starter: config.starter },
 			}, `${key}:grant-create:${config.starter}`);
 			await input.adminClient.transitionCapacityGrant(input.runtime.teamId, grantId, 'activate', `${key}:grant-activate:${config.starter}`);
@@ -349,7 +349,7 @@ export async function provisionLocalStarterPortfolioCapacity(input: {
 		await input.adminClient.supersedeCapacityAllocationSet(input.runtime.teamId, String(allocation.payload.id), { expectedActiveAllocationSetId: active?.id ?? null }, `${key}:allocation-supersede`);
 		availability = await protocol.refreshAvailabilitySession(sessionId, {
 			expectedSequence: availability.payload.sequence, environment: 'local', status: 'open', capabilities, grants,
-			nativeLimits: { availableCredits: credits, maxConcurrentRunners: 2 }, runnerPressure: { activeRunners: 0, maxConcurrentRunners: 2 },
+			nativeLimits: { availableAgentSeconds: agentSeconds, maxConcurrentRunners: 2 }, runnerPressure: { activeRunners: 0, maxConcurrentRunners: 2 },
 			metadata: { liveAcceptance: true, runId: input.runId, concurrentStarters: true }, executionProviders: [executionProvider],
 		});
 		availabilitySequence = Number(availability.payload.sequence);
@@ -361,7 +361,7 @@ export async function provisionLocalStarterPortfolioCapacity(input: {
 			id: workdayRunId, capacityProviderId: input.runtime.providerId, environment: 'local', status: 'running',
 			parameters: {
 				projects: projects.map((entry) => entry.project.slug), durationSeconds,
-				allocationSetId: allocation.payload.id, availableCredits: credits, planningOnly: true,
+				allocationSetId: allocation.payload.id, availableSeconds: agentSeconds, planningOnly: true,
 				metadata: { liveAcceptance: true, concurrentStarters: true },
 			},
 		});

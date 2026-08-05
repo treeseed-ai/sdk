@@ -66,13 +66,13 @@ export async function provisionLocalCapacityCompetition(input: {
 			status: 'open',
 			capabilities: ['planning', 'repo_read', 'agent_mode_run', 'usage_report'],
 			grants: [],
-			nativeLimits: { availableCredits: 10, maxConcurrentRunners: 1 },
+			nativeLimits: { availableAgentSeconds: 600, maxConcurrentRunners: 1 },
 			runnerPressure: { activeRunners: 0, maxConcurrentRunners: 1 },
 			metadata: { liveAcceptance: true, runId: input.runId },
 			executionProviders: [{
 				id: 'codex', adapter: 'codex', status: 'available',
 				capabilities: ['planning', 'repo_read', 'agent_mode_run', 'usage_report'],
-				maxConcurrentRunners: 1, activeRunners: 0, nativeLimits: { availableCredits: 10 }, lanes: [],
+				maxConcurrentRunners: 1, activeRunners: 0, nativeLimits: { availableAgentSeconds: 600 }, lanes: [],
 			}],
 		});
 		sessionId = String(availability.payload.id ?? '');
@@ -87,7 +87,7 @@ export async function provisionLocalCapacityCompetition(input: {
 			schemaVersion: 2, id: grantId, membershipId: input.runtime.membershipId, providerId: input.runtime.providerId,
 			projectId: project.id, environment: 'local', status: 'planned', executionProviderIds: ['codex'], laneIds: [],
 			capabilities: ['planning', 'repo_read', 'agent_mode_run', 'usage_report'], allowedModes: ['planning'],
-			dailyCreditLimit: 10, monthlyCreditLimit: 10, maxConcurrentAssignments: 1,
+			dailyAgentSecondsLimit: 600, monthlyAgentSecondsLimit: 600, maxConcurrentAssignments: 1,
 			metadata: { liveAcceptance: true, runId: input.runId },
 		}, `${prefix}:grant-create`);
 		grantCreated = true;
@@ -105,18 +105,18 @@ export async function provisionLocalCapacityCompetition(input: {
 			expectedSequence: availability.payload.sequence,
 			environment: 'local', status: 'open', capabilities: ['planning', 'repo_read', 'agent_mode_run', 'usage_report'],
 			grants: [{ grantId, projectId: project.id, teamId: input.runtime.teamId, grantScope: 'project' }],
-			nativeLimits: { availableCredits: 10, maxConcurrentRunners: 1 },
+			nativeLimits: { availableAgentSeconds: 600, maxConcurrentRunners: 1 },
 			runnerPressure: { activeRunners: 0, maxConcurrentRunners: 1 },
 			metadata: { liveAcceptance: true, runId: input.runId },
 			executionProviders: [{
 				id: 'codex', adapter: 'codex', status: 'available',
 				capabilities: ['planning', 'repo_read', 'agent_mode_run', 'usage_report'],
-				maxConcurrentRunners: 1, activeRunners: 0, nativeLimits: { availableCredits: 10 }, lanes: [],
+				maxConcurrentRunners: 1, activeRunners: 0, nativeLimits: { availableAgentSeconds: 600 }, lanes: [],
 			}],
 		});
 		await input.adminClient.createWorkday({
-			id: workdayId, projectId: project.id, allocationSetId: activeAllocation.payload.id, environment: 'local', status: 'active', availableCredits: 10,
-			envelope: { totalCredits: 10, availableCredits: 10, metadata: { liveAcceptance: true, runId: input.runId } },
+			id: workdayId, projectId: project.id, allocationSetId: activeAllocation.payload.id, environment: 'local', status: 'active', availableSeconds: 600,
+			envelope: { availableSeconds: 600, metadata: { liveAcceptance: true, runId: input.runId } },
 			metadata: { liveAcceptance: true, runId: input.runId, grantId },
 		}, `${prefix}:workday-create`);
 		workdayCreated = true;
@@ -124,7 +124,7 @@ export async function provisionLocalCapacityCompetition(input: {
 			assignmentId, reservationId: `${assignmentId}-reservation`, projectId: project.id, providerId: input.runtime.providerId,
 			membershipId: input.runtime.membershipId, environment: 'local', providerSessionId: sessionId,
 			projectAgentClassId: agentClassId, executionProviderId: 'codex', workDayId: workdayId,
-			requestedCredits: 1, mode: 'planning',
+			requestedSeconds: 300, mode: 'planning',
 			capacityEnvelope: { teamId: input.runtime.teamId, projectId: project.id, providerId: input.runtime.providerId, workDayId: workdayId, mode: 'planning', limits: { wallMinutes: 5 }, metadata: { liveAcceptance: true, runId: input.runId } },
 			decisionInput: { kind: 'provider_global_final_slot_competition', runId: input.runId },
 			workspaceContext: { liveAcceptance: true, runId: input.runId },

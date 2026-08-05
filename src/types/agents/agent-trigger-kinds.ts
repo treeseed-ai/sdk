@@ -182,13 +182,19 @@ export interface AgentPermissionPolicy {
 export interface AgentOutputContract {
 	messageTypes: string[];
 	modelMutations: string[];
-	artifactContracts?: string[];
-	signalContracts?: string[];
 }
 
-export interface AgentInputContract {
-	artifactContracts?: string[];
-	signalContracts?: string[];
+export interface AgentSignalSubscription {
+	contract: string;
+	filters?: Record<string, unknown>;
+	cardinality?: 'single' | 'each';
+	producerPolicy?: 'any' | 'all' | 'quorum';
+	quorum?: number;
+}
+
+export interface AgentSignalPolicy {
+	subscribesTo?: AgentSignalSubscription[];
+	publishes?: string[];
 }
 
 export interface AgentToolPolicy {
@@ -260,6 +266,11 @@ export interface AgentActivityPlanningIntent {
 	subjectModel?: string;
 	subjectId?: string | null;
 	includeWorkdayArtifacts?: boolean;
-	stage?: 'discovery' | 'synthesis' | 'evaluation' | 'closeout';
+	stage?: 'discovery' | 'synthesis' | 'deliberation' | 'evaluation' | 'revision' | 'closeout';
+	stages?: Array<{
+		stage: 'discovery' | 'synthesis' | 'deliberation' | 'evaluation' | 'revision' | 'closeout';
+		promptTask?: string;
+		signals?: AgentSignalPolicy;
+	}>;
 	requiresArtifactKinds?: string[];
 }

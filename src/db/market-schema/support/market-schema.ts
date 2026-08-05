@@ -1,6 +1,6 @@
 import { betterAuthAccount,betterAuthVerification,capacityExecutionProviders,capacityProviderLanes,capacityProviderRegistrationRequests,capacityProviderTeamMemberships,capacityProviders,teamCapacityRegistrationKeys,teamInvites } from '../accounts/better-auth-account.ts';
 import { agentLabViewState } from '../accounts/agent-lab-view-state.ts';
-import { creditConversionProfiles,cursorState,leaseState,marketAuthCredentials,marketAuthPasswordResets,marketOperationRunners,messageQueue,notificationEmailDeliveries,notificationEvents,platformOperationEvents,platformOperations,platformRepositoryClaims,runtimeRecords,seedRuns,userNotifications } from '../accounts/notification-events.ts';
+import { legacyCreditConversionProfiles,cursorState,leaseState,marketAuthCredentials,marketAuthPasswordResets,marketOperationRunners,messageQueue,notificationEmailDeliveries,notificationEvents,platformOperationEvents,platformOperations,platformRepositoryClaims,runtimeRecords,seedRuns,userNotifications } from '../accounts/notification-events.ts';
 import { credentialEnvelopes,externalVaultBindings,secretOperationLeases,teamServiceCapabilityBindings,teamServiceConnections,teamServiceCredentialProfiles,teamVaultGrants,teamVaults,userVaultKeys } from '../accounts/team-services.ts';
 import { agentFallbackOutputs,agentModeRuns,capacityWorkdayRuns,decisionAssignmentGraphs,decisionExecutionInputs,decisionPlanningStatuses,deliverableContracts,deliverableManifests,planningInputRequests,structuredAgentEstimates } from '../agents/agent-mode-runs.ts';
 import { capacityAllocationSets,capacityLedgerEntries,capacityProviderAssignments,capacityUsageActuals,projectAgentClasses,providerAvailabilitySessions } from '../capacity/accounting/capacity-ledger-entries.ts';
@@ -174,7 +174,7 @@ export const MarketSchema = {
 	notificationEvents,
 	userNotifications,
 	notificationEmailDeliveries,
-	creditConversionProfiles,
+	legacyCreditConversionProfiles,
 	seedRuns,
 	runtimeRecords,
 	cursorState,

@@ -14,7 +14,7 @@ export const RESEARCH_STARTER_CAPABILITIES = ['planning', 'repo_read', 'agent_mo
 export function researchStarterCapacityConfig(): LocalStarterCapacityConfig {
 	return {
 		starter: 'research', repositoryName: 'treeseed-starter-research', agentPaths: RESEARCH_AGENT_PATHS,
-		capabilities: RESEARCH_STARTER_CAPABILITIES, allowedModes: ['planning'], credits: 64,
+		capabilities: RESEARCH_STARTER_CAPABILITIES, allowedModes: ['planning'], agentSeconds: 3_600,
 		durationSeconds: 14_400,
 		parameters: { planningOnly: true, metadata: { liveAcceptance: true, starter: 'research' } },
 		projectMetadata: {

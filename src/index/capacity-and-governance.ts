@@ -24,13 +24,10 @@ redactCapacityProviderSecret
 } from '../capacity/providers/capacity-provider.ts';
 
 export {
-ACTUAL_CREDIT_FORMULA_VERSION,DEFAULT_EXECUTION_PROFILE_ID,buildCreditConversionProfileFromActuals,
-calculateActualCredits,
-deriveAvailableCredits,isInterruptedUsageActual,nativeUsageAmount,
+deriveNativeCapacity,nativeUsageAmount,
 nativeUsageUnit,
-resolveNativeAccountingWindow,
-selectCreditConversionProfile
-} from '../capacity/accounting/capacity-usage.ts';
+resolveNativeAccountingWindow
+} from '../capacity/accounting/native-capacity.ts';
 
 export type {
 CapacityProviderBudgetCapacity,
@@ -43,7 +40,5 @@ NativeCapacityUnit,ProviderProtocolClientOptions,ProviderQuotaVisibility
 } from '../capacity/providers/capacity-provider.ts';
 
 export type {
-ActualCreditCalculation,
-ActualCreditCalculationInput,
 NativeAccountingWindow
-} from '../capacity/accounting/capacity-usage.ts';
+} from '../capacity/accounting/native-capacity.ts';

@@ -5,6 +5,9 @@ ProviderProtocolClient,
 signCapacityProviderProof,
 } from '../../../capacity/providers/capacity-provider.ts';
 import { createHash } from 'node:crypto';
+import { parse as parseYaml } from 'yaml';
+import { validateAgentSignalContract,type AgentSignalContract } from '../../../agent-capacity/validation/agent-signal.ts';
+import { validateProposalTypeContract,type ProposalTypeContract } from '../../../agent-capacity/validation/proposal-type.ts';
 import { MarketClient } from '../../../entrypoints/clients/market-client.ts';
 import { mintTreeDxHs256Token } from '../../../treedx/accounts/auth.ts';
 import { TreeDxClient } from '../../../treedx/support/client.ts';
@@ -113,6 +116,76 @@ function activityCapabilities(activities: Record<string, unknown>) {
 	return [...new Set(required)];
 }
 
+function referencedSignalIds(files: Record<string, unknown>[]) {
+	const ids = new Set<string>();
+	const visit = (value: unknown) => {
+		if (Array.isArray(value)) { value.forEach(visit); return; }
+		if (!value || typeof value !== 'object') return;
+		const entry = value as Record<string, unknown>;
+		if (entry.signals && typeof entry.signals === 'object') {
+			const policy = entry.signals as Record<string, unknown>;
+			for (const subscription of Array.isArray(policy.subscribesTo) ? policy.subscribesTo : []) {
+				const contract = subscription && typeof subscription === 'object' ? String((subscription as Record<string, unknown>).contract ?? '').trim() : '';
+				if (contract) ids.add(contract.replace(/_/gu, '-'));
+			}
+			for (const publication of Array.isArray(policy.publishes) ? policy.publishes : []) if (String(publication).trim()) ids.add(String(publication).trim().replace(/_/gu, '-'));
+		}
+		Object.values(entry).forEach(visit);
+	};
+	files.forEach((file) => visit((file.frontmatter as Record<string, unknown>)?.activityProfiles));
+	return [...ids].sort();
+}
+
+function referencedProposalTypeIds(files: Record<string, unknown>[]) {
+	const ids = new Set<string>();
+	const visit = (value: unknown, key = '') => {
+		if (Array.isArray(value)) { if (key === 'proposalTypes') value.forEach((entry) => ids.add(String(entry).trim())); else value.forEach((entry) => visit(entry)); return; }
+		if (!value || typeof value !== 'object') return;
+		for (const [childKey,child] of Object.entries(value as Record<string,unknown>)) visit(child, childKey);
+	};
+	files.forEach((file) => visit((file.frontmatter as Record<string, unknown>)?.activityProfiles));
+	return [...ids].filter(Boolean).sort();
+}
+
+async function readSignalContracts(adminClient: MarketClient, input: { projectId: string; repositoryId: string; resolvedRef: string; files: Record<string, unknown>[] }) {
+	const ids = referencedSignalIds(input.files);
+	if (!ids.length) return {} as Record<string, AgentSignalContract>;
+	const paths = ids.map((id) => `.treeseed/agents/signals/${id}.yaml`);
+	const response = await adminClient.treeDxReadRepositoryFiles(input.projectId, input.repositoryId, {
+		ref: input.resolvedRef, paths, encoding: 'utf8', parseFrontmatter: false,
+	});
+	const payload = response.payload && typeof response.payload === 'object' && !Array.isArray(response.payload) ? response.payload as Record<string, unknown> : {};
+	const contractFiles = Array.isArray(payload.files) ? payload.files as Record<string, unknown>[] : [];
+	if (payload.resolvedRef !== input.resolvedRef || contractFiles.length !== paths.length) throw new Error('Agent definitions reference signal contracts that were not all resolved at the immutable TreeDX commit.');
+	const contracts: Record<string, AgentSignalContract> = {};
+	for (const file of contractFiles) {
+		let value: unknown;
+		try { value = parseYaml(String(file.content ?? '')); } catch { throw new Error(`Signal contract ${String(file.path ?? 'unknown')} is not valid YAML.`); }
+		const validation = validateAgentSignalContract(value);
+		if (!validation.ok || !validation.value || !ids.includes(validation.value.id)) throw new Error(`Signal contract ${String(file.path ?? 'unknown')} is invalid or has an unexpected identity.`);
+		contracts[validation.value.id] = validation.value;
+	}
+	return contracts;
+}
+
+async function readProposalTypeContracts(adminClient: MarketClient, input: { projectId: string; repositoryId: string; resolvedRef: string; files: Record<string, unknown>[] }) {
+	const ids = referencedProposalTypeIds(input.files);
+	if (!ids.length) return {} as Record<string, ProposalTypeContract>;
+	const paths = ids.map((id) => `.treeseed/governance/proposal-types/${id}.yaml`);
+	const response = await adminClient.treeDxReadRepositoryFiles(input.projectId, input.repositoryId, { ref: input.resolvedRef, paths, encoding: 'utf8', parseFrontmatter: false });
+	const payload = response.payload && typeof response.payload === 'object' && !Array.isArray(response.payload) ? response.payload as Record<string, unknown> : {};
+	const files = Array.isArray(payload.files) ? payload.files as Record<string, unknown>[] : [];
+	if (payload.resolvedRef !== input.resolvedRef || files.length !== paths.length) throw new Error('Agent definitions reference proposal types that were not all resolved at the immutable TreeDX commit.');
+	const contracts: Record<string, ProposalTypeContract> = {};
+	for (const file of files) {
+		let value: unknown; try { value = parseYaml(String(file.content ?? '')); } catch { throw new Error(`Proposal type ${String(file.path ?? 'unknown')} is not valid YAML.`); }
+		const validation = validateProposalTypeContract(value);
+		if (!validation.ok || !validation.value || !ids.includes(validation.value.id)) throw new Error(`Proposal type ${String(file.path ?? 'unknown')} is invalid or has an unexpected identity.`);
+		contracts[validation.value.id] = validation.value;
+	}
+	return contracts;
+}
+
 export async function syncLocalAcceptanceAgentClasses(adminClient: MarketClient, input: {
 	projectId: string;
 	repositoryId: string;
@@ -125,8 +198,10 @@ export async function syncLocalAcceptanceAgentClasses(adminClient: MarketClient,
 	const payload = response.payload && typeof response.payload === 'object' ? response.payload as Record<string, unknown> : {};
 	const resolvedRef = typeof payload.resolvedRef === 'string' ? payload.resolvedRef.trim() : '';
 	if (!/^[a-f0-9]{40}$/u.test(resolvedRef)) throw new Error('Capacity acceptance did not resolve the starter repository to an immutable TreeDX commit.');
-	const files = Array.isArray(payload.files) ? payload.files : [];
+	const files = Array.isArray(payload.files) ? payload.files as Record<string, unknown>[] : [];
 	if (files.length !== input.agentPaths.length) throw new Error(`Capacity acceptance loaded ${files.length}/${input.agentPaths.length} starter agent definitions through TreeDX.`);
+	const signalContracts = await readSignalContracts(adminClient, { projectId: input.projectId, repositoryId: input.repositoryId, resolvedRef, files });
+	const proposalTypeContracts = await readProposalTypeContracts(adminClient, { projectId: input.projectId, repositoryId: input.repositoryId, resolvedRef, files });
 	const existing = (await adminClient.projectAgentClasses(input.projectId, { limit: 200 })).payload.items;
 	const results = [];
 	for (const entry of files) {
@@ -145,15 +220,15 @@ export async function syncLocalAcceptanceAgentClasses(adminClient: MarketClient,
 		const body = {
 			id: scopedClassId, slug: classId, name: String(frontmatter.name ?? frontmatter.title ?? classId), status: 'active',
 			allowedModes, requiredCapabilities: activityCapabilities(activities),
-			handlerRefs: { agents: [{ slug: agentSlug, contentPath: file.path, activities }] },
-			metadata: { source: 'treedx_starter_agent_content_sync', contentPath: file.path, template: frontmatter.template ?? null },
+			handlerRefs: { agents: [{ slug: agentSlug, contentPath: file.path, activities }], signalContracts, proposalTypeContracts },
+			metadata: { source: 'treedx_starter_agent_content_sync', contentPath: file.path, template: frontmatter.template ?? null, immutableRef: resolvedRef },
 		};
 		const revision = createHash('sha256').update(JSON.stringify(body)).digest('hex').slice(0, 16);
 		results.push(await (record
 			? adminClient.updateProjectAgentClass(input.projectId, String(record.id), body, `capacity-acceptance:${input.runId}:${input.projectId}:agent-class-update:${classId}:${revision}`)
 			: adminClient.createProjectAgentClass(input.projectId, body, `capacity-acceptance:${input.runId}:${input.projectId}:agent-class-create:${classId}:${revision}`)));
 	}
-	return { agentClasses: results, resolvedRef };
+	return { agentClasses: results, resolvedRef, signalContracts, proposalTypeContracts };
 }
 
 export async function syncLocalAcceptanceAgentClass(adminClient: MarketClient, input: { projectId: string; agentClassId: string; runId: string }) {

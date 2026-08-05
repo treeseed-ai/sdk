@@ -66,8 +66,8 @@ export interface CapacityGrantV2 {
 	laneIds: string[];
 	capabilities: string[];
 	allowedModes: Array<'planning' | 'acting'>;
-	dailyCreditLimit?: number | null;
-	monthlyCreditLimit?: number | null;
+	dailyAgentSecondsLimit?: number | null;
+	monthlyAgentSecondsLimit?: number | null;
 	maxConcurrentAssignments?: number | null;
 	unmetered?: boolean;
 	expiresAt?: string | null;
@@ -95,7 +95,7 @@ export type CapacityAdmissionReasonCode =
 	| 'grant_capability_missing'
 	| 'grant_execution_provider_denied'
 	| 'grant_lane_denied'
-	| 'grant_credit_exhausted'
+	| 'grant_time_exhausted'
 	| 'grant_concurrency_exhausted'
 	| 'workday_not_active'
 	| 'workday_budget_exhausted'
@@ -112,7 +112,7 @@ export type CapacityAdmissionReasonCode =
 	| 'acting_decision_not_approved'
 	| 'acting_readiness_not_ready'
 	| 'acting_capacity_plan_not_accepted'
-	| 'requested_credits_invalid';
+	| 'requested_seconds_invalid';
 
 export interface CapacityAdmissionInput {
 	now: string;
@@ -127,7 +127,7 @@ export interface CapacityAdmissionInput {
 		executionProviderId?: string | null;
 		laneId?: string | null;
 		requiredCapabilities: string[];
-		requestedCredits: number;
+		requestedSeconds: number;
 	};
 	membership: {
 		id: string;
@@ -144,27 +144,27 @@ export interface CapacityAdmissionInput {
 	workday: {
 		id: string;
 		status: 'draft' | 'active' | 'paused' | 'completed' | 'cancelled';
-		totalCredits: number;
-		committedCredits: number;
+		totalSeconds: number;
+		committedSeconds: number;
 	};
 	allocationSet?: CapacityAllocationSetV2 | null;
 	allocationSliceIds: string[];
-	committedCreditsBySlice: Record<string, number>;
-	committedBorrowedCreditsByRule?: Record<string, number>;
-	reserveCommittedCredits?: number;
+	committedSecondsBySlice: Record<string, number>;
+	committedBorrowedSecondsByRule?: Record<string, number>;
+	reserveCommittedSeconds?: number;
 	approvedBorrowingRuleIds?: string[];
 	providerCapacity: {
-		availableCredits: number;
+		availableAgentSeconds: number;
 		availableConcurrentAssignments: number;
 		capabilities?: string[];
 	};
 	providerLocalLimits: {
-		availableCredits: number;
+		availableAgentSeconds: number;
 		availableConcurrentAssignments: number;
 	};
 	grantCommitted: {
-		dailyCredits: number;
-		monthlyCredits: number;
+		dailyAgentSeconds: number;
+		monthlyAgentSeconds: number;
 		activeAssignments: number;
 	};
 	acting?: {
@@ -178,8 +178,10 @@ export interface CapacityAdmissionDecision {
 	allowed: boolean;
 	reasonCode: CapacityAdmissionReasonCode;
 	reasonCodes: CapacityAdmissionReasonCode[];
-	maxReservableCredits: number;
+	maxReservableSeconds: number;
 	requiresApproval: boolean;
+	allocationPriorityBand: 'minimum' | 'target' | 'normal' | 'overflow';
+	allocationPriorityScore: number;
 	grantId?: string | null;
 	allocationSetId?: string | null;
 	allocationVersion?: number | null;
@@ -229,7 +231,7 @@ export function evaluateCapacityAdmission(input: CapacityAdmissionInput): Capaci
 	};
 	const now = timestamp(input.now) ?? Date.now();
 	const request = input.request;
-	if (!Number.isFinite(request.requestedCredits) || request.requestedCredits <= 0) deny('request', 'requested_credits_invalid');
+	if (!Number.isFinite(request.requestedSeconds) || request.requestedSeconds <= 0) deny('request', 'requested_seconds_invalid');
 	if (input.membership.status !== 'approved') deny('membership', input.membership.status === 'suspended' ? 'membership_suspended' : input.membership.status === 'revoked' ? 'membership_revoked' : 'membership_not_approved');
 	else allow('membership');
 	if (input.membership.id !== request.membershipId) deny('membership-id', 'membership_id_mismatch'); else allow('membership-id');
@@ -252,16 +254,16 @@ export function evaluateCapacityAdmission(input: CapacityAdmissionInput): Capaci
 		if (missing.length) deny('grant-capabilities', 'grant_capability_missing', missing.join(', ')); else allow('grant-capabilities');
 		if (request.executionProviderId && grant.executionProviderIds.length && !grant.executionProviderIds.includes(request.executionProviderId)) deny('grant-execution-provider', 'grant_execution_provider_denied'); else allow('grant-execution-provider');
 		if (request.laneId && grant.laneIds.length && !grant.laneIds.includes(request.laneId)) deny('grant-lane', 'grant_lane_denied'); else allow('grant-lane');
-		if (!grant.unmetered && grant.dailyCreditLimit == null && grant.monthlyCreditLimit == null) deny('grant-credits', 'grant_credit_exhausted', 'Grant must declare positive limits or explicit unmetered capacity.');
-		if (grant.dailyCreditLimit != null) {
-			const available = grant.dailyCreditLimit - input.grantCommitted.dailyCredits;
-			if (available <= 0) deny('grant-daily', 'grant_credit_exhausted'); else allow('grant-daily', available);
-			counterClaims.push({ id: `grant-daily:${grant.id}:${input.now.slice(0, 10)}`, scope: 'grant-daily', scopeId: grant.id, periodKey: input.now.slice(0, 10), hardLimit: grant.dailyCreditLimit, amount: request.requestedCredits, release: 'settlement-difference' });
+		if (!grant.unmetered && grant.dailyAgentSecondsLimit == null && grant.monthlyAgentSecondsLimit == null) deny('grant-time', 'grant_time_exhausted', 'Grant must declare agent-time limits or explicit unmetered capacity.');
+		if (grant.dailyAgentSecondsLimit != null) {
+			const available = grant.dailyAgentSecondsLimit - input.grantCommitted.dailyAgentSeconds;
+			if (available <= 0) deny('grant-daily', 'grant_time_exhausted'); else allow('grant-daily', available);
+			counterClaims.push({ id: `grant-daily:${grant.id}:${input.now.slice(0, 10)}`, scope: 'grant-daily', scopeId: grant.id, periodKey: input.now.slice(0, 10), hardLimit: grant.dailyAgentSecondsLimit, amount: request.requestedSeconds, release: 'settlement-difference' });
 		}
-		if (grant.monthlyCreditLimit != null) {
-			const available = grant.monthlyCreditLimit - input.grantCommitted.monthlyCredits;
-			if (available <= 0) deny('grant-monthly', 'grant_credit_exhausted'); else allow('grant-monthly', available);
-			counterClaims.push({ id: `grant-monthly:${grant.id}:${input.now.slice(0, 7)}`, scope: 'grant-monthly', scopeId: grant.id, periodKey: input.now.slice(0, 7), hardLimit: grant.monthlyCreditLimit, amount: request.requestedCredits, release: 'settlement-difference' });
+		if (grant.monthlyAgentSecondsLimit != null) {
+			const available = grant.monthlyAgentSecondsLimit - input.grantCommitted.monthlyAgentSeconds;
+			if (available <= 0) deny('grant-monthly', 'grant_time_exhausted'); else allow('grant-monthly', available);
+			counterClaims.push({ id: `grant-monthly:${grant.id}:${input.now.slice(0, 7)}`, scope: 'grant-monthly', scopeId: grant.id, periodKey: input.now.slice(0, 7), hardLimit: grant.monthlyAgentSecondsLimit, amount: request.requestedSeconds, release: 'settlement-difference' });
 		}
 		if (grant.maxConcurrentAssignments != null) {
 			const available = grant.maxConcurrentAssignments - input.grantCommitted.activeAssignments;
@@ -271,9 +273,9 @@ export function evaluateCapacityAdmission(input: CapacityAdmissionInput): Capaci
 	}
 	if (input.workday.status !== 'active') deny('workday', 'workday_not_active');
 	else {
-		const available = input.workday.totalCredits - input.workday.committedCredits;
+		const available = input.workday.totalSeconds - input.workday.committedSeconds;
 		if (available <= 0) deny('workday-budget', 'workday_budget_exhausted'); else allow('workday-budget', available);
-		counterClaims.push({ id: `workday:${input.workday.id}:lifetime`, scope: 'workday', scopeId: input.workday.id, periodKey: 'lifetime', hardLimit: input.workday.totalCredits, amount: request.requestedCredits, release: 'settlement-difference' });
+		counterClaims.push({ id: `workday:${input.workday.id}:lifetime`, scope: 'workday', scopeId: input.workday.id, periodKey: 'lifetime', hardLimit: input.workday.totalSeconds, amount: request.requestedSeconds, release: 'settlement-difference' });
 	}
 	const allocation = input.allocationSet;
 	if (!allocation || allocation.status !== 'active') deny('allocation', 'allocation_set_not_active');
@@ -284,46 +286,46 @@ export function evaluateCapacityAdmission(input: CapacityAdmissionInput): Capaci
 		const hierarchy = evaluateAllocationHierarchy({
 			allocation,
 			workdayId: input.workday.id,
-			totalCredits: input.workday.totalCredits,
-			requestedCredits: request.requestedCredits,
+			totalSeconds: input.workday.totalSeconds,
+			requestedSeconds: request.requestedSeconds,
 			selectedSliceIds: input.allocationSliceIds,
-			committedBySlice: input.committedCreditsBySlice,
-			committedBorrowedByRule: input.committedBorrowedCreditsByRule,
-			reserveCommittedCredits: input.reserveCommittedCredits,
+			committedBySlice: input.committedSecondsBySlice,
+			committedBorrowedByRule: input.committedBorrowedSecondsByRule,
+			reserveCommittedSeconds: input.reserveCommittedSeconds,
 			approvedBorrowingRuleIds: input.approvedBorrowingRuleIds,
 		});
 		reasons.push(...hierarchy.reasons);
 		explanation.push(...hierarchy.explanation);
 		counterClaims.push(...hierarchy.counterClaims);
-		remaining = Math.min(remaining, hierarchy.maxReservableCredits);
+		remaining = Math.min(remaining, hierarchy.maxReservableSeconds);
 		requiresApproval ||= hierarchy.requiresApproval;
 		allocationCalculations = hierarchy.calculations;
 		allocationPriorityBand = hierarchy.priorityBand;
 		allocationPriorityScore = hierarchy.priorityScore;
 	}
-	if (input.providerCapacity.availableConcurrentAssignments < 1 || input.providerCapacity.availableCredits <= 0) deny('provider-capacity', 'provider_capacity_exhausted');
-	else allow('provider-capacity', input.providerCapacity.availableCredits);
+	if (input.providerCapacity.availableConcurrentAssignments < 1 || input.providerCapacity.availableAgentSeconds <= 0) deny('provider-capacity', 'provider_capacity_exhausted');
+	else allow('provider-capacity', input.providerCapacity.availableAgentSeconds);
 	const advertisedCapabilities = input.providerCapacity.capabilities;
 	if (advertisedCapabilities) {
 		const missing = request.requiredCapabilities.filter((capability) => !advertisedCapabilities.includes(capability));
 		if (missing.length) deny('provider-capabilities', 'provider_capability_missing', missing.join(', ')); else allow('provider-capabilities');
 	}
-	if (input.providerLocalLimits.availableConcurrentAssignments < 1 || input.providerLocalLimits.availableCredits <= 0) deny('provider-local', 'provider_local_limit_exhausted');
-	else allow('provider-local', input.providerLocalLimits.availableCredits);
+	if (input.providerLocalLimits.availableConcurrentAssignments < 1 || input.providerLocalLimits.availableAgentSeconds <= 0) deny('provider-local', 'provider_local_limit_exhausted');
+	else allow('provider-local', input.providerLocalLimits.availableAgentSeconds);
 	if (request.mode === 'acting') {
 		if (!input.acting?.decisionApproved) deny('acting-decision', 'acting_decision_not_approved'); else allow('acting-decision');
 		if (!input.acting?.readinessReady) deny('acting-readiness', 'acting_readiness_not_ready'); else allow('acting-readiness');
 		if (!input.acting?.capacityPlanAccepted) deny('acting-capacity-plan', 'acting_capacity_plan_not_accepted'); else allow('acting-capacity-plan');
 	}
-	if (remaining <= 0 && !reasons.includes('grant_credit_exhausted') && !reasons.includes('workday_budget_exhausted') && !reasons.includes('allocation_hard_cap_exhausted')) reasons.push('allocation_hard_cap_exhausted');
-	const maxReservableCredits = Number.isFinite(remaining) ? Math.max(0, remaining) : 0;
-	const allowed = reasons.length === 0 && maxReservableCredits >= request.requestedCredits;
+	if (remaining <= 0 && !reasons.includes('grant_time_exhausted') && !reasons.includes('workday_budget_exhausted') && !reasons.includes('allocation_hard_cap_exhausted')) reasons.push('allocation_hard_cap_exhausted');
+	const maxReservableSeconds = Number.isFinite(remaining) ? Math.max(0, remaining) : 0;
+	const allowed = reasons.length === 0 && maxReservableSeconds >= request.requestedSeconds;
 	if (!allowed && reasons.length === 0) reasons.push('allocation_hard_cap_exhausted');
 	return {
 		allowed,
 		reasonCode: firstReason(reasons),
 		reasonCodes: reasons,
-		maxReservableCredits,
+		maxReservableSeconds,
 		requiresApproval,
 		allocationPriorityBand,
 		allocationPriorityScore,
@@ -336,7 +338,7 @@ export function evaluateCapacityAdmission(input: CapacityAdmissionInput): Capaci
 			allocationVersion: allocation?.version ?? null,
 			grantId: grant?.id ?? null,
 			allocationSliceIds: [...input.allocationSliceIds],
-			requestedCredits: request.requestedCredits,
+			requestedSeconds: request.requestedSeconds,
 			laneId: request.laneId ?? null,
 			counterClaims,
 			calculations: allocationCalculations,

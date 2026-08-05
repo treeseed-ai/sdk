@@ -80,11 +80,11 @@ export function validateStructuredAgentEstimate(estimate: StructuredAgentEstimat
 	validateNonEmptyString(diagnostics, estimate.projectId, 'projectId');
 	validateNonEmptyString(diagnostics, estimate.agentClass, 'agentClass');
 	if (!estimate.decisionId && !estimate.proposalId) diagnostic(diagnostics, 'estimate_missing_subject', 'Structured estimates must reference a decisionId or proposalId.', 'decisionId');
-	validateNonNegativeNumber(diagnostics, estimate.minCredits, 'minCredits');
-	validateNonNegativeNumber(diagnostics, estimate.expectedCredits, 'expectedCredits');
-	validateNonNegativeNumber(diagnostics, estimate.maxCredits, 'maxCredits');
-	if (Number(estimate.minCredits) > Number(estimate.expectedCredits) || Number(estimate.expectedCredits) > Number(estimate.maxCredits)) {
-		diagnostic(diagnostics, 'estimate_credit_bounds_invalid', 'Estimate credit bounds must satisfy min <= expected <= max.', 'expectedCredits');
+	validateNonNegativeNumber(diagnostics, estimate.minSeconds, 'minSeconds');
+	validateNonNegativeNumber(diagnostics, estimate.expectedSeconds, 'expectedSeconds');
+	validateNonNegativeNumber(diagnostics, estimate.maxSeconds, 'maxSeconds');
+	if (Number(estimate.minSeconds) > Number(estimate.expectedSeconds) || Number(estimate.expectedSeconds) > Number(estimate.maxSeconds)) {
+		diagnostic(diagnostics, 'estimate_time_bounds_invalid', 'Estimate time bounds must satisfy min <= expected <= max.', 'expectedSeconds');
 	}
 	if (!['low', 'medium', 'high'].includes(estimate.confidence)) diagnostic(diagnostics, 'estimate_confidence_invalid', 'Estimate confidence must be low, medium, or high.', 'confidence');
 	if (!['low', 'medium', 'high'].includes(estimate.riskLevel)) diagnostic(diagnostics, 'estimate_risk_level_invalid', 'Estimate riskLevel must be low, medium, or high.', 'riskLevel');
@@ -141,8 +141,8 @@ export function validateDecisionAssignmentGraph(graph: DecisionAssignmentGraph):
 	for (const [index, node] of graph.nodes.entries()) {
 		validateNonEmptyString(diagnostics, node.id, 'node.id', `nodes.${index}.id`);
 		validateNonEmptyString(diagnostics, node.targetAgentClass, 'node.targetAgentClass', `nodes.${index}.targetAgentClass`);
-		validateNonNegativeNumber(diagnostics, node.capacity.expectedCredits, 'node.capacity.expectedCredits', `nodes.${index}.capacity.expectedCredits`);
-		validateNonNegativeNumber(diagnostics, node.capacity.maxCredits, 'node.capacity.maxCredits', `nodes.${index}.capacity.maxCredits`);
+		validateNonNegativeNumber(diagnostics, node.capacity.expectedSeconds, 'node.capacity.expectedSeconds', `nodes.${index}.capacity.expectedSeconds`);
+		validateNonNegativeNumber(diagnostics, node.capacity.maxSeconds, 'node.capacity.maxSeconds', `nodes.${index}.capacity.maxSeconds`);
 	}
 	for (const [index, edge] of graph.edges.entries()) {
 		if (!nodeIds.has(edge.fromNodeId)) diagnostic(diagnostics, 'graph_edge_from_missing', `Edge ${index} references missing fromNodeId.`, `edges.${index}.fromNodeId`);
@@ -205,7 +205,7 @@ export function compileDecisionAssignmentGraphFromEstimates(input: {
 					requiredDeliverableContractIds: [],
 					inputRefs: [],
 					outputRequirements: [{ id: `${contractId}:output`, outputType: dependency.deliverableType ?? dependency.id, description: dependency.summary, required: true }],
-					capacity: { expectedCredits: 1, maxCredits: 1 },
+					capacity: { expectedSeconds: 900, maxSeconds: 900 },
 					status: 'pending',
 					metadata: { producesDeliverableContractId: contractId, generatedFromDependency: dependency.id },
 				});
@@ -241,7 +241,7 @@ export function compileDecisionAssignmentGraphFromEstimates(input: {
 			requiredDeliverableContractIds,
 			inputRefs,
 			outputRequirements: estimate.expectedOutputs,
-			capacity: { expectedCredits: estimate.expectedCredits, maxCredits: estimate.maxCredits },
+			capacity: { expectedSeconds: estimate.expectedSeconds, maxSeconds: estimate.maxSeconds },
 			status: 'pending',
 			metadata: {
 				estimateId: estimate.id,
@@ -315,7 +315,7 @@ export function compileEngineeringAssignmentGraph(input: EngineeringAssignmentGr
 			requiredDeliverableContractIds: previous ? [previous.id] : [],
 			inputRefs: [],
 			outputRequirements: [{ id: contracts[index]!.id, outputType: stage.output, required: true }],
-			capacity: { expectedCredits: Math.max(1, input.credits?.[stage.key] ?? 1), maxCredits: Math.max(1, input.credits?.[stage.key] ?? 1) },
+			capacity: { expectedSeconds: Math.max(1, input.seconds?.[stage.key] ?? 900), maxSeconds: Math.max(1, input.seconds?.[stage.key] ?? 900) },
 			status: index === 0 ? 'ready' : 'pending',
 			metadata: {
 				workflowKind: 'engineering-test-first',
@@ -426,7 +426,7 @@ export function compileEngineeringRevisionCycle(
 		requiredCapabilities: [`engineering:${stage.key}`],
 		requiredDeliverableContractIds: index === 0 ? [] : [newContracts[index - 1]!.id],
 		inputRefs: [], outputRequirements: [{ id: newContracts[index]!.id, outputType: stage.output, required: true }],
-		capacity: { expectedCredits: 1, maxCredits: 1 }, status: index === 0 ? 'ready' : 'pending',
+		capacity: { expectedSeconds: 900, maxSeconds: 900 }, status: index === 0 ? 'ready' : 'pending',
 		metadata: {
 			workflowKind: 'engineering-test-first', stage: stage.key, revisionCycle,
 			exactBaseRef: graph.metadata?.exactBaseRef, producesDeliverableContractId: newContracts[index]!.id,

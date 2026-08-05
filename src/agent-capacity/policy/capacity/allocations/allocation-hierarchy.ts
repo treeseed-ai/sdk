@@ -8,12 +8,12 @@ CapacityAllocationSlice,
 interface AllocationHierarchyInput {
 	allocation: CapacityAllocationSetV2;
 	workdayId: string;
-	totalCredits: number;
-	requestedCredits: number;
+	totalSeconds: number;
+	requestedSeconds: number;
 	selectedSliceIds: string[];
 	committedBySlice: Record<string, number>;
 	committedBorrowedByRule?: Record<string, number>;
-	reserveCommittedCredits?: number;
+	reserveCommittedSeconds?: number;
 	approvedBorrowingRuleIds?: string[];
 }
 
@@ -21,18 +21,18 @@ export interface AllocationHierarchyDecision {
 	reasons: CapacityAdmissionReasonCode[];
 	explanation: Array<{ gate: string; allowed: boolean; remaining?: number; detail?: string }>;
 	counterClaims: CapacityAdmissionCounterClaim[];
-	maxReservableCredits: number;
+	maxReservableSeconds: number;
 	requiresApproval: boolean;
 	calculations: Record<string, unknown>;
 	priorityBand: 'minimum' | 'target' | 'normal' | 'overflow';
 	priorityScore: number;
 }
 
-function sliceLimits(allocation: CapacityAllocationSetV2, totalCredits: number, slice: CapacityAllocationSlice, cache = new Map<string, Record<string, number>>()): Record<string, number> {
+function sliceLimits(allocation: CapacityAllocationSetV2, totalSeconds: number, slice: CapacityAllocationSlice, cache = new Map<string, Record<string, number>>()): Record<string, number> {
 	const cached = cache.get(slice.id);
 	if (cached) return cached;
 	const parent = slice.parentSliceId ? allocation.slices.find((candidate) => candidate.id === slice.parentSliceId) : null;
-	const basis = parent ? sliceLimits(allocation, totalCredits, parent, cache).target : totalCredits;
+	const basis = parent ? sliceLimits(allocation, totalSeconds, parent, cache).target : totalSeconds;
 	const limits = {
 		min: basis * slice.policy.minPercent / 100,
 		target: basis * slice.policy.targetPercent / 100,
@@ -64,7 +64,7 @@ export function evaluateAllocationHierarchy(input: AllocationHierarchyInput): Al
 			explanation.push({ gate: `allocation:${sliceId}`, allowed: false, detail: 'selected slice does not exist' });
 			continue;
 		}
-		const limits = sliceLimits(input.allocation, input.totalCredits, slice, cache);
+		const limits = sliceLimits(input.allocation, input.totalSeconds, slice, cache);
 		const committed = input.committedBySlice[sliceId] ?? 0;
 		const normalAvailable = Math.max(0, limits.max - committed);
 		const overflowAvailable = Math.max(0, limits.hard - Math.max(committed, limits.max));
@@ -77,7 +77,7 @@ export function evaluateAllocationHierarchy(input: AllocationHierarchyInput): Al
 			if (rule) {
 				const donor = input.allocation.slices.find((candidate) => candidate.id === rule.fromSliceId);
 				if (donor) {
-					const donorLimits = sliceLimits(input.allocation, input.totalCredits, donor, cache);
+					const donorLimits = sliceLimits(input.allocation, input.totalSeconds, donor, cache);
 					const donorCommitted = input.committedBySlice[donor.id] ?? 0;
 					const donorAvailable = Math.max(0, donorLimits.target - Math.max(donorCommitted, donorLimits.min));
 					const ruleLimit = donorLimits.target * rule.maxPercent / 100;
@@ -88,41 +88,41 @@ export function evaluateAllocationHierarchy(input: AllocationHierarchyInput): Al
 				}
 			} else if (!slice.parentSliceId) {
 				overflowSource = 'reserve';
-				overflowSourceAvailable = Math.max(0, input.totalCredits * input.allocation.reservePolicy.percent / 100 - (input.reserveCommittedCredits ?? 0));
+				overflowSourceAvailable = Math.max(0, input.totalSeconds * input.allocation.reservePolicy.percent / 100 - (input.reserveCommittedSeconds ?? 0));
 			}
 		}
 		const usableOverflow = Math.min(overflowAvailable, overflowSourceAvailable);
 		if (input.allocation.reservePolicy.overflow === 'borrow') available += usableOverflow;
-		else if (input.requestedCredits > normalAvailable && input.allocation.reservePolicy.overflow === 'approval-required') {
+		else if (input.requestedSeconds > normalAvailable && input.allocation.reservePolicy.overflow === 'approval-required') {
 			requiresApproval = true;
 			reasons.push('allocation_borrowing_approval_required');
 		}
 		if (overflowRuleId) {
 			const rule = input.allocation.borrowingRules.find((candidate) => candidate.id === overflowRuleId)!;
-			if (rule.requiresApproval && !approved.has(rule.id) && input.requestedCredits > normalAvailable) {
+			if (rule.requiresApproval && !approved.has(rule.id) && input.requestedSeconds > normalAvailable) {
 				requiresApproval = true;
 				reasons.push('allocation_borrowing_approval_required');
 				available = normalAvailable;
 			}
 		}
-		if (input.requestedCredits > available && !reasons.includes('allocation_borrowing_approval_required')) {
+		if (input.requestedSeconds > available && !reasons.includes('allocation_borrowing_approval_required')) {
 			reasons.push(input.allocation.reservePolicy.overflow === 'deny' ? 'allocation_borrowing_denied' : 'allocation_hard_cap_exhausted');
 		}
 		remaining = Math.min(remaining, available);
-		const ownAmount = Math.min(input.requestedCredits, normalAvailable);
-		const overflowAmount = Math.max(0, input.requestedCredits - ownAmount);
+		const ownAmount = Math.min(input.requestedSeconds, normalAvailable);
+		const overflowAmount = Math.max(0, input.requestedSeconds - ownAmount);
 		const ownClaim = claim(`allocation-slice:${input.allocation.id}:${slice.id}:${input.workdayId}`, 'allocation-slice', `${input.allocation.id}:${slice.id}`, input.workdayId, limits.max, ownAmount);
 		if (ownClaim) counterClaims.push(ownClaim);
 		if (overflowAmount > 0 && overflowAmount <= usableOverflow && input.allocation.reservePolicy.overflow === 'borrow') {
 			const overflowClaim = claim(`allocation-overflow:${input.allocation.id}:${slice.id}:${input.workdayId}`, 'allocation-overflow', `${input.allocation.id}:${slice.id}`, input.workdayId, Math.max(0, limits.hard - limits.max), overflowAmount);
 			if (overflowClaim) counterClaims.push(overflowClaim);
 			if (overflowSource === 'reserve') {
-				const reserveClaim = claim(`allocation-reserve:${input.allocation.id}:${input.workdayId}`, 'allocation-reserve', input.allocation.id, input.workdayId, input.totalCredits * input.allocation.reservePolicy.percent / 100, overflowAmount);
+				const reserveClaim = claim(`allocation-reserve:${input.allocation.id}:${input.workdayId}`, 'allocation-reserve', input.allocation.id, input.workdayId, input.totalSeconds * input.allocation.reservePolicy.percent / 100, overflowAmount);
 				if (reserveClaim) counterClaims.push(reserveClaim);
 			} else if (overflowRuleId) {
 				const rule = input.allocation.borrowingRules.find((candidate) => candidate.id === overflowRuleId)!;
 				const donor = input.allocation.slices.find((candidate) => candidate.id === rule.fromSliceId)!;
-				const donorLimits = sliceLimits(input.allocation, input.totalCredits, donor, cache);
+				const donorLimits = sliceLimits(input.allocation, input.totalSeconds, donor, cache);
 				const donorClaim = claim(`allocation-slice:${input.allocation.id}:${donor.id}:${input.workdayId}`, 'allocation-slice', `${input.allocation.id}:${donor.id}`, input.workdayId, donorLimits.target, overflowAmount);
 				const ruleClaim = claim(`allocation-borrow:${input.allocation.id}:${rule.id}:${input.workdayId}`, 'allocation-borrow', `${input.allocation.id}:${rule.id}`, input.workdayId, donorLimits.target * rule.maxPercent / 100, overflowAmount);
 				if (donorClaim) counterClaims.push(donorClaim);
@@ -132,8 +132,8 @@ export function evaluateAllocationHierarchy(input: AllocationHierarchyInput): Al
 		const position = committed < limits.min ? 'below-minimum' : committed < limits.target ? 'below-target' : committed < limits.max ? 'above-target' : 'overflow';
 		priorityScore = Math.min(priorityScore, position === 'below-minimum' ? 4 : position === 'below-target' ? 3 : position === 'above-target' ? 2 : 1);
 		calculations[sliceId] = { committed, ...limits, normalAvailable, overflowAvailable, overflowSource, overflowSourceAvailable, usableOverflow, position };
-		explanation.push({ gate: `allocation:${sliceId}`, allowed: input.requestedCredits <= available, remaining: available, detail: JSON.stringify(calculations[sliceId]) });
+		explanation.push({ gate: `allocation:${sliceId}`, allowed: input.requestedSeconds <= available, remaining: available, detail: JSON.stringify(calculations[sliceId]) });
 	}
 	const priorityBand = priorityScore === 4 ? 'minimum' : priorityScore === 3 ? 'target' : priorityScore === 2 ? 'normal' : 'overflow';
-	return { reasons: [...new Set(reasons)], explanation, counterClaims, maxReservableCredits: Number.isFinite(remaining) ? Math.max(0, remaining) : 0, requiresApproval, calculations, priorityBand, priorityScore };
+	return { reasons: [...new Set(reasons)], explanation, counterClaims, maxReservableSeconds: Number.isFinite(remaining) ? Math.max(0, remaining) : 0, requiresApproval, calculations, priorityBand, priorityScore };
 }

@@ -25,13 +25,13 @@ export function validateCapacityGrantV2(grant: CapacityGrantV2): CapacityAllocat
 	for (const [path, values] of [['executionProviderIds', grant.executionProviderIds], ['laneIds', grant.laneIds], ['capabilities', grant.capabilities]] as const) {
 		if (!Array.isArray(values) || values.some((value) => !value?.trim()) || new Set(values).size !== values.length) add('capacity_grant_list_invalid', path, `${path} must contain unique non-empty strings.`);
 	}
-	for (const [path, value] of [['dailyCreditLimit', grant.dailyCreditLimit], ['monthlyCreditLimit', grant.monthlyCreditLimit]] as const) {
+	for (const [path, value] of [['dailyAgentSecondsLimit', grant.dailyAgentSecondsLimit], ['monthlyAgentSecondsLimit', grant.monthlyAgentSecondsLimit]] as const) {
 		if (value != null && (!Number.isFinite(value) || value < 0)) add('capacity_grant_limit_invalid', path, `${path} must be zero or greater when configured.`);
 	}
 	if (grant.maxConcurrentAssignments != null && (!Number.isInteger(grant.maxConcurrentAssignments) || grant.maxConcurrentAssignments < 0)) add('capacity_grant_concurrency_invalid', 'maxConcurrentAssignments', 'maxConcurrentAssignments must be a non-negative integer when configured.');
 	if (!Array.isArray(grant.executionProviderIds) || grant.executionProviderIds.length === 0) add('capacity_grant_execution_provider_required', 'executionProviderIds', 'At least one execution provider is required.');
-	if (!grant.unmetered && grant.dailyCreditLimit == null && grant.monthlyCreditLimit == null) add('capacity_grant_budget_required', 'unmetered', 'A metered grant requires a daily or monthly credit limit.');
-	if (grant.unmetered && (grant.dailyCreditLimit != null || grant.monthlyCreditLimit != null)) add('capacity_grant_budget_ambiguous', 'unmetered', 'An unmetered grant must not also declare credit limits.');
+	if (!grant.unmetered && grant.dailyAgentSecondsLimit == null && grant.monthlyAgentSecondsLimit == null) add('capacity_grant_budget_required', 'unmetered', 'A metered grant requires a daily or monthly agent-time limit.');
+	if (grant.unmetered && (grant.dailyAgentSecondsLimit != null || grant.monthlyAgentSecondsLimit != null)) add('capacity_grant_budget_ambiguous', 'unmetered', 'An unmetered grant must not also declare agent-time limits.');
 	if (grant.expiresAt && timestamp(grant.expiresAt) === null) add('capacity_grant_expiry_invalid', 'expiresAt', 'expiresAt must be an ISO timestamp.');
 	return { ok: diagnostics.length === 0, diagnostics };
 }

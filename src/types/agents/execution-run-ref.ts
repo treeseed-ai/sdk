@@ -1,6 +1,6 @@
 
 import { AgentActivityProfile,AgentDefinitionIdentity,AgentExecutionConfig,AgentHandlerConfig } from './agent-activity-profile.ts';
-import { AgentActivityType,AgentBranchPolicy,AgentCliAllowTool,AgentContentAccessPolicy,AgentHandlerKind,AgentMessageStatus,AgentOutputContract,AgentPermissionConfig,AgentPermissionPolicy,AgentQuestionPolicy,AgentRunStatus,AgentToolPolicy,AgentTriggerConfig,ExecutionRunStatus } from './agent-trigger-kinds.ts';
+import { AgentActivityType,AgentBranchPolicy,AgentCliAllowTool,AgentContentAccessPolicy,AgentHandlerKind,AgentMessageStatus,AgentOutputContract,AgentPermissionConfig,AgentPermissionPolicy,AgentQuestionPolicy,AgentRunStatus,AgentSignalPolicy,AgentToolPolicy,AgentTriggerConfig,ExecutionRunStatus } from './agent-trigger-kinds.ts';
 
 export interface ExecutionRunRef {
 	assignmentId: string;
@@ -87,6 +87,7 @@ export interface AgentRuntimeSpec {
 	permissions: AgentPermissionConfig[];
 	permissionPolicy?: AgentPermissionPolicy;
 	tools: AgentToolPolicy;
+	signalPolicy?: AgentSignalPolicy;
 	contentAccess?: AgentContentAccessPolicy;
 	context?: {
 		queries?: import('../../graph/context-query-contracts.ts').DeclarativeContextQuery[];

@@ -2,6 +2,7 @@ import { execFileSync,spawn } from 'node:child_process';
 import { appendFileSync,closeSync,existsSync,mkdirSync,openSync,readFileSync,readdirSync,rmSync,writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { buildManagedDevProcessSpec } from './managed-dev-process-spec.ts';
+import { ensureManagedDevRuntimeBuilds,managedDevStaleRuntimePackages } from './source-closure.ts';
 
 export type ManagedDevSurface = 'web' | 'api' | 'operations-runner' | string;
 export type ManagedDevAction = 'start' | 'status' | 'logs' | 'stop' | 'restart';
@@ -330,6 +331,14 @@ async function waitForHealthySpec(spec: ManagedDevProcessSpec, timeoutMs = 90_00
 }
 
 export async function startManagedDev(options: ManagedDevOptions = {}): Promise<ManagedDevResult> {
+	const tenantRoot=resolve(options.cwd ?? process.cwd()); const surfaces=splitSurfaces(options.surfaces);
+	const stalePackages=managedDevStaleRuntimePackages({tenantRoot,surfaces});
+	if(stalePackages.length) {
+		const restartSurfaces=stalePackages.includes('packages/sdk') ? 'web,api,operations-runner' : 'web';
+		const runtimePlan=createIntegratedDevPlan({...options,surfaces:restartSurfaces});
+		await Promise.all(runtimePlan.processes.map((spec)=>stopSpec(spec)));
+	}
+	ensureManagedDevRuntimeBuilds({tenantRoot,surfaces});
 	const plan = createIntegratedDevPlan(options);
 	const instances = [];
 	for (const spec of plan.processes) {

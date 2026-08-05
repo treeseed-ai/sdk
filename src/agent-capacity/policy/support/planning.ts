@@ -51,8 +51,8 @@ export function hasAcceptedCapacityPlanProvenance(input: {
 }
 
 export function normalizeDecisionExecutionEstimate(input: DecisionExecutionInputRecord | DecisionExecutionInput): {
-	expectedCredits: number;
-	highCredits: number;
+	expectedSeconds: number;
+	highSeconds: number;
 	requiredCapabilities: string[];
 	dependencies: string[];
 	blockers: string[];
@@ -75,12 +75,12 @@ export function normalizeDecisionExecutionEstimate(input: DecisionExecutionInput
 	const blockers = Array.isArray(source.blockers) ? source.blockers : Array.isArray(metadata.blockers) ? metadata.blockers : [];
 	const assumptions = Array.isArray(source.assumptions) ? source.assumptions : Array.isArray(metadata.assumptions) ? metadata.assumptions : [];
 	const environmentNeeds = Array.isArray(source.environmentNeeds) ? source.environmentNeeds : Array.isArray(metadata.environmentNeeds) ? metadata.environmentNeeds : [];
-	const expectedCredits = numberOrNull(estimate.expectedCredits ?? estimate.credits ?? source.expectedCredits ?? metadata.expectedCredits) ?? 1;
-	const highCredits = Math.max(expectedCredits, numberOrNull(estimate.highCredits ?? estimate.p90Credits ?? source.highCredits ?? metadata.highCredits) ?? expectedCredits);
+	const expectedSeconds = numberOrNull(estimate.expectedSeconds ?? source.expectedSeconds ?? metadata.expectedSeconds) ?? 900;
+	const highSeconds = Math.max(expectedSeconds, numberOrNull(estimate.highSeconds ?? source.highSeconds ?? metadata.highSeconds) ?? expectedSeconds);
 	const confidence = numberOrNull(estimate.confidence ?? source.confidence ?? metadata.confidence);
 	return {
-		expectedCredits,
-		highCredits,
+		expectedSeconds,
+		highSeconds,
 		requiredCapabilities: capabilities.map(String).filter(Boolean),
 		dependencies: dependencies.map(String).filter(Boolean),
 		blockers: blockers.map(String).filter(Boolean),
@@ -141,8 +141,8 @@ export function buildAgentCapacityPlanDraft(input: {
 			agentId: decisionInput.agentId ?? null,
 			handlerId: decisionInput.handlerId ?? null,
 			workDayId: capacityEnvelope.workDayId ?? null,
-			expectedCredits: estimate.expectedCredits,
-			highCredits: estimate.highCredits,
+			expectedSeconds: estimate.expectedSeconds,
+			highSeconds: estimate.highSeconds,
 			requiredCapabilities: estimate.requiredCapabilities,
 			dependencies: estimate.dependencies,
 			blockers: estimate.blockers,
@@ -172,12 +172,12 @@ export function buildAgentCapacityPlanDraft(input: {
 		scopeHash: input.scopeHash,
 		allocationSetId: input.allocationSetId ?? null,
 		workDayId: input.workDayId ?? null,
-		expectedCredits: workUnits.reduce((sum, unit) => sum + unit.expectedCredits, 0),
-		highCredits: workUnits.reduce((sum, unit) => sum + unit.highCredits, 0),
+		expectedSeconds: workUnits.reduce((sum, unit) => sum + unit.expectedSeconds, 0),
+		highSeconds: workUnits.reduce((sum, unit) => sum + unit.highSeconds, 0),
 		workUnits,
 		capabilityNeeds: unique(workUnits.flatMap((unit) => unit.requiredCapabilities)),
 		environmentNeeds: unique(accepted.flatMap((entry) => normalizeDecisionExecutionEstimate(entry).environmentNeeds)),
-		reserves: { highCredits: workUnits.reduce((sum, unit) => sum + unit.highCredits, 0) },
+		reserves: { highSeconds: workUnits.reduce((sum, unit) => sum + unit.highSeconds, 0) },
 		blockers: unique(workUnits.flatMap((unit) => unit.blockers)),
 		priorityRationale: typeof input.metadata?.priorityRationale === 'string' ? input.metadata.priorityRationale : null,
 		review: {},
