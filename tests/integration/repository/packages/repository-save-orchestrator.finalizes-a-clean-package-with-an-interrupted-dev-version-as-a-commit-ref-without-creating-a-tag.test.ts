@@ -106,7 +106,11 @@ it('detects when an exact Git dependency commit is available remotely', () => {
 		manifestSpec: `github:treeseed-ai/demo#${commit}`, installSpec: `github:treeseed-ai/demo#${commit}`,
 		tagName: null, remoteUrl: 'git@github.com:treeseed-ai/demo.git', sourcePath: root, mode: 'dev-git-commit' as const,
 	};
-	git(root, ['checkout', '-b', 'local-work']);
+	writeFileSync(resolve(root, 'README.md'), 'remote ahead\n', 'utf8');
+	git(root, ['add', '-A']);
+	git(root, ['commit', '-m', 'chore: remote ahead']);
+	git(root, ['push', 'origin', 'feature/demo']);
+	git(root, ['checkout', '-b', 'local-work', commit]);
 	expect(dependencyReferenceIsPublished(reference)).toBe(true);
 	expect(shouldValidateGitDependencyLockfile([reference], true)).toBe(true);
 	writeFileSync(resolve(root, 'README.md'), 'local only\n', 'utf8');
