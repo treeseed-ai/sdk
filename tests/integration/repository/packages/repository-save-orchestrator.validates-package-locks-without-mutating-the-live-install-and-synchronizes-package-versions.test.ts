@@ -74,7 +74,7 @@ it('copies newly introduced runtime dependency closure into consumer locks durin
 			packages: {
 				'': { dependencies: { 'new-runtime': '1.0.0' } },
 				'node_modules/new-runtime': { version: '1.0.0', dependencies: { 'runtime-core': '1.0.0' } },
-				'node_modules/runtime-core': { version: '1.0.0' },
+				'node_modules/runtime-core': { version: '1.0.0', optionalDependencies: { 'new-runtime': '1.0.0' } },
 			},
 		});
 		const packageJson = { name: '@treeseed/consumer', dependencies: { '@treeseed/sdk': spec } };
@@ -95,6 +95,7 @@ it('copies newly introduced runtime dependency closure into consumer locks durin
 		expect(lock.packages['node_modules/@treeseed/sdk'].dependencies).toEqual({ 'new-runtime': '1.0.0' });
 		expect(lock.packages['node_modules/new-runtime'].version).toBe('1.0.0');
 		expect(lock.packages['node_modules/runtime-core'].version).toBe('1.0.0');
+		expect(lock.packages['node_modules/runtime-core'].optionalDependencies).toEqual({ 'new-runtime': '1.0.0' });
 	});
 
 it('validates package locks without mutating the live install and synchronizes package versions', () => {

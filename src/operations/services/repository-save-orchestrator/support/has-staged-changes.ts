@@ -86,10 +86,13 @@ export function syncDirectGitDependencyLockfileEntries(
 			? sourceLockfile.packages as Record<string, Record<string, unknown>>
 			: null;
 		const sourceRoot = sourcePackages?.[''];
+		const copiedDependencyEntries = new Set<string>();
 		const copyMissingDependencyClosure = (dependencies: unknown) => {
 			if (!sourcePackages || !dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) return;
 			for (const dependencyName of Object.keys(dependencies as Record<string, unknown>)) {
 				const entryKey = `node_modules/${dependencyName}`;
+				if (copiedDependencyEntries.has(entryKey)) continue;
+				copiedDependencyEntries.add(entryKey);
 				const sourceEntry = sourcePackages[entryKey];
 				if (!sourceEntry) continue;
 				if (!packageEntries[entryKey]) {
