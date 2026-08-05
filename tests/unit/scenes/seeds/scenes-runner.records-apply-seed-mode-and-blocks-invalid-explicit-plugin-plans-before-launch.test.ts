@@ -314,8 +314,8 @@ artifacts:
   trace: false
   screenshots: false
 setup:
-  seed:
-    name: scene-seed
+  seeds:
+    - name: scene-seed
 ${extra}
 workflow:
   - id: open
@@ -329,7 +329,7 @@ workflow:
 describe('scene Playwright runner foundation', () => {
 it('records apply seed mode and blocks invalid explicit plugin plans before launch', async () => {
 		const root = workspace();
-		writeScene(root, 'apply-seed-smoke', noScreenshotScene(`    apply: true
+		writeScene(root, 'apply-seed-smoke', noScreenshotScene(`      apply: true
 `));
 		const seedModes: string[] = [];
 		const adapter = new FakeAdapter();
@@ -338,8 +338,9 @@ it('records apply seed mode and blocks invalid explicit plugin plans before laun
 			scene: 'apply-seed-smoke',
 			browserAdapter: adapter,
 			seedRunner: async ({ scene }) => {
-				seedModes.push(scene.setup.seed?.apply ? 'apply' : 'plan');
-				return { ok: true, requested: true, seedName: scene.setup.seed?.name ?? null, mode: 'apply', environments: ['local'], plan: {}, result: {}, diagnostics: [] };
+				const seed = scene.setup.seeds?.[0];
+				seedModes.push(seed?.apply ? 'apply' : 'plan');
+				return { ok: true, requested: true, seedName: seed?.name ?? null, mode: 'apply', environments: ['local'], plan: {}, result: {}, diagnostics: [] };
 			},
 		});
 		expect(report.ok).toBe(true);

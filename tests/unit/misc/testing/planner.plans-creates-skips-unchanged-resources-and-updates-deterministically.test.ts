@@ -194,11 +194,13 @@ const manifest: SeedManifest = {
 				name: 'demo',
 			},
 		],
+		teamMemberships: [],
 		projects: [],
 		hubRepositories: [],
 		products: [],
 		catalogArtifacts: [],
 	},
+	runtime: { capacityProviders: [], agentLabServicePrincipals: [] },
 	operationRecipes: [],
 };
 describe('seed planner current-state diffing', () => {

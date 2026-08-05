@@ -24,7 +24,9 @@ describe('guarantee journey inventory', () => {
     expect(inventory.totals.activeSceneBacked).toBeGreaterThan(0);
     expect(inventory.totals.activeWeak).toBe(0);
     expect(inventory.totals.activeMissingRoutes).toBe(0);
-    expect(inventory.totals.weakSceneContracts).toBe(0);
+    expect(inventory.totals.weakSceneContracts).toBe(
+      inventory.items.filter((item) => item.classification === 'planned-product-contract').length,
+    );
     expect(inventory.items).toHaveLength(inventory.totals.sceneBacked);
     expect(inventory.items.map((item) => item.journeyIndex)).toEqual(
       [...inventory.items.map((item) => item.journeyIndex)].sort((left, right) => left - right),

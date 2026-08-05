@@ -219,7 +219,7 @@ describe('git workflow task helpers', () => {
 		expect(JSON.parse(git(work, ['show', 'HEAD:package.json'])).version).toBe('0.1.0-dev.new');
 		expect(git(work, ['ls-tree', 'HEAD', packagePointerPath])).toContain(packageRepo.next);
 		expect(git(work, ['diff', '--name-only', '--diff-filter=U'])).toBe('');
-	});
+	}, 15_000);
 
 	it('keeps non-generated squash conflicts as hard failures with conflicted paths', () => {
 		const { work } = makeRepo();

@@ -32,6 +32,9 @@ jobs:
         timeout-minutes: 20
         run: npm ci --no-audit --no-fund
 
+      - name: Install scene browser
+        run: npx playwright install --with-deps chromium
+
       - name: Verify package
         run: npm run verify:direct
 
