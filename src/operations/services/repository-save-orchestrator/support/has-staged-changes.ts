@@ -89,18 +89,27 @@ export function syncDirectGitDependencyLockfileEntries(
 		const copiedDependencyEntries = new Set<string>();
 		const copyMissingDependencyClosure = (dependencies: unknown) => {
 			if (!sourcePackages || !dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) return;
-			for (const dependencyName of Object.keys(dependencies as Record<string, unknown>)) {
+			for (const [dependencyName, dependencySpec] of Object.entries(dependencies as Record<string, unknown>)) {
 				const entryKey = `node_modules/${dependencyName}`;
 				if (copiedDependencyEntries.has(entryKey)) continue;
 				copiedDependencyEntries.add(entryKey);
 				const sourceEntry = sourcePackages[entryKey];
 				if (!sourceEntry) continue;
-				if (!packageEntries[entryKey]) {
+				const consumerDeclaresDependency = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']
+					.some((field) => {
+						const declared = rootPackage[field];
+						return Boolean(declared && typeof declared === 'object' && !Array.isArray(declared)
+							&& dependencyName in (declared as Record<string, unknown>));
+					});
+				const exactVersion = typeof dependencySpec === 'string' && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(dependencySpec)
+					? dependencySpec
+					: null;
+				if (!packageEntries[entryKey] || (!consumerDeclaresDependency && exactVersion && packageEntries[entryKey].version !== exactVersion)) {
 					packageEntries[entryKey] = structuredClone(sourceEntry);
 					changed = true;
 				}
-				copyMissingDependencyClosure(sourceEntry.dependencies);
-				copyMissingDependencyClosure(sourceEntry.optionalDependencies);
+				copyMissingDependencyClosure(packageEntries[entryKey].dependencies);
+				copyMissingDependencyClosure(packageEntries[entryKey].optionalDependencies);
 			}
 		};
 		for (const [entryKey, entry] of Object.entries(packageEntries)) {

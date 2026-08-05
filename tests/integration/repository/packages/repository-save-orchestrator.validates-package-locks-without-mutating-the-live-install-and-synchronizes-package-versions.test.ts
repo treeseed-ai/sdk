@@ -83,6 +83,7 @@ it('copies newly introduced runtime dependency closure into consumer locks durin
 			packages: {
 				'': packageJson,
 				'node_modules/@treeseed/sdk': { version: '1.0.0', resolved: 'old', dependencies: {} },
+				'node_modules/new-runtime': { version: '1.1.0' },
 			},
 		});
 		const consumer = node({ id: consumerRoot, name: '@treeseed/consumer', path: consumerRoot, packageJson });
