@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { assertResearchCitations } from '../agent-capacity/validation/research/research-citation.ts';
+import { assertResearchCitations } from '../agent-capacity/validation/research/citation.ts';
 import type {
 SdkGraphModelConfig,
 SdkModelFieldBinding

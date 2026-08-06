@@ -101,6 +101,10 @@ export function discoverRepositorySaveNodes(
 				?? emptyManifestVerifyCommands(),
 			remoteUrl: originRemoteUrlSafe(repoDir),
 			dependencies: [],
+			referenceDependencies: [],
+			workflowDependencies: Array.isArray(adapter?.metadata.workflowDependencies)
+				? adapter.metadata.workflowDependencies.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
+				: [],
 			dependents: [],
 			submoduleDependencies: [],
 			plannedVersion: null,
@@ -151,17 +155,26 @@ export function deriveRepositoryGraph(root: string, nodes: RepositorySaveNode[])
 		.filter((node) => node.kind === 'package')
 		.map((node) => [String(node.packageJson?.name), node]));
 	const byId = new Map(nodes.flatMap((node) => node.checkoutAliases.map((id) => [id, node] as const)));
+	const byNameOrId = new Map(nodes.flatMap((node) => [[node.name, node], [node.id, node]] as const));
 	const dependencies = new Map(nodes.map((node) => [node.id, new Set<string>()]));
+	const referenceDependencies = new Map(nodes.map((node) => [node.id, new Set<string>()]));
 	const dependents = new Map(nodes.map((node) => [node.id, new Set<string>()]));
 	const submoduleDependencies = new Map(nodes.map((node) => [node.id, new Set<string>()]));
 
 	for (const node of nodes) {
+		for (const dependencyName of node.workflowDependencies ?? []) {
+			const dependency = byNameOrId.get(dependencyName);
+			if (!dependency || dependency.id === node.id) continue;
+			dependencies.get(node.id)?.add(dependency.id);
+			dependents.get(dependency.id)?.add(node.id);
+		}
 		for (const field of dependencyFields(node.packageJson)) {
 			const values = node.packageJson?.[field] as Record<string, unknown>;
 			for (const depName of Object.keys(values)) {
 				const dependency = byPackageName.get(depName);
 				if (!dependency || dependency.id === node.id) continue;
 				dependencies.get(node.id)?.add(dependency.id);
+				referenceDependencies.get(node.id)?.add(dependency.id);
 				dependents.get(dependency.id)?.add(node.id);
 			}
 		}
@@ -180,6 +193,7 @@ export function deriveRepositoryGraph(root: string, nodes: RepositorySaveNode[])
 	return nodes.map((node) => ({
 		...node,
 		dependencies: [...(dependencies.get(node.id) ?? [])].sort(),
+		referenceDependencies: [...(referenceDependencies.get(node.id) ?? [])].sort(),
 		dependents: [...(dependents.get(node.id) ?? [])].sort(),
 		submoduleDependencies: [...(submoduleDependencies.get(node.id) ?? [])].sort(),
 	}));

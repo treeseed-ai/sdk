@@ -40,6 +40,7 @@ export { requestMethod } from './support/contracts/treedx/transport/contracts/re
 export { throwApiErrorMethod } from './support/contracts/treedx/transport/contracts/throw-api-error.ts';
 export { execMethod } from './support/contracts/treedx/workspaces/contracts/exec.ts';
 export { applyStorageMigrationMethod } from './support/creation/apply-storage-migration.ts';
+export { applyChangesetMethod } from './support/creation/apply-changeset.ts';
 export { createMigrationMethod } from './support/creation/create-migration.ts';
 export { exportArtifactMethod } from './support/creation/export-artifact.ts';
 export { planStorageMigrationMethod } from './support/creation/plan-storage-migration.ts';

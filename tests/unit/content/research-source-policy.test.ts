@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateResearchSourcePolicy } from '../../../src/agent-capacity/validation/research/research-source-policy.ts';
+import { validateResearchSourcePolicy } from '../../../src/agent-capacity/validation/research/source-policy.ts';
 
 describe('ResearchSourcePolicy', () => {
 	it('accepts a bounded explicit source policy', () => {

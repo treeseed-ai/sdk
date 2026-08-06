@@ -36,11 +36,11 @@ function jsonResponse(payload: unknown, status = 200) {
 function operation(overrides: Record<string, unknown> = {}) {
 	return {
 		id: 'op_123',
-		namespace: 'repository',
-		operation: 'write_content_record',
+		namespace: 'diagnostic',
+		operation: 'smoke',
 		status: 'leased',
 		target: 'market_operations_runner',
-		input: { collection: 'notes' },
+		input: { probe: 'runner-lifecycle' },
 		requestedByType: 'user',
 		requestedById: 'user-1',
 		assignedRunnerId: 'runner-1',
@@ -58,7 +58,6 @@ function operation(overrides: Record<string, unknown> = {}) {
 describe('platform operation SDK contracts', () => {
 	it('exposes platform scopes and runner auth headers', () => {
 		expect(PLATFORM_OPERATION_SCOPES).toContain('platform:runners:claim');
-		expect(PLATFORM_OPERATION_SCOPES).toContain('platform:repository:write');
 		expect(buildPlatformRunnerAuthHeaders('secret')).toEqual({ authorization: 'Bearer secret' });
 	});
 
@@ -246,8 +245,8 @@ describe('platform operation SDK contracts', () => {
 			workspaceRoot: '/tmp/workspace',
 			environment: 'test',
 			executors: [{
-				namespace: 'repository',
-				operation: 'write_content_record',
+				namespace: 'diagnostic',
+				operation: 'smoke',
 				async run(input, context) {
 					await context.checkpoint({ phase: 'mid' }, { kind: 'midpoint', data: {} });
 					return { echoed: input.value };
@@ -279,8 +278,8 @@ describe('platform operation SDK contracts', () => {
 			workspaceRoot: '/tmp/workspace',
 			environment: 'test',
 			executors: [{
-				namespace: 'repository',
-				operation: 'write_content_record',
+				namespace: 'diagnostic',
+				operation: 'smoke',
 				async run() {
 					throw new Error('boom');
 				},
@@ -295,8 +294,8 @@ describe('platform operation SDK contracts', () => {
 			workspaceRoot: '/tmp/workspace',
 			environment: 'test',
 			executors: [{
-				namespace: 'repository',
-				operation: 'write_content_record',
+				namespace: 'diagnostic',
+				operation: 'smoke',
 				async run() {
 					return { unreachable: true };
 				},
@@ -344,8 +343,8 @@ describe('platform operation SDK contracts', () => {
 			environment: 'test',
 			leaseSeconds: 180,
 			executors: [{
-				namespace: 'repository',
-				operation: 'write_content_record',
+				namespace: 'diagnostic',
+				operation: 'smoke',
 				async run(_input, context) {
 					await context.renewLease(240);
 					await context.checkpoint({ phase: 'halfway' }, { kind: 'halfway', data: {} });
@@ -373,8 +372,8 @@ describe('platform operation SDK contracts', () => {
 			workspaceRoot: '/tmp/workspace',
 			environment: 'test',
 			executors: [{
-				namespace: 'repository',
-				operation: 'write_content_record',
+				namespace: 'diagnostic',
+				operation: 'smoke',
 				async run(_input, context) {
 					await context.throwIfCancelled();
 					return { unreachable: true };

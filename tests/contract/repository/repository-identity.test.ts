@@ -40,14 +40,14 @@ describe('repository identity and custody', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-custody-'));
 		try {
 			const state = resolve(root, '.treeseed');
-			const managedRoots = ['local-capacity-provider/data', 'local-operations-runner/data', 'local-treedx/data']
-				.map((path, index) => ({ custody: ['capacity-provider', 'operations-runner', 'treedx'][index] as 'capacity-provider' | 'operations-runner' | 'treedx', path: resolve(state, path) }));
+			const managedRoots = ['local-capacity-provider/data', 'local-treedx/data']
+				.map((path, index) => ({ custody: ['capacity-provider', 'treedx'][index] as 'capacity-provider' | 'treedx', path: resolve(state, path) }));
 			for (const managed of managedRoots) mkdirSync(managed.path, { recursive: true });
 			expect(() => assertIsolatedRepositoryStorage({ developerRoot: root, managedRoots })).not.toThrow();
 			expect(repositoryStorageOverlap(managedRoots[0]!.path, resolve(managedRoots[0]!.path, 'nested'))).toBe(true);
 			expect(() => assertIsolatedRepositoryStorage({ developerRoot: root, managedRoots: [
 				managedRoots[0]!,
-				{ custody: 'operations-runner', path: resolve(managedRoots[0]!.path, 'nested') },
+				{ custody: 'treedx', path: resolve(managedRoots[0]!.path, 'nested') },
 			] })).toThrow(/overlap/u);
 			for (const managed of managedRoots) {
 				ensureManagedRepositoryStorage(root, { ...managed, hostPath: managed.path, servicePath: managed.custody === 'treedx' ? '/var/lib/treedx' : '/data' });
@@ -59,7 +59,7 @@ describe('repository identity and custody', () => {
 		}
 	});
 
-	it('declares separate provider, operations-runner, and TreeDX managed storage', () => {
+	it('declares provider and TreeDX repository storage plus runner operational storage', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-storage-plan-'));
 		try {
 		const resources = localDevelopmentResources(root, 'local', 'none', []);
@@ -67,7 +67,7 @@ describe('repository identity and custody', () => {
 		const operations = resources.find((resource) => resource.id === 'local-process:operations-runner');
 		const treeDx = resources.find((resource) => resource.id === 'local-docker-compose:treedx');
 		expect(capacity?.spec.managedStorage).toMatchObject({ custody: 'capacity-provider', servicePath: '/data' });
-		expect(operations?.spec.managedStorage).toMatchObject({ custody: 'operations-runner' });
+		expect(operations?.spec).not.toHaveProperty('managedStorage');
 		expect(operations?.spec.env).toMatchObject({
 			TREESEED_PLATFORM_RUNNER_DATA_DIR: resolve(root, '.treeseed/local-operations-runner/data'),
 		});

@@ -9,6 +9,7 @@ export type GitDependencyProtocol = 'preserve-origin' | 'https' | 'ssh';
 
 export type PackageDependencyReference = {
 	packageName: string;
+	sourcePath?: string | null;
 	version: string;
 	spec: string;
 	manifestSpec: string;
@@ -117,6 +118,7 @@ export function normalizeGitRemoteForManifest(remoteUrl: string, protocol: GitDe
 
 export function createPackageDependencyReference(input: {
 	packageName: string;
+	sourcePath?: string | null;
 	version: string;
 	branchMode: 'package-release-main' | 'package-dev-save';
 	remoteUrl?: string | null;
@@ -128,6 +130,7 @@ export function createPackageDependencyReference(input: {
 	if (input.branchMode === 'package-release-main') {
 		return {
 			packageName: input.packageName,
+			sourcePath: input.sourcePath ?? null,
 			version: input.version,
 			spec: input.version,
 			manifestSpec: input.version,
@@ -150,6 +153,7 @@ export function createPackageDependencyReference(input: {
 	const manifestSpec = `${manifestRemote}#${ref}`;
 	return {
 		packageName: input.packageName,
+		sourcePath: input.sourcePath ?? null,
 		version: input.version,
 		spec: manifestSpec,
 		manifestSpec,

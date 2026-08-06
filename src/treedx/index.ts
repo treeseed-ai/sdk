@@ -1,5 +1,6 @@
 export { mintTreeDxHs256Token,type TreeDxHs256TokenInput } from './accounts/auth.ts';
 export { normalizeRepositoryName,projectRepositoryName } from './accounts/repository-name.ts';
+export { createTextFileDiff,createUnifiedChangeset,type TextFileChange } from './changesets/unified-diff.ts';
 export { TreeDxFederatedClient,type TreeDxFederatedClientOptions } from './federation/federated-client.ts';
 export type {
 components as TreeDxOpenApiComponents,

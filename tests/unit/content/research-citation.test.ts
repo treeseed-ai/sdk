@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildBuiltinModelRegistry } from '../../../src/entrypoints/models/model-registry.ts';
 import { canonicalizeFrontmatter } from '../../../src/entrypoints/models/sdk-fields.ts';
-import { validateResearchCitation, validateResearchCitations } from '../../../src/agent-capacity/validation/research/research-citation.ts';
+import { validateResearchCitation, validateResearchCitations } from '../../../src/agent-capacity/validation/research/citation.ts';
 
 const citation = {
 	sourceUrl: 'https://example.test/source',

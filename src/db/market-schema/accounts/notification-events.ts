@@ -218,23 +218,6 @@ export const marketOperationRunners = pgTable('market_operation_runners', {
 	updatedAt: text('updated_at').notNull(),
 });
 
-export const platformRepositoryClaims = pgTable('platform_repository_claims', {
-	id: text('id').primaryKey(),
-	repositoryKey: text('repository_key').notNull(),
-	runnerId: text('runner_id').notNull(),
-	workspacePath: text('workspace_path').notNull(),
-	branch: text('branch'),
-	commitSha: text('commit_sha'),
-	claimState: text('claim_state').notNull().default('active'),
-	leaseExpiresAt: text('lease_expires_at'),
-	metadataJson: text('metadata_json').notNull().default('{}'),
-	createdAt: text('created_at').notNull(),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	uniqueIndex('idx_platform_repository_claims_active').on(table.repositoryKey, table.runnerId),
-	index('idx_platform_repository_claims_runner').on(table.runnerId, table.claimState)
-]);
-
 export const marketAuthCredentials = pgTable('market_auth_credentials', {
 	userId: text('user_id').primaryKey(),
 	email: text('email').notNull().unique(),

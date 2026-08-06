@@ -34,7 +34,7 @@ export function planRepositorySave(options: RepositorySaveOptions): RepositorySa
 
 	for (const wave of waves) {
 		for (const node of wave) {
-			const dependencyUpdates = node.dependencies
+			const dependencyUpdates = (node.referenceDependencies ?? node.dependencies)
 				.map((id) => nodes.find((candidate) => candidate.id === id))
 				.filter((candidate): candidate is RepositorySaveNode => Boolean(candidate))
 				.map((dependency) => {
@@ -57,6 +57,7 @@ export function planRepositorySave(options: RepositorySaveOptions): RepositorySa
 			if (node.kind === 'package' && plannedVersion) {
 				const reference = createPackageDependencyReference({
 					packageName: node.name,
+					sourcePath: node.path,
 					version: plannedVersion,
 					branchMode: node.branchMode === 'package-release-main' ? 'package-release-main' : 'package-dev-save',
 					remoteUrl: node.remoteUrl,

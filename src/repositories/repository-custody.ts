@@ -2,7 +2,7 @@ import { realpathSync } from 'node:fs';
 import { resolve,sep } from 'node:path';
 import type { RepositoryIdentity } from './repository-identity.ts';
 
-export type RepositoryCustody = 'developer' | 'capacity-provider' | 'operations-runner' | 'treedx';
+export type RepositoryCustody = 'developer' | 'capacity-provider' | 'treedx';
 
 export interface RepositoryCheckoutRecord {
 	repository: RepositoryIdentity;

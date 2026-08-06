@@ -296,11 +296,6 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 				logDir: '.treeseed/logs',
 				cwd: id === 'market-web' ? '.' : 'packages/api',
 				...(id === 'operations-runner' ? {
-					managedStorage: {
-						custody: 'operations-runner',
-						hostPath: operationsRunnerDataDir,
-						servicePath: operationsRunnerDataDir,
-					},
 					env: {
 						TREESEED_PLATFORM_RUNNER_DATA_DIR: operationsRunnerDataDir,
 					},

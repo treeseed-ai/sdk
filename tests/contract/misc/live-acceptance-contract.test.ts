@@ -90,7 +90,7 @@ describe('live acceptance scenario contract', () => {
 	it('authenticates content provenance by manifest event identity rather than one tool implementation', () => {
 		const events = [
 			{ id: 'tool:create-question', toolId: 'treeseed.content.create', status: 'completed', derivedEventTypes: ['question_created', 'content_created'] },
-			{ id: 'tool:write-note', toolId: 'treedx.write_workspace_file', status: 'completed', derivedEventTypes: ['content_created'] },
+			{ id: 'tool:write-note', toolId: 'treedx.apply_workspace_changeset', status: 'completed', derivedEventTypes: ['content_created'] },
 			{ id: 'tool:commit', toolId: 'treeseed.content.commit', status: 'completed', derivedEventTypes: ['content_committed'] },
 		];
 		expect(hasAuthenticatedCommittedContentReferences([

@@ -13,7 +13,7 @@ const MARKER_FILE = '.treeseed-managed-storage.json';
 function storageSpec(value: unknown): ManagedStorageSpec | null {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
 	const record = value as Record<string, unknown>;
-	if (!['capacity-provider', 'operations-runner', 'treedx'].includes(String(record.custody))) return null;
+	if (!['capacity-provider', 'treedx'].includes(String(record.custody))) return null;
 	if (typeof record.hostPath !== 'string' || typeof record.servicePath !== 'string') return null;
 	return record as ManagedStorageSpec;
 }
@@ -21,7 +21,6 @@ function storageSpec(value: unknown): ManagedStorageSpec | null {
 export function canonicalLocalRepositoryStorageRoots(tenantRoot: string) {
 	return [
 		{ custody: 'capacity-provider' as const, path: resolve(tenantRoot, '.treeseed/local-capacity-provider/data') },
-		{ custody: 'operations-runner' as const, path: resolve(tenantRoot, '.treeseed/local-operations-runner/data') },
 		{ custody: 'treedx' as const, path: resolve(tenantRoot, '.treeseed/local-treedx/data') },
 	];
 }

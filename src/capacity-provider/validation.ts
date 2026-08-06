@@ -1,4 +1,4 @@
-import { validateResearchSourcePolicy } from '../agent-capacity/validation/research/research-source-policy.ts';
+import { validateResearchSourcePolicy } from '../agent-capacity/validation/research/source-policy.ts';
 import {
 CAPACITY_PROVIDER_ACCESS_TOKEN_REFRESH_SECONDS,
 CAPACITY_PROVIDER_ACCESS_TOKEN_TTL_SECONDS,

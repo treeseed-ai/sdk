@@ -1,5 +1,4 @@
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { writeFileSync } from 'node:fs'; import { join } from 'node:path';
 import { resolveSceneAuth } from "../accounts/auth.ts";
 import { prepareSceneEnvironment } from "../configuration/environment.ts";
 import { waitForSceneOperation } from "../operations/operations.ts";

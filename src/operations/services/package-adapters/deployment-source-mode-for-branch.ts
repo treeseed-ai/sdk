@@ -112,6 +112,7 @@ export function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[
 			requiredSecrets: stringArray(manifest?.requiredSecrets),
 			requiredVariables: stringArray(manifest?.requiredVariables),
 			workflowTemplateVersion: stringValue(manifest?.workflowTemplateVersion) ?? null,
+			workflowDependencies: stringArray(manifest?.workflowDependencies),
 			localDev: stringRecord(manifest?.localDev),
 			capacityProvider: stringRecord(manifest?.capacityProvider),
 			...(projectArchitecture

@@ -25,14 +25,12 @@ export const PLATFORM_OPERATION_SCOPES = [
 	'platform:operations:read',
 	'platform:operations:cancel',
 	'platform:operations:retry',
-	'platform:repository:write',
 	'platform:deploy:write',
 	'platform:database:migrate',
 ] as const;
 
 export const PLATFORM_OPERATION_NAMESPACES = [
 	'market',
-	'repository',
 	'deploy',
 	'database',
 	'seed',

@@ -1,6 +1,7 @@
 import type { ExecutionUsageActual } from '../types/agents.ts';
 import type { ResearchCitation } from './contracts/support/research-citation.ts';
-import { validateResearchCitations } from './validation/research/research-citation.ts';
+import type { ArtifactRef } from '../treedx/types.ts';
+import { validateResearchCitations } from './validation/research/citation.ts';
 
 export interface AgentToolEventReference {
 	id: string;
@@ -89,6 +90,7 @@ export interface AgentArtifactManifest {
 	summary: string;
 	toolEvents: AgentToolEventReference[];
 	contentReferences: AgentContentReference[];
+	artifactReferences?: ArtifactRef[];
 	sourceWorktree?: AgentSourceWorktreeReference;
 	commit?: AgentCommitReference;
 	verification: AgentVerificationResult[];
@@ -100,7 +102,16 @@ export interface AgentArtifactManifest {
 	createdAt: string;
 }
 
-export function validateAgentArtifactManifest(manifest: AgentArtifactManifest, expected: { publishedSignals?: unknown } = {}) {
+export function validateAgentArtifactManifest(manifest: AgentArtifactManifest, expected: {
+	publishedSignals?: unknown;
+	artifactContracts?: unknown;
+	signalContracts?: unknown;
+} = {}) {
+	if ((manifest.artifactReferences ?? []).some((reference) => reference.contract !== 'treeseed.artifact-ref/v1'
+		|| typeof reference.sha256 === 'string' && !/^[0-9a-f]{64}$/u.test(reference.sha256)
+		|| 'signedUrl' in reference || 'credentials' in reference)) {
+		return { ok: false as const, reason: 'Artifact references must be stable, digest-addressed, and secret-free.' };
+	}
 	const citationValidation = validateResearchCitations(manifest.citations, 'artifactManifest.citations');
 	if (!citationValidation.ok) {
 		return { ok: false as const, reason: citationValidation.diagnostics.map((diagnostic) => `${diagnostic.code} at ${diagnostic.path}`).join(', ') };
@@ -108,10 +119,18 @@ export function validateAgentArtifactManifest(manifest: AgentArtifactManifest, e
 	if (manifest.status !== 'completed') return { ok: true as const };
 	const ids = (value: unknown) => Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string' && Boolean(entry.trim())).map((entry) => entry.replace(/_/gu, '-')) : [];
 	const producedSignals = new Set(manifest.signals.map((signal) => signal.code.replace(/_/gu, '-')));
-	const missingSignals = ids(expected.publishedSignals).filter((id) => !producedSignals.has(id));
+	const requestedSignals = [...ids(expected.publishedSignals), ...ids(expected.signalContracts)];
+	const missingSignals = requestedSignals.filter((id) => !producedSignals.has(id));
 	if (missingSignals.length) return {
 		ok: false as const,
 		reason: `Completed agent execution omitted validated publications: ${missingSignals.map((id) => `signal:${id}`).join(', ')}.`,
+	};
+	const producedArtifacts = new Set(manifest.contentReferences
+		.map((reference) => reference.artifactKind?.replace(/_/gu, '-')).filter(Boolean));
+	const missingArtifacts = ids(expected.artifactContracts).filter((id) => !producedArtifacts.has(id));
+	if (missingArtifacts.length) return {
+		ok: false as const,
+		reason: `Completed agent execution omitted validated publications: ${missingArtifacts.map((id) => `artifact:${id}`).join(', ')}.`,
 	};
 	if (manifest.contentReferences.some((reference) => reference.model === 'note' && (!reference.subjectId || !reference.subjectField))) {
 		return { ok: false as const, reason: 'Completed note receipt is missing its validated subject link.' };

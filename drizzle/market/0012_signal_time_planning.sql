@@ -71,7 +71,7 @@ ALTER TABLE "capacity_usage_actuals" ADD COLUMN "reasoning_tokens" integer;
 ALTER TABLE "capacity_ledger_entries" ADD COLUMN "active_seconds" integer DEFAULT 0 NOT NULL;
 ALTER TABLE "capacity_ledger_entries" ADD COLUMN "elapsed_seconds" integer DEFAULT 0 NOT NULL;
 ALTER TABLE "governance_proposals" ADD COLUMN "proposal_types_json" text DEFAULT '[]' NOT NULL;
-UPDATE "governance_proposals" SET "proposal_types_json" = '["' || replace("proposal_type", '"', '') || '"]' WHERE "proposal_types_json" = '[]';
+UPDATE "governance_proposals" SET "proposal_types_json" = '["' || "proposal_type" || '"]' WHERE "proposal_types_json" = '[]';
 ALTER TABLE "capacity_grants" ADD COLUMN "daily_agent_seconds_limit" integer;
 ALTER TABLE "capacity_grants" ADD COLUMN "monthly_agent_seconds_limit" integer;
 ALTER TABLE "capacity_reservations" ALTER COLUMN "reserved_credits" DROP NOT NULL;

@@ -9,8 +9,9 @@ workspacePackages
 } from '../../../treedx/workspaces/workspace-tools.ts';
 import { npmLockfilePackageCount,runCapturedCommand,runStreamingCommand } from '../../runtime/with-short-process-temp-env.ts';
 import { dependencyFields } from '../../support/classify-repo-kind.ts';
-import { hasNpmLockfile,shouldSkipNetworkInstall,validateStandaloneGitDependencyLockfile } from '../../support/has-staged-changes.ts';
+import { hasNpmLockfile,shouldSkipNetworkInstall } from '../../support/has-staged-changes.ts';
 import { RepositoryInstallResult,RepositoryLockfileValidationResult,RepositorySaveError,RepositorySaveNode,RepositorySaveOptions,emitProgress,readJson,sleepMs,writeJson } from '../../support/repo-kind.ts';
+import { validateStandaloneGitDependencyLockfile } from '../../support/standalone-lockfile.ts';
 
 export function syncRootWorkspaceLockfileMetadata(node: RepositorySaveNode, options: Pick<RepositorySaveOptions, 'root' | 'onProgress'>) {
 	if (node.path !== options.root || !Array.isArray(node.packageJson?.workspaces)) return false;

@@ -26,7 +26,12 @@ SdkUpdateRequest,
 } from '../../entrypoints/models/sdk-types.ts';
 import { TreeDxClient } from '../support/client.ts';
 import { TreeDxApiError } from '../support/errors.ts';
-import type { TreeDxCommitResult } from '../types.ts';
+import { createUnifiedChangeset } from '../changesets/unified-diff.ts';
+import type { ArtifactRef,TreeDxChangesetReceipt,TreeDxCommitResult,TreeDxPushResult } from '../types.ts';
+
+export interface ContentChangesetReceipt extends TreeDxChangesetReceipt {
+	artifacts: ArtifactRef[];
+}
 
 export interface TreeDxRepositoryAdapterOptions {
 	client: TreeDxClient;
@@ -36,11 +41,14 @@ export interface TreeDxRepositoryAdapterOptions {
 	defaultAuthor?: { name: string; email: string };
 	contentPathMap?: Record<string, string>;
 	branchPrefix?: string;
+	push?: false | { credentialId?: string; remoteName?: string };
 }
 
 export interface TreeDxContentMutationResult {
 	item: SdkContentEntry;
 	git: TreeDxCommitResult;
+	changeset: ContentChangesetReceipt;
+	push?: TreeDxPushResult;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -335,10 +343,31 @@ export class TreeDxRepositoryAdapter {
 			},
 		);
 		const nextBody = typeof request.data.body === 'string' ? request.data.body : existing.body;
+		const raw = await this.options.client.readRepositoryFile({
+			ref: this.options.defaultRef,
+			path: existing.path,
+			parseFrontmatter: false,
+		});
+		const rawFile = isRecord(raw.file) ? raw.file : {};
+		const originalContent = textFromTreeDxFile(rawFile, ['content', 'source', 'text']);
+		if (originalContent === null) {
+			throw new TreeDxApiError('TreeDX did not return the exact source document for an update.', {
+				status: 500,
+				code: 'invalid_response',
+			});
+		}
+		const observedVersion = textFromTreeDxFile(rawFile, ['sha', 'objectId', 'contentHash']);
+		if (request.expectedVersion && observedVersion && request.expectedVersion !== observedVersion) {
+			throw new TreeDxApiError('The content changed after it was read.', {
+				status: 409,
+				code: 'conflict',
+				details: { expectedVersion: request.expectedVersion, observedVersion },
+			});
+		}
 		return this.writeAndCommit(definition, contentDir, existing.path, serializeFrontmatterDocument(nextFrontmatter, nextBody), {
 			branchName: `refs/heads/${String(request.data.branchPrefix ?? this.options.branchPrefix ?? 'agent')}/${definition.name}-${existing.slug}`,
 			message: `agent(${definition.name}): update ${existing.slug}`,
-			expectedSha: request.expectedVersion,
+			originalContent,
 		});
 	}
 
@@ -347,7 +376,7 @@ export class TreeDxRepositoryAdapter {
 		contentDir: string,
 		filePath: string,
 		content: string,
-		options: { branchName: string; message: string; expectedSha?: string },
+		options: { branchName: string; message: string; originalContent?: string },
 	): Promise<TreeDxContentMutationResult> {
 		const workspace = await this.options.client.createWorkspace({
 			baseRef: this.options.defaultRef ?? 'refs/heads/main',
@@ -356,12 +385,21 @@ export class TreeDxRepositoryAdapter {
 			allowedPaths: [`${contentDir}/**`],
 		});
 		try {
-			await this.options.client.writeFile({
-				workspaceId: workspace.workspaceId,
+			const patch = createUnifiedChangeset([{
 				path: filePath,
-				encoding: 'utf8',
-				content,
-				expectedSha: options.expectedSha,
+				before: options.originalContent ?? null,
+				after: content,
+			}]);
+			const patchSha256 = crypto.createHash('sha256').update(patch).digest('hex');
+			const changeset = await this.options.client.applyChangeset({
+				workspaceId: workspace.workspaceId,
+				contract: 'treedx.changeset/v1',
+				baseCommitSha: workspace.baseCommitSha,
+				baseRef: workspace.baseRef,
+				patch,
+				patchSha256,
+				idempotencyKey: crypto.createHash('sha256').update(`${workspace.workspaceId}:${patchSha256}`).digest('hex'),
+				expectedDestinationRefHead: workspace.baseCommitSha,
 			});
 			const git = await this.options.client.commit({
 				workspaceId: workspace.workspaceId,
@@ -371,6 +409,13 @@ export class TreeDxRepositoryAdapter {
 					email: 'sdk@example.invalid',
 				},
 			});
+			const push = this.options.push === false ? undefined : await this.options.client.push({
+				repoId: git.repoId,
+				credentialId: this.options.push?.credentialId,
+				remoteName: this.options.push?.remoteName,
+				refspecs: [`${git.branchName}:${git.branchName}`],
+				expectedRemoteHead: options.originalContent === undefined ? '' : workspace.baseCommitSha,
+			});
 			const response = await this.options.client.readRepositoryFile({
 				ref: git.branchName,
 				path: filePath,
@@ -379,6 +424,23 @@ export class TreeDxRepositoryAdapter {
 			return {
 				item: entryFromTreeDxFile(definition, response.file, contentDir),
 				git,
+				push,
+				changeset: {
+					...changeset,
+					resultCommitSha: git.commitSha,
+					artifacts: changeset.files.map((file) => ({
+						contract: 'treeseed.artifact-ref/v1' as const,
+						kind: 'treedx-content' as const,
+						repositoryId: changeset.repositoryId,
+						workspaceId: changeset.workspaceId,
+						path: file.path,
+						commitSha: git.commitSha,
+						sha256: file.afterSha256,
+						byteLength: file.byteLength,
+						mediaType: 'text/plain; charset=utf-8',
+						visibility: 'project' as const,
+					})),
+				},
 			};
 		} catch (error) {
 			await this.options.client.closeWorkspace(workspace.workspaceId).catch(() => {});

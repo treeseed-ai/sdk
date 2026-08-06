@@ -32,7 +32,8 @@
     "access": "public"
   },
   "bin": {
-    "treeseed-sdk-verify": "./dist/scripts/verification/verify-driver.js"
+    "treeseed-sdk-verify": "./dist/scripts/verification/verify-driver.js",
+    "treeseed-content-publish": "./dist/scripts/content/publish-content.js"
   },
   "scripts": {
     "setup": "npm install",

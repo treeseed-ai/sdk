@@ -362,20 +362,6 @@ CREATE TABLE "platform_operations" (
 	"cancelled_at" text
 );
 
-CREATE TABLE "platform_repository_claims" (
-	"id" text PRIMARY KEY NOT NULL,
-	"repository_key" text NOT NULL,
-	"runner_id" text NOT NULL,
-	"workspace_path" text NOT NULL,
-	"branch" text,
-	"commit_sha" text,
-	"claim_state" text DEFAULT 'active' NOT NULL,
-	"lease_expires_at" text,
-	"metadata_json" text DEFAULT '{}' NOT NULL,
-	"created_at" text NOT NULL,
-	"updated_at" text NOT NULL
-);
-
 CREATE TABLE "runtime_records" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"record_type" text NOT NULL,
@@ -3152,8 +3138,6 @@ CREATE INDEX "idx_notification_events_project" ON "notification_events" USING bt
 CREATE UNIQUE INDEX "idx_platform_operation_events_seq" ON "platform_operation_events" USING btree ("operation_id","seq");
 CREATE UNIQUE INDEX "idx_platform_operations_idempotency" ON "platform_operations" USING btree ("namespace","operation","idempotency_key");
 CREATE INDEX "idx_platform_operations_runnable" ON "platform_operations" USING btree ("status","created_at");
-CREATE UNIQUE INDEX "idx_platform_repository_claims_active" ON "platform_repository_claims" USING btree ("repository_key","runner_id");
-CREATE INDEX "idx_platform_repository_claims_runner" ON "platform_repository_claims" USING btree ("runner_id","claim_state");
 CREATE INDEX "idx_runtime_records_type_lookup_updated" ON "runtime_records" USING btree ("record_type","lookup_key","updated_at");
 CREATE INDEX "idx_runtime_records_type_status_updated" ON "runtime_records" USING btree ("record_type","status","updated_at");
 CREATE INDEX "idx_seed_runs_seed_created" ON "seed_runs" USING btree ("seed_name","created_at");

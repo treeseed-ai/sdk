@@ -5,7 +5,7 @@ type PlatformRunnerHeartbeatRequest,
 type PlatformRunnerJobUpdateRequest,
 type PlatformRunnerRegistrationRequest
 } from '../operations/platform-operations.ts';
-import { PLATFORM_OPERATION_SCHEMA_SQL,PlatformOperationStoreOptions,RelationalDatabaseAdapter,isoNow,normalizeOperationCapabilities,parseJson,repositoryKey,repositoryWorkspacePath,rowEvent,rowOperation } from './database-provider.ts';
+import { PLATFORM_OPERATION_SCHEMA_SQL,PlatformOperationStoreOptions,RelationalDatabaseAdapter,isoNow,normalizeOperationCapabilities,rowEvent,rowOperation } from './database-provider.ts';
 
 export class PlatformOperationStore {
 	private initialized = false;
@@ -154,20 +154,6 @@ export class PlatformOperationStore {
 		);
 		await this.appendPlatformOperationEvent(String(row.id), 'claimed', { runnerId, leaseExpiresAt });
 		const operation = rowOperation(await this.database.first(`SELECT * FROM platform_operations WHERE id = ?`, [row.id]));
-		if (operation?.input?.repository && typeof operation.input.repository === 'object' && !Array.isArray(operation.input.repository)) {
-			const runner = await this.database.first<Record<string, unknown>>(`SELECT * FROM market_operation_runners WHERE id = ?`, [runnerId]);
-			const metadata = parseJson(runner?.metadata_json, {}) as Record<string, unknown>;
-			const workspaceRoot = metadata.dataDir ?? '/data';
-			const repository = operation.input.repository as Record<string, unknown>;
-			await this.upsertRepositoryClaim({
-				runnerId,
-				repository,
-				workspaceRoot,
-				branch: String(repository.defaultBranch ?? ''),
-				leaseSeconds,
-				metadata: { operationId: operation.id, namespace: operation.namespace, operation: operation.operation },
-			});
-		}
 		return { ok: true as const, operation };
 	}
 
@@ -194,7 +180,6 @@ export class PlatformOperationStore {
 			[leaseExpiresAt, timestamp, operationId],
 		);
 		await this.appendPlatformOperationEvent(operationId, request.event?.kind ?? 'runner.lease_renewed', request.event?.data ?? { runnerId: request.runnerId, leaseExpiresAt });
-		await this.renewRepositoryClaimsForRunner(request.runnerId, leaseSeconds);
 		return this.getOperation(operationId);
 	}
 
@@ -219,12 +204,6 @@ export class PlatformOperationStore {
 			[JSON.stringify(request.output ?? null), timestamp, timestamp, operationId],
 		);
 		await this.appendPlatformOperationEvent(operationId, request.event?.kind ?? 'completed', request.event?.data ?? {});
-		const output = request.output && typeof request.output === 'object' ? request.output as Record<string, unknown> : {};
-		await this.releaseRepositoryClaimsForRunner(request.runnerId, {
-			branch: output.operationBranch ?? output.branch ?? null,
-			commitSha: output.commitSha ?? null,
-			metadata: { operationId, status: 'succeeded' },
-		});
 		return this.getOperation(operationId);
 	}
 
@@ -238,10 +217,6 @@ export class PlatformOperationStore {
 			[JSON.stringify(request.error ?? { message: 'Platform operation failed.' }), timestamp, timestamp, operationId],
 		);
 		await this.appendPlatformOperationEvent(operationId, request.event?.kind ?? 'failed', request.event?.data ?? {});
-		await this.releaseRepositoryClaimsForRunner(request.runnerId, {
-			claimState: 'released',
-			metadata: { operationId, status: 'failed' },
-		});
 		return this.getOperation(operationId);
 	}
 
@@ -255,82 +230,6 @@ export class PlatformOperationStore {
 			[JSON.stringify(request.error ?? { message: 'Platform operation was cancelled.' }), timestamp, timestamp, timestamp, operationId],
 		);
 		await this.appendPlatformOperationEvent(operationId, request.event?.kind ?? 'runner.cancelled', request.event?.data ?? {});
-		await this.releaseRepositoryClaimsForRunner(request.runnerId, {
-			claimState: 'released',
-			metadata: { operationId, status: 'cancelled' },
-		});
 		return this.getOperation(operationId);
-	}
-
-	private async upsertRepositoryClaim(input: { runnerId: string; repository: Record<string, unknown>; workspaceRoot: unknown; branch?: string | null; leaseSeconds: number; metadata?: Record<string, unknown> }) {
-		const repositoryKeyValue = repositoryKey(input.repository);
-		const timestamp = isoNow(this.now);
-		const leaseExpiresAt = new Date(this.now().getTime() + input.leaseSeconds * 1000).toISOString();
-		const existing = await this.database.first<Record<string, unknown>>(
-			`SELECT * FROM platform_repository_claims WHERE repository_key = ? AND runner_id = ? AND claim_state = 'active' LIMIT 1`,
-			[repositoryKeyValue, input.runnerId],
-		);
-		if (existing) {
-			await this.database.run(
-				`UPDATE platform_repository_claims SET lease_expires_at = ?, metadata_json = ?, updated_at = ? WHERE id = ?`,
-				[leaseExpiresAt, JSON.stringify(input.metadata ?? parseJson(existing.metadata_json, {})), timestamp, existing.id],
-			);
-			return;
-		}
-		await this.database.run(
-			`INSERT INTO platform_repository_claims (
-				id, repository_key, runner_id, workspace_path, branch, commit_sha, claim_state, lease_expires_at, metadata_json, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, NULL, 'active', ?, ?, ?, ?)`,
-			[
-				randomUUID(),
-				repositoryKeyValue,
-				input.runnerId,
-				repositoryWorkspacePath(input.workspaceRoot, input.repository),
-				input.branch ?? null,
-				leaseExpiresAt,
-				JSON.stringify(input.metadata ?? {}),
-				timestamp,
-				timestamp,
-			],
-		);
-	}
-
-	private async renewRepositoryClaimsForRunner(runnerId?: string | null, leaseSeconds = 300) {
-		if (!runnerId) return;
-		const timestamp = isoNow(this.now);
-		const leaseExpiresAt = new Date(this.now().getTime() + leaseSeconds * 1000).toISOString();
-		await this.database.run(
-			`UPDATE platform_repository_claims SET lease_expires_at = ?, updated_at = ? WHERE runner_id = ? AND claim_state = 'active'`,
-			[leaseExpiresAt, timestamp, runnerId],
-		);
-	}
-
-	private async releaseRepositoryClaimsForRunner(runnerId?: string | null, input: { claimState?: string; branch?: unknown; commitSha?: unknown; metadata?: Record<string, unknown> } = {}) {
-		if (!runnerId) return;
-		const rows = await this.database.all<Record<string, unknown>>(
-			`SELECT * FROM platform_repository_claims WHERE runner_id = ? AND claim_state = 'active'`,
-			[runnerId],
-		);
-		const timestamp = isoNow(this.now);
-		for (const row of rows) {
-			await this.database.run(
-				`UPDATE platform_repository_claims
-				 SET claim_state = ?,
-				     branch = COALESCE(?, branch),
-				     commit_sha = COALESCE(?, commit_sha),
-				     lease_expires_at = NULL,
-				     metadata_json = ?,
-				     updated_at = ?
-				 WHERE id = ?`,
-				[
-					input.claimState ?? 'released',
-					input.branch ?? null,
-					input.commitSha ?? null,
-					JSON.stringify({ ...(parseJson(row.metadata_json, {}) as Record<string, unknown>), ...(input.metadata ?? {}) }),
-					timestamp,
-					row.id,
-				],
-			);
-		}
 	}
 }

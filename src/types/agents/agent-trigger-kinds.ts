@@ -271,6 +271,7 @@ export interface AgentActivityExecutionConfig {
 
 export interface AgentActivityPlanningIntent {
 	objective?: string;
+	proposalTypes?: string[];
 	artifactKind?: string;
 	subjectModel?: string;
 	subjectId?: string | null;
