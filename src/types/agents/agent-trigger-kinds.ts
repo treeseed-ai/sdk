@@ -37,6 +37,7 @@ export const AGENT_ACTIVITY_TYPES = [
 	'acting',
 	'reviewing',
 	'reporting',
+	'chat',
 ] as const;
 
 export const ENGINEERING_HANDLER_KINDS = [
@@ -71,6 +72,7 @@ export const EXECUTION_PROVIDER_KINDS = [
 
 export const BUILT_IN_AGENT_EXECUTION_PROVIDER_IDS = [
 	'codex',
+	'opencode',
 	'copilot',
 	'jira',
 	'github_issues',
@@ -256,6 +258,13 @@ export interface AgentActivityExecutionConfig {
 	maxRuntimeSeconds?: number;
 	maxRetries?: number;
 	verificationRequired?: boolean;
+	maxTotalTokens?: number;
+	warningTokens?: number;
+	maxCostAmount?: number;
+	costCurrency?: string;
+	nativeLimits?: Array<{ unit: string; amount: number; enforceable?: boolean }>;
+	pricingGeneration?: string;
+	enforcementConfidence?: 'exact' | 'bounded' | 'estimated' | 'opaque';
 	allowedPaths?: string[];
 	forbiddenPaths?: string[];
 }

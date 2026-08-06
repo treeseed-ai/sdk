@@ -181,6 +181,7 @@ export type UpdateInput = {
 	worktreeMode?: WorkflowWorktreeMode;
 	workspaceLinks?: 'auto' | 'off';
 	adoptChanges?: boolean;
+	tracking?: boolean;
 	plan?: boolean;
 };
 

@@ -125,6 +125,24 @@ describe('workflow update', () => {
 		});
 	});
 
+	it('fast-forwards a clean persistent branch only in tracking mode', async () => {
+		const { temp, origin, work } = createRootRepo();
+		git(work, ['checkout', 'staging']);
+		const peer = resolve(temp, 'peer');
+		git(temp, ['clone', origin, peer]);
+		git(peer, ['config', 'user.name', 'Treeseed Test']);
+		git(peer, ['config', 'user.email', 'treeseed@example.com']);
+		commitFile(peer, 'remote.txt', 'remote update\n', 'advance remote tracking branch');
+		git(peer, ['push', 'origin', 'staging']);
+		const expectedHead = git(peer, ['rev-parse', 'HEAD']).stdout;
+
+		const result = await runUpdate(work, { tracking: true, strategy: 'ff-only', push: false });
+
+		expect(result.ok).toBe(true);
+		expect(git(work, ['rev-parse', 'HEAD']).stdout).toBe(expectedHead);
+		expect(git(work, ['status', '--porcelain']).stdout).toBe('');
+	}, 30_000);
+
 	it('refuses dirty repositories', async () => {
 		const { work } = createRootRepo();
 		writeFileSync(resolve(work, 'dirty.txt'), 'dirty\n', 'utf8');

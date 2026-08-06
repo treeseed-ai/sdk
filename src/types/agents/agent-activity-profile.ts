@@ -18,6 +18,20 @@ export interface AgentActivityProfile {
 
 export type AgentActivityProfilesConfiguration = Partial<Record<AgentActivityType, AgentActivityProfile>>;
 
+export interface AgentChatProfileConfiguration {
+	foundation: 'discussion-v1';
+	responseStyle?: string;
+	promptTask?: string;
+	providerPreference?: string[];
+	maxRuntimeSeconds?: number;
+	maxTotalTokens?: number;
+	warningTokens?: number;
+	maxCostAmount?: number;
+	costCurrency?: string;
+	toolAdditions?: string[];
+	contextModels?: string[];
+}
+
 export interface AgentCapability {
 	id: string;
 	description?: string;
@@ -41,6 +55,7 @@ export interface AgentDefinition {
 	identity: AgentDefinitionIdentity;
 	capabilities: AgentCapability[];
 	activityProfiles: Partial<Record<AgentActivityType, AgentActivityProfile>>;
+	chatProfile?: AgentChatProfileConfiguration;
 }
 
 export interface AgentExecutionConfig {

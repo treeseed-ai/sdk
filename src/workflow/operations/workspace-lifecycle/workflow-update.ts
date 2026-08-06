@@ -22,7 +22,6 @@ export async function workflowUpdate(helpers: WorkflowOperationHelpers, input: U
 			const tenantRoot = resolveProjectRootOrThrow('update', helpers.cwd());
 			const root = workspaceRoot(tenantRoot);
 			const session = resolveWorkflowSession(root);
-			const sourceBranch = normalizeUpdateSource(input.from);
 			const strategy = normalizeUpdateStrategy(input.strategy);
 			const push = input.push !== false;
 			const executionMode = normalizeExecutionMode(input);
@@ -30,12 +29,17 @@ export async function workflowUpdate(helpers: WorkflowOperationHelpers, input: U
 			if (!branch) {
 				workflowError('update', 'validation_failed', 'Treeseed update requires an attached current branch.');
 			}
-			if (branch === STAGING_BRANCH || branch === PRODUCTION_BRANCH) {
+			const tracking = input.tracking === true;
+			const sourceBranch = tracking && !input.from ? branch : normalizeUpdateSource(input.from);
+			if (tracking && (strategy !== 'ff-only' || push)) {
+				workflowError('update', 'validation_failed', 'Tracking synchronization requires ff-only strategy with push disabled.');
+			}
+			if ((branch === STAGING_BRANCH || branch === PRODUCTION_BRANCH) && !tracking) {
 				workflowError('update', 'validation_failed', `Treeseed update must run from a task branch, not ${branch}.`, {
 					details: { branch },
 				});
 			}
-			if (sourceBranch === branch) {
+			if (sourceBranch === branch && !tracking) {
 				workflowError('update', 'validation_failed', 'Treeseed update source branch cannot match the current branch.', {
 					details: { branch, sourceBranch },
 				});
@@ -73,7 +77,7 @@ export async function workflowUpdate(helpers: WorkflowOperationHelpers, input: U
 
 			const workflowRun = acquireWorkflowRun(
 				'update', 				session,
-				{ from: sourceBranch, strategy, push, workspaceLinks: input.workspaceLinks ?? 'auto' },
+				{ from: sourceBranch, strategy, push, tracking, workspaceLinks: input.workspaceLinks ?? 'auto' },
 				[
 					{ id: 'validate-update', description: `Validate update from ${sourceBranch}`, repoName: session.rootRepo.name, repoPath: session.rootRepo.path, branch, resumable: true },
 					...session.managedRepos.map((repo) => ({

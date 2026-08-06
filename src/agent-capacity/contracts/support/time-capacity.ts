@@ -7,6 +7,8 @@ export interface CapacityTimeDimensions {
 	elapsedSeconds: number;
 	releasedSeconds: number;
 	overrunSeconds: number;
+	hardDeadlineAt?: string | null;
+	remainingSeconds?: number | null;
 }
 
 export interface CapacityTokenDimensions {
@@ -43,7 +45,30 @@ export interface CapacityBudgetV2 {
 	maxAttempts: number;
 	maxConcurrency?: number | null;
 	deadline: string;
+	pricingGeneration?: string | null;
+	enforcementConfidence?: 'exact' | 'bounded' | 'estimated' | 'opaque';
 	legacyAccounting?: Record<string, unknown> | null;
+}
+
+export const ASSIGNMENT_TERMINAL_DISPOSITIONS = [
+	'completed',
+	'completed_early',
+	'deadline_exhausted',
+	'budget_exhausted',
+	'blocked',
+	'cancelled',
+	'failed',
+] as const;
+
+export type AssignmentTerminalDisposition = (typeof ASSIGNMENT_TERMINAL_DISPOSITIONS)[number];
+
+export interface AssignmentCompletionEvidence {
+	disposition: AssignmentTerminalDisposition;
+	acceptanceChecks: Array<{ id: string; passed: boolean; evidenceRefs?: string[] }>;
+	durableArtifactRefs: string[];
+	remainingBudget: Partial<CapacityBudgetV2>;
+	completionReason: string;
+	noUsefulScopedWorkRemaining: boolean;
 }
 
 export interface WorkdayTimePolicy {

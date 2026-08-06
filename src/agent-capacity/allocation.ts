@@ -69,6 +69,11 @@ export interface CapacityGrantV2 {
 	dailyAgentSecondsLimit?: number | null;
 	monthlyAgentSecondsLimit?: number | null;
 	maxConcurrentAssignments?: number | null;
+	budgetLimits?: {
+		tokens?: number | null;
+		cost?: { amount: number; currency: string } | null;
+		native?: Array<{ unit: string; amount: number }>;
+	} | null;
 	unmetered?: boolean;
 	expiresAt?: string | null;
 	metadata?: Record<string, unknown>;
@@ -112,7 +117,12 @@ export type CapacityAdmissionReasonCode =
 	| 'acting_decision_not_approved'
 	| 'acting_readiness_not_ready'
 	| 'acting_capacity_plan_not_accepted'
-	| 'requested_seconds_invalid';
+	| 'requested_seconds_invalid'
+	| 'requested_budget_invalid'
+	| 'grant_token_exhausted'
+	| 'grant_cost_exhausted'
+	| 'grant_native_exhausted'
+	| 'provider_budget_exhausted';
 
 export interface CapacityAdmissionInput {
 	now: string;
@@ -128,6 +138,7 @@ export interface CapacityAdmissionInput {
 		laneId?: string | null;
 		requiredCapabilities: string[];
 		requestedSeconds: number;
+		budget?: import('./contracts/support/time-capacity.ts').CapacityBudgetV2 | null;
 	};
 	membership: {
 		id: string;
@@ -157,15 +168,24 @@ export interface CapacityAdmissionInput {
 		availableAgentSeconds: number;
 		availableConcurrentAssignments: number;
 		capabilities?: string[];
+		availableTokens?: number | null;
+		availableCost?: number | null;
+		availableNative?: Record<string, number>;
 	};
 	providerLocalLimits: {
 		availableAgentSeconds: number;
 		availableConcurrentAssignments: number;
+		availableTokens?: number | null;
+		availableCost?: number | null;
+		availableNative?: Record<string, number>;
 	};
 	grantCommitted: {
 		dailyAgentSeconds: number;
 		monthlyAgentSeconds: number;
 		activeAssignments: number;
+		tokens?: number;
+		cost?: number;
+		native?: Record<string, number>;
 	};
 	acting?: {
 		decisionApproved: boolean;
@@ -192,12 +212,14 @@ export interface CapacityAdmissionDecision {
 
 export interface CapacityAdmissionCounterClaim {
 	id: string;
-	scope: 'grant-daily' | 'grant-monthly' | 'grant-concurrency' | 'workday' | 'allocation-slice' | 'allocation-overflow' | 'allocation-reserve' | 'allocation-borrow';
+	scope: 'grant-daily' | 'grant-monthly' | 'grant-concurrency' | 'grant-token' | 'grant-cost' | 'grant-native' | 'provider-time' | 'provider-concurrency' | 'provider-token' | 'provider-cost' | 'provider-native' | 'provider-local-time' | 'provider-local-concurrency' | 'provider-local-token' | 'provider-local-cost' | 'provider-local-native' | 'workday' | 'allocation-slice' | 'allocation-overflow' | 'allocation-reserve' | 'allocation-borrow';
 	scopeId: string;
 	periodKey: string;
 	hardLimit: number;
 	amount: number;
 	release: 'settlement-difference' | 'assignment-terminal';
+	dimension?: 'time' | 'concurrency' | 'tokens' | 'cost' | 'native';
+	unit?: string | null;
 }
 
 export { validateCapacityAllocationSetV2,validateCapacityGrantV2 } from './validation/allocation.ts';
@@ -231,7 +253,11 @@ export function evaluateCapacityAdmission(input: CapacityAdmissionInput): Capaci
 	};
 	const now = timestamp(input.now) ?? Date.now();
 	const request = input.request;
+	const requestedTokens = Number(request.budget?.tokens.hardLimitTokens ?? 0);
+	const requestedCost = Number(request.budget?.cost?.hardLimitAmount ?? 0);
+	const requestedNative = (request.budget?.native ?? []).filter((entry) => entry.cap != null).map((entry) => ({ unit: entry.unit, amount: Number(entry.cap) }));
 	if (!Number.isFinite(request.requestedSeconds) || request.requestedSeconds <= 0) deny('request', 'requested_seconds_invalid');
+	if (requestedTokens < 0 || requestedCost < 0 || requestedNative.some((entry) => !entry.unit || !Number.isFinite(entry.amount) || entry.amount < 0)) deny('request-budget', 'requested_budget_invalid');
 	if (input.membership.status !== 'approved') deny('membership', input.membership.status === 'suspended' ? 'membership_suspended' : input.membership.status === 'revoked' ? 'membership_revoked' : 'membership_not_approved');
 	else allow('membership');
 	if (input.membership.id !== request.membershipId) deny('membership-id', 'membership_id_mismatch'); else allow('membership-id');
@@ -268,7 +294,26 @@ export function evaluateCapacityAdmission(input: CapacityAdmissionInput): Capaci
 		if (grant.maxConcurrentAssignments != null) {
 			const available = grant.maxConcurrentAssignments - input.grantCommitted.activeAssignments;
 			if (available < 1) deny('grant-concurrency', 'grant_concurrency_exhausted'); else allow('grant-concurrency');
-			counterClaims.push({ id: `grant-concurrency:${grant.id}:active`, scope: 'grant-concurrency', scopeId: grant.id, periodKey: 'active', hardLimit: grant.maxConcurrentAssignments, amount: 1, release: 'assignment-terminal' });
+			counterClaims.push({ id: `grant-concurrency:${grant.id}:active`, scope: 'grant-concurrency', scopeId: grant.id, periodKey: 'active', hardLimit: grant.maxConcurrentAssignments, amount: 1, release: 'assignment-terminal', dimension: 'concurrency' });
+		}
+		const tokenLimit = Number(grant.budgetLimits?.tokens ?? Number.NaN);
+		if (requestedTokens > 0 && Number.isFinite(tokenLimit)) {
+			const available = tokenLimit - Number(input.grantCommitted.tokens ?? 0);
+			if (available < requestedTokens) deny('grant-token', 'grant_token_exhausted'); else allow('grant-token', available);
+			counterClaims.push({ id: `grant-token:${grant.id}:lifetime`, scope: 'grant-token', scopeId: grant.id, periodKey: 'lifetime', hardLimit: tokenLimit, amount: requestedTokens, release: 'settlement-difference', dimension: 'tokens' });
+		}
+		const costLimit = Number(grant.budgetLimits?.cost?.amount ?? Number.NaN);
+		if (requestedCost > 0 && Number.isFinite(costLimit)) {
+			const available = costLimit - Number(input.grantCommitted.cost ?? 0);
+			if (available < requestedCost) deny('grant-cost', 'grant_cost_exhausted'); else allow('grant-cost', available);
+			counterClaims.push({ id: `grant-cost:${grant.id}:${grant.budgetLimits?.cost?.currency ?? 'USD'}`, scope: 'grant-cost', scopeId: grant.id, periodKey: grant.budgetLimits?.cost?.currency ?? 'USD', hardLimit: costLimit, amount: requestedCost, release: 'settlement-difference', dimension: 'cost', unit: grant.budgetLimits?.cost?.currency ?? 'USD' });
+		}
+		for (const native of requestedNative) {
+			const limit = grant.budgetLimits?.native?.find((entry) => entry.unit === native.unit)?.amount;
+			if (limit == null) continue;
+			const available = limit - Number(input.grantCommitted.native?.[native.unit] ?? 0);
+			if (available < native.amount) deny(`grant-native:${native.unit}`, 'grant_native_exhausted'); else allow(`grant-native:${native.unit}`, available);
+			counterClaims.push({ id: `grant-native:${grant.id}:${native.unit}`, scope: 'grant-native', scopeId: grant.id, periodKey: native.unit, hardLimit: limit, amount: native.amount, release: 'settlement-difference', dimension: 'native', unit: native.unit });
 		}
 	}
 	if (input.workday.status !== 'active') deny('workday', 'workday_not_active');
@@ -304,14 +349,40 @@ export function evaluateCapacityAdmission(input: CapacityAdmissionInput): Capaci
 		allocationPriorityScore = hierarchy.priorityScore;
 	}
 	if (input.providerCapacity.availableConcurrentAssignments < 1 || input.providerCapacity.availableAgentSeconds <= 0) deny('provider-capacity', 'provider_capacity_exhausted');
-	else allow('provider-capacity', input.providerCapacity.availableAgentSeconds);
+	else {
+		allow('provider-capacity', input.providerCapacity.availableAgentSeconds);
+		const period = input.availability.availableFrom;
+		counterClaims.push(
+			{ id: `provider-time:${request.providerId}:${period}`, scope: 'provider-time', scopeId: request.providerId, periodKey: period, hardLimit: input.providerCapacity.availableAgentSeconds, amount: request.requestedSeconds, release: 'settlement-difference', dimension: 'time' },
+			{ id: `provider-concurrency:${request.providerId}:${period}`, scope: 'provider-concurrency', scopeId: request.providerId, periodKey: period, hardLimit: input.providerCapacity.availableConcurrentAssignments, amount: 1, release: 'assignment-terminal', dimension: 'concurrency' },
+		);
+	}
 	const advertisedCapabilities = input.providerCapacity.capabilities;
 	if (advertisedCapabilities) {
 		const missing = request.requiredCapabilities.filter((capability) => !advertisedCapabilities.includes(capability));
 		if (missing.length) deny('provider-capabilities', 'provider_capability_missing', missing.join(', ')); else allow('provider-capabilities');
 	}
 	if (input.providerLocalLimits.availableConcurrentAssignments < 1 || input.providerLocalLimits.availableAgentSeconds <= 0) deny('provider-local', 'provider_local_limit_exhausted');
-	else allow('provider-local', input.providerLocalLimits.availableAgentSeconds);
+	else {
+		allow('provider-local', input.providerLocalLimits.availableAgentSeconds);
+		const period = input.availability.availableFrom;
+		counterClaims.push(
+			{ id: `provider-local-time:${request.providerId}:${period}`, scope: 'provider-local-time', scopeId: request.providerId, periodKey: period, hardLimit: input.providerLocalLimits.availableAgentSeconds, amount: request.requestedSeconds, release: 'settlement-difference', dimension: 'time' },
+			{ id: `provider-local-concurrency:${request.providerId}:${period}`, scope: 'provider-local-concurrency', scopeId: request.providerId, periodKey: period, hardLimit: input.providerLocalLimits.availableConcurrentAssignments, amount: 1, release: 'assignment-terminal', dimension: 'concurrency' },
+		);
+	}
+	for (const [scope, available] of [['provider-token', input.providerCapacity.availableTokens], ['provider-local-token', input.providerLocalLimits.availableTokens]] as const) if (requestedTokens > 0 && available != null) {
+		if (available < requestedTokens) deny(scope, 'provider_budget_exhausted');
+		counterClaims.push({ id: `${scope}:${request.providerId}:${input.availability.availableFrom}`, scope, scopeId: request.providerId, periodKey: input.availability.availableFrom, hardLimit: available, amount: requestedTokens, release: 'settlement-difference', dimension: 'tokens' });
+	}
+	for (const [scope, available] of [['provider-cost', input.providerCapacity.availableCost], ['provider-local-cost', input.providerLocalLimits.availableCost]] as const) if (requestedCost > 0 && available != null) {
+		if (available < requestedCost) deny(scope, 'provider_budget_exhausted');
+		counterClaims.push({ id: `${scope}:${request.providerId}:${input.availability.availableFrom}`, scope, scopeId: request.providerId, periodKey: input.availability.availableFrom, hardLimit: available, amount: requestedCost, release: 'settlement-difference', dimension: 'cost', unit: request.budget?.cost?.currency ?? 'USD' });
+	}
+	for (const native of requestedNative) for (const [scope, available] of [['provider-native', input.providerCapacity.availableNative?.[native.unit]], ['provider-local-native', input.providerLocalLimits.availableNative?.[native.unit]]] as const) if (available != null) {
+		if (available < native.amount) deny(`${scope}:${native.unit}`, 'provider_budget_exhausted');
+		counterClaims.push({ id: `${scope}:${request.providerId}:${input.availability.availableFrom}:${native.unit}`, scope, scopeId: request.providerId, periodKey: native.unit, hardLimit: available, amount: native.amount, release: 'settlement-difference', dimension: 'native', unit: native.unit });
+	}
 	if (request.mode === 'acting') {
 		if (!input.acting?.decisionApproved) deny('acting-decision', 'acting_decision_not_approved'); else allow('acting-decision');
 		if (!input.acting?.readinessReady) deny('acting-readiness', 'acting_readiness_not_ready'); else allow('acting-readiness');
@@ -339,6 +410,7 @@ export function evaluateCapacityAdmission(input: CapacityAdmissionInput): Capaci
 			grantId: grant?.id ?? null,
 			allocationSliceIds: [...input.allocationSliceIds],
 			requestedSeconds: request.requestedSeconds,
+			budget: request.budget ?? null,
 			laneId: request.laneId ?? null,
 			counterClaims,
 			calculations: allocationCalculations,

@@ -35,6 +35,7 @@ export interface WorkdayCapacityEnvelope {
 	elapsedSeconds?: number | null;
 	releasedSeconds?: number | null;
 	overrunSeconds?: number | null;
+	budget?: import('../../support/time-capacity.ts').CapacityBudgetV2 | null;
 	metadata?: Record<string, unknown>;
 }
 
@@ -217,6 +218,7 @@ export interface ProviderAssignmentLifecycleRequest {
 	fallbackOutput?: Record<string, unknown> | null;
 	modeRunId?: string | null;
 	metadata?: Record<string, unknown>;
+	completion?: import('../../support/time-capacity.ts').AssignmentCompletionEvidence | null;
 }
 
 export interface ProviderNextAssignmentRequest {

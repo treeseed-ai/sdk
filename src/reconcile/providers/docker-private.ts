@@ -110,6 +110,7 @@ export function buildDockerComposeArgs(input: {
 	composeFile?: string;
 	composeFiles?: string[];
 	projectName: string;
+	services?: string[];
 	profiles?: string[];
 	buildPolicy?: 'never' | 'missing' | 'always';
 	removeVolumes?: boolean;
@@ -129,16 +130,17 @@ export function buildDockerComposeArgs(input: {
 		'-p',
 		input.projectName,
 	];
+	const services = (input.services ?? []).filter((service) => service.trim().length > 0);
 	return input.action === 'config'
 		? [...base, 'config', '--hash', '*']
 		: input.action === 'ps'
 			? [...base, 'ps', '--format', 'json']
 			: input.action === 'up'
-				? [...base, 'up', '-d', ...buildArgs]
+				? [...base, 'up', '-d', ...buildArgs, ...services]
 				: input.action === 'down'
 					? [...base, 'down', ...(input.removeVolumes ? ['--volumes', '--remove-orphans'] : [])]
 					: input.action === 'restart'
-						? [...base, 'up', '-d', ...buildArgs, '--force-recreate']
+						? [...base, 'up', '-d', ...buildArgs, '--force-recreate', ...services]
 						: [...base, 'logs', '--tail', '200'];
 }
 
@@ -146,6 +148,7 @@ export function runDockerCompose(input: {
 	composeFile?: string;
 	composeFiles?: string[];
 	projectName: string;
+	services?: string[];
 	cwd: string;
 	env?: NodeJS.ProcessEnv;
 	profiles?: string[];

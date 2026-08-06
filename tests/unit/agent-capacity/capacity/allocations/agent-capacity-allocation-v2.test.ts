@@ -192,6 +192,28 @@ describe('capacity allocation v2', () => {
 		expect(decision.reasonCodes).toContain('grant_lane_denied');
 	});
 
+	it('reserves token, cost, and native ceilings independently at grant and provider scopes', () => {
+		const input = admissionInput();
+		input.request.budget = {
+			schemaVersion: 'treeseed.capacity-budget/v2', deadline: '2026-07-16T16:05:00.000Z', maxAttempts: 1,
+			time: { requestedSeconds: 5, reservedSeconds: 5, activeSeconds: 0, elapsedSeconds: 0, releasedSeconds: 0, overrunSeconds: 0 },
+			tokens: { inputTokens: 0, cachedInputTokens: 0, reasoningTokens: 0, outputTokens: 0, hardLimitTokens: 1_000, hardLimitEnforceable: true },
+			cost: { amount: 0, currency: 'USD', hardLimitAmount: 2, hardLimitEnforceable: true },
+			native: [{ unit: 'request', observed: 0, cap: 1, capEnforceable: true }],
+		};
+		input.grant!.budgetLimits = { tokens: 10_000, cost: { amount: 10, currency: 'USD' }, native: [{ unit: 'request', amount: 10 }] };
+		input.providerCapacity = { ...input.providerCapacity, availableTokens: 8_000, availableCost: 8, availableNative: { request: 8 } };
+		input.providerLocalLimits = { ...input.providerLocalLimits, availableTokens: 4_000, availableCost: 4, availableNative: { request: 4 } };
+		const decision = evaluateCapacityAdmission(input);
+		expect(decision.allowed).toBe(true);
+		expect(decision.counterClaims).toEqual(expect.arrayContaining([
+			expect.objectContaining({ scope: 'grant-token', amount: 1_000 }),
+			expect.objectContaining({ scope: 'provider-token', amount: 1_000 }),
+			expect.objectContaining({ scope: 'provider-local-cost', amount: 2 }),
+			expect.objectContaining({ scope: 'provider-native', amount: 1, unit: 'request' }),
+		]));
+	});
+
 	it('enforces all acting provenance gates', () => {
 		const input = admissionInput();
 		input.request.mode = 'acting';
