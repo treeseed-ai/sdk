@@ -138,7 +138,7 @@ function syncInternalPackageLockMetadata(
 		const key = `node_modules/${dependencyName}`;
 		const sourceEntry = sourceEntries[key];
 		if (!sourceEntry) return;
-		if (!targetEntries[key]) {
+		if (JSON.stringify(targetEntries[key]) !== JSON.stringify(sourceEntry)) {
 			targetEntries[key] = structuredClone(sourceEntry);
 			changed = true;
 		}

@@ -118,6 +118,7 @@ it('carries new transitive runtime dependencies into dependent package locks', (
 		packages: {
 			'': packageJson,
 			'node_modules/@treeseed/sdk': { version: '1.0.0', resolved: 'old' },
+			'node_modules/crypto-wrapper': { version: '0.9.0' },
 		},
 	});
 	const repo = node({ id: agentRoot, name: '@treeseed/agent', path: agentRoot, packageJson });
@@ -129,7 +130,7 @@ it('carries new transitive runtime dependencies into dependent package locks', (
 	}])).toBe(true);
 	const lock = JSON.parse(readFileSync(resolve(agentRoot, 'package-lock.json'), 'utf8'));
 	expect(lock.packages['node_modules/@treeseed/sdk'].dependencies).toEqual({ 'crypto-wrapper': '1.0.0' });
-	expect(lock.packages['node_modules/crypto-wrapper'].version).toBe('1.0.0');
+	expect(lock.packages['node_modules/crypto-wrapper']).toEqual({ version: '1.0.0', dependencies: { 'crypto-native': '1.0.0' } });
 	expect(lock.packages['node_modules/crypto-native'].version).toBe('1.0.0');
 });
 
