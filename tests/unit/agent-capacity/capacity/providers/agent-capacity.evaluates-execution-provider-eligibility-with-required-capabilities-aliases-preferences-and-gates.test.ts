@@ -151,7 +151,7 @@ it('rejects assignments whose execution capability explanation does not cover de
 				mode: 'planning',
 				capacityProviderId: 'provider-1',
 				reservationId: 'reservation-planning-1',
-				reservedCredits: 1,
+				reservedSeconds: 1,
 			},
 			decisionInput: {
 				teamId: 'team-1',
@@ -248,7 +248,7 @@ it('builds durable capacity-plan work units from accepted execution inputs', () 
 					capacity,
 					input: {
 						objective: 'ship it',
-						estimate: { expectedCredits: 3, highCredits: 5, confidence: 0.8 },
+						estimate: { expectedSeconds: 3, highSeconds: 5, confidence: 0.8 },
 						requiredCapabilities: ['repo_write'],
 						dependencies: ['plan-a'],
 						assumptions: ['tests pass'],
@@ -262,16 +262,16 @@ it('builds durable capacity-plan work units from accepted execution inputs', () 
 		expect(plan).toMatchObject({
 			id: 'plan-1',
 			status: 'draft',
-			expectedCredits: 3,
-			highCredits: 5,
+			expectedSeconds: 3,
+			highSeconds: 5,
 			capabilityNeeds: ['repo_write'],
 			workUnits: [expect.objectContaining({
 				id: 'plan-1:wu:1',
 				decisionExecutionInputId: 'input-1',
 				workGraphNodeId: 'graph-1:node:implementation',
 				agentId: 'implementer',
-				expectedCredits: 3,
-				highCredits: 5,
+				expectedSeconds: 3,
+				highSeconds: 5,
 			})],
 		});
 	});

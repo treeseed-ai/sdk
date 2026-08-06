@@ -30,17 +30,17 @@ function allocationSet(): CapacityAllocationSetV2 {
 function admissionInput(): CapacityAdmissionInput {
 	return {
 		now: '2026-07-16T16:00:00.000Z',
-		request: { teamId: 'team-1', providerId: 'provider-1', membershipId: 'membership-1', projectId: 'project-1', environment: 'local', agentClassId: 'class-1', mode: 'planning', executionProviderId: 'codex', laneId: 'standard', requiredCapabilities: ['engineering'], requestedCredits: 5 },
+		request: { teamId: 'team-1', providerId: 'provider-1', membershipId: 'membership-1', projectId: 'project-1', environment: 'local', agentClassId: 'class-1', mode: 'planning', executionProviderId: 'codex', laneId: 'standard', requiredCapabilities: ['engineering'], requestedSeconds: 5 },
 		membership: { id: 'membership-1', teamId: 'team-1', providerId: 'provider-1', status: 'approved' },
 		availability: { status: 'open', availableFrom: '2026-07-16T15:00:00.000Z', availableUntil: '2026-07-16T18:00:00.000Z' },
-		grant: { schemaVersion: 2, id: 'grant-1', membershipId: 'membership-1', teamId: 'team-1', providerId: 'provider-1', projectId: 'project-1', environment: 'local', status: 'active', executionProviderIds: ['codex'], laneIds: ['standard'], capabilities: ['engineering'], allowedModes: ['planning'], dailyCreditLimit: 50, monthlyCreditLimit: 200, maxConcurrentAssignments: 2 },
-		workday: { id: 'workday-1', status: 'active', totalCredits: 100, committedCredits: 20 },
+		grant: { schemaVersion: 2, id: 'grant-1', membershipId: 'membership-1', teamId: 'team-1', providerId: 'provider-1', projectId: 'project-1', environment: 'local', status: 'active', executionProviderIds: ['codex'], laneIds: ['standard'], capabilities: ['engineering'], allowedModes: ['planning'], dailyAgentSecondsLimit: 50, monthlyAgentSecondsLimit: 200, maxConcurrentAssignments: 2 },
+		workday: { id: 'workday-1', status: 'active', totalSeconds: 100, committedSeconds: 20 },
 		allocationSet: allocationSet(),
 		allocationSliceIds: ['project-1', 'class-1', 'planning'],
-		committedCreditsBySlice: { 'project-1': 20, 'class-1': 20, planning: 15 },
-		providerCapacity: { availableCredits: 30, availableConcurrentAssignments: 2 },
-		providerLocalLimits: { availableCredits: 20, availableConcurrentAssignments: 1 },
-		grantCommitted: { dailyCredits: 10, monthlyCredits: 40, activeAssignments: 0 },
+		committedSecondsBySlice: { 'project-1': 20, 'class-1': 20, planning: 15 },
+		providerCapacity: { availableAgentSeconds: 30, availableConcurrentAssignments: 2 },
+		providerLocalLimits: { availableAgentSeconds: 20, availableConcurrentAssignments: 1 },
+		grantCommitted: { dailyAgentSeconds: 10, monthlyAgentSeconds: 40, activeAssignments: 0 },
 	};
 }
 
@@ -48,9 +48,9 @@ describe('capacity allocation v2', () => {
 	it('requires explicit metering or unmetered policy on grants', () => {
 		const base = { schemaVersion: 2 as const, id: 'grant-1', membershipId: 'membership-1', teamId: 'team-1', providerId: 'provider-1', projectId: 'project-1', environment: 'local', status: 'active' as const, executionProviderIds: ['codex'], laneIds: [], capabilities: ['engineering'], allowedModes: ['planning'] as const, maxConcurrentAssignments: 1, unmetered: false };
 		expect(validateCapacityGrantV2({ ...base, allowedModes: [...base.allowedModes] }).ok).toBe(false);
-		expect(validateCapacityGrantV2({ ...base, allowedModes: [...base.allowedModes], dailyCreditLimit: 10 }).ok).toBe(true);
+		expect(validateCapacityGrantV2({ ...base, allowedModes: [...base.allowedModes], dailyAgentSecondsLimit: 10 }).ok).toBe(true);
 		expect(validateCapacityGrantV2({ ...base, allowedModes: [...base.allowedModes], unmetered: true }).ok).toBe(true);
-		expect(validateCapacityGrantV2({ ...base, allowedModes: [...base.allowedModes], dailyCreditLimit: 0 }).ok).toBe(true);
+		expect(validateCapacityGrantV2({ ...base, allowedModes: [...base.allowedModes], dailyAgentSecondsLimit: 0 }).ok).toBe(true);
 	});
 	it('validates hierarchy totals and ordered bounds', () => {
 		expect(validateCapacityAllocationSetV2(allocationSet())).toEqual({ ok: true, diagnostics: [] });
@@ -66,7 +66,7 @@ describe('capacity allocation v2', () => {
 	it('admits only through membership, grant, workday, allocation, and provider limits', () => {
 		const decision = evaluateCapacityAdmission(admissionInput());
 		expect(decision.allowed).toBe(true);
-		expect(decision.maxReservableCredits).toBe(5);
+		expect(decision.maxReservableSeconds).toBe(5);
 		expect(decision).toMatchObject({ allocationPriorityBand: 'normal', allocationPriorityScore: 2 });
 		expect(decision.policySnapshot).toMatchObject({ grantId: 'grant-1', allocationSetId: 'allocation-1', allocationVersion: 1 });
 		expect(decision.counterClaims).toContainEqual(expect.objectContaining({
@@ -77,19 +77,19 @@ describe('capacity allocation v2', () => {
 
 	it('assigns deterministic priority to below-minimum and below-target slices', () => {
 		const belowMinimum = admissionInput();
-		belowMinimum.committedCreditsBySlice.planning = 0;
+		belowMinimum.committedSecondsBySlice.planning = 0;
 		const belowTarget = admissionInput();
-		belowTarget.committedCreditsBySlice.planning = 6;
+		belowTarget.committedSecondsBySlice.planning = 6;
 		expect(evaluateCapacityAdmission(belowMinimum)).toMatchObject({ allocationPriorityBand: 'minimum', allocationPriorityScore: 4 });
 		expect(evaluateCapacityAdmission(belowTarget)).toMatchObject({ allocationPriorityBand: 'target', allocationPriorityScore: 3 });
 	});
 
 	it('treats a zero grant limit as an explicit denial', () => {
 		const input = admissionInput();
-		input.grant!.dailyCreditLimit = 0;
+		input.grant!.dailyAgentSecondsLimit = 0;
 		const decision = evaluateCapacityAdmission(input);
 		expect(decision.allowed).toBe(false);
-		expect(decision.reasonCodes).toContain('grant_credit_exhausted');
+		expect(decision.reasonCodes).toContain('grant_time_exhausted');
 	});
 
 	it('does not treat approved membership as capacity and accepts explicit unmetered grants', () => {
@@ -97,7 +97,7 @@ describe('capacity allocation v2', () => {
 		membershipOnly.grant = null;
 		expect(evaluateCapacityAdmission(membershipOnly).reasonCodes).toContain('missing_active_grant');
 		const unmetered = admissionInput();
-		unmetered.grant = { ...unmetered.grant!, dailyCreditLimit: null, monthlyCreditLimit: null, unmetered: true };
+		unmetered.grant = { ...unmetered.grant!, dailyAgentSecondsLimit: null, monthlyAgentSecondsLimit: null, unmetered: true };
 		expect(evaluateCapacityAdmission(unmetered).allowed).toBe(true);
 	});
 
@@ -121,11 +121,11 @@ describe('capacity allocation v2', () => {
 		const planning = allocation.slices.find((slice) => slice.id === 'planning')!;
 		planning.policy.hardCapPercent = 60;
 		allocation.borrowingRules = [{ id: 'acting-to-planning', fromSliceId: 'acting', toSliceId: 'planning', maxPercent: 20, requiresApproval: false }];
-		input.committedCreditsBySlice.acting = 20;
-		input.request.requestedCredits = 10;
+		input.committedSecondsBySlice.acting = 20;
+		input.request.requestedSeconds = 10;
 		const decision = evaluateCapacityAdmission(input);
 		expect(decision.allowed).toBe(true);
-		expect(decision.maxReservableCredits).toBe(12.5);
+		expect(decision.maxReservableSeconds).toBe(12.5);
 		expect(decision.counterClaims).toEqual(expect.arrayContaining([
 			expect.objectContaining({ scope: 'allocation-overflow', amount: 5 }),
 			expect.objectContaining({ scope: 'allocation-borrow', amount: 5 }),
@@ -138,8 +138,8 @@ describe('capacity allocation v2', () => {
 		allocation.reservePolicy.overflow = 'borrow';
 		allocation.slices.find((slice) => slice.id === 'planning')!.policy.hardCapPercent = 60;
 		allocation.borrowingRules = [{ id: 'approval-rule', fromSliceId: 'acting', toSliceId: 'planning', maxPercent: 20, requiresApproval: true }];
-		input.committedCreditsBySlice.acting = 20;
-		input.request.requestedCredits = 10;
+		input.committedSecondsBySlice.acting = 20;
+		input.request.requestedSeconds = 10;
 		const denied = evaluateCapacityAdmission(input);
 		expect(denied.allowed).toBe(false);
 		expect(denied.reasonCodes).toContain('allocation_borrowing_approval_required');
@@ -153,8 +153,8 @@ describe('capacity allocation v2', () => {
 		allocation.reservePolicy.overflow = 'borrow';
 		allocation.slices.find((slice) => slice.id === 'planning')!.policy.hardCapPercent = 60;
 		allocation.borrowingRules = [{ id: 'protected-donor', fromSliceId: 'acting', toSliceId: 'planning', maxPercent: 20, requiresApproval: false }];
-		input.committedCreditsBySlice.acting = 37.5;
-		input.request.requestedCredits = 10;
+		input.committedSecondsBySlice.acting = 37.5;
+		input.request.requestedSeconds = 10;
 		const decision = evaluateCapacityAdmission(input);
 		expect(decision.allowed).toBe(false);
 		expect(decision.reasonCodes).toContain('allocation_hard_cap_exhausted');
@@ -169,8 +169,8 @@ describe('capacity allocation v2', () => {
 			borrowingRules: [],
 		};
 		input.allocationSliceIds = ['project-1'];
-		input.committedCreditsBySlice = { 'project-1': 90 };
-		input.request.requestedCredits = 5;
+		input.committedSecondsBySlice = { 'project-1': 90 };
+		input.request.requestedSeconds = 5;
 		const decision = evaluateCapacityAdmission(input);
 		expect(decision.allowed).toBe(true);
 		expect(decision.counterClaims).toContainEqual(expect.objectContaining({ scope: 'allocation-reserve', amount: 5, hardLimit: 10 }));
@@ -178,7 +178,7 @@ describe('capacity allocation v2', () => {
 
 	it('blocks an exhausted mode hard cap', () => {
 		const input = admissionInput();
-		input.committedCreditsBySlice.planning = 40;
+		input.committedSecondsBySlice.planning = 40;
 		const decision = evaluateCapacityAdmission(input);
 		expect(decision.allowed).toBe(false);
 		expect(decision.reasonCodes).toContain('allocation_borrowing_denied');
@@ -195,7 +195,7 @@ describe('capacity allocation v2', () => {
 	it('enforces all acting provenance gates', () => {
 		const input = admissionInput();
 		input.request.mode = 'acting';
-		input.request.requestedCredits = 1;
+		input.request.requestedSeconds = 1;
 		input.request.requiredCapabilities = [];
 		input.grant!.allowedModes = ['acting'];
 		input.allocationSliceIds = ['project-1', 'class-1', 'acting'];

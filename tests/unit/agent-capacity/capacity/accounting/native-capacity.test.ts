@@ -27,10 +27,10 @@ describe('native capacity accounting', () => {
 		expect(nativeUsageAmount({ inputTokens: 100, outputTokens: 50, cachedInputTokens: 25 }, 'token')).toBe(125);
 	});
 
-	it('subtracts native reservations, settled usage, and the provider reserve without producing credits', () => {
+	it('subtracts native reservations, settled usage, and the provider reserve without producing seconds', () => {
 		const result = deriveNativeCapacity(input());
 		expect(result).toMatchObject({ observedNativeRemaining: 80, activeReservedNativeAmount: 10, activeConsumedNativeAmount: 5, reserveBufferNativeAmount: 10, availableNativeAmount: 55 });
-		expect(result).not.toHaveProperty('derivedAvailableCredits');
+		expect(result).not.toHaveProperty('derivedAvailableSeconds');
 	});
 
 	it('uses explicit accounting windows and fails closed when a provider reset is opaque', () => {

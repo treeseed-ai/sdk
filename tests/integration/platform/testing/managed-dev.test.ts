@@ -11,6 +11,14 @@ vi.mock('node:child_process', async (importOriginal) => ({
 	spawn: vi.fn(),
 }));
 
+function seedBuildableRuntimePackages(cwd: string, packages: string[]) {
+	for (const packageName of packages) {
+		const root = resolve(cwd, 'packages', packageName);
+		mkdirSync(resolve(root, 'src'), { recursive: true });
+		writeFileSync(resolve(root, 'package.json'), JSON.stringify({ scripts: { 'build:dist': 'node -e ""' } }), 'utf8');
+	}
+}
+
 describe('managed dev process ownership', () => {
 	afterEach(() => {
 		vi.clearAllMocks();
@@ -45,6 +53,7 @@ describe('managed dev process ownership', () => {
 
 	it('replaces a live managed process when its health check fails', async () => {
 		const cwd = mkdtempSync(resolve(tmpdir(), 'treeseed-managed-dev-unhealthy-'));
+		seedBuildableRuntimePackages(cwd, ['sdk', 'ui', 'core', 'admin', 'api', 'agent', 'cli']);
 		const [spec] = createIntegratedDevPlan({ cwd, surfaces: 'web' }).processes;
 		mkdirSync(resolve(spec.pidPath, '..'), { recursive: true });
 		mkdirSync(resolve(spec.instancePath, '..'), { recursive: true });
@@ -76,6 +85,7 @@ describe('managed dev process ownership', () => {
 
 	it('replaces a healthy API process when its source closure changes', async () => {
 		const cwd = mkdtempSync(resolve(tmpdir(), 'treeseed-managed-dev-source-'));
+		seedBuildableRuntimePackages(cwd, ['sdk', 'api']);
 		mkdirSync(resolve(cwd, 'packages/api/src'), { recursive: true });
 		writeFileSync(resolve(cwd, 'packages/api/src/server.ts'), 'export const version = 1;\n', 'utf8');
 		const [originalSpec] = createIntegratedDevPlan({ cwd, surfaces: 'api' }).processes;

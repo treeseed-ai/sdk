@@ -49,9 +49,9 @@ describe('capacity workday participation', () => {
 	});
 
 	it('continues useful work until a duration or budget bound is reached', () => {
-		const base = { status: 'running', now: '2026-07-17T12:00:00.000Z', deadlineAt: '2026-07-17T13:00:00.000Z', totalCredits: 10, committedCredits: 3, usefulEligibleWork: true };
+		const base = { status: 'running', now: '2026-07-17T12:00:00.000Z', deadlineAt: '2026-07-17T13:00:00.000Z', totalSeconds: 10, committedSeconds: 3, usefulEligibleWork: true };
 		expect(evaluateWorkdayContinuation(base)).toEqual({ continue: true, reason: 'within_duration_and_budget' });
-		expect(evaluateWorkdayContinuation({ ...base, committedCredits: 10 })).toEqual({ continue: false, reason: 'budget_bound_reached' });
+		expect(evaluateWorkdayContinuation({ ...base, committedSeconds: 10 })).toEqual({ continue: false, reason: 'budget_bound_reached' });
 		expect(evaluateWorkdayContinuation({ ...base, now: base.deadlineAt })).toEqual({ continue: false, reason: 'duration_bound_reached' });
 	});
 });

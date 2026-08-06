@@ -22,17 +22,17 @@ const reservation = {
 	capacityProviderId: 'provider-1', executionProviderId: null, laneId: null, allocationSetId: 'allocation-1',
 	allocationVersion: 1, allocationSliceIds: [], policySnapshot: {}, projectAgentClassId: 'implementation',
 	assignmentId: 'assignment-1', mode: 'planning' as const, teamId: 'team-1', projectId: 'project-1', workDayId: null,
-	taskId: null, state: 'consumed' as const, reservedCredits: 10, consumedCredits: 7, nativeUnit: null,
+	taskId: null, state: 'consumed' as const, reservedSeconds: 10, consumedSeconds: 7, nativeUnit: null,
 	reservedNativeAmount: null, consumedNativeAmount: null, reservedProviderUnits: null, consumedProviderUnits: null,
 	reservedUsd: null, consumedUsd: null, expiresAt: null, metadata: {}, createdAt: '2026-01-01T00:00:00.000Z',
 	updatedAt: '2026-01-01T00:00:00.000Z',
 };
 
-function ledger(id: string, phase: 'task_completed_actual_settlement' | 'reservation_released', credits: number, modeRunId: string | null = null) {
+function ledger(id: string, phase: 'task_completed_actual_settlement' | 'reservation_released', seconds: number, modeRunId: string | null = null) {
 	return {
 		id, settlementKey: `settlement-${id}`, membershipId: 'membership-1', capacityProviderId: 'provider-1',
 		reservationId: 'reservation-1', assignmentId: 'assignment-1', modeRunId, mode: 'planning' as const,
-		teamId: 'team-1', projectId: 'project-1', workDayId: null, taskId: null, phase, credits,
+		teamId: 'team-1', projectId: 'project-1', workDayId: null, taskId: null, phase, seconds,
 		providerUnits: null, usd: null, source: 'test', metadata: {}, createdAt: '2026-01-01T00:00:00.000Z',
 	};
 }
