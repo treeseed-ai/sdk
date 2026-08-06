@@ -51,7 +51,7 @@ describe('capacity configuration inventory', () => {
 			prompt: { system: 'Estimate.' }, branchPolicy: { kind: 'read-only', base: 'main' },
 			tools: { allowed: [] }, outputs: { messageTypes: [], modelMutations: ['estimate:create'] },
 		};
-		expect(validateAgentActivityProfilesConfiguration({ estimating: { ...base, planningIntent: { subjectModel: 'proposal' } } })).toEqual({ ok: true, diagnostics: [] });
+		expect(validateAgentActivityProfilesConfiguration({ estimating: { ...base, planningIntent: { subjectModel: 'proposal', proposalTypes: ['technical-accuracy'] } } })).toEqual({ ok: true, diagnostics: [] });
 		expect(validateAgentActivityProfilesConfiguration({ estimating: { ...base, planningIntent: { subjectModel: '', includeWorkdayArtifacts: 'yes' } } }).diagnostics.map((entry) => entry.code)).toEqual(expect.arrayContaining([
 			'agent_activity_planning_intent_text_invalid',
 			'agent_activity_planning_intent_boolean_invalid',

@@ -13,7 +13,7 @@ const EXECUTION_KEYS = new Set(['providerPreference', 'maxRuntimeSeconds', 'maxR
 const CONTENT_ACCESS_KEYS = new Set(['read', 'write', 'commit']);
 const CONTENT_SCOPE_KEYS = new Set(['models', 'actions', 'books', 'paths', 'relations']);
 const QUESTION_KEYS = new Set(['defaultAnswerPolicy', 'blockExecutionWhenCreated']);
-const PLANNING_INTENT_KEYS = new Set(['objective', 'artifactKind', 'subjectModel', 'subjectId', 'includeWorkdayArtifacts', 'stage', 'stages', 'requiresArtifactKinds']);
+const PLANNING_INTENT_KEYS = new Set(['objective', 'artifactKind', 'subjectModel', 'subjectId', 'includeWorkdayArtifacts', 'stage', 'stages', 'requiresArtifactKinds', 'proposalTypes']);
 const PLANNING_STAGE_KEYS = new Set(['stage', 'promptTask', 'signals']);
 const QUESTION_POLICY_KEYS = new Set(['kind', 'teamId', 'requiredRoles', 'allowedRoles', 'allowedAgentClasses', 'teamMemberId', 'projectId', 'agentSlug']);
 const BRANCH_KEYS: Record<string, Set<string>> = {
@@ -107,6 +107,7 @@ function validatePlanningIntent(value: unknown, path: string, add: Add) {
 		});
 	}
 	if (value.requiresArtifactKinds !== undefined && !strings(value.requiresArtifactKinds)) add('agent_activity_string_list_invalid', `${path}.requiresArtifactKinds`, `${path}.requiresArtifactKinds must contain unique non-empty strings.`);
+	if (value.proposalTypes !== undefined && !strings(value.proposalTypes)) add('agent_activity_string_list_invalid', `${path}.proposalTypes`, `${path}.proposalTypes must contain unique non-empty strings.`);
 }
 
 function validateStringLists(value: unknown, keys: Set<string>, required: string[], path: string, add: Add) {
