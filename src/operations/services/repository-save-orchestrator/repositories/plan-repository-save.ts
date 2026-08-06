@@ -34,7 +34,7 @@ export function planRepositorySave(options: RepositorySaveOptions): RepositorySa
 
 	for (const wave of waves) {
 		for (const node of wave) {
-			const dependencyUpdates = node.dependencies
+			const dependencyUpdates = (node.referenceDependencies ?? node.dependencies)
 				.map((id) => nodes.find((candidate) => candidate.id === id))
 				.filter((candidate): candidate is RepositorySaveNode => Boolean(candidate))
 				.map((dependency) => {

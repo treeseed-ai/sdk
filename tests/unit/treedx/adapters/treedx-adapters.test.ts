@@ -125,7 +125,7 @@ describe('TreeDX SDK adapters', () => {
 		const { client, calls } = clientWith([
 			{ ok: true, repoId: 'repo_1', ref: 'refs/heads/main', resolvedRef: 'abc', results: [] },
 		]);
-		const adapter = new TreeDxRepositoryAdapter({ client, models: registry(), contentPathMap: { knowledge: 'docs' } });
+		const adapter = new TreeDxRepositoryAdapter({ client, models: registry(), contentPathMap: { knowledge: 'docs' }, push: false });
 		await adapter.search({
 			model: 'knowledge',
 			filters: [{ field: 'status', op: 'eq', value: 'published' }],
@@ -144,16 +144,17 @@ describe('TreeDX SDK adapters', () => {
 	it('creates and updates content through TreeDX workspaces', async () => {
 		const { client, calls } = clientWith([
 			{ ok: true, workspaceId: 'ws_create', repoId: 'repo_1', baseRef: 'refs/heads/main', baseCommitSha: 'abc', mode: 'writable', status: 'ready', allowedPaths: ['docs/**'] },
-			{ ok: true, file: { path: 'docs/new.md', sha: 'blake3:new' } },
+			{ ok: true, contract: 'treedx.changeset/v1', repositoryId: 'repo_1', workspaceId: 'ws_create', baseRef: 'refs/heads/main', baseCommitSha: 'abc', resultCommitSha: null, branch: 'refs/heads/agent/knowledge-new', changedPaths: ['docs/new.md'], files: [], patchSha256: 'patch-create', idempotencyKey: 'key-create', idempotentReplay: false, workspaceVersion: 'version-create' },
 			{ ok: true, repoId: 'repo_1', workspaceId: 'ws_create', branchName: 'refs/heads/agent/knowledge-new', commitSha: 'def', changedPaths: ['docs/new.md'], status: 'committed' },
 			{ ok: true, repoId: 'repo_1', ref: 'refs/heads/agent/knowledge-new', resolvedRef: 'def', file: { path: 'docs/new.md', frontmatter: { title: 'New', slug: 'new' }, body: 'Body' } },
 			{ ok: true, repoId: 'repo_1', ref: 'refs/heads/main', resolvedRef: 'abc', file: { path: 'docs/new.md', frontmatter: { title: 'New', slug: 'new' }, body: 'Body' } },
+			{ ok: true, repoId: 'repo_1', ref: 'refs/heads/main', resolvedRef: 'abc', file: { path: 'docs/new.md', content: '---\ntitle: New\nslug: new\n---\nBody', sha: 'blake3:new' } },
 			{ ok: true, workspaceId: 'ws_update', repoId: 'repo_1', baseRef: 'refs/heads/main', baseCommitSha: 'abc', mode: 'writable', status: 'ready', allowedPaths: ['docs/**'] },
-			{ ok: true, file: { path: 'docs/new.md', sha: 'blake3:update' } },
+			{ ok: true, contract: 'treedx.changeset/v1', repositoryId: 'repo_1', workspaceId: 'ws_update', baseRef: 'refs/heads/main', baseCommitSha: 'abc', resultCommitSha: null, branch: 'refs/heads/agent/knowledge-new', changedPaths: ['docs/new.md'], files: [], patchSha256: 'patch-update', idempotencyKey: 'key-update', idempotentReplay: false, workspaceVersion: 'version-update' },
 			{ ok: true, repoId: 'repo_1', workspaceId: 'ws_update', branchName: 'refs/heads/agent/knowledge-new', commitSha: 'fed', changedPaths: ['docs/new.md'], status: 'committed' },
 			{ ok: true, repoId: 'repo_1', ref: 'refs/heads/agent/knowledge-new', resolvedRef: 'fed', file: { path: 'docs/new.md', frontmatter: { title: 'Updated', slug: 'new' }, body: 'Updated body' } },
 		]);
-		const adapter = new TreeDxRepositoryAdapter({ client, models: registry(), contentPathMap: { knowledge: 'docs' } });
+		const adapter = new TreeDxRepositoryAdapter({ client, models: registry(), contentPathMap: { knowledge: 'docs' }, push: false });
 		const created = await adapter.create({
 			model: 'knowledge',
 			actor: 'agent',
@@ -168,8 +169,9 @@ describe('TreeDX SDK adapters', () => {
 			data: { title: 'Updated', body: 'Updated body' },
 		});
 		expect(updated.item.title).toBe('Updated');
-		expect(calls.some((call) => call.url.endsWith('/workspaces/ws_create/files?path=docs%2Fnew.md'))).toBe(true);
-		expect(calls.some((call) => call.body && (call.body as { expectedSha?: string }).expectedSha === 'blake3:new')).toBe(true);
+		expect(calls.some((call) => call.url.endsWith('/workspaces/ws_create/changesets'))).toBe(true);
+		expect(calls.some((call) => call.body && (call.body as { contract?: string }).contract === 'treedx.changeset/v1')).toBe(true);
+		expect(calls.some((call) => call.body && String((call.body as { patch?: string }).patch).includes('-title: New'))).toBe(true);
 	});
 
 	it('throws not implemented for TreeDX pick leases', async () => {

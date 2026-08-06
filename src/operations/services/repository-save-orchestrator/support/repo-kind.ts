@@ -62,6 +62,8 @@ export type RepositorySaveNode = {
 	manifestVerifyCommands: Record<'fast' | 'local' | 'release', PackageCommand | null>;
 	remoteUrl: string | null;
 	dependencies: string[];
+	referenceDependencies?: string[];
+	workflowDependencies?: string[];
 	dependents: string[];
 	submoduleDependencies: string[];
 	plannedVersion: string | null;

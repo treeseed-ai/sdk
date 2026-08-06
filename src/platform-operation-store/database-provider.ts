@@ -86,26 +86,6 @@ CREATE TABLE IF NOT EXISTS market_operation_runners (
 	updated_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS platform_repository_claims (
-	id TEXT PRIMARY KEY,
-	repository_key TEXT NOT NULL,
-	runner_id TEXT NOT NULL,
-	workspace_path TEXT NOT NULL,
-	branch TEXT,
-	commit_sha TEXT,
-	claim_state TEXT NOT NULL DEFAULT 'active',
-	lease_expires_at TEXT,
-	metadata_json TEXT NOT NULL DEFAULT '{}',
-	created_at TEXT NOT NULL,
-	updated_at TEXT NOT NULL
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_platform_repository_claims_active
-	ON platform_repository_claims(repository_key, runner_id)
-	WHERE claim_state = 'active';
-
-CREATE INDEX IF NOT EXISTS idx_platform_repository_claims_runner
-	ON platform_repository_claims(runner_id, claim_state);
 `;
 
 export function isoNow(now: () => Date) {
@@ -155,19 +135,6 @@ export function rowEvent(row: Record<string, unknown> | null): PlatformOperation
 		data: parseJson(row.data_json, {}) as Record<string, unknown>,
 		createdAt: String(row.created_at),
 	};
-}
-
-export function repositoryKey(repository: Record<string, unknown> = {}) {
-	return [repository.provider ?? 'git', repository.owner ?? 'local', repository.name ?? 'repository']
-		.join('-')
-		.toLowerCase()
-		.replace(/[^a-z0-9.-]+/gu, '-')
-		.replace(/^-+|-+$/gu, '') || 'repository';
-}
-
-export function repositoryWorkspacePath(workspaceRoot: unknown, repository: Record<string, unknown> = {}) {
-	const root = String(workspaceRoot ?? '/data').replace(/\/+$/u, '') || '/data';
-	return `${root}/repositories/${repositoryKey(repository)}/repo`;
 }
 
 export function normalizeOperationCapabilities(capabilities: unknown) {

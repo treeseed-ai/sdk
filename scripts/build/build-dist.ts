@@ -11,7 +11,7 @@ const distBuildRoot = resolve(packageRoot, `.treeseed-dist-build-${process.pid}`
 const buildLockRoot = resolve(packageRoot, '.treeseed-build-dist.lock');
 const TemplateCatalogSourceRoot = resolve(srcRoot, 'treeseed', 'template-catalog');
 const ServicesSourceRoot = resolve(srcRoot, 'treeseed', 'services');
-const BIN_ENTRYPOINTS = new Set(['verification.ts']);
+const BIN_ENTRYPOINTS = new Set(['verification.ts', 'content/publish-content.ts']);
 const BUILD_LOCK_TIMEOUT_MS = 15 * 60 * 1000;
 const BUILD_LOCK_STALE_MS = 20 * 60 * 1000;
 

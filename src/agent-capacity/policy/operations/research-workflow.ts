@@ -1,6 +1,6 @@
 import { RESEARCH_WORKFLOW_STAGES,type ResearchClaim,type ResearchStageCompletion,type ResearchWorkflowNode,type ResearchWorkflowRecord,type ResearchWorkflowStage } from '../../contracts/operations/research-workflow.ts';
-import { validateResearchCitations } from '../../validation/research-citation.ts';
-import { validateResearchWorkflow } from '../../validation/research-workflow.ts';
+import { validateResearchCitations } from '../../validation/research/citation.ts';
+import { validateResearchWorkflow } from '../../validation/research/workflow.ts';
 
 const ROLES: Record<ResearchWorkflowStage, ResearchWorkflowNode['role']> = {
 	'question-decomposition': 'researcher', 'source-selection-criteria': 'researcher', 'governed-source-search': 'researcher',

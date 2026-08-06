@@ -5,22 +5,9 @@ import { configuredLiveAcceptanceValue,type LiveAcceptanceEnv } from '../../supp
 import type { LiveReconcileEnvironment,LiveReconcileProvider,RunLiveReconcileTestsOptions } from '../../support/acceptance/live-acceptance.ts';
 import { cleanupCapacityAssignmentProof } from './live-acceptance-capacity-cleanup.ts';
 import { provisionLocalCapacityCompetition } from './live-acceptance-capacity-competition.ts';
-import {
-capacityAcceptanceConfig,
-capacityGrantForAcceptance,
-createTreeDxProxyAuditEvidence,
-effectiveActiveAllocation,
-ensureLocalCapacityTreeDxBinding,
-provisionLocalCapacityAcceptanceProvider,
-resolveLocalCapacityAcceptanceScope,
-syncLocalAcceptanceAgentClass,
-type CapacityAcceptanceProof,
-} from './live-acceptance-capacity-context.ts';
+import { capacityAcceptanceConfig,capacityGrantForAcceptance,createTreeDxProxyAuditEvidence,effectiveActiveAllocation,ensureLocalCapacityTreeDxBinding,provisionLocalCapacityAcceptanceProvider,resolveLocalCapacityAcceptanceScope,syncLocalAcceptanceAgentClass,type CapacityAcceptanceProof } from './live-acceptance-capacity-context.ts';
 import { proveLocalCapacityGovernance } from './live-acceptance-capacity-governance.ts';
-import {
-assertCapacityAcceptancePolicyUnchanged,
-capacityAcceptancePolicyFingerprint,
-} from './live-acceptance-capacity-guards.ts';
+import { assertCapacityAcceptancePolicyUnchanged,capacityAcceptancePolicyFingerprint } from './live-acceptance-capacity-guards.ts';
 import { createLocalCapacityAcceptanceScope } from './live-acceptance-capacity-scope.ts';
 import { verifyCapacityAcceptanceTerminal } from './live-acceptance-capacity-terminal.ts';
 type LiveEnv = LiveAcceptanceEnv; const configuredValue = configuredLiveAcceptanceValue;

@@ -1,5 +1,6 @@
 export * from './allocation.ts';
 export * from './artifacts.ts';
+export * from './authoring/index.ts';
 export * from './cooperative-planning.ts';
 export * from './planning-graph.ts';
 export * from './contracts/index.ts';

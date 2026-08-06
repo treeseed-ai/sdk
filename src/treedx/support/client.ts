@@ -1,5 +1,5 @@
 import * as extractedMethods from "../client/methods.ts";
-import type { TreeDxWriteFilesRequest, TreeDxWriteFilesResult } from '../types.ts';
+import type { TreeDxChangesetReceipt, TreeDxChangesetRequest, TreeDxWriteFilesRequest, TreeDxWriteFilesResult } from '../types.ts';
 import type { SdkGraphSearchResult,TreeDxArtifact,TreeDxArtifactCleanupRequest,TreeDxArtifactCleanupResult,TreeDxArtifactDeleteRequest,TreeDxArtifactDownload,TreeDxArtifactExportRequest,TreeDxArtifactGetRequest,TreeDxArtifactListRequest,TreeDxAuditEvent,TreeDxAuthMode,TreeDxBlob,TreeDxBlobDeleteRequest,TreeDxBlobDownload,TreeDxBlobDownloadRequest,TreeDxBlobMutationResult,TreeDxBlobReadRequest,TreeDxBlobUploadAbortRequest,TreeDxBlobUploadCompleteRequest,TreeDxBlobUploadCreateRequest,TreeDxBlobUploadPart,TreeDxBlobUploadPartRequest,TreeDxBlobUploadRequest,TreeDxBlobUploadSession,TreeDxBlobWriteRequest,TreeDxCapabilityGrant,TreeDxClientOptions,TreeDxCommitRequest,TreeDxCommitResult,TreeDxContextRequest,TreeDxContextResult,TreeDxCreateWorkspaceRequest,TreeDxCtxParseRequest,TreeDxCtxParseResult,TreeDxDeepHealth,TreeDxDeleteFileRequest,TreeDxDiff,TreeDxEffectiveScope,TreeDxEffectiveScopeRequest,TreeDxExecRequest,TreeDxExecResult,TreeDxFederatedContextRequest,TreeDxFederatedContextResult,TreeDxFederatedGraphRequest,TreeDxFederatedGraphResult,TreeDxFederatedQueryRequest,TreeDxFederatedQueryResult,TreeDxFederatedSearchRequest,TreeDxFederatedSearchResult,TreeDxFederationQueryPlan,TreeDxFederationQueryPlanRequest,TreeDxFetchRemoteRequest,TreeDxFetchRemoteResult,TreeDxFile,TreeDxFileMutationResult,TreeDxGraphNodeRequest,TreeDxGraphQueryRequest,TreeDxGraphQueryResult,TreeDxGraphRefreshJob,TreeDxGraphRefreshJobRequest,TreeDxGraphRefreshRequest,TreeDxGraphRefreshResult,TreeDxGraphRelatedRequest,TreeDxGraphSearchRequest,TreeDxGraphSubgraphRequest,TreeDxHealth,TreeDxListTreeRequest,TreeDxMetrics,TreeDxMigration,TreeDxMigrationRequest,TreeDxMirrorHealthRequest,TreeDxMirrorHealthResult,TreeDxMirrorPromotionRequest,TreeDxMirrorPromotionResult,TreeDxMirrorSyncRequest,TreeDxMirrorSyncResult,TreeDxNode,TreeDxOrphanRefDiscardRequest,TreeDxOrphanRefDiscardResult,TreeDxPatchFileRequest,TreeDxPushRequest,TreeDxPushResult,TreeDxReadFileRequest,TreeDxReadiness,TreeDxRef,TreeDxRefPromotionRequest,TreeDxRefPromotionResult,TreeDxRefRetirementRequest,TreeDxRefRetirementResult,TreeDxRegisterRepositoryRequest,TreeDxRepository,TreeDxRepositoryPathsRequest,TreeDxRepositoryPlacement,TreeDxRepositoryQueryRequest,TreeDxRepositoryQueryResult,TreeDxRepositoryReadRequest,TreeDxRepositorySearchRequest,TreeDxSearchIndexCompactRequest,TreeDxSearchIndexCompactResult,TreeDxSearchIndexRefreshRequest,TreeDxSearchIndexRefreshResult,TreeDxSearchIndexStatus,TreeDxSearchIndexStatusRequest,TreeDxSearchRequest,TreeDxSearchResult,TreeDxSnapshot,TreeDxSnapshotBuildRequest,TreeDxStatus,TreeDxStorageBackupRequest,TreeDxStorageBackupResult,TreeDxStorageCompactRequest,TreeDxStorageCompactResult,TreeDxStorageMigration,TreeDxStorageMigrationPlanRequest,TreeDxStorageMigrationRollbackRequest,TreeDxStorageRestoreRequest,TreeDxStorageRestoreResult,TreeDxStorageRestoreVerifyRequest,TreeDxTreeEntry,TreeDxWhoami,TreeDxWorkspace,TreeDxWorkspaceAbandonResult,TreeDxWorkspaceRequest,TreeDxWriteFileRequest,} from '../types.ts';
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 export function normalizeBaseUrl(baseUrl: string) {
@@ -138,6 +138,7 @@ export interface TreeDxClient {
     request<T>(method: HttpMethod, path: string, body?: unknown, options?: {
         query?: Record<string, string | number | boolean | null | undefined>;
         tokenRequired?: boolean;
+		gzipThresholdBytes?: number;
     }): Promise<T>;
     requestBinary(path: string, body: unknown, options?: {
         query?: Record<string, string | number | boolean | null | undefined>;
@@ -228,6 +229,7 @@ export interface TreeDxClient {
     readFile(input: TreeDxReadFileRequest): Promise<TreeDxFile>;
     writeFile(input: TreeDxWriteFileRequest): Promise<TreeDxFileMutationResult>;
     writeFiles(input: TreeDxWriteFilesRequest): Promise<TreeDxWriteFilesResult>;
+    applyChangeset(input: TreeDxChangesetRequest): Promise<TreeDxChangesetReceipt>;
     patchFile(input: TreeDxPatchFileRequest): Promise<TreeDxFileMutationResult>;
     deleteFile(input: TreeDxDeleteFileRequest): Promise<TreeDxFileMutationResult>;
     readBlob(input: TreeDxBlobReadRequest): Promise<TreeDxBlob>;
@@ -333,6 +335,7 @@ TreeDxClient.prototype.listTree = extractedMethods.listTreeMethod;
 TreeDxClient.prototype.readFile = extractedMethods.readFileMethod;
 TreeDxClient.prototype.writeFile = extractedMethods.writeFileMethod;
 TreeDxClient.prototype.writeFiles = extractedMethods.writeFilesMethod;
+TreeDxClient.prototype.applyChangeset = extractedMethods.applyChangesetMethod;
 TreeDxClient.prototype.patchFile = extractedMethods.patchFileMethod;
 TreeDxClient.prototype.deleteFile = extractedMethods.deleteFileMethod;
 TreeDxClient.prototype.readBlob = extractedMethods.readBlobMethod;

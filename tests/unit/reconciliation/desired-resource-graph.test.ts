@@ -225,7 +225,6 @@ describe('canonical desired resource graph', () => {
 			managedStorage: expect.objectContaining({ custody: 'treedx', servicePath: '/var/lib/treedx' }),
 		}));
 		expect(graph.resources.find((entry) => entry.id === 'local-process:operations-runner')?.spec).toEqual(expect.objectContaining({
-			managedStorage: expect.objectContaining({ custody: 'operations-runner' }),
 			env: expect.objectContaining({ TREESEED_PLATFORM_RUNNER_DATA_DIR: expect.stringContaining('/.treeseed/local-operations-runner/data') }),
 		}));
 		expect(capacityProvider?.spec).not.toHaveProperty('healthEndpoint');

@@ -122,6 +122,7 @@ export function beamPackageAdapter(root: string, dir: string): PackageAdapter | 
 			requiredSecrets: stringArray(manifest?.requiredSecrets),
 			requiredVariables: stringArray(manifest?.requiredVariables),
 			workflowTemplateVersion: stringValue(manifest?.workflowTemplateVersion) ?? null,
+			workflowDependencies: stringArray(manifest?.workflowDependencies),
 			...(projectArchitecture
 				? {
 					projectArchitecture,

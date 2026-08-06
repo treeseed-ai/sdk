@@ -24,28 +24,6 @@ type PlatformOperationPollResult
 } from '../operations/platform-operations.ts';
 
 export {
-PLATFORM_CONTENT_COLLECTIONS,
-PLATFORM_WORK_CONTENT_COLLECTIONS,
-createPlatformRepositoryClaim,
-derivePlatformRepositoryKey,
-executePlatformRepositoryOperation,
-normalizePlatformContentInput,
-normalizePlatformRelationArray,
-platformContentRelationPolicy,
-resolvePlatformRepositoryWorkspacePath,
-slugifyPlatformContent,type NormalizedPlatformContentInput,type PlatformContentCollection,
-type PlatformRepositoryClaim,
-type PlatformRepositoryClaimInput,
-type PlatformRepositoryDescriptor,
-type PlatformRepositoryOperationInput,
-type PlatformRepositoryOperationOptions,
-type PlatformRepositoryOperationResult,
-type PlatformRepositoryPathPolicy,
-type PlatformRepositoryVerificationCommand,
-type PlatformRepositoryVerificationResult
-} from '../operations/repository-operations.ts';
-
-export {
 cancelGitHubWorkflowRun,
 formatGitHubWorkflowFailure,
 getGitHubWorkflowFileStatus,

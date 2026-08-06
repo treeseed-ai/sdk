@@ -76,6 +76,34 @@ async function main() {
 	process.env.TREESEED_WORKFLOW_ACTION = options.action;
 	process.env.TREESEED_WORKFLOW_PLANE ||= 'web';
 	writeStatus(`start action=${options.action} environment=${options.environment ?? '(auto)'}`);
+	if (options.action === 'publish_content') {
+		const { reconcileContentPublication } = await import('../../src/platform/published-content/reconcile-content-publication.ts');
+		const environment = options.environment ?? 'staging';
+		const validateOnly = options.planOnly;
+		const required = (value: string | undefined, name: string) => {
+			if (!value?.trim()) throw new Error(`${name} is required.`);
+			return value.trim();
+		};
+		const result = await reconcileContentPublication({
+			projectRoot: tenantRoot,
+			contentPath: process.env.TREESEED_CONTENT_PATH ?? 'src/content',
+			teamId: required(process.env.TREESEED_TEAM_ID, 'TREESEED_TEAM_ID'),
+			projectId: options.projectId ?? required(process.env.TREESEED_PROJECT_ID, 'TREESEED_PROJECT_ID'),
+			sourceCommit: required(process.env.GITHUB_SHA ?? process.env.TREESEED_SOURCE_COMMIT, 'source commit'),
+			ref: required(process.env.GITHUB_REF_NAME ?? process.env.TREESEED_SOURCE_REF, 'source ref'),
+			channel: options.previewId ? 'preview' : environment === 'prod' || environment === 'production' ? 'production' : 'staging',
+			validateOnly,
+			...(!validateOnly ? { r2: {
+				accountId: required(process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID, 'TREESEED_CLOUDFLARE_ACCOUNT_ID'),
+				bucket: required(process.env.TREESEED_CONTENT_BUCKET_NAME, 'TREESEED_CONTENT_BUCKET_NAME'),
+				accessKeyId: required(process.env.TREESEED_R2_ACCESS_KEY_ID, 'TREESEED_R2_ACCESS_KEY_ID'),
+				secretAccessKey: required(process.env.TREESEED_R2_SECRET_ACCESS_KEY, 'TREESEED_R2_SECRET_ACCESS_KEY'),
+			} } : {}),
+		});
+		process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+		writeStatus('complete.');
+		return;
+	}
 	writeStatus('loading project platform module...');
 	const { resolveScope, runProjectPlatformAction } = await import('../../src/operations/services/projects/projects-core/project-platform.ts');
 	writeStatus('project platform module loaded.');

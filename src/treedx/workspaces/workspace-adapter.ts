@@ -1,6 +1,8 @@
 import { TreeDxClient } from '../support/client.ts';
 import { TreeDxApiError } from '../support/errors.ts';
 import type {
+TreeDxChangesetReceipt,
+TreeDxChangesetRequest,
 TreeDxCommitRequest,
 TreeDxCommitResult,
 TreeDxCreateWorkspaceRequest,
@@ -54,6 +56,10 @@ export class TreeDxWorkspaceAdapter {
 
 	writeFile(path: string, content: string, options: Omit<TreeDxWriteFileRequest, 'workspaceId' | 'path' | 'content'> = {}): Promise<TreeDxFileMutationResult> {
 		return this.options.client.writeFile({ ...options, workspaceId: this.requireWorkspaceId(), path, content });
+	}
+
+	applyChangeset(input: Omit<TreeDxChangesetRequest, 'workspaceId'>): Promise<TreeDxChangesetReceipt> {
+		return this.options.client.applyChangeset({ ...input, workspaceId: this.requireWorkspaceId() });
 	}
 
 	patchFile(path: string, patch: string, options: Omit<TreeDxPatchFileRequest, 'workspaceId' | 'path' | 'patch'> = {}): Promise<TreeDxFileMutationResult> {

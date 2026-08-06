@@ -95,6 +95,7 @@ export type PackageManifestDocument = {
 	requiredSecrets?: unknown;
 	requiredVariables?: unknown;
 	workflowTemplateVersion?: unknown;
+	workflowDependencies?: unknown;
 	projectArchitecture?: unknown;
 	contentContributions?: unknown;
 	capabilities?: unknown;

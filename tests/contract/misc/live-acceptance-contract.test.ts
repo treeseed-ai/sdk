@@ -18,9 +18,9 @@ const reconcileRoot = fileURLToPath(new URL('../../../src/reconcile/', import.me
 
 describe('live acceptance scenario contract', () => {
 	it('bounds real-provider starter duration by the same hard assignment-credit budget', () => {
-		expect(localStarterDurationSeconds({ credits: 64 })).toBe(38_400);
-		expect(localStarterDurationSeconds({ credits: 64, durationSeconds: 7_200 })).toBe(7_200);
-		expect(() => localStarterDurationSeconds({ credits: 0 })).toThrow('positive whole number');
+		expect(localStarterDurationSeconds({ agentSeconds: 38_400 })).toBe(38_400);
+		expect(localStarterDurationSeconds({ agentSeconds: 38_400, durationSeconds: 7_200 })).toBe(7_200);
+		expect(() => localStarterDurationSeconds({ agentSeconds: 0, durationSeconds: 0 })).toThrow('positive whole number');
 	});
 
 	it('gives sequential and concurrent portfolio projects distinct run-scoped slugs', () => {
@@ -90,7 +90,7 @@ describe('live acceptance scenario contract', () => {
 	it('authenticates content provenance by manifest event identity rather than one tool implementation', () => {
 		const events = [
 			{ id: 'tool:create-question', toolId: 'treeseed.content.create', status: 'completed', derivedEventTypes: ['question_created', 'content_created'] },
-			{ id: 'tool:write-note', toolId: 'treedx.write_workspace_file', status: 'completed', derivedEventTypes: ['content_created'] },
+			{ id: 'tool:write-note', toolId: 'treedx.apply_workspace_changeset', status: 'completed', derivedEventTypes: ['content_created'] },
 			{ id: 'tool:commit', toolId: 'treeseed.content.commit', status: 'completed', derivedEventTypes: ['content_committed'] },
 		];
 		expect(hasAuthenticatedCommittedContentReferences([
