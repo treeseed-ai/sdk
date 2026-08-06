@@ -20,6 +20,7 @@ import {
 	repositorySaveWaves,
 	runRepositorySaveOrchestrator,
 	runStreamingCommand,
+	syncDirectGitDependencyLockfileEntries,
 	validateStandaloneGitDependencyLockfile,
 	type RepositorySaveNode,
 } from '../../../../src/operations/services/repositories/repository-save-orchestrator.ts';
@@ -93,6 +94,44 @@ it('validates package locks without mutating the live install and synchronizes p
 		expect(lockfile.packages[''].version).toBe('1.0.1');
 		expect(readFileSync(sentinelPath, 'utf8')).toBe('installed dependency state\n');
 	});
+
+it('carries new transitive runtime dependencies into dependent package locks', () => {
+	const root = mkdtempSync(join(tmpdir(), 'treeseed-save-transitive-lock-'));
+	const sdkRoot = resolve(root, 'sdk');
+	const agentRoot = resolve(root, 'agent');
+	writeJson(resolve(sdkRoot, 'package.json'), {
+		name: '@treeseed/sdk', version: '2.0.0', dependencies: { 'crypto-wrapper': '1.0.0' },
+	});
+	writeJson(resolve(sdkRoot, 'package-lock.json'), {
+		lockfileVersion: 3,
+		packages: {
+			'': { name: '@treeseed/sdk', version: '2.0.0', dependencies: { 'crypto-wrapper': '1.0.0' } },
+			'node_modules/crypto-wrapper': { version: '1.0.0', dependencies: { 'crypto-native': '1.0.0' } },
+			'node_modules/crypto-native': { version: '1.0.0' },
+		},
+	});
+	const dependencySpec = 'github:treeseed-ai/sdk#0123456789abcdef0123456789abcdef01234567';
+	const packageJson = { name: '@treeseed/agent', version: '1.0.0', dependencies: { '@treeseed/sdk': dependencySpec } };
+	writeJson(resolve(agentRoot, 'package.json'), packageJson);
+	writeJson(resolve(agentRoot, 'package-lock.json'), {
+		lockfileVersion: 3,
+		packages: {
+			'': packageJson,
+			'node_modules/@treeseed/sdk': { version: '1.0.0', resolved: 'old' },
+		},
+	});
+	const repo = node({ id: agentRoot, name: '@treeseed/agent', path: agentRoot, packageJson });
+
+	expect(syncDirectGitDependencyLockfileEntries(repo, {}, [{
+		packageName: '@treeseed/sdk', sourcePath: sdkRoot, version: '2.0.0', spec: dependencySpec,
+		manifestSpec: dependencySpec, installSpec: dependencySpec, tagName: null,
+		remoteUrl: 'git@github.com:treeseed-ai/sdk.git', mode: 'dev-git-commit',
+	}])).toBe(true);
+	const lock = JSON.parse(readFileSync(resolve(agentRoot, 'package-lock.json'), 'utf8'));
+	expect(lock.packages['node_modules/@treeseed/sdk'].dependencies).toEqual({ 'crypto-wrapper': '1.0.0' });
+	expect(lock.packages['node_modules/crypto-wrapper'].version).toBe('1.0.0');
+	expect(lock.packages['node_modules/crypto-native'].version).toBe('1.0.0');
+});
 
 it('creates deterministic semver dev prerelease versions from branch names', () => {
 		expect(nextDevVersion('0.6.7', 'feature/search filters', new Date('2026-04-26T15:30:00Z'))).toBe(

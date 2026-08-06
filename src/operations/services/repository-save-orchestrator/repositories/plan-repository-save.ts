@@ -57,6 +57,7 @@ export function planRepositorySave(options: RepositorySaveOptions): RepositorySa
 			if (node.kind === 'package' && plannedVersion) {
 				const reference = createPackageDependencyReference({
 					packageName: node.name,
+					sourcePath: node.path,
 					version: plannedVersion,
 					branchMode: node.branchMode === 'package-release-main' ? 'package-release-main' : 'package-dev-save',
 					remoteUrl: node.remoteUrl,

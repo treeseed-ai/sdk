@@ -96,12 +96,64 @@ export function syncDirectGitDependencyLockfileEntries(
 				delete entry.integrity;
 				changed = true;
 			}
+			if (reference.sourcePath) {
+				changed = syncInternalPackageLockMetadata(packageEntries, entry, reference.sourcePath) || changed;
+			}
 		}
 	}
 	if (!changed) return false;
 	writeJson(lockfilePath, lockfile);
 	emitProgress(options, node, 'lockfile', 'Synchronized direct internal Git dependency lockfile entries without npm git preparation.');
 	return true;
+}
+
+function syncInternalPackageLockMetadata(
+	targetEntries: Record<string, Record<string, unknown>>,
+	targetPackage: Record<string, unknown>,
+	sourcePath: string,
+) {
+	const manifestPath = resolve(sourcePath, 'package.json');
+	const sourceLockPath = resolve(sourcePath, 'package-lock.json');
+	if (!existsSync(manifestPath) || !existsSync(sourceLockPath)) return false;
+	const manifest = readJson(manifestPath);
+	const sourceLock = readJson(sourceLockPath);
+	const sourceEntries = sourceLock.packages && typeof sourceLock.packages === 'object' && !Array.isArray(sourceLock.packages)
+		? sourceLock.packages as Record<string, Record<string, unknown>>
+		: null;
+	if (!sourceEntries) return false;
+	let changed = false;
+	for (const field of ['license', 'dependencies', 'optionalDependencies', 'peerDependencies', 'peerDependenciesMeta', 'bin', 'engines']) {
+		const next = manifest[field];
+		if (next === undefined) {
+			if (field in targetPackage) { delete targetPackage[field]; changed = true; }
+		} else if (JSON.stringify(targetPackage[field]) !== JSON.stringify(next)) {
+			targetPackage[field] = structuredClone(next);
+			changed = true;
+		}
+	}
+	const visited = new Set<string>();
+	const importDependency = (dependencyName: string) => {
+		if (visited.has(dependencyName)) return;
+		visited.add(dependencyName);
+		const key = `node_modules/${dependencyName}`;
+		const sourceEntry = sourceEntries[key];
+		if (!sourceEntry) return;
+		if (!targetEntries[key]) {
+			targetEntries[key] = structuredClone(sourceEntry);
+			changed = true;
+		}
+		for (const field of ['dependencies', 'optionalDependencies']) {
+			const dependencies = sourceEntry[field];
+			if (!dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) continue;
+			for (const childName of Object.keys(dependencies)) importDependency(childName);
+		}
+	};
+	for (const field of ['dependencies', 'optionalDependencies']) {
+		const dependencies = manifest[field];
+		if (!dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) continue;
+		for (const dependencyName of Object.keys(dependencies)) importDependency(dependencyName);
+	}
+	return changed;
 }
 
 export function validateStandaloneGitDependencyLockfile(

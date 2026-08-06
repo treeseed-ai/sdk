@@ -218,6 +218,7 @@ export function refreshRepositoryNodePackageMetadata(node: RepositorySaveNode) {
 export function finalizePackageReference(node: RepositorySaveNode, version: string, options: RepositorySaveOptions) {
 	const reference = createPackageDependencyReference({
 		packageName: node.name,
+		sourcePath: node.path,
 		version,
 		branchMode: node.branchMode === 'package-release-main' ? 'package-release-main' : 'package-dev-save',
 		remoteUrl: node.remoteUrl,
