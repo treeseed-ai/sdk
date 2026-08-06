@@ -34,7 +34,7 @@ describe('portable agent-capacity static architecture', () => {
 
 	it('advertises only canonical execution providers and built-in handlers', () => {
 		const source = readFileSync(resolve(packageRoot, 'src/entrypoints/models/plugin-default.ts'), 'utf8');
-		expect(BUILT_IN_AGENT_EXECUTION_PROVIDER_IDS).toEqual(['codex', 'copilot', 'jira', 'github_issues', 'discord', 'workflow']);
+		expect(BUILT_IN_AGENT_EXECUTION_PROVIDER_IDS).toEqual(['codex', 'opencode', 'copilot', 'jira', 'github_issues', 'discord', 'workflow']);
 		expect(source).toContain('execution: [...BUILT_IN_AGENT_EXECUTION_PROVIDER_IDS]');
 		for (const handler of ['writer', 'actor', 'estimate', 'releaser', 'reporter']) {
 			expect(source).toContain(`'${handler}'`);

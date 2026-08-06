@@ -32,6 +32,8 @@ describe('content operations', () => {
 		expect(ids).toContain('treeseed.questions.create');
 		expect(ids).toContain('treeseed.proposals.create');
 		expect(ids).toContain('treeseed.notes.create');
+		expect(ids).toContain('treeseed.discussion_messages.create');
+		expect(ids).not.toContain('treeseed.discussion-messages.create');
 		expect(ids).toContain('treeseed.books.add_knowledge');
 		expect(ids).toContain('treeseed.content.link_note');
 	});
