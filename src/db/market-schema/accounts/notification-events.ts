@@ -41,7 +41,8 @@ export const notificationEmailDeliveries = pgTable('notification_email_deliverie
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [index('idx_notification_email_deliveries_due').on(table.status, table.dueAt)]);
 
-export const creditConversionProfiles = pgTable('credit_conversion_profiles', {
+/** Historical evidence only. New admission and settlement never read these rows. */
+export const legacyCreditConversionProfiles = pgTable('credit_conversion_profiles', {
 	id: text('id').primaryKey(),
 	taskSignature: text('task_signature').notNull(),
 	executionProfileId: text('execution_profile_id').notNull().default('standard-code-model'),

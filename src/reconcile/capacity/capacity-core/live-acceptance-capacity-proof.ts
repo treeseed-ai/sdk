@@ -127,14 +127,14 @@ export async function runCapacityProviderAssignmentProof(input: {
 		status: 'open',
 		capabilities: ['planning', 'repo_read', 'agent_mode_run', 'usage_report'],
 		grants: [],
-		nativeLimits: { availableCredits: 30, maxConcurrentRunners: 1, wallMinutes: { session: 30 } },
+		nativeLimits: { availableAgentSeconds: 1_800, maxConcurrentRunners: 1, wallMinutes: { session: 30 } },
 		runnerPressure: { activeRunners: 0, maxConcurrentRunners: 1 },
 		constraints: { liveAcceptance: true, outboundOnly: true },
 		metadata,
 		executionProviders: [{
 			id: 'codex', adapter: 'codex', status: 'available',
 			capabilities: ['planning', 'agent_mode_run', 'repo_read', 'usage_report'],
-			maxConcurrentRunners: 1, activeRunners: 0, nativeLimits: { availableCredits: 30 }, lanes: [],
+			maxConcurrentRunners: 1, activeRunners: 0, nativeLimits: { availableAgentSeconds: 1_800 }, lanes: [],
 		}],
 	});
 	sessionIdForCleanup = String(availabilitySession.payload.id ?? '');
@@ -172,8 +172,8 @@ export async function runCapacityProviderAssignmentProof(input: {
 			laneIds: [],
 			capabilities: ['planning', 'agent_mode_run', 'repo_read', 'usage_report'],
 			allowedModes: ['planning'],
-			dailyCreditLimit: 10,
-			monthlyCreditLimit: 10,
+			dailyAgentSecondsLimit: 1_800,
+			monthlyAgentSecondsLimit: 1_800,
 			maxConcurrentAssignments: 1,
 			metadata,
 		}, `capacity-acceptance:${input.runId}:grant-create`);
@@ -226,14 +226,14 @@ export async function runCapacityProviderAssignmentProof(input: {
 			teamId: config.teamId,
 			grantScope: typeof acceptanceGrant.grantScope === 'string' ? acceptanceGrant.grantScope : 'project',
 		}],
-		nativeLimits: { availableCredits: 30, maxConcurrentRunners: 1, wallMinutes: { session: 30 } },
+		nativeLimits: { availableAgentSeconds: 1_800, maxConcurrentRunners: 1, wallMinutes: { session: 30 } },
 		runnerPressure: { activeRunners: 0, maxConcurrentRunners: 1 },
 		constraints: { liveAcceptance: true, outboundOnly: true },
 		metadata,
 		executionProviders: [{
 			id: 'codex', adapter: 'codex', status: 'available',
 			capabilities: ['planning', 'agent_mode_run', 'repo_read', 'usage_report'],
-			maxConcurrentRunners: 1, activeRunners: 0, nativeLimits: { availableCredits: 30 }, lanes: [],
+			maxConcurrentRunners: 1, activeRunners: 0, nativeLimits: { availableAgentSeconds: 1_800 }, lanes: [],
 		}],
 	});
 	const sessionId = String(availabilitySession.payload.id ?? '');
@@ -249,7 +249,7 @@ export async function runCapacityProviderAssignmentProof(input: {
 				projects: [config.projectSlug || config.projectId],
 				durationSeconds: 1200,
 				allocationSetId: activeAllocation.id,
-				availableCredits: 10,
+				availableSeconds: 1_200,
 				metadata,
 			},
 		});
@@ -336,8 +336,8 @@ export async function runCapacityProviderAssignmentProof(input: {
 		allocationSetId: activeAllocation.id,
 		environment: input.environment,
 		status: 'active',
-		availableCredits: 10,
-		envelope: { totalCredits: 10, availableCredits: 10, metadata },
+		availableSeconds: 600,
+		envelope: { availableSeconds: 600, metadata },
 		metadata: { ...metadata, grantId: String(acceptanceGrant.id) },
 	}, `live-acceptance:${input.runId}:workday:${workDayId}`);
 	workdayIdForCleanup = workDayId;
@@ -352,7 +352,7 @@ export async function runCapacityProviderAssignmentProof(input: {
 		projectAgentClassId: agentClassId,
 		executionProviderId: 'codex',
 		workDayId,
-		requestedCredits: 1,
+		requestedSeconds: 300,
 		mode,
 		capacityEnvelope: {
 			teamId: config.teamId,
@@ -397,7 +397,7 @@ export async function runCapacityProviderAssignmentProof(input: {
 		}
 		const staleLeaseToken = leased.leaseToken ?? leased.payload.leaseToken ?? null;
 		if (!staleLeaseToken) throw new Error(`Capacity acceptance leased stale diagnostic ${leasedId} without a lease token.`);
-		await providerClient.settleAssignment(leasedId, { actualCredits: 0, metadata: { ...metadata, retiredStaleAcceptanceAssignment: true } }, `capacity-acceptance-stale-settlement:${leasedId}`);
+		await providerClient.settleAssignment(leasedId, { activeSeconds: 0, elapsedSeconds: 0, metadata: { ...metadata, retiredStaleAcceptanceAssignment: true } }, `capacity-acceptance-stale-settlement:${leasedId}`);
 		await providerClient.completeAssignment(leasedId, {
 			runnerId,
 			leaseToken: staleLeaseToken,
@@ -430,7 +430,8 @@ export async function runCapacityProviderAssignmentProof(input: {
 		selectedInput: { kind: 'capacity_acceptance_diagnostic', runId: input.runId, mode },
 		outputs: { summary: 'Capacity acceptance diagnostic completed.', runId: input.runId },
 		usageActual: {
-			actualCredits: 0,
+			activeSeconds: 0,
+			elapsedSeconds: 0,
 			nativeUsage: { nativeUnit: 'request', amount: 1, source: 'capacity_acceptance' },
 			metadata,
 		},
@@ -441,7 +442,8 @@ export async function runCapacityProviderAssignmentProof(input: {
 	if (!modeRunId) throw new Error('Capacity acceptance mode-run creation did not return an id.');
 	await providerClient.settleAssignment(assignmentId, {
 		modeRunId,
-		actualCredits: 0.25,
+		activeSeconds: 1,
+		elapsedSeconds: 1,
 		providerUnits: 1,
 		metadata,
 	}, `capacity-acceptance-settlement:${input.runId}:${assignmentId}`);

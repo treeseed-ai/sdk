@@ -22,7 +22,7 @@ const OBJECTIVE_ID = 'ship-the-first-guided-change';
 export function engineeringStarterCapacityConfig(runId: string, exactBaseRef: string): LocalStarterCapacityConfig {
 	return {
 		starter: 'engineering', repositoryName: 'treeseed-starter-engineering', agentPaths: AGENTS,
-		capabilities: ENGINEERING_STARTER_CAPABILITIES, allowedModes: ['planning', 'acting'], credits: 64,
+		capabilities: ENGINEERING_STARTER_CAPABILITIES, allowedModes: ['planning', 'acting'], agentSeconds: 3_600,
 		parameters: ({ projectId }) => ({
 			engineeringWorkflows: [{
 				schemaVersion: 1, id: `engineering-workflow:${runId}`, projectId,

@@ -44,8 +44,12 @@ export interface CapacityReservation {
 	workDayId: string | null;
 	taskId: string | null;
 	state: CapacityReservationState;
-	reservedCredits: number;
-	consumedCredits: number;
+	requestedSeconds: number;
+	reservedSeconds: number;
+	activeSeconds: number;
+	elapsedSeconds: number;
+	releasedSeconds: number;
+	overrunSeconds: number;
 	nativeUnit: string | null;
 	reservedNativeAmount: number | null;
 	consumedNativeAmount: number | null;
@@ -79,7 +83,8 @@ export interface CapacityLedgerEntry {
 	workDayId: string | null;
 	taskId: string | null;
 	phase: CapacityLedgerPhase;
-	credits: number;
+	activeSeconds: number;
+	elapsedSeconds: number;
 	providerUnits: number | null;
 	usd: number | null;
 	source: string;
@@ -132,6 +137,7 @@ export interface CapacityUsageActual {
 	inputTokens: number | null;
 	outputTokens: number | null;
 	cachedInputTokens: number | null;
+	reasoningTokens: number | null;
 	quotaMinutes: number | null;
 	wallMinutes: number | null;
 	filesOpened: number | null;
@@ -140,10 +146,9 @@ export interface CapacityUsageActual {
 	diffLinesRemoved: number | null;
 	testRuns: number | null;
 	retryCount: number | null;
-	actualCredits: number;
+	activeSeconds: number;
+	elapsedSeconds: number;
 	actualUsd: number | null;
-	creditFormulaVersion: string;
-	actualCreditSource: string;
 	nativeUsage: NativeUsageObservation | Record<string, unknown>;
 	metadata: Record<string, unknown>;
 	createdAt: string;

@@ -1,5 +1,4 @@
 import { ProviderProtocolClient } from '../../capacity/providers/capacity-provider.ts';
-import { validateAgentArtifactContract } from '../../agent-capacity/validation/agent-artifact.ts';
 import { MarketClient } from '../../entrypoints/clients/market-client.ts';
 import {
 	provisionLocalCapacityAcceptanceProvider,
@@ -17,7 +16,6 @@ import { refreshAgentLabWorkday,verifyCompletedAgentLabAssignments } from './wor
 import { resolveTeamAgentLabRuntime } from './runtime/team-scope.ts';
 import { agentLabDiagnostic, localAgentLabApiConfig, withAgentLabDiagnostic as withDiagnostic } from './runtime/diagnostics.ts';
 import { resolveAgentLabInitiator } from './runtime/metadata.ts';
-import { parse as parseYaml } from 'yaml';
 
 type Row = Record<string, unknown>;
 type AssignmentExecutor = (input: CapacityAcceptanceExecutionInput) => Promise<CapacityAcceptanceExecutionResult>;
@@ -86,29 +84,6 @@ async function resolveGuideSelection(input: {
 		ref: resolvedRef, paths: agentPaths, encoding: 'utf8', parseFrontmatter: true,
 	});
 	const agentFiles = Array.isArray(record(agentFilesResponse.payload).files) ? record(agentFilesResponse.payload).files as unknown[] : [];
-	const contractKinds = new Map<string,'artifact' | 'signal'>();
-	for (const fileValue of agentFiles) {
-		const profiles = record(record(fileValue).frontmatter).activityProfiles;
-		for (const profileValue of Object.values(record(profiles))) {
-			const profile = record(profileValue);
-			for (const owner of [record(profile.inputs),record(profile.outputs)]) {
-				for (const id of Array.isArray(owner.artifactContracts) ? owner.artifactContracts.map(text).filter(Boolean) : []) contractKinds.set(id,'artifact');
-				for (const id of Array.isArray(owner.signalContracts) ? owner.signalContracts.map(text).filter(Boolean) : []) contractKinds.set(id,'signal');
-			}
-		}
-	}
-	if (contractKinds.size) {
-		const contractPaths = [...contractKinds.keys()].map((id) => `.treeseed/agents/artifacts/${id}.yaml`);
-		const response = await input.client.treeDxReadRepositoryFiles(input.projectId,input.repositoryId,{ ref: resolvedRef, paths: contractPaths, encoding: 'utf8', parseFrontmatter: false });
-		const contractPayload = record(response.payload);
-		const contractFiles = Array.isArray(contractPayload.files) ? contractPayload.files.map(record) : [];
-		if (text(contractPayload.resolvedRef) !== resolvedRef || contractFiles.length !== contractPaths.length) throw new Error('Agent Lab artifact and signal contracts did not resolve completely at the selected immutable ref.');
-		for (const file of contractFiles) {
-			const parsed = parseYaml(text(file.content)); const validation = validateAgentArtifactContract(parsed);
-			const expected = contractKinds.get(text(record(parsed).id));
-			if (!validation.ok || !expected || record(parsed).kind !== expected) throw new Error(`Agent Lab contract ${text(file.path)} is invalid or referenced with the wrong connector kind.`);
-		}
-	}
 	const agentDefinitions = agentFiles.map((fileValue) => {
 		const file = record(fileValue); const frontmatter = record(file.frontmatter);
 		const profiles = record(frontmatter.activityProfiles);
@@ -144,7 +119,7 @@ function replaceDay(snapshot: AgentLabSnapshot, day: AgentLabWorkdaySnapshot): A
 
 export function createProductionAgentLabExecutor(options: {
 	env: Record<string, string | undefined>;
-	assignmentExecutor: AssignmentExecutor;
+	assignmentExecutor?: AssignmentExecutor;
 	fetchImpl?: typeof fetch;
 }): AgentLabExecutor {
 	return async (input) => {
@@ -185,6 +160,7 @@ export function createProductionAgentLabExecutor(options: {
 		let allocation: Row = {};
 		let teamName = '';
 		const persistentTeam = input.config.scope.kind === 'team';
+		if (!persistentTeam && !options.assignmentExecutor) throw new Error('Ephemeral Agent Lab execution requires an Agent-owned assignment executor.');
 		let cleanupError: unknown = null;
 		const maxConcurrency = Math.max(...input.config.workdays.map((entry) => entry.maxActiveAssignments));
 		try {
@@ -223,12 +199,13 @@ export function createProductionAgentLabExecutor(options: {
 				capabilities, maxConcurrentRunners: maxConcurrency, purpose: 'production-agent-lab',
 			});
 			protocol = new ProviderProtocolClient({ marketUrl: api.apiUrl, accessToken: provider.providerAccessToken, fetchImpl });
-			const executionProvider = { id: 'codex', adapter: 'codex', status: 'available', capabilities, maxConcurrentRunners: maxConcurrency, activeRunners: 0, nativeLimits: { availableCredits: input.config.workdays.reduce((total, entry) => total + entry.availableCredits, 0) }, lanes: [] };
+			const totalAgentSeconds = input.config.workdays.reduce((total, entry) => total + entry.durationSeconds * entry.maxActiveAssignments, 0);
+			const executionProvider = { id: 'codex', adapter: 'codex', status: 'available', capabilities, maxConcurrentRunners: maxConcurrency, activeRunners: 0, nativeLimits: { availableAgentSeconds: totalAgentSeconds }, lanes: [] };
 			let availability: Awaited<ReturnType<ProviderProtocolClient['createAvailabilitySession']>> | null = null;
 			if (!persistentTeam) {
 				availability = await protocol.createAvailabilitySession({
 					environment: 'local', status: 'open', capabilities, grants: [], executionProviders: [executionProvider],
-					nativeLimits: { availableCredits: executionProvider.nativeLimits.availableCredits, maxConcurrentRunners: maxConcurrency },
+					nativeLimits: { availableAgentSeconds: totalAgentSeconds, maxConcurrentRunners: maxConcurrency },
 					runnerPressure: { activeRunners: 0, maxConcurrentRunners: maxConcurrency }, constraints: { isolated: true }, metadata: { agentLab: true, runId: input.runId },
 				});
 				sessionId = text(availability.payload.id);
@@ -236,7 +213,7 @@ export function createProductionAgentLabExecutor(options: {
 				await client.createCapacityGrant(scope.teamId, {
 				schemaVersion: 2, id: grantId, membershipId: provider.membershipId, providerId: provider.providerId,
 				projectId: scope.projectId, environment: 'local', status: 'planned', executionProviderIds: ['codex'], laneIds: [],
-				capabilities, allowedModes: input.config.workdays.some((entry) => !entry.planningOnly) ? ['planning', 'acting'] : ['planning'], dailyCreditLimit: 10_000, monthlyCreditLimit: 10_000,
+				capabilities, allowedModes: input.config.workdays.some((entry) => !entry.planningOnly) ? ['planning', 'acting'] : ['planning'], dailyAgentSecondsLimit: totalAgentSeconds, monthlyAgentSecondsLimit: totalAgentSeconds,
 				maxConcurrentAssignments: maxConcurrency, metadata: { agentLab: true, runId: input.runId },
 				}, `agent-lab:${input.runId}:grant-create`);
 				await client.transitionCapacityGrant(scope.teamId, grantId, 'activate', `agent-lab:${input.runId}:grant-activate`);
@@ -252,7 +229,7 @@ export function createProductionAgentLabExecutor(options: {
 				availability = await protocol.refreshAvailabilitySession(sessionId, {
 				expectedSequence: availability.payload.sequence, environment: 'local', status: 'open', capabilities,
 				grants: [{ grantId, projectId: scope.projectId, teamId: scope.teamId, grantScope: 'project' }], executionProviders: [executionProvider],
-				nativeLimits: { availableCredits: executionProvider.nativeLimits.availableCredits, maxConcurrentRunners: maxConcurrency },
+				nativeLimits: { availableAgentSeconds: totalAgentSeconds, maxConcurrentRunners: maxConcurrency },
 				runnerPressure: { activeRunners: 0, maxConcurrentRunners: maxConcurrency }, constraints: { isolated: true }, metadata: { agentLab: true, runId: input.runId },
 				});
 			}
@@ -279,7 +256,7 @@ export function createProductionAgentLabExecutor(options: {
 					id: workdayRunId, capacityProviderId: provider.providerId, environment: 'local', status: 'running',
 					parameters: {
 						projects: [scope.projectSlug], durationSeconds: config.durationSeconds, allocationSetId: allocation.id,
-						availableCredits: config.availableCredits, maxActiveAssignments: config.maxActiveAssignments,
+						timePolicy: config.timePolicy, planningSession: config.planningSession, maxActiveAssignments: config.maxActiveAssignments,
 						planningOnly: config.planningOnly, agentSelection: { agentSlugs: selection.agentSlugs, mode: 'intersection' },
 						objectiveRefs: config.objectiveRefs,
 						agentLab: { sceneId: input.sceneId, runId: input.runId, scope: input.config.scope.kind, initiatingUser, tests: selection.normalizedTests, resolvedRef: selection.resolvedRef, reportLocation: input.reportPath },
@@ -350,7 +327,7 @@ export function createProductionAgentLabExecutor(options: {
 						if (persistentTeam) {
 							await new Promise((resolve) => setTimeout(resolve, 1_000));
 						} else {
-						const execution = await options.assignmentExecutor({
+						const execution = await options.assignmentExecutor!({
 							runId: `${input.runId}-${config.id}-${iteration}`, apiUrl: api.apiUrl, teamId: scope.teamId, projectId: scope.projectId,
 							providerId: provider.providerId, membershipId: provider.membershipId, credentialId: provider.credentialId,
 							membershipCredential: provider.membershipCredential, providerAccessToken: provider.providerAccessToken,

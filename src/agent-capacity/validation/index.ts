@@ -1,4 +1,6 @@
 export * from './activity-profile.ts';
+export * from './agent-signal.ts';
+export * from './proposal-type.ts';
 export * from './assignment-records.ts';
 export * from './configuration.ts';
 export * from './research-citation.ts';

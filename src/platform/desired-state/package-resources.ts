@@ -121,6 +121,7 @@ export function packageResources(adapter: PackageAdapter, environment: DesiredEn
 			}
 		}
 	}
+	let previousLocalDockerBuild: string | null = null;
 	for (const artifact of adapter.artifacts) {
 		if (artifact.provider !== 'docker') continue;
 		const dockerfile = artifact.dockerfile ?? 'Dockerfile';
@@ -173,15 +174,16 @@ export function packageResources(adapter: PackageAdapter, environment: DesiredEn
 			},
 			source: { type: 'package-adapter', id: packageId },
 		});
+		const dockerBuildId = `docker-image-build:${artifact.name}`;
 		resources.push({
-			id: `docker-image-build:${artifact.name}`,
+			id: dockerBuildId,
 			kind: 'docker-image-build',
 			provider: 'docker',
 			environment,
 			packageId,
 			serviceId: null,
 			logicalName: artifact.name,
-			dependencies: [`package-manifest:${packageId}`],
+			dependencies: [`package-manifest:${packageId}`, ...(environment === 'local' && previousLocalDockerBuild ? [previousLocalDockerBuild] : [])],
 			spec: {
 				packageId,
 				packageRoot: adapter.dir,
@@ -212,6 +214,7 @@ export function packageResources(adapter: PackageAdapter, environment: DesiredEn
 			},
 			source: { type: 'package-adapter', id: packageId },
 		});
+		if (environment === 'local') previousLocalDockerBuild = dockerBuildId;
 	}
 	return resources;
 }

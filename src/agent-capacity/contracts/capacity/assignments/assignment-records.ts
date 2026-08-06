@@ -28,9 +28,13 @@ export interface WorkdayCapacityEnvelope {
 	workDayId?: string | null;
 	environment?: string | null;
 	allocationSetId?: string | null;
-	availableCredits?: number | null;
-	reservedCredits?: number | null;
-	consumedCredits?: number | null;
+	availableSeconds?: number | null;
+	requestedSeconds?: number | null;
+	reservedSeconds?: number | null;
+	activeSeconds?: number | null;
+	elapsedSeconds?: number | null;
+	releasedSeconds?: number | null;
+	overrunSeconds?: number | null;
 	metadata?: Record<string, unknown>;
 }
 
@@ -236,7 +240,8 @@ export interface ProviderAssignmentLifecycleResult {
 export interface AgentModeRunUsageSettlement {
 	capacityUsageActualId: string | null;
 	capacityLedgerEntryId: string | null;
-	actualCredits: number | null;
+	activeSeconds: number | null;
+	elapsedSeconds: number | null;
 	actualUsd: number | null;
 	nativeUsage: Record<string, unknown> | null;
 	metadata: Record<string, unknown>;

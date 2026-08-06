@@ -33,6 +33,78 @@ export const capacityWorkdayEvents = pgTable('capacity_workday_events', {
 	check('chk_capacity_workday_events_status', sql`${table.status} IN ('recorded','active','completed','warning','error','failed')`)
 ]);
 
+export const agentSignals = pgTable('agent_signals', {
+	id: text('id').primaryKey(),
+	contractId: text('contract_id').notNull(),
+	subjectKind: text('subject_kind').notNull(),
+	subjectId: text('subject_id').notNull(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id').notNull(),
+	workdayRunId: text('workday_run_id'),
+	assignmentId: text('assignment_id'),
+	agentId: text('agent_id'),
+	activityType: text('activity_type'),
+	capacityProviderId: text('capacity_provider_id'),
+	causationId: text('causation_id').notNull(),
+	correlationId: text('correlation_id').notNull(),
+	origin: text('origin').notNull(),
+	commitSha: text('commit_sha'),
+	immutableRef: text('immutable_ref'),
+	digest: text('digest'),
+	changedPathsJson: text('changed_paths_json').notNull().default('[]'),
+	changeSummary: text('change_summary'),
+	evidenceRef: text('evidence_ref'),
+	payloadJson: text('payload_json').notNull().default('{}'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_agent_signals_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_agent_signals_project', columns: [table.projectId], foreignColumns: [projects.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_agent_signals_assignment', columns: [table.assignmentId], foreignColumns: [capacityProviderAssignments.id] }).onDelete('restrict'),
+	uniqueIndex('idx_agent_signals_causation').on(table.assignmentId, table.contractId, table.subjectId, table.causationId),
+	index('idx_agent_signals_workday').on(table.workdayRunId, table.contractId, table.createdAt),
+	index('idx_agent_signals_subject').on(table.teamId, table.projectId, table.subjectKind, table.subjectId, table.createdAt),
+	index('idx_agent_signals_commit').on(table.projectId, table.commitSha),
+	check('chk_agent_signals_origin', sql`${table.origin} IN ('treedx-change','deterministic-handler','agent-tool')`),
+]);
+
+export const workdayPlanningSessions = pgTable('workday_planning_sessions', {
+	id: text('id').primaryKey(), teamId: text('team_id').notNull(), workdayRunId: text('workday_run_id').notNull(),
+	graphRevision: text('graph_revision').notNull(), status: text('status').notNull().default('scheduled'),
+	agendaJson: text('agenda_json').notNull().default('{}'), objectivesJson: text('objectives_json').notNull().default('[]'),
+	proposalIdsJson: text('proposal_ids_json').notNull().default('[]'), rounds: integer('rounds').notNull(), currentRound: integer('current_round').notNull().default(0),
+	allocatedSeconds: integer('allocated_seconds').notNull(), reservedSeconds: integer('reserved_seconds').notNull().default(0),
+	startedAt: text('started_at'), deadline: text('deadline').notNull(), completedAt: text('completed_at'),
+	metadataJson: text('metadata_json').notNull().default('{}'), createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_workday_planning_sessions_team', columns: [table.teamId], foreignColumns: [teams.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_workday_planning_sessions_run', columns: [table.workdayRunId], foreignColumns: [capacityWorkdayRuns.id] }).onDelete('restrict'),
+	uniqueIndex('idx_workday_planning_sessions_run').on(table.workdayRunId),
+	check('chk_workday_planning_sessions_status', sql`${table.status} IN ('scheduled','running','completed','failed','cancelled')`),
+]);
+
+export const workdayPlanningParticipants = pgTable('workday_planning_participants', {
+	id: text('id').primaryKey(), sessionId: text('session_id').notNull(), agentId: text('agent_id').notNull(),
+	nodeId: text('node_id').notNull(),
+	projectAgentClassId: text('project_agent_class_id').notNull(), status: text('status').notNull().default('scheduled'),
+	requestedBySignalId: text('requested_by_signal_id'), rationale: text('rationale'), metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_workday_planning_participants_session', columns: [table.sessionId], foreignColumns: [workdayPlanningSessions.id] }).onDelete('cascade'),
+	foreignKey({ name: 'fk_workday_planning_participants_signal', columns: [table.requestedBySignalId], foreignColumns: [agentSignals.id] }).onDelete('restrict'),
+	uniqueIndex('idx_workday_planning_participants_node').on(table.sessionId, table.nodeId),
+	index('idx_workday_planning_participants_agent').on(table.sessionId, table.agentId),
+]);
+
+export const workdayPlanningWaves = pgTable('workday_planning_waves', {
+	id: text('id').primaryKey(), sessionId: text('session_id').notNull(), round: integer('round').notNull(), wave: integer('wave').notNull(),
+	status: text('status').notNull().default('scheduled'), snapshotRef: text('snapshot_ref').notNull(), snapshotJson: text('snapshot_json').notNull().default('{}'), assignmentIdsJson: text('assignment_ids_json').notNull().default('[]'),
+	startedAt: text('started_at'), completedAt: text('completed_at'), createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	foreignKey({ name: 'fk_workday_planning_waves_session', columns: [table.sessionId], foreignColumns: [workdayPlanningSessions.id] }).onDelete('cascade'),
+	uniqueIndex('idx_workday_planning_waves_order').on(table.sessionId, table.round, table.wave),
+]);
+
 export const capacityWorkdaySchedules = pgTable('capacity_workday_schedules', {
 	id: text('id').primaryKey(),
 	teamId: text('team_id').notNull(),
@@ -44,7 +116,8 @@ export const capacityWorkdaySchedules = pgTable('capacity_workday_schedules', {
 	cadenceSeconds: integer('cadence_seconds').notNull(),
 	durationSeconds: integer('duration_seconds').notNull(),
 	maxActiveAssignments: integer('max_active_assignments').notNull(),
-	availableCredits: real('available_credits').notNull(),
+	availableSeconds: integer('available_seconds').notNull(),
+	timePolicyJson: text('time_policy_json').notNull().default('{}'),
 	planningOnly: integer('planning_only').notNull().default(1),
 	publicationPolicyJson: text('publication_policy_json').notNull().default('{}'),
 	lastRunId: text('last_run_id'),
@@ -60,7 +133,7 @@ export const capacityWorkdaySchedules = pgTable('capacity_workday_schedules', {
 	check('chk_capacity_workday_schedules_cadence', sql`${table.cadenceSeconds} >= 60`),
 	check('chk_capacity_workday_schedules_duration', sql`${table.durationSeconds} >= 60`),
 	check('chk_capacity_workday_schedules_concurrency', sql`${table.maxActiveAssignments} >= 1`),
-	check('chk_capacity_workday_schedules_credits', sql`${table.availableCredits} > 0`),
+	check('chk_capacity_workday_schedules_time', sql`${table.availableSeconds} > 0`),
 	check('chk_capacity_workday_schedules_planning', sql`${table.planningOnly} IN (0,1)`),
 	check('chk_capacity_workday_schedules_version', sql`${table.stateVersion} >= 1`),
 ]);
@@ -120,8 +193,8 @@ export const agentCapacityPlans = pgTable('agent_capacity_plans', {
 	scopeHash: text('scope_hash').notNull(),
 	allocationSetId: text('allocation_set_id'),
 	workDayId: text('work_day_id'),
-	expectedCredits: real('expected_credits').notNull().default(0),
-	highCredits: real('high_credits').notNull().default(0),
+	expectedSeconds: integer('expected_seconds').notNull().default(0),
+	highSeconds: integer('high_seconds').notNull().default(0),
 	workUnitsJson: text('work_units_json').notNull().default('[]'),
 	capabilityNeedsJson: text('capability_needs_json').notNull().default('[]'),
 	environmentNeedsJson: text('environment_needs_json').notNull().default('[]'),
@@ -144,7 +217,7 @@ export const agentCapacityPlans = pgTable('agent_capacity_plans', {
 	index('idx_agent_capacity_plans_project').on(table.projectId, table.status, table.createdAt),
 	index('idx_agent_capacity_plans_workday').on(table.workDayId, table.status, table.createdAt),
 	check('chk_agent_capacity_plans_status', sql`${table.status} IN ('draft','accepted','revision_requested','deferred','scheduled','active','completed','superseded')`),
-	check('chk_agent_capacity_plans_credits', sql`${table.expectedCredits} >= 0 AND ${table.highCredits} >= ${table.expectedCredits}`)
+	check('chk_agent_capacity_plans_time', sql`${table.expectedSeconds} >= 0 AND ${table.highSeconds} >= ${table.expectedSeconds}`)
 ]);
 
 export const capacityWorkdayDemands = pgTable('capacity_workday_demands', {
@@ -154,7 +227,7 @@ export const capacityWorkdayDemands = pgTable('capacity_workday_demands', {
 	projectAgentClassId: text('project_agent_class_id').notNull(), agentId: text('agent_id'),
 	handlerId: text('handler_id').notNull(), activityType: text('activity_type').notNull(),
 	decisionId: text('decision_id'), capacityPlanId: text('capacity_plan_id'), status: text('status').notNull().default('pending'),
-	priority: integer('priority').notNull().default(0), requestedCredits: real('requested_credits').notNull(),
+	priority: integer('priority').notNull().default(0), requestedSeconds: integer('requested_seconds').notNull(),
 	idempotencyKey: text('idempotency_key').notNull(), claimToken: text('claim_token'), assignmentId: text('assignment_id'),
 	payloadJson: text('payload_json').notNull().default('{}'), metadataJson: text('metadata_json').notNull().default('{}'),
 	availableAt: text('available_at').notNull(), claimedAt: text('claimed_at'), admittedAt: text('admitted_at'),
@@ -175,7 +248,7 @@ export const capacityWorkdayDemands = pgTable('capacity_workday_demands', {
 	check('chk_capacity_workday_demands_mode', sql`${table.mode} IN ('planning','acting')`),
 	check('chk_capacity_workday_demands_status', sql`${table.status} IN ('pending','claimed','admitted','completed','blocked','cancelled','superseded')`),
 	check('chk_capacity_workday_demands_source', sql`${table.sourceType} IN ('objective','question','proposal','decision-review','knowledge-gap','release-readiness','idle-intent','planning-input','capacity-plan','assignment-completion','assignment-blockage','workday-summary','handoff','research-workflow')`),
-	check('chk_capacity_workday_demands_credits', sql`${table.requestedCredits} > 0`),
+	check('chk_capacity_workday_demands_time', sql`${table.requestedSeconds} > 0`),
 ]);
 
 export const capacityWorkdayParticipationEntries = pgTable('capacity_workday_participation_entries', {

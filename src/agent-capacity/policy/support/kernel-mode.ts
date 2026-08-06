@@ -25,7 +25,8 @@ export function deriveModeRunUsageSettlement(actual: CapacityUsageActual): Agent
 	return {
 		capacityUsageActualId: actual.id,
 		capacityLedgerEntryId: typeof actual.metadata?.capacityLedgerEntryId === 'string' ? actual.metadata.capacityLedgerEntryId : null,
-		actualCredits: actual.actualCredits,
+		activeSeconds: actual.activeSeconds,
+		elapsedSeconds: actual.elapsedSeconds,
 		actualUsd: actual.actualUsd,
 		nativeUsage: record(actual.nativeUsage),
 		metadata: actual.metadata ?? {},
@@ -64,9 +65,13 @@ export function deriveAgentCapacityEnvelopeFromAssignment(
 		reservationId: typeof envelope.reservationId === 'string' ? envelope.reservationId : assignment.reservationId ?? null,
 		nativeUnit: typeof envelope.nativeUnit === 'string' ? envelope.nativeUnit : null,
 		reservedNativeAmount: numberOrNull(envelope.reservedNativeAmount),
-		availableCredits: numberOrNull(envelope.availableCredits),
-		reservedCredits: numberOrNull(envelope.reservedCredits),
-		consumedCredits: numberOrNull(envelope.consumedCredits),
+		availableSeconds: numberOrNull(envelope.availableSeconds),
+		requestedSeconds: numberOrNull(envelope.requestedSeconds),
+		reservedSeconds: numberOrNull(envelope.reservedSeconds),
+		activeSeconds: numberOrNull(envelope.activeSeconds),
+		elapsedSeconds: numberOrNull(envelope.elapsedSeconds),
+		releasedSeconds: numberOrNull(envelope.releasedSeconds),
+		overrunSeconds: numberOrNull(envelope.overrunSeconds),
 		limits: record(envelope.limits),
 		metadata: record(envelope.metadata),
 	};
@@ -149,22 +154,22 @@ export function validateAgentKernelModeExecutionInput(input: AgentKernelModeExec
 			{ retryable: true },
 		);
 	}
-	if (mode === 'acting' && (!capacity.reservationId || Number(capacity.reservedCredits ?? 0) <= 0)) {
+	if (mode === 'acting' && (!capacity.reservationId || Number(capacity.reservedSeconds ?? 0) <= 0)) {
 		return createAgentKernelModeFallback(
 			'assignment_capacity_not_reserved',
 			`Assignment ${assignment.id} is missing reserved capacity for acting execution.`,
-			{ retryable: true, metadata: { reservationId: capacity.reservationId ?? null, reservedCredits: capacity.reservedCredits ?? null } },
+			{ retryable: true, metadata: { reservationId: capacity.reservationId ?? null, reservedSeconds: capacity.reservedSeconds ?? null } },
 		);
 	}
 	const activityType = String(record(decision.metadata).activityType ?? record(capacity.metadata).activityType ?? '');
 	const deterministicSystemReport = mode === 'planning'
 		&& activityType === 'reporting'
 		&& record(capacity.metadata).deterministicSystemReport === true;
-	if (mode === 'planning' && !deterministicSystemReport && (!capacity.reservationId || Number(capacity.reservedCredits ?? 0) <= 0)) {
+	if (mode === 'planning' && !deterministicSystemReport && (!capacity.reservationId || Number(capacity.reservedSeconds ?? 0) <= 0)) {
 		return createAgentKernelModeFallback(
 			'assignment_capacity_not_reserved',
 			`Assignment ${assignment.id} is missing reserved capacity for planning execution.`,
-			{ retryable: true, metadata: { reservationId: capacity.reservationId ?? null, reservedCredits: capacity.reservedCredits ?? null, activityType: activityType || null } },
+			{ retryable: true, metadata: { reservationId: capacity.reservationId ?? null, reservedSeconds: capacity.reservedSeconds ?? null, activityType: activityType || null } },
 		);
 	}
 	if (mode === 'acting' && !hasAcceptedCapacityPlanProvenance({ assignment, decisionInput: decision, capacityEnvelope: capacity })) {
@@ -242,8 +247,8 @@ export function selectAgentKernelModeDecision(observation: AgentKernelQueueObser
 	const planningReady = Math.max(0, Number(observation.planningReady ?? 0));
 	const actingReady = Math.max(0, Number(observation.actingReady ?? 0));
 	const fallbackReady = Math.max(0, Number(observation.fallbackReady ?? 0));
-	const planningBudget = Number(observation.planningBudgetCredits ?? 0);
-	const actingBudget = Number(observation.actingBudgetCredits ?? 0);
+	const planningBudget = Number(observation.planningBudgetSeconds ?? 0);
+	const actingBudget = Number(observation.actingBudgetSeconds ?? 0);
 	const hasPlanningBudget = !Number.isFinite(planningBudget) || planningBudget > 0;
 	const hasActingBudget = !Number.isFinite(actingBudget) || actingBudget > 0;
 	if (observation.modePreference === 'planning' && planningReady > 0 && hasPlanningBudget) {

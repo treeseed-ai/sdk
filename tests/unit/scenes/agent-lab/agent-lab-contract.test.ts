@@ -26,7 +26,7 @@ function manifest() {
 			scope: { kind: 'team', team: 'team:treeseed', capacityProvider: 'capacity-provider:treeseed/local' }, provider: 'local', executionProvider: 'codex',
 			presentation: 'race-control', timeZone: 'America/New_York', repositories: ['market'],
 			agents: [], agentClasses: [],
-			workdays: [{ id: 'guide', agentTests: ['guide-editorial-cycle'], objectiveRefs: ['objective:harden-documentation-automation-workday-loop'], durationSeconds: 1800, availableCredits: 64, maxActiveAssignments: 4, planningOnly: true, profileInputs: {} }],
+			workdays: [{ id: 'guide', agentTests: ['guide-editorial-cycle'], objectiveRefs: ['objective:harden-documentation-automation-workday-loop'], durationSeconds: 1800, timePolicy: { cooperativePlanningPercent: 90, governedExecutionPercent: 0, reservePercent: 10 }, planningSession: { rounds: 3, assignmentTimeboxSeconds: 300 }, maxActiveAssignments: 4, planningOnly: true, profileInputs: {} }],
 		},
 	};
 }
@@ -57,7 +57,7 @@ function snapshot(): AgentLabSnapshot {
 		evidence: [{ id: 'e1', timestamp: '2026-08-03T14:00:00.000Z', kind: 'tool-call', label: 'TreeDX read', status: 'running', summary: 'Inspecting evidence', detail: { tool: 'treedx.read' } }],
 		signals: [{ code: 'evidence-ready', severity: 'info', message: 'Discovery evidence is ready.', metadata: { source: 'agent_activity_contract' } }],
 		artifacts: [], usage: {}, error: null, assignment: {},
-		credits: { estimated: 0, requested: 0, reserved: 0, actual: 0, released: 0, refunded: 0, overrun: 0 },
+		capacity: { requestedSeconds: 0, reservedSeconds: 0, activeSeconds: 0, elapsedSeconds: 0, releasedSeconds: 0, overrunSeconds: 0, inputTokens: 0, cachedInputTokens: 0, reasoningTokens: 0, outputTokens: 0, costAmount: null, costCurrency: null, nativeUsage: {} },
 	}];
 	return value;
 }
@@ -267,12 +267,12 @@ describe('production Agent Lab scene contract', () => {
 		expect(execution?.signals).toEqual([{ code: 'evidence-ready', severity: 'info', metadata: { source: 'agent_activity_contract' } }]);
 	});
 
-	it('maps requested and durable accounting credits without treating zero as missing', async () => {
+	it('maps requested and durable dimensional accounting without treating zero as missing', async () => {
 		const event = snapshot().workdays[0]!.activity[0]!;
 		const client = { request: async () => ({ entries: [{ id: 'mode-1', mode: 'planning', status: 'completed', metadata_json: { source: 'agent_kernel_mode_runtime' } }], page: { hasMore: false } }) };
-		const [execution] = await collectAgentLabExecutions(client as never, [event as never], [{ id: 'assignment-1', capacityEnvelope: { reservedCredits: 3 }, decisionInput: { input: { capacity: { expectedCredits: 5 } } } }]);
-		expect(execution?.credits).toEqual(expect.objectContaining({ estimated: 5, requested: 3, reserved: 3 }));
-		const [accounted] = applyAgentLabAccounting([execution!], { evidence: { reservations: { items: [{ assignmentId: 'assignment-1', reservedCredits: 3, consumedCredits: 0 }] }, usageActuals: { items: [{ assignmentId: 'assignment-1', actualCredits: 0 }] }, ledgerEntries: { items: [] } } });
-		expect(accounted?.credits).toEqual(expect.objectContaining({ reserved: 3, actual: 0, released: 3 }));
+		const [execution] = await collectAgentLabExecutions(client as never, [event as never], [{ id: 'assignment-1', capacityEnvelope: { requestedSeconds: 300, reservedSeconds: 300 }, decisionInput: { requestedSeconds: 300 } }]);
+		expect(execution?.capacity).toEqual(expect.objectContaining({ requestedSeconds: 300, reservedSeconds: 300 }));
+		const [accounted] = applyAgentLabAccounting([execution!], { evidence: { reservations: { items: [{ assignmentId: 'assignment-1', reservedSeconds: 300, releasedSeconds: 300 }] }, usageActuals: { items: [{ assignmentId: 'assignment-1', activeSeconds: 0, elapsedSeconds: 0 }] }, ledgerEntries: { items: [] } } });
+		expect(accounted?.capacity).toEqual(expect.objectContaining({ reservedSeconds: 300, activeSeconds: 0, releasedSeconds: 300 }));
 	});
 });

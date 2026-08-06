@@ -3,16 +3,18 @@ import { AGENT_ACTIVITY_TYPES,AGENT_HANDLER_KINDS,type AgentActivityProfile,type
 export interface AgentActivityProfileDiagnostic { code: string; path: string; message: string }
 export interface AgentActivityProfileValidation { ok: boolean; diagnostics: AgentActivityProfileDiagnostic[] }
 
-const PROFILE_KEYS = new Set(['activityType', 'enabled', 'handler', 'prompt', 'branchPolicy', 'contentAccess', 'tools', 'inputs', 'outputs', 'planningIntent', 'questionPolicy', 'execution']);
+const PROFILE_KEYS = new Set(['activityType', 'enabled', 'handler', 'prompt', 'branchPolicy', 'contentAccess', 'tools', 'signals', 'outputs', 'planningIntent', 'questionPolicy', 'execution']);
 const PROMPT_KEYS = new Set(['system', 'task', 'templates']);
 const TOOL_KEYS = new Set(['allowed', 'denied']);
-const INPUT_KEYS = new Set(['artifactContracts', 'signalContracts']);
-const OUTPUT_KEYS = new Set(['messageTypes', 'modelMutations', 'artifactContracts', 'signalContracts']);
+const SIGNAL_KEYS = new Set(['subscribesTo', 'publishes']);
+const SUBSCRIPTION_KEYS = new Set(['contract', 'filters', 'cardinality', 'producerPolicy', 'quorum']);
+const OUTPUT_KEYS = new Set(['messageTypes', 'modelMutations']);
 const EXECUTION_KEYS = new Set(['providerPreference', 'maxRuntimeSeconds', 'maxRetries', 'verificationRequired', 'allowedPaths', 'forbiddenPaths']);
 const CONTENT_ACCESS_KEYS = new Set(['read', 'write', 'commit']);
 const CONTENT_SCOPE_KEYS = new Set(['models', 'actions', 'books', 'paths', 'relations']);
 const QUESTION_KEYS = new Set(['defaultAnswerPolicy', 'blockExecutionWhenCreated']);
-const PLANNING_INTENT_KEYS = new Set(['objective', 'artifactKind', 'subjectModel', 'subjectId', 'includeWorkdayArtifacts', 'stage', 'requiresArtifactKinds']);
+const PLANNING_INTENT_KEYS = new Set(['objective', 'artifactKind', 'subjectModel', 'subjectId', 'includeWorkdayArtifacts', 'stage', 'stages', 'requiresArtifactKinds']);
+const PLANNING_STAGE_KEYS = new Set(['stage', 'promptTask', 'signals']);
 const QUESTION_POLICY_KEYS = new Set(['kind', 'teamId', 'requiredRoles', 'allowedRoles', 'allowedAgentClasses', 'teamMemberId', 'projectId', 'agentSlug']);
 const BRANCH_KEYS: Record<string, Set<string>> = {
 	'read-only': new Set(['kind', 'base']),
@@ -52,7 +54,7 @@ export function validateAgentActivityProfilesConfiguration(value: unknown): Agen
 		}
 		validateBranch(raw.branchPolicy, `${path}.branchPolicy`, add);
 		validateStringLists(raw.tools, TOOL_KEYS, ['allowed'], `${path}.tools`, add);
-		if (raw.inputs !== undefined) validateStringLists(raw.inputs, INPUT_KEYS, [], `${path}.inputs`, add);
+		validateSignals(raw.signals, `${path}.signals`, add);
 		validateStringLists(raw.outputs, OUTPUT_KEYS, ['messageTypes', 'modelMutations'], `${path}.outputs`, add);
 		validatePlanningIntent(raw.planningIntent, `${path}.planningIntent`, add);
 		validateContentAccess(raw.contentAccess, `${path}.contentAccess`, add);
@@ -61,6 +63,25 @@ export function validateAgentActivityProfilesConfiguration(value: unknown): Agen
 	}
 	if (enabled === 0) add('agent_activity_profile_enabled_required', 'activityProfiles', 'At least one activity profile must be enabled.');
 	return { ok: diagnostics.length === 0, diagnostics };
+}
+
+function validateSignals(value: unknown, path: string, add: Add) {
+	if (value === undefined) return;
+	if (!record(value)) { add('agent_activity_signals_invalid', path, 'signals must be an object.'); return; }
+	unknownKeys(value, SIGNAL_KEYS, path, add);
+	if (value.publishes !== undefined && !strings(value.publishes)) add('agent_activity_signal_publications_invalid', `${path}.publishes`, 'publishes must contain unique signal contract IDs.');
+	if (value.subscribesTo === undefined) return;
+	if (!Array.isArray(value.subscribesTo)) { add('agent_activity_signal_subscriptions_invalid', `${path}.subscribesTo`, 'subscribesTo must be an array.'); return; }
+	value.subscribesTo.forEach((candidate, index) => {
+		const itemPath = `${path}.subscribesTo[${index}]`;
+		if (!record(candidate)) { add('agent_activity_signal_subscription_invalid', itemPath, 'Signal subscription must be an object.'); return; }
+		unknownKeys(candidate, SUBSCRIPTION_KEYS, itemPath, add);
+		if (typeof candidate.contract !== 'string' || !candidate.contract.trim()) add('agent_activity_signal_contract_required', `${itemPath}.contract`, 'Signal subscription contract is required.');
+		if (candidate.filters !== undefined && !record(candidate.filters)) add('agent_activity_signal_filters_invalid', `${itemPath}.filters`, 'Signal filters must be an object.');
+		if (candidate.cardinality !== undefined && !['single', 'each'].includes(String(candidate.cardinality))) add('agent_activity_signal_cardinality_invalid', `${itemPath}.cardinality`, 'cardinality must be single or each.');
+		if (candidate.producerPolicy !== undefined && !['any', 'all', 'quorum'].includes(String(candidate.producerPolicy))) add('agent_activity_producer_policy_invalid', `${itemPath}.producerPolicy`, 'producerPolicy must be any, all, or quorum.');
+		if (candidate.producerPolicy === 'quorum' && (!Number.isInteger(candidate.quorum) || Number(candidate.quorum) < 1)) add('agent_activity_signal_quorum_invalid', `${itemPath}.quorum`, 'quorum must be a positive integer.');
+	});
 }
 
 function validatePlanningIntent(value: unknown, path: string, add: Add) {
@@ -72,7 +93,19 @@ function validatePlanningIntent(value: unknown, path: string, add: Add) {
 	}
 	if (value.subjectId !== undefined && value.subjectId !== null && (typeof value.subjectId !== 'string' || !value.subjectId.trim())) add('agent_activity_planning_intent_text_invalid', `${path}.subjectId`, `${path}.subjectId must be a non-empty string or null.`);
 	if (value.includeWorkdayArtifacts !== undefined && typeof value.includeWorkdayArtifacts !== 'boolean') add('agent_activity_planning_intent_boolean_invalid', `${path}.includeWorkdayArtifacts`, `${path}.includeWorkdayArtifacts must be boolean.`);
-	if (value.stage !== undefined && !['discovery', 'synthesis', 'evaluation', 'closeout'].includes(String(value.stage))) add('agent_activity_planning_stage_invalid', `${path}.stage`, `${path}.stage must be discovery, synthesis, evaluation, or closeout.`);
+	const stages = ['discovery', 'synthesis', 'deliberation', 'evaluation', 'revision', 'closeout'];
+	if (value.stage !== undefined && !stages.includes(String(value.stage))) add('agent_activity_planning_stage_invalid', `${path}.stage`, `${path}.stage is unsupported.`);
+	if (value.stages !== undefined) {
+		if (!Array.isArray(value.stages) || value.stages.length === 0) add('agent_activity_planning_stages_invalid', `${path}.stages`, 'stages must be a non-empty array.');
+		else value.stages.forEach((candidate, index) => {
+			const stagePath = `${path}.stages[${index}]`;
+			if (!record(candidate)) { add('agent_activity_planning_stage_invalid', stagePath, 'Planning stage must be an object.'); return; }
+			unknownKeys(candidate, PLANNING_STAGE_KEYS, stagePath, add);
+			if (!stages.includes(String(candidate.stage))) add('agent_activity_planning_stage_invalid', `${stagePath}.stage`, 'Planning stage is unsupported.');
+			if (candidate.promptTask !== undefined && (typeof candidate.promptTask !== 'string' || !candidate.promptTask.trim())) add('agent_activity_planning_stage_prompt_invalid', `${stagePath}.promptTask`, 'promptTask must be non-empty.');
+			validateSignals(candidate.signals, `${stagePath}.signals`, add);
+		});
+	}
 	if (value.requiresArtifactKinds !== undefined && !strings(value.requiresArtifactKinds)) add('agent_activity_string_list_invalid', `${path}.requiresArtifactKinds`, `${path}.requiresArtifactKinds must contain unique non-empty strings.`);
 }
 
@@ -80,7 +113,7 @@ function validateStringLists(value: unknown, keys: Set<string>, required: string
 	if (!record(value)) { add('agent_activity_policy_invalid', path, `${path} must be an object.`); return; }
 	unknownKeys(value, keys, path, add);
 	for (const key of required) if (!strings(value[key])) add('agent_activity_string_list_invalid', `${path}.${key}`, `${path}.${key} must contain unique non-empty strings.`);
-	for (const key of keys) if (value[key] !== undefined && !strings(value[key])) add('agent_activity_string_list_invalid', `${path}.${key}`, `${path}.${key} must contain unique non-empty strings.`);
+	for (const key of keys) if (!['producerPolicy', 'fanout'].includes(key) && value[key] !== undefined && !strings(value[key])) add('agent_activity_string_list_invalid', `${path}.${key}`, `${path}.${key} must contain unique non-empty strings.`);
 }
 
 function validateBranch(value: unknown, path: string, add: Add) {

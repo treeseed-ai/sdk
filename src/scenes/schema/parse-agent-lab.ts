@@ -17,15 +17,28 @@ function parseWorkday(value: unknown, index: number, diagnostics: SceneDiagnosti
 	if (!id || !FILESYSTEM_SAFE_SCENE_ID.test(id)) diagnostics.push(sceneErrorDiagnostic('scene.agent_lab_workday_id_invalid', 'Agent Lab workday id must be file-safe.', `${path}.id`));
 	const agentTests = stringArrayField(value, 'agentTests', path, diagnostics);
 	if (!agentTests.length) diagnostics.push(sceneErrorDiagnostic('scene.agent_lab_tests_required', 'Agent Lab workdays require at least one agent test.', `${path}.agentTests`));
+	if (value.availableCredits !== undefined) diagnostics.push(sceneErrorDiagnostic('scene.agent_lab_legacy_credits_rejected', 'availableCredits is a legacy accounting field. Configure timePolicy and planningSession instead.', `${path}.availableCredits`));
+	const timePolicy = objectField(value, 'timePolicy', path, diagnostics) ?? {};
+	const planningSession = objectField(value, 'planningSession', path, diagnostics) ?? {};
+	const cooperativePlanningPercent = positiveNumberField(timePolicy, 'cooperativePlanningPercent', 90, `${path}.timePolicy`, diagnostics) ?? 90;
+	const governedExecutionPercent = typeof timePolicy.governedExecutionPercent === 'number' ? timePolicy.governedExecutionPercent : 0;
+	const reservePercent = positiveNumberField(timePolicy, 'reservePercent', 10, `${path}.timePolicy`, diagnostics) ?? 10;
+	if ([cooperativePlanningPercent, governedExecutionPercent, reservePercent].some((entry) => !Number.isFinite(entry) || entry < 0) || Math.abs(cooperativePlanningPercent + governedExecutionPercent + reservePercent - 100) > 0.000001) diagnostics.push(sceneErrorDiagnostic('scene.agent_lab_time_policy_invalid', 'Workday Plan, Execute, and Reserve percentages must be nonnegative and total exactly 100.', `${path}.timePolicy`));
 	return {
 		id,
 		...(asString(value.title) ? { title: asString(value.title) } : {}),
 		agentTests,
 		objectiveRefs: stringArrayField(value, 'objectiveRefs', path, diagnostics),
 		durationSeconds: positiveNumberField(value, 'durationSeconds', 1800, path, diagnostics) ?? 1800,
-		availableCredits: positiveNumberField(value, 'availableCredits', 64, path, diagnostics) ?? 64,
 		maxActiveAssignments: positiveNumberField(value, 'maxActiveAssignments', 4, path, diagnostics) ?? 4,
 		planningOnly: booleanField(value, 'planningOnly', true, path, diagnostics),
+		timePolicy: { cooperativePlanningPercent, governedExecutionPercent, reservePercent },
+		planningSession: {
+			rounds: positiveNumberField(planningSession, 'rounds', 3, `${path}.planningSession`, diagnostics) ?? 3,
+			assignmentTimeboxSeconds: positiveNumberField(planningSession, 'assignmentTimeboxSeconds', 900, `${path}.planningSession`, diagnostics) ?? 900,
+			...(typeof planningSession.tokenWarning === 'number' ? { tokenWarning: planningSession.tokenWarning } : {}),
+			...(typeof planningSession.tokenHardLimit === 'number' ? { tokenHardLimit: planningSession.tokenHardLimit } : {}),
+		},
 		profileInputs: objectField(value, 'profileInputs', path, diagnostics) ?? {},
 	};
 }

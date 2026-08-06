@@ -216,6 +216,7 @@ export const governanceProposals = pgTable('governance_proposals', {
 	summary: text('summary').notNull(),
 	body: text('body').notNull(),
 	proposalType: text('proposal_type').notNull().default('implementation'),
+	proposalTypesJson: text('proposal_types_json').notNull().default('[]'),
 	contentProposalSlug: text('content_proposal_slug'),
 	contentDecisionSlug: text('content_decision_slug'),
 	activeVersion: integer('active_version').notNull().default(1),

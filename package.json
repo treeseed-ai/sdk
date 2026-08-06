@@ -361,9 +361,9 @@
       "types": "./dist/agents/copilot.d.ts",
       "default": "./dist/agents/copilot.js"
     },
-    "./capacity-usage": {
-      "types": "./dist/capacity/accounting/capacity-usage.d.ts",
-      "default": "./dist/capacity/accounting/capacity-usage.js"
+    "./native-capacity": {
+      "types": "./dist/capacity/accounting/native-capacity.d.ts",
+      "default": "./dist/capacity/accounting/native-capacity.js"
     },
     "./capacity-provider": {
       "types": "./dist/capacity/providers/capacity-provider.d.ts",

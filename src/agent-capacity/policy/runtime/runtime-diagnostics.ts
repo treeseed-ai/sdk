@@ -95,7 +95,7 @@ const CAPACITY_RUNTIME_REASON_DETAILS: Record<string, {
 	},
 	allocation_exhausted: {
 		title: 'Allocation exhausted',
-		message: 'The matching allocation set does not have enough remaining credits for this assignment.',
+		message: 'The matching allocation set does not have enough remaining agent time for this assignment.',
 		owner: 'team_admin',
 		nextAction: 'Increase allocation, change routing, or defer lower-priority work.',
 		severity: 'danger',

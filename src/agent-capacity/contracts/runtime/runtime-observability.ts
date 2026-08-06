@@ -41,7 +41,7 @@ export interface AgentCapacityPlan {
 	assignableProviders: Array<{
 		capacityProviderId: string;
 		executionProviderId?: string | null;
-		availableCredits?: number | null;
+		availableAgentSeconds?: number | null;
 		reasons?: string[];
 		metadata?: Record<string, unknown>;
 	}>;
@@ -94,8 +94,8 @@ export interface AgentKernelQueueObservation {
 	planningReady?: number | null;
 	actingReady?: number | null;
 	fallbackReady?: number | null;
-	planningBudgetCredits?: number | null;
-	actingBudgetCredits?: number | null;
+	planningBudgetSeconds?: number | null;
+	actingBudgetSeconds?: number | null;
 	modePreference?: AgentExecutionMode | 'fallback' | null;
 	metadata?: Record<string, unknown>;
 }
@@ -320,10 +320,12 @@ export interface CapacitySettlementSummary {
 	workDayId?: string | null;
 	allocationSetId?: string | null;
 	policyVersion?: string | null;
-	reservedCredits: number;
-	consumedCredits: number;
-	releasedCredits: number;
-	refundedCredits: number;
+	requestedSeconds: number;
+	reservedSeconds: number;
+	activeSeconds: number;
+	elapsedSeconds: number;
+	releasedSeconds: number;
+	overrunSeconds: number;
 	nativeUsage: Record<string, unknown>;
 	providerConfidence: 'high' | 'medium' | 'low' | 'blocked' | string;
 	warnings: string[];

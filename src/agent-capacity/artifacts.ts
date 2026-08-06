@@ -100,12 +100,19 @@ export interface AgentArtifactManifest {
 	createdAt: string;
 }
 
-export function validateAgentArtifactManifest(manifest: AgentArtifactManifest) {
+export function validateAgentArtifactManifest(manifest: AgentArtifactManifest, expected: { publishedSignals?: unknown } = {}) {
 	const citationValidation = validateResearchCitations(manifest.citations, 'artifactManifest.citations');
 	if (!citationValidation.ok) {
 		return { ok: false as const, reason: citationValidation.diagnostics.map((diagnostic) => `${diagnostic.code} at ${diagnostic.path}`).join(', ') };
 	}
 	if (manifest.status !== 'completed') return { ok: true as const };
+	const ids = (value: unknown) => Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string' && Boolean(entry.trim())).map((entry) => entry.replace(/_/gu, '-')) : [];
+	const producedSignals = new Set(manifest.signals.map((signal) => signal.code.replace(/_/gu, '-')));
+	const missingSignals = ids(expected.publishedSignals).filter((id) => !producedSignals.has(id));
+	if (missingSignals.length) return {
+		ok: false as const,
+		reason: `Completed agent execution omitted validated publications: ${missingSignals.map((id) => `signal:${id}`).join(', ')}.`,
+	};
 	if (manifest.contentReferences.some((reference) => reference.model === 'note' && (!reference.subjectId || !reference.subjectField))) {
 		return { ok: false as const, reason: 'Completed note receipt is missing its validated subject link.' };
 	}

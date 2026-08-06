@@ -6,6 +6,7 @@ const complete = {
 	summary: 'Create a staged, evidence-first editorial planning workflow with explicit governance readiness.',
 	body: 'This proposal replaces ungrounded authorization records with research-led planning. It specifies discovery, synthesis, estimation, independent review, and closeout so human participants can judge valuable work before deciding whether acting may begin.',
 	relatedObjectives: ['objective:guide'], evidenceRefs: ['note:evidence'],
+	proposalTypes: ['technical-accuracy'],
 	plan: {
 		desiredOutcome: 'Give operators a complete and verifiable planning workflow they can trust.',
 		currentProblem: 'Current editorial proposals omit the evidence and execution detail needed for sound governance.',
@@ -25,6 +26,15 @@ describe('proposal readiness', () => {
 		expect(result.missingContent).toContain('immutable TreeDX provenance');
 	});
 
+	it('rejects structured objects where canonical evidence reference strings are required', () => {
+		const result = evaluateGovernanceProposalReadiness({
+			...complete,
+			evidenceRefs: [{ path: 'src/content/notes/evidence.mdx', revision: 'abc' }] as unknown as string[],
+		});
+		expect(result.contentReady).toBe(false);
+		expect(result.missingContent).toContain('research evidence');
+	});
+
 	it('requires estimate, independent review, and resolved blockers for voting', () => {
 		const content = evaluateGovernanceProposalReadiness(complete);
 		expect(content.contentReady).toBe(true);
@@ -32,5 +42,12 @@ describe('proposal readiness', () => {
 		expect(content.missingVoting).toEqual(['independent review', 'structured estimate']);
 		const voting = evaluateGovernanceProposalReadiness({ ...complete, independentReviewCount: 1, estimateCount: 1 });
 		expect(voting.votingReady).toBe(true);
+	});
+
+	it('requires every reviewer class declared by the proposal types', () => {
+		const result = evaluateGovernanceProposalReadiness({ ...complete, independentReviewCount: 1, estimateCount: 1, requiredReviewerClasses: ['technical-verification','audience-review'], reviewedReviewerClasses: ['technical-verification'] });
+		expect(result.votingReady).toBe(false);
+		expect(result.missingReviewerClasses).toEqual(['audience-review']);
+		expect(result.missingVoting).toContain('required proposal-type reviews');
 	});
 });

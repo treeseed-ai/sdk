@@ -228,30 +228,33 @@ export async function refreshLocalTreeDxProjectIndexes(client: TreeDxClient, pro
 async function localTreeDxSeedDelta(client: TreeDxClient, project: LocalTreeDxContentProject, repositoryId: string,
 	desiredFiles: ReturnType<typeof collectLocalTreeDxSeedFiles>, requestedRef?: string) {
 	const ref = requestedRef ?? project.defaultRef ?? 'refs/heads/main';
-	const paths = await client.listRepositoryPaths({
-		repoId: repositoryId,
-		ref,
-		paths: projectIndexPaths(project),
-		extensions: ['.json', '.md', '.mdx', '.toml', '.yaml', '.yml'],
-		limit: 500,
-	});
-	if (paths.page?.hasMore) {
-		throw new Error(`TreeDX seed reconciliation for ${project.slug} exceeds the supported 500-file snapshot.`);
+	const entries: unknown[] = []; let cursor: string | null = null; let resolvedRef = '';
+	for (let pageNumber = 0; pageNumber < 100; pageNumber += 1) {
+		const page = await client.listRepositoryPaths({ repoId: repositoryId, ref, paths: projectIndexPaths(project),
+			extensions: ['.json', '.md', '.mdx', '.toml', '.yaml', '.yml'], limit: 500, ...(cursor ? { cursor } : {}) });
+		entries.push(...(page.entries ?? [])); resolvedRef ||= nonEmptyString(page.resolvedRef);
+		if (!page.page?.hasMore) break;
+		const next = nonEmptyString(page.page.nextCursor);
+		if (!next || next === cursor) throw new Error(`TreeDX path pagination stalled while reconciling ${project.slug}.`);
+		cursor = next;
+		if (pageNumber === 99) throw new Error(`TreeDX seed reconciliation for ${project.slug} exceeds the bounded 50,000-file snapshot.`);
 	}
-	const currentPaths = (paths.entries ?? []).flatMap((entry) => {
+	const currentPaths = entries.flatMap((entry) => {
 		const path = nonEmptyString(recordValue(entry).path);
 		return path ? [path] : [];
 	});
-	const current = currentPaths.length
-		? await client.readRepositoryFiles({ repoId: repositoryId, ref, paths: currentPaths, encoding: 'utf8', parseFrontmatter: false })
-		: { files: [], resolvedRef: paths.resolvedRef };
-	const observed = (current.files ?? []).map(treeDxSeedFileRecord);
+	const files: unknown[] = [];
+	for (let offset = 0; offset < currentPaths.length; offset += 200) {
+		const current = await client.readRepositoryFiles({ repoId: repositoryId, ref: resolvedRef || ref, paths: currentPaths.slice(offset, offset + 200), encoding: 'utf8', parseFrontmatter: false });
+		files.push(...(current.files ?? [])); resolvedRef ||= nonEmptyString(current.resolvedRef);
+	}
+	const observed = files.map(treeDxSeedFileRecord);
 	const observedByPath = new Map(observed.map((file) => [file.path, file.content]));
 	const desiredByPath = new Map(desiredFiles.map((file) => [file.path, file.content]));
 	return {
 		changed: desiredFiles.filter((file) => observedByPath.get(file.path) !== file.content),
 		removed: currentPaths.filter((path) => !desiredByPath.has(path)),
-		resolvedRef: nonEmptyString(current.resolvedRef) || nonEmptyString(paths.resolvedRef),
+		resolvedRef,
 	};
 }
 

@@ -59,14 +59,25 @@ export function applyAgentLabAccounting(executions: AgentLabExecution[], account
 		const byAssignment = (row: Row) => text(row.assignmentId ?? row.assignment_id) === execution.assignmentId;
 		const reservation = reservations.find(byAssignment) ?? {};
 		const assignmentUsage = usage.filter(byAssignment);
-		const actual = assignmentUsage.length
-			? assignmentUsage.reduce((sum, row) => sum + number(row.actualCredits ?? row.actual_credits), 0)
-			: execution.credits.actual;
-		const reserved = optionalNumber(reservation.reservedCredits ?? reservation.reserved_credits) ?? execution.credits.reserved;
-		const consumed = optionalNumber(reservation.consumedCredits ?? reservation.consumed_credits) ?? actual;
-		const released = execution.status === 'running' ? 0 : Math.max(0, reserved - consumed);
-		const refunded = ledger.filter(byAssignment).filter((row) => text(row.phase).includes('refund')).reduce((sum, row) => sum + Math.abs(number(row.credits)), 0);
-		return { ...execution, credits: { ...execution.credits, reserved, actual, released, refunded, overrun: Math.max(0, actual - reserved) } };
+		const activeSeconds = assignmentUsage.length
+			? assignmentUsage.reduce((sum, row) => sum + number(row.activeSeconds ?? row.active_seconds), 0)
+			: execution.capacity.activeSeconds;
+		const elapsedSeconds = assignmentUsage.length
+			? assignmentUsage.reduce((sum, row) => sum + number(row.elapsedSeconds ?? row.elapsed_seconds), 0)
+			: execution.capacity.elapsedSeconds;
+		const reservedSeconds = optionalNumber(reservation.reservedSeconds ?? reservation.reserved_seconds) ?? execution.capacity.reservedSeconds;
+		const releasedSeconds = optionalNumber(reservation.releasedSeconds ?? reservation.released_seconds)
+			?? (execution.status === 'running' ? 0 : Math.max(0, reservedSeconds - activeSeconds));
+		const token = (camel: string, snake: string) => assignmentUsage.reduce((sum, row) => sum + number(row[camel] ?? row[snake]), 0);
+		const settlement = ledger.filter(byAssignment).find((row) => text(row.phase) === 'task_completed_actual_settlement');
+		return { ...execution, capacity: {
+			...execution.capacity, reservedSeconds, activeSeconds, elapsedSeconds, releasedSeconds,
+			overrunSeconds: optionalNumber(reservation.overrunSeconds ?? reservation.overrun_seconds) ?? Math.max(0, activeSeconds - reservedSeconds),
+			inputTokens: token('inputTokens', 'input_tokens'), cachedInputTokens: token('cachedInputTokens', 'cached_input_tokens'),
+			reasoningTokens: token('reasoningTokens', 'reasoning_tokens'), outputTokens: token('outputTokens', 'output_tokens'),
+			costAmount: optionalNumber(settlement?.usd ?? assignmentUsage[0]?.actualUsd ?? assignmentUsage[0]?.actual_usd),
+			nativeUsage: Object.assign({}, ...assignmentUsage.map((row) => record(row.nativeUsage ?? row.native_usage_json))),
+		} };
 	});
 }
 
@@ -328,10 +339,11 @@ function executionFromEvents(events: AgentActivityEvent[], transcript: Row[], as
 	const manifests = [record(lifecycle.artifactManifest), record(terminalOutputs.artifactManifest), record(record(terminalOutputs.outputs).artifactManifest)];
 	const signals = [...new Map(manifests.flatMap((manifest) => Array.isArray(manifest.signals) ? manifest.signals.map(record) : [])
 		.map((signal) => [`${text(signal.code) ?? ''}:${JSON.stringify(signal.metadata ?? {})}`, signal])).values()];
-	const requested = number(decisionInput.requestedCredits ?? envelope.requestedCredits ?? assignment.requestedCredits ?? envelope.reservedCredits);
-	const estimated = number(decisionInput.estimatedCredits ?? requestedCapacity.expectedCredits ?? envelope.expectedCredits ?? requested);
-	const reserved = number(envelope.reservedCredits ?? assignment.reservedCredits ?? requested);
-	const actual = number(lifecycle.actualCredits ?? record(terminalRecord?.usage_actual_json).actualCredits);
+	const requestedSeconds = number(decisionInput.requestedSeconds ?? envelope.requestedSeconds ?? assignment.requestedSeconds);
+	const reservedSeconds = number(envelope.reservedSeconds ?? assignment.reservedSeconds ?? requestedSeconds);
+	const terminalUsage = record(terminalRecord?.usage_actual_json);
+	const activeSeconds = number(lifecycle.activeSeconds ?? terminalUsage.activeSeconds);
+	const elapsedSeconds = number(lifecycle.elapsedSeconds ?? terminalUsage.elapsedSeconds);
 	return {
 		id: first.executionRunId ?? first.modeRunId ?? first.assignmentId ?? first.id,
 		assignmentId: first.assignmentId,
@@ -355,7 +367,14 @@ function executionFromEvents(events: AgentActivityEvent[], transcript: Row[], as
 		usage: Object.assign({}, ...events.map((entry) => entry.usageDelta)),
 		error: status === 'failed' ? { category: terminalRecord?.fallback_reason ?? null, summary: record(terminalRecord?.outputs_json).summary ?? null } : null,
 		assignment,
-		credits: { estimated, requested, reserved, actual, released: Math.max(0, reserved - actual), refunded: 0, overrun: Math.max(0, actual - reserved) },
+		capacity: {
+			requestedSeconds, reservedSeconds, activeSeconds, elapsedSeconds,
+			releasedSeconds: Math.max(0, reservedSeconds - activeSeconds), overrunSeconds: Math.max(0, activeSeconds - reservedSeconds),
+			inputTokens: number(terminalUsage.inputTokens), cachedInputTokens: number(terminalUsage.cachedInputTokens),
+			reasoningTokens: number(terminalUsage.reasoningTokens), outputTokens: number(terminalUsage.outputTokens),
+			costAmount: optionalNumber(terminalUsage.actualUsd), costCurrency: text(terminalUsage.currency), nativeUsage: record(terminalUsage.nativeUsage),
+			legacyAccounting: Object.keys(requestedCapacity).some((key) => key.toLowerCase().includes('credit')) ? requestedCapacity : null,
+		},
 	};
 }
 

@@ -26,35 +26,13 @@ export interface PlanningAdmissionResult {
 		node: PlannedTaskNode;
 		reasons: string[];
 	}>;
-	totalEstimatedCreditsP50: number;
-	totalEstimatedCreditsP90: number;
-	admittedCreditsP90: number;
+	totalEstimatedSecondsP50: number;
+	totalEstimatedSecondsP90: number;
+	admittedSecondsP90: number;
 	reasons: string[];
 }
 
-export interface CreditConversionProfile {
-	id?: string | null;
-	taskSignature: string;
-	executionProfileId: string;
-	executionProviderKind: string;
-	nativeUnit: string;
-	sampleCount: number;
-	completedSampleCount: number;
-	interruptedSampleCount?: number;
-	nativeUnitsPerCreditP50: number | null;
-	nativeUnitsPerCreditP90: number | null;
-	creditsPerNativeUnitP50: number | null;
-	creditsPerNativeUnitP90: number | null;
-	actualCreditsP50: number | null;
-	actualCreditsP90: number | null;
-	confidence: 'low' | 'medium' | 'high' | string;
-	formulaVersion: string;
-	metadata?: Record<string, unknown>;
-	createdAt?: string | null;
-	updatedAt: string;
-}
-
-export interface DerivedCapacityAvailability {
+export interface NativeCapacityAvailability {
 	executionProviderId: string;
 	capacityProviderId: string | null;
 	executionProviderKind: string;
@@ -68,11 +46,6 @@ export interface DerivedCapacityAvailability {
 	reserveBufferPercent: number;
 	reserveBufferNativeAmount: number;
 	availableNativeAmount: number;
-	nativeUnitsPerCredit: number | null;
-	conversionProfileId?: string | null;
-	conversionTaskSignature?: string | null;
-	conversionConfidence?: string | null;
-	derivedAvailableCredits: number | null;
 	confidence: 'low' | 'medium' | 'high' | string;
 	resetAt?: string | null;
 	accountingWindowStartAt?: string | null;
@@ -82,18 +55,12 @@ export interface DerivedCapacityAvailability {
 	metadata?: Record<string, unknown>;
 }
 
-export interface DerivedCapacitySummary {
-	entries: DerivedCapacityAvailability[];
-	totalDerivedAvailableCredits?: number | null;
-	derivedEntryCount?: number;
-	learningEntryCount?: number;
+export interface NativeCapacitySummary {
+	entries: NativeCapacityAvailability[];
 	availableNativeByUnit?: Record<string, number>;
 	providers?: Array<{
 		capacityProviderId: string;
-		entries?: DerivedCapacityAvailability[];
-		totalDerivedAvailableCredits?: number | null;
-		derivedEntryCount?: number;
-		learningEntryCount?: number;
+		entries?: NativeCapacityAvailability[];
 		availableNativeByUnit?: Record<string, number>;
 		[key: string]: unknown;
 	}>;
@@ -105,13 +72,12 @@ export interface NativeReservationDebitAggregate {
 	activeConsumedNativeAmount: number;
 }
 
-export interface DerivedCapacityInput {
+export interface NativeCapacityInput {
 	executionProvider: CapacityExecutionProvider;
 	nativeLimit?: CapacityExecutionProviderNativeLimit | null;
 	latestObservation?: CapacityExecutionProviderObservation | null;
 	activeReservations?: CapacityReservation[];
 	reservationDebits?: NativeReservationDebitAggregate | null;
-	conversionProfile?: CreditConversionProfile | null;
 	scope?: string | null;
 	nativeUnit?: string | null;
 	now?: Date | string | null;
@@ -180,10 +146,10 @@ export interface ProjectCapacityDiagnostics {
 	executionProviders: CapacityExecutionProvider[];
 	grants: import('../../agent-capacity/allocation.ts').CapacityGrantV2[];
 	activeReservations: CapacityReservation[];
-	derivedCapacity?: DerivedCapacitySummary | null;
+	nativeCapacity?: NativeCapacitySummary | null;
 	remaining: {
-		dailyCredits: number | null;
-		monthlyCredits: number | null;
+		dailyAgentSeconds: number | null;
+		monthlyAgentSeconds: number | null;
 	};
 }
 

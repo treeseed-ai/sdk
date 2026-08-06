@@ -2,6 +2,30 @@ import { AgentToolDefinition,EMPTY_OBJECT_SCHEMA,GENERIC_CONTENT_TOOLS,GENERIC_R
 
 export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
 	{
+		id: 'treeseed.publish_signal',
+		title: 'Publish assignment signal',
+		description: 'Request one declared semantic signal with a durable subject, evidence, and concise change summary. AgentKernel and the API validate publication after execution.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				contractId: { type: 'string', minLength: 1, maxLength: 128 },
+				subjectKind: { type: 'string', minLength: 1, maxLength: 64 },
+				subjectId: { type: 'string', minLength: 1, maxLength: 256 },
+				message: { type: 'string', minLength: 8, maxLength: 2000 },
+				correlationId: { type: 'string', minLength: 1, maxLength: 256 },
+				idempotencyKey: { type: 'string', minLength: 1, maxLength: 256 },
+				payload: { type: 'object', additionalProperties: true },
+			},
+			required: ['contractId', 'subjectKind', 'subjectId', 'message'],
+			additionalProperties: false,
+		},
+		outputSchema: GENERIC_RESULT_SCHEMA,
+		executionTarget: 'provider_runner',
+		mutability: 'shared_state_write',
+		telemetryCategory: 'capacity',
+		requirements: ['provider_runner_runtime'],
+	},
+	{
 		id: 'treeseed.repository.read_file',
 		title: 'Read assignment repository file',
 		description: 'Read one bounded UTF-8 source file from the provider-materialized assignment repository.',

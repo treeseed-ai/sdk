@@ -13,8 +13,8 @@ export function validateCapacitySettlementInvariant(input: {
 	const byPhase = new Map<string, CapacityLedgerEntry[]>();
 	for (const entry of assignmentEntries) {
 		byPhase.set(String(entry.phase), [...(byPhase.get(String(entry.phase)) ?? []), entry]);
-		if (Number(entry.credits ?? 0) < 0) {
-			violations.push({ code: 'negative_consumed_credits', message: `Ledger entry ${entry.id} has negative credits.`, severity: 'error' });
+		if (Number(entry.activeSeconds ?? 0) < 0 || Number(entry.elapsedSeconds ?? 0) < 0) {
+			violations.push({ code: 'negative_settled_time', message: `Ledger entry ${entry.id} has negative time.`, severity: 'error' });
 		}
 	}
 	const completion = byPhase.get('task_completed_actual_settlement') ?? [];
@@ -23,16 +23,16 @@ export function validateCapacitySettlementInvariant(input: {
 	}
 	const releases = byPhase.get('reservation_released') ?? [];
 	if (input.reservation && releases.length) {
-		const consumed = Math.max(...completion.map((entry) => Number(entry.credits ?? 0)), Number(input.reservation.consumedCredits ?? 0), 0);
-		const reserved = Number(input.reservation.reservedCredits ?? 0);
-		const released = releases.reduce((sum, entry) => sum + Number(entry.credits ?? 0), 0);
+		const consumed = Math.max(...completion.map((entry) => Number(entry.activeSeconds ?? 0)), Number(input.reservation.activeSeconds ?? 0), 0);
+		const reserved = Number(input.reservation.reservedSeconds ?? 0);
+		const released = releases.reduce((sum, entry) => sum + Number(entry.activeSeconds ?? 0), 0);
 		if (released > Math.max(0, reserved - consumed) + 0.000001) {
-			violations.push({ code: 'reservation_release_exceeds_unused', message: `Released ${released} credits exceeds unused reservation ${Math.max(0, reserved - consumed)}.`, severity: 'error' });
+			violations.push({ code: 'reservation_release_exceeds_unused', message: `Released ${released} seconds exceeds unused reservation ${Math.max(0, reserved - consumed)}.`, severity: 'error' });
 		}
 	}
 	const refunds = byPhase.get('task_failed_refund') ?? [];
-	if (input.reservation && refunds.reduce((sum, entry) => sum + Number(entry.credits ?? 0), 0) > Number(input.reservation.reservedCredits ?? 0) + 0.000001) {
-		violations.push({ code: 'refund_exceeds_reserved', message: 'Failure refund exceeds reserved credits.', severity: 'error' });
+	if (input.reservation && refunds.reduce((sum, entry) => sum + Number(entry.activeSeconds ?? 0), 0) > Number(input.reservation.reservedSeconds ?? 0) + 0.000001) {
+		violations.push({ code: 'refund_exceeds_reserved', message: 'Failure release exceeds reserved agent time.', severity: 'error' });
 	}
 	if (input.assignment.status === 'completed' && completion.length === 0 && input.assignment.reservationId) {
 		violations.push({ code: 'completed_assignment_missing_settlement', message: 'Completed assignment with a reservation has no completion settlement.', severity: 'error' });

@@ -9,9 +9,19 @@ export type AgentLabWorkdayConfig = {
 	agentTests: string[];
 	objectiveRefs: string[];
 	durationSeconds: number;
-	availableCredits: number;
 	maxActiveAssignments: number;
 	planningOnly: boolean;
+	timePolicy: {
+		cooperativePlanningPercent: number;
+		governedExecutionPercent: number;
+		reservePercent: number;
+	};
+	planningSession: {
+		rounds: number;
+		assignmentTimeboxSeconds: number;
+		tokenWarning?: number;
+		tokenHardLimit?: number;
+	};
 	profileInputs: Record<string, unknown>;
 };
 
@@ -69,17 +79,24 @@ export type AgentLabExecution = {
 	usage: Record<string, unknown>;
 	error: Record<string, unknown> | null;
 	assignment: Record<string, unknown>;
-	credits: AgentLabCreditSummary;
+	capacity: AgentLabCapacitySummary;
 };
 
-export type AgentLabCreditSummary = {
-	estimated: number;
-	requested: number;
-	reserved: number;
-	actual: number;
-	released: number;
-	refunded: number;
-	overrun: number;
+export type AgentLabCapacitySummary = {
+	requestedSeconds: number;
+	reservedSeconds: number;
+	activeSeconds: number;
+	elapsedSeconds: number;
+	releasedSeconds: number;
+	overrunSeconds: number;
+	inputTokens: number;
+	cachedInputTokens: number;
+	reasoningTokens: number;
+	outputTokens: number;
+	costAmount: number | null;
+	costCurrency: string | null;
+	nativeUsage: Record<string, number>;
+	legacyAccounting?: Record<string, unknown> | null;
 };
 
 export type AgentLabAgent = {
