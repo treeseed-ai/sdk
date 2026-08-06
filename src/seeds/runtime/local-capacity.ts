@@ -38,6 +38,14 @@ function stableId(prefix: string, key: string) {
 	return `${prefix}-${createHash('sha256').update(key).digest('hex').slice(0, 24)}`;
 }
 
+export function seedAllocationActivationKey(allocationId: string, expectedActiveAllocationSetId: string | null) {
+	return `seed-runtime:${allocationId}:activate:${expectedActiveAllocationSetId ?? 'none'}`;
+}
+
+export function seedAllocationRevisionId(providerKey: string, expectedActiveAllocationSetId: string) {
+	return stableId('seed-allocation-revision', `${providerKey}:${expectedActiveAllocationSetId}`);
+}
+
 async function atomicWrite(path: string, value: string, mode = 0o600) {
 	await mkdir(dirname(path), { recursive: true });
 	const temporary = `${path}.${process.pid}.tmp`;
@@ -243,10 +251,17 @@ async function reconcilePolicy(input: { client: MarketClient; provider: SeedCapa
 			await input.client.transitionCapacityGrant(input.teamId, id, 'activate', `seed-runtime:${id}:activate`);
 		}
 	}
-	const allocationId = stableId('seed-allocation', input.provider.key);
+	const baseAllocationId = stableId('seed-allocation', input.provider.key);
 	const allocations = (await input.client.capacityAllocationSets(input.teamId, { limit: 200 })).payload.items.map(object);
 	const activeAllocation = allocations.find((entry) => string(entry.status) === 'active');
+	let allocationId = baseAllocationId;
 	let allocation = allocations.find((entry) => string(entry.id) === allocationId);
+	if (allocation && ['superseded', 'archived'].includes(string(allocation.status) ?? '')) {
+		const expectedActiveAllocationSetId = string(activeAllocation?.id);
+		if (!expectedActiveAllocationSetId) throw new Error('A superseded seed allocation requires an active replacement before a new revision can be reconciled.');
+		allocationId = seedAllocationRevisionId(input.provider.key, expectedActiveAllocationSetId);
+		allocation = allocations.find((entry) => string(entry.id) === allocationId);
+	}
 	if (!allocation) {
 		const target = 100 / input.projectIds.length;
 		const created = await input.client.createCapacityAllocationSet(input.teamId, {
@@ -257,9 +272,15 @@ async function reconcilePolicy(input: { client: MarketClient; provider: SeedCapa
 		}, `seed-runtime:${allocationId}:create`);
 		allocation = created.payload;
 	}
-	if (string(allocation.status) !== 'active') await input.client.supersedeCapacityAllocationSet(
-		input.teamId, allocationId, { expectedActiveAllocationSetId: string(activeAllocation?.id) }, `seed-runtime:${allocationId}:activate`,
-	);
+	if (string(allocation.status) !== 'active') {
+		const expectedActiveAllocationSetId = string(activeAllocation?.id);
+		await input.client.supersedeCapacityAllocationSet(
+			input.teamId,
+			allocationId,
+			{ expectedActiveAllocationSetId },
+			seedAllocationActivationKey(allocationId, expectedActiveAllocationSetId),
+		);
+	}
 	return { grantIds, allocationId };
 }
 

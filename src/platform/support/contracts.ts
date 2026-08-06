@@ -7,6 +7,9 @@ export type FeatureName =
 	| 'proposals'
 	| 'decisions'
 	| 'agents'
+	| 'discussions'
+	| 'discussion_messages'
+	| 'discussion_events'
 	| 'forms';
 
 export type ContentCollection =
@@ -45,6 +48,9 @@ export interface ContentMap {
 	decisions: string;
 	people: string;
 	agents: string;
+	discussions?: string;
+	discussion_messages?: string;
+	discussion_events?: string;
 	books: string;
 	docs: string;
 	templates?: string;

@@ -34,6 +34,9 @@ const manifestContentFieldAliases: FieldAliasRegistry = {
 	decisions: { key: 'decisions', aliases: ['decisions_root'] },
 	people: { key: 'people', aliases: ['people_root'] },
 	agents: { key: 'agents', aliases: ['agents_root'] },
+	discussions: { key: 'discussions', aliases: ['discussions_root'] },
+	discussion_messages: { key: 'discussion_messages', aliases: ['discussion_messages_root'] },
+	discussion_events: { key: 'discussion_events', aliases: ['discussion_events_root'] },
 	books: { key: 'books', aliases: ['books_root'] },
 	docs: { key: 'docs', aliases: ['knowledge', 'knowledge_root', 'docs_root'] },
 };

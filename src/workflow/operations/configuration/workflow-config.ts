@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { formatDependencyFailureDetails,installDependencies } from "../../../entrypoints/runtime/managed-dependencies.ts";
-import { applyConfigValues,applySafeRepairs,checkProviderConnections,collectConfigContext,collectPrintEnvReport,ensureActVerificationTooling,ensureGitignoreEntries,ensureSecretSessionForConfig,finalizeConfig,getMachineConfigPaths,inspectKeyAgentStatus,inspectPassphraseEnvDiagnostic,rotateMachineKey } from "../../../operations/services/configuration/config-runtime.ts";
+import { applyConfigValues,applySafeRepairs,captureMachineConfiguration,checkProviderConnections,collectConfigContext,collectPrintEnvReport,ensureActVerificationTooling,ensureGitignoreEntries,ensureSecretSessionForConfig,finalizeConfig,getMachineConfigPaths,inspectKeyAgentStatus,inspectPassphraseEnvDiagnostic,recordConfigurationGeneration,restoreMachineConfiguration,rotateMachineKey } from "../../../operations/services/configuration/config-runtime.ts";
 import { buildProvisioningSummary,createPersistentDeployTarget,loadDeployState } from "../../../operations/services/hosting/deployment/deploy.ts";
 import { exportCodebase } from "../../../operations/services/runtime/export-runtime.ts";
 import { collectCliPreflight } from "../../../operations/services/treedx/workspaces/workspace-preflight.ts";
@@ -19,7 +19,7 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: C
 		return await withContextEnv(helpers.context.env, async () => {
 			const tenantRoot = resolveProjectRootOrThrow('config', helpers.cwd());
 			const scopes = normalizeConfigScopes(input);
-			const sync = input.syncProviders ?? input.sync ?? 'all';
+			const sync = input.syncProviders ?? input.sync ?? 'none';
 			const printEnv = input.printEnv === true;
 			const revealSecrets = input.showSecrets === true;
 			const printEnvOnly = input.printEnvOnly === true;
@@ -183,20 +183,27 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: C
 					scope, 					entryId: entry.id, 					value: entry.effectiveValue, 					reused: entry.currentValue.length > 0 || entry.suggestedValue.length > 0,
 				})),
 			);
-			const applyResult = bootstrapOnly
-				? { updated: [], sharedStorageMigrations: [] }
-				: (() => {
-					maybePrint(helpers.write, 'Saving resolved configuration values to machine config...');
-					return applyConfigValues({
-						tenantRoot, 						updates: explicitUpdates ?? autoUpdates,
-					});
-				})();
-			if (bootstrapOnly) {
-				maybePrint(helpers.write, 'Bootstrapping platform reconciliation from existing configuration...');
+			const machineConfigSnapshot = captureMachineConfiguration(tenantRoot);
+			let applyResult: ReturnType<typeof applyConfigValues> | { updated: never[]; sharedStorageMigrations: never[] };
+			let finalizeResult: Awaited<ReturnType<typeof finalizeConfig>>;
+			try {
+				applyResult = bootstrapOnly
+					? { updated: [], sharedStorageMigrations: [] }
+					: (() => {
+						maybePrint(helpers.write, 'Validating a candidate configuration generation...');
+						return applyConfigValues({ tenantRoot, updates: explicitUpdates ?? autoUpdates });
+					})();
+				if (bootstrapOnly) maybePrint(helpers.write, 'Bootstrapping platform reconciliation from existing configuration...');
+				finalizeResult = await finalizeConfig({
+					tenantRoot, scopes, sync, env: helpers.context.env,
+					checkConnections: bootstrapOnly || sync !== 'none' || scopes.some((scope) => scope !== 'local'),
+					initializePersistent: bootstrapOnly, systems: bootstrapSystemsInput, skipUnavailable, bootstrapExecution,
+					onProgress: (line, stream) => maybePrint(helpers.write, line, stream),
+				});
+			} catch (error) {
+				restoreMachineConfiguration(machineConfigSnapshot);
+				throw error;
 			}
-			const finalizeResult = await finalizeConfig({
-				tenantRoot, 				scopes, 				sync, 				env: helpers.context.env, 				checkConnections: bootstrapOnly || sync !== 'none' || scopes.some((scope) => scope !== 'local'), 				initializePersistent: bootstrapOnly, 				systems: bootstrapSystemsInput, 				skipUnavailable, 				bootstrapExecution, 				onProgress: (line, stream) => maybePrint(helpers.write, line, stream),
-			});
 			const refreshedContext = collectConfigContext({
 				tenantRoot, 				scopes, 				env: helpers.context.env,
 			});
@@ -210,18 +217,19 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: C
 				})))
 				: [];
 			const { configPath, keyPath } = getMachineConfigPaths(tenantRoot);
+			const generation = bootstrapOnly ? null : recordConfigurationGeneration(tenantRoot, scopes);
 			const state = resolveWorkflowState(tenantRoot);
 			return buildWorkflowResult(
 				'config', 				tenantRoot,
 				{
-					mode: bootstrapOnly ? 'bootstrap' : 'configure', 					scopes, 					sync, 					configPath, 					keyPath, 					repairs, 					preflight, 					toolHealth, 					passphraseEnv, 					secretSession, 					context: refreshedContext,
+					mode: bootstrapOnly ? 'bootstrap' : 'configure', 					scopes, 					sync, 					configPath, 					keyPath, 					generation, 					repairs, 					preflight, 					toolHealth, 					passphraseEnv, 					secretSession, 					context: refreshedContext,
 					result: {
 						...applyResult, 						...finalizeResult,
 					},
 					reports, 					state, 					readiness: state.readiness,
 				},
 				createNextSteps([
-					...(scopes.includes('local') ? [{ operation: 'dev', reason: 'Start the local Treeseed runtime on the initialized local environment.' }] : []),
+					...(scopes.includes('local') ? [{ operation: 'run', reason: 'Converge the configured local TreeSeed platform and its selected seeds.' }] : []),
 					...(scopes.includes('staging') ? [{ operation: 'status', reason: 'Confirm staging readiness after initializing shared services.' }] : []),
 					{ operation: 'switch', reason: 'Create or resume a task branch once the runtime foundation is ready.', input: { branch: 'feature/my-change', preview: true } },
 				]),

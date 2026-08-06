@@ -4,11 +4,13 @@ SdkBuiltinModelName,
 SdkModelDefinition
 } from '../entrypoints/models/sdk-types.ts';
 import { citationsField,contentRoot,deriveFieldLists,field,graph } from './content-root.ts';
+import { buildDiscussionModelRegistry } from './discussion-models.ts';
 
 export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinModelName, SdkModelDefinition> {
 	const root = contentRoot(repoRoot);
 
 	return {
+		...buildDiscussionModelRegistry(repoRoot),
 		page: {
 			name: 'page',
 			aliases: ['pages'],

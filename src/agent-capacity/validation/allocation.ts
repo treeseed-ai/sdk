@@ -29,6 +29,9 @@ export function validateCapacityGrantV2(grant: CapacityGrantV2): CapacityAllocat
 		if (value != null && (!Number.isFinite(value) || value < 0)) add('capacity_grant_limit_invalid', path, `${path} must be zero or greater when configured.`);
 	}
 	if (grant.maxConcurrentAssignments != null && (!Number.isInteger(grant.maxConcurrentAssignments) || grant.maxConcurrentAssignments < 0)) add('capacity_grant_concurrency_invalid', 'maxConcurrentAssignments', 'maxConcurrentAssignments must be a non-negative integer when configured.');
+	if (grant.budgetLimits?.tokens != null && (!Number.isFinite(grant.budgetLimits.tokens) || grant.budgetLimits.tokens < 0)) add('capacity_grant_token_limit_invalid', 'budgetLimits.tokens', 'Token limit must be finite and non-negative.');
+	if (grant.budgetLimits?.cost && (!Number.isFinite(grant.budgetLimits.cost.amount) || grant.budgetLimits.cost.amount < 0 || !grant.budgetLimits.cost.currency.trim())) add('capacity_grant_cost_limit_invalid', 'budgetLimits.cost', 'Cost limit requires a non-negative amount and currency.');
+	if (grant.budgetLimits?.native?.some((entry) => !entry.unit.trim() || !Number.isFinite(entry.amount) || entry.amount < 0)) add('capacity_grant_native_limit_invalid', 'budgetLimits.native', 'Native limits require a unit and non-negative amount.');
 	if (!Array.isArray(grant.executionProviderIds) || grant.executionProviderIds.length === 0) add('capacity_grant_execution_provider_required', 'executionProviderIds', 'At least one execution provider is required.');
 	if (!grant.unmetered && grant.dailyAgentSecondsLimit == null && grant.monthlyAgentSecondsLimit == null) add('capacity_grant_budget_required', 'unmetered', 'A metered grant requires a daily or monthly agent-time limit.');
 	if (grant.unmetered && (grant.dailyAgentSecondsLimit != null || grant.monthlyAgentSecondsLimit != null)) add('capacity_grant_budget_ambiguous', 'unmetered', 'An unmetered grant must not also declare agent-time limits.');

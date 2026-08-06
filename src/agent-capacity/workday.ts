@@ -1,5 +1,6 @@
 export interface WorkdayPlanningAgent {
 	slug: string;
+	activityType?: string | null;
 	planningAllocationPercent?: number | null;
 	projectAgentClassSlug?: string | null;
 	projectAgentClassId?: string | null;
@@ -9,6 +10,7 @@ export interface WorkdayAgentSelection {
 	classIds: string[];
 	classSlugs: string[];
 	agentSlugs: string[];
+	activityTypes: string[];
 	mode: 'intersection' | 'union';
 }
 
@@ -23,12 +25,13 @@ export function normalizeWorkdayAgentSelection(value: unknown): WorkdayAgentSele
 		classIds: uniqueStrings(input.classIds),
 		classSlugs: uniqueStrings(input.classSlugs),
 		agentSlugs: uniqueStrings(input.agentSlugs),
+		activityTypes: uniqueStrings(input.activityTypes),
 		mode: input.mode === 'union' ? 'union' : 'intersection',
 	};
 }
 
 export function workdayAgentSelectionActive(selection: WorkdayAgentSelection): boolean {
-	return selection.classIds.length > 0 || selection.classSlugs.length > 0 || selection.agentSlugs.length > 0;
+	return selection.classIds.length > 0 || selection.classSlugs.length > 0 || selection.agentSlugs.length > 0 || selection.activityTypes.length > 0;
 }
 
 export function selectWorkdayAgents<T extends WorkdayPlanningAgent>(agents: T[], value: unknown): T[] {
@@ -36,14 +39,16 @@ export function selectWorkdayAgents<T extends WorkdayPlanningAgent>(agents: T[],
 	if (!workdayAgentSelectionActive(selection)) return agents;
 	const classSelectors = new Set([...selection.classIds, ...selection.classSlugs]);
 	const agentSelectors = new Set(selection.agentSlugs);
+	const activitySelectors = new Set(selection.activityTypes);
 	return agents.filter((agent) => {
 		const classMatch = classSelectors.size === 0 || [agent.projectAgentClassId, agent.projectAgentClassSlug]
 			.some((candidate) => candidate && [...classSelectors].some((selector) => selector === candidate || selector.endsWith(`:${candidate}`)));
 		const agentMatch = agentSelectors.size === 0 || agentSelectors.has(agent.slug);
+		const activityMatch = activitySelectors.size === 0 || Boolean(agent.activityType && activitySelectors.has(agent.activityType));
 		if (selection.mode === 'union') {
-			return (classSelectors.size > 0 && classMatch) || (agentSelectors.size > 0 && agentMatch);
+			return (classSelectors.size > 0 && classMatch) || (agentSelectors.size > 0 && agentMatch) || (activitySelectors.size > 0 && activityMatch);
 		}
-		return classMatch && agentMatch;
+		return classMatch && agentMatch && activityMatch;
 	});
 }
 

@@ -101,6 +101,9 @@ export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
 			const cwd = String(input.observed.live.cwd ?? input.context.tenantRoot);
 			const projectName = String(input.unit.spec.projectName ?? 'treeseed-capacity-provider');
 			const env = buildLocalComposeLaunchEnv(input);
+			const services = Array.isArray(input.unit.spec.services)
+				? input.unit.spec.services.filter((service): service is string => typeof service === 'string' && service.trim().length > 0)
+				: [];
 			const reset = input.unit.spec.resetData === true
 				? runDockerCompose({
 						composeFiles,
@@ -124,6 +127,7 @@ export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
 				projectName,
 				cwd,
 				env,
+				services,
 				profiles: localComposeProfiles(input),
 				buildPolicy: localComposeBuildPolicy(input),
 				action: input.diff.action === 'update' ? 'restart' : 'up',
@@ -131,11 +135,55 @@ export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
 			if (!result.ok) {
 				throw new Error(result.stderr.trim() || result.stdout.trim() || 'docker compose up failed');
 			}
+			const afterApply = runDockerCompose({
+				composeFiles,
+				projectName,
+				cwd,
+				env,
+				profiles: localComposeProfiles(input),
+				buildPolicy: localComposeBuildPolicy(input),
+				action: 'ps',
+			});
+			const runningServices = new Set(parseLocalComposeServices(afterApply.stdout).map((service) => service.service));
+			const missingServices = services.filter((service) => !runningServices.has(service));
+			const recovery = missingServices.length > 0
+				? runDockerCompose({
+						composeFiles,
+						projectName,
+						cwd,
+						env,
+						services: missingServices,
+						profiles: localComposeProfiles(input),
+						buildPolicy: localComposeBuildPolicy(input),
+						action: 'up',
+					})
+				: null;
+			if (recovery && !recovery.ok) {
+				throw new Error(recovery.stderr.trim() || recovery.stdout.trim() || `docker compose failed to recover services: ${missingServices.join(', ')}`);
+			}
+			if (recovery) {
+				const recovered = runDockerCompose({
+					composeFiles,
+					projectName,
+					cwd,
+					env,
+					profiles: localComposeProfiles(input),
+					buildPolicy: localComposeBuildPolicy(input),
+					action: 'ps',
+				});
+				const recoveredServices = new Set(parseLocalComposeServices(recovered.stdout).map((service) => service.service));
+				const stillMissing = missingServices.filter((service) => !recoveredServices.has(service));
+				if (stillMissing.length > 0) {
+					const composeOutput = [recovery.stderr, recovery.stdout].map((value) => value.trim()).filter(Boolean).join('\n');
+					throw new Error(`Docker Compose reported success without creating required services: ${stillMissing.join(', ')}.${composeOutput ? `\n${composeOutput}` : ''}`);
+				}
+			}
 			return genericResult(input, {
 				...input.observed.live,
 				reconciledSpecHash: localComposeReconciledSpecHash(input.unit.spec),
 				reset,
 				compose: result,
+				recovery,
 			});
 		},
 		async verify(input) {

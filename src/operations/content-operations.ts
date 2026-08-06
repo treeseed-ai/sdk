@@ -24,7 +24,10 @@ export type ContentModel =
 	| 'knowledge'
 	| 'objective'
 	| 'person'
-	| 'agent';
+	| 'agent'
+	| 'discussion'
+	| 'discussion_message'
+	| 'discussion_event';
 
 export interface ContentRelationInput {
 	field: string;
@@ -130,6 +133,9 @@ const CONTENT_MODELS = new Set<ContentModel>([
 	'objective',
 	'person',
 	'agent',
+	'discussion',
+	'discussion_message',
+	'discussion_event',
 ]);
 
 export const CONTENT_ACTIONS: ContentAction[] = [
