@@ -125,7 +125,6 @@ export function createPackageDependencyReference(input: {
 	commitSha?: string | null;
 	devDependencyReferenceMode?: DevDependencyReferenceMode;
 	gitDependencyProtocol?: GitDependencyProtocol;
-	sourcePath?: string | null;
 }): PackageDependencyReference {
 	if (input.branchMode === 'package-release-main') {
 		return {
@@ -137,7 +136,6 @@ export function createPackageDependencyReference(input: {
 			installSpec: input.version,
 			tagName: input.version,
 			remoteUrl: input.remoteUrl ?? null,
-			sourcePath: input.sourcePath ?? null,
 			mode: 'stable-semver',
 		};
 	}
@@ -160,7 +158,6 @@ export function createPackageDependencyReference(input: {
 		installSpec: manifestSpec,
 		tagName: null,
 		remoteUrl: input.remoteUrl ?? null,
-		sourcePath: input.sourcePath ?? null,
 		mode: 'dev-git-commit',
 	};
 }

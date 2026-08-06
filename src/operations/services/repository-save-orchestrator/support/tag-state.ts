@@ -225,7 +225,6 @@ export function finalizePackageReference(node: RepositorySaveNode, version: stri
 		commitSha: headCommit(node.path),
 		devDependencyReferenceMode: options.devDependencyReferenceMode ?? 'git-commit',
 		gitDependencyProtocol: options.gitDependencyProtocol ?? 'preserve-origin',
-		sourcePath: node.path,
 	});
 	node.plannedDependencySpec = reference.spec;
 	return reference;

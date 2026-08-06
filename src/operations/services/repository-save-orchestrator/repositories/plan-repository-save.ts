@@ -64,7 +64,6 @@ export function planRepositorySave(options: RepositorySaveOptions): RepositorySa
 					commitSha: headCommitOrPlanPlaceholder(node.path),
 					devDependencyReferenceMode: options.devDependencyReferenceMode ?? 'git-commit',
 					gitDependencyProtocol: options.gitDependencyProtocol ?? 'preserve-origin',
-					sourcePath: node.path,
 				});
 				plannedDependencySpec = reference.spec;
 				plannedVersions.set(node.name, plannedVersion);

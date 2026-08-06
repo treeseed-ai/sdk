@@ -137,6 +137,13 @@ it('re-resolves a consumer lock from the local package graph before atomic publi
 	writeJson(resolve(sdkRoot, 'package.json'), {
 		name: '@treeseed/sdk', version: '2.0.0', dependencies: { yaml: '2.8.1' },
 	});
+	writeJson(resolve(sdkRoot, 'package-lock.json'), {
+		name: '@treeseed/sdk', version: '2.0.0', lockfileVersion: 3,
+		packages: {
+			'': { name: '@treeseed/sdk', version: '2.0.0', dependencies: { yaml: '2.8.1' } },
+			'node_modules/yaml': { version: '2.8.1' },
+		},
+	});
 	git(sdkRoot, ['init', '-b', 'main']);
 	git(sdkRoot, ['config', 'user.email', 'tests@treeseed.local']);
 	git(sdkRoot, ['config', 'user.name', 'TreeSeed Tests']);
@@ -161,11 +168,20 @@ it('re-resolves a consumer lock from the local package graph before atomic publi
 		remoteUrl: 'git@github.com:treeseed-ai/sdk.git', mode: 'dev-git-commit' as const,
 	};
 	expect(syncDirectGitDependencyLockfileEntries(repo, {}, [reference])).toBe(true);
-	validateStandaloneGitDependencyLockfile(repo, {}, [reference]);
+	const originalPath = process.env.PATH;
+	process.env.PATH = '';
+	try {
+		validateStandaloneGitDependencyLockfile(repo, {}, [reference]);
+	} finally {
+		process.env.PATH = originalPath;
+	}
 	const lock = JSON.parse(readFileSync(resolve(agentRoot, 'package-lock.json'), 'utf8'));
 	expect(lock.packages['node_modules/@treeseed/sdk'].dependencies).toEqual({ yaml: '2.8.1' });
 	expect(lock.packages['node_modules/@treeseed/sdk'].resolved).toContain(`#${sourceCommit}`);
 	expect(lock.packages['node_modules/yaml'].version).toBe('2.8.1');
+	lock.packages['node_modules/@treeseed/sdk'].resolved = 'ssh://git@github.com/treeseed-ai/sdk.git#stale';
+	writeJson(resolve(agentRoot, 'package-lock.json'), lock);
+	expect(() => validateStandaloneGitDependencyLockfile(repo, {}, [reference])).toThrow('resolved commit is stale');
 });
 
 it('creates deterministic semver dev prerelease versions from branch names', () => {
