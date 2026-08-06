@@ -1,4 +1,4 @@
-import { RESEARCH_WORKFLOW_STAGES,type ResearchWorkflowRecord } from '../contracts/operations/research-workflow.ts';
+import { RESEARCH_WORKFLOW_STAGES,type ResearchWorkflowRecord } from '../../contracts/operations/research-workflow.ts';
 import { validateResearchCitations } from './research-citation.ts';
 
 export interface ResearchWorkflowDiagnostic { code: string; path: string; message: string }

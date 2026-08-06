@@ -1,6 +1,6 @@
 import type { ExecutionUsageActual } from '../types/agents.ts';
 import type { ResearchCitation } from './contracts/support/research-citation.ts';
-import { validateResearchCitations } from './validation/research-citation.ts';
+import { validateResearchCitations } from './validation/research/research-citation.ts';
 
 export interface AgentToolEventReference {
 	id: string;
