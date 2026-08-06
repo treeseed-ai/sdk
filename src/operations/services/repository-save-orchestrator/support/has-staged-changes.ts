@@ -1,5 +1,4 @@
-import { copyFileSync,existsSync,mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
 normalizeGitRemoteForDependency,
@@ -9,7 +8,6 @@ type PackageDependencyReference
 import {
 incrementVersion
 } from '../../treedx/workspaces/workspace-save.ts';
-import { runCapturedCommand } from '../runtime/with-short-process-temp-env.ts';
 import { nextDevVersion } from './classify-repo-kind.ts';
 import { RepositorySaveNode,RepositorySaveOptions,emitProgress,readJson,runGit,writeJson } from './repo-kind.ts';
 
@@ -96,119 +94,11 @@ export function syncDirectGitDependencyLockfileEntries(
 				delete entry.integrity;
 				changed = true;
 			}
-			if (reference.sourcePath) {
-				changed = syncInternalPackageLockMetadata(packageEntries, entry, reference.sourcePath) || changed;
-			}
 		}
 	}
 	if (!changed) return false;
 	writeJson(lockfilePath, lockfile);
 	emitProgress(options, node, 'lockfile', 'Synchronized direct internal Git dependency lockfile entries without npm git preparation.');
-	return true;
-}
-
-function syncInternalPackageLockMetadata(
-	targetEntries: Record<string, Record<string, unknown>>,
-	targetPackage: Record<string, unknown>,
-	sourcePath: string,
-) {
-	const manifestPath = resolve(sourcePath, 'package.json');
-	const sourceLockPath = resolve(sourcePath, 'package-lock.json');
-	if (!existsSync(manifestPath) || !existsSync(sourceLockPath)) return false;
-	const manifest = readJson(manifestPath);
-	const sourceLock = readJson(sourceLockPath);
-	const sourceEntries = sourceLock.packages && typeof sourceLock.packages === 'object' && !Array.isArray(sourceLock.packages)
-		? sourceLock.packages as Record<string, Record<string, unknown>>
-		: null;
-	if (!sourceEntries) return false;
-	let changed = false;
-	for (const field of ['license', 'dependencies', 'optionalDependencies', 'peerDependencies', 'peerDependenciesMeta', 'bin', 'engines']) {
-		const next = manifest[field];
-		if (next === undefined) {
-			if (field in targetPackage) { delete targetPackage[field]; changed = true; }
-		} else if (JSON.stringify(targetPackage[field]) !== JSON.stringify(next)) {
-			targetPackage[field] = structuredClone(next);
-			changed = true;
-		}
-	}
-	const visited = new Set<string>();
-	const importDependency = (dependencyName: string) => {
-		if (visited.has(dependencyName)) return;
-		visited.add(dependencyName);
-		const key = `node_modules/${dependencyName}`;
-		const sourceEntry = sourceEntries[key];
-		if (!sourceEntry) return;
-		if (JSON.stringify(targetEntries[key]) !== JSON.stringify(sourceEntry)) {
-			targetEntries[key] = structuredClone(sourceEntry);
-			changed = true;
-		}
-		for (const field of ['dependencies', 'optionalDependencies']) {
-			const dependencies = sourceEntry[field];
-			if (!dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) continue;
-			for (const childName of Object.keys(dependencies)) importDependency(childName);
-		}
-	};
-	for (const field of ['dependencies', 'optionalDependencies']) {
-		const dependencies = manifest[field];
-		if (!dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) continue;
-		for (const dependencyName of Object.keys(dependencies)) importDependency(dependencyName);
-	}
-	return changed;
-}
-
-export function validateStandaloneGitDependencyLockfile(
-	node: RepositorySaveNode,
-	options: Pick<RepositorySaveOptions, 'onProgress'>,
-) {
-	const lockfilePath = resolve(node.path, 'package-lock.json');
-	const lockfileExists = existsSync(lockfilePath);
-	const previousLockfile = lockfileExists ? readFileSync(lockfilePath, 'utf8') : null;
-	const isolatedRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-lockfile-'));
-	const validateArgs = [
-		'ci',
-		'--package-lock-only',
-		'--ignore-scripts',
-		'--workspaces=false',
-		'--no-audit',
-		'--no-fund',
-	];
-	try {
-		if (!lockfileExists) throw new Error('standalone lockfile missing');
-		copyFileSync(resolve(node.path, 'package.json'), resolve(isolatedRoot, 'package.json'));
-		copyFileSync(lockfilePath, resolve(isolatedRoot, 'package-lock.json'));
-		runCapturedCommand(node, options, 'lockfile', 'npm', validateArgs, {
-			cwd: isolatedRoot,
-			timeoutMs: 5 * 60_000,
-		});
-	} catch (validationError) {
-		try {
-			rmSync(isolatedRoot, { recursive: true, force: true });
-			mkdirSync(isolatedRoot, { recursive: true });
-			copyFileSync(resolve(node.path, 'package.json'), resolve(isolatedRoot, 'package.json'));
-			runCapturedCommand(node, options, 'lockfile', 'npm', [
-				'install',
-				'--package-lock-only',
-				'--ignore-scripts',
-				'--workspaces=false',
-				'--no-audit',
-				'--no-fund',
-			], {
-				cwd: isolatedRoot,
-				timeoutMs: 15 * 60_000,
-			});
-			runCapturedCommand(node, options, 'lockfile', 'npm', validateArgs, {
-				cwd: isolatedRoot,
-				timeoutMs: 5 * 60_000,
-			});
-			copyFileSync(resolve(isolatedRoot, 'package-lock.json'), lockfilePath);
-		} catch (regenerationError) {
-			if (previousLockfile !== null) writeFileSync(lockfilePath, previousLockfile, 'utf8');
-			throw regenerationError instanceof Error ? regenerationError : validationError;
-		}
-	} finally {
-		rmSync(isolatedRoot, { recursive: true, force: true });
-	}
-	emitProgress(options, node, 'lockfile', 'Validated the standalone lockfile against the committed package manifest.');
 	return true;
 }
 

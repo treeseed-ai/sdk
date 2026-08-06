@@ -11,7 +11,8 @@ hasMeaningfulChanges
 import { finalizeCleanPackageVersion } from '../packages/finalize-clean-package-version.ts';
 import { isNoOpGitCommitError,runCapturedCommand } from '../runtime/with-short-process-temp-env.ts';
 import { canManagePackageJsonVersion,createReport,dependencyFields,ensureWritableRemote,packageVersionTagConflictsWithHead,selectPackageVersion } from '../support/classify-repo-kind.ts';
-import { applyPackageVersion,hasNpmLockfile,hasStagedChanges,isRootWorkspaceRepository,shouldSkipNetworkInstall,syncDirectGitDependencyLockfileEntries,updateDependencyReferences,validateStandaloneGitDependencyLockfile } from '../support/has-staged-changes.ts';
+import { applyPackageVersion,hasNpmLockfile,hasStagedChanges,isRootWorkspaceRepository,shouldSkipNetworkInstall,syncDirectGitDependencyLockfileEntries,updateDependencyReferences } from '../support/has-staged-changes.ts';
+import { validateStandaloneGitDependencyLockfile } from '../support/standalone-lockfile.ts';
 import { RepositorySaveError,RepositorySaveNode,RepositorySaveOptions,SaveState,emitProgress,readJson } from '../support/repo-kind.ts';
 import { classifyRepositoryChanges,repositoryChangedPaths } from '../support/change-classification.ts';
 import { finishRepositorySavePublish,pullRebaseFromOrigin,runRepoVerification } from '../support/run-script.ts';
@@ -46,16 +47,11 @@ export async function saveOneRepository(
 		const value = node.packageJson?.[field];
 		return value && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value) : [];
 	}));
-	const gitDependencyRefreshReferences = [...state.finalizedReferences.values()]
-		.filter((reference) => reference.mode === 'dev-git-commit' && directDependencyNames.has(reference.packageName));
-	const deferredGitDependencyValidation = options.deferPushUntilVerified === true && gitDependencyRefreshReferences.length > 0;
+	const availableGitDependencyReferences = [...state.finalizedReferences.values()]
+		.filter((reference) => reference.mode === 'dev-git-commit');
+	const gitDependencyRefreshReferences = availableGitDependencyReferences
+		.filter((reference) => directDependencyNames.has(reference.packageName));
 	const lockfileGitDependenciesSynced = syncDirectGitDependencyLockfileEntries(node, options, gitDependencyRefreshReferences);
-	if (!isRootWorkspaceRepository(node, options) && (
-		lockfileGitDependenciesSynced
-		|| (gitDependencyRefreshReferences.length > 0 && !existsSync(resolve(node.path, 'package-lock.json')))
-	) && !deferredGitDependencyValidation) {
-		validateStandaloneGitDependencyLockfile(node, options);
-	}
 	const gitDependencyRefreshSpecs = lockfileGitDependenciesSynced
 		? []
 		: gitDependencyRefreshReferences.map((reference) => `${reference.packageName}@${reference.installSpec ?? reference.spec}`);
@@ -106,9 +102,8 @@ export async function saveOneRepository(
 		!isRootWorkspaceRepository(node, options)
 		&& hasNpmLockfile(node.path)
 		&& (packageNeedsVersion || dependencyChanged)
-		&& !deferredGitDependencyValidation
 	) {
-		validateStandaloneGitDependencyLockfile(node, options);
+		validateStandaloneGitDependencyLockfile(node, options, availableGitDependencyReferences);
 	}
 
 	if (!contentOnly && hasNpmLockfile(node.path) && (node.kind === 'project' || packageNeedsVersion || dependencyChanged || submodulesChanged)) {

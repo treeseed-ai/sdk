@@ -6,6 +6,7 @@ export * from '../repository-save-orchestrator/repositories/save-one-repository.
 export * from '../repository-save-orchestrator/runtime/with-short-process-temp-env.ts';
 export * from '../repository-save-orchestrator/support/classify-repo-kind.ts';
 export * from '../repository-save-orchestrator/support/has-staged-changes.ts';
+export * from '../repository-save-orchestrator/support/standalone-lockfile.ts';
 export * from '../repository-save-orchestrator/support/repo-kind.ts';
 export * from '../repository-save-orchestrator/support/run-script.ts';
 export * from '../repository-save-orchestrator/support/tag-state.ts';

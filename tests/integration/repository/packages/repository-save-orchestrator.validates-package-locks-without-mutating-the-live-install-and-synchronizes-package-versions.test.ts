@@ -95,22 +95,20 @@ it('validates package locks without mutating the live install and synchronizes p
 		expect(readFileSync(sentinelPath, 'utf8')).toBe('installed dependency state\n');
 	});
 
-it('carries new transitive runtime dependencies into dependent package locks', () => {
+it('re-resolves a consumer lock from the local package graph before atomic publication', () => {
 	const root = mkdtempSync(join(tmpdir(), 'treeseed-save-transitive-lock-'));
 	const sdkRoot = resolve(root, 'sdk');
 	const agentRoot = resolve(root, 'agent');
 	writeJson(resolve(sdkRoot, 'package.json'), {
-		name: '@treeseed/sdk', version: '2.0.0', dependencies: { 'crypto-wrapper': '1.0.0' },
+		name: '@treeseed/sdk', version: '2.0.0', dependencies: { yaml: '2.8.1' },
 	});
-	writeJson(resolve(sdkRoot, 'package-lock.json'), {
-		lockfileVersion: 3,
-		packages: {
-			'': { name: '@treeseed/sdk', version: '2.0.0', dependencies: { 'crypto-wrapper': '1.0.0' } },
-			'node_modules/crypto-wrapper': { version: '1.0.0', dependencies: { 'crypto-native': '1.0.0' } },
-			'node_modules/crypto-native': { version: '1.0.0' },
-		},
-	});
-	const dependencySpec = 'github:treeseed-ai/sdk#0123456789abcdef0123456789abcdef01234567';
+	git(sdkRoot, ['init', '-b', 'main']);
+	git(sdkRoot, ['config', 'user.email', 'tests@treeseed.local']);
+	git(sdkRoot, ['config', 'user.name', 'TreeSeed Tests']);
+	git(sdkRoot, ['add', 'package.json']);
+	git(sdkRoot, ['commit', '-m', 'fixture']);
+	const sourceCommit = git(sdkRoot, ['rev-parse', 'HEAD']);
+	const dependencySpec = `github:treeseed-ai/sdk#${sourceCommit}`;
 	const packageJson = { name: '@treeseed/agent', version: '1.0.0', dependencies: { '@treeseed/sdk': dependencySpec } };
 	writeJson(resolve(agentRoot, 'package.json'), packageJson);
 	writeJson(resolve(agentRoot, 'package-lock.json'), {
@@ -118,20 +116,21 @@ it('carries new transitive runtime dependencies into dependent package locks', (
 		packages: {
 			'': packageJson,
 			'node_modules/@treeseed/sdk': { version: '1.0.0', resolved: 'old' },
-			'node_modules/crypto-wrapper': { version: '0.9.0' },
+			'node_modules/yaml': { version: '2.7.0' },
 		},
 	});
 	const repo = node({ id: agentRoot, name: '@treeseed/agent', path: agentRoot, packageJson });
-
-	expect(syncDirectGitDependencyLockfileEntries(repo, {}, [{
+	const reference = {
 		packageName: '@treeseed/sdk', sourcePath: sdkRoot, version: '2.0.0', spec: dependencySpec,
 		manifestSpec: dependencySpec, installSpec: dependencySpec, tagName: null,
-		remoteUrl: 'git@github.com:treeseed-ai/sdk.git', mode: 'dev-git-commit',
-	}])).toBe(true);
+		remoteUrl: 'git@github.com:treeseed-ai/sdk.git', mode: 'dev-git-commit' as const,
+	};
+	expect(syncDirectGitDependencyLockfileEntries(repo, {}, [reference])).toBe(true);
+	validateStandaloneGitDependencyLockfile(repo, {}, [reference]);
 	const lock = JSON.parse(readFileSync(resolve(agentRoot, 'package-lock.json'), 'utf8'));
-	expect(lock.packages['node_modules/@treeseed/sdk'].dependencies).toEqual({ 'crypto-wrapper': '1.0.0' });
-	expect(lock.packages['node_modules/crypto-wrapper']).toEqual({ version: '1.0.0', dependencies: { 'crypto-native': '1.0.0' } });
-	expect(lock.packages['node_modules/crypto-native'].version).toBe('1.0.0');
+	expect(lock.packages['node_modules/@treeseed/sdk'].dependencies).toEqual({ yaml: '2.8.1' });
+	expect(lock.packages['node_modules/@treeseed/sdk'].resolved).toContain(`#${sourceCommit}`);
+	expect(lock.packages['node_modules/yaml'].version).toBe('2.8.1');
 });
 
 it('creates deterministic semver dev prerelease versions from branch names', () => {

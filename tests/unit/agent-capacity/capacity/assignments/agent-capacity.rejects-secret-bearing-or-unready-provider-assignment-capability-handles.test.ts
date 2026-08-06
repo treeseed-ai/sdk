@@ -229,9 +229,9 @@ it('validates structured estimates with dependency declarations', () => {
 			projectId: 'project-1',
 			decisionId: 'decision-1',
 			agentClass: 'engineer',
-			minCredits: 2,
-			expectedCredits: 4,
-			maxCredits: 6,
+			minSeconds: 120,
+			expectedSeconds: 240,
+			maxSeconds: 360,
 			confidence: 'medium',
 			riskLevel: 'low',
 			assumptions: ['Architecture spec covers API shape.'],
@@ -256,8 +256,8 @@ it('validates structured estimates with dependency declarations', () => {
 		} as const;
 
 		expect(validateStructuredAgentEstimate(estimate).ok).toBe(true);
-		expect(validateStructuredAgentEstimate({ ...estimate, minCredits: -1 }).diagnostics).toEqual(expect.arrayContaining([
-			expect.objectContaining({ code: 'non_negative_number_required', path: 'minCredits' }),
+		expect(validateStructuredAgentEstimate({ ...estimate, minSeconds: -1 }).diagnostics).toEqual(expect.arrayContaining([
+			expect.objectContaining({ code: 'non_negative_number_required', path: 'minSeconds' }),
 		]));
 	});
 
