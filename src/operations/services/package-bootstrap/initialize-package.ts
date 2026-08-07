@@ -56,9 +56,9 @@ function targetState(target: string, remoteUrl: string, expected: Record<string,
 	const origin = git(['remote', 'get-url', 'origin'], target);
 	if (origin !== remoteUrl) throw new Error(`Package target origin ${origin} does not match ${remoteUrl}.`);
 	const branch = git(['branch', '--show-current'], target);
-	if (branch !== 'main') throw new Error(`Package target is on ${branch || '(detached)'}, expected main.`);
 	const head = git(['rev-parse', '--verify', 'HEAD'], target, true);
 	if (!head) {
+		if (branch !== 'main') throw new Error(`Interrupted package target is on ${branch || '(detached)'}, expected main.`);
 		const unexpected = git(['status', '--porcelain', '--untracked-files=all'], target).split('\n').filter(Boolean).map((line) => line.slice(3)).filter((file) => expected[file] === undefined);
 		const changed = Object.entries(expected).filter(([file, content]) => existsSync(resolve(target, file)) && readFileSync(resolve(target, file), 'utf8') !== content).map(([file]) => file);
 		if (unexpected.length || changed.length) throw new Error(`Interrupted package target contains conflicting content: ${[...unexpected, ...changed].join(', ')}.`);

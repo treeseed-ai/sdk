@@ -44,6 +44,9 @@ describe('package bootstrap', () => {
 		const replay = initializePackage({ ...input, execute: true });
 		expect(replay.status).toBe('unchanged');
 		expect(replay.commitSha).toBe(created.commitSha);
+		git(['checkout', '-b', 'ai'], resolve(root, 'packages/ai'));
+		const workstreamReplay = initializePackage({ ...input, execute: true });
+		expect(workstreamReplay.status).toBe('unchanged');
 	}, 30_000);
 
 	it('rejects nonempty remotes and unsafe targets', () => {
