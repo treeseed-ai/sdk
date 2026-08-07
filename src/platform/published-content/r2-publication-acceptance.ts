@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { R2S3PublicationClient,type R2S3PublicationConfig } from './r2-s3-publication-client.ts';
+import { createR2PublicationClient,type R2PublicationConfig } from './r2-publication-client.ts';
 
 export async function runR2PublicationAcceptance(input: {
 	teamId: string;
-	r2: R2S3PublicationConfig;
+	r2: R2PublicationConfig;
 	runId?: string;
 	fetchImpl?: typeof fetch;
 }) {
@@ -11,7 +11,7 @@ export async function runR2PublicationAcceptance(input: {
 	const root = `teams/${input.teamId}/acceptance/${runId}`;
 	const objectKey = `${root}/object.txt`;
 	const pointerKey = `${root}/pointer.json`;
-	const client = new R2S3PublicationClient(input.r2, input.fetchImpl);
+	const client = createR2PublicationClient(input.r2, input.fetchImpl);
 	const first = '{"revision":"first"}\n';
 	const second = '{"revision":"second"}\n';
 	try {

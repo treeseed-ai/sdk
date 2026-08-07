@@ -83,7 +83,9 @@ export function buildCapacityProviderAdapter(providerId: 'local' | 'railway'): R
 					await new Promise((resolveWait) => setTimeout(resolveWait, intervalMs));
 					observedStatus = observeCapacityProviderRuntimeStatus(statusPath, maxAgeSeconds, new Date(), requireConnected);
 				}
-				const ready = runtimeReady();
+				const expectedProviderClass = typeof input.unit.spec.providerClass === 'string' ? input.unit.spec.providerClass : null;
+				const classMatches = !expectedProviderClass || observedStatus.providerClass === expectedProviderClass;
+				const ready = runtimeReady() && classMatches;
 				checks.push(verificationCheck('capacity-provider-runtime-status', requireConnected
 					? 'Provider manager has a fresh approved connection and published availability session'
 					: 'Provider manager is fresh and ready for provider connections', 'sdk', {
@@ -92,7 +94,7 @@ export function buildCapacityProviderAdapter(providerId: 'local' | 'railway'): R
 					ready,
 					verified: ready,
 					observed: observedStatus,
-					issues: observedStatus.issues,
+					issues: [...observedStatus.issues, ...(!classMatches ? [`Provider runtime class ${observedStatus.providerClass ?? '(missing)'} does not match desired class ${expectedProviderClass}.`] : [])],
 				}));
 			}
 			if (checks.length === 0) {

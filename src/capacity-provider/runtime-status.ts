@@ -10,6 +10,7 @@ export interface ObservedCapacityProviderRuntimeStatus {
 	valid: boolean;
 	fresh: boolean;
 	connected: boolean;
+	providerClass: string | null;
 	ageSeconds: number | null;
 	status: Record<string, unknown> | null;
 	issues: string[];
@@ -26,6 +27,7 @@ export function observeCapacityProviderRuntimeStatus(path: string, maxAgeSeconds
 			valid: false,
 			fresh: false,
 			connected: false,
+			providerClass: null,
 			ageSeconds: null,
 			status: null,
 			issues: [`Capacity provider runtime status is unavailable or invalid: ${path}`],
@@ -36,6 +38,7 @@ export function observeCapacityProviderRuntimeStatus(path: string, maxAgeSeconds
 	const valid = status.schemaVersion === 1 && status.role === 'manager' && status.ok === true && ageSeconds !== null;
 	const fresh = valid && ageSeconds <= maxAgeSeconds;
 	const result = record(status.result);
+	const providerClass = typeof result.providerClass === 'string' ? result.providerClass : null;
 	const connections = Array.isArray(result.connections) ? result.connections.map(record) : [];
 	const connected = fresh && connections.some((connection) => connection.ok !== false && connection.action === 'availability-session-published');
 	const issues = [
@@ -43,5 +46,5 @@ export function observeCapacityProviderRuntimeStatus(path: string, maxAgeSeconds
 		...(valid && !fresh ? [`Manager runtime status is stale (${ageSeconds?.toFixed(1)} seconds old).`] : []),
 		...(fresh && requireConnected && !connected ? ['Manager has not published an availability session for any approved provider connection.'] : []),
 	];
-	return { path, exists: true, valid, fresh, connected, ageSeconds, status, issues };
+	return { path, exists: true, valid, fresh, connected, providerClass, ageSeconds, status, issues };
 }

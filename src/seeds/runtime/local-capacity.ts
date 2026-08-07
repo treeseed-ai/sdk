@@ -12,6 +12,7 @@ import {
 	type CapacityProviderPrivateJwk,
 } from '../../capacity/providers/capacity-provider.ts';
 import { MarketClient } from '../../entrypoints/clients/market-client.ts';
+import { MarketClientError } from '../../entrypoints/clients/market-client.ts';
 import type { SeedAgentLabServicePrincipalPrerequisite, SeedCapacityProviderPrerequisite, SeedPlan } from '../types.ts';
 
 type Json = Record<string, unknown>;
@@ -27,11 +28,6 @@ function object(value: unknown): Json {
 
 function string(value: unknown) {
 	return typeof value === 'string' && value.trim() ? value.trim() : null;
-}
-
-function seededKey(value: Json) {
-	const metadata = object(value.metadata);
-	return string(object(metadata.seed).resourceKey) ?? string(metadata.resourceKey) ?? string(value.seedResourceKey);
 }
 
 function stableId(prefix: string, key: string) {
@@ -70,11 +66,16 @@ function selectedServicePrincipals(plan: SeedPlan) {
 	return plan.runtime.agentLabServicePrincipals.filter((principal) => (principal.environments ?? plan.environments).some((environment) => plan.environments.includes(environment)));
 }
 
+function providerDataDir(projectRoot: string, provider: SeedCapacityProviderPrerequisite) {
+	const identity = provider.key.replace(/[^a-zA-Z0-9._-]+/gu, '-').replace(/^-+|-+$/gu, '').toLowerCase();
+	return resolve(projectRoot, '.treeseed/local-capacity-providers', `${provider.providerClass}-${identity}`);
+}
+
 async function resolveTeam(client: MarketClient, plan: SeedPlan, prerequisite: SeedAgentLabServicePrincipalPrerequisite) {
 	const action = plan.actions.find((candidate) => candidate.kind === 'team' && candidate.key === prerequisite.team); const actionId = string(action?.existing?.id);
 	if (actionId) return actionId;
-	const teams = (await client.teams()).payload.map(object); const team = teams.find((item) => seededKey(item) === prerequisite.team) ?? teams.find((item) => string(item.slug) === prerequisite.team.split('/').at(-1));
-	const teamId = string(team?.id); if (!teamId) throw new Error(`Agent Lab service principal ${prerequisite.key} could not resolve team ${prerequisite.team}.`); return teamId;
+	const resource = (await client.resolveSeedResources([prerequisite.team])).payload[0];
+	const teamId = string(resource?.id); if (!teamId) throw new Error(`Agent Lab service principal ${prerequisite.key} could not resolve team ${prerequisite.team}.`); return teamId;
 }
 
 async function reconcileServicePrincipal(input: { client: MarketClient; plan: SeedPlan; principal: SeedAgentLabServicePrincipalPrerequisite; projectRoot: string }) {
@@ -89,21 +90,20 @@ async function reconcileServicePrincipal(input: { client: MarketClient; plan: Se
 async function resolveResources(client: MarketClient, plan: SeedPlan, provider: SeedCapacityProviderPrerequisite, fallbackTeamId?: string | null) {
 	const teamAction = plan.actions.find((action) => action.kind === 'team' && action.key === provider.team);
 	let teamId = string(teamAction?.existing?.id) ?? fallbackTeamId ?? null;
-	if (!teamId) {
-		const teams = (await client.teams()).payload.map(object);
-		const team = teams.find((item) => seededKey(item) === provider.team)
-			?? teams.find((item) => string(item.slug) === provider.team.split('/').at(-1));
-		teamId = string(team?.id);
-	}
+	const unresolvedKeys = [
+		...(!teamId ? [provider.team] : []),
+		...provider.projects.filter((key) => !string(plan.actions.find((candidate) => candidate.kind === 'project' && candidate.key === key)?.existing?.id)),
+	];
+	const resolved = unresolvedKeys.length > 0
+		? new Map((await client.resolveSeedResources(unresolvedKeys)).payload.map((resource) => [resource.key, resource]))
+		: new Map<string, { id: string }>();
+	teamId = teamId ?? string(resolved.get(provider.team)?.id);
 	if (!teamId) throw new Error(`Seed capacity prerequisite ${provider.key} could not resolve team ${provider.team}.`);
-	const projects = (await client.projects(teamId)).payload.map(object);
 	const projectIds = provider.projects.map((key) => {
 		const action = plan.actions.find((candidate) => candidate.kind === 'project' && candidate.key === key);
 		const actionId = string(action?.existing?.id);
 		if (actionId) return actionId;
-		const project = projects.find((item) => seededKey(item) === key)
-			?? projects.find((item) => string(item.slug) === key.split('/').at(-1));
-		const id = string(project?.id);
+		const id = string(resolved.get(key)?.id);
 		if (!id) throw new Error(`Seed capacity prerequisite ${provider.key} could not resolve project ${key}.`);
 		return id;
 	});
@@ -139,15 +139,15 @@ async function verifyOrRepairCredential(input: {
 	const membershipId = string(input.state.membershipId);
 	const requestId = string(input.state.registrationRequestId);
 	const credentialRef = string(input.state.generatedCredentialRef);
-	if (!credentialId || !membershipId || !requestId || !credentialRef) return input.state;
+	if (!credentialId || !membershipId || !requestId || !credentialRef) return { state: input.state, accessToken: null };
 	const credentialPath = resolve(input.dataDir, credentialRef.replace(/^data:\/\//u, ''));
 	const credential = (await readFile(credentialPath, 'utf8')).trim();
 	const verifyKey = `seed-runtime:${input.providerKey}:credential-verify:${Date.now()}`;
 	const verifyBody = { credentialId, idempotencyKey: verifyKey };
 	const verifyProof = await signCapacityProviderProof({ privateJwk: input.privateJwk, publicJwk: input.publicJwk, method: 'POST', path: '/v1/provider/access-tokens', audience: input.apiUrl, body: verifyBody });
 	try {
-		await input.protocol.issueAccessToken(credential, credentialId, verifyProof, verifyKey);
-		return input.state;
+		const issued = await input.protocol.issueAccessToken(credential, credentialId, verifyProof, verifyKey);
+		return { state: input.state, accessToken: issued.accessToken };
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		if (!/credential (?:is invalid|identifier does not match|is not active)/iu.test(message)) throw error;
@@ -160,7 +160,37 @@ async function verifyOrRepairCredential(input: {
 	const exchangeProof = await signCapacityProviderProof({ privateJwk: input.privateJwk, publicJwk: input.publicJwk, method: 'POST', path: exchangePath, audience: input.apiUrl, body: exchangeBody });
 	const issued = await input.protocol.exchangeCredential(requestId, exchangeProof, exchangeKey);
 	await atomicWrite(credentialPath, `${issued.credential.trim()}\n`);
-	return { ...input.state, credentialId: issued.id, credentialRepair: { priorCredentialId: credentialId, repairedAt: new Date().toISOString() } };
+	const repairedState = { ...input.state, credentialId: issued.id, credentialRepair: { priorCredentialId: credentialId, repairedAt: new Date().toISOString() } };
+	const accessKey = `seed-runtime:${input.providerKey}:credential-verify:${issued.id}`;
+	const accessBody = { credentialId: issued.id, idempotencyKey: accessKey };
+	const accessProof = await signCapacityProviderProof({ privateJwk: input.privateJwk, publicJwk: input.publicJwk, method: 'POST', path: '/v1/provider/access-tokens', audience: input.apiUrl, body: accessBody });
+	const access = await input.protocol.issueAccessToken(issued.credential, issued.id, accessProof, accessKey);
+	return { state: repairedState, accessToken: access.accessToken };
+}
+
+async function publishExecutionProviderInventory(input: {
+	apiUrl: string;
+	accessToken: string;
+	provider: SeedCapacityProviderPrerequisite;
+	executionProviders: CapacityProviderManifestV2['executionProviders'];
+	capabilities: string[];
+	maxConcurrentRunners: number;
+}) {
+	const protocol = new ProviderProtocolClient({ marketUrl: input.apiUrl, accessToken: input.accessToken, userAgent: 'treeseed-seed-runtime/1' });
+	const session = await protocol.createAvailabilitySession({
+		ttlSeconds: 90,
+		environment: 'local',
+		status: 'open',
+		availableFrom: new Date().toISOString(),
+		availableUntil: null,
+		executionProviders: input.executionProviders.map((provider) => ({ ...provider, status: 'active' })),
+		capabilities: input.capabilities,
+		nativeLimits: { maxConcurrentRunners: input.maxConcurrentRunners },
+		runnerPressure: { activeRunners: 0, maxConcurrentRunners: input.maxConcurrentRunners },
+		constraints: { outboundOnly: true },
+		metadata: { source: 'treeseed-seed-runtime', seedResourceKey: input.provider.key, inventoryOnly: true },
+	});
+	await protocol.closeAvailabilitySession(session.payload.id);
 }
 
 async function provisionConnection(input: {
@@ -183,7 +213,18 @@ async function provisionConnection(input: {
 	const capabilities = [...new Set([...executionProviders.flatMap((entry) => entry.capabilities), ...input.projectCapabilities])].sort();
 	const capabilityDigest = createHash('sha256').update(`${capabilities.join('\0')}\0${maxConcurrentRunners}`).digest('hex');
 	if (!state?.membershipId || !state.providerId || !state.credentialId || !state.generatedCredentialRef || state.teamId !== input.teamId) {
-		const key = await input.client.revealTeamCapacityRegistrationKey(input.teamId);
+		let key;
+		try {
+			key = await input.client.revealTeamCapacityRegistrationKey(input.teamId);
+		} catch (error) {
+			const payload = error instanceof MarketClientError ? object(error.payload) : {};
+			if (string(payload.code) !== 'registration_key_reveal_invalid') throw error;
+			const current = await input.client.teamCapacityRegistrationKey(input.teamId);
+			key = await input.client.rotateTeamCapacityRegistrationKey(
+				input.teamId,
+				`seed-runtime:${input.provider.key}:repair-registration-key:${current.payload.generation}`,
+			);
+		}
 		const body = {
 			schemaVersion: 1 as const, displayName: input.baseManifest.identity.displayName, publicJwk,
 			capabilitySummary: capabilities,
@@ -203,7 +244,8 @@ async function provisionConnection(input: {
 		state = { teamId: input.teamId, providerId: request.providerId, membershipId: approved.payload.membershipId, credentialId: credential.id, generatedCredentialRef: credentialRef, registrationRequestId: request.id, registrationStatus: 'approved', capabilityDigest };
 		await atomicWrite(connectionStatePath, `${JSON.stringify({ schemaVersion: 1, connectionId: input.provider.connectionId, marketUrl: input.apiUrl, marketProfile: 'local', marketAudience: input.apiUrl, ...state, updatedAt: new Date().toISOString() }, null, 2)}\n`);
 	}
-	state = await verifyOrRepairCredential({ client: input.client, protocol, apiUrl: input.apiUrl, providerKey: input.provider.key, dataDir: input.dataDir, privateJwk, publicJwk, state: state ?? {} });
+	const credential = await verifyOrRepairCredential({ client: input.client, protocol, apiUrl: input.apiUrl, providerKey: input.provider.key, dataDir: input.dataDir, privateJwk, publicJwk, state: state ?? {} });
+	state = credential.state;
 	if (state?.capabilityDigest !== capabilityDigest) {
 		state = { ...state, capabilityDigest };
 	}
@@ -216,6 +258,8 @@ async function provisionConnection(input: {
 	};
 	const runtimeManifest = { ...input.baseManifest, executionProviders, connections: [connection] };
 	await atomicWrite(input.runtimeManifestPath, stringify(runtimeManifest));
+	if (!credential.accessToken) throw new Error(`Seed provider ${input.provider.key} could not issue a provider access token.`);
+	await publishExecutionProviderInventory({ apiUrl: input.apiUrl, accessToken: credential.accessToken, provider: input.provider, executionProviders, capabilities, maxConcurrentRunners });
 	return { providerId: connection.providerId, membershipId: connection.membershipId, capabilities, maxConcurrentRunners };
 }
 
@@ -291,7 +335,7 @@ export async function reconcileLocalSeedRuntime(input: { projectRoot: string; pl
 	for (const principal of selectedServicePrincipals(input.plan)) servicePrincipals.push(await reconcileServicePrincipal({ client, plan: input.plan, principal, projectRoot: input.projectRoot }));
 	const providers = [];
 	for (const provider of selectedProviders(input.plan)) {
-		const dataDir = resolve(input.projectRoot, '.treeseed/local-capacity-provider/data');
+		const dataDir = providerDataDir(input.projectRoot, provider);
 		const connectionState = await readJson(resolve(dataDir, 'connections', `${provider.connectionId}.json`));
 		const { teamId, projectIds } = await resolveResources(client, input.plan, provider, string(connectionState?.teamId));
 		const baseManifestPath = resolve(input.projectRoot, provider.manifest);

@@ -1,7 +1,5 @@
 import { existsSync,readFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
-import { parse as parseYaml } from 'yaml';
-import { redactCapacityProviderEnv,validateAndDigestCapacityProviderManifest } from '../../capacity/providers/capacity-provider.ts';
 import {
 buildProjectLocalContentResources,
 type LocalContentMode,
@@ -12,24 +10,16 @@ import { managedDevSourceClosureDigest } from '../../local-dev/source-closure.ts
 import { dockerSourceClosureDigest } from './docker-source-closure.ts';
 import { scopedLocalTunnelIdentity } from './local-tunnel-identity.ts';
 import type { DeployConfig } from '../support/contracts.ts';
+import { localProviderResources } from './local-provider-resources.ts';
 
-export function localDevelopmentResources(tenantRoot: string, environment: DesiredEnvironment, localContent: LocalContentMode, templates: TemplateUnit[], capacityConfigPath?: string, deployConfig?: DeployConfig): DesiredResource[] {
+export function localDevelopmentResources(tenantRoot: string, environment: DesiredEnvironment, localContent: LocalContentMode, templates: TemplateUnit[], capacityConfigPath?: string, deployConfig?: DeployConfig, seedNames?: string[]): DesiredResource[] {
 	if (environment !== 'local') return [];
-	const composeId = 'local-docker-compose:agent-capacity-provider';
 	const treeDxComposeId = 'local-docker-compose:treedx';
 	const apiPostgresComposeId = 'local-docker-compose:api-postgres';
 	const mailpitComposeId = 'local-docker-compose:mailpit';
-	const capacityProviderDataDir = resolvePath(tenantRoot, '.treeseed/local-capacity-provider/data');
-	const capacityProviderManifest = capacityConfigPath ? resolvePath(tenantRoot, capacityConfigPath) : resolvePath(tenantRoot, 'treeseed.capacity-provider.yaml');
-	const capacityProviderRuntimeManifest = resolvePath(capacityProviderDataDir, 'runtime/provider-manifest.yaml');
-	const capacityProviderManifestState = existsSync(capacityProviderManifest)
-		? validateAndDigestCapacityProviderManifest(parseYaml(readFileSync(capacityProviderManifest, 'utf8')))
-		: null;
-	const capacityProviderManifestDigest = capacityProviderManifestState?.digest ?? null;
-	const operationsRunnerDataDir = resolvePath(tenantRoot, '.treeseed/local-operations-runner/data');
 	const localSeedPath = resolvePath(tenantRoot, 'seeds/treeseed.yaml');
-	const capacityProviderConnectionCount = existsSync(localSeedPath) ? 1 : capacityProviderManifestState?.manifest.connections.length ?? 0;
 	const localSeedModulePath = resolvePath(tenantRoot, 'packages/api/src/market/seeds/apply.ts');
+	const seedBootstrapAvailable = existsSync(localSeedPath) && existsSync(localSeedModulePath);
 	const hostCodexAuthFile = [
 		process.env.TREESEED_CODEX_AUTH_FILE,
 		process.env.CODEX_AUTH_FILE,
@@ -48,20 +38,6 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 		TREESEED_TREEDX_BASE_URL: 'http://host.docker.internal:4000',
 		TREESEED_TREEDX_URL: 'http://host.docker.internal:4000',
 		...localTreeDxApiEnv,
-	};
-	const localCapacityProviderEnv = {
-		...localCapacityProviderTreeDxEnv,
-		TREESEED_CAPACITY_PROVIDER_MANIFEST: capacityProviderRuntimeManifest,
-		TREESEED_PROVIDER_HOST_DATA_DIR: capacityProviderDataDir,
-		...(hostCodexAuthFile ? {
-			TREESEED_HOST_CODEX_AUTH_FILE: hostCodexAuthFile,
-			TREESEED_CODEX_AUTH_FILE: '/data/codex/auth.json',
-		} : {}),
-		TREESEED_PROVIDER_CONTAINER_UID: String(process.getuid?.() ?? 1000),
-		TREESEED_PROVIDER_CONTAINER_GID: String(process.getgid?.() ?? 1000),
-		TREESEED_MARKET_URL: 'http://host.docker.internal:3000',
-		TREESEED_MARKET_PROFILE_LOCAL_URL: 'http://host.docker.internal:3000',
-		TREESEED_MARKET_PROFILE_LOCAL_AUDIENCE: 'http://127.0.0.1:3000',
 	};
 	const tunnel = deployConfig?.cloudflare.tunnel?.local;
 	const tunnelIdentity = tunnel?.enabled === true
@@ -200,77 +176,12 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 			},
 			source: { type: 'package-adapter', id: 'treedx' },
 		},
-		{
-			id: 'capacity-provider:local',
-			kind: 'capacity-provider',
-			provider: 'local',
-			environment,
-			packageId: '@treeseed/agent',
-			serviceId: 'capacity-provider',
-			logicalName: 'local capacity provider',
-			dependencies: [composeId],
-			spec: {
-				mode: 'local',
-				roles: ['manager', 'runner'],
-				volumePolicy: 'shared-local',
-				manifestDigest: capacityProviderManifestDigest,
-				sourceClosureDigest: capacityProviderSourceClosureDigest,
-				expectedConnectionCount: capacityProviderConnectionCount,
-				runtimeStatus: {
-					path: '.treeseed/local-capacity-provider/data/runtime/manager.json',
-					maxAgeSeconds: 180,
-					attempts: 60,
-					intervalMs: 500,
-				},
-			},
-			source: { type: 'package-adapter', id: '@treeseed/agent' },
-		},
-		{
-			id: composeId,
-			kind: 'local-docker-compose',
-			provider: 'local',
-			environment,
-			packageId: '@treeseed/agent',
-			serviceId: 'agent-capacity-provider',
-			logicalName: 'agent capacity provider compose',
-			dependencies: ['local-process:api', treeDxComposeId, ...(existsSync(localSeedPath) && existsSync(localSeedModulePath) ? ['local-seed-bootstrap:treeseed'] : [])],
-			spec: {
-				composeFile: 'packages/agent/compose.capacity-provider.yml',
-				composeFiles: [
-					'packages/agent/compose.capacity-provider.yml',
-					'packages/agent/compose.capacity-provider.dev.yml',
-				],
-				projectName: 'treeseed-capacity-provider',
-				cwd: '.',
-				dataDir: '.treeseed/local-capacity-provider/data',
-				managedStorage: {
-					custody: 'capacity-provider',
-					hostPath: capacityProviderDataDir,
-					servicePath: '/data',
-				},
-				manifestDigest: capacityProviderManifestDigest,
-				buildPolicy: 'missing',
-				devMode: 'typescript',
-				requiredHostPaths: [{
-					path: capacityProviderRuntimeManifest,
-					kind: 'file',
-					description: 'Capacity provider manifest',
-				}],
-				redactedEnv: redactCapacityProviderEnv(localCapacityProviderEnv),
-				envKeys: Object.keys(localCapacityProviderEnv).sort(),
-				env: localCapacityProviderEnv,
-				services: ['manager', 'runner'],
-				volumes: [{ name: 'treeseed-capacity-provider-data', mountPath: '/data', sharedLocalOnly: true }],
-				healthChecks: [
-					{ id: 'compose-services', kind: 'container', service: 'manager' },
-				],
-			},
-			source: { type: 'package-adapter', id: '@treeseed/agent' },
-		},
+		...localProviderResources({ tenantRoot, environment, capacityConfigPath, sourceClosureDigest: capacityProviderSourceClosureDigest,
+			treeDxEnvironment: localCapacityProviderTreeDxEnv, hostCodexAuthFile, seedBootstrapAvailable, seedNames,
+			r2Bucket: deployConfig?.cloudflare.r2?.bucketName ?? 'treeseed-market-content' }),
 		...[
 			['market-web', 'Market web dev process'],
 			['api', 'API dev process'],
-			['operations-runner', 'Operations runner dev process'],
 		].map(([id, label]) => ({
 			id: `local-process:${id}`,
 			kind: 'local-process' as const,
@@ -281,12 +192,10 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 			logicalName: label,
 			dependencies: id === 'market-web'
 				? ['local-process:api', mailpitComposeId]
-				: id === 'api'
-					? [apiPostgresComposeId, mailpitComposeId]
-					: ['local-process:api'],
+				: [apiPostgresComposeId, mailpitComposeId],
 			spec: {
 				processId: id,
-				surfaces: id === 'market-web' ? ['web'] : id === 'api' ? ['api'] : ['operations-runner'],
+				surfaces: id === 'market-web' ? ['web'] : ['api'],
 				supervisor: 'sdk-managed-dev',
 				action: 'start',
 				options: {
@@ -295,15 +204,10 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 				stateDir: '.treeseed/dev',
 				logDir: '.treeseed/logs',
 				cwd: id === 'market-web' ? '.' : 'packages/api',
-				...(id === 'operations-runner' ? {
-					env: {
-						TREESEED_PLATFORM_RUNNER_DATA_DIR: operationsRunnerDataDir,
-					},
-				} : {}),
 				},
 			source: { type: 'package-adapter' as const, id },
 		})),
-		...(existsSync(localSeedPath) && existsSync(localSeedModulePath) ? [{
+		...(seedBootstrapAvailable ? [{
 			id: 'local-seed-bootstrap:treeseed',
 			kind: 'local-seed-bootstrap' as const,
 			provider: 'local',

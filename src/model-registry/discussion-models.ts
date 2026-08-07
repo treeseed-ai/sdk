@@ -42,6 +42,7 @@ export function buildDiscussionModelRegistry(repoRoot?: string): Record<Discussi
 		project_id: field('project_id', { aliases: ['projectId'], filterable: true, contentKeys: ['project_id', 'projectId'], writeContentKey: 'project_id' }),
 		participant_ids: field('participant_ids', { aliases: ['participantIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['participant_ids', 'participantIds'], writeContentKey: 'participant_ids' }),
 		agent_ids: field('agent_ids', { aliases: ['agentIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['agent_ids', 'agentIds'], writeContentKey: 'agent_ids' }),
+		group_ids: field('group_ids', { aliases: ['groupIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['group_ids', 'groupIds'], writeContentKey: 'groupIds' }),
 		created_at: field('created_at', { aliases: ['createdAt'], filterable: true, sortable: true, comparableAs: 'date', contentKeys: ['created_at', 'createdAt'], writeContentKey: 'created_at' }),
 		updated_at: field('updated_at', { aliases: ['updatedAt'], filterable: true, sortable: true, comparableAs: 'date', contentKeys: ['updated_at', 'updatedAt'], writeContentKey: 'updated_at' }),
 	};
@@ -53,6 +54,7 @@ export function buildDiscussionModelRegistry(repoRoot?: string): Record<Discussi
 		intent: field('intent', { filterable: true, contentKeys: ['intent'], writeContentKey: 'intent' }),
 		reply_to: field('reply_to', { aliases: ['replyTo'], filterable: true, contentKeys: ['reply_to', 'replyTo'], writeContentKey: 'reply_to' }),
 		mentioned_agents: field('mentioned_agents', { aliases: ['mentionedAgents'], filterable: true, comparableAs: 'string_array', contentKeys: ['mentioned_agents', 'mentionedAgents'], writeContentKey: 'mentioned_agents' }),
+		group_ids: field('group_ids', { aliases: ['groupIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['group_ids', 'groupIds'], writeContentKey: 'groupIds' }),
 		file_refs: field('file_refs', { aliases: ['fileRefs'], contentKeys: ['file_refs', 'fileRefs'], writeContentKey: 'file_refs' }),
 		created_at: field('created_at', { aliases: ['createdAt'], filterable: true, sortable: true, comparableAs: 'date', contentKeys: ['created_at', 'createdAt'], writeContentKey: 'created_at' }),
 	};
@@ -66,6 +68,7 @@ export function buildDiscussionModelRegistry(repoRoot?: string): Record<Discussi
 		assignment_id: field('assignment_id', { aliases: ['assignmentId'], filterable: true, contentKeys: ['assignment_id', 'assignmentId'], writeContentKey: 'assignment_id' }),
 		mode_run_id: field('mode_run_id', { aliases: ['modeRunId'], filterable: true, contentKeys: ['mode_run_id', 'modeRunId'], writeContentKey: 'mode_run_id' }),
 		provider_id: field('provider_id', { aliases: ['providerId'], filterable: true, contentKeys: ['provider_id', 'providerId'], writeContentKey: 'provider_id' }),
+		group_ids: field('group_ids', { aliases: ['groupIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['group_ids', 'groupIds'], writeContentKey: 'groupIds' }),
 		occurred_at: field('occurred_at', { aliases: ['occurredAt'], filterable: true, sortable: true, comparableAs: 'date', contentKeys: ['occurred_at', 'occurredAt'], writeContentKey: 'occurred_at' }),
 		metrics: field('metrics', { contentKeys: ['metrics'], writeContentKey: 'metrics' }),
 		refs: field('refs', { comparableAs: 'string_array', contentKeys: ['refs'], writeContentKey: 'refs' }),

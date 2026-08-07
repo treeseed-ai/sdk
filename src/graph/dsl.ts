@@ -12,7 +12,7 @@ export const CLAUSE_KEYWORDS = new Set(['for', 'in', 'via', 'depth', 'where', 'l
 export const VALID_STAGES: SdkGraphQueryStage[] = ['plan', 'implement', 'research', 'debug', 'review'];
 export const VALID_VIEWS: SdkGraphQueryView[] = ['list', 'brief', 'full', 'map'];
 export const VALID_RELATIONS: SdkGraphDslRelation[] = ['related', 'depends_on', 'implements', 'references', 'parent', 'child', 'supersedes'];
-export const VALID_WHERE_FIELDS = new Set(['type', 'status', 'audience', 'tag', 'domain']);
+export const VALID_WHERE_FIELDS = new Set(['type', 'status', 'audience', 'directGroupId', 'effectiveGroupId', 'domain']);
 
 export function tokenize(source: string) {
 	const tokens: string[] = [];
@@ -89,7 +89,7 @@ export function parseTarget(rawTarget: string): SdkGraphSeed {
 		return { id: 'seed:0', kind: 'path', value: rawTarget };
 	}
 	if (rawTarget.startsWith('#')) {
-		return { id: 'seed:0', kind: 'tag', value: rawTarget.slice(1) };
+		return { id: 'seed:0', kind: 'group', value: rawTarget.slice(1) };
 	}
 	if (rawTarget.startsWith('%')) {
 		return { id: 'seed:0', kind: 'type', value: rawTarget.slice(1) };

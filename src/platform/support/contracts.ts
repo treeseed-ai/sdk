@@ -10,6 +10,8 @@ export type FeatureName =
 	| 'discussions'
 	| 'discussion_messages'
 	| 'discussion_events'
+	| 'groups'
+	| 'group_edges'
 	| 'forms';
 
 export type ContentCollection =
@@ -24,7 +26,9 @@ export type ContentCollection =
 	| 'books'
 	| 'docs'
 	| 'templates'
-	| 'workdays';
+	| 'workdays'
+	| 'groups'
+	| 'group_edges';
 
 export interface FeatureModules {
 	docs?: boolean;
@@ -51,6 +55,8 @@ export interface ContentMap {
 	discussions?: string;
 	discussion_messages?: string;
 	discussion_events?: string;
+	groups?: string;
+	group_edges?: string;
 	books: string;
 	docs: string;
 	templates?: string;

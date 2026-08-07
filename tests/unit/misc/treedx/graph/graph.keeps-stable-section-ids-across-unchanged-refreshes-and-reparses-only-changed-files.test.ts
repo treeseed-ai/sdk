@@ -27,7 +27,7 @@ name: Market Steward
 role: Steward
 affiliation: TreeSeed
 status: live
-tags: [operators]
+groupIds: [operators]
 ---
 
 The market steward keeps delivery grounded.
@@ -42,7 +42,7 @@ id: question:planning-work
 title: How Should Planning Work?
 date: 2026-04-08
 status: live
-tags: [planning, graph]
+groupIds: [planning, graph]
 questionType: strategy
 primaryContributor: people/market-steward
 relatedObjectives:
@@ -63,7 +63,7 @@ id: objective:launch-market-site
 title: Launch The Market Site
 date: 2026-04-08
 status: in progress
-tags: [planning, delivery]
+groupIds: [planning, delivery]
 timeHorizon: near-term
 primaryContributor: people/market-steward
 relatedQuestions:
@@ -90,7 +90,7 @@ Execution depends on the capacity budget and the unresolved planning question.
 		`---
 id: knowledge:planning
 title: Planning Handbook
-tags: [planning]
+groupIds: [planning]
 canonical: true
 related:
   - objectives/launch-market-site
@@ -121,7 +121,7 @@ status: canonical
 audience: [agent, developer]
 domain: infrastructure
 updatedAt: 2026-04-10
-tags: [queue]
+groupIds: [queue]
 related:
   - knowledge/queue-api
 supersedes:
@@ -143,7 +143,7 @@ status: live
 audience: [developer]
 domain: infrastructure
 updatedAt: 2026-04-09
-tags: [queue]
+groupIds: [queue]
 implements:
   - knowledge/queue-architecture
 ---
@@ -163,7 +163,7 @@ status: live
 audience: [agent]
 domain: infrastructure
 updatedAt: 2026-04-08
-tags: [queue]
+groupIds: [queue]
 references:
   - knowledge/queue-api
 ---
@@ -183,7 +183,7 @@ status: deprecated
 audience: [developer]
 domain: infrastructure
 updatedAt: 2024-01-15
-tags: [queue]
+groupIds: [queue]
 related:
   - knowledge/queue-api
 ---
@@ -201,7 +201,7 @@ slug: fixture-template
 title: Fixture Template
 status: live
 category: starter
-tags: [planning, starter]
+groupIds: [planning, starter]
 templateVersion: 1.0.0
 about:
   - knowledge/planning
@@ -236,10 +236,10 @@ function createSdkWithProvider(repoRoot: string, graphRankingProvider?: SdkGraph
 					title: { key: 'title', filterable: true, sortable: true, contentKeys: ['title'], writeContentKey: 'title' },
 					status: { key: 'status', filterable: true, contentKeys: ['status'], writeContentKey: 'status' },
 					category: { key: 'category', filterable: true, contentKeys: ['category'], writeContentKey: 'category' },
-					tags: { key: 'tags', filterable: true, comparableAs: 'string_array', contentKeys: ['tags'], writeContentKey: 'tags' },
+					group_ids: { key: 'group_ids', filterable: true, comparableAs: 'string_array', contentKeys: ['groupIds'], writeContentKey: 'groupIds' },
 					template_version: { key: 'template_version', aliases: ['templateVersion'], filterable: true, sortable: true, contentKeys: ['template_version', 'templateVersion'], writeContentKey: 'template_version' },
 				},
-				filterableFields: ['slug', 'title', 'status', 'category', 'tags', 'template_version'],
+				filterableFields: ['slug', 'title', 'status', 'category', 'group_ids', 'template_version'],
 				sortableFields: ['title', 'template_version'],
 				pickField: 'template_version',
 				contentCollection: 'templates',
@@ -269,7 +269,7 @@ it('keeps stable section ids across unchanged refreshes and reparses only change
 title: Launch The Market Site
 date: 2026-04-08
 status: in progress
-tags: [planning, delivery]
+groupIds: [planning, delivery]
 timeHorizon: near-term
 primaryContributor: people/market-steward
 relatedQuestions:

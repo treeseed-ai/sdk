@@ -159,3 +159,33 @@ export function runDockerCompose(input: {
 	const args = buildDockerComposeArgs(input);
 	return runDocker(args, { cwd: input.cwd, env: input.env });
 }
+
+export function repairDockerComposeDataOwnership(input: {
+	composeFiles: string[];
+	projectName: string;
+	service: string;
+	cwd: string;
+	env?: NodeJS.ProcessEnv;
+	uid: number;
+	gid: number;
+}) {
+	if (!Number.isSafeInteger(input.uid) || input.uid < 0 || !Number.isSafeInteger(input.gid) || input.gid < 0) {
+		throw new Error('Docker Compose data ownership repair requires numeric host uid and gid values.');
+	}
+	const args = [
+		'compose',
+		...input.composeFiles.flatMap((composeFile) => ['-f', composeFile]),
+		'-p',
+		input.projectName,
+		'run',
+		'--rm',
+		'--no-deps',
+		'--entrypoint',
+		'chown',
+		input.service,
+		'-R',
+		`${input.uid}:${input.gid}`,
+		'/data',
+	];
+	return runDocker(args, { cwd: input.cwd, env: input.env });
+}

@@ -355,10 +355,33 @@ export interface CapacityProviderJoinInput {
 
 export interface CapacityProviderManifestV2 {
 	schemaVersion: 2;
+	providerClass: 'agent' | 'platform-operation';
+	ownership: {
+		type: 'team' | 'external';
+		teamId?: string;
+	};
+	configuration: {
+		generation: string;
+	};
 	identity: {
 		privateKeyRef: string;
 		displayName: string;
 	};
+	supplyCeilings: {
+		maxConcurrentAssignments: number;
+		maxActiveSeconds?: number;
+		maxInputTokens?: number;
+		maxOutputTokens?: number;
+		maxCost?: number;
+		currency?: string;
+		maxAttempts?: number;
+	};
+	credentialBindings?: Array<{
+		id: string;
+		source: 'service-vault' | 'process-environment';
+		reference: string;
+		required: boolean;
+	}>;
 	executionProviders: Array<{
 		id: string;
 		adapter: string;

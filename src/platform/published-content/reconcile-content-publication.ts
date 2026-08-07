@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import type { ArtifactRef } from '../../treedx/types.ts';
 import { ARTIFACT_REF_CONTRACT } from '../../treedx/types.ts';
 import { CONTENT_PUBLICATION_CONTRACT,publicationKeys,type ContentPublicationChannel,type ContentPublicationManifest,type ContentPublicationReceipt } from './publication-contracts.ts';
-import { R2S3PublicationClient,type R2S3PublicationConfig } from './r2-s3-publication-client.ts';
+import { createR2PublicationClient,type R2PublicationConfig } from './r2-publication-client.ts';
 
 export interface ReconcileContentPublicationInput {
 	projectRoot: string;
@@ -18,7 +18,7 @@ export interface ReconcileContentPublicationInput {
 	channel: ContentPublicationChannel;
 	generatedAt?: string;
 	validateOnly?: boolean;
-	r2?: R2S3PublicationConfig;
+	r2?: R2PublicationConfig;
 	fetchImpl?: typeof fetch;
 	observeSourceCommit?: (projectRoot: string) => Promise<string>;
 }
@@ -72,9 +72,9 @@ export async function reconcileContentPublication(input: ReconcileContentPublica
 	const body = `${JSON.stringify(manifest, null, 2)}\n`;
 	const artifacts: ArtifactRef[] = objects.map((object) => ({ contract: ARTIFACT_REF_CONTRACT, kind: 'r2-object', objectKey: object.objectKey, path: object.path, commitSha: input.sourceCommit, sha256: object.sha256, byteLength: object.byteLength, mediaType: object.mediaType, visibility: input.channel === 'production' ? 'public' : 'team', provenance: { projectId: input.projectId, sourceCommit: input.sourceCommit } }));
 	if (input.validateOnly) return { contract: CONTENT_PUBLICATION_CONTRACT, teamId: input.teamId, projectId: input.projectId, sourceCommit: input.sourceCommit, channel: input.channel, revision, manifestKey: keys.manifestKey, pointerKey: keys.pointerKey, uploadedObjectCount: 0, reusedObjectCount: objects.length, artifacts, verified: true };
-	if (!input.r2) throw new Error('R2 S3 credentials are required for publication.');
+	if (!input.r2) throw new Error('R2 publication credentials are required.');
 
-	const client = new R2S3PublicationClient(input.r2, input.fetchImpl);
+	const client = createR2PublicationClient(input.r2, input.fetchImpl);
 	let uploadedObjectCount = 0;
 	for (let index = 0; index < objects.length; index += 1) {
 		const object = objects[index]!;

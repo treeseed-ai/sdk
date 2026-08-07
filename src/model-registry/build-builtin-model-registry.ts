@@ -5,12 +5,14 @@ SdkModelDefinition
 } from '../entrypoints/models/sdk-types.ts';
 import { citationsField,contentRoot,deriveFieldLists,field,graph } from './content-root.ts';
 import { buildDiscussionModelRegistry } from './discussion-models.ts';
+import { buildGroupModelRegistry } from './group-models.ts';
 
 export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinModelName, SdkModelDefinition> {
 	const root = contentRoot(repoRoot);
 
 	return {
 		...buildDiscussionModelRegistry(repoRoot),
+		...buildGroupModelRegistry(repoRoot),
 		page: {
 			name: 'page',
 			aliases: ['pages'],
@@ -49,7 +51,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			graph: graph({
 				entityType: 'Note',
 				titleField: 'title',
-				tagField: 'tags',
+				groupField: 'group_ids',
 				enableSections: true,
 				referenceFields: [
 					{ field: 'about', edgeType: 'REFERENCES', targetModels: ['objective', 'question', 'proposal', 'decision', 'note', 'knowledge'], multiple: true },
@@ -72,11 +74,11 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 				status: field('status', { filterable: true, contentKeys: ['status'], writeContentKey: 'status' }),
 				author: field('author', { filterable: true, contentKeys: ['author'], writeContentKey: 'author' }),
 				feedback_kind: field('feedback_kind', { aliases: ['feedbackKind'], filterable: true, contentKeys: ['feedback_kind', 'feedbackKind'], writeContentKey: 'feedback_kind' }),
-				tags: field('tags', { filterable: true, comparableAs: 'string_array', contentKeys: ['tags'], writeContentKey: 'tags' }),
+				group_ids: field('group_ids', { aliases: ['groupIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['group_ids', 'groupIds'], writeContentKey: 'groupIds' }),
 				date: field('date', { filterable: true, sortable: true, comparableAs: 'date', contentKeys: ['date'], writeContentKey: 'date' }),
 				updated_at: field('updated_at', { aliases: ['updated', 'updatedAt'], sortable: true, filterable: true, comparableAs: 'date', contentKeys: ['updated_at', 'updated', 'updatedAt'], writeContentKey: 'updated_at' }),
 			},
-			filterableFields: ['title', 'about', 'related_objectives', 'related_questions', 'related_proposals', 'related_decisions', 'related_books', 'status', 'author', 'feedback_kind', 'tags', 'date', 'updated_at'],
+			filterableFields: ['title', 'about', 'related_objectives', 'related_questions', 'related_proposals', 'related_decisions', 'related_books', 'status', 'author', 'feedback_kind', 'group_ids', 'date', 'updated_at'],
 			sortableFields: ['title', 'date', 'updated_at'],
 			pickField: 'date',
 			contentCollection: 'notes',
@@ -90,7 +92,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			graph: graph({
 				entityType: 'Question',
 				titleField: 'title',
-				tagField: 'tags',
+				groupField: 'group_ids',
 				enableSections: true,
 				referenceFields: [
 					{ field: 'about', edgeType: 'REFERENCES', targetModels: ['objective', 'question', 'proposal', 'decision', 'note', 'knowledge'], multiple: true },
@@ -103,7 +105,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			fields: {
 				title: field('title', { filterable: true, sortable: true, contentKeys: ['title'], writeContentKey: 'title' }),
 				status: field('status', { filterable: true, contentKeys: ['status'], writeContentKey: 'status' }),
-				tags: field('tags', { filterable: true, comparableAs: 'string_array', contentKeys: ['tags'], writeContentKey: 'tags' }),
+				group_ids: field('group_ids', { aliases: ['groupIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['group_ids', 'groupIds'], writeContentKey: 'groupIds' }),
 				date: field('date', { filterable: true, sortable: true, comparableAs: 'date', contentKeys: ['date'], writeContentKey: 'date' }),
 				question_type: field('question_type', { aliases: ['questionType'], filterable: true, contentKeys: ['question_type', 'questionType'], writeContentKey: 'question_type' }),
 				about: field('about', { filterable: true, comparableAs: 'string_array', contentKeys: ['about'], writeContentKey: 'about' }),
@@ -112,7 +114,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 				related_books: field('related_books', { aliases: ['relatedBooks'], filterable: true, comparableAs: 'string_array', contentKeys: ['related_books', 'relatedBooks'], writeContentKey: 'related_books' }),
 				updated_at: field('updated_at', { aliases: ['updated', 'updatedAt'], sortable: true, comparableAs: 'date', contentKeys: ['updated_at', 'updated', 'updatedAt'], writeContentKey: 'updated_at' }),
 			},
-			filterableFields: ['title', 'about', 'status', 'tags', 'date', 'question_type', 'related_objectives', 'related_proposals', 'related_books'],
+			filterableFields: ['title', 'about', 'status', 'group_ids', 'date', 'question_type', 'related_objectives', 'related_proposals', 'related_books'],
 			sortableFields: ['title', 'date', 'updated_at'],
 			pickField: 'date',
 			contentCollection: 'questions',
@@ -126,7 +128,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			graph: graph({
 				entityType: 'Proposal',
 				titleField: 'title',
-				tagField: 'tags',
+				groupField: 'group_ids',
 				enableSections: true,
 				referenceFields: [
 					{ field: 'related_objectives', edgeType: 'REFERENCES', targetModels: ['objective'], multiple: true },
@@ -147,7 +149,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 				draft: field('draft', { contentKeys: ['draft'], writeContentKey: 'draft' }),
 				citations: citationsField(),
 				status: field('status', { filterable: true, contentKeys: ['status'], writeContentKey: 'status' }),
-				tags: field('tags', { filterable: true, comparableAs: 'string_array', contentKeys: ['tags'], writeContentKey: 'tags' }),
+				group_ids: field('group_ids', { aliases: ['groupIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['group_ids', 'groupIds'], writeContentKey: 'groupIds' }),
 				date: field('date', { filterable: true, sortable: true, comparableAs: 'date', contentKeys: ['date'], writeContentKey: 'date' }),
 				proposal_type: field('proposal_type', { aliases: ['proposalType'], filterable: true, contentKeys: ['proposal_type', 'proposalType'], writeContentKey: 'proposal_type' }),
 				related_objectives: field('related_objectives', { aliases: ['relatedObjectives'], filterable: true, comparableAs: 'string_array', contentKeys: ['related_objectives', 'relatedObjectives'], writeContentKey: 'related_objectives' }),
@@ -159,7 +161,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 				decision: field('decision', { filterable: true, contentKeys: ['decision'], writeContentKey: 'decision' }),
 				updated_at: field('updated_at', { aliases: ['updated', 'updatedAt'], sortable: true, comparableAs: 'date', contentKeys: ['updated_at', 'updated', 'updatedAt'], writeContentKey: 'updated_at' }),
 			},
-			filterableFields: ['title', 'status', 'tags', 'date', 'proposal_type', 'related_objectives', 'related_questions', 'related_notes', 'related_books', 'decision'],
+			filterableFields: ['title', 'status', 'group_ids', 'date', 'proposal_type', 'related_objectives', 'related_questions', 'related_notes', 'related_books', 'decision'],
 			sortableFields: ['title', 'date', 'updated_at'],
 			pickField: 'date',
 			contentCollection: 'proposals',
@@ -173,7 +175,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			graph: graph({
 				entityType: 'Decision',
 				titleField: 'title',
-				tagField: 'tags',
+				groupField: 'group_ids',
 				enableSections: true,
 				referenceFields: [
 					{ field: 'related_objectives', edgeType: 'REFERENCES', targetModels: ['objective'], multiple: true },
@@ -189,7 +191,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 				title: field('title', { filterable: true, sortable: true, contentKeys: ['title'], writeContentKey: 'title' }),
 				citations: citationsField(),
 				status: field('status', { filterable: true, contentKeys: ['status'], writeContentKey: 'status' }),
-				tags: field('tags', { filterable: true, comparableAs: 'string_array', contentKeys: ['tags'], writeContentKey: 'tags' }),
+				group_ids: field('group_ids', { aliases: ['groupIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['group_ids', 'groupIds'], writeContentKey: 'groupIds' }),
 				date: field('date', { filterable: true, sortable: true, comparableAs: 'date', contentKeys: ['date'], writeContentKey: 'date' }),
 				decision_type: field('decision_type', { aliases: ['decisionType'], filterable: true, contentKeys: ['decision_type', 'decisionType'], writeContentKey: 'decision_type' }),
 				authority: field('authority', { filterable: true, contentKeys: ['authority'], writeContentKey: 'authority' }),
@@ -200,7 +202,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 				related_books: field('related_books', { aliases: ['relatedBooks'], filterable: true, comparableAs: 'string_array', contentKeys: ['related_books', 'relatedBooks'], writeContentKey: 'related_books' }),
 				updated_at: field('updated_at', { aliases: ['updated', 'updatedAt'], sortable: true, comparableAs: 'date', contentKeys: ['updated_at', 'updated', 'updatedAt'], writeContentKey: 'updated_at' }),
 			},
-			filterableFields: ['title', 'status', 'tags', 'date', 'decision_type', 'authority', 'related_objectives', 'related_questions', 'related_notes', 'related_proposals', 'related_books'],
+			filterableFields: ['title', 'status', 'group_ids', 'date', 'decision_type', 'authority', 'related_objectives', 'related_questions', 'related_notes', 'related_proposals', 'related_books'],
 			sortableFields: ['title', 'date', 'updated_at'],
 			pickField: 'date',
 			contentCollection: 'decisions',
@@ -214,7 +216,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			graph: graph({
 				entityType: 'Book',
 				titleField: 'title',
-				tagField: 'tags',
+				groupField: 'group_ids',
 				enableSections: true,
 				referenceFields: [
 					{ field: 'related_books', edgeType: 'RELATES_TO', targetModels: ['book'], multiple: true },
@@ -225,14 +227,14 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 				title: field('title', { filterable: true, sortable: true, contentKeys: ['title'], writeContentKey: 'title' }),
 				citations: citationsField(),
 				slug: field('slug', { filterable: true, contentKeys: ['slug'], writeContentKey: 'slug' }),
-				tags: field('tags', { filterable: true, comparableAs: 'string_array', contentKeys: ['tags'], writeContentKey: 'tags' }),
+				group_ids: field('group_ids', { aliases: ['groupIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['group_ids', 'groupIds'], writeContentKey: 'groupIds' }),
 				related_books: field('related_books', { aliases: ['relatedBookIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['relatedBookIds', 'related_books'], writeContentKey: 'relatedBookIds' }),
 				editorial_core_note: field('editorial_core_note', { aliases: ['editorialCoreNoteId'], filterable: true, contentKeys: ['editorialCoreNoteId', 'editorial_core_note'], writeContentKey: 'editorialCoreNoteId' }),
 				section_label: field('section_label', { aliases: ['sectionLabel'], filterable: true, contentKeys: ['section_label', 'sectionLabel'], writeContentKey: 'section_label' }),
 				order: field('order', { sortable: true, comparableAs: 'number', contentKeys: ['order'], writeContentKey: 'order' }),
 				updated_at: field('updated_at', { aliases: ['updated', 'updatedAt'], sortable: true, comparableAs: 'date', contentKeys: ['updated_at', 'updated', 'updatedAt'], writeContentKey: 'updated_at' }),
 			},
-			filterableFields: ['title', 'slug', 'tags', 'section_label', 'related_books', 'editorial_core_note'],
+			filterableFields: ['title', 'slug', 'group_ids', 'section_label', 'related_books', 'editorial_core_note'],
 			sortableFields: ['title', 'order', 'updated_at'],
 			pickField: 'order',
 			contentCollection: 'books',
@@ -246,7 +248,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			graph: graph({
 				entityType: 'Knowledge',
 				titleField: 'title',
-				tagField: 'tags',
+				groupField: 'group_ids',
 				enableSections: true,
 				referenceFields: [
 					{ field: 'parent', edgeType: 'BELONGS_TO', targetModels: ['knowledge'] },
@@ -262,7 +264,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			fields: {
 				title: field('title', { filterable: true, sortable: true, contentKeys: ['title'], writeContentKey: 'title' }),
 				citations: citationsField(),
-				tags: field('tags', { filterable: true, comparableAs: 'string_array', contentKeys: ['tags'], writeContentKey: 'tags' }),
+				group_ids: field('group_ids', { aliases: ['groupIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['group_ids', 'groupIds'], writeContentKey: 'groupIds' }),
 				parent: field('parent', { aliases: ['parentId'], filterable: true, contentKeys: ['parentId', 'parent'], writeContentKey: 'parentId' }),
 				related_knowledge: field('related_knowledge', { aliases: ['relatedKnowledgeIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['relatedKnowledgeIds', 'related_knowledge'], writeContentKey: 'relatedKnowledgeIds' }),
 				related_books: field('related_books', { aliases: ['relatedBookIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['relatedBookIds', 'related_books'], writeContentKey: 'relatedBookIds' }),
@@ -275,7 +277,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 				updated_at: field('updated_at', { aliases: ['updated', 'updatedAt'], filterable: true, sortable: true, comparableAs: 'date', contentKeys: ['updated_at', 'updated', 'updatedAt'], writeContentKey: 'updated_at' }),
 				slug: field('slug', { filterable: true, contentKeys: ['slug'], writeContentKey: 'slug' }),
 			},
-			filterableFields: ['title', 'tags', 'updated_at', 'slug', 'parent', 'related_knowledge', 'related_books', 'related_notes', 'related_questions', 'related_objectives', 'related_proposals', 'related_decisions', 'guarantees'],
+			filterableFields: ['title', 'group_ids', 'updated_at', 'slug', 'parent', 'related_knowledge', 'related_books', 'related_notes', 'related_questions', 'related_objectives', 'related_proposals', 'related_decisions', 'guarantees'],
 			sortableFields: ['title', 'updated_at'],
 			pickField: 'updated_at',
 			contentCollection: 'docs',
@@ -289,7 +291,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			graph: graph({
 				entityType: 'Objective',
 				titleField: 'title',
-				tagField: 'tags',
+				groupField: 'group_ids',
 				enableSections: true,
 				referenceFields: [
 					{ field: 'related_questions', edgeType: 'REFERENCES', targetModels: ['question'], multiple: true },
@@ -300,14 +302,14 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			fields: {
 				title: field('title', { filterable: true, sortable: true, contentKeys: ['title'], writeContentKey: 'title' }),
 				status: field('status', { filterable: true, contentKeys: ['status'], writeContentKey: 'status' }),
-				tags: field('tags', { filterable: true, comparableAs: 'string_array', contentKeys: ['tags'], writeContentKey: 'tags' }),
+				group_ids: field('group_ids', { aliases: ['groupIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['group_ids', 'groupIds'], writeContentKey: 'groupIds' }),
 				date: field('date', { filterable: true, sortable: true, comparableAs: 'date', contentKeys: ['date'], writeContentKey: 'date' }),
 				time_horizon: field('time_horizon', { aliases: ['timeHorizon'], filterable: true, contentKeys: ['time_horizon', 'timeHorizon'], writeContentKey: 'time_horizon' }),
 				related_questions: field('related_questions', { aliases: ['relatedQuestions'], filterable: true, comparableAs: 'string_array', contentKeys: ['related_questions', 'relatedQuestions'], writeContentKey: 'related_questions' }),
 				related_books: field('related_books', { aliases: ['relatedBooks'], filterable: true, comparableAs: 'string_array', contentKeys: ['related_books', 'relatedBooks'], writeContentKey: 'related_books' }),
 				updated_at: field('updated_at', { aliases: ['updated', 'updatedAt'], sortable: true, comparableAs: 'date', contentKeys: ['updated_at', 'updated', 'updatedAt'], writeContentKey: 'updated_at' }),
 			},
-			filterableFields: ['title', 'status', 'tags', 'date', 'time_horizon', 'related_questions', 'related_books'],
+			filterableFields: ['title', 'status', 'group_ids', 'date', 'time_horizon', 'related_questions', 'related_books'],
 			sortableFields: ['title', 'date', 'updated_at'],
 			pickField: 'date',
 			contentCollection: 'objectives',
@@ -321,7 +323,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			graph: graph({
 				entityType: 'Person',
 				titleField: 'name',
-				tagField: 'tags',
+				groupField: 'group_ids',
 				enableSections: true,
 				referenceFields: [
 					{ field: 'related_questions', edgeType: 'REFERENCES', targetModels: ['question'], multiple: true },
@@ -333,10 +335,10 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 				role: field('role', { filterable: true, contentKeys: ['role'], writeContentKey: 'role' }),
 				affiliation: field('affiliation', { filterable: true, contentKeys: ['affiliation'], writeContentKey: 'affiliation' }),
 				status: field('status', { filterable: true, contentKeys: ['status'], writeContentKey: 'status' }),
-				tags: field('tags', { filterable: true, comparableAs: 'string_array', contentKeys: ['tags'], writeContentKey: 'tags' }),
+				group_ids: field('group_ids', { aliases: ['groupIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['group_ids', 'groupIds'], writeContentKey: 'groupIds' }),
 				updated_at: field('updated_at', { aliases: ['updated', 'updatedAt'], sortable: true, comparableAs: 'date', contentKeys: ['updated_at', 'updated', 'updatedAt'], writeContentKey: 'updated_at' }),
 			},
-			filterableFields: ['name', 'role', 'affiliation', 'status', 'tags'],
+			filterableFields: ['name', 'role', 'affiliation', 'status', 'group_ids'],
 			sortableFields: ['name', 'updated_at'],
 			pickField: 'updated_at',
 			contentCollection: 'people',
@@ -423,7 +425,7 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			graph: graph({
 				entityType: 'Agent',
 				titleField: 'name',
-				tagField: 'tags',
+				groupField: 'group_ids',
 				enableSections: true,
 				referenceFields: [
 					{ field: 'related_questions', edgeType: 'REFERENCES', targetModels: ['question'], multiple: true },
@@ -434,12 +436,12 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 				name: field('name', { sortable: true, contentKeys: ['name'], writeContentKey: 'name' }),
 				slug: field('slug', { filterable: true, sortable: true, contentKeys: ['slug'], writeContentKey: 'slug' }),
 				runtime_status: field('runtime_status', { aliases: ['runtimeStatus'], filterable: true, contentKeys: ['runtime_status', 'runtimeStatus'], writeContentKey: 'runtime_status' }),
-				tags: field('tags', { filterable: true, comparableAs: 'string_array', contentKeys: ['tags'], writeContentKey: 'tags' }),
+				group_ids: field('group_ids', { aliases: ['groupIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['group_ids', 'groupIds'], writeContentKey: 'groupIds' }),
 				operator: field('operator', { filterable: true, contentKeys: ['operator'], writeContentKey: 'operator' }),
 				updated_at: field('updated_at', { aliases: ['updated', 'updatedAt'], sortable: true, comparableAs: 'date', contentKeys: ['updated_at', 'updated', 'updatedAt'], writeContentKey: 'updated_at' }),
 				enabled: field('enabled', { aliases: ['is_enabled'], filterable: true, comparableAs: 'boolean', contentKeys: ['enabled', 'is_enabled'], writeContentKey: 'enabled' }),
 			},
-			filterableFields: ['slug', 'runtime_status', 'tags', 'operator', 'enabled'],
+			filterableFields: ['slug', 'runtime_status', 'group_ids', 'operator', 'enabled'],
 			sortableFields: ['name', 'slug', 'updated_at'],
 			pickField: 'updated_at',
 			contentCollection: 'agents',

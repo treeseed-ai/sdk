@@ -59,6 +59,7 @@ export type SeedManifest = {
 	name: string;
 	version: 1;
 	description?: string;
+	references: string[];
 	defaultEnvironments?: SeedEnvironment[];
 	environments: SeedEnvironment[];
 	resources: SeedManifestResources;
@@ -83,6 +84,7 @@ export type SeedTeamMembershipResource = SeedResourceBase & {
 };
 
 export type SeedCapacityProviderPrerequisite = SeedResourceBase & {
+	providerClass: 'agent' | 'platform-operation';
 	team: string;
 	manifest: string;
 	connectionId: string;

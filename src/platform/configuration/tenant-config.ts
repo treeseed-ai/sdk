@@ -37,6 +37,8 @@ const manifestContentFieldAliases: FieldAliasRegistry = {
 	discussions: { key: 'discussions', aliases: ['discussions_root'] },
 	discussion_messages: { key: 'discussion_messages', aliases: ['discussion_messages_root'] },
 	discussion_events: { key: 'discussion_events', aliases: ['discussion_events_root'] },
+	groups: { key: 'groups', aliases: ['groups_root'] },
+	group_edges: { key: 'group_edges', aliases: ['group_edges_root'] },
 	books: { key: 'books', aliases: ['books_root'] },
 	docs: { key: 'docs', aliases: ['knowledge', 'knowledge_root', 'docs_root'] },
 };

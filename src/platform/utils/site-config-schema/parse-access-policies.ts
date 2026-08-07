@@ -198,47 +198,47 @@ export function parseSiteConfig(source) {
 				defaults: {
 					author: optionalString(noteDefaults.author, 'models.notes.defaults.author'),
 					draft: optionalBoolean(noteDefaults.draft, 'models.notes.defaults.draft'),
-					tags: stringArray(noteDefaults.tags, 'models.notes.defaults.tags'),
+					groupIds: stringArray(noteDefaults.groupIds, 'models.notes.defaults.groupIds'),
 					status: optionalString(noteDefaults.status, 'models.notes.defaults.status'),
 				},
 			},
 			questions: {
 				defaults: {
 					draft: optionalBoolean(questionDefaults.draft, 'models.questions.defaults.draft'),
-					tags: stringArray(questionDefaults.tags, 'models.questions.defaults.tags'),
+					groupIds: stringArray(questionDefaults.groupIds, 'models.questions.defaults.groupIds'),
 					status: optionalString(questionDefaults.status, 'models.questions.defaults.status'),
 				},
 			},
 			objectives: {
 				defaults: {
 					draft: optionalBoolean(objectiveDefaults.draft, 'models.objectives.defaults.draft'),
-					tags: stringArray(objectiveDefaults.tags, 'models.objectives.defaults.tags'),
+					groupIds: stringArray(objectiveDefaults.groupIds, 'models.objectives.defaults.groupIds'),
 					status: optionalString(objectiveDefaults.status, 'models.objectives.defaults.status'),
 				},
 			},
 			proposals: {
 				defaults: {
 					draft: optionalBoolean(proposalDefaults.draft, 'models.proposals.defaults.draft'),
-					tags: stringArray(proposalDefaults.tags, 'models.proposals.defaults.tags'),
+					groupIds: stringArray(proposalDefaults.groupIds, 'models.proposals.defaults.groupIds'),
 					status: optionalString(proposalDefaults.status, 'models.proposals.defaults.status'),
 				},
 			},
 			decisions: {
 				defaults: {
 					draft: optionalBoolean(decisionDefaults.draft, 'models.decisions.defaults.draft'),
-					tags: stringArray(decisionDefaults.tags, 'models.decisions.defaults.tags'),
+					groupIds: stringArray(decisionDefaults.groupIds, 'models.decisions.defaults.groupIds'),
 					status: optionalString(decisionDefaults.status, 'models.decisions.defaults.status'),
 				},
 			},
 			people: {
 				defaults: {
 					status: optionalString(peopleDefaults.status, 'models.people.defaults.status'),
-					tags: stringArray(peopleDefaults.tags, 'models.people.defaults.tags'),
+					groupIds: stringArray(peopleDefaults.groupIds, 'models.people.defaults.groupIds'),
 				},
 			},
 			agents: {
 				defaults: {
-					tags: stringArray(agentDefaults.tags, 'models.agents.defaults.tags'),
+					groupIds: stringArray(agentDefaults.groupIds, 'models.agents.defaults.groupIds'),
 					runtimeStatus: optionalString(
 						agentDefaults.runtimeStatus,
 						'models.agents.defaults.runtimeStatus',
@@ -247,12 +247,12 @@ export function parseSiteConfig(source) {
 			},
 			books: {
 				defaults: {
-					tags: stringArray(bookDefaults.tags, 'models.books.defaults.tags'),
+					groupIds: stringArray(bookDefaults.groupIds, 'models.books.defaults.groupIds'),
 				},
 			},
 			docs: {
 				defaults: {
-					tags: stringArray(docsDefaults.tags, 'models.docs.defaults.tags'),
+					groupIds: stringArray(docsDefaults.groupIds, 'models.docs.defaults.groupIds'),
 				},
 			},
 		},

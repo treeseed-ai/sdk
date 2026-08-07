@@ -47,6 +47,8 @@ function fallbackTenantConfig(projectRoot: string): TenantConfig {
 			discussions: resolveRuntimePath(projectRoot, 'src/content/discussions'),
 			discussion_messages: resolveRuntimePath(projectRoot, 'src/content/discussion-messages'),
 			discussion_events: resolveRuntimePath(projectRoot, 'src/content/discussion-events'),
+			groups: resolveRuntimePath(projectRoot, 'src/content/groups'),
+			group_edges: resolveRuntimePath(projectRoot, 'src/content/group-edges'),
 			books: resolveRuntimePath(projectRoot, 'src/content/books'),
 			docs: resolveRuntimePath(projectRoot, 'src/content/knowledge'),
 			templates: resolveRuntimePath(projectRoot, 'src/content/templates'),

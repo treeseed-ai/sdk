@@ -31,7 +31,7 @@ export interface CompiledAgentDefinition {
 	generated: {
 		projectAgentClassId: string;
 		projectAgentClassSlug: string;
-		tags: string[];
+		groupIds: string[];
 	};
 }
 
@@ -80,7 +80,7 @@ export function compileAgentDefinition(input: {
 		createdFromTemplate: input.intent.template,
 	};
 	const prior = input.existing?.frontmatter ?? {};
-	const tags = unique(['agent',classSlug,...(Array.isArray(prior.tags) ? prior.tags.map(String) : [])]);
+	const groupIds = unique(['agent',classSlug,...(Array.isArray(prior.groupIds) ? prior.groupIds.map(String) : [])]);
 	const frontmatter = {
 		...prior,
 		id: identity.id,
@@ -95,7 +95,7 @@ export function compileAgentDefinition(input: {
 		description: input.intent.description.trim(),
 		summary: input.intent.description.trim(),
 		designMaturity: input.intent.designMaturity ?? prior.designMaturity ?? 'draft',
-		tags,
+		groupIds,
 		identity: {
 			purpose: input.intent.purpose.trim(),
 			responsibilities: unique(input.intent.responsibilities),
@@ -104,5 +104,5 @@ export function compileAgentDefinition(input: {
 		activityProfiles: input.intent.activityProfiles,
 	};
 	delete (frontmatter as Record<string, unknown>).runtimeStatus;
-	return { identity, frontmatter, generated: { projectAgentClassId: classSlug, projectAgentClassSlug: classSlug, tags } };
+	return { identity, frontmatter, generated: { projectAgentClassId: classSlug, projectAgentClassSlug: classSlug, groupIds } };
 }

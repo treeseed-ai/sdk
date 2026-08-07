@@ -21,11 +21,13 @@ function parseCapacityProvider(value: unknown, index: number, diagnostics: SeedD
 	const path = `runtime.capacityProviders[${index}]`;
 	if (!isRecord(value)) { diagnostics.push(errorDiagnostic('seed.invalid_runtime_prerequisite', 'Capacity provider prerequisite must be an object.', path)); return null; }
 	const approval = asString(value.approval) || 'trusted-local-owner';
+	const providerClass = asString(value.providerClass) || 'agent';
 	const allowedModes = stringArrayField(value, 'allowedModes', path, diagnostics) ?? [];
 	if (approval !== 'trusted-local-owner') diagnostics.push(errorDiagnostic('seed.invalid_provider_approval', 'Only trusted-local-owner approval is supported.', `${path}.approval`));
+	if (providerClass !== 'agent' && providerClass !== 'platform-operation') diagnostics.push(errorDiagnostic('seed.invalid_provider_class', 'Provider class must be agent or platform-operation.', `${path}.providerClass`));
 	if (allowedModes.some((mode) => mode !== 'planning' && mode !== 'acting')) diagnostics.push(errorDiagnostic('seed.invalid_provider_mode', 'Provider modes must be planning or acting.', `${path}.allowedModes`));
 	return {
-		key: requireString(value, 'key', path, diagnostics), environments: parseEnvironments(value.environments, `${path}.environments`, diagnostics),
+		key: requireString(value, 'key', path, diagnostics), providerClass: providerClass === 'platform-operation' ? 'platform-operation' : 'agent', environments: parseEnvironments(value.environments, `${path}.environments`, diagnostics),
 		team: requireString(value, 'team', path, diagnostics), manifest: requireString(value, 'manifest', path, diagnostics),
 		connectionId: requireString(value, 'connectionId', path, diagnostics), approval: 'trusted-local-owner',
 		projects: stringArrayField(value, 'projects', path, diagnostics) ?? [],
@@ -77,9 +79,9 @@ export function validateResourceKeys(manifest: SeedManifest, diagnostics: SeedDi
 }
 
 export function validateReferences(manifest: SeedManifest, diagnostics: SeedDiagnostic[]) {
-	const teamKeys = new Set(manifest.resources.teams.map((team) => team.key));
-	const projectKeys = new Set(manifest.resources.projects.map((project) => project.key));
-	const productKeys = new Set(manifest.resources.products.map((product) => product.key));
+	const teamKeys = new Set([...manifest.resources.teams.map((team) => team.key), ...manifest.references]);
+	const projectKeys = new Set([...manifest.resources.projects.map((project) => project.key), ...manifest.references]);
+	const productKeys = new Set([...manifest.resources.products.map((product) => product.key), ...manifest.references]);
 
 	manifest.resources.projects.forEach((project, index) => {
 		if (!teamKeys.has(project.team)) diagnostics.push(errorDiagnostic('seed.invalid_reference', `Unknown team reference: ${project.team}.`, `resources.projects[${index}].team`));
@@ -237,6 +239,9 @@ export function parseSeedManifest(value: unknown, diagnostics: SeedDiagnostic[])
 		name,
 		version: 1,
 		description: asString(value.description) || undefined,
+		references: Array.isArray(value.references)
+			? value.references.map((entry) => asString(entry)).filter((entry): entry is string => Boolean(entry))
+			: [],
 		defaultEnvironments,
 		environments,
 		resources,
@@ -248,13 +253,17 @@ export function parseSeedManifest(value: unknown, diagnostics: SeedDiagnostic[])
 			? value.operationRecipes.map((recipe, index) => parseOperationRecipe(recipe, `operationRecipes[${index}]`, diagnostics, environments)).filter((recipe): recipe is SeedOperationRecipe => Boolean(recipe))
 			: [],
 	};
+	if (value.references !== undefined && !Array.isArray(value.references)) {
+		diagnostics.push(errorDiagnostic('seed.invalid_references', 'references must be an array of stable resource keys.', 'references'));
+	}
 	if (value.operationRecipes !== undefined && !Array.isArray(value.operationRecipes)) {
 		diagnostics.push(errorDiagnostic('seed.invalid_operation_recipes', 'operationRecipes must be an array.', 'operationRecipes'));
 	}
 	validateResourceKeys(manifest, diagnostics);
 	validateReferences(manifest, diagnostics);
 	validateOperationRecipes(manifest, diagnostics);
-	if (diagnostics.length === 0 && manifest.resources.projects.length === 0) {
+	if (diagnostics.length === 0 && manifest.resources.projects.length === 0
+		&& manifest.runtime.capacityProviders.length === 0 && manifest.runtime.agentLabServicePrincipals.length === 0) {
 		diagnostics.push(warningDiagnostic('seed.empty_projects', 'Seed manifest does not define projects.', 'resources.projects'));
 	}
 	return manifest;

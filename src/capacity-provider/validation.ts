@@ -82,8 +82,27 @@ export function validateProviderSupplyOffer(offer: ProviderSupplyOffer, path = '
 export function validateCapacityProviderManifestV2(manifest: CapacityProviderManifestV2): CapacityProviderContractValidation {
 	const diagnostics: CapacityProviderContractDiagnostic[] = [];
 	if (manifest?.schemaVersion !== 2) add(diagnostics, 'provider_manifest_schema_invalid', 'schemaVersion', 'Capacity provider manifest schemaVersion must be 2.');
+	if (!['agent', 'platform-operation'].includes(manifest?.providerClass)) add(diagnostics, 'provider_manifest_class_invalid', 'providerClass', 'providerClass must be agent or platform-operation.');
+	if (!['team', 'external'].includes(manifest?.ownership?.type)) add(diagnostics, 'provider_manifest_ownership_invalid', 'ownership.type', 'ownership.type must be team or external.');
+	if (manifest?.ownership?.type === 'team' && !nonEmpty(manifest.ownership.teamId)) add(diagnostics, 'provider_manifest_owner_team_required', 'ownership.teamId', 'Team-owned providers require ownership.teamId.');
+	if (!nonEmpty(manifest?.configuration?.generation)) add(diagnostics, 'provider_manifest_generation_required', 'configuration.generation', 'An immutable desired configuration generation is required.');
 	if (!nonEmpty(manifest?.identity?.privateKeyRef) || !manifest.identity.privateKeyRef.includes('://')) add(diagnostics, 'provider_manifest_identity_ref_invalid', 'identity.privateKeyRef', 'Provider identity must use an encrypted secret reference.');
 	if (!nonEmpty(manifest?.identity?.displayName)) add(diagnostics, 'provider_manifest_identity_name_required', 'identity.displayName', 'Provider identity displayName is required.');
+	if (!Number.isInteger(manifest?.supplyCeilings?.maxConcurrentAssignments) || manifest.supplyCeilings.maxConcurrentAssignments < 1) add(diagnostics, 'provider_manifest_concurrency_invalid', 'supplyCeilings.maxConcurrentAssignments', 'Provider concurrency must be a positive integer.');
+	for (const field of ['maxActiveSeconds', 'maxInputTokens', 'maxOutputTokens', 'maxCost', 'maxAttempts'] as const) {
+		const value = manifest?.supplyCeilings?.[field];
+		if (value !== undefined && (!Number.isFinite(value) || value <= 0)) add(diagnostics, 'provider_manifest_supply_ceiling_invalid', `supplyCeilings.${field}`, `${field} must be greater than zero when configured.`);
+	}
+	if (manifest?.supplyCeilings?.maxCost !== undefined && !nonEmpty(manifest.supplyCeilings.currency)) add(diagnostics, 'provider_manifest_supply_currency_required', 'supplyCeilings.currency', 'A currency is required when maxCost is configured.');
+	const bindingIds = new Set<string>();
+	for (const [index, binding] of (manifest?.credentialBindings ?? []).entries()) {
+		const path = `credentialBindings[${index}]`;
+		if (!nonEmpty(binding.id) || bindingIds.has(binding.id)) add(diagnostics, 'provider_manifest_credential_binding_id_invalid', `${path}.id`, 'Credential binding IDs must be non-empty and unique.');
+		bindingIds.add(binding.id);
+		if (!['service-vault', 'process-environment'].includes(binding.source)) add(diagnostics, 'provider_manifest_credential_binding_source_invalid', `${path}.source`, 'Credential bindings must use service-vault or process-environment.');
+		if (!nonEmpty(binding.reference)) add(diagnostics, 'provider_manifest_credential_binding_reference_required', `${path}.reference`, 'Credential binding reference is required.');
+		if (binding.source === 'process-environment' && !/^TREESEED_[A-Z0-9_]+$/u.test(binding.reference)) add(diagnostics, 'provider_manifest_credential_environment_invalid', `${path}.reference`, 'Process-environment bindings must name a TREESEED_* variable.');
+	}
 	if (!Array.isArray(manifest?.executionProviders) || manifest.executionProviders.length === 0) add(diagnostics, 'provider_manifest_execution_providers_required', 'executionProviders', 'At least one execution provider is required.');
 	const executionProviderIds = new Set<string>();
 	const laneIds = new Set<string>();

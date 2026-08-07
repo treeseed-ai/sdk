@@ -219,6 +219,7 @@ export interface ProviderAssignmentLifecycleRequest {
 	modeRunId?: string | null;
 	metadata?: Record<string, unknown>;
 	completion?: import('../../support/time-capacity.ts').AssignmentCompletionEvidence | null;
+	performance?: import('../../support/time-capacity.ts').AssignmentPerformanceSummary | null;
 }
 
 export interface ProviderNextAssignmentRequest {

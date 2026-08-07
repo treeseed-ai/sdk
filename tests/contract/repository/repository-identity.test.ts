@@ -59,18 +59,15 @@ describe('repository identity and custody', () => {
 		}
 	});
 
-	it('declares provider and TreeDX repository storage plus runner operational storage', () => {
+	it('declares isolated provider and TreeDX repository storage without an API runner checkout', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-storage-plan-'));
 		try {
 		const resources = localDevelopmentResources(root, 'local', 'none', []);
-		const capacity = resources.find((resource) => resource.id === 'local-docker-compose:agent-capacity-provider');
+		const capacity = resources.find((resource) => resource.kind === 'local-docker-compose' && resource.serviceId === 'agent');
 		const operations = resources.find((resource) => resource.id === 'local-process:operations-runner');
 		const treeDx = resources.find((resource) => resource.id === 'local-docker-compose:treedx');
 		expect(capacity?.spec.managedStorage).toMatchObject({ custody: 'capacity-provider', servicePath: '/data' });
-		expect(operations?.spec).not.toHaveProperty('managedStorage');
-		expect(operations?.spec.env).toMatchObject({
-			TREESEED_PLATFORM_RUNNER_DATA_DIR: resolve(root, '.treeseed/local-operations-runner/data'),
-		});
+		expect(operations).toBeUndefined();
 		expect(treeDx?.spec.managedStorage).toMatchObject({ custody: 'treedx', servicePath: '/var/lib/treedx' });
 		expect(JSON.stringify(capacity?.spec.env)).not.toContain('TREESEED_PROVIDER_WORKSPACE');
 		} finally {

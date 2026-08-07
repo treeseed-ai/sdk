@@ -20,7 +20,7 @@ function storageSpec(value: unknown): ManagedStorageSpec | null {
 
 export function canonicalLocalRepositoryStorageRoots(tenantRoot: string) {
 	return [
-		{ custody: 'capacity-provider' as const, path: resolve(tenantRoot, '.treeseed/local-capacity-provider/data') },
+		{ custody: 'capacity-provider' as const, path: resolve(tenantRoot, '.treeseed/local-capacity-providers') },
 		{ custody: 'treedx' as const, path: resolve(tenantRoot, '.treeseed/local-treedx/data') },
 	];
 }
