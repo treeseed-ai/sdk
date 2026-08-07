@@ -169,6 +169,12 @@ verifyPackageArtifact,
 type PackageArtifactManifest
 } from './services/packages/package-artifacts.ts';
 export {
+initializePackage,
+type PackageBootstrapAction,
+type PackageBootstrapInput,
+type PackageBootstrapResult
+} from './services/package-bootstrap/index.ts';
+export {
 discoverPackageAdapters,
 findPackageAdapter,
 packageAdapterPlanSummary,

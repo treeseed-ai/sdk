@@ -78,6 +78,13 @@ type PackageWorkflowTemplateKind
 } from '../operations/services/reconciliation/package-adapters.ts';
 
 export {
+initializePackage,
+type PackageBootstrapAction,
+type PackageBootstrapInput,
+type PackageBootstrapResult
+} from '../operations/services/package-bootstrap/index.ts';
+
+export {
 createIntegratedDevPlan,
 listDevInstances,
 readDevInstance,
