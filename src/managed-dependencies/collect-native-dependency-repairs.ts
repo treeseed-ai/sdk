@@ -1,7 +1,8 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync,mkdirSync,mkdtempSync,readFileSync,rmSync } from 'node:fs';
 import { arch as osArch,platform as osPlatform } from 'node:os';
-import { basename,dirname,resolve } from 'node:path';
+import { resolve } from 'node:path';
+import { runWithStaleNpmGitCloneRetry,staleNpmGitClonePath } from '../operations/services/runtime/npm-git-clone-recovery.ts';
 import type { DependencyInstallerOptions,NpmInstallReport } from './dependency-runtime.ts';
 import { NPM_TOOLS } from './dependency-runtime.ts';
 import { collectInstalledNativeDependencyIssues,esbuildPlatformPackage,npmBackedDependenciesAvailable,resolveNpmInstallCommand,resolveNpmToolRuntimeBinary } from './redact-sensitive-output.ts';
@@ -147,15 +148,7 @@ export function resolveNpmRebuildCommand(env: NodeJS.ProcessEnv = process.env, p
 	};
 }
 
-export function staleNpmGitClonePath(detail: string) {
-	const match = /destination path '([^']+\/_cacache\/tmp\/git-clone[^/]+\/\.git)' already exists/u.exec(detail);
-	if (!match?.[1]) return null;
-	const gitPath = resolve(match[1]);
-	const cloneRoot = dirname(gitPath);
-	if (basename(gitPath) !== '.git' || !basename(cloneRoot).startsWith('git-clone')) return null;
-	if (basename(dirname(cloneRoot)) !== 'tmp' || basename(dirname(dirname(cloneRoot))) !== '_cacache') return null;
-	return cloneRoot;
-}
+export { staleNpmGitClonePath };
 
 export function runNpmBootstrap(options: Required<Pick<DependencyInstallerOptions, 'env' | 'spawn'>> & Pick<DependencyInstallerOptions, 'tenantRoot' | 'force' | 'write'>): NpmInstallReport[] {
 	const tenantRoot = options.tenantRoot ? resolve(options.tenantRoot) : null;
@@ -248,15 +241,15 @@ export function runNpmBootstrap(options: Required<Pick<DependencyInstallerOption
 		stdio: 'pipe',
 		encoding: 'utf8',
 	});
-	let result = spawnInstall();
-	let detail = `${result.stderr ?? ''}\n${result.stdout ?? ''}`.trim() || result.error?.message || '';
-	const staleClone = result.status !== 0 ? staleNpmGitClonePath(detail) : null;
-	if (staleClone) {
-		options.write?.(`Removing interrupted npm Git clone ${staleClone} and retrying dependency repair once.`);
-		rmSync(staleClone, { recursive: true, force: true });
-		result = spawnInstall();
-		detail = `${result.stderr ?? ''}\n${result.stdout ?? ''}`.trim() || result.error?.message || '';
-	}
+	const recovered = runWithStaleNpmGitCloneRetry({
+		run: spawnInstall,
+		failureDetail: (attempt) => attempt.status === 0
+			? null
+			: `${attempt.stderr ?? ''}\n${attempt.stdout ?? ''}`.trim() || attempt.error?.message || '',
+		onRetry: (clonePath) => options.write?.(`Removing interrupted npm Git clone ${clonePath} and retrying dependency repair once.`),
+	});
+	const result = recovered.result;
+	const detail = `${result.stderr ?? ''}\n${result.stdout ?? ''}`.trim() || result.error?.message || '';
 	const ok = result.status === 0 && !result.error;
 	return [{
 		root: tenantRoot,

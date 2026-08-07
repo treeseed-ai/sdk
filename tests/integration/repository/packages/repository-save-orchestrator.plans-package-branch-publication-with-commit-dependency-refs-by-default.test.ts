@@ -62,6 +62,13 @@ function writeJson(path: string, value: Record<string, unknown>) {
 	mkdirSync(dirname(path), { recursive: true });
 	writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
+
+function commitInitial(cwd: string) {
+	git(cwd, ['config', 'user.email', 'test@example.com']);
+	git(cwd, ['config', 'user.name', 'Test User']);
+	git(cwd, ['add', '-A']);
+	git(cwd, ['commit', '--allow-empty', '-m', 'chore: initial']);
+}
 describe('repository save orchestrator helpers', () => {
 it('plans one repository target for equivalent submodule checkout aliases', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-alias-root-'));
@@ -94,6 +101,7 @@ it('plans one repository target for equivalent submodule checkout aliases', () =
 			`\turl = ${pathToFileURL(origin).href}`,
 			'',
 		].join('\n'), 'utf8');
+		commitInitial(root);
 
 		const fixtures = discoverRepositorySaveNodes(root, root, 'staging').filter((entry) => entry.kind === 'fixture');
 		expect(fixtures).toHaveLength(1);
@@ -116,6 +124,8 @@ it('plans package branch publication with commit dependency refs by default', ()
 			publishConfig: { access: 'public' },
 			scripts: { 'release:publish': 'node -e "process.exit(0)"' },
 		});
+		writeFileSync(resolve(root, 'README.md'), 'initial\n', 'utf8');
+		commitInitial(root);
 		writeFileSync(resolve(root, 'README.md'), 'changed\n', 'utf8');
 
 		const plan = planRepositorySave({
@@ -129,7 +139,7 @@ it('plans package branch publication with commit dependency refs by default', ()
 		const version = plan.rootRepo.plannedVersion;
 		expect(version).toMatch(/^1\.0\.1-dev\.staging\./u);
 		expect(plan.rootRepo.plannedTag).toBeNull();
-		expect(plan.rootRepo.plannedDependencySpec).toMatch(/^git\+file:\/\/.*#HEAD$/u);
+		expect(plan.rootRepo.plannedDependencySpec).toMatch(/^git\+file:\/\/.*#[0-9a-f]{40}$/u);
 		expect(plan.rootRepo.commands).toContain('git push -u origin staging');
 		expect(plan.rootRepo.commands).not.toContain(`git push -u origin staging ${version}`);
 	});

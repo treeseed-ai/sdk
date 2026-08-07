@@ -63,6 +63,13 @@ function writeJson(path: string, value: Record<string, unknown>) {
 	mkdirSync(dirname(path), { recursive: true });
 	writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
+
+function commitInitial(cwd: string) {
+	git(cwd, ['config', 'user.email', 'test@example.com']);
+	git(cwd, ['config', 'user.name', 'Test User']);
+	git(cwd, ['add', '-A']);
+	git(cwd, ['commit', '--allow-empty', '-m', 'chore: initial']);
+}
 describe('repository save orchestrator helpers', () => {
 it('validates package locks without mutating the live install and synchronizes package versions', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-isolated-lock-'));
@@ -168,6 +175,7 @@ it('keeps package repos in dev-save mode unless stable release is explicit', () 
 			publishConfig: { access: 'public' },
 			scripts: { 'release:publish': 'npm publish' },
 		}, null, 2), 'utf8');
+		commitInitial(root);
 
 		expect(discoverRepositorySaveNodes(root, root, 'main')[0].branchMode).toBe('package-dev-save');
 		expect(discoverRepositorySaveNodes(root, root, 'main', { stablePackageRelease: true })[0].branchMode).toBe('package-release-main');
@@ -181,6 +189,7 @@ it('classifies private package.json repositories as projects', () => {
 			version: '0.3.5',
 			private: true,
 		}, null, 2), 'utf8');
+		commitInitial(root);
 
 		const [repo] = discoverRepositorySaveNodes(root, root, 'staging');
 		expect(repo.kind).toBe('project');
@@ -239,6 +248,10 @@ it('discovers starter templates and nested fixture submodules as managed save no
 			'  release: echo release',
 			'',
 		].join('\n'), 'utf8');
+		commitInitial(fixtureDir);
+		commitInitial(coreDir);
+		commitInitial(researchDir);
+		commitInitial(root);
 
 		const nodes = discoverRepositorySaveNodes(root, root, 'demo');
 		expect(nodes.map((entry) => [entry.id, entry.kind, entry.name])).toEqual(expect.arrayContaining([
@@ -277,6 +290,8 @@ it('plans root workspace lockfile refresh against the real manifest', () => {
 			name: '@treeseed/sdk',
 			version: '0.1.0',
 		});
+		commitInitial(root);
+		writeFileSync(resolve(root, 'README.md'), 'changed\n', 'utf8');
 
 		const plan = planRepositorySave({
 			root,

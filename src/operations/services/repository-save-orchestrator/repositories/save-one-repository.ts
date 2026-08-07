@@ -24,6 +24,22 @@ function recordFinalizedCommit(state: SaveState, node: RepositorySaveNode, commi
 	for (const path of node.checkoutAliases) state.finalizedCommits.set(path, commitSha);
 }
 
+function stageFinalizedSubmodulePointers(
+	node: RepositorySaveNode,
+	options: RepositorySaveOptions,
+	pointers: ReturnType<typeof collectSubmodulePointerChanges>,
+) {
+	for (const pointer of pointers) {
+		if (!pointer.newSha) continue;
+		runCapturedCommand(node, options, 'commit', 'git', [
+			'update-index',
+			'--add',
+			'--cacheinfo',
+			`160000,${pointer.newSha},${pointer.path}`,
+		]);
+	}
+}
+
 export async function saveOneRepository(
 	node: RepositorySaveNode,
 	options: RepositorySaveOptions,
@@ -137,6 +153,7 @@ export async function saveOneRepository(
 	}
 
 	runCapturedCommand(node, options, 'commit', 'git', ['add', '-A']);
+	stageFinalizedSubmodulePointers(node, options, submodulePointers);
 	if (!hasStagedChanges(node.path)) {
 		report.dirty = false;
 		report.skippedReason = 'clean-after-add';
