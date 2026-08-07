@@ -7,7 +7,9 @@ import { runCapturedCommand } from '../runtime/with-short-process-temp-env.ts';
 import type { RepositorySaveNode,RepositorySaveOptions } from './repo-kind.ts';
 import { emitProgress } from './repo-kind.ts';
 
-function localGitResolutionEnv(references: PackageDependencyReference[]) {
+type LocalGitRepository = { sourcePath: string; remoteUrl: string };
+
+function localGitResolutionEnv(references: Array<PackageDependencyReference | LocalGitRepository>) {
 	const rewrites = references.flatMap((reference) => {
 		if (!reference.sourcePath || !reference.remoteUrl) return [];
 		const target = `file://${reference.sourcePath}`;
@@ -31,13 +33,14 @@ function regenerateLockfile(
 	options: Pick<RepositorySaveOptions, 'onProgress'>,
 	isolatedRoot: string,
 	references: PackageDependencyReference[],
+	repositories: LocalGitRepository[],
 ) {
 	copyFileSync(resolve(node.path, 'package.json'), resolve(isolatedRoot, 'package.json'));
 	runCapturedCommand(node, options, 'lockfile', 'npm', [
 		'install', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--no-audit', '--no-fund',
 	], {
 		cwd: isolatedRoot,
-		env: localGitResolutionEnv(references),
+		env: localGitResolutionEnv([...references, ...repositories]),
 		timeoutMs: 15 * 60_000,
 	});
 }
@@ -46,6 +49,7 @@ export function validateStandaloneGitDependencyLockfile(
 	node: RepositorySaveNode,
 	options: Pick<RepositorySaveOptions, 'onProgress'>,
 	references: PackageDependencyReference[] = [],
+	repositories: LocalGitRepository[] = [],
 ) {
 	const lockfilePath = resolve(node.path, 'package-lock.json');
 	const lockfileExists = existsSync(lockfilePath);
@@ -54,7 +58,7 @@ export function validateStandaloneGitDependencyLockfile(
 	const validateArgs = ['ci', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--no-audit', '--no-fund'];
 	try {
 		if (references.length > 0) {
-			regenerateLockfile(node, options, isolatedRoot, references);
+			regenerateLockfile(node, options, isolatedRoot, references, repositories);
 		} else {
 			if (!lockfileExists) throw new Error('standalone lockfile missing');
 			copyFileSync(resolve(node.path, 'package.json'), resolve(isolatedRoot, 'package.json'));
@@ -62,7 +66,7 @@ export function validateStandaloneGitDependencyLockfile(
 		}
 		runCapturedCommand(node, options, 'lockfile', 'npm', validateArgs, {
 			cwd: isolatedRoot,
-			env: localGitResolutionEnv(references),
+			env: localGitResolutionEnv([...references, ...repositories]),
 			timeoutMs: 5 * 60_000,
 		});
 		copyFileSync(resolve(isolatedRoot, 'package-lock.json'), lockfilePath);

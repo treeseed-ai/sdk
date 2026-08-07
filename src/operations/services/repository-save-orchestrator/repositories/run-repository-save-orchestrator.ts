@@ -24,6 +24,7 @@ export async function runRepositorySaveOrchestrator(options: RepositorySaveOptio
 		finalizedVersions: new Map(),
 		finalizedReferences: new Map(),
 		finalizedCommits: new Map(),
+		localGitRepositories: new Map(),
 		reports: new Map(nodes.map((node) => [node.id, createReport(node)])),
 		remoteAccessChecked: new Set(),
 		workflowGates: [],
@@ -35,6 +36,9 @@ export async function runRepositorySaveOrchestrator(options: RepositorySaveOptio
 		await runLimited(wave, concurrency, async (node) => {
 			try {
 				await saveOneRepository(node, options, state);
+				if (node.remoteUrl) {
+					state.localGitRepositories.set(node.id, { sourcePath: node.path,remoteUrl: node.remoteUrl });
+				}
 			} catch (error) {
 				const existing = repositorySaveErrorDetails(error);
 				throw new RepositorySaveError(error instanceof Error ? error.message : String(error), {

@@ -119,7 +119,12 @@ export async function saveOneRepository(
 		&& hasNpmLockfile(node.path)
 		&& (packageNeedsVersion || dependencyChanged)
 	) {
-		validateStandaloneGitDependencyLockfile(node, options, availableGitDependencyReferences);
+		validateStandaloneGitDependencyLockfile(
+			node,
+			options,
+			availableGitDependencyReferences,
+			[...state.localGitRepositories.values()],
+		);
 	}
 
 	if (!contentOnly && hasNpmLockfile(node.path) && (node.kind === 'project' || packageNeedsVersion || dependencyChanged || submodulesChanged)) {
