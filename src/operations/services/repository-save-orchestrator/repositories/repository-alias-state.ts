@@ -35,9 +35,9 @@ export function repositoryWorktreeFingerprint(repoDir: string) {
 	return digest.digest('hex');
 }
 
-function commitDescendsFrom(candidate: RepositorySaveNode, ancestor: string) {
+function commitDescendsFrom(candidate: RepositorySaveNode, ancestor: string, descendant = headCommit(candidate.path)) {
 	try {
-		runGit(['merge-base', '--is-ancestor', ancestor, headCommit(candidate.path)], {
+		runGit(['merge-base', '--is-ancestor', ancestor, descendant], {
 			cwd: candidate.path,
 			capture: true,
 		});
@@ -54,4 +54,40 @@ export function recoverableAliasRepresentative(group: RepositorySaveNode[]) {
 	return group
 		.filter((candidate) => heads.every((head) => commitDescendsFrom(candidate, head)))
 		.sort((left, right) => left.relativePath.localeCompare(right.relativePath))[0] ?? null;
+}
+
+export function synchronizeRepositoryAliases(root: string, node: RepositorySaveNode, branch: string) {
+	if (node.checkoutAliases.length < 2) return [];
+	const targetCommit = headCommit(node.path);
+	const targetFingerprint = repositoryWorktreeFingerprint(node.path);
+	const synchronized: string[] = [];
+	for (const relativePath of node.checkoutAliases) {
+		const aliasPath = resolve(root, relativePath);
+		if (aliasPath === node.path) continue;
+		const aliasBranch = runGit(['symbolic-ref', '--short', 'HEAD'], { cwd: aliasPath,capture: true }).trim();
+		if (aliasBranch !== branch) throw new Error(`Repository alias ${relativePath} is on ${aliasBranch}, expected ${branch}.`);
+		if (repositoryWorktreeFingerprint(aliasPath) !== targetFingerprint) {
+			throw new Error(`Repository alias ${relativePath} does not match the finalized ${node.relativePath} worktree.`);
+		}
+		runGit(['fetch', 'origin', `refs/heads/${branch}:refs/remotes/origin/${branch}`], { cwd: aliasPath });
+		const remoteHead = runGit(['rev-parse', `refs/remotes/origin/${branch}`], { cwd: aliasPath,capture: true }).trim();
+		if (remoteHead !== targetCommit) throw new Error(`Repository alias ${relativePath} observed ${remoteHead}, expected ${targetCommit}.`);
+		const previousCommit = headCommit(aliasPath);
+		if (!commitDescendsFrom({ ...node,path: aliasPath }, previousCommit, targetCommit)) {
+			throw new Error(`Repository alias ${relativePath} cannot fast-forward from ${previousCommit} to ${targetCommit}.`);
+		}
+		const branchRef = `refs/heads/${branch}`;
+		runGit(['update-ref', branchRef, targetCommit, previousCommit], { cwd: aliasPath });
+		try {
+			runGit(['read-tree', targetCommit], { cwd: aliasPath });
+		} catch (error) {
+			runGit(['update-ref', branchRef, previousCommit, targetCommit], { cwd: aliasPath });
+			throw error;
+		}
+		if (headCommit(aliasPath) !== targetCommit || repositoryWorktreeFingerprint(aliasPath) !== targetFingerprint) {
+			throw new Error(`Repository alias ${relativePath} failed exact post-update verification.`);
+		}
+		synchronized.push(relativePath);
+	}
+	return synchronized;
 }

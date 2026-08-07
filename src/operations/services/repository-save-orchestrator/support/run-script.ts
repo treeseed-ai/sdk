@@ -13,6 +13,7 @@ collectMergeConflictReport,
 formatMergeConflictReport
 } from '../../treedx/workspaces/workspace-save.ts';
 import { remoteBranchExistsSafe } from '../repositories/discover-repository-save-nodes.ts';
+import { synchronizeRepositoryAliases } from '../repositories/repository-alias-state.ts';
 import { runCapturedCommand,runStreamingCommand } from '../runtime/with-short-process-temp-env.ts';
 import { hasAnyVerificationCommand,hasScript,manifestVerifyCommand,runGitDependencySmoke,runProjectVerificationInstallWithRetry } from '../treedx/repositories/sync-root-workspace-lockfile-metadata.ts';
 import { ensureWritableRemote } from './classify-repo-kind.ts';
@@ -294,6 +295,10 @@ export async function publishDeferredRepositoryPushes(options: RepositorySaveOpt
 	if (state.deferredPushes.length === 0) return;
 	for (const deferred of state.deferredPushes) {
 		const push = pushCurrentBranch(deferred.node, options, deferred.branch, deferred.tagName);
+		const synchronizedAliases = synchronizeRepositoryAliases(options.root, deferred.node, deferred.branch);
+		if (synchronizedAliases.length > 0) {
+			emitProgress(options, deferred.node, 'push', `Synchronized exact checkout aliases: ${synchronizedAliases.join(', ')}.`);
+		}
 		if (deferred.reference) {
 			await runGitDependencySmoke(deferred.node, options, deferred.reference);
 			deferred.report.dependencySpec = deferred.reference.spec;

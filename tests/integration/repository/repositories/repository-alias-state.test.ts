@@ -4,6 +4,7 @@ import { dirname,resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { describe,expect,it } from 'vitest';
 import { discoverRepositorySaveNodes } from '../../../../src/operations/services/repository-save-orchestrator/repositories/discover-repository-save-nodes.ts';
+import { synchronizeRepositoryAliases } from '../../../../src/operations/services/repository-save-orchestrator/repositories/repository-alias-state.ts';
 
 function git(cwd: string, args: string[]) {
 	const result = spawnSync('git', args, { cwd,stdio: 'pipe',encoding: 'utf8' });
@@ -58,6 +59,10 @@ describe('repository alias state', () => {
 		const shared = nodes.find((node) => node.checkoutAliases.length === 2);
 		expect(shared?.relativePath).toBe(paths[0]);
 		expect(shared?.checkoutAliases).toEqual(paths);
+		git(resolve(root, paths[0]!), ['push', 'origin', 'staging']);
+		expect(synchronizeRepositoryAliases(root, shared!, 'staging')).toEqual([paths[1]]);
+		expect(git(resolve(root, paths[1]!), ['rev-parse', 'HEAD'])).toBe(git(resolve(root, paths[0]!), ['rev-parse', 'HEAD']));
+		expect(git(resolve(root, paths[1]!), ['status', '--porcelain'])).toBe('');
 	});
 
 	it('rejects aliases whose materialized content differs', () => {
