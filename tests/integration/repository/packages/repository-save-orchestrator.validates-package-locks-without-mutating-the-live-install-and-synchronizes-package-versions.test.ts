@@ -137,6 +137,24 @@ it('validates package locks without mutating the live install and synchronizes p
 		expect(readFileSync(sentinelPath, 'utf8')).toBe('installed dependency state\n');
 	});
 
+	it('does not recursively prepare dependencies before atomic publication', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-atomic-lock-'));
+		const packageJson = { name: '@treeseed/demo', version: '1.0.0' };
+		writeJson(resolve(root, 'package.json'), packageJson);
+		writeJson(resolve(root, 'package-lock.json'), {
+			name: '@treeseed/demo', version: '1.0.0', lockfileVersion: 3,
+			packages: { '': packageJson },
+		});
+		const repo = node({ id: root, name: '@treeseed/demo', path: root, packageJson });
+		const originalPath = process.env.PATH;
+		process.env.PATH = '';
+		try {
+			expect(validateStandaloneGitDependencyLockfile(repo, { deferPushUntilVerified: true })).toBe(true);
+		} finally {
+			process.env.PATH = originalPath;
+		}
+	});
+
 it('re-resolves a consumer lock from the local package graph before atomic publication', () => {
 	const root = mkdtempSync(join(tmpdir(), 'treeseed-save-transitive-lock-'));
 	const sdkRoot = resolve(root, 'sdk');

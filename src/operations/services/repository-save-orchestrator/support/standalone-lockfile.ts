@@ -75,25 +75,29 @@ function validateFinalizedGitReferences(node: RepositorySaveNode, references: Pa
 
 export function validateStandaloneGitDependencyLockfile(
 	node: RepositorySaveNode,
-	options: Pick<RepositorySaveOptions, 'onProgress'>,
+	options: Pick<RepositorySaveOptions, 'onProgress' | 'deferPushUntilVerified'>,
 	references: PackageDependencyReference[] = [],
 	repositories: LocalGitRepository[] = [],
 ) {
 	const lockfilePath = resolve(node.path, 'package-lock.json');
 	const lockfileExists = existsSync(lockfilePath);
 	const previousLockfile = lockfileExists ? readFileSync(lockfilePath, 'utf8') : null;
+	if (references.length > 0) {
+		validateFinalizedGitReferences(node, references);
+		emitProgress(options, node, 'lockfile', 'Validated exact finalized Git references without recursively preparing dependency repositories.');
+		return true;
+	}
+	if (options.deferPushUntilVerified === true) {
+		if (!lockfileExists) throw new Error('standalone lockfile missing');
+		emitProgress(options, node, 'lockfile', 'Deferred recursive standalone lockfile preparation until atomic publication verification.');
+		return true;
+	}
 	const isolatedRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-lockfile-'));
 	const validateArgs = ['ci', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--no-audit', '--no-fund'];
 	try {
-		if (references.length > 0) {
-			validateFinalizedGitReferences(node, references);
-			emitProgress(options, node, 'lockfile', 'Validated exact finalized Git references without recursively preparing dependency repositories.');
-			return true;
-		} else {
-			if (!lockfileExists) throw new Error('standalone lockfile missing');
-			copyFileSync(resolve(node.path, 'package.json'), resolve(isolatedRoot, 'package.json'));
-			copyFileSync(lockfilePath, resolve(isolatedRoot, 'package-lock.json'));
-		}
+		if (!lockfileExists) throw new Error('standalone lockfile missing');
+		copyFileSync(resolve(node.path, 'package.json'), resolve(isolatedRoot, 'package.json'));
+		copyFileSync(lockfilePath, resolve(isolatedRoot, 'package-lock.json'));
 		runCapturedCommand(node, options, 'lockfile', 'npm', validateArgs, {
 			cwd: isolatedRoot,
 			env: localGitResolutionEnv([...references, ...repositories]),
