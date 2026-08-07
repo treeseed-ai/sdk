@@ -72,7 +72,8 @@ export function buildGraphFromDocuments(
 			path: document.path,
 			slug: document.slug,
 			title: document.title,
-			tags: document.tags,
+			groupIds: document.groupIds,
+			effectiveGroupIds: document.groupIds,
 			series: document.series,
 			status: document.status,
 			canonical: document.canonical,
@@ -93,7 +94,8 @@ export function buildGraphFromDocuments(
 			path: document.path,
 			slug: document.slug,
 			title: document.title,
-			tags: document.tags,
+			groupIds: document.groupIds,
+			effectiveGroupIds: document.groupIds,
 			series: document.series,
 			fileId: document.fileId,
 			status: document.status,
@@ -135,7 +137,8 @@ export function buildGraphFromDocuments(
 				heading: section.heading,
 				headingPath: section.headingPath,
 				level: section.level,
-				tags: document.tags,
+				groupIds: document.groupIds,
+				effectiveGroupIds: document.groupIds,
 				status: document.status,
 				canonical: document.canonical,
 				canonicalId: document.canonicalRef,
@@ -214,20 +217,20 @@ export function buildGraphFromDocuments(
 			stack.push(section);
 		}
 
-		for (const tag of document.tags) {
-			const tagId = `tag:${normalizeText(tag)}`;
+		for (const group of document.groupIds) {
+			const groupId = group.startsWith('group:') ? group : `group:${normalizeText(group)}`;
 			addNode({
-				id: tagId,
-				nodeType: 'Tag',
-				title: tag,
-				slug: normalizeText(tag),
+				id: groupId,
+				nodeType: 'Group',
+				title: group,
+				slug: normalizeText(group),
 			});
 			for (const sourceId of [document.fileId, document.entityId]) {
 				addEdge({
-					id: computeEdgeId(sourceId, 'HAS_TAG', tagId, `${sourceId}:${tagId}`),
-					type: 'HAS_TAG',
+					id: computeEdgeId(sourceId, 'HAS_GROUP', groupId, `${sourceId}:${groupId}`),
+					type: 'HAS_GROUP',
 					sourceId,
-					targetId: tagId,
+					targetId: groupId,
 					ownerFileId: document.fileId,
 				});
 			}

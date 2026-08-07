@@ -87,7 +87,7 @@ export type SdkGraphNodeType =
 	| 'Book'
 	| 'Page'
 	| 'Person'
-	| 'Tag'
+	| 'Group'
 	| 'Series'
 	| 'Reference'
 	| 'Entity';
@@ -102,7 +102,9 @@ export type SdkGraphEdgeType =
 	| 'LINKS_TO'
 	| 'REFERENCES'
 	| 'MENTIONS'
-	| 'HAS_TAG'
+	| 'HAS_GROUP'
+	| 'EFFECTIVE_GROUP'
+	| 'GROUP_RELATION'
 	| 'IN_SERIES'
 	| 'SAME_DIRECTORY'
 	| 'SAME_COLLECTION'
@@ -128,7 +130,7 @@ export interface SdkGraphReferenceFieldConfig {
 export interface SdkGraphModelConfig {
 	entityType?: SdkGraphNodeType;
 	referenceFields?: SdkGraphReferenceFieldConfig[];
-	tagField?: string;
+	groupField?: string;
 	seriesField?: string;
 	titleField?: string;
 	enableSections?: boolean;
@@ -175,7 +177,8 @@ export interface SdkGraphNode {
 	headingPath?: string | null;
 	level?: number | null;
 	text?: string;
-	tags?: string[];
+	groupIds?: string[];
+	effectiveGroupIds?: string[];
 	series?: string | null;
 	fileId?: string;
 	entityId?: string;
@@ -225,7 +228,7 @@ export interface SdkGraphTraversalResult {
 
 export interface SdkGraphSeed {
 	id: string;
-	kind: 'id' | 'path' | 'query' | 'tag' | 'type';
+	kind: 'id' | 'path' | 'query' | 'group' | 'type';
 	value: string;
 	scope?: 'files' | 'sections' | 'entities';
 }
@@ -244,7 +247,7 @@ export type SdkGraphDslRelation =
 	| 'supersedes';
 
 export interface SdkGraphWhereFilter {
-	field: 'type' | 'status' | 'audience' | 'tag' | 'domain';
+	field: 'type' | 'status' | 'audience' | 'directGroupId' | 'effectiveGroupId' | 'domain';
 	op: 'eq' | 'in';
 	value: string | string[];
 }

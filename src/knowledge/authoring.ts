@@ -11,7 +11,7 @@ function pageFrontmatter(input: Omit<KnowledgePageDefinition, 'schemaVersion' | 
 	return {
 		schemaVersion: KNOWLEDGE_PAGE_SCHEMA_VERSION, id: input.id, bookId: input.bookId, slug: input.slug,
 		title: input.title, summary: input.summary, status: input.status, visibility: input.visibility,
-		order: input.order, ...(input.parentId ? { parentId: input.parentId } : {}), tags: input.tags,
+		order: input.order, ...(input.parentId ? { parentId: input.parentId } : {}), groupIds: input.groupIds,
 		contributors: input.contributors, relatedBookIds: input.relatedBookIds,
 		relatedKnowledgeIds: input.relatedKnowledgeIds, relatedNoteIds: input.relatedNoteIds,
 		relatedQuestionIds: input.relatedQuestionIds, relatedObjectiveIds: input.relatedObjectiveIds,

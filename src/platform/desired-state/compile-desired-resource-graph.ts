@@ -21,11 +21,13 @@ export function compileDesiredResourceGraph({
 	target,
 	localContent = 'auto',
 	capacityConfigPath,
+	seedNames,
 }: {
 	tenantRoot?: string;
 	target: ReconcileTarget;
 	localContent?: LocalContentMode;
 	capacityConfigPath?: string;
+	seedNames?: string[];
 }): DesiredResourceGraph {
 	const environment = environmentFromTarget(target);
 	const derived = deriveDesiredUnits({ tenantRoot, target });
@@ -36,7 +38,7 @@ export function compileDesiredResourceGraph({
 		...derived.units.map((unit) => resourceFromUnit(unit, environment)),
 		...packageAdapters.flatMap((adapter) => packageResources(adapter, environment)),
 		...templateResources(templates, environment),
-		...localDevelopmentResources(tenantRoot, environment, localContent, templates, capacityConfigPath, derived.deployConfig),
+		...localDevelopmentResources(tenantRoot, environment, localContent, templates, capacityConfigPath, derived.deployConfig, seedNames),
 		...branchPreviewResources(target, environment),
 		...releaseGateResources(packages, templates, environment),
 	];

@@ -130,6 +130,7 @@ import { updateProjectRepositoryTopologyMethod } from "./projects/repositories/u
 import { applySeedMethod } from "./seeds/creation/apply-seed.ts";
 import { exportSeedMethod } from "./seeds/creation/export-seed.ts";
 import { planSeedMethod } from "./seeds/creation/plan-seed.ts";
+import { resolveSeedResourcesMethod } from "./seeds/queries/resolve-seed-resources.ts";
 import { listSeedRunsMethod } from "./seeds/queries/list-seed-runs.ts";
 import { createDecisionExecutionInputMethod } from "./support/creation/create-decision-execution-input.ts";
 import { createPersonalThemeMethod } from "./support/creation/create-personal-theme.ts";
@@ -373,6 +374,7 @@ export function installMarketClientMethods(prototype: MarketClient) {
   prototype.workdayEvents = workdayEventsMethod;
   prototype.createWorkdayEvent = createWorkdayEventMethod;
   prototype.planSeed = planSeedMethod;
+  prototype.resolveSeedResources = resolveSeedResourcesMethod;
   prototype.applySeed = applySeedMethod;
   prototype.listSeedRuns = listSeedRunsMethod;
   prototype.exportSeed = exportSeedMethod;

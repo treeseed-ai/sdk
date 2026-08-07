@@ -78,6 +78,7 @@ export const BUILT_IN_AGENT_EXECUTION_PROVIDER_IDS = [
 	'github_issues',
 	'discord',
 	'workflow',
+	'platform-operation',
 ] as const;
 
 export const EXECUTION_RUN_STATUSES = [

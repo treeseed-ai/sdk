@@ -47,7 +47,7 @@ export function parseBook(input: { path: string; raw: string }): BookDefinition 
 		id: text(data, 'id', input.path), slug: text(data, 'slug', input.path), title: text(data, 'title', input.path),
 		summary: text(data, 'summary', input.path), description: String(data.description ?? data.summary ?? '').trim(),
 		status: status as BookDefinition['status'], visibility: visibility as BookDefinition['visibility'],
-		order: Number(data.order ?? 0), topics: list(data.topics ?? data.tags), audience: list(data.audience),
+		order: Number(data.order ?? 0), groupIds: list(data.groupIds), audience: list(data.audience),
 		relatedBookIds: list(data.relatedBookIds ?? data.relatedBooks),
 		packPolicy: ['allowed', 'restricted', 'disabled'].includes(String(data.packPolicy)) ? data.packPolicy as BookDefinition['packPolicy'] : 'allowed',
 		editorialCoreNoteId: data.editorialCoreNoteId ? String(data.editorialCoreNoteId).trim() : undefined,
@@ -76,7 +76,7 @@ export function parseKnowledgePage(input: { path: string; raw: string; updatedAt
 		title: text(data, 'title', input.path), summary: text(data, 'summary', input.path),
 		status: status as KnowledgePageDefinition['status'], visibility: visibility as KnowledgePageDefinition['visibility'],
 		order: Number(data.order ?? 0), parentId: data.parentId ? String(data.parentId) : undefined,
-		tags: list(data.tags), contributors: list(data.contributors), relatedBookIds: list(data.relatedBookIds ?? data.relatedBooks),
+		groupIds: list(data.groupIds), contributors: list(data.contributors), relatedBookIds: list(data.relatedBookIds ?? data.relatedBooks),
 		relatedKnowledgeIds: list(data.relatedKnowledgeIds ?? data.relatedTopics), relatedNoteIds: list(data.relatedNoteIds),
 		relatedQuestionIds: list(data.relatedQuestionIds), relatedObjectiveIds: list(data.relatedObjectiveIds),
 		relatedProposalIds: list(data.relatedProposalIds), relatedDecisionIds: list(data.relatedDecisionIds),
@@ -210,7 +210,7 @@ export function searchKnowledgePages(pages: KnowledgePageDefinition[], query: st
 	const terms = query.toLowerCase().trim().split(/\s+/u).filter(Boolean);
 	if (!terms.length) return [];
 	return pages.filter((page) => {
-		const haystack = [page.title, page.summary, page.bodyMarkdown, ...page.tags, ...page.context.keywords].join(' ').toLowerCase();
+		const haystack = [page.title, page.summary, page.bodyMarkdown, ...page.groupIds, ...page.context.keywords].join(' ').toLowerCase();
 		return terms.every((term) => haystack.includes(term));
 	});
 }

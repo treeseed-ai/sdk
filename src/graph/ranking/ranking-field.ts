@@ -10,7 +10,7 @@ import { normalizeText } from '../schema.ts';
 export type RankingField =
 	| 'title'
 	| 'headings'
-	| 'tags'
+	| 'groups'
 	| 'ids'
 	| 'summary'
 	| 'body'
@@ -42,7 +42,7 @@ export type FieldConfig = {
 export const BM25F_FIELDS: Record<RankingField, FieldConfig> = {
 	title: { weight: 4.8, b: 0.3 },
 	headings: { weight: 3.6, b: 0.35 },
-	tags: { weight: 2.8, b: 0.2 },
+	groups: { weight: 2.8, b: 0.2 },
 	ids: { weight: 4.2, b: 0.1 },
 	summary: { weight: 2.2, b: 0.4 },
 	body: { weight: 1.0, b: 0.8 },
@@ -60,7 +60,9 @@ export const DEFAULT_EDGE_WEIGHTS: Record<SdkGraphEdgeType, number> = {
 	LINKS_TO: 1.1,
 	REFERENCES: 2.6,
 	MENTIONS: 0.8,
-	HAS_TAG: 0.4,
+	HAS_GROUP: 0.4,
+	EFFECTIVE_GROUP: 0.5,
+	GROUP_RELATION: 0.7,
 	IN_SERIES: 0.5,
 	SAME_DIRECTORY: 0.4,
 	SAME_COLLECTION: 0.4,
@@ -218,7 +220,7 @@ export function createRankingDocument(
 	const fields: Record<RankingField, string> = {
 		title: node.title ?? node.id,
 		headings: relatedSectionTitles,
-		tags: (node.tags ?? []).join(' '),
+		groups: (node.effectiveGroupIds ?? []).join(' '),
 		ids,
 		summary,
 		body: node.text ?? '',

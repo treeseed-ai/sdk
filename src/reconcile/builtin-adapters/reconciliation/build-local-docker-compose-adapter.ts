@@ -1,6 +1,6 @@
 import { existsSync,mkdirSync,rmSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { inspectDockerAvailability,runDockerCompose } from "../../providers/docker-private.ts";
+import { inspectDockerAvailability,repairDockerComposeDataOwnership,runDockerCompose } from "../../providers/docker-private.ts";
 import { localComposeDriftReasons,localComposeReconciledSpecHash,localComposeRequiredPathWarnings,localComposeRuntimeConfigDrift,localComposeServiceReady,observeLocalComposeRequiredPaths,parseLocalComposeServices,waitForLocalComposeServices } from "../../runtime/local-compose-state.ts";
 import type { ReconcileAdapter,ReconcileAdapterInput,UnitVerificationCheck } from "../../support/contracts/contracts.ts";
 import { desiredUnitSpecHash } from "../../support/state/state.ts";
@@ -121,7 +121,7 @@ export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
 			}
 			if (reset) resetLocalComposeDataDir(input);
 			ensureLocalComposeDataDir(input);
-			ensureManagedRepositoryStorage(input.context.tenantRoot, input.unit.spec.managedStorage);
+			ensureComposeManagedStorage(input, { composeFiles, cwd, projectName, env, services });
 			const result = runDockerCompose({
 				composeFiles,
 				projectName,
@@ -309,6 +309,35 @@ export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
 			});
 		},
 	};
+}
+
+function ensureComposeManagedStorage(
+	input: ReconcileAdapterInput,
+	compose: { composeFiles: string[]; cwd: string; projectName: string; env: NodeJS.ProcessEnv; services: string[] },
+) {
+	try {
+		return ensureManagedRepositoryStorage(input.context.tenantRoot, input.unit.spec.managedStorage);
+	} catch (error) {
+		const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+		const managedStorage = input.unit.spec.managedStorage;
+		const custody = managedStorage && typeof managedStorage === 'object' && !Array.isArray(managedStorage)
+			? String((managedStorage as Record<string, unknown>).custody ?? '')
+			: '';
+		const uid = process.getuid?.();
+		const gid = process.getgid?.();
+		if (code !== 'EACCES' || custody !== 'capacity-provider' || uid === undefined || gid === undefined || compose.services.length === 0) throw error;
+		const repair = repairDockerComposeDataOwnership({
+			composeFiles: compose.composeFiles,
+			projectName: compose.projectName,
+			service: compose.services[0],
+			cwd: compose.cwd,
+			env: compose.env,
+			uid,
+			gid,
+		});
+		if (!repair.ok) throw new Error(repair.stderr.trim() || repair.stdout.trim() || 'Capacity provider managed storage ownership repair failed.');
+		return ensureManagedRepositoryStorage(input.context.tenantRoot, input.unit.spec.managedStorage);
+	}
 }
 
 export function ensureLocalComposeDataDir(input: ReconcileAdapterInput) {

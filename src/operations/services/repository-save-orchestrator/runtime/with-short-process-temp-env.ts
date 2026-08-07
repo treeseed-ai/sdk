@@ -7,6 +7,7 @@ createBuildWarningSummary,
 formatAllowedBuildWarnings,
 type BuildWarningPolicyOptions,
 } from '../../build/build-warning-policy.js';
+import { runWithStaleNpmGitCloneRetry } from '../../runtime/npm-git-clone-recovery.js';
 import { RepositorySaveError,RepositorySaveNode,RepositorySaveOptions,emitProgress,prefixedOutput,progressPrefix,readJson } from '../support/repo-kind.ts';
 
 export function withShortProcessTempEnv(env: NodeJS.ProcessEnv = {}) {
@@ -80,13 +81,23 @@ export function runCapturedCommand(
 	const cwd = commandOptions.cwd ?? node.path;
 	const spawnCommand = command === 'npm' ? npmCommandForSpawn(args) : { command, args };
 	emitProgress(options, node, phase, `$ ${displayCommand(command, args)}`);
-	const result = spawnSync(spawnCommand.command, spawnCommand.args, {
+	const run = () => spawnSync(spawnCommand.command, spawnCommand.args, {
 		cwd,
 		env: command === 'npm' ? npmWorkflowEnv(commandOptions.env, cwd) : withShortProcessTempEnv(commandOptions.env),
 		stdio: 'pipe',
 		encoding: 'utf8',
 		timeout: commandOptions.timeoutMs,
 	});
+	const recovered = command === 'npm'
+		? runWithStaleNpmGitCloneRetry({
+			run,
+			failureDetail: (attempt) => attempt.status === 0
+				? null
+				: `${attempt.stderr ?? ''}\n${attempt.stdout ?? ''}`.trim() || attempt.error?.message || '',
+			onRetry: (clonePath) => emitProgress(options, node, phase, `Removing interrupted npm Git clone ${clonePath} and retrying once.`),
+		})
+		: { result: run(),retriedPath: null };
+	const result = recovered.result;
 	const stdout = result.stdout?.trim() ?? '';
 	const stderr = result.stderr?.trim() ?? '';
 	if (commandOptions.emitOutputOnSuccess !== false) {
@@ -145,13 +156,21 @@ export function runQuietCommand(
 ) {
 	const cwd = commandOptions.cwd ?? node.path;
 	const spawnCommand = command === 'npm' ? npmCommandForSpawn(args) : { command, args };
-	const result = spawnSync(spawnCommand.command, spawnCommand.args, {
+	const run = () => spawnSync(spawnCommand.command, spawnCommand.args, {
 		cwd,
 		env: command === 'npm' ? npmWorkflowEnv(commandOptions.env, cwd) : withShortProcessTempEnv(commandOptions.env),
 		stdio: 'pipe',
 		encoding: 'utf8',
 		timeout: commandOptions.timeoutMs,
 	});
+	const result = command === 'npm'
+		? runWithStaleNpmGitCloneRetry({
+			run,
+			failureDetail: (attempt) => attempt.status === 0
+				? null
+				: `${attempt.stderr ?? ''}\n${attempt.stdout ?? ''}`.trim() || attempt.error?.message || '',
+		}).result
+		: run();
 	const stdout = result.stdout?.trim() ?? '';
 	const stderr = result.stderr?.trim() ?? '';
 	if (result.status !== 0) {

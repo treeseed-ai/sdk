@@ -6,7 +6,7 @@ subtype: local-platform
 journey: "Start the managed local platform"
 ownerPackage: "@treeseed/sdk"
 surface: content-runtime
-summary: "Guarantee that TreeSeed can start the managed local platform."
+summary: "Guarantee that TreeSeed starts the managed local platform with independent agent and platform-operation provider identities, data roots, checkouts, manifests, and readiness checks."
 status: planned
 dependencies: { journeys: [], guarantees: [] }
 actors: { allowed: [authenticated_user, team_owner, platform_admin], forbidden: [unauthorized_user] }
@@ -18,4 +18,4 @@ content: { required: false, verifierRefs: [] }
 audit: { required: false, verifierRefs: [] }
 negativeCases: []
 evidence: { required: [guarantee_report] }
-notes: ["Planned from the TreeSeed Guide platform coverage audit."]
+notes: ["A runtime generation is not ready unless every declared provider class has a fresh matching manager status and approved availability session."]

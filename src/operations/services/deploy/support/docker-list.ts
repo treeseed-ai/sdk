@@ -106,8 +106,7 @@ export function destroyLocalRuntimeResources(tenantRoot, { planOnly = false, del
 		for (const relativePath of [
 			'.treeseed/generated/environments/local',
 			'.treeseed/generated/dev',
-			'.treeseed/operations-runner',
-			'.treeseed/local-capacity-provider/data',
+			'.treeseed/local-capacity-providers',
 		]) {
 			const absolutePath = resolve(tenantRoot, relativePath);
 			if (!existsSync(absolutePath)) {

@@ -8,6 +8,11 @@ type Row = Record<string, unknown>;
 const row = (value: unknown): Row => value && typeof value === 'object' && !Array.isArray(value) ? value as Row : {};
 const text = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 
+function providerDataDir(projectRoot: string, providerKey: string) {
+	const identity = providerKey.replace(/[^a-zA-Z0-9._-]+/gu, '-').replace(/^-+|-+$/gu, '').toLowerCase();
+	return resolve(projectRoot, '.treeseed/local-capacity-providers', `agent-${identity}`);
+}
+
 function resourceKey(value: Row) {
 	const metadata = row(value.metadata);
 	return text(row(metadata.seed).resourceKey) || text(metadata.resourceKey) || text(value.seedResourceKey);
@@ -16,7 +21,8 @@ function resourceKey(value: Row) {
 export async function resolveTeamAgentLabRuntime(input: {
 	projectRoot: string; client: MarketClient; apiUrl: string; teamKey: string; providerKey: string; repositories: string[];
 }) {
-	const manifestPath = resolve(input.projectRoot, '.treeseed/local-capacity-provider/data/runtime/provider-manifest.yaml');
+	const dataDir = providerDataDir(input.projectRoot, input.providerKey);
+	const manifestPath = resolve(dataDir, 'runtime/provider-manifest.yaml');
 	const manifest = parse(await readFile(manifestPath, 'utf8')) as CapacityProviderManifestV2;
 	const connection = manifest.connections[0];
 	if (!connection) throw new Error(`Agent Lab seeded provider ${input.providerKey} has no runtime connection.`);
@@ -29,7 +35,6 @@ export async function resolveTeamAgentLabRuntime(input: {
 	const project = projects.find((entry) => resourceKey(entry) === projectKey) ?? projects.find((entry) => text(entry.slug) === repositorySlug);
 	const projectId = text(project?.id);
 	if (!projectId) throw new Error(`Agent Lab could not resolve seeded project ${projectKey}.`);
-	const dataDir = resolve(input.projectRoot, '.treeseed/local-capacity-provider/data');
 	const privateJwk = JSON.parse(await readFile(resolve(dataDir, 'identity.json'), 'utf8')) as CapacityProviderPrivateJwk;
 	const credentialPath = resolve(dataDir, connection.membershipCredentialRef.replace(/^data:\/\//u, ''));
 	const membershipCredential = (await readFile(credentialPath, 'utf8')).trim();

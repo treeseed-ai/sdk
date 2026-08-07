@@ -15,6 +15,8 @@ export const SDK_MODEL_NAMES = [
 	'discussion',
 	'discussion_message',
 	'discussion_event',
+	'group',
+	'group_edge',
 	'agent',
 	'agent_run',
 	'agent_cursor',

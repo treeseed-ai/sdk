@@ -14,6 +14,8 @@ resolveTeamScopedContentLocator,
 signEditorialPreviewToken,
 verifyEditorialPreviewToken
 } from '../platform/packages/published-content.ts';
+export { CloudflareR2RestClient, type CloudflareR2RestConfig } from '../platform/published-content/cloudflare-r2-rest-client.ts';
+export { createR2PublicationClient, type R2PublicationClient, type R2PublicationConfig } from '../platform/published-content/r2-publication-client.ts';
 
 export {
 createFilesystemContentSource,

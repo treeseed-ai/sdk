@@ -52,7 +52,7 @@ export function createDefaultGraphRankingProvider(): SdkGraphRankingProvider {
 			}
 
 			const documents = input.nodes
-				.filter((node) => !['Tag', 'Series', 'Reference'].includes(node.nodeType))
+				.filter((node) => !['Group', 'Series', 'Reference'].includes(node.nodeType))
 				.map((node) => createRankingDocument(node, sectionsByFileId, outgoingEdgeTargets));
 
 			const docsByScope = {

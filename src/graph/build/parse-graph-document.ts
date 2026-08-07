@@ -22,7 +22,7 @@ export function parseGraphDocument(definition: SdkModelDefinition, filePath: str
 	const entityId = createEntityNodeId(definition, slug, parsed.frontmatter);
 	const titleValue = readGraphField(definition, parsed.frontmatter, graphConfig.titleField);
 	const title = typeof titleValue === 'string' && titleValue.trim() ? titleValue.trim() : slug;
-	const tags = graphConfig.tagField ? ensureArray(readGraphField(definition, parsed.frontmatter, graphConfig.tagField)) : [];
+	const groupIds = graphConfig.groupField ? ensureArray(readGraphField(definition, parsed.frontmatter, graphConfig.groupField)) : [];
 	const seriesValue = graphConfig.seriesField ? readGraphField(definition, parsed.frontmatter, graphConfig.seriesField) : undefined;
 	const series = typeof seriesValue === 'string' && seriesValue.trim() ? seriesValue.trim() : null;
 	const explicitId = typeof parsed.frontmatter.id === 'string' && parsed.frontmatter.id.trim() ? parsed.frontmatter.id.trim() : null;
@@ -74,7 +74,7 @@ export function parseGraphDocument(definition: SdkModelDefinition, filePath: str
 		normalizedBody: normalizeText(body),
 		frontmatter: parsed.frontmatter,
 		explicitId,
-		tags,
+		groupIds,
 		series,
 		status,
 		canonical,

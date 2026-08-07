@@ -217,6 +217,7 @@ export type SaveState = {
 	finalizedVersions: Map<string, string>;
 	finalizedReferences: Map<string, PackageDependencyReference>;
 	finalizedCommits: Map<string, string>;
+	localGitRepositories: Map<string, { sourcePath: string; remoteUrl: string }>;
 	reports: Map<string, RepositorySaveReport>;
 	remoteAccessChecked: Set<string>;
 	workflowGates: Array<Record<string, unknown>>;

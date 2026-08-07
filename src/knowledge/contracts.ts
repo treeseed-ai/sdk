@@ -21,7 +21,7 @@ export interface BookDefinition {
 	status: KnowledgeStatus;
 	visibility: KnowledgeVisibility;
 	order: number;
-	topics: string[];
+	groupIds: string[];
 	audience: string[];
 	relatedBookIds: string[];
 	packPolicy: 'allowed' | 'restricted' | 'disabled';
@@ -55,7 +55,7 @@ export interface KnowledgePageDefinition {
 	visibility: KnowledgeVisibility;
 	order: number;
 	parentId?: string;
-	tags: string[];
+	groupIds: string[];
 	contributors: string[];
 	relatedBookIds: string[];
 	relatedKnowledgeIds: string[];

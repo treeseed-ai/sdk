@@ -29,6 +29,7 @@ import { packageScripts,runCapturedCommand } from '../runtime/with-short-process
 import { classifyRepoKind,dependencyFields,emptyManifestVerifyCommands,isIndependentGitRepo,originRemoteUrlSafe,parseGitmodules,repoDisplayName,repoIdForPath,templateVerifyCommands } from '../support/classify-repo-kind.ts';
 import { RepoBranchMode,RepositoryCommitMessageContext,RepositorySaveError,RepositorySaveNode,RepositorySaveOptions,emitProgress,readJson,runGit } from '../support/repo-kind.ts';
 import { classifyRepositoryChanges,contentPathForRepository,repositoryChangedPaths } from '../support/change-classification.ts';
+import { recoverableAliasRepresentative,repositoryWorktreeFingerprint } from './repository-alias-state.ts';
 
 export function discoverRepositorySaveNodes(
 	root: string,
@@ -132,14 +133,21 @@ function deduplicateRepositorySaveNodes(nodes: RepositorySaveNode[]) {
 		if (group.length === 1) return group[0]!;
 		const heads = new Set(group.map((node) => headCommit(node.path)));
 		if (heads.size !== 1) {
-			throw new RepositorySaveError(`Repository aliases do not resolve to one exact revision: ${group.map((node) => node.relativePath).join(', ')}.`, {
-				details: { aliases: group.map((node) => ({ path: node.relativePath, head: headCommit(node.path), remoteUrl: node.remoteUrl })) },
-			});
+			const representative = recoverableAliasRepresentative(group);
+			if (!representative) {
+				throw new RepositorySaveError(`Repository aliases do not resolve to one exact revision or identical worktree state: ${group.map((node) => node.relativePath).join(', ')}.`, {
+					details: { aliases: group.map((node) => ({ path: node.relativePath, head: headCommit(node.path), remoteUrl: node.remoteUrl })) },
+				});
+			}
+			return {
+				...representative,
+				checkoutAliases: group.map((node) => node.relativePath).sort(),
+			};
 		}
-		const dirty = group.filter((node) => node.dirty);
-		if (dirty.length > 1) {
+		const dirty = group.filter((node) => repositoryChangedPaths(node.path).length > 0);
+		if (dirty.length > 1 && new Set(dirty.map((node) => repositoryWorktreeFingerprint(node.path))).size !== 1) {
 			throw new RepositorySaveError(`Repository aliases contain changes in more than one checkout: ${dirty.map((node) => node.relativePath).join(', ')}.`, {
-				details: { aliases: group.map((node) => ({ path: node.relativePath, dirty: node.dirty, remoteUrl: node.remoteUrl })) },
+				details: { aliases: group.map((node) => ({ path: node.relativePath, dirty: repositoryChangedPaths(node.path).length > 0, remoteUrl: node.remoteUrl })) },
 			});
 		}
 		const representative = dirty[0] ?? [...group].sort((left, right) => left.relativePath.localeCompare(right.relativePath))[0]!;

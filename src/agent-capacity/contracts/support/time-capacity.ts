@@ -71,6 +71,48 @@ export interface AssignmentCompletionEvidence {
 	noUsefulScopedWorkRemaining: boolean;
 }
 
+export const ASSIGNMENT_PERFORMANCE_SCHEMA = 'treeseed.assignment-performance/v1' as const;
+
+export interface AssignmentPerformanceSummary {
+	schemaVersion: typeof ASSIGNMENT_PERFORMANCE_SCHEMA;
+	assignmentId: string;
+	workdayId: string | null;
+	teamId: string;
+	projectId: string;
+	agentId: string | null;
+	agentClassId: string;
+	activityProfile: string;
+	handlerId: string | null;
+	capacityProviderId: string;
+	executionProviderId: string | null;
+	model: string | null;
+	groupIds: string[];
+	taskSignature: string;
+	disposition: AssignmentTerminalDisposition;
+	reason: string;
+	acceptanceChecks: AssignmentCompletionEvidence['acceptanceChecks'];
+	completedScope: string[];
+	remainingScope: string[];
+	artifactRefs: string[];
+	budget: CapacityBudgetV2;
+	actual: {
+		activeSeconds: number;
+		elapsedSeconds: number;
+		inputTokens: number;
+		cachedInputTokens: number;
+		reasoningTokens: number;
+		outputTokens: number;
+		costAmount: number | null;
+		costCurrency: string | null;
+		native: CapacityNativeDimensions[];
+		attempts: number;
+	};
+	noUsefulScopedWorkRemaining: boolean;
+	agentAssessment: Record<string, unknown> | null;
+	systemAssessment: { generatedBy: 'agent-runner' | 'api-recovery'; measuredAt: string; enforcementConfidence: CapacityBudgetV2['enforcementConfidence'] };
+	downstreamOutcomes: Array<{ kind: 'validation' | 'revision' | 'rejection'; status: string; evidenceRefs: string[]; occurredAt: string }>;
+}
+
 export interface WorkdayTimePolicy {
 	cooperativePlanningPercent: number;
 	governedExecutionPercent: number;

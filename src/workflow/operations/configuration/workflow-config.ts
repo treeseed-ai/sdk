@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { formatDependencyFailureDetails,installDependencies } from "../../../entrypoints/runtime/managed-dependencies.ts";
-import { applyConfigValues,applySafeRepairs,captureMachineConfiguration,checkProviderConnections,collectConfigContext,collectPrintEnvReport,ensureActVerificationTooling,ensureGitignoreEntries,ensureSecretSessionForConfig,finalizeConfig,getMachineConfigPaths,inspectKeyAgentStatus,inspectPassphraseEnvDiagnostic,recordConfigurationGeneration,restoreMachineConfiguration,rotateMachineKey } from "../../../operations/services/configuration/config-runtime.ts";
+import { applyConfigValues,applySafeRepairs,captureMachineConfiguration,checkProviderConnections,collectConfigContext,collectPrintEnvReport,ensureActVerificationTooling,ensureGitignoreEntries,ensureSecretSessionForConfig,finalizeConfig,getMachineConfigPaths,inspectKeyAgentStatus,inspectPassphraseEnvDiagnostic,recordConfigurationGeneration,redactConfigContextForReport,restoreMachineConfiguration,rotateMachineKey } from "../../../operations/services/configuration/config-runtime.ts";
 import { buildProvisioningSummary,createPersistentDeployTarget,loadDeployState } from "../../../operations/services/hosting/deployment/deploy.ts";
 import { exportCodebase } from "../../../operations/services/runtime/export-runtime.ts";
 import { collectCliPreflight } from "../../../operations/services/treedx/workspaces/workspace-preflight.ts";
@@ -21,7 +21,9 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: C
 			const scopes = normalizeConfigScopes(input);
 			const sync = input.syncProviders ?? input.sync ?? 'none';
 			const printEnv = input.printEnv === true;
-			const revealSecrets = input.showSecrets === true;
+			if (input.showSecrets === true) {
+				workflowError('config', 'validation_failed', 'Bulk secret output is not supported. Reveal one secret through its audited Service Vault ceremony.');
+			}
 			const printEnvOnly = input.printEnvOnly === true;
 			const rotateMachineKeyFlag = input.rotateMachineKey === true;
 			const bootstrapOnly = input.bootstrap === true;
@@ -45,7 +47,7 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: C
 				tenantRoot, 				installIfMissing: input.installMissingTooling === true, 				env: helpers.context.env, 				write: (line: string) => maybePrint(helpers.write, line),
 			});
 			const passphraseEnv = inspectPassphraseEnvDiagnostic(helpers.context.env ?? process.env);
-			const secretSession = (printEnvOnly && !revealSecrets) || bootstrapPreflight
+			const secretSession = printEnvOnly || bootstrapPreflight
 				? {
 					status: inspectKeyAgentStatus(tenantRoot), 					createdWrappedKey: false, 					migratedWrappedKey: false, 					unlockSource: 'existing-session' as const,
 				}
@@ -74,14 +76,14 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: C
 				const reports = await Promise.all(scopes.map(async (scope) => ({
 					scope,
 					environment: collectPrintEnvReport({
-						tenantRoot, 						scope, 						env: helpers.context.env, 						revealSecrets,
+						tenantRoot, 						scope, 						env: helpers.context.env, 						revealSecrets: false,
 					}),
 					provider: await checkProviderConnections({ tenantRoot, scope, env: helpers.context.env }),
 				})));
 				return buildWorkflowResult(
 					'config', 					tenantRoot,
 					{
-						mode: 'print-env-only', 						scopes, 						sync, 						secretsRevealed: revealSecrets, 						reports, 						repairs, 						preflight, 						toolHealth, 						context: contextSnapshot, 						secretSession,
+						mode: 'print-env-only', 						scopes, 						sync, 						secretsRevealed: false, 						reports, 						repairs, 						preflight, 						toolHealth, 						context: redactConfigContextForReport(contextSnapshot), 						secretSession,
 					},
 					{
 						nextSteps: createNextSteps([

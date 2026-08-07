@@ -476,18 +476,6 @@ declare module "../support/market-client.ts" {
     createWorkdayEvent: OmitThisParameter<
       typeof import("./capacity/workdays/creation/create-workday-event.ts").createWorkdayEventMethod
     >;
-    planSeed: OmitThisParameter<
-      typeof import("./seeds/creation/plan-seed.ts").planSeedMethod
-    >;
-    applySeed: OmitThisParameter<
-      typeof import("./seeds/creation/apply-seed.ts").applySeedMethod
-    >;
-    listSeedRuns: OmitThisParameter<
-      typeof import("./seeds/queries/list-seed-runs.ts").listSeedRunsMethod
-    >;
-    exportSeed: OmitThisParameter<
-      typeof import("./seeds/creation/export-seed.ts").exportSeedMethod
-    >;
     catalog: OmitThisParameter<
       typeof import("./commerce/catalog/contracts/catalog.ts").catalogMethod
     >;

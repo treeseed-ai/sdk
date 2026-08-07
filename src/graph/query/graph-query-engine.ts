@@ -227,12 +227,12 @@ export class GraphQueryEngine {
 				}
 				continue;
 			}
-			if (seed.kind === 'tag') {
+			if (seed.kind === 'group') {
 				for (const node of this.nodesById.values()) {
-					if ((node.tags ?? []).map(normalizeText).includes(normalizeText(seed.value))
+					if ((node.effectiveGroupIds ?? []).map(normalizeText).includes(normalizeText(seed.value))
 						&& nodeMatchesScope(node, request.scopePaths)
 						&& nodeMatchesWhere(node, request.where)) {
-						matches.push({ node, score: 85, reason: 'seed-tag' });
+						matches.push({ node, score: 85, reason: 'seed-group' });
 						resolvedNodeIds.add(node.id);
 					}
 				}

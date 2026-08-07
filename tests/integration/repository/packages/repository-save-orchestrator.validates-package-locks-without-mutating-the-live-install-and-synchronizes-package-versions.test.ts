@@ -63,6 +63,13 @@ function writeJson(path: string, value: Record<string, unknown>) {
 	mkdirSync(dirname(path), { recursive: true });
 	writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
+
+function commitInitial(cwd: string) {
+	git(cwd, ['config', 'user.email', 'test@example.com']);
+	git(cwd, ['config', 'user.name', 'Test User']);
+	git(cwd, ['add', '-A']);
+	git(cwd, ['commit', '--allow-empty', '-m', 'chore: initial']);
+}
 describe('repository save orchestrator helpers', () => {
 it('copies newly introduced runtime dependency closure into consumer locks during an atomic save', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-dependency-closure-'));
@@ -133,7 +140,15 @@ it('validates package locks without mutating the live install and synchronizes p
 it('re-resolves a consumer lock from the local package graph before atomic publication', () => {
 	const root = mkdtempSync(join(tmpdir(), 'treeseed-save-transitive-lock-'));
 	const sdkRoot = resolve(root, 'sdk');
+	const fixtureRoot = resolve(root, 'fixture');
 	const agentRoot = resolve(root, 'agent');
+	mkdirSync(fixtureRoot, { recursive: true });
+	git(fixtureRoot, ['init', '-b', 'main']);
+	git(fixtureRoot, ['config', 'user.email', 'tests@treeseed.local']);
+	git(fixtureRoot, ['config', 'user.name', 'TreeSeed Tests']);
+	writeFileSync(resolve(fixtureRoot, 'README.md'), 'fixture\n');
+	git(fixtureRoot, ['add', '-A']);
+	git(fixtureRoot, ['commit', '-m', 'fixture']);
 	writeJson(resolve(sdkRoot, 'package.json'), {
 		name: '@treeseed/sdk', version: '2.0.0', dependencies: { yaml: '2.8.1' },
 	});
@@ -149,6 +164,15 @@ it('re-resolves a consumer lock from the local package graph before atomic publi
 	git(sdkRoot, ['config', 'user.name', 'TreeSeed Tests']);
 	git(sdkRoot, ['add', 'package.json']);
 	git(sdkRoot, ['commit', '-m', 'fixture']);
+	git(sdkRoot, ['-c', 'protocol.file.allow=always', 'submodule', 'add', fixtureRoot, '.fixtures/treeseed-fixtures']);
+	writeFileSync(resolve(sdkRoot, '.gitmodules'), [
+		'[submodule ".fixtures/treeseed-fixtures"]',
+		'\tpath = .fixtures/treeseed-fixtures',
+		'\turl = git@github.com:treeseed-ai/treeseed-fixtures.git',
+		'',
+	].join('\n'));
+	git(sdkRoot, ['add', '-A']);
+	git(sdkRoot, ['commit', '-m', 'fixture pointer']);
 	const sourceCommit = git(sdkRoot, ['rev-parse', 'HEAD']);
 	const dependencySpec = `github:treeseed-ai/sdk#${sourceCommit}`;
 	const packageJson = { name: '@treeseed/agent', version: '1.0.0', dependencies: { '@treeseed/sdk': dependencySpec } };
@@ -171,7 +195,10 @@ it('re-resolves a consumer lock from the local package graph before atomic publi
 	const originalPath = process.env.PATH;
 	process.env.PATH = '';
 	try {
-		validateStandaloneGitDependencyLockfile(repo, {}, [reference]);
+		validateStandaloneGitDependencyLockfile(repo, {}, [reference], [{
+			sourcePath: fixtureRoot,
+			remoteUrl: 'git@github.com:treeseed-ai/treeseed-fixtures.git',
+		}]);
 	} finally {
 		process.env.PATH = originalPath;
 	}
@@ -219,6 +246,7 @@ it('keeps package repos in dev-save mode unless stable release is explicit', () 
 			publishConfig: { access: 'public' },
 			scripts: { 'release:publish': 'npm publish' },
 		}, null, 2), 'utf8');
+		commitInitial(root);
 
 		expect(discoverRepositorySaveNodes(root, root, 'main')[0].branchMode).toBe('package-dev-save');
 		expect(discoverRepositorySaveNodes(root, root, 'main', { stablePackageRelease: true })[0].branchMode).toBe('package-release-main');
@@ -232,6 +260,7 @@ it('classifies private package.json repositories as projects', () => {
 			version: '0.3.5',
 			private: true,
 		}, null, 2), 'utf8');
+		commitInitial(root);
 
 		const [repo] = discoverRepositorySaveNodes(root, root, 'staging');
 		expect(repo.kind).toBe('project');
@@ -290,6 +319,10 @@ it('discovers starter templates and nested fixture submodules as managed save no
 			'  release: echo release',
 			'',
 		].join('\n'), 'utf8');
+		commitInitial(fixtureDir);
+		commitInitial(coreDir);
+		commitInitial(researchDir);
+		commitInitial(root);
 
 		const nodes = discoverRepositorySaveNodes(root, root, 'demo');
 		expect(nodes.map((entry) => [entry.id, entry.kind, entry.name])).toEqual(expect.arrayContaining([
@@ -328,6 +361,8 @@ it('plans root workspace lockfile refresh against the real manifest', () => {
 			name: '@treeseed/sdk',
 			version: '0.1.0',
 		});
+		commitInitial(root);
+		writeFileSync(resolve(root, 'README.md'), 'changed\n', 'utf8');
 
 		const plan = planRepositorySave({
 			root,

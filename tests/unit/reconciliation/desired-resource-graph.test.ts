@@ -173,6 +173,7 @@ describe('canonical desired resource graph', () => {
 		const graph = compileDesiredResourceGraph({
 			tenantRoot: workspaceRoot,
 			target: { kind: 'persistent', scope: 'local' },
+			seedNames: ['treeseed', 'agents', 'platform'],
 		});
 
 		const localTreeDx = graph.resources.find((entry) => entry.id === 'local-treedx:team-primary');
@@ -191,7 +192,8 @@ describe('canonical desired resource graph', () => {
 		expect(graph.resources.map((entry) => entry.id)).toEqual(expect.arrayContaining([
 			'local-docker-compose:mailpit',
 			'local-docker-compose:treedx',
-			'capacity-provider:local',
+			'capacity-provider:agent-capacity-provider-treeseed-agents',
+			'capacity-provider:platform-operation-capacity-provider-treeseed-platform',
 			'local-seed-bootstrap:treeseed',
 		]));
 		expect(graph.resources.find((entry) => entry.id === 'local-seed-bootstrap:treeseed')).toMatchObject({
@@ -205,28 +207,50 @@ describe('canonical desired resource graph', () => {
 				manifestDigest: expect.stringMatching(/^sha256:/u),
 			}),
 		});
-		const capacityProvider = graph.resources.find((entry) => entry.id === 'capacity-provider:local');
+		const capacityProvider = graph.resources.find((entry) => entry.id === 'capacity-provider:agent-capacity-provider-treeseed-agents');
+		const platformProvider = graph.resources.find((entry) => entry.id === 'capacity-provider:platform-operation-capacity-provider-treeseed-platform');
 		expect(capacityProvider).toMatchObject({
 			kind: 'capacity-provider',
 			provider: 'local',
 			packageId: '@treeseed/agent',
-			spec: expect.objectContaining({
+				spec: expect.objectContaining({
+					providerClass: 'agent',
 				roles: ['manager', 'runner'],
 				manifestDigest: expect.stringMatching(/^sha256:/u),
 				expectedConnectionCount: expect.any(Number),
 			}),
 		});
-		const capacityProviderCompose = graph.resources.find((entry) => entry.id === 'local-docker-compose:agent-capacity-provider');
+		expect(platformProvider).toMatchObject({
+			kind: 'capacity-provider', provider: 'local', packageId: '@treeseed/agent',
+			spec: expect.objectContaining({ providerClass: 'platform-operation', roles: ['manager', 'runner'], expectedConnectionCount: 1 }),
+		});
+		const capacityProviderCompose = graph.resources.find((entry) => entry.id === 'local-docker-compose:capacity-provider:agent-capacity-provider-treeseed-agents');
+		const platformProviderCompose = graph.resources.find((entry) => entry.id === 'local-docker-compose:capacity-provider:platform-operation-capacity-provider-treeseed-platform');
 		expect(capacityProviderCompose?.spec).toEqual(expect.objectContaining({
 			manifestDigest: capacityProvider?.spec.manifestDigest,
+			buildPolicy: 'never',
 			managedStorage: expect.objectContaining({ custody: 'capacity-provider', servicePath: '/data' }),
 		}));
+		expect(capacityProviderCompose?.dependencies).toEqual(expect.arrayContaining([
+			'docker-image-build:treeseed/agent-manager',
+			'docker-image-build:treeseed/agent-runner',
+		]));
+		expect(platformProviderCompose?.spec).toEqual(expect.objectContaining({
+			manifestDigest: platformProvider?.spec.manifestDigest,
+			projectName: expect.stringContaining('platform-operation'),
+			managedStorage: expect.objectContaining({ custody: 'capacity-provider', providerClass: 'platform-operation' }),
+		}));
+		expect(capacityProviderCompose?.spec.env).toEqual(expect.objectContaining({
+			TREESEED_CODEX_AUTH_FILE: '/run/treeseed-secrets/codex-auth.json',
+		}));
+		expect(platformProviderCompose?.spec.env).not.toHaveProperty('TREESEED_CODEX_AUTH_FILE');
+		expect(platformProviderCompose?.spec.env).not.toHaveProperty('TREESEED_HOST_CODEX_AUTH_FILE');
+		expect(capacityProviderCompose?.spec.dataDir).not.toBe(platformProviderCompose?.spec.dataDir);
+		expect(capacityProviderCompose?.spec.projectName).not.toBe(platformProviderCompose?.spec.projectName);
 		expect(graph.resources.find((entry) => entry.id === 'local-docker-compose:treedx')?.spec).toEqual(expect.objectContaining({
 			managedStorage: expect.objectContaining({ custody: 'treedx', servicePath: '/var/lib/treedx' }),
 		}));
-		expect(graph.resources.find((entry) => entry.id === 'local-process:operations-runner')?.spec).toEqual(expect.objectContaining({
-			env: expect.objectContaining({ TREESEED_PLATFORM_RUNNER_DATA_DIR: expect.stringContaining('/.treeseed/local-operations-runner/data') }),
-		}));
+		expect(graph.resources.find((entry) => entry.id === 'local-process:operations-runner')).toBeUndefined();
 		expect(capacityProvider?.spec).not.toHaveProperty('healthEndpoint');
 		const mailpit = graph.resources.find((entry) => entry.id === 'local-docker-compose:mailpit');
 		expect(mailpit).toMatchObject({
@@ -239,6 +263,27 @@ describe('canonical desired resource graph', () => {
 				composeFile: 'packages/sdk/src/treeseed/services/compose.yml',
 			}),
 		});
+	});
+
+	it('selects capacity providers only from the exact requested seed set', () => {
+		if (!workspaceRoot) return;
+		const providerIds = (seedNames: string[]) => compileDesiredResourceGraph({
+			tenantRoot: workspaceRoot,
+			target: { kind: 'persistent', scope: 'local' },
+			seedNames,
+		}).resources.filter((entry) => entry.kind === 'capacity-provider').map((entry) => entry.id).sort();
+
+		expect(providerIds(['treeseed'])).toEqual([]);
+		expect(providerIds(['treeseed', 'agents'])).toEqual([
+			'capacity-provider:agent-capacity-provider-treeseed-agents',
+		]);
+		expect(providerIds(['treeseed', 'platform'])).toEqual([
+			'capacity-provider:platform-operation-capacity-provider-treeseed-platform',
+		]);
+		expect(providerIds(['treeseed', 'agents', 'platform'])).toEqual([
+			'capacity-provider:agent-capacity-provider-treeseed-agents',
+			'capacity-provider:platform-operation-capacity-provider-treeseed-platform',
+		]);
 	});
 
 	it('adds project architecture diagnostics to local dev without cloning content by default', () => {

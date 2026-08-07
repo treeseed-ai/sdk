@@ -14,7 +14,9 @@ export const GRAPH_SNAPSHOT_VERSION = 1;
 
 export const AUTHORED_GRAPH_EDGE_TYPES = [
 	'REFERENCES',
-	'HAS_TAG',
+	'HAS_GROUP',
+	'EFFECTIVE_GROUP',
+	'GROUP_RELATION',
 	'IN_SERIES',
 	'RELATES_TO',
 	'DEPENDS_ON',
@@ -83,7 +85,7 @@ export type ParsedGraphDocument = {
 	normalizedBody: string;
 	frontmatter: Record<string, unknown>;
 	explicitId: string | null;
-	tags: string[];
+	groupIds: string[];
 	series: string | null;
 	status: string | null;
 	canonical: boolean;
@@ -214,7 +216,7 @@ export function resolveGraphModelConfig(definition: SdkModelDefinition): Require
 	return {
 		entityType: definition.graph?.entityType ?? builtinEntityTypeFor(definition.name),
 		referenceFields: definition.graph?.referenceFields ?? [],
-		tagField: definition.graph?.tagField ?? (definition.fields.tags ? 'tags' : ''),
+		groupField: definition.graph?.groupField ?? (definition.fields.group_ids ? 'group_ids' : ''),
 		seriesField: definition.graph?.seriesField ?? '',
 		titleField:
 			definition.graph?.titleField

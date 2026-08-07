@@ -47,7 +47,6 @@ export async function checkHttpHealthWithRetry(url: string, attempts = 90, inter
 export function buildLocalComposeLaunchEnv(input: ReconcileAdapterInput) {
 	return {
 		...input.context.launchEnv,
-		TREESEED_PROVIDER_HOST_DATA_DIR: '.treeseed/local-capacity-provider/data',
 		TREESEED_PROVIDER_ENVIRONMENT: 'local',
 		TREESEED_AGENT_IMAGE_TAG: 'local',
 		...(typeof input.unit.spec.env === 'object' && input.unit.spec.env ? input.unit.spec.env as Record<string, string> : {}),

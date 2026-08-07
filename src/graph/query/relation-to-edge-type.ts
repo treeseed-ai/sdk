@@ -88,8 +88,10 @@ export function nodeMatchesWhere(node: SdkGraphNode, filters?: SdkGraphWhereFilt
 					? [normalizeText(node.status ?? '')]
 					: filter.field === 'audience'
 						? (node.audience ?? []).map(normalizeText)
-						: filter.field === 'tag'
-							? (node.tags ?? []).map(normalizeText)
+						: filter.field === 'directGroupId'
+							? (node.groupIds ?? []).map(normalizeText)
+							: filter.field === 'effectiveGroupId'
+								? (node.effectiveGroupIds ?? []).map(normalizeText)
 							: filter.field === 'domain'
 								? [normalizeText(node.domain ?? '')]
 								: [];
