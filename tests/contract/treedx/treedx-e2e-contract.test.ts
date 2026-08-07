@@ -122,8 +122,9 @@ describe('TreeDX end-to-end SDK contract', () => {
 		const { client, calls } = clientWith([
 			{ ok: true, repoId: 'repo_1', ref: 'refs/heads/main', resolvedRef: 'abc', results: [{ path: 'docs/readme.md', frontmatter: { title: 'Read Me', status: 'published' }, body: 'Body' }] },
 			{ ok: true, workspaceId: 'ws_1', repoId: 'repo_1', baseRef: 'refs/heads/main', baseCommitSha: 'abc', mode: 'writable', status: 'ready', allowedPaths: ['docs/**'] },
-			{ ok: true, file: { path: 'docs/new.md', sha: 'sha_new' } },
+			{ ok: true, contract: 'treedx.changeset/v1', repositoryId: 'repo_1', workspaceId: 'ws_1', baseRef: 'refs/heads/main', baseCommitSha: 'abc', resultCommitSha: null, branch: 'refs/heads/agent/knowledge-new', changedPaths: ['docs/new.md'], files: [], patchSha256: 'patch-create', idempotencyKey: 'key-create', idempotentReplay: false, workspaceVersion: 'version-create' },
 			{ ok: true, repoId: 'repo_1', workspaceId: 'ws_1', branchName: 'refs/heads/agent/knowledge-new', commitSha: 'def', changedPaths: ['docs/new.md'], status: 'committed' },
+			{ ok: true, repoId: 'repo_1', remoteName: 'origin', refspecs: ['refs/heads/agent/knowledge-new:refs/heads/agent/knowledge-new'], backend: 'git', status: 'pushed', updatedRefs: ['refs/heads/agent/knowledge-new'], rejectedRefs: [] },
 			{ ok: true, repoId: 'repo_1', ref: 'refs/heads/agent/knowledge-new', resolvedRef: 'def', file: { path: 'docs/new.md', frontmatter: { title: 'New', slug: 'new' }, body: 'Body' } },
 		]);
 		const adapter = new TreeDxRepositoryAdapter({
@@ -138,7 +139,8 @@ describe('TreeDX end-to-end SDK contract', () => {
 		expect(created.item.id).toBe('new');
 		expect(calls.some((call) => call.url.endsWith('/repos/repo_1/files/search'))).toBe(true);
 		expect(calls.some((call) => call.url.endsWith('/repos/repo_1/workspaces'))).toBe(true);
-		expect(calls.some((call) => call.url.endsWith('/workspaces/ws_1/files?path=docs%2Fnew.md'))).toBe(true);
+		expect(calls.some((call) => call.url.endsWith('/workspaces/ws_1/changesets'))).toBe(true);
+		expect(calls.some((call) => call.url.endsWith('/repos/repo_1/push'))).toBe(true);
 	});
 
 	it('maps graph adapter calls to remote graph and context APIs', async () => {

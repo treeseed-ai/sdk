@@ -1,4 +1,4 @@
-import { mkdtempSync,mkdirSync,readFileSync,rmSync } from 'node:fs';
+import { mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join,resolve } from 'node:path';
 import { describe,expect,it } from 'vitest';
@@ -62,7 +62,34 @@ describe('repository identity and custody', () => {
 	it('declares isolated provider and TreeDX repository storage without an API runner checkout', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-storage-plan-'));
 		try {
-		const resources = localDevelopmentResources(root, 'local', 'none', []);
+		mkdirSync(resolve(root, 'seeds'), { recursive: true });
+		mkdirSync(resolve(root, 'config'), { recursive: true });
+		writeFileSync(resolve(root, 'seeds/test.yaml'), [
+			'runtime:',
+			'  capacityProviders:',
+			'    - key: provider-a',
+			'      providerClass: agent',
+			'      environments: [local]',
+			'      manifest: config/provider.yaml',
+			'',
+		].join('\n'));
+		writeFileSync(resolve(root, 'config/provider.yaml'), [
+			'schemaVersion: 2',
+			'providerClass: agent',
+			'ownership: { type: external }',
+			'configuration: { generation: test-generation-1 }',
+			'identity:',
+			'  privateKeyRef: secret://capacity/provider-identity',
+			'  displayName: Test provider',
+			'supplyCeilings: { maxConcurrentAssignments: 1 }',
+			'executionProviders:',
+			'  - id: codex',
+			'    adapter: codex',
+			'    nativeLimits: { maxConcurrentRunners: 1 }',
+			'connections: []',
+			'',
+		].join('\n'));
+		const resources = localDevelopmentResources(root, 'local', 'none', [], undefined, undefined, ['test']);
 		const capacity = resources.find((resource) => resource.kind === 'local-docker-compose' && resource.serviceId === 'agent');
 		const operations = resources.find((resource) => resource.id === 'local-process:operations-runner');
 		const treeDx = resources.find((resource) => resource.id === 'local-docker-compose:treedx');
