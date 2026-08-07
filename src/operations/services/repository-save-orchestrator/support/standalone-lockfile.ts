@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import type { PackageDependencyReference } from '../../packages/package-reference-policy.ts';
 import { normalizeGitRemoteForDependency } from '../../packages/package-reference-policy.ts';
 import { runCapturedCommand } from '../runtime/with-short-process-temp-env.ts';
+import { shouldSkipNetworkInstall } from './has-staged-changes.ts';
 import type { RepositorySaveNode,RepositorySaveOptions } from './repo-kind.ts';
 import { emitProgress } from './repo-kind.ts';
 
@@ -47,12 +48,18 @@ function regenerateLockfile(
 
 export function validateStandaloneGitDependencyLockfile(
 	node: RepositorySaveNode,
-	options: Pick<RepositorySaveOptions, 'onProgress'>,
+	options: Pick<RepositorySaveOptions, 'onProgress' | 'deferPushUntilVerified'>,
 	references: PackageDependencyReference[] = [],
 	repositories: LocalGitRepository[] = [],
 ) {
 	const lockfilePath = resolve(node.path, 'package-lock.json');
 	const lockfileExists = existsSync(lockfilePath);
+	if (!lockfileExists) throw new Error('standalone lockfile missing');
+	if (shouldSkipNetworkInstall() || options.deferPushUntilVerified === true) {
+		const reason = options.deferPushUntilVerified === true ? 'atomic save' : 'network validation is disabled';
+		emitProgress(options, node, 'lockfile', `Skipped standalone npm lockfile re-resolution because ${reason}; deterministic package and Git dependency metadata will receive structural validation.`);
+		return false;
+	}
 	const previousLockfile = lockfileExists ? readFileSync(lockfilePath, 'utf8') : null;
 	const isolatedRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-lockfile-'));
 	const validateArgs = ['ci', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--no-audit', '--no-fund'];
@@ -60,7 +67,6 @@ export function validateStandaloneGitDependencyLockfile(
 		if (references.length > 0) {
 			regenerateLockfile(node, options, isolatedRoot, references, repositories);
 		} else {
-			if (!lockfileExists) throw new Error('standalone lockfile missing');
 			copyFileSync(resolve(node.path, 'package.json'), resolve(isolatedRoot, 'package.json'));
 			copyFileSync(lockfilePath, resolve(isolatedRoot, 'package-lock.json'));
 		}

@@ -71,7 +71,7 @@ function commitInitial(cwd: string) {
 	git(cwd, ['commit', '--allow-empty', '-m', 'chore: initial']);
 }
 describe('repository save orchestrator helpers', () => {
-it('validates package locks without mutating the live install and synchronizes package versions', () => {
+it('keeps atomic save lock validation structural and does not mutate the live install', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-isolated-lock-'));
 		const packageJsonPath = resolve(root, 'package.json');
 		const packageJson = { name: '@treeseed/demo', version: '1.0.0' };
@@ -94,71 +94,81 @@ it('validates package locks without mutating the live install and synchronizes p
 		});
 
 		expect(applyPackageVersion(repo, '1.0.1')).toBe(true);
-		validateStandaloneGitDependencyLockfile(repo, {});
+		const progress: string[] = [];
+		expect(validateStandaloneGitDependencyLockfile(repo, {
+			deferPushUntilVerified: true,
+			onProgress: (message) => progress.push(message),
+		})).toBe(false);
 
 		const lockfile = JSON.parse(readFileSync(resolve(root, 'package-lock.json'), 'utf8'));
 		expect(lockfile.version).toBe('1.0.1');
 		expect(lockfile.packages[''].version).toBe('1.0.1');
 		expect(readFileSync(sentinelPath, 'utf8')).toBe('installed dependency state\n');
+		expect(progress).toContainEqual(expect.stringContaining('because atomic save'));
 	});
 
-it('re-resolves a consumer lock from the local package graph before atomic publication', () => {
-	const root = mkdtempSync(join(tmpdir(), 'treeseed-save-transitive-lock-'));
-	const sdkRoot = resolve(root, 'sdk');
-	const fixtureRoot = resolve(root, 'fixture');
-	const agentRoot = resolve(root, 'agent');
-	mkdirSync(fixtureRoot, { recursive: true });
-	git(fixtureRoot, ['init', '-b', 'main']);
-	git(fixtureRoot, ['config', 'user.email', 'tests@treeseed.local']);
-	git(fixtureRoot, ['config', 'user.name', 'TreeSeed Tests']);
-	writeFileSync(resolve(fixtureRoot, 'README.md'), 'fixture\n');
-	git(fixtureRoot, ['add', '-A']);
-	git(fixtureRoot, ['commit', '-m', 'fixture']);
-	writeJson(resolve(sdkRoot, 'package.json'), {
-		name: '@treeseed/sdk', version: '2.0.0', dependencies: { yaml: '2.8.1' },
-	});
-	git(sdkRoot, ['init', '-b', 'main']);
-	git(sdkRoot, ['config', 'user.email', 'tests@treeseed.local']);
-	git(sdkRoot, ['config', 'user.name', 'TreeSeed Tests']);
-	git(sdkRoot, ['add', 'package.json']);
-	git(sdkRoot, ['commit', '-m', 'fixture']);
-	git(sdkRoot, ['-c', 'protocol.file.allow=always', 'submodule', 'add', fixtureRoot, '.fixtures/treeseed-fixtures']);
-	writeFileSync(resolve(sdkRoot, '.gitmodules'), [
-		'[submodule ".fixtures/treeseed-fixtures"]',
-		'\tpath = .fixtures/treeseed-fixtures',
-		'\turl = git@github.com:treeseed-ai/treeseed-fixtures.git',
-		'',
-	].join('\n'));
-	git(sdkRoot, ['add', '-A']);
-	git(sdkRoot, ['commit', '-m', 'fixture pointer']);
-	const sourceCommit = git(sdkRoot, ['rev-parse', 'HEAD']);
-	const dependencySpec = `github:treeseed-ai/sdk#${sourceCommit}`;
-	const packageJson = { name: '@treeseed/agent', version: '1.0.0', dependencies: { '@treeseed/sdk': dependencySpec } };
-	writeJson(resolve(agentRoot, 'package.json'), packageJson);
-	writeJson(resolve(agentRoot, 'package-lock.json'), {
-		lockfileVersion: 3,
-		packages: {
-			'': packageJson,
-			'node_modules/@treeseed/sdk': { version: '1.0.0', resolved: 'old' },
-			'node_modules/yaml': { version: '2.7.0' },
-		},
-	});
-	const repo = node({ id: agentRoot, name: '@treeseed/agent', path: agentRoot, packageJson });
-	const reference = {
-		packageName: '@treeseed/sdk', sourcePath: sdkRoot, version: '2.0.0', spec: dependencySpec,
-		manifestSpec: dependencySpec, installSpec: dependencySpec, tagName: null,
-		remoteUrl: 'git@github.com:treeseed-ai/sdk.git', mode: 'dev-git-commit' as const,
-	};
-	expect(syncDirectGitDependencyLockfileEntries(repo, {}, [reference])).toBe(true);
-	validateStandaloneGitDependencyLockfile(repo, {}, [reference], [{
-		sourcePath: fixtureRoot,
-		remoteUrl: 'git@github.com:treeseed-ai/treeseed-fixtures.git',
-	}]);
-	const lock = JSON.parse(readFileSync(resolve(agentRoot, 'package-lock.json'), 'utf8'));
-	expect(lock.packages['node_modules/@treeseed/sdk'].dependencies).toEqual({ yaml: '2.8.1' });
-	expect(lock.packages['node_modules/@treeseed/sdk'].resolved).toContain(`#${sourceCommit}`);
-	expect(lock.packages['node_modules/yaml'].version).toBe('2.8.1');
-});
+	it('re-resolves a consumer lock from the local package graph when network validation is explicitly enabled', () => {
+		vi.stubEnv('TREESEED_SAVE_NPM_INSTALL_MODE', 'allow');
+		try {
+			const root = mkdtempSync(join(tmpdir(), 'treeseed-save-transitive-lock-'));
+			const sdkRoot = resolve(root, 'sdk');
+			const fixtureRoot = resolve(root, 'fixture');
+			const agentRoot = resolve(root, 'agent');
+			mkdirSync(fixtureRoot, { recursive: true });
+			git(fixtureRoot, ['init', '-b', 'main']);
+			git(fixtureRoot, ['config', 'user.email', 'tests@treeseed.local']);
+			git(fixtureRoot, ['config', 'user.name', 'TreeSeed Tests']);
+			writeFileSync(resolve(fixtureRoot, 'README.md'), 'fixture\n');
+			git(fixtureRoot, ['add', '-A']);
+			git(fixtureRoot, ['commit', '-m', 'fixture']);
+			writeJson(resolve(sdkRoot, 'package.json'), {
+				name: '@treeseed/sdk', version: '2.0.0', dependencies: { yaml: '2.8.1' },
+			});
+			git(sdkRoot, ['init', '-b', 'main']);
+			git(sdkRoot, ['config', 'user.email', 'tests@treeseed.local']);
+			git(sdkRoot, ['config', 'user.name', 'TreeSeed Tests']);
+			git(sdkRoot, ['add', 'package.json']);
+			git(sdkRoot, ['commit', '-m', 'fixture']);
+			git(sdkRoot, ['-c', 'protocol.file.allow=always', 'submodule', 'add', fixtureRoot, '.fixtures/treeseed-fixtures']);
+			writeFileSync(resolve(sdkRoot, '.gitmodules'), [
+				'[submodule ".fixtures/treeseed-fixtures"]',
+				'\tpath = .fixtures/treeseed-fixtures',
+				'\turl = git@github.com:treeseed-ai/treeseed-fixtures.git',
+				'',
+			].join('\n'));
+			git(sdkRoot, ['add', '-A']);
+			git(sdkRoot, ['commit', '-m', 'fixture pointer']);
+			const sourceCommit = git(sdkRoot, ['rev-parse', 'HEAD']);
+			const dependencySpec = `github:treeseed-ai/sdk#${sourceCommit}`;
+			const packageJson = { name: '@treeseed/agent', version: '1.0.0', dependencies: { '@treeseed/sdk': dependencySpec } };
+			writeJson(resolve(agentRoot, 'package.json'), packageJson);
+			writeJson(resolve(agentRoot, 'package-lock.json'), {
+				lockfileVersion: 3,
+				packages: {
+					'': packageJson,
+					'node_modules/@treeseed/sdk': { version: '1.0.0', resolved: 'old' },
+					'node_modules/yaml': { version: '2.7.0' },
+				},
+			});
+			const repo = node({ id: agentRoot, name: '@treeseed/agent', path: agentRoot, packageJson });
+			const reference = {
+				packageName: '@treeseed/sdk', sourcePath: sdkRoot, version: '2.0.0', spec: dependencySpec,
+				manifestSpec: dependencySpec, installSpec: dependencySpec, tagName: null,
+				remoteUrl: 'git@github.com:treeseed-ai/sdk.git', mode: 'dev-git-commit' as const,
+			};
+			expect(syncDirectGitDependencyLockfileEntries(repo, {}, [reference])).toBe(true);
+			validateStandaloneGitDependencyLockfile(repo, {}, [reference], [{
+				sourcePath: fixtureRoot,
+				remoteUrl: 'git@github.com:treeseed-ai/treeseed-fixtures.git',
+			}]);
+			const lock = JSON.parse(readFileSync(resolve(agentRoot, 'package-lock.json'), 'utf8'));
+			expect(lock.packages['node_modules/@treeseed/sdk'].dependencies).toEqual({ yaml: '2.8.1' });
+			expect(lock.packages['node_modules/@treeseed/sdk'].resolved).toContain(`#${sourceCommit}`);
+			expect(lock.packages['node_modules/yaml'].version).toBe('2.8.1');
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	}, 30_000);
 
 it('creates deterministic semver dev prerelease versions from branch names', () => {
 		expect(nextDevVersion('0.6.7', 'feature/search filters', new Date('2026-04-26T15:30:00Z'))).toBe(

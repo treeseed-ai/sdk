@@ -90,11 +90,12 @@ const PROJECT_STANDARD_TARGETS = [
 	'.treeseed/guarantees/runs',
 	'.treeseed/generated/hosted-artifacts',
 	'.treeseed/npm-cache',
-	'dist',
 	'coverage',
 	'.astro',
 	'.vite',
 ];
+
+const PROJECT_ROOT_BUILD_TARGETS = ['dist'];
 
 const PROJECT_AGGRESSIVE_PACKAGE_TARGETS = [
 	'node_modules',
@@ -116,6 +117,10 @@ function projectCleanupTargets(root: string, mode: LocalCleanupMode) {
 		id: repositoryRoot === root ? relativePath : `${repositoryRoot.slice(root.length + 1)}:${relativePath}`,
 		path: join(repositoryRoot, relativePath),
 	})));
+	for (const relativePath of PROJECT_ROOT_BUILD_TARGETS) targets.push({
+		id: relativePath,
+		path: join(root, relativePath),
+	});
 	if (mode === 'aggressive') {
 		targets.push({ id: '.treeseed/local-treedx', path: join(root, '.treeseed', 'local-treedx') });
 		for (const repositoryRoot of repositories.filter((entry) => entry !== root)) {

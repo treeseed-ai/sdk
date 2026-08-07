@@ -79,7 +79,7 @@ describe('project cleanup', () => {
 			join(sceneRun, 'report.json'),
 			join(root, '.treeseed', 'logs', 'platform.log'),
 			join(root, '.treeseed', 'exports', 'snapshot.md'),
-			join(packageRoot, 'dist', 'index.js'),
+			join(root, 'dist', 'index.js'),
 		];
 		const preserved = [
 			join(root, '.treeseed', 'config', 'config.json'),
@@ -87,6 +87,7 @@ describe('project cleanup', () => {
 			join(root, '.treeseed', 'worktrees', 'sibling', 'state.json'),
 			join(root, '.treeseed', 'local-api-postgres', 'data'),
 			join(root, 'node_modules', '.bin', 'trsd'),
+			join(packageRoot, 'dist', 'index.js'),
 			join(packageRoot, 'src', 'index.ts'),
 		];
 		mkdirSync(packageRoot, { recursive: true });
