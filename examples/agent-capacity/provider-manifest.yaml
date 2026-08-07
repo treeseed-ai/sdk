@@ -1,4 +1,11 @@
 schemaVersion: 2
+providerClass: agent
+ownership:
+  type: external
+configuration:
+  generation: example-v1
+supplyCeilings:
+  maxConcurrentAssignments: 4
 identity:
   privateKeyRef: secret://capacity/provider-identity
   displayName: Example shared provider
