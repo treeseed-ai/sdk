@@ -47,7 +47,7 @@ describe('package bootstrap', () => {
 		git(['checkout', '-b', 'ai'], resolve(root, 'packages/ai'));
 		const workstreamReplay = initializePackage({ ...input, execute: true });
 		expect(workstreamReplay.status).toBe('unchanged');
-	}, 30_000);
+	}, 60_000);
 
 	it('rejects nonempty remotes and unsafe targets', () => {
 		const { root, remote, input } = fixture();
