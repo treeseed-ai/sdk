@@ -62,4 +62,32 @@ describe('package bootstrap', () => {
 		expect(() => initializePackage(input)).toThrow('Remote repository is not empty');
 		expect(() => initializePackage({ ...input, path: '../ai' })).toThrow('Package target');
 	});
+
+	it('rejects existing non-checkout targets and mismatched GitHub identities', () => {
+		const { root, input } = fixture();
+		mkdirSync(resolve(root, 'packages/ai'));
+		writeFileSync(resolve(root, 'packages/ai/README.md'), 'conflict\n');
+		expect(() => initializePackage(input)).toThrow('is not a Git checkout');
+		expect(() => initializePackage({
+			...input,
+			path: 'packages/other-ai',
+			remoteUrl: 'git@github.com:treeseed-ai/not-ai.git',
+		})).toThrow('Remote identity does not match');
+	});
+
+	it('recovers registration after a verified push and rejects conflicting replay', () => {
+		const source = fixture();
+		const created = initializePackage({ ...source.input, execute: true });
+		const recoveryRoot = resolve(source.root, '../recovery-market');
+		mkdirSync(resolve(recoveryRoot, 'packages'), { recursive: true });
+		git(['init', '-b', 'ai'], recoveryRoot);
+		execFileSync('git', ['clone', source.remote, resolve(recoveryRoot, 'packages/ai')], { encoding: 'utf8', stdio: 'pipe' });
+		git(['checkout', 'main'], resolve(recoveryRoot, 'packages/ai'));
+		const recovered = initializePackage({ ...source.input, workspaceRoot: recoveryRoot, execute: true });
+		expect(recovered.status).toBe('recovered');
+		expect(recovered.commitSha).toBe(created.commitSha);
+		expect(git(['ls-files', '--stage', 'packages/ai'], recoveryRoot)).toContain('160000');
+		writeFileSync(resolve(recoveryRoot, 'packages/ai/README.md'), 'conflicting replay\n');
+		expect(() => initializePackage({ ...source.input, workspaceRoot: recoveryRoot, execute: true })).toThrow('uncommitted changes');
+	}, 60_000);
 });
