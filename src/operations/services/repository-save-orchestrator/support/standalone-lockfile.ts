@@ -8,6 +8,7 @@ import type { RepositorySaveNode,RepositorySaveOptions } from './repo-kind.ts';
 import { emitProgress } from './repo-kind.ts';
 
 type LocalGitRepository = { sourcePath: string; remoteUrl: string };
+export const STANDALONE_LOCKFILE_REGENERATION_TIMEOUT_MS = 30 * 60_000;
 
 function localGitResolutionEnv(references: Array<PackageDependencyReference | LocalGitRepository>) {
 	const rewrites = references.flatMap((reference) => {
@@ -41,7 +42,7 @@ function regenerateLockfile(
 	], {
 		cwd: isolatedRoot,
 		env: localGitResolutionEnv([...references, ...repositories]),
-		timeoutMs: 15 * 60_000,
+		timeoutMs: STANDALONE_LOCKFILE_REGENERATION_TIMEOUT_MS,
 	});
 }
 

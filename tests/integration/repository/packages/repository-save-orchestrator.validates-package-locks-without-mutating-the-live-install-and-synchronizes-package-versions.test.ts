@@ -20,10 +20,15 @@ import {
 	repositorySaveWaves,
 	runRepositorySaveOrchestrator,
 	runStreamingCommand,
+	STANDALONE_LOCKFILE_REGENERATION_TIMEOUT_MS,
 	syncDirectGitDependencyLockfileEntries,
 	validateStandaloneGitDependencyLockfile,
 	type RepositorySaveNode,
 } from '../../../../src/operations/services/repositories/repository-save-orchestrator.ts';
+
+it('allows complex standalone git dependency graphs the root-workspace validation window', () => {
+	expect(STANDALONE_LOCKFILE_REGENERATION_TIMEOUT_MS).toBe(30 * 60_000);
+});
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 
