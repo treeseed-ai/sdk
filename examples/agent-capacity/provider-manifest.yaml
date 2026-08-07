@@ -1,7 +1,15 @@
 schemaVersion: 2
+providerClass: agent
+ownership:
+  type: external
+configuration:
+  generation: example-v1
 identity:
   privateKeyRef: secret://capacity/provider-identity
   displayName: Example shared provider
+supplyCeilings:
+  maxConcurrentAssignments: 4
+credentialBindings: []
 executionProviders:
   - id: codex-primary
     adapter: codex

@@ -1,4 +1,5 @@
 import { deriveDesiredUnits } from '../reconciliation/desired-state.ts';
+import type { DeployConfig } from '../../platform/support/contracts.ts';
 import type {
 DesiredUnit,
 ReconcilePlan,
@@ -57,12 +58,13 @@ export function createRunContext(
 	write?: (line: string) => void,
 	planOnly = false,
 	session?: Map<string, unknown>,
+	deployConfig?: DeployConfig,
 ): ReconcileRunContext {
-	const { deployConfig } = deriveDesiredUnits({ tenantRoot, target, env: launchEnv });
+	const resolvedDeployConfig = deployConfig ?? deriveDesiredUnits({ tenantRoot, target, env: launchEnv }).deployConfig;
 	return {
 		tenantRoot,
 		target,
-		deployConfig,
+		deployConfig: resolvedDeployConfig,
 		launchEnv,
 		planOnly,
 		write,

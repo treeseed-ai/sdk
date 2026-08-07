@@ -385,6 +385,18 @@ export interface CapacityProviderManifestV2 {
 	executionProviders: Array<{
 		id: string;
 		adapter: string;
+		profile?: string;
+		module?: string;
+		protocol?: 'responses' | 'chat-completions';
+		model?: {
+			endpointRef?: string;
+			baseUrl?: string;
+			model?: string;
+		};
+		credentialBindings?: string[];
+		healthProbe?: string;
+		versionConstraint?: string;
+		configurationDigest?: string;
 		nativeLimits: Record<string, unknown>;
 		researchSourcePolicy?: ResearchSourcePolicy;
 		capabilities?: string[];

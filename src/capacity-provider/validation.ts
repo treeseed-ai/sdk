@@ -8,6 +8,7 @@ type CapacityProviderProofPayload,
 type CapacityProviderPublicJwk,
 type ProviderSupplyOffer,
 } from './contracts/index.ts';
+import { validateExecutionProviderRuntimeConfiguration } from '../ai-appliance/validation.ts';
 
 export interface CapacityProviderContractDiagnostic {
 	code: string;
@@ -111,6 +112,8 @@ export function validateCapacityProviderManifestV2(manifest: CapacityProviderMan
 		if (!nonEmpty(executionProvider.id) || executionProviderIds.has(executionProvider.id)) add(diagnostics, 'provider_execution_provider_id_invalid', `${path}.id`, 'Execution provider id must be non-empty and unique.');
 		executionProviderIds.add(executionProvider.id);
 		if (!nonEmpty(executionProvider.adapter)) add(diagnostics, 'provider_execution_provider_adapter_required', `${path}.adapter`, 'Execution provider adapter is required.');
+		for (const entry of validateExecutionProviderRuntimeConfiguration(executionProvider, path).diagnostics) add(diagnostics, entry.code, entry.path, entry.message);
+		for (const bindingId of executionProvider.credentialBindings ?? []) if (!bindingIds.has(bindingId)) add(diagnostics, 'provider_execution_provider_credential_unknown', `${path}.credentialBindings`, `Execution provider references unknown credential binding ${bindingId}.`);
 		if (!executionProvider.nativeLimits || typeof executionProvider.nativeLimits !== 'object' || Array.isArray(executionProvider.nativeLimits)) add(diagnostics, 'provider_execution_provider_limits_invalid', `${path}.nativeLimits`, 'Execution provider nativeLimits must be an object.');
 		if (executionProvider.researchSourcePolicy !== undefined) {
 			for (const diagnostic of validateResearchSourcePolicy(executionProvider.researchSourcePolicy).diagnostics) {

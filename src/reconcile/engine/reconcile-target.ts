@@ -1,4 +1,5 @@
 import { elapsedMs,formatDurationMs,type TimingEntry } from '../../entrypoints/runtime/timing.ts';
+import type { DeployConfig } from '../../platform/support/contracts.ts';
 import { type RunnableBootstrapSystem } from '../support/bootstrap-systems.ts';
 import type {
 DesiredUnit,
@@ -26,6 +27,7 @@ export async function reconcileTarget({
 	write,
 	planOnly = false,
 	session,
+	deployConfig,
 }: {
 	tenantRoot: string;
 	target: ReconcileTarget;
@@ -36,10 +38,11 @@ export async function reconcileTarget({
 	write?: (line: string) => void;
 	planOnly?: boolean;
 	session?: Map<string, unknown>;
+	deployConfig?: DeployConfig;
 }) {
-	const planned = await planReconciliation({ tenantRoot, target, env, systems, selector, units, write });
+	const planned = await planReconciliation({ tenantRoot, target, env, systems, selector, units, write, deployConfig });
 	const registry = createReconcileRegistry(planned.deployConfig);
-	const context = createRunContext(tenantRoot, target, env, write, planOnly, session);
+	const context = createRunContext(tenantRoot, target, env, write, planOnly, session, planned.deployConfig);
 	const results: ReconcileResult[] = [];
 	const verificationMap = new Map<string, UnitVerificationResult>();
 	const timingEntries: TimingEntry[] = [];

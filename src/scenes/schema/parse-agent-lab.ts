@@ -58,8 +58,8 @@ export function parseAgentLab(value: unknown, diagnostics: SceneDiagnostic[]): A
 	if (scope.kind === 'team' && (!scope.team || !scope.capacityProvider)) diagnostics.push(sceneErrorDiagnostic('scene.agent_lab_scope_reference_required', 'Team scope requires team and capacityProvider seed resource keys.', 'agentLab.scope'));
 	const provider = asString(value.provider) || 'local';
 	if (provider !== 'local') diagnostics.push(sceneErrorDiagnostic('scene.agent_lab_provider_invalid', 'Agent Lab currently requires the local capacity provider.', 'agentLab.provider'));
-	const executionProvider = asString(value.executionProvider) || 'codex';
-	if (executionProvider !== 'codex') diagnostics.push(sceneErrorDiagnostic('scene.agent_lab_execution_provider_invalid', 'Agent Lab currently requires the real Codex execution provider.', 'agentLab.executionProvider'));
+	const executionProvider = asString(value.executionProvider) || 'codex-treeseed';
+	if (!FILESYSTEM_SAFE_SCENE_ID.test(executionProvider)) diagnostics.push(sceneErrorDiagnostic('scene.agent_lab_execution_provider_invalid', 'Agent Lab execution provider must be a file-safe configured provider id.', 'agentLab.executionProvider'));
 	const presentation = asString(value.presentation) || 'race-control';
 	if (!(AGENT_LAB_PRESENTATIONS as readonly string[]).includes(presentation)) diagnostics.push(sceneErrorDiagnostic('scene.agent_lab_presentation_invalid', `Unknown Agent Lab presentation: ${presentation}.`, 'agentLab.presentation'));
 	const timeZone = asString(value.timeZone) || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
@@ -72,7 +72,7 @@ export function parseAgentLab(value: unknown, diagnostics: SceneDiagnostic[]): A
 	if (new Set(workdays.map((entry) => entry.id)).size !== workdays.length) diagnostics.push(sceneErrorDiagnostic('scene.agent_lab_workday_duplicate', 'Agent Lab workday ids must be unique.', 'agentLab.workdays'));
 	return {
 		scope: scope.kind === 'team' ? { kind: 'team', team: scope.team ?? '', capacityProvider: scope.capacityProvider ?? '' } : scope,
-		provider: 'local', executionProvider: 'codex',
+		provider: 'local', executionProvider,
 		presentation: (AGENT_LAB_PRESENTATIONS as readonly string[]).includes(presentation) ? presentation as AgentLabSceneConfig['presentation'] : 'race-control',
 		timeZone, repositories,
 		agents: stringArrayField(value, 'agents', 'agentLab', diagnostics),

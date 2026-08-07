@@ -18,6 +18,12 @@ export type CopilotTaskInput = {
 	tools?: CopilotTool[];
 	env?: NodeJS.ProcessEnv;
 	timeoutMs?: number;
+	provider?: {
+		type: 'openai';
+		baseUrl?: string;
+		apiKey?: string;
+		wireApi?: 'completions' | 'responses';
+	};
 };
 
 export type CopilotTaskResult = {
@@ -76,6 +82,7 @@ export async function runCopilotTask(input: CopilotTaskInput): Promise<CopilotTa
 			availableTools: input.allowTools && input.allowTools.length > 0 ? input.allowTools : undefined,
 			tools: input.tools,
 			onPermissionRequest: approveAll,
+			provider: input.provider,
 			workingDirectory: cwd,
 			onEvent(event) {
 				if (event.type === 'assistant.message' && event.data.content.trim()) {

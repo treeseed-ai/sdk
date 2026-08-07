@@ -201,6 +201,10 @@
       "types": "./dist/capacity/capacity-core/capacity-pagination.d.ts",
       "default": "./dist/capacity/capacity-core/capacity-pagination.js"
     },
+    "./ai-appliance": {
+      "types": "./dist/ai-appliance/index.d.ts",
+      "default": "./dist/ai-appliance/index.js"
+    },
     "./secrets-capability": {
       "types": "./dist/configuration/secrets-capability.d.ts",
       "default": "./dist/configuration/secrets-capability.js"

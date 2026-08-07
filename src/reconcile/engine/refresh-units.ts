@@ -1,4 +1,5 @@
 import { deriveDesiredUnits } from '../reconciliation/desired-state.ts';
+import type { DeployConfig } from '../../platform/support/contracts.ts';
 import { filterDesiredUnitsByBootstrapSystems,type RunnableBootstrapSystem } from '../support/bootstrap-systems.ts';
 import type {
 DesiredUnit,
@@ -20,6 +21,7 @@ export async function refreshUnits({
 	selector,
 	units: explicitUnits,
 	write,
+	deployConfig: explicitDeployConfig,
 }: {
 	tenantRoot: string;
 	target: ReconcileTarget;
@@ -28,8 +30,9 @@ export async function refreshUnits({
 	selector?: ReconcileSelector;
 	units?: DesiredUnit[];
 	write?: (line: string) => void;
+	deployConfig?: DeployConfig;
 }) {
-	const derived = deriveDesiredUnits({ tenantRoot, target, env });
+	const derived = explicitDeployConfig && explicitUnits ? { units: explicitUnits, deployConfig: explicitDeployConfig } : deriveDesiredUnits({ tenantRoot, target, env });
 	const baseUnits = explicitUnits ?? filterDesiredUnitsByBootstrapSystems(derived.units, systems);
 	const units = filterUnitsBySelector(baseUnits, selector);
 	const deployConfig = derived.deployConfig;
@@ -70,6 +73,7 @@ export async function planReconciliation({
 	selector,
 	units,
 	write,
+	deployConfig,
 }: {
 	tenantRoot: string;
 	target: ReconcileTarget;
@@ -78,8 +82,9 @@ export async function planReconciliation({
 	selector?: ReconcileSelector;
 	units?: DesiredUnit[];
 	write?: (line: string) => void;
+	deployConfig?: DeployConfig;
 }) {
-	const observed = await refreshUnits({ tenantRoot, target, env, systems, selector, units, write });
+	const observed = await refreshUnits({ tenantRoot, target, env, systems, selector, units, write, deployConfig });
 	const registry = createReconcileRegistry(observed.deployConfig);
 	const context = createRunContext(tenantRoot, target, env, write);
 	const plans: ReconcilePlan[] = [];
