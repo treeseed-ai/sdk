@@ -3,7 +3,7 @@ import { dirname,relative,resolve } from 'node:path';
 import { classifyGitMode,runGitText } from "../../../operations/services/operations/git-runner.ts";
 import { headCommit,PRODUCTION_BRANCH,STAGING_BRANCH,syncBranchWithOrigin } from "../../../operations/services/operations/git-workflow.ts";
 import { type SaveVerifyMode } from "../../../operations/services/repositories/repository-save-orchestrator.ts";
-import { runWorkspaceCleanup } from "../../../operations/services/runtime/local-cleanup.ts";
+import { pruneRecoveryCaches } from "../../../operations/services/runtime/local-cleanup.ts";
 import { ensureLocalWorkspaceLinks,inspectWorkspaceDependencyMode,unlinkLocalWorkspaceLinks,type WorkspaceLinksMode } from "../../../operations/services/treedx/workspaces/workspace-dependency-mode.ts";
 import { repoRoot } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
 import { run } from "../../../operations/services/treedx/workspaces/workspace-tools.ts";
@@ -241,7 +241,7 @@ export function maybeRunLocalWorkflowCleanup(
 	if (operation !== 'release') return null;
 	if (normalizeExecutionMode(input) === 'plan' || input.skipCleanup === true) return null;
 	helpers.write('Treeseed release cleanup: pruning disposable local build state while preserving package caches and release evidence.', 'stderr');
-	return runWorkspaceCleanup({ root, mode: 'standard', docker: false, npmCache: false });
+	return pruneRecoveryCaches({ root, mode: 'standard', docker: false, npmCache: false });
 }
 
 export function normalizeSaveCiMode(mode: WorkflowCiMode | undefined, branch: string | null | undefined, lane: 'fast' | 'promotion' = 'fast') {

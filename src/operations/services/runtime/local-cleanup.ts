@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync,readdirSync,rmSync,statSync } from 'node:fs';
+import { existsSync,lstatSync,readFileSync,readdirSync,rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join,resolve } from 'node:path';
 
@@ -10,7 +10,7 @@ export type LocalCleanupAction = {
 	kind: 'directory' | 'docker' | 'npm-cache';
 	path?: string;
 	command?: string[];
-	status: 'removed' | 'skipped' | 'failed';
+	status: 'planned' | 'removed' | 'skipped' | 'blocked' | 'failed';
 	beforeBytes?: number;
 	afterBytes?: number;
 	exitCode?: number | null;
@@ -29,13 +29,24 @@ export type LocalCleanupReport = {
 	actions: LocalCleanupAction[];
 };
 
+export type ProjectCleanupReport = LocalCleanupReport & {
+	scope: 'project';
+	executionMode: 'plan' | 'live';
+	blockers: string[];
+};
+
 function directoryBytes(path: string): number {
 	if (!existsSync(path)) return 0;
-	const stat = statSync(path, { throwIfNoEntry: false });
+	const stat = lstatSync(path, { throwIfNoEntry: false });
 	if (!stat) return 0;
+	if (stat.isSymbolicLink()) return stat.size;
 	if (!stat.isDirectory()) return stat.size;
 	let total = stat.size;
-	for (const entry of readdirSync(path)) total += directoryBytes(join(path, entry));
+	try {
+		for (const entry of readdirSync(path)) total += directoryBytes(join(path, entry));
+	} catch {
+		return total;
+	}
 	return total;
 }
 
@@ -67,6 +78,142 @@ function workspaceRepositoryRoots(root: string) {
 			|| existsSync(join(path, 'treeseed.package.yaml')));
 }
 
+const PROJECT_STANDARD_TARGETS = [
+	'.treeseed/tmp',
+	'.treeseed/cache',
+	'.treeseed/scenes/runs',
+	'.treeseed/scenes/render',
+	'.treeseed/scenes/matrix',
+	'.treeseed/logs',
+	'.treeseed/exports',
+	'.treeseed/workplans',
+	'.treeseed/guarantees/runs',
+	'.treeseed/generated/hosted-artifacts',
+	'.treeseed/npm-cache',
+	'dist',
+	'coverage',
+	'.astro',
+	'.vite',
+];
+
+const PROJECT_AGGRESSIVE_PACKAGE_TARGETS = [
+	'node_modules',
+	'target',
+	'_build',
+	'deps',
+	'apps/api/_build',
+	'apps/api/deps',
+	'packages/rust-sdk/target',
+	'packages/elixir-sdk/_build',
+	'packages/elixir-sdk/deps',
+	'tools/treedx_profiler/_build',
+	'tools/treedx_profiler/deps',
+];
+
+function projectCleanupTargets(root: string, mode: LocalCleanupMode) {
+	const repositories = [root, ...workspaceRepositoryRoots(root)];
+	const targets = repositories.flatMap((repositoryRoot) => PROJECT_STANDARD_TARGETS.map((relativePath) => ({
+		id: repositoryRoot === root ? relativePath : `${repositoryRoot.slice(root.length + 1)}:${relativePath}`,
+		path: join(repositoryRoot, relativePath),
+	})));
+	if (mode === 'aggressive') {
+		targets.push({ id: '.treeseed/local-treedx', path: join(root, '.treeseed', 'local-treedx') });
+		for (const repositoryRoot of repositories.filter((entry) => entry !== root)) {
+			for (const relativePath of PROJECT_AGGRESSIVE_PACKAGE_TARGETS) targets.push({
+				id: `${repositoryRoot.slice(root.length + 1)}:${relativePath}`,
+				path: join(repositoryRoot, relativePath),
+			});
+		}
+		const workflowRuns = join(root, '.treeseed', 'workflow', 'runs');
+		if (existsSync(workflowRuns)) for (const entry of readdirSync(workflowRuns, { withFileTypes: true })) {
+			if (entry.isDirectory() && entry.name.startsWith('archived-')) targets.push({
+				id: `.treeseed/workflow/runs/${entry.name}`,
+				path: join(workflowRuns, entry.name),
+			});
+		}
+	}
+	return targets;
+}
+
+function latestTreeMtime(path: string): number {
+	const stat = lstatSync(path, { throwIfNoEntry: false });
+	if (!stat) return 0;
+	let latest = stat.mtimeMs;
+	if (!stat.isDirectory() || stat.isSymbolicLink()) return latest;
+	try {
+		for (const entry of readdirSync(path)) latest = Math.max(latest, latestTreeMtime(join(path, entry)));
+	} catch {
+		return latest;
+	}
+	return latest;
+}
+
+function activeSceneRuns(root: string, now: number, graceMs: number) {
+	const blockers: string[] = [];
+	for (const repositoryRoot of [root, ...workspaceRepositoryRoots(root)]) {
+		const runsRoot = join(repositoryRoot, '.treeseed', 'scenes', 'runs');
+		if (!existsSync(runsRoot)) continue;
+		for (const scene of readdirSync(runsRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory())) {
+			const sceneRoot = join(runsRoot, scene.name);
+			for (const run of readdirSync(sceneRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory())) {
+				const runRoot = join(sceneRoot, run.name);
+				const runPath = join(runRoot, 'run.json');
+				let finished = false;
+				try {
+					const record = JSON.parse(readFileSync(runPath, 'utf8')) as { finishedAt?: unknown };
+					finished = typeof record.finishedAt === 'string' && record.finishedAt.length > 0;
+				} catch {
+					finished = false;
+				}
+				if (!finished && now - latestTreeMtime(runRoot) < graceMs) blockers.push(runRoot);
+			}
+		}
+	}
+	return blockers;
+}
+
+export function planProjectCleanup(input: {
+	root: string;
+	mode?: LocalCleanupMode;
+	now?: Date;
+	activeSceneGraceMs?: number;
+}): ProjectCleanupReport {
+	const root = resolve(input.root);
+	const mode = input.mode ?? 'standard';
+	const startedAt = (input.now ?? new Date()).toISOString();
+	const blockers = activeSceneRuns(root, (input.now ?? new Date()).getTime(), input.activeSceneGraceMs ?? 15 * 60_000);
+	const actions = projectCleanupTargets(root, mode).map(({ id, path }): LocalCleanupAction => {
+		const beforeBytes = directoryBytes(path);
+		return { id, kind: 'directory', path, status: beforeBytes > 0 ? 'planned' : 'skipped', beforeBytes, afterBytes: beforeBytes };
+	});
+	for (const path of blockers) actions.push({ id: `active-scene:${path.slice(root.length + 1)}`, kind: 'directory', path, status: 'blocked', error: 'Recent unfinished scene run.' });
+	const beforeBytes = actions.reduce((total, action) => total + (action.status === 'planned' ? action.beforeBytes ?? 0 : 0), 0);
+	return { ok: blockers.length === 0, scope: 'project', executionMode: 'plan', mode, root, startedAt, completedAt: new Date().toISOString(), beforeBytes, afterBytes: beforeBytes, reclaimedBytes: 0, blockers, actions };
+}
+
+export function runProjectCleanup(input: {
+	root: string;
+	mode?: LocalCleanupMode;
+	now?: Date;
+	activeSceneGraceMs?: number;
+}): ProjectCleanupReport {
+	const plan = planProjectCleanup(input);
+	if (!plan.ok) return { ...plan, executionMode: 'live' };
+	const actions = plan.actions.map((action) => action.status === 'planned' && action.path
+		? removeDirectoryPath(action.id, action.path)
+		: action);
+	const afterBytes = actions.reduce((total, action) => total + (action.afterBytes ?? 0), 0);
+	return {
+		...plan,
+		ok: actions.every((action) => action.status !== 'failed'),
+		executionMode: 'live',
+		completedAt: new Date().toISOString(),
+		afterBytes,
+		reclaimedBytes: Math.max(0, plan.beforeBytes - afterBytes),
+		actions,
+	};
+}
+
 function runCleanupCommand(id: string, kind: 'docker' | 'npm-cache', command: string[], cwd: string): LocalCleanupAction {
 	const result = spawnSync(command[0]!, command.slice(1), { cwd, encoding: 'utf8', maxBuffer: 1024 * 1024 * 16 });
 	const exitCode = result.status ?? null;
@@ -80,7 +227,7 @@ function runCleanupCommand(id: string, kind: 'docker' | 'npm-cache', command: st
 	};
 }
 
-export function runWorkspaceCleanup(input: {
+export function pruneRecoveryCaches(input: {
 	root: string;
 	mode?: LocalCleanupMode;
 	docker?: boolean;
