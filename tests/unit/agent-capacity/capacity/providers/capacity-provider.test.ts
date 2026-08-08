@@ -55,7 +55,7 @@ describe('capacity provider membership protocol', () => {
 			},
 		});
 		await client.reportAssignmentUsage('assignment-a', { usageDimension: 'tokens' }, 'usage-a');
-		await client.settleAssignment('assignment-a', { actualCredits: 2 }, 'settlement-a');
+		await client.settleAssignment('assignment-a', { activeSeconds: 2 }, 'settlement-a');
 		expect(calls[0]?.url).toBe('https://market.test/v1/provider/assignments/assignment-a/usage');
 		expect(calls[0]?.init?.headers).toMatchObject({ authorization: 'Bearer short-lived-token', 'idempotency-key': 'usage-a' });
 		expect(calls[1]?.url).toBe('https://market.test/v1/provider/assignments/assignment-a/settle');
@@ -74,7 +74,7 @@ describe('capacity provider membership protocol', () => {
 			},
 		});
 		await client.reportAssignmentUsage('assignment-a', { usageDimension: 'tokens' }, 'usage-a');
-		await client.settleAssignment('assignment-a', { actualCredits: 2 }, 'settlement-a');
+		await client.settleAssignment('assignment-a', { activeSeconds: 2 }, 'settlement-a');
 		expect(authorizations).toEqual(['Bearer refreshed-token-1', 'Bearer refreshed-token-2']);
 	});
 
@@ -113,7 +113,7 @@ describe('capacity provider membership protocol', () => {
 			accessToken: 'short-lived-token',
 			fetchImpl: async () => new Response(JSON.stringify({ payload: {} }), { status: 200, headers: { 'content-type': 'application/json' } }),
 		});
-		await expect(client.settleAssignment('assignment-a', { actualCredits: 2 }, 'settlement-a')).rejects.toThrow(/ok response envelope/u);
+		await expect(client.settleAssignment('assignment-a', { activeSeconds: 2 }, 'settlement-a')).rejects.toThrow(/ok response envelope/u);
 	});
 
 	it('keeps the request timeout active while the response body is being consumed', async () => {

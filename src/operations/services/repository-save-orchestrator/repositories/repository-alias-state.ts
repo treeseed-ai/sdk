@@ -47,9 +47,16 @@ function commitDescendsFrom(candidate: RepositorySaveNode, ancestor: string, des
 	}
 }
 
+function worktreeIsClean(repoDir: string) {
+	return runGit(['status', '--porcelain', '--untracked-files=all'], {
+		cwd: repoDir,
+		capture: true,
+	}).trim().length === 0;
+}
+
 export function recoverableAliasRepresentative(group: RepositorySaveNode[]) {
 	const fingerprints = new Set(group.map((node) => repositoryWorktreeFingerprint(node.path)));
-	if (fingerprints.size !== 1) return null;
+	if (fingerprints.size !== 1 && group.some((node) => !worktreeIsClean(node.path))) return null;
 	const heads = group.map((node) => headCommit(node.path));
 	return group
 		.filter((candidate) => heads.every((head) => commitDescendsFrom(candidate, head)))
@@ -66,8 +73,9 @@ export function synchronizeRepositoryAliases(root: string, node: RepositorySaveN
 		if (aliasPath === node.path) continue;
 		const aliasBranch = runGit(['symbolic-ref', '--short', 'HEAD'], { cwd: aliasPath,capture: true }).trim();
 		if (aliasBranch !== branch) throw new Error(`Repository alias ${relativePath} is on ${aliasBranch}, expected ${branch}.`);
-		if (repositoryWorktreeFingerprint(aliasPath) !== targetFingerprint) {
-			throw new Error(`Repository alias ${relativePath} does not match the finalized ${node.relativePath} worktree.`);
+		const aliasAlreadyMatchesTarget = repositoryWorktreeFingerprint(aliasPath) === targetFingerprint;
+		if (!aliasAlreadyMatchesTarget && !worktreeIsClean(aliasPath)) {
+			throw new Error(`Repository alias ${relativePath} has local changes and cannot be synchronized.`);
 		}
 		runGit(['fetch', 'origin', `refs/heads/${branch}:refs/remotes/origin/${branch}`], { cwd: aliasPath });
 		const remoteHead = runGit(['rev-parse', `refs/remotes/origin/${branch}`], { cwd: aliasPath,capture: true }).trim();
@@ -79,9 +87,10 @@ export function synchronizeRepositoryAliases(root: string, node: RepositorySaveN
 		const branchRef = `refs/heads/${branch}`;
 		runGit(['update-ref', branchRef, targetCommit, previousCommit], { cwd: aliasPath });
 		try {
-			runGit(['read-tree', targetCommit], { cwd: aliasPath });
+			runGit(['read-tree', '--reset', '-u', targetCommit], { cwd: aliasPath });
 		} catch (error) {
 			runGit(['update-ref', branchRef, previousCommit, targetCommit], { cwd: aliasPath });
+			runGit(['read-tree', '--reset', '-u', previousCommit], { cwd: aliasPath });
 			throw error;
 		}
 		if (headCommit(aliasPath) !== targetCommit || repositoryWorktreeFingerprint(aliasPath) !== targetFingerprint) {

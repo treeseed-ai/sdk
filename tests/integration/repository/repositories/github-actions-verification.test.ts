@@ -6,6 +6,7 @@ import {
 	isRetryableGitHubActionsSetupFailure,
 	type GitHubActionsVerificationTarget,
 } from '../../../../src/operations/services/repositories/github-actions-verification.ts';
+import { shouldInspectPackageCi } from '../../../../src/workflow/operations/packages/release-admin-message.ts';
 
 function fakeClient(options: {
 	remoteHead?: string;
@@ -59,6 +60,21 @@ function target(overrides: Partial<GitHubActionsVerificationTarget> = {}): GitHu
 }
 
 describe('GitHub Actions verification', () => {
+	it('omits clean packages already promoted to staging when the task branch was never published', () => {
+		expect(shouldInspectPackageCi({
+			explicitBranch: false,
+			remoteSourceExists: false,
+			worktreeClean: true,
+			headAlreadyOnStaging: true,
+		})).toBe(false);
+		for (const input of [
+			{ explicitBranch: true, remoteSourceExists: false, worktreeClean: true, headAlreadyOnStaging: true },
+			{ explicitBranch: false, remoteSourceExists: true, worktreeClean: true, headAlreadyOnStaging: true },
+			{ explicitBranch: false, remoteSourceExists: false, worktreeClean: false, headAlreadyOnStaging: true },
+			{ explicitBranch: false, remoteSourceExists: false, worktreeClean: true, headAlreadyOnStaging: false },
+		]) expect(shouldInspectPackageCi(input)).toBe(true);
+	});
+
 	it('reports failed jobs, failed steps, inspect commands, and capped log excerpts', async () => {
 		const report = await inspectGitHubActionsVerification([target()], {
 			client: fakeClient({

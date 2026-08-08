@@ -284,4 +284,5 @@ export interface AgentActivityPlanningIntent {
 		signals?: AgentSignalPolicy;
 	}>;
 	requiresArtifactKinds?: string[];
+	proposalTypes?: string[];
 }

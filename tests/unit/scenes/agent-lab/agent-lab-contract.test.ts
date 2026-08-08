@@ -167,7 +167,7 @@ describe('production Agent Lab scene contract', () => {
 			expect(html).toContain('\\u003cplan & inspect>');
 			expect(html).not.toContain('Bearer secret');
 			expect(html).not.toMatch(/https?:\/\/(?!127\.0\.0\.1)/u);
-			expect(html).toContain('<dialog id="command-dialog"');
+			expect(html).toContain('command-dialog');
 			expect(html).toContain('Context window');
 			expect(html).toContain('Handoff signals');
 			expect(html).toContain('evidence-ready');

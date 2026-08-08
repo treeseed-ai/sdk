@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { check,index,integer,pgTable,primaryKey,real,serial,text,uniqueIndex } from 'drizzle-orm/pg-core';
+import { bigserial,check,index,integer,pgTable,primaryKey,real,serial,text,uniqueIndex } from 'drizzle-orm/pg-core';
 
 
 export const notificationEvents = pgTable('notification_events', {
@@ -24,6 +24,20 @@ export const userNotifications = pgTable('user_notifications', {
 }, (table) => [
 	uniqueIndex('idx_user_notifications_event').on(table.userId, table.eventId),
 	index('idx_user_notifications_user').on(table.userId, table.readAt, table.createdAt),
+]);
+
+export const sessionEvents = pgTable('session_events', {
+	sequence: bigserial('sequence', { mode: 'number' }).primaryKey(),
+	eventType: text('event_type').notNull(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id'),
+	resourceId: text('resource_id').notNull(),
+	payloadJson: text('payload_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	expiresAt: text('expires_at').notNull(),
+}, (table) => [
+	index('idx_session_events_team_sequence').on(table.teamId, table.sequence),
+	index('idx_session_events_expiry').on(table.expiresAt),
 ]);
 
 export const notificationEmailDeliveries = pgTable('notification_email_deliveries', {

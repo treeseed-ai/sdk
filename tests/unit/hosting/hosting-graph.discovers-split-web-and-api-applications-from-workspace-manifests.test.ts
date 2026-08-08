@@ -284,6 +284,18 @@ it('expands runner and TreeDX pools into indexed services with dedicated volumes
     nodePool:
       bootstrapCount: 2
       maxNodes: 4
+    runtime:
+      cpuBudget: 4
+      memoryBudgetMb: 4096
+      cacheMemoryFraction: 0.35
+    repositoryQueries:
+      poolSize: 16
+      maxQueue: 256
+      queueTimeoutMs: 250
+    graphQueries:
+      poolSize: 4
+      maxQueue: 128
+      queueTimeoutMs: 500
 `).replace('bootstrapCount: 1', 'bootstrapCount: 2');
 		const tenantRoot = createTenant(config);
 		const graph = compileHostingGraph({ tenantRoot, environment: 'staging' });
@@ -307,6 +319,17 @@ it('expands runner and TreeDX pools into indexed services with dedicated volumes
 			'treeseed-treedx-staging-01-volume',
 			'treeseed-treedx-staging-02-volume',
 		]);
+		expect(treeDxNodes[0]?.config.environmentVariables).toMatchObject({
+			TREEDX_RUNTIME_CPU_BUDGET: '4',
+			TREEDX_RUNTIME_MEMORY_BUDGET_MB: '4096',
+			TREEDX_CACHE_MEMORY_FRACTION: '0.35',
+			TREEDX_REPOSITORY_QUERY_POOL_SIZE: '16',
+			TREEDX_REPOSITORY_QUERY_MAX_QUEUE: '256',
+			TREEDX_REPOSITORY_QUERY_QUEUE_TIMEOUT_MS: '250',
+			TREEDX_GRAPH_WORKER_POOL_SIZE: '4',
+			TREEDX_GRAPH_MAX_QUEUE: '128',
+			TREEDX_GRAPH_QUEUE_TIMEOUT_MS: '500',
+		});
 
 		const selected = compileHostingGraph({
 			tenantRoot,

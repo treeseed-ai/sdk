@@ -314,8 +314,8 @@ artifacts:
   trace: false
   screenshots: false
 setup:
-  seed:
-    name: scene-seed
+  seeds:
+    - name: scene-seed
 ${extra}
 workflow:
   - id: open
@@ -342,8 +342,9 @@ it('runs normalized scene input with anonymous auth override, planned seed setup
 			timestamp: '20260617T120000Z',
 			runId: 'direct',
 			seedRunner: async ({ scene }) => {
-				seedCalls.push(scene.setup.seed?.apply ? 'apply' : scene.setup.seed?.name ? 'plan' : 'none');
-				return { ok: true, requested: true, seedName: scene.setup.seed?.name ?? null, mode: 'plan', environments: ['local'], plan: {}, result: null, diagnostics: [] };
+				const seed = scene.setup.seeds?.[0];
+				seedCalls.push(seed?.apply ? 'apply' : seed?.name ? 'plan' : 'none');
+				return { ok: true, requested: true, seedName: seed?.name ?? null, mode: 'plan', environments: ['local'], plan: {}, result: null, diagnostics: [] };
 			},
 			environmentAdapter: async () => ({ ok: true, environment: 'local', readiness: null, dev: { requested: false, reused: false, started: false, instances: [], baseUrl: null }, diagnostics: [] }),
 			authResolver: () => ({ ok: true, required: false, profileId: 'local', authRoot: root, hasSession: false, diagnostics: [] }),

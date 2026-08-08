@@ -86,7 +86,11 @@ describe('capacity provider governance contracts', () => {
 	it('validates multi-team connection distribution and secret references', () => {
 		const manifest: CapacityProviderManifestV2 = {
 			schemaVersion: 2,
+			providerClass: 'agent',
+			ownership: { type: 'external' },
+			configuration: { generation: 'test-generation-1' },
 			identity: { privateKeyRef: 'secret://capacity/provider-identity', displayName: 'Shared provider' },
+			supplyCeilings: { maxConcurrentAssignments: 4 },
 			executionProviders: [{
 				id: 'codex', adapter: 'codex', nativeLimits: { maxConcurrentRunners: 4 },
 				researchSourcePolicy: { schemaVersion: 1, allowedDomains: ['example.test'], requestTimeoutMs: 10_000, maxResponseBytes: 100_000, maxRedirects: 2, allowedContentTypes: ['text/*'] },
@@ -110,7 +114,11 @@ describe('capacity provider governance contracts', () => {
 	it('keeps broadcast registration keys out of durable runtime connections', () => {
 		const manifest: CapacityProviderManifestV2 = {
 			schemaVersion: 2,
+			providerClass: 'agent',
+			ownership: { type: 'external' },
+			configuration: { generation: 'test-generation-1' },
 			identity: { privateKeyRef: 'secret://capacity/provider-identity', displayName: 'Join-ready provider' },
+			supplyCeilings: { maxConcurrentAssignments: 1 },
 			executionProviders: [{ id: 'codex', adapter: 'codex', nativeLimits: { maxConcurrentRunners: 1 } }],
 			connections: [],
 		};

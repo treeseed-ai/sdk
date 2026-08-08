@@ -76,6 +76,41 @@ function commitInitial(cwd: string) {
 	git(cwd, ['commit', '--allow-empty', '-m', 'chore: initial']);
 }
 describe('repository save orchestrator helpers', () => {
+it('copies newly introduced runtime dependency closure into consumer locks during an atomic save', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-dependency-closure-'));
+		const sdkRoot = resolve(root, 'sdk');
+		const consumerRoot = resolve(root, 'consumer');
+		const spec = 'github:treeseed-ai/sdk#abc123';
+		writeJson(resolve(sdkRoot, 'package-lock.json'), {
+			lockfileVersion: 3,
+			packages: {
+				'': { dependencies: { 'new-runtime': '1.0.0' } },
+				'node_modules/new-runtime': { version: '1.0.0', dependencies: { 'runtime-core': '1.0.0' } },
+				'node_modules/runtime-core': { version: '1.0.0', optionalDependencies: { 'new-runtime': '1.0.0' } },
+			},
+		});
+		const packageJson = { name: '@treeseed/consumer', dependencies: { '@treeseed/sdk': spec } };
+		writeJson(resolve(consumerRoot, 'package-lock.json'), {
+			lockfileVersion: 3,
+			packages: {
+				'': packageJson,
+				'node_modules/@treeseed/sdk': { version: '1.0.0', resolved: 'old', dependencies: {} },
+				'node_modules/new-runtime': { version: '1.1.0' },
+			},
+		});
+		const consumer = node({ id: consumerRoot, name: '@treeseed/consumer', path: consumerRoot, packageJson });
+
+		expect(syncDirectGitDependencyLockfileEntries(consumer, {}, [{
+			packageName: '@treeseed/sdk', version: '1.0.1', spec, manifestSpec: spec, installSpec: spec,
+			tagName: null, remoteUrl: 'git@github.com:treeseed-ai/sdk.git', sourcePath: sdkRoot, mode: 'dev-git-commit',
+		}])).toBe(true);
+		const lock = JSON.parse(readFileSync(resolve(consumerRoot, 'package-lock.json'), 'utf8'));
+		expect(lock.packages['node_modules/@treeseed/sdk'].dependencies).toEqual({ 'new-runtime': '1.0.0' });
+		expect(lock.packages['node_modules/new-runtime'].version).toBe('1.0.0');
+		expect(lock.packages['node_modules/runtime-core'].version).toBe('1.0.0');
+		expect(lock.packages['node_modules/runtime-core'].optionalDependencies).toEqual({ 'new-runtime': '1.0.0' });
+	});
+
 it('validates package locks without mutating the live install and synchronizes package versions', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-isolated-lock-'));
 		const packageJsonPath = resolve(root, 'package.json');
@@ -107,6 +142,24 @@ it('validates package locks without mutating the live install and synchronizes p
 		expect(readFileSync(sentinelPath, 'utf8')).toBe('installed dependency state\n');
 	});
 
+	it('does not recursively prepare dependencies before atomic publication', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-atomic-lock-'));
+		const packageJson = { name: '@treeseed/demo', version: '1.0.0' };
+		writeJson(resolve(root, 'package.json'), packageJson);
+		writeJson(resolve(root, 'package-lock.json'), {
+			name: '@treeseed/demo', version: '1.0.0', lockfileVersion: 3,
+			packages: { '': packageJson },
+		});
+		const repo = node({ id: root, name: '@treeseed/demo', path: root, packageJson });
+		const originalPath = process.env.PATH;
+		process.env.PATH = '';
+		try {
+			expect(validateStandaloneGitDependencyLockfile(repo, { deferPushUntilVerified: true })).toBe(true);
+		} finally {
+			process.env.PATH = originalPath;
+		}
+	});
+
 it('re-resolves a consumer lock from the local package graph before atomic publication', () => {
 	const root = mkdtempSync(join(tmpdir(), 'treeseed-save-transitive-lock-'));
 	const sdkRoot = resolve(root, 'sdk');
@@ -121,6 +174,13 @@ it('re-resolves a consumer lock from the local package graph before atomic publi
 	git(fixtureRoot, ['commit', '-m', 'fixture']);
 	writeJson(resolve(sdkRoot, 'package.json'), {
 		name: '@treeseed/sdk', version: '2.0.0', dependencies: { yaml: '2.8.1' },
+	});
+	writeJson(resolve(sdkRoot, 'package-lock.json'), {
+		name: '@treeseed/sdk', version: '2.0.0', lockfileVersion: 3,
+		packages: {
+			'': { name: '@treeseed/sdk', version: '2.0.0', dependencies: { yaml: '2.8.1' } },
+			'node_modules/yaml': { version: '2.8.1' },
+		},
 	});
 	git(sdkRoot, ['init', '-b', 'main']);
 	git(sdkRoot, ['config', 'user.email', 'tests@treeseed.local']);
@@ -155,7 +215,7 @@ it('re-resolves a consumer lock from the local package graph before atomic publi
 		remoteUrl: 'git@github.com:treeseed-ai/sdk.git', mode: 'dev-git-commit' as const,
 	};
 	expect(syncDirectGitDependencyLockfileEntries(repo, {}, [reference])).toBe(true);
-	validateStandaloneGitDependencyLockfile(repo, {}, [reference], [{
+	validateStandaloneGitDependencyLockfile(repo, { deferPushUntilVerified: true }, [reference], [{
 		sourcePath: fixtureRoot,
 		remoteUrl: 'git@github.com:treeseed-ai/treeseed-fixtures.git',
 	}]);
@@ -163,6 +223,9 @@ it('re-resolves a consumer lock from the local package graph before atomic publi
 	expect(lock.packages['node_modules/@treeseed/sdk'].dependencies).toEqual({ yaml: '2.8.1' });
 	expect(lock.packages['node_modules/@treeseed/sdk'].resolved).toContain(`#${sourceCommit}`);
 	expect(lock.packages['node_modules/yaml'].version).toBe('2.8.1');
+	lock.packages['node_modules/@treeseed/sdk'].resolved = 'ssh://git@github.com/treeseed-ai/sdk.git#stale';
+	writeJson(resolve(agentRoot, 'package-lock.json'), lock);
+	expect(() => validateStandaloneGitDependencyLockfile(repo, {}, [reference])).toThrow('resolved commit is stale');
 });
 
 it('creates deterministic semver dev prerelease versions from branch names', () => {

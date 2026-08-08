@@ -29,46 +29,81 @@ function localGitResolutionEnv(references: Array<PackageDependencyReference | Lo
 	return env;
 }
 
-function regenerateLockfile(
-	node: RepositorySaveNode,
-	options: Pick<RepositorySaveOptions, 'onProgress'>,
-	isolatedRoot: string,
-	references: PackageDependencyReference[],
-	repositories: LocalGitRepository[],
-) {
-	copyFileSync(resolve(node.path, 'package.json'), resolve(isolatedRoot, 'package.json'));
-	runCapturedCommand(node, options, 'lockfile', 'npm', [
-		'install', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--no-audit', '--no-fund',
-	], {
-		cwd: isolatedRoot,
-		env: localGitResolutionEnv([...references, ...repositories]),
-		timeoutMs: STANDALONE_LOCKFILE_REGENERATION_TIMEOUT_MS,
-	});
+function declaredDependencySpec(packageJson: Record<string, unknown>, packageName: string) {
+	for (const field of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+		const dependencies = packageJson[field];
+		if (!dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) continue;
+		const spec = (dependencies as Record<string, unknown>)[packageName];
+		if (typeof spec === 'string') return spec;
+	}
+	return null;
 }
+
+function validateFinalizedGitReferences(node: RepositorySaveNode, references: PackageDependencyReference[]) {
+	const lockfilePath = resolve(node.path, 'package-lock.json');
+	if (!existsSync(lockfilePath)) throw new Error('standalone lockfile missing');
+	const lockfile = JSON.parse(readFileSync(lockfilePath, 'utf8')) as Record<string, unknown>;
+	const packages = lockfile.packages;
+	if (!packages || typeof packages !== 'object' || Array.isArray(packages)) {
+		throw new Error('standalone lockfile packages map missing');
+	}
+	const entries = packages as Record<string, Record<string, unknown>>;
+	const rootEntry = entries[''];
+	if (!rootEntry) throw new Error('standalone lockfile root package entry missing');
+	for (const reference of references) {
+		const expectedSpec = reference.manifestSpec ?? reference.spec;
+		if (declaredDependencySpec(node.packageJson ?? {}, reference.packageName) !== expectedSpec) continue;
+		if (declaredDependencySpec(rootEntry, reference.packageName) !== expectedSpec) {
+			throw new Error(`standalone lockfile root entry is stale for ${reference.packageName}`);
+		}
+		const commit = expectedSpec.slice(expectedSpec.lastIndexOf('#') + 1);
+		const dependencyEntries = Object.entries(entries)
+			.filter(([key]) => key === `node_modules/${reference.packageName}` || key.endsWith(`/node_modules/${reference.packageName}`))
+			.map(([, entry]) => entry);
+		if (dependencyEntries.length === 0) {
+			throw new Error(`standalone lockfile entry missing for ${reference.packageName}`);
+		}
+		for (const entry of dependencyEntries) {
+			if (typeof entry.resolved !== 'string' || !entry.resolved.endsWith(`#${commit}`)) {
+				throw new Error(`standalone lockfile resolved commit is stale for ${reference.packageName}`);
+			}
+			if (reference.version && entry.version !== reference.version) {
+				throw new Error(`standalone lockfile version is stale for ${reference.packageName}`);
+			}
+			}
+		}
+	}
 
 export function validateStandaloneGitDependencyLockfile(
 	node: RepositorySaveNode,
-	options: Pick<RepositorySaveOptions, 'onProgress'>,
+	options: Pick<RepositorySaveOptions, 'onProgress' | 'deferPushUntilVerified'>,
 	references: PackageDependencyReference[] = [],
 	repositories: LocalGitRepository[] = [],
 ) {
 	const lockfilePath = resolve(node.path, 'package-lock.json');
 	const lockfileExists = existsSync(lockfilePath);
 	const previousLockfile = lockfileExists ? readFileSync(lockfilePath, 'utf8') : null;
+	if (references.length > 0) {
+		validateFinalizedGitReferences(node, references);
+		emitProgress(options, node, 'lockfile', 'Validated exact finalized Git references before resolving their complete dependency closure.');
+	}
+	if (options.deferPushUntilVerified === true && references.length === 0) {
+		if (!lockfileExists) throw new Error('standalone lockfile missing');
+		emitProgress(options, node, 'lockfile', 'Skipped dependency-closure resolution because this atomic package has no finalized internal Git dependencies.');
+		return true;
+	}
 	const isolatedRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-lockfile-'));
-	const validateArgs = ['ci', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--no-audit', '--no-fund'];
+	const validateArgs = references.length > 0
+		? ['install', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--no-audit', '--no-fund']
+		: ['ci', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--no-audit', '--no-fund'];
 	try {
-		if (references.length > 0) {
-			regenerateLockfile(node, options, isolatedRoot, references, repositories);
-		} else {
-			if (!lockfileExists) throw new Error('standalone lockfile missing');
-			copyFileSync(resolve(node.path, 'package.json'), resolve(isolatedRoot, 'package.json'));
-			copyFileSync(lockfilePath, resolve(isolatedRoot, 'package-lock.json'));
-		}
+		if (!lockfileExists) throw new Error('standalone lockfile missing');
+		copyFileSync(resolve(node.path, 'package.json'), resolve(isolatedRoot, 'package.json'));
+		copyFileSync(lockfilePath, resolve(isolatedRoot, 'package-lock.json'));
 		runCapturedCommand(node, options, 'lockfile', 'npm', validateArgs, {
 			cwd: isolatedRoot,
 			env: localGitResolutionEnv([...references, ...repositories]),
-			timeoutMs: 5 * 60_000,
+			timeoutMs: references.length > 0 ? STANDALONE_LOCKFILE_REGENERATION_TIMEOUT_MS : 5 * 60_000,
 		});
 		copyFileSync(resolve(isolatedRoot, 'package-lock.json'), lockfilePath);
 	} catch (error) {
@@ -77,6 +112,8 @@ export function validateStandaloneGitDependencyLockfile(
 	} finally {
 		rmSync(isolatedRoot, { recursive: true, force: true });
 	}
-	emitProgress(options, node, 'lockfile', 'Validated the standalone lockfile against the committed package manifest.');
+	emitProgress(options, node, 'lockfile', references.length > 0
+		? 'Resolved and validated the complete standalone dependency closure from finalized local package commits.'
+		: 'Validated the standalone lockfile against the committed package manifest.');
 	return true;
 }

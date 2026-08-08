@@ -257,7 +257,7 @@ export function updateStatusLines(repoDir: string) {
 
 export function updateChangedFiles(repoDir: string) {
 	return updateStatusLines(repoDir)
-		.map((line) => line.slice(3).trim())
+		.map((line) => line[1] === ' ' && line[2] !== ' ' ? line.slice(2).trim() : line.slice(3).trim())
 		.filter(Boolean);
 }
 

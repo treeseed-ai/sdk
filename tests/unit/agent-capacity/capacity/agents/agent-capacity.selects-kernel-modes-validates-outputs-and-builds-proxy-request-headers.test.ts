@@ -190,7 +190,7 @@ it('validates provider assignment capability handles without exposing secrets', 
 				mode: 'acting',
 				capacityProviderId: 'provider-1',
 				reservationId: 'reservation-1',
-				reservedCredits: 1,
+				reservedSeconds: 1,
 				metadata: { capacityPlanId: 'plan-1', capacityPlanStatus: 'accepted' },
 			},
 			capabilityHandles: {

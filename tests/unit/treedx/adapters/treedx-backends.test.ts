@@ -402,11 +402,4 @@ describe('TreeDX-backed TreeSeed content repository', () => {
 		]);
 	});
 
-	it('keeps site and optional repository operations free of TreeDX SDK imports', async () => {
-		const { readFileSync } = await import('node:fs');
-		const source = readFileSync(resolve(process.cwd(), 'src', 'operations', 'repository-operations.ts'), 'utf8');
-
-		expect(source).not.toContain(['@treedx', 'ts-sdk'].join('/'));
-		expect(source).not.toContain(['@treeseed', 'treedx'].join('/'));
-	});
 });

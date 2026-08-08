@@ -65,6 +65,22 @@ describe('repository alias state', () => {
 		expect(git(resolve(root, paths[1]!), ['status', '--porcelain'])).toBe('');
 	});
 
+	it('fast-forwards clean aliases whose files still match their ancestor commit', () => {
+		const { root,paths } = fixtureRoot();
+		writeFileSync(resolve(root, paths[0]!, 'README.md'), 'updated only in the canonical checkout\n');
+		git(resolve(root, paths[0]!), ['add', '-A']);
+		git(resolve(root, paths[0]!), ['commit', '-m', 'update canonical checkout']);
+
+		const nodes = discoverRepositorySaveNodes(root, root, 'staging');
+		const shared = nodes.find((node) => node.checkoutAliases.length === 2);
+		expect(shared?.relativePath).toBe(paths[0]);
+		git(resolve(root, paths[0]!), ['push', 'origin', 'staging']);
+		expect(synchronizeRepositoryAliases(root, shared!, 'staging')).toEqual([paths[1]]);
+		expect(git(resolve(root, paths[1]!), ['rev-parse', 'HEAD'])).toBe(git(resolve(root, paths[0]!), ['rev-parse', 'HEAD']));
+		expect(git(resolve(root, paths[1]!), ['status', '--porcelain'])).toBe('');
+		expect(git(resolve(root, paths[1]!), ['show', 'HEAD:README.md'])).toBe('updated only in the canonical checkout');
+	});
+
 	it('rejects aliases whose materialized content differs', () => {
 		const { root,paths } = fixtureRoot();
 		writeFileSync(resolve(root, paths[0]!, 'README.md'), 'first\n');
