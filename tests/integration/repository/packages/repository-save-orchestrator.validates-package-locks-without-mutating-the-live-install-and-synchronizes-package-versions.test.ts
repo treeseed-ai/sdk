@@ -210,16 +210,10 @@ it('re-resolves a consumer lock from the local package graph before atomic publi
 		remoteUrl: 'git@github.com:treeseed-ai/sdk.git', mode: 'dev-git-commit' as const,
 	};
 	expect(syncDirectGitDependencyLockfileEntries(repo, {}, [reference])).toBe(true);
-	const originalPath = process.env.PATH;
-	process.env.PATH = '';
-	try {
-		validateStandaloneGitDependencyLockfile(repo, {}, [reference], [{
-			sourcePath: fixtureRoot,
-			remoteUrl: 'git@github.com:treeseed-ai/treeseed-fixtures.git',
-		}]);
-	} finally {
-		process.env.PATH = originalPath;
-	}
+	validateStandaloneGitDependencyLockfile(repo, { deferPushUntilVerified: true }, [reference], [{
+		sourcePath: fixtureRoot,
+		remoteUrl: 'git@github.com:treeseed-ai/treeseed-fixtures.git',
+	}]);
 	const lock = JSON.parse(readFileSync(resolve(agentRoot, 'package-lock.json'), 'utf8'));
 	expect(lock.packages['node_modules/@treeseed/sdk'].dependencies).toEqual({ yaml: '2.8.1' });
 	expect(lock.packages['node_modules/@treeseed/sdk'].resolved).toContain(`#${sourceCommit}`);

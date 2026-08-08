@@ -84,16 +84,17 @@ export function validateStandaloneGitDependencyLockfile(
 	const previousLockfile = lockfileExists ? readFileSync(lockfilePath, 'utf8') : null;
 	if (references.length > 0) {
 		validateFinalizedGitReferences(node, references);
-		emitProgress(options, node, 'lockfile', 'Validated exact finalized Git references without recursively preparing dependency repositories.');
-		return true;
+		emitProgress(options, node, 'lockfile', 'Validated exact finalized Git references before resolving their complete dependency closure.');
 	}
-	if (options.deferPushUntilVerified === true) {
+	if (options.deferPushUntilVerified === true && references.length === 0) {
 		if (!lockfileExists) throw new Error('standalone lockfile missing');
-		emitProgress(options, node, 'lockfile', 'Deferred recursive standalone lockfile preparation until atomic publication verification.');
+		emitProgress(options, node, 'lockfile', 'Skipped dependency-closure resolution because this atomic package has no finalized internal Git dependencies.');
 		return true;
 	}
 	const isolatedRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-lockfile-'));
-	const validateArgs = ['ci', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--no-audit', '--no-fund'];
+	const validateArgs = references.length > 0
+		? ['install', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--no-audit', '--no-fund']
+		: ['ci', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--no-audit', '--no-fund'];
 	try {
 		if (!lockfileExists) throw new Error('standalone lockfile missing');
 		copyFileSync(resolve(node.path, 'package.json'), resolve(isolatedRoot, 'package.json'));
@@ -110,6 +111,8 @@ export function validateStandaloneGitDependencyLockfile(
 	} finally {
 		rmSync(isolatedRoot, { recursive: true, force: true });
 	}
-	emitProgress(options, node, 'lockfile', 'Validated the standalone lockfile against the committed package manifest.');
+	emitProgress(options, node, 'lockfile', references.length > 0
+		? 'Resolved and validated the complete standalone dependency closure from finalized local package commits.'
+		: 'Validated the standalone lockfile against the committed package manifest.');
 	return true;
 }
