@@ -220,6 +220,7 @@ export type UpdateRepoResult = {
 	ahead?: number | null;
 	behind?: number | null;
 	status?: 'up-to-date' | 'merge-needed' | 'fast-forward' | 'blocked';
+	sourceAvailable?: boolean;
 };
 
 export type UpdateConflict = {

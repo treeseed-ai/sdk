@@ -1,4 +1,5 @@
 import { spawn,spawnSync } from 'node:child_process';
+import { relative } from 'node:path';
 import { packageScriptPath } from "../../../operations/services/agents/runtime-tools.ts";
 import { applyEnvironmentToProcess,assertCommandEnvironment,resolveLaunchEnvironment } from "../../../operations/services/configuration/config-runtime.ts";
 import { PRODUCTION_BRANCH,STAGING_BRANCH } from "../../../operations/services/operations/git-workflow.ts";
@@ -13,7 +14,7 @@ import { toError } from '../support/workflow-helpers.ts';
 import { failWorkflowRun } from '../recovery/fail-workflow-run.ts';
 import { WorkflowOperationHelpers,ensureWorkflowWorkspaceLinks } from '../recovery/workflow-write.ts';
 import { buildWorkflowResult,ensureLocalReadinessOrThrow,normalizeExecutionMode } from '../support/create-repo-report.ts';
-import { commitRootUpdateIfNeeded,ensureUpdateRepoReady,mergeUpdateRepo,planUpdateRepo } from '../support/update-ahead-behind.ts';
+import { commitRootUpdateIfNeeded,ensureUpdateRepoReady,mergeUpdateRepo,planUpdateRepo,sourceTopologyIncludesPath } from '../support/update-ahead-behind.ts';
 import { UpdateConflict,UpdateRepoResult,normalizeUpdateSource,normalizeUpdateStrategy } from './workflow-switch.ts';
 
 export async function workflowUpdate(helpers: WorkflowOperationHelpers, input: UpdateInput = {}) {
@@ -49,8 +50,12 @@ export async function workflowUpdate(helpers: WorkflowOperationHelpers, input: U
 				ensureUpdateRepoReady('update', repo, branch);
 			}
 
-			const repoPlans = session.managedRepos.map((repo) =>
-				planUpdateRepo(repo.name, repo.path, branch, sourceBranch, strategy));
+			const repoPlans = session.managedRepos.map((repo) => {
+				const relativePath = relative(session.gitRoot, repo.path).replaceAll('\\', '/');
+				return planUpdateRepo(repo.name, repo.path, branch, sourceBranch, strategy, {
+					allowMissingSource: !sourceTopologyIncludesPath(session.gitRoot, sourceBranch, relativePath),
+				});
+			});
 			const rootPlan = planUpdateRepo('@treeseed/market', session.gitRoot, branch, sourceBranch, strategy);
 			const blockers = [...repoPlans, rootPlan].flatMap((repo) => repo.blockers.map((blocker) => `${repo.name}: ${blocker}`));
 
@@ -98,9 +103,11 @@ export async function workflowUpdate(helpers: WorkflowOperationHelpers, input: U
 				}));
 				const repos: UpdateRepoResult[] = [];
 				for (const repo of session.managedRepos) {
+					const relativePath = relative(session.gitRoot, repo.path).replaceAll('\\', '/');
 					const result = await executeJournalStep(root, workflowRun.runId, `update-${repo.name}`, () =>
 						mergeUpdateRepo({
 							name: repo.name, 							repoDir: repo.path, 							branch, 							sourceBranch, 							strategy, 							push,
+							allowMissingSource: !sourceTopologyIncludesPath(session.gitRoot, sourceBranch, relativePath),
 						}));
 					if (result) repos.push(result);
 				}

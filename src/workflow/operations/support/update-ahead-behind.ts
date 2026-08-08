@@ -28,15 +28,27 @@ export function updatePlanChangedFiles(repoDir: string, sourceRef: string) {
 	return output ? output.split(/\r?\n/u).filter(Boolean).slice(0, 50) : [];
 }
 
-export function planUpdateRepo(name: string, repoDir: string, branch: string, sourceBranch: string, strategy: UpdateStrategy): UpdateRepoResult {
+export function sourceTopologyIncludesPath(rootRepoDir: string, sourceBranch: string, relativePath: string) {
+	if (!relativePath || relativePath.startsWith('../')) return true;
+	return runRepositoryGit(['ls-tree', '--error-unmatch', `origin/${sourceBranch}`, '--', relativePath], {
+		cwd: rootRepoDir,
+		mode: 'read',
+		allowFailure: true,
+	}).status === 0;
+}
+
+export function planUpdateRepo(name: string, repoDir: string, branch: string, sourceBranch: string, strategy: UpdateStrategy, options: { allowMissingSource?: boolean } = {}): UpdateRepoResult {
 	const sourceRef = `origin/${sourceBranch}`;
 	const blockers: string[] = [];
-	if (!sourceBranchExists(repoDir, sourceBranch)) {
+	if (!sourceBranchExists(repoDir, sourceBranch) && !options.allowMissingSource) {
 		blockers.push(`origin/${sourceBranch} does not exist`);
 	}
+	const sourceAvailable = sourceBranchExists(repoDir, sourceBranch);
 	const { ahead, behind } = blockers.length === 0 ? updateAheadBehind(repoDir, branch, sourceRef) : { ahead: null, behind: null };
 	const status: UpdateRepoResult['status'] = blockers.length > 0
 		? 'blocked'
+		: !sourceAvailable
+			? 'up-to-date'
 		: behind === 0
 			? 'up-to-date'
 			: strategy === 'ff-only' && ahead === 0
@@ -56,6 +68,7 @@ export function planUpdateRepo(name: string, repoDir: string, branch: string, so
 		ahead,
 		behind,
 		status,
+		sourceAvailable,
 	};
 }
 
@@ -106,11 +119,18 @@ export function mergeUpdateRepo(input: {
 	sourceBranch: string;
 	strategy: UpdateStrategy;
 	push: boolean;
+	allowMissingSource?: boolean;
 }) {
 	const sourceRef = `origin/${input.sourceBranch}`;
 	const beforeHead = updateHead(input.repoDir);
 	runRepositoryGit(['fetch', 'origin'], { cwd: input.repoDir, mode: 'mutate' });
 	if (!sourceBranchExists(input.repoDir, input.sourceBranch)) {
+		if (input.allowMissingSource) {
+			return {
+				name: input.name, path: input.repoDir, branch: input.branch, sourceRef, action: 'up-to-date' as const, beforeHead, afterHead: beforeHead, pushed: false,
+				changedFiles: [], blockers: [], sourceAvailable: false,
+			};
+		}
 		return {
 			name: input.name, 			path: input.repoDir, 			branch: input.branch, 			sourceRef, 			action: 'blocked' as const, 			beforeHead, 			afterHead: beforeHead, 			pushed: false,
 			changedFiles: [],

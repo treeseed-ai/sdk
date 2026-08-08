@@ -116,6 +116,31 @@ describe('workflow update', () => {
 		expect((result.payload as { rootRepo: { status: string } }).rootRepo.status).toBe('merge-needed');
 	});
 
+	it('does not block a task-only package absent from the source topology', async () => {
+		const { temp, work } = createRootRepo();
+		const origin = resolve(temp, 'ai.git');
+		const packageWork = resolve(temp, 'ai-work');
+		git(temp, ['init', '--bare', origin]);
+		mkdirSync(packageWork, { recursive: true });
+		git(packageWork, ['init', '-b', 'demo']);
+		git(packageWork, ['config', 'user.name', 'Treeseed Test']);
+		git(packageWork, ['config', 'user.email', 'treeseed@example.com']);
+		writeFileSync(resolve(packageWork, 'package.json'), JSON.stringify({ name: '@treeseed/ai', version: '1.0.0' }, null, 2), 'utf8');
+		commitFile(packageWork, 'treeseed.package.yaml', 'id: "@treeseed/ai"\nname: AI\nkind: node-typescript\nrepository: treeseed-ai/ai\n', 'initialize ai');
+		git(packageWork, ['remote', 'add', 'origin', origin]);
+		git(packageWork, ['push', '-u', 'origin', 'demo']);
+		git(origin, ['symbolic-ref', 'HEAD', 'refs/heads/demo']);
+		git(work, ['-c', 'protocol.file.allow=always', 'submodule', 'add', origin, 'packages/ai']);
+		git(work, ['add', '-A']);
+		git(work, ['commit', '-m', 'add task-only ai package']);
+		git(work, ['push', 'origin', 'demo']);
+
+		const result = await runUpdate(work, { from: 'staging', plan: true });
+		const ai = (result.payload as { repos: Array<{ name: string; blockers: string[]; sourceAvailable?: boolean }> }).repos.find((repo) => repo.name === '@treeseed/ai');
+
+		expect(ai).toMatchObject({ blockers: [], sourceAvailable: false });
+	});
+
 	it('refuses to run from staging', async () => {
 		const { work } = createRootRepo();
 		git(work, ['checkout', 'staging']);
