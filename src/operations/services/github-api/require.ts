@@ -18,6 +18,9 @@ export interface GitHubRepositoryMetadataInput {
 	homepageUrl?: string | null;
 	visibility?: 'private' | 'public' | 'internal';
 	topics?: string[];
+	hasIssues?: boolean;
+	hasProjects?: boolean;
+	hasWiki?: boolean;
 }
 
 export interface GitHubRepositorySummary {
@@ -30,6 +33,12 @@ export interface GitHubRepositorySummary {
 	httpsUrl: string;
 	defaultBranch: string;
 	visibility: 'private' | 'public' | 'internal';
+	description: string | null;
+	homepageUrl: string | null;
+	hasIssues: boolean;
+	hasProjects: boolean;
+	hasWiki: boolean;
+	archived: boolean;
 }
 
 export interface GitHubWorkflowRunSummary {
@@ -246,5 +255,11 @@ export function normalizeRepositorySummary(repository: Record<string, any>): Git
 		httpsUrl: String(repository.clone_url ?? ''),
 		defaultBranch: String(repository.default_branch ?? 'main'),
 		visibility: normalizeGitHubVisibility(repository.visibility, repository.private ? 'private' : 'public'),
+		description: typeof repository.description === 'string' ? repository.description : null,
+		homepageUrl: typeof repository.homepage === 'string' && repository.homepage ? repository.homepage : null,
+		hasIssues: repository.has_issues !== false,
+		hasProjects: repository.has_projects !== false,
+		hasWiki: repository.has_wiki !== false,
+		archived: repository.archived === true,
 	};
 }

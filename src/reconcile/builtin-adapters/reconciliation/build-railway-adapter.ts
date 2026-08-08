@@ -11,6 +11,7 @@ import { verifyRailwayUnit } from '../hosting/verify-railway-unit.ts';
 import { buildLocalTreeDxAdapter } from '../projects/knowledge/verify-local-tree-dx-project-content.ts';
 import { reconcileCustomDomainUnit,reconcileDnsRecordUnit,verifyCustomDomainUnit,verifyDnsRecordUnit } from '../support/verify-custom-domain-unit.ts';
 import { buildGitHubBindingAdapter,buildGitHubEnvironmentAdapter } from '../treedx/graph/build-graph-only-adapter.ts';
+import { buildGitHubRepositoryAdapter } from '../repositories/build-github-repository-adapter.ts';
 import { buildDockerImageBuildAdapter,buildGitHubWorkflowDispatchAdapter,buildPackageImageAdapter } from './build-git-hub-workflow-dispatch-adapter.ts';
 import { buildLocalContentMaterializationAdapter,buildLocalProcessAdapter } from './build-local-content-materialization-adapter.ts';
 import { buildLocalDockerComposeAdapter } from './build-local-docker-compose-adapter.ts';
@@ -172,6 +173,7 @@ export function createPackageReconcileAdapters() {
 
 export function createGitHubReconcileAdapters() {
 	return [
+		buildGitHubRepositoryAdapter(),
 		buildGitHubEnvironmentAdapter(),
 		buildGitHubBindingAdapter('github-secret-binding'),
 		buildGitHubBindingAdapter('github-variable-binding'),

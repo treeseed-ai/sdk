@@ -2,12 +2,16 @@ import { Buffer } from 'node:buffer';
 import { describe, expect, it, vi } from 'vitest';
 import {
 	createGitHubApiClient,
+	ensureGitHubRepository,
+	getGitHubRepositoryActionsEnabled,
 	ensureGitHubActionsEnvironment,
 	listGitHubEnvironmentSecretNames,
 	listGitHubEnvironmentVariableNames,
 	listGitHubEnvironmentVariables,
 	upsertGitHubEnvironmentSecret,
 	upsertGitHubEnvironmentVariable,
+	setGitHubRepositoryArchived,
+	setGitHubRepositoryActionsEnabled,
 } from '../../../../src/operations/services/repositories/github-api.ts';
 
 function createMockClient() {
@@ -18,6 +22,64 @@ function createMockClient() {
 }
 
 describe('github environment api helpers', () => {
+	it('creates or adopts repository metadata without initializing speculative content', async () => {
+		const repository = {
+			id: 42,
+			name: 'project-content',
+			owner: { login: 'owner' },
+			html_url: 'https://github.com/owner/project-content',
+			ssh_url: 'git@github.com:owner/project-content.git',
+			clone_url: 'https://github.com/owner/project-content.git',
+			default_branch: 'main',
+			visibility: 'public',
+			has_issues: true,
+			has_projects: false,
+			has_wiki: false,
+		};
+		const client = {
+			rest: {
+				repos: {
+					get: vi.fn().mockRejectedValue({ status: 404, message: 'Not Found' }),
+					createInOrg: vi.fn().mockResolvedValue({ data: repository }),
+					update: vi.fn().mockResolvedValue({ data: repository }),
+					replaceAllTopics: vi.fn().mockResolvedValue({ data: {} }),
+				},
+				users: { getAuthenticated: vi.fn().mockResolvedValue({ data: { login: 'someone-else' } }) },
+			},
+		} as any;
+
+		await expect(ensureGitHubRepository({
+			owner: 'owner', name: 'project-content', visibility: 'public', hasIssues: true, hasProjects: false, hasWiki: false,
+		}, { client })).resolves.toMatchObject({ slug: 'owner/project-content', visibility: 'public', hasIssues: true });
+
+		expect(client.rest.repos.createInOrg).toHaveBeenCalledWith(expect.objectContaining({
+			org: 'owner', name: 'project-content', visibility: 'public',
+		}));
+		expect(client.rest.repos.update).toHaveBeenCalledWith(expect.objectContaining({
+			owner: 'owner', repo: 'project-content', has_issues: true, has_projects: false, has_wiki: false,
+		}));
+	});
+
+	it('archives repositories explicitly instead of deleting them', async () => {
+		const client = { rest: { repos: { update: vi.fn().mockResolvedValue({ data: {
+			id: 42, name: 'project-content', owner: { login: 'owner' }, archived: true, visibility: 'private', default_branch: 'main',
+		} }) } } } as any;
+		await expect(setGitHubRepositoryArchived('owner/project-content', true, { client })).resolves.toMatchObject({ archived: true });
+		expect(client.rest.repos.update).toHaveBeenCalledWith({ owner: 'owner', repo: 'project-content', archived: true });
+	});
+
+	it('reads and updates repository-level GitHub Actions enablement', async () => {
+		const client = createMockClient();
+		client.request.mockResolvedValueOnce({ data: { enabled: false } }).mockResolvedValueOnce({ data: {} });
+		await expect(getGitHubRepositoryActionsEnabled('owner/project-content', { client })).resolves.toBe(false);
+		await expect(setGitHubRepositoryActionsEnabled('owner/project-content', true, { client })).resolves.toBe(true);
+		expect(client.request).toHaveBeenNthCalledWith(1, 'GET /repos/{owner}/{repo}/actions/permissions', {
+			owner: 'owner', repo: 'project-content',
+		});
+		expect(client.request).toHaveBeenNthCalledWith(2, 'PUT /repos/{owner}/{repo}/actions/permissions', {
+			owner: 'owner', repo: 'project-content', enabled: true,
+		});
+	});
 	it('uses a fresh timeout signal for each GitHub request', async () => {
 		const fetchMock = vi.fn(async () => new Response(JSON.stringify({ resources: {}, rate: {} }), {
 			status: 200,

@@ -1,19 +1,59 @@
 import {
-createGitHubApiClient,
-dispatchGitHubWorkflowRun,
-ensureGitHubActionsEnvironment,
-formatGitHubWorkflowFailure,
-getLatestGitHubWorkflowRun,
-listGitHubEnvironmentSecretNames,
-listGitHubEnvironmentVariableNames,
-listGitHubEnvironmentVariables,
-upsertGitHubEnvironmentSecret,
-upsertGitHubEnvironmentVariable,
-waitForGitHubWorkflowRunCompletion,
+	createGitHubApiClient,
+	dispatchGitHubWorkflowRun,
+	ensureGitHubActionsEnvironment,
+	formatGitHubWorkflowFailure,
+	getGitHubRepositoryActionsEnabled,
+	getLatestGitHubWorkflowRun,
+	listGitHubEnvironmentSecretNames,
+	listGitHubEnvironmentVariableNames,
+	listGitHubEnvironmentVariables,
+	upsertGitHubEnvironmentSecret,
+	upsertGitHubEnvironmentVariable,
+	waitForGitHubWorkflowRunCompletion,
+	ensureGitHubRepository,
+	maybeGetGitHubRepository,
+	setGitHubRepositoryArchived,
+	setGitHubRepositoryActionsEnabled,
 } from '../../operations/services/repositories/github-api.ts';
 
 export function createReconcileGitHubClient(env: NodeJS.ProcessEnv | Record<string, string | undefined>) {
 	return createGitHubApiClient({ env });
+}
+
+export async function setReconcileGitHubRepositoryArchived(repository: string, archived: boolean, env: NodeJS.ProcessEnv | Record<string, string | undefined>) {
+	return setGitHubRepositoryArchived(repository, archived, { client: createReconcileGitHubClient(env) });
+}
+
+export async function observeReconcileGitHubRepository(repository: string, env: NodeJS.ProcessEnv | Record<string, string | undefined>) {
+	const client = createReconcileGitHubClient(env);
+	try {
+		const observed = await maybeGetGitHubRepository(repository, { client });
+		if (!observed) return null;
+		const actionsEnabled = await getGitHubRepositoryActionsEnabled(repository, { client });
+		return { ...observed, actionsEnabled };
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		if (isGitHubAuthError(message)) return { authAvailable: false as const, error: message };
+		throw error;
+	}
+}
+
+export async function ensureReconcileGitHubRepository(input: {
+	owner: string;
+	name: string;
+	description?: string | null;
+	homepageUrl?: string | null;
+	visibility: 'public' | 'private';
+	hasIssues: boolean;
+	hasProjects?: boolean;
+	hasWiki?: boolean;
+	actionsEnabled: boolean;
+}, env: NodeJS.ProcessEnv | Record<string, string | undefined>) {
+	const client = createReconcileGitHubClient(env);
+	const repository = await ensureGitHubRepository(input, { client });
+	await setGitHubRepositoryActionsEnabled({ owner: input.owner, name: input.name }, input.actionsEnabled, { client });
+	return { ...repository, actionsEnabled: input.actionsEnabled };
 }
 
 function isGitHubAuthError(message: string) {

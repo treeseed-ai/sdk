@@ -14,6 +14,7 @@ type SeedProjectArchitecture,
 type SeedProjectContentPublishTarget,
 type SeedProjectRepository,
 type SeedProjectTopology,
+type SeedRepositoryPolicy,
 type SeedResourceBase,
 type SeedTeamResource
 } from '../types.js';
@@ -209,9 +210,41 @@ export function parseRepository(value: unknown, path: string, diagnostics: SeedD
 		checkoutPath: asString(value.checkoutPath) || undefined,
 		submodulePath: asString(value.submodulePath) || undefined,
 		webUrl: asString(value.webUrl) || undefined,
+		repositoryPolicy: parseRepositoryPolicy(value.repositoryPolicy, `${path}.repositoryPolicy`, diagnostics),
 	};
 	validateRepository(repository, path, diagnostics);
 	return repository;
+}
+
+export function parseRepositoryPolicy(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedRepositoryPolicy | undefined {
+	if (value === undefined) return undefined;
+	if (!isRecord(value)) {
+		diagnostics.push(errorDiagnostic('seed.invalid_repository_policy', 'Expected repositoryPolicy to be an object.', path));
+		return undefined;
+	}
+	const visibility = asString(value.visibility);
+	const lifecycle = asString(value.lifecycle);
+	const deletionPolicy = asString(value.deletionPolicy);
+	const defaultBranch = asString(value.defaultBranch);
+	const stagingBranch = asString(value.stagingBranch);
+	if (!['public', 'private'].includes(visibility)) diagnostics.push(errorDiagnostic('seed.invalid_repository_policy', 'visibility must be public or private.', `${path}.visibility`));
+	if (!['create-or-adopt', 'adopt-only'].includes(lifecycle)) diagnostics.push(errorDiagnostic('seed.invalid_repository_policy', 'lifecycle must be create-or-adopt or adopt-only.', `${path}.lifecycle`));
+	if (!['retain', 'archive'].includes(deletionPolicy)) diagnostics.push(errorDiagnostic('seed.invalid_repository_policy', 'deletionPolicy must be retain or archive.', `${path}.deletionPolicy`));
+	if (defaultBranch !== 'main') diagnostics.push(errorDiagnostic('seed.invalid_repository_policy', 'defaultBranch must be main.', `${path}.defaultBranch`));
+	if (stagingBranch !== 'staging') diagnostics.push(errorDiagnostic('seed.invalid_repository_policy', 'stagingBranch must be staging.', `${path}.stagingBranch`));
+	const issues = booleanField(value, 'issues', path, diagnostics);
+	const actions = booleanField(value, 'actions', path, diagnostics);
+	if (issues === undefined) diagnostics.push(errorDiagnostic('seed.missing_field', 'Missing required field: issues.', `${path}.issues`));
+	if (actions === undefined) diagnostics.push(errorDiagnostic('seed.missing_field', 'Missing required field: actions.', `${path}.actions`));
+	return {
+		visibility: visibility === 'public' ? 'public' : 'private',
+		lifecycle: lifecycle === 'adopt-only' ? 'adopt-only' : 'create-or-adopt',
+		deletionPolicy: deletionPolicy === 'archive' ? 'archive' : 'retain',
+		defaultBranch: 'main',
+		stagingBranch: 'staging',
+		issues: issues ?? false,
+		actions: actions ?? false,
+	};
 }
 
 export function parseProjectContentPublishTarget(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedProjectContentPublishTarget | undefined {

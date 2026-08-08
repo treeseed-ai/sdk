@@ -40,6 +40,7 @@ export type ReconcileUnitType =
 	| 'package-workflow'
 	| 'package-image'
 	| 'github-environment'
+	| 'github-repository'
 	| 'github-secret-binding'
 	| 'github-variable-binding'
 	| 'github-workflow-dispatch'

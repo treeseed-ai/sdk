@@ -14,7 +14,7 @@ type SeedProductResource,
 type SeedProjectRepository,
 type SeedProjectResource
 } from '../types.js';
-import { ALLOWED_RECIPE_CHANNELS,ALLOWED_RECIPE_OPERATIONS,asString,isRecord,keyBase,objectField,parseEnvironments,parseProjectArchitecture,parseRepository,recordArrayField,requireString,stringArrayField } from './resource-buckets.ts';
+import { ALLOWED_RECIPE_CHANNELS,ALLOWED_RECIPE_OPERATIONS,asString,isRecord,keyBase,objectField,parseEnvironments,parseProjectArchitecture,parseRepository,parseRepositoryPolicy,recordArrayField,requireString,stringArrayField } from './resource-buckets.ts';
 
 const CREDENTIAL_REF_PATTERN = /^(?:env|secret|provider-session):[A-Za-z0-9_./:-]+$/u;
 
@@ -71,6 +71,7 @@ export function parseHubRepository(value: unknown, path: string, diagnostics: Se
 		releasePolicy: objectField(value, 'releasePolicy', path, diagnostics),
 		publishPolicy: objectField(value, 'publishPolicy', path, diagnostics),
 		metadata: objectField(value, 'metadata', path, diagnostics),
+		repositoryPolicy: parseRepositoryPolicy(value.repositoryPolicy, `${path}.repositoryPolicy`, diagnostics),
 	};
 	validateRepository({
 		role: repository.role,
@@ -80,6 +81,7 @@ export function parseHubRepository(value: unknown, path: string, diagnostics: Se
 		gitUrl: repository.gitUrl,
 		defaultBranch: repository.defaultBranch,
 		submodulePath: repository.submodulePath,
+		repositoryPolicy: repository.repositoryPolicy,
 	}, path, diagnostics);
 	return repository;
 }

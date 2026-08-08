@@ -43,6 +43,16 @@ export type SeedProjectContentPublishTarget = {
 	metadata?: Record<string, unknown>;
 };
 
+export type SeedRepositoryPolicy = {
+	visibility: 'public' | 'private';
+	lifecycle: 'create-or-adopt' | 'adopt-only';
+	deletionPolicy: 'retain' | 'archive';
+	defaultBranch: 'main';
+	stagingBranch: 'staging';
+	issues: boolean;
+	actions: boolean;
+};
+
 export type SeedProjectArchitecture = {
 	topology: SeedProjectTopology;
 	rootPath: string;
@@ -124,6 +134,7 @@ export type SeedProjectRepository = {
 	checkoutPath?: string;
 	submodulePath?: string;
 	webUrl?: string;
+	repositoryPolicy?: SeedRepositoryPolicy;
 };
 
 export type SeedProjectResource = SeedResourceBase & {
@@ -152,6 +163,7 @@ export type SeedHubRepositoryResource = SeedResourceBase & {
 	releasePolicy?: Record<string, unknown>;
 	publishPolicy?: Record<string, unknown>;
 	metadata?: Record<string, unknown>;
+	repositoryPolicy?: SeedRepositoryPolicy;
 };
 
 export type SeedProductResource = SeedResourceBase & {

@@ -5,10 +5,12 @@ import { createSeedPlan } from './planner.js';
 import { parseSeedManifest } from './schema.js';
 import type { SeedPlan } from './types.js';
 import { parseDocument } from 'yaml';
+import { compileSeedRepositoryUnits } from './reconciliation/repository-units.js';
 
 export { formatSeedDiagnostics,hasSeedErrors } from './errors.js';
 export { formatSeedPlan } from './planner.js';
 export { reconcileLocalSeedRuntime } from './runtime/local-capacity.js';
+export { compileSeedRepositoryUnits };
 export type { LocalSeedRuntimeResult } from './runtime/local-capacity.js';
 export type * from './types.js';
 
@@ -61,6 +63,28 @@ export function loadAndPlanSeed(input: {
 			mode: input.mode,
 			diagnostics,
 		}),
+		diagnostics,
+		manifestPath: loaded.path,
+	};
+}
+
+export function loadAndCompileSeedRepositoryUnits(input: {
+	projectRoot: string;
+	seedName: string;
+	environment: import('./types.js').SeedEnvironment;
+}) {
+	const loaded = loadSeedManifest(input.projectRoot, input.seedName);
+	const diagnostics = [...loaded.diagnostics];
+	const manifest = parseSeedManifest(loaded.value, diagnostics);
+	if (!manifest || hasSeedErrors(diagnostics)) return { ok: false, manifest: null, units: [], diagnostics, manifestPath: loaded.path };
+	if (!manifest.environments.includes(input.environment)) {
+		diagnostics.push(errorDiagnostic('seed.environment_selection', `Seed ${manifest.name} does not declare environment: ${input.environment}.`, 'environments'));
+		return { ok: false, manifest: null, units: [], diagnostics, manifestPath: loaded.path };
+	}
+	return {
+		ok: true,
+		manifest,
+		units: compileSeedRepositoryUnits(manifest, input.environment),
 		diagnostics,
 		manifestPath: loaded.path,
 	};

@@ -1,0 +1,25 @@
+schemaVersion: treeseed.guarantee/v1
+id: guarantee.project.repository-migration.separate-software-and-content-repositories.753
+journeyIndex: 753
+type: project
+subtype: repository-migration
+journey: "Separate software and content repositories"
+ownerPackage: "@treeseed/sdk"
+surface: cli
+summary: "Guarantee that every seeded project can reconcile a retained content repository and migrate exact content history without coupling software builds to a content checkout."
+status: planned
+dependencies: { journeys: [], guarantees: [] }
+actors: { allowed: [team_owner, platform_admin], forbidden: [unauthorized_user] }
+devices: { required: [] }
+gates: [future]
+preconditions: { fixtures: [integrated_treeseed_project], notes: [] }
+api: { required: false, verifierRefs: [] }
+content: { required: false, verifierRefs: [] }
+audit: { required: false, verifierRefs: [] }
+negativeCases:
+  - "A conflicting nonempty target repository is rejected."
+  - "An interrupted migration cannot remove the software content path before remote, TreeDX, and R2 verification."
+  - "Production GitHub mutation cannot run from a local command."
+evidence: { required: [guarantee_report] }
+notes:
+  - "Planned until the bare-repository migration recovery suite, isolated GitHub lifecycle acceptance, TreeDX receipt verifier, and R2 publication verifier are executable."

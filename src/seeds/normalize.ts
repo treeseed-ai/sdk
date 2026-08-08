@@ -96,6 +96,7 @@ export function normalizeSeedResources(manifest: SeedManifest, selected: SeedEnv
 				accessPolicy: repository.accessPolicy ?? null,
 				releasePolicy: repository.releasePolicy ?? null,
 				publishPolicy: repository.publishPolicy ?? null,
+				repositoryPolicy: repository.repositoryPolicy ?? null,
 				metadata: withMetadata(manifest, repository.key, repository.metadata),
 			},
 		});

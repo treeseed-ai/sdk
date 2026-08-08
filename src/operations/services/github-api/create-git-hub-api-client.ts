@@ -1,5 +1,5 @@
 import { Octokit } from 'octokit';
-import { DEFAULT_GITHUB_API_TIMEOUT_MS,GitHubApiClient,GitHubRepositoryMetadataInput,createGitHubTimeoutFetch,normalizeGitHubApiError,normalizeRepositorySummary,parseGitHubRepositorySlug,resolveGitHubApiToken,withGitHubApiRetries } from './require.ts';
+import { DEFAULT_GITHUB_API_TIMEOUT_MS, GitHubApiClient, GitHubRepositoryMetadataInput, createGitHubTimeoutFetch, normalizeGitHubApiError, normalizeRepositorySummary, parseGitHubRepositorySlug, resolveGitHubApiToken, withGitHubApiRetries } from './require.ts';
 
 export function createGitHubApiClient({
 	env = process.env,
@@ -87,6 +87,9 @@ export async function ensureGitHubRepository(
 			homepage: input.homepageUrl ?? undefined,
 			private: (input.visibility ?? repository.visibility ?? 'private') === 'private',
 			visibility: input.visibility ?? repository.visibility,
+			has_issues: input.hasIssues,
+			has_projects: input.hasProjects,
+			has_wiki: input.hasWiki,
 		});
 		repository = normalizeRepositorySummary(updated.data as Record<string, any>);
 		if (Array.isArray(input.topics)) {
@@ -99,6 +102,54 @@ export async function ensureGitHubRepository(
 		return repository;
 	} catch (error) {
 		throw normalizeGitHubApiError(error, `Unable to update GitHub repository ${input.owner}/${input.name}`);
+	}
+}
+
+export async function setGitHubRepositoryArchived(
+	repository: string | { owner: string; name: string },
+	archived: boolean,
+	{ client = createGitHubApiClient() }: { client?: GitHubApiClient } = {},
+) {
+	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
+	try {
+		const updated = await client.rest.repos.update({ owner, repo: name, archived });
+		return normalizeRepositorySummary(updated.data as Record<string, any>);
+	} catch (error) {
+		throw normalizeGitHubApiError(error, `Unable to ${archived ? 'archive' : 'unarchive'} GitHub repository ${owner}/${name}`);
+	}
+}
+
+export async function getGitHubRepositoryActionsEnabled(
+	repository: string | { owner: string; name: string },
+	{ client = createGitHubApiClient() }: { client?: GitHubApiClient } = {},
+) {
+	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
+	try {
+		const response = await client.request('GET /repos/{owner}/{repo}/actions/permissions', {
+			owner,
+			repo: name,
+		});
+		return (response.data as { enabled?: unknown }).enabled === true;
+	} catch (error) {
+		throw normalizeGitHubApiError(error, `Unable to read GitHub Actions permissions for ${owner}/${name}`);
+	}
+}
+
+export async function setGitHubRepositoryActionsEnabled(
+	repository: string | { owner: string; name: string },
+	enabled: boolean,
+	{ client = createGitHubApiClient() }: { client?: GitHubApiClient } = {},
+) {
+	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
+	try {
+		await client.request('PUT /repos/{owner}/{repo}/actions/permissions', {
+			owner,
+			repo: name,
+			enabled,
+		});
+		return enabled;
+	} catch (error) {
+		throw normalizeGitHubApiError(error, `Unable to update GitHub Actions permissions for ${owner}/${name}`);
 	}
 }
 
