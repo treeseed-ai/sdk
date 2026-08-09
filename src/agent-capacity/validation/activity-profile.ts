@@ -9,7 +9,7 @@ const TOOL_KEYS = new Set(['allowed', 'denied']);
 const SIGNAL_KEYS = new Set(['subscribesTo', 'publishes']);
 const SUBSCRIPTION_KEYS = new Set(['contract', 'groupScope', 'filters', 'cardinality', 'producerPolicy', 'quorum']);
 const OUTPUT_KEYS = new Set(['messageTypes', 'modelMutations']);
-const EXECUTION_KEYS = new Set(['providerPreference', 'requiredCapabilities', 'maxRuntimeSeconds', 'maxRetries', 'verificationRequired', 'maxTotalTokens', 'warningTokens', 'maxCostAmount', 'costCurrency', 'nativeLimits', 'pricingGeneration', 'enforcementConfidence', 'allowedPaths', 'forbiddenPaths']);
+const EXECUTION_KEYS = new Set(['requiredCapabilities', 'maxRuntimeSeconds', 'maxRetries', 'verificationRequired', 'maxTotalTokens', 'warningTokens', 'maxCostAmount', 'costCurrency', 'nativeLimits', 'pricingGeneration', 'enforcementConfidence', 'allowedPaths', 'forbiddenPaths']);
 const CONTENT_ACCESS_KEYS = new Set(['read', 'write', 'commit']);
 const CONTENT_SCOPE_KEYS = new Set(['models', 'actions', 'books', 'paths', 'relations']);
 const QUESTION_KEYS = new Set(['defaultAnswerPolicy', 'blockExecutionWhenCreated']);
@@ -166,7 +166,7 @@ function validateExecution(value: unknown, path: string, add: Add) {
 	if (value === undefined) return;
 	if (!record(value)) { add('agent_activity_execution_invalid', path, 'execution must be an object.'); return; }
 	unknownKeys(value, EXECUTION_KEYS, path, add);
-	for (const key of ['providerPreference', 'requiredCapabilities', 'allowedPaths', 'forbiddenPaths']) if (value[key] !== undefined && !strings(value[key])) add('agent_activity_string_list_invalid', `${path}.${key}`, `${path}.${key} must contain unique non-empty strings.`);
+	for (const key of ['requiredCapabilities', 'allowedPaths', 'forbiddenPaths']) if (value[key] !== undefined && !strings(value[key])) add('agent_activity_string_list_invalid', `${path}.${key}`, `${path}.${key} must contain unique non-empty strings.`);
 	if (value.maxRuntimeSeconds !== undefined && (!Number.isInteger(value.maxRuntimeSeconds) || Number(value.maxRuntimeSeconds) < 1)) add('agent_activity_runtime_invalid', `${path}.maxRuntimeSeconds`, 'maxRuntimeSeconds must be a positive integer.');
 	if (value.maxRetries !== undefined && (!Number.isInteger(value.maxRetries) || Number(value.maxRetries) < 0)) add('agent_activity_retries_invalid', `${path}.maxRetries`, 'maxRetries must be a non-negative integer.');
 	if (value.verificationRequired !== undefined && typeof value.verificationRequired !== 'boolean') add('agent_activity_verification_invalid', `${path}.verificationRequired`, 'verificationRequired must be boolean.');

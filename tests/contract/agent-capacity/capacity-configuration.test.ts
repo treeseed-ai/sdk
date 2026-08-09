@@ -30,12 +30,13 @@ describe('capacity configuration inventory', () => {
 		}
 	});
 
-	it('fails closed on unknown activity fields and mismatched keyed activity types', () => {
+	it('fails closed on unknown activity fields, provider pins, and mismatched keyed activity types', () => {
 		const result = validateAgentActivityProfilesConfiguration({
 			planning: {
 				activityType: 'acting', enabled: true, handler: 'writer', unexpected: true,
 				prompt: { system: 'Plan.' }, branchPolicy: { kind: 'read-only', base: 'main' },
 				tools: { allowed: [] }, outputs: { messageTypes: [], modelMutations: [] },
+				execution: { providerPreference: ['codex'] },
 			},
 		});
 		expect(result.ok).toBe(false);
