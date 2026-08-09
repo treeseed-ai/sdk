@@ -406,7 +406,7 @@ it('rebases each save node against one explicit origin branch ref', () => {
 		const source = readSourceModule(resolve(testDir, '../../../../src/operations/services/repositories/repository-save-orchestrator.ts'));
 
 		expect(source).toContain("['fetch', 'origin'");
-		expect(source).toContain('refs/heads/${branch}:refs/remotes/origin/${branch}');
+		expect(source).toContain('+refs/heads/${branch}:refs/remotes/origin/${branch}');
 		expect(source).toContain('refs/remotes/origin/${branch}');
 		expect(source).not.toContain("['pull', '--rebase', '--recurse-submodules=no', 'origin', branch]");
 	});

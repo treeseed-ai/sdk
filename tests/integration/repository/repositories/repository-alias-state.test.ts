@@ -81,6 +81,29 @@ describe('repository alias state', () => {
 		expect(git(resolve(root, paths[1]!), ['show', 'HEAD:README.md'])).toBe('updated only in the canonical checkout');
 	});
 
+	it('replaces a divergent cached tracking ref before synchronizing an alias', () => {
+		const { root,paths } = fixtureRoot();
+		const canonical = resolve(root, paths[0]!);
+		const alias = resolve(root, paths[1]!);
+		writeFileSync(resolve(canonical, 'README.md'), 'remote staging update\n');
+		git(canonical, ['add', '-A']);
+		git(canonical, ['commit', '-m', 'remote update']);
+		const nodes = discoverRepositorySaveNodes(root, root, 'staging');
+		const shared = nodes.find((node) => node.checkoutAliases.length === 2);
+		git(canonical, ['push', 'origin', 'staging']);
+
+		const initial = git(alias, ['rev-parse', 'HEAD']);
+		writeFileSync(resolve(alias, 'README.md'), 'stale local tracking update\n');
+		git(alias, ['add', '-A']);
+		git(alias, ['commit', '-m', 'stale tracking update']);
+		const stale = git(alias, ['rev-parse', 'HEAD']);
+		git(alias, ['reset', '--hard', initial]);
+		git(alias, ['update-ref', 'refs/remotes/origin/staging', stale]);
+
+		expect(synchronizeRepositoryAliases(root, shared!, 'staging')).toEqual([paths[1]]);
+		expect(git(alias, ['rev-parse', 'HEAD'])).toBe(git(canonical, ['rev-parse', 'HEAD']));
+	});
+
 	it('rejects aliases whose materialized content differs', () => {
 		const { root,paths } = fixtureRoot();
 		writeFileSync(resolve(root, paths[0]!, 'README.md'), 'first\n');
