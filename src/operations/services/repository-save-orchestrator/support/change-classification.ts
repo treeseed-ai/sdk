@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { PackageAdapter } from '../../package-adapters/package-kind.ts';
+import { runGitOk } from '../../operations/git-runner.ts';
 import type { RepositoryChangeKind } from './repo-kind.ts';
 import { runGit } from './repo-kind.ts';
 
@@ -13,7 +14,10 @@ function nullSeparated(value: string) {
 }
 
 export function repositoryChangedPaths(repoDir: string) {
-	const tracked = nullSeparated(runGit(['diff', '--name-only', '-z', 'HEAD', '--'], {
+	const hasHead = runGitOk(['rev-parse', '--verify', 'HEAD'], { cwd: repoDir, mode: 'read' });
+	const tracked = nullSeparated(runGit(hasHead
+		? ['diff', '--name-only', '-z', 'HEAD', '--']
+		: ['diff', '--name-only', '-z', '--cached', '--'], {
 		cwd: repoDir,
 		capture: true,
 	}));

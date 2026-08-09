@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { apiRailwayDefaultDockerfilePath,apiRailwayDefaultSourceRepo,assertApiRailwaySourcePolicy,isApiRailwaySourcePolicyService,railwayTreeDxServiceName } from '../hosting/railway/railway-source-policy.ts';
 import { classifyGitMode,runGitText } from '../operations/git-runner.ts';
+import { publicTreeDxRuntimeEnvironment } from '../../../platform/treedx/runtime-environment.ts';
 import { PUBLIC_TREEDX_NODE_SERVICE_KEY_PREFIX,envValue,resolveRailwayEnvironmentForScope } from './normalize-scope.ts';
 
 export function configuredPublicTreeDxRailwayServices({ tenantRoot, scope, deployConfig, identity, hostingKind, application, imageRefEnv, workspaceRoot, identityOnly = false }) {
@@ -56,6 +57,7 @@ export function configuredPublicTreeDxRailwayServices({ tenantRoot, scope, deplo
 			: identity.deploymentKey;
 	const railwayEnvironment = resolveRailwayEnvironmentForScope(scope, railway.environmentName);
 	const baseImageRef = envValue('TREESEED_PUBLIC_TREEDX_IMAGE_REF', imageRefEnv) || 'treeseed/treedx';
+	const runtimeEnvironment = publicTreeDxRuntimeEnvironment(railway, railway.volumeMountPath ?? '/data');
 	return Array.from({ length: bootstrapCount }, (_, offset) => {
 		const index = offset + 1;
 		const baseServiceName = `${PUBLIC_TREEDX_NODE_SERVICE_KEY_PREFIX}${String(index).padStart(2, '0')}`;
@@ -115,41 +117,9 @@ export function configuredPublicTreeDxRailwayServices({ tenantRoot, scope, deplo
 			hostingKind,
 			runnerPool: null,
 			application,
-			environmentVariables: {
-					PORT: '4000',
-					TREEDX_DATA_DIR: railway.volumeMountPath ?? '/data',
-					TREEDX_AUTH_MODE: 'connected',
-					TREEDX_AUTH_VERIFIER: 'hs256_dev',
-					TREEDX_ALLOW_DEV_VERIFIER_IN_PROD: 'true',
-					TREEDX_EXEC_BACKEND: 'container_sandbox',
-					TREEDX_FEDERATION_MODE: 'connected_library',
-					TREEDX_JWT_AUDIENCE: 'treedx-public-federation',
-					TREEDX_JWT_ISSUER: 'https://api.treeseed.local/treedx',
-					TREEDX_BOOTSTRAP_TRUST_ACTOR_ID: 'treeseed-api',
-					TREEDX_BOOTSTRAP_TRUST_TENANT_ID: 'treeseed-control-plane',
-					TREEDX_BOOTSTRAP_TRUST_REPO_IDS: '*',
-					TREEDX_BOOTSTRAP_TRUST_REFS: '*',
-					TREEDX_BOOTSTRAP_TRUST_PATHS: '**',
-					TREEDX_SCOPE: 'public_federation',
-				},
+				environmentVariables: runtimeEnvironment,
 				secretRefs: ['TREEDX_SECRET_KEY_BASE', 'TREEDX_ADMIN_TOKEN', 'TREEDX_JWT_HS256_SECRET'],
-				variableRefs: [
-					'PORT',
-					'TREEDX_DATA_DIR',
-					'TREEDX_AUTH_MODE',
-					'TREEDX_AUTH_VERIFIER',
-					'TREEDX_ALLOW_DEV_VERIFIER_IN_PROD',
-					'TREEDX_EXEC_BACKEND',
-					'TREEDX_FEDERATION_MODE',
-					'TREEDX_JWT_AUDIENCE',
-					'TREEDX_JWT_ISSUER',
-					'TREEDX_BOOTSTRAP_TRUST_ACTOR_ID',
-					'TREEDX_BOOTSTRAP_TRUST_TENANT_ID',
-					'TREEDX_BOOTSTRAP_TRUST_REPO_IDS',
-					'TREEDX_BOOTSTRAP_TRUST_REFS',
-					'TREEDX_BOOTSTRAP_TRUST_PATHS',
-					'TREEDX_SCOPE',
-				],
+				variableRefs: Object.keys(runtimeEnvironment),
 			};
 		});
 	}

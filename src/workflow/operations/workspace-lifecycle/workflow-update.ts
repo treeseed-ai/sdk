@@ -1,10 +1,12 @@
 import { spawn,spawnSync } from 'node:child_process';
+import { relative } from 'node:path';
 import { packageScriptPath } from "../../../operations/services/agents/runtime-tools.ts";
 import { applyEnvironmentToProcess,assertCommandEnvironment,resolveLaunchEnvironment } from "../../../operations/services/configuration/config-runtime.ts";
 import { PRODUCTION_BRANCH,STAGING_BRANCH } from "../../../operations/services/operations/git-workflow.ts";
 import { workspaceRoot } from "../../../operations/services/treedx/workspaces/workspace-tools.ts";
 import type { UpdateInput,WorkflowDevInput } from "../../../operations/workflow.ts";
 import { resolveWorkflowSession } from "../../session.ts";
+import { readWorkflowRunJournal } from "../../runs.ts";
 import { resolveProjectRootOrThrow,withContextEnv,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
 import { worktreePayload } from '../packages/normalize-release-candidate-mode.ts';
 import { acquireWorkflowRun,completeWorkflowRun,executeJournalStep } from '../packages/prepare-fresh-release-run.ts';
@@ -14,7 +16,7 @@ import { failWorkflowRun } from '../recovery/fail-workflow-run.ts';
 import { WorkflowOperationHelpers,ensureWorkflowWorkspaceLinks } from '../recovery/workflow-write.ts';
 import { buildWorkflowResult,ensureLocalReadinessOrThrow,normalizeExecutionMode } from '../support/create-repo-report.ts';
 import { commitRootUpdateIfNeeded,ensureUpdateRepoReady,mergeUpdateRepo,planUpdateRepo } from '../support/update-ahead-behind.ts';
-import { UpdateConflict,UpdateRepoResult,normalizeUpdateSource,normalizeUpdateStrategy } from './workflow-switch.ts';
+import { UpdateConflict,UpdateRepoResult,normalizeUpdateSource,normalizeUpdateStrategy,updateChangedFiles } from './workflow-switch.ts';
 
 export async function workflowUpdate(helpers: WorkflowOperationHelpers, input: UpdateInput = {}) {
 	try {
@@ -44,9 +46,26 @@ export async function workflowUpdate(helpers: WorkflowOperationHelpers, input: U
 					details: { branch, sourceBranch },
 				});
 			}
-			ensureUpdateRepoReady('update', session.rootRepo);
+			const resumeRunId = helpers.context.workflow?.resumeRunId;
+			const resumeJournal = resumeRunId ? readWorkflowRunJournal(root, resumeRunId) : null;
+			const completedSteps = new Set(resumeJournal?.steps
+				.filter((step) => step.status === 'completed')
+				.map((step) => step.id) ?? []);
+			const hasOnlyNestedManagedPointerChanges = (repoPath: string) => {
+				const nestedPaths = new Set(session.managedRepos
+					.filter((repo) => repo.path !== repoPath)
+					.map((repo) => relative(repoPath, repo.path).replaceAll('\\', '/'))
+					.filter((path) => path && !path.startsWith('../')));
+				return updateChangedFiles(repoPath).every((path) => nestedPaths.has(path));
+			};
+			const rootHasOnlyManagedPointerChanges = Boolean(resumeJournal)
+				&& hasOnlyNestedManagedPointerChanges(session.gitRoot);
+			ensureUpdateRepoReady('update', rootHasOnlyManagedPointerChanges
+				? { ...session.rootRepo, dirty: false }
+				: session.rootRepo);
 			for (const repo of session.managedRepos) {
-				ensureUpdateRepoReady('update', repo, branch);
+				const completed = completedSteps.has(`update-${repo.name}`);
+				ensureUpdateRepoReady('update', completed ? { ...repo, dirty: false } : repo, branch);
 			}
 
 			const repoPlans = session.managedRepos.map((repo) =>

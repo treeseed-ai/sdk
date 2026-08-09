@@ -140,10 +140,14 @@ describe('local Docker Compose exact-state helpers', () => {
 	it('derives stable validated provider-manifest digests that force compose specification drift', () => {
 		const manifest = {
 			schemaVersion: 2 as const,
+			providerClass: 'agent' as const,
+			ownership: { type: 'external' as const },
+			configuration: { generation: 'test-generation-1' },
 			identity: {
 				privateKeyRef: 'secret://capacity/provider-identity',
 				displayName: 'Test provider',
 			},
+			supplyCeilings: { maxConcurrentAssignments: 2 },
 			executionProviders: [{
 				id: 'codex-primary',
 				adapter: 'codex',
@@ -162,10 +166,14 @@ describe('local Docker Compose exact-state helpers', () => {
 		};
 		const initial = validateAndDigestCapacityProviderManifest(manifest).digest;
 		const reordered = validateAndDigestCapacityProviderManifest({
+			configuration: manifest.configuration,
 			connections: manifest.connections,
 			executionProviders: manifest.executionProviders,
 			identity: manifest.identity,
+			ownership: manifest.ownership,
+			providerClass: manifest.providerClass,
 			schemaVersion: manifest.schemaVersion,
+			supplyCeilings: manifest.supplyCeilings,
 		}).digest;
 		const changed = validateAndDigestCapacityProviderManifest({
 			...manifest,

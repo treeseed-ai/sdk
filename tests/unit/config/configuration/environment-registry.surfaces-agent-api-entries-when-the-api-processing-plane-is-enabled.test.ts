@@ -43,13 +43,28 @@ it('surfaces agent API entries when the API processing plane is enabled', async 
 		}
 	});
 
-	it('surfaces Agent-owned authentication entries when an API package application is discovered', async () => {
+	it('surfaces package-owned authentication entries when an API package application is discovered', async () => {
 		const tenantRoot = await createTenantFixture(agentProcessingRegistryFixtureYaml);
 		tempRoots.add(tenantRoot);
 		await writeFile(join(tenantRoot, 'package.json'), '{"name":"test-site","private":true,"workspaces":["packages/*"]}\n');
 		await writeFile(join(tenantRoot, 'treeseed.site.yaml'), 'name: Test Site\nslug: test-site\nsiteUrl: https://example.com\ncontactEmail: hello@example.com\n');
 		await mkdir(join(tenantRoot, 'packages/api'), { recursive: true });
 		await writeFile(join(tenantRoot, 'packages/api/package.json'), '{"name":"@test/api","private":true}\n');
+		await mkdir(join(tenantRoot, 'packages/api/src'), { recursive: true });
+		await writeFile(join(tenantRoot, 'packages/api/src/env.yaml'), `entries:
+  TREESEED_API_BOOTSTRAP_ADMIN_ALLOWLIST:
+    label: Bootstrap administrator allowlist
+    group: auth
+    description: Bootstrap administrator identities.
+    howToGet: Configure the initial platform administrator identities.
+    sensitivity: plain
+    targets: [railway-var]
+    scopes: [local, staging, prod]
+    storage: scoped
+    requirement: optional
+    purposes: [bootstrap, config]
+    validation: { kind: nonempty }
+`);
 		await writeFile(join(tenantRoot, 'packages/api/treeseed.site.yaml'), 'name: Test API\nslug: test-api\nsiteUrl: http://127.0.0.1:3000\ncontactEmail: hello@example.com\nhosting:\n  kind: treeseed_control_plane\n  registration: none\nsurfaces:\n  api:\n    enabled: true\n    provider: local\nservices:\n  api:\n    enabled: true\n    provider: local\n');
 
 		const registry = resolveEnvironmentRegistry({

@@ -10,5 +10,5 @@ executionProviderIds: [codex-primary]
 laneIds: []
 capabilities: [engineering]
 allowedModes: [planning, acting]
-dailyCreditLimit: 100
+dailyAgentSecondsLimit: 3600
 maxConcurrentAssignments: 2

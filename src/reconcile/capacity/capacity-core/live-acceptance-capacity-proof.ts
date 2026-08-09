@@ -1,5 +1,4 @@
-import { ProviderProtocolClient } from '../../../capacity/providers/capacity-provider.ts';
-import { MarketClient } from '../../../entrypoints/clients/market-client.ts';
+import { ProviderProtocolClient } from '../../../capacity/providers/capacity-provider.ts'; import { MarketClient } from '../../../entrypoints/clients/market-client.ts';
 import { runLocalAutonomousStarterAcceptances } from '../../support/acceptance/live-acceptance-starters.ts';
 import { configuredLiveAcceptanceValue,type LiveAcceptanceEnv } from '../../support/acceptance/live-acceptance-values.ts';
 import type { LiveReconcileEnvironment,LiveReconcileProvider,RunLiveReconcileTestsOptions } from '../../support/acceptance/live-acceptance.ts';
@@ -9,8 +8,7 @@ import { capacityAcceptanceConfig,capacityGrantForAcceptance,createTreeDxProxyAu
 import { proveLocalCapacityGovernance } from './live-acceptance-capacity-governance.ts';
 import { assertCapacityAcceptancePolicyUnchanged,capacityAcceptancePolicyFingerprint } from './live-acceptance-capacity-guards.ts';
 import { createLocalCapacityAcceptanceScope } from './live-acceptance-capacity-scope.ts';
-import { verifyCapacityAcceptanceTerminal } from './live-acceptance-capacity-terminal.ts';
-type LiveEnv = LiveAcceptanceEnv; const configuredValue = configuredLiveAcceptanceValue;
+import { verifyCapacityAcceptanceTerminal } from './live-acceptance-capacity-terminal.ts'; type LiveEnv = LiveAcceptanceEnv; const configuredValue = configuredLiveAcceptanceValue;
 export async function runCapacityProviderAssignmentProof(input: {
 	provider: LiveReconcileProvider;
 	environment: LiveReconcileEnvironment;

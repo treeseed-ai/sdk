@@ -173,7 +173,7 @@ function collectionFor(definition: SdkModelDefinition) {
 
 function toolNamespaceFor(definition: SdkModelDefinition) {
 	if (definition.name === 'knowledge') return 'knowledge';
-	return collectionFor(definition);
+	return collectionFor(definition).replace(/-/gu, '_');
 }
 
 function extensionFor(model: string) {

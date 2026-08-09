@@ -16,6 +16,7 @@ export type PackageDependencyReference = {
 	installSpec: string;
 	tagName: string | null;
 	remoteUrl: string | null;
+	sourcePath?: string | null;
 	mode: 'stable-semver' | 'dev-git-commit';
 };
 

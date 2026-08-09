@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { hostedWorkflowForPackage } from "../../../operations/services/guarantees/release-proof-planner.ts";
 import { createBranchPreviewDeployTarget,loadDeployState } from "../../../operations/services/hosting/deployment/deploy.ts";
-import { gitWorkflowRoot,headCommit,listTaskBranches,PRODUCTION_BRANCH,STAGING_BRANCH } from "../../../operations/services/operations/git-workflow.ts";
+import { gitWorkflowRoot,headCommit,listTaskBranches,PRODUCTION_BRANCH,remoteBranchExists,remoteHeadCommit,runGitAllowFailure,STAGING_BRANCH } from "../../../operations/services/operations/git-workflow.ts";
 import { renderAdministrativeCommitMessage,type ReleaseHistoryCommit,type ReleaseHistorySummary } from "../../../operations/services/packages/release-history.ts";
 import { discoverPackageAdapters } from "../../../operations/services/reconciliation/package-adapters.ts";
 import { inspectGitHubActionsVerification,type GitHubActionsVerificationTarget } from "../../../operations/services/repositories/github-actions-verification.ts";
@@ -121,6 +121,32 @@ export function ciTargetForRepo(
 	};
 }
 
+export function shouldInspectPackageCi(input: {
+	explicitBranch: boolean;
+	remoteSourceExists: boolean;
+	worktreeClean: boolean;
+	headAlreadyOnStaging: boolean;
+}) {
+	return input.explicitBranch
+		|| input.remoteSourceExists
+		|| !input.worktreeClean
+		|| !input.headAlreadyOnStaging;
+}
+
+function packageRequiresCiTarget(repo: { path: string; branchName: string | null }, input: CiInput) {
+	const explicitBranch = typeof input.branch === 'string' && input.branch.trim().length > 0;
+	if (explicitBranch || !repo.branchName) return true;
+	const remoteSourceExists = remoteBranchExists(repo.path, repo.branchName);
+	if (remoteSourceExists) return true;
+	const worktreeClean = gitStatusPorcelain(repo.path).length === 0;
+	const stagingHead = remoteBranchExists(repo.path, STAGING_BRANCH)
+		? remoteHeadCommit(repo.path, STAGING_BRANCH)
+		: null;
+	const headAlreadyOnStaging = Boolean(stagingHead)
+		&& runGitAllowFailure(['merge-base', '--is-ancestor', headCommit(repo.path), stagingHead!], { cwd: repo.path }).status === 0;
+	return shouldInspectPackageCi({ explicitBranch, remoteSourceExists, worktreeClean, headAlreadyOnStaging });
+}
+
 export function ciTargetsForSession(session: WorkflowSession, input: CiInput) {
 	const scope = normalizeCiScope(input.scope);
 	const workflows = normalizeCiWorkflows(input);
@@ -129,7 +155,9 @@ export function ciTargetsForSession(session: WorkflowSession, input: CiInput) {
 		targets.push(ciTargetForRepo(session.rootRepo, 'root', input, workflows));
 	}
 	if (scope === 'workspace' || scope === 'packages') {
-		targets.push(...session.packageRepos.map((repo) => ciTargetForRepo(repo, 'package', input, workflows)));
+		targets.push(...session.packageRepos
+			.filter((repo) => packageRequiresCiTarget(repo, input))
+			.map((repo) => ciTargetForRepo(repo, 'package', input, workflows)));
 	}
 	return { scope, targets };
 }

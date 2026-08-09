@@ -1,13 +1,38 @@
 import {
 PRODUCTION_BRANCH,
-STAGING_BRANCH
+STAGING_BRANCH,
+headCommit
 } from '../../operations/git-workflow.ts';
+import { createPackageDependencyReference,type PackageDependencyReference } from '../../packages/package-reference-policy.ts';
 import { createReport } from '../support/classify-repo-kind.ts';
 import { RepositorySaveError,RepositorySaveOptions,RepositorySaveResult,SaveState } from '../support/repo-kind.ts';
 import { publishDeferredRepositoryPushes } from '../support/run-script.ts';
 import { tagState } from '../support/tag-state.ts';
 import { compareNodes,discoverRepositorySaveNodes,repositorySaveConcurrency,repositorySaveWaves,runLimited } from './discover-repository-save-nodes.ts';
 import { saveOneRepository } from './save-one-repository.ts';
+
+export function initialPackageDependencyReferences(
+	nodes: RepositorySaveNode[],
+	options: Pick<RepositorySaveOptions, 'devDependencyReferenceMode' | 'gitDependencyProtocol'>,
+) {
+	const references = new Map<string, PackageDependencyReference>();
+	for (const node of nodes) {
+		const version = typeof node.packageJson?.version === 'string' ? node.packageJson.version : null;
+		const commitSha = node.kind === 'package' ? headCommit(node.path) : null;
+		if (!version || !commitSha || !node.remoteUrl) continue;
+		references.set(node.name, createPackageDependencyReference({
+			packageName: node.name,
+			version,
+			branchMode: node.branchMode === 'package-release-main' ? 'package-release-main' : 'package-dev-save',
+			remoteUrl: node.remoteUrl,
+			commitSha,
+			devDependencyReferenceMode: options.devDependencyReferenceMode ?? 'git-commit',
+			gitDependencyProtocol: options.gitDependencyProtocol ?? 'preserve-origin',
+			sourcePath: node.path,
+		}));
+	}
+	return references;
+}
 
 export async function runRepositorySaveOrchestrator(options: RepositorySaveOptions): Promise<RepositorySaveResult> {
 	const root = options.root;
@@ -22,7 +47,7 @@ export async function runRepositorySaveOrchestrator(options: RepositorySaveOptio
 	const waves = repositorySaveWaves(nodes);
 	const state: SaveState = {
 		finalizedVersions: new Map(),
-		finalizedReferences: new Map(),
+		finalizedReferences: initialPackageDependencyReferences(nodes, options),
 		finalizedCommits: new Map(),
 		localGitRepositories: new Map(),
 		reports: new Map(nodes.map((node) => [node.id, createReport(node)])),

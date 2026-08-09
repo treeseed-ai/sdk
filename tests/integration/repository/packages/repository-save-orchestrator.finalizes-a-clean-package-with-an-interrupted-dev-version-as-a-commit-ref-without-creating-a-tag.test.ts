@@ -13,6 +13,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
 	applyPackageVersion,
 	discoverRepositorySaveNodes,
+	initialPackageDependencyReferences,
 	nextDevVersion,
 	planRepositorySave,
 	repositorySaveErrorDetails,
@@ -62,6 +63,29 @@ function writeJson(path: string, value: Record<string, unknown>) {
 	writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 describe('repository save orchestrator helpers', () => {
+it('seeds dependency metadata from clean checked-out packages', () => {
+	const root = mkdtempSync(join(tmpdir(), 'treeseed-clean-package-reference-'));
+	git(root, ['init', '-b', 'feature/demo']);
+	git(root, ['config', 'user.email', 'test@example.com']);
+	git(root, ['config', 'user.name', 'Test User']);
+	writeJson(resolve(root, 'package.json'), { name: '@treeseed/ui', version: '1.2.3-dev.staging.1' });
+	git(root, ['add', '-A']);
+	git(root, ['commit', '-m', 'chore: initial']);
+	const references = initialPackageDependencyReferences([node({
+		id: root,
+		name: '@treeseed/ui',
+		path: root,
+		remoteUrl: 'git@github.com:treeseed-ai/ui.git',
+		packageJson: { name: '@treeseed/ui', version: '1.2.3-dev.staging.1' },
+	})], {});
+
+	expect(references.get('@treeseed/ui')).toMatchObject({
+		version: '1.2.3-dev.staging.1',
+		sourcePath: root,
+		spec: expect.stringContaining(git(root, ['rev-parse', 'HEAD'])),
+	});
+});
+
 it('finalizes a clean package with an interrupted dev version as a commit ref without creating a tag', async () => {
 		vi.stubEnv('TREESEED_SAVE_NPM_INSTALL_MODE', 'skip');
 		try {

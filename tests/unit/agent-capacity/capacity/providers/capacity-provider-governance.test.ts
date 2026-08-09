@@ -88,9 +88,9 @@ describe('capacity provider governance contracts', () => {
 			schemaVersion: 2,
 			providerClass: 'agent',
 			ownership: { type: 'external' },
-			configuration: { generation: 'generation-1' },
-			supplyCeilings: { maxConcurrentAssignments: 4 },
+			configuration: { generation: 'test-generation-1' },
 			identity: { privateKeyRef: 'secret://capacity/provider-identity', displayName: 'Shared provider' },
+			supplyCeilings: { maxConcurrentAssignments: 4 },
 			executionProviders: [{
 				id: 'codex', adapter: 'codex', nativeLimits: { maxConcurrentRunners: 4 },
 				researchSourcePolicy: { schemaVersion: 1, allowedDomains: ['example.test'], requestTimeoutMs: 10_000, maxResponseBytes: 100_000, maxRedirects: 2, allowedContentTypes: ['text/*'] },
@@ -116,9 +116,9 @@ describe('capacity provider governance contracts', () => {
 			schemaVersion: 2,
 			providerClass: 'agent',
 			ownership: { type: 'external' },
-			configuration: { generation: 'generation-1' },
-			supplyCeilings: { maxConcurrentAssignments: 1 },
+			configuration: { generation: 'test-generation-1' },
 			identity: { privateKeyRef: 'secret://capacity/provider-identity', displayName: 'Join-ready provider' },
+			supplyCeilings: { maxConcurrentAssignments: 1 },
 			executionProviders: [{ id: 'codex', adapter: 'codex', nativeLimits: { maxConcurrentRunners: 1 } }],
 			connections: [],
 		};

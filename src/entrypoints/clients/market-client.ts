@@ -3,6 +3,7 @@ import { existsSync,mkdirSync,readFileSync,writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname,resolve } from 'node:path';
 import "../../market-client/interface.ts";
+import "../../market-client/agent-lab-interface.ts";
 import * as extractedMethods from "../../market-client/methods.ts";
 import { clearRemoteSession,resolveRemoteSession,setRemoteSession,} from '../../operations/services/configuration/config-runtime.ts';
 import type { ApiPrincipal } from './remote.ts';

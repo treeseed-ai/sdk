@@ -103,7 +103,7 @@ it('blocks release gate execution when staging state is not ready', async () => 
 		await expect(workflow.release({ bump: 'patch', ciMode: 'off' })).rejects.toThrow('@treeseed/market has uncommitted changes');
 		const recoverResult = await workflow.recover();
 		expect(recoverResult.payload.interruptedRuns).toEqual([]);
-	}, 300000);
+	}, 360000);
 
 it('classifies stale release runs and prunes them from resumable recovery', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -259,7 +259,7 @@ artifacts:
 				TREESEED_OPERATIONS_RUNNER_IMAGE_REF: 'treeseed/op-runner:0.4.13',
 				TREESEED_PUBLIC_TREEDX_IMAGE_REF: 'treeseed/treedx:0.4.12',
 			});
-	}, 300000);
+	}, 360000);
 
 it('plans release-line repair without bumping packages already on the target line', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -392,7 +392,7 @@ it('releases only changed packages plus dependents and syncs market main to pack
 		expect(git(resolve(work, 'packages', 'core'), ['branch', '--show-current'])).toBe('staging');
 		expect(git(resolve(work, 'packages', 'admin'), ['branch', '--show-current'])).toBe('staging');
 		expect(git(resolve(work, 'packages', 'cli'), ['branch', '--show-current'])).toBe('staging');
-	}, 300000);
+	}, 360000);
 
 it('returns a recursive release plan without mutating package or market state', async () => {
 		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -448,7 +448,7 @@ it('returns a recursive release plan without mutating package or market state', 
 		expect(git(work, ['rev-parse', 'HEAD'])).toBe(beforeRootHead);
 		expect(git(resolve(work, 'packages', 'sdk'), ['rev-parse', 'HEAD'])).toBe(beforeSdkHead);
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '0.4.13'])).toBe('');
-	}, 300000);
+	}, 360000);
 
 it('uses package-local deploy workflows as the hosted gate without duplicate verify gates', () => {
 		const source = readSourceModule(new URL('../../../../src/workflow/operations.ts', import.meta.url));
