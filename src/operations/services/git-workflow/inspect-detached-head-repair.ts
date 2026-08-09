@@ -164,7 +164,17 @@ export function mergeBranchDownIntoFeature(repoDir: string, input: {
 	const beforeHead = headCommit(repoDir);
 	const sourceHead = remoteBranchExists(repoDir, sourceBranch) ? remoteHeadCommit(repoDir, sourceBranch) : null;
 	if (!sourceHead) {
-		throw new Error(`Source branch "${sourceBranch}" does not exist on origin.`);
+		return {
+			repoDir,
+			featureBranch: input.featureBranch,
+			sourceBranch,
+			beforeHead,
+			sourceHead: null,
+			afterHead: beforeHead,
+			merged: false,
+			pushed: false,
+			generatedMetadataReconciliation: null,
+		};
 	}
 	let generatedMetadataReconciliation: Record<string, unknown> | null = null;
 	try {

@@ -262,6 +262,27 @@ describe('git workflow task helpers', () => {
 		expect(git(work, ['rev-parse', 'origin/feature/search-filters'])).toBe(result.afterHead);
 	});
 
+	it('treats a missing staging branch as an initial exact-ref promotion', () => {
+		const { work } = makeRepo();
+		git(work, ['push', 'origin', '--delete', 'staging']);
+		const featureHead = git(work, ['rev-parse', 'feature/search-filters']);
+
+		const result = mergeBranchDownIntoFeature(work, {
+			featureBranch: 'feature/search-filters',
+			sourceBranch: 'staging',
+			message: 'integrate staging',
+		});
+
+		expect(result).toMatchObject({
+			sourceHead: null,
+			beforeHead: featureHead,
+			afterHead: featureHead,
+			merged: false,
+			pushed: false,
+		});
+		expect(git(work, ['ls-remote', '--heads', 'origin', 'staging'])).toBe('');
+	});
+
 	it('refuses exact staging promotion when the remote staging head moved', () => {
 		const { work } = makeRepo();
 		const before = git(work, ['rev-parse', 'origin/staging']);
