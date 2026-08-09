@@ -194,12 +194,14 @@ export function compileDecisionAssignmentGraphFromEstimates(input: {
 				});
 				const producerNodeId = `${contractId}:produce`;
 				deliverableProducerNodes.set(contractId, producerNodeId);
-				nodes.push({
+					nodes.push({
 					id: producerNodeId,
 					decisionId: input.decisionId,
 					projectId: input.projectId,
 					targetAgentClass: producerClass,
-					activityType: 'acting',
+						activityType: 'acting',
+						estimateId: estimate.id,
+						groupSnapshot: estimate.groupSnapshot,
 					handler: null,
 					requiredCapabilities: uniqueStrings([dependency.capability ?? ''].filter(Boolean)),
 					requiredDeliverableContractIds: [],
@@ -236,6 +238,8 @@ export function compileDecisionAssignmentGraphFromEstimates(input: {
 			projectId: input.projectId,
 			targetAgentClass: estimate.agentClass,
 			activityType: 'acting',
+			estimateId: estimate.id,
+			groupSnapshot: estimate.groupSnapshot,
 			handler: null,
 			requiredCapabilities: uniqueStrings(estimate.dependencies.map((dependency) => dependency.capability ?? dependency.agentClass ?? '').filter(Boolean)),
 			requiredDeliverableContractIds,

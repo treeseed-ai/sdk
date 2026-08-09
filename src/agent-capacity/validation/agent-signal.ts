@@ -11,7 +11,7 @@ export interface AgentSignalContract {
 	payloadSchema: Record<string, unknown>;
 	filterableFields?: string[];
 	commitEvidence: 'required' | 'optional' | 'forbidden';
-	allowedProducerClasses?: string[];
+	allowedProducerProfiles?: string[];
 	subscriberActivityProfiles?: string[];
 	idempotency: 'causation-subject' | 'commit-subject' | 'explicit-key';
 	supersession: 'append' | 'replace-subject' | 'replace-correlation';
@@ -42,6 +42,6 @@ export function validateAgentSignalContract(value: unknown): AgentSignalValidati
 	if (!['causation-subject', 'commit-subject', 'explicit-key'].includes(String(value.idempotency))) diagnostics.push({ code: 'agent_signal_idempotency_invalid', path: 'idempotency', message: 'Unknown idempotency policy.' });
 	if (!['append', 'replace-subject', 'replace-correlation'].includes(String(value.supersession))) diagnostics.push({ code: 'agent_signal_supersession_invalid', path: 'supersession', message: 'Unknown supersession policy.' });
 	if (!['none', 'latest-subject'].includes(String(value.coalescing))) diagnostics.push({ code: 'agent_signal_coalescing_invalid', path: 'coalescing', message: 'Unknown coalescing policy.' });
-	for (const key of ['filterableFields', 'allowedProducerClasses', 'subscriberActivityProfiles', 'evidenceRequirements', 'relationSemantics']) if (value[key] !== undefined && !strings(value[key])) diagnostics.push({ code: 'agent_signal_list_invalid', path: key, message: `${key} must contain non-empty strings.` });
+	for (const key of ['filterableFields', 'allowedProducerProfiles', 'subscriberActivityProfiles', 'evidenceRequirements', 'relationSemantics']) if (value[key] !== undefined && !strings(value[key])) diagnostics.push({ code: 'agent_signal_list_invalid', path: key, message: `${key} must contain non-empty strings.` });
 	return diagnostics.length ? { ok: false, diagnostics } : { ok: true, diagnostics, value: value as unknown as AgentSignalContract };
 }

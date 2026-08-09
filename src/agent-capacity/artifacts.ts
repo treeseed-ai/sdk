@@ -27,6 +27,7 @@ export interface AgentContentReference {
 	producedByAgent?: string | null;
 	commitSha?: string | null;
 	ref?: string | null;
+	groupIds?: string[];
 }
 
 export interface AgentSourceWorktreeReference {

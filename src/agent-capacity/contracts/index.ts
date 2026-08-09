@@ -1,4 +1,5 @@
 export * from './capacity/assignments/assignment-records.ts';
+export * from './capacity/providers/supply-policy.ts';
 export * from './capacity/workdays/workday-records.ts';
 export * from './configuration/configuration.ts';
 export * from './operations/research-workflow.ts';
@@ -7,6 +8,7 @@ export * from './projects/agents/project-agent-class.ts';
 export * from './runtime/runtime-observability.ts';
 export * from './support/decision-work.ts';
 export * from './support/agent-lab-monitoring.ts';
+export * from './support/agent-atlas.ts';
 export * from './support/failure-records.ts';
 export * from './support/financial-records.ts';
 export * from './support/time-capacity.ts';

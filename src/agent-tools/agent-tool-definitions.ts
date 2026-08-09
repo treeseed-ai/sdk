@@ -11,6 +11,7 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
 				contractId: { type: 'string', minLength: 1, maxLength: 128 },
 				subjectKind: { type: 'string', minLength: 1, maxLength: 64 },
 				subjectId: { type: 'string', minLength: 1, maxLength: 256 },
+				subjectGroupIds: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 256 }, uniqueItems: true, maxItems: 32 },
 				message: { type: 'string', minLength: 8, maxLength: 2000 },
 				correlationId: { type: 'string', minLength: 1, maxLength: 256 },
 				idempotencyKey: { type: 'string', minLength: 1, maxLength: 256 },

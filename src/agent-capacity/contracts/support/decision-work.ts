@@ -1,5 +1,6 @@
 import type { ContentReference } from '../../../operations/content-operations.ts';
 import type { AgentArtifactManifest } from '../../artifacts.ts';
+import type { GroupMembershipSnapshot } from '../../../governance/groups/contracts.ts';
 
 export type AgentPlanningActivityType = 'planning' | 'estimating' | 'reviewing' | 'reporting';
 export type ContentRef = ContentReference;
@@ -50,6 +51,7 @@ export interface StructuredAgentEstimate {
 	expectedOutputs: AgentOutputRequirement[];
 	acceptanceCriteria: string[];
 	completionEvidence: string[];
+	groupSnapshot?: GroupMembershipSnapshot;
 	createdAt?: string | null;
 	metadata?: Record<string, unknown>;
 }
@@ -131,6 +133,8 @@ export interface DecisionAssignmentGraphNode {
 	targetAgentClass: string;
 	activityType: AgentPlanningActivityType | 'acting';
 	handler?: string | null;
+	estimateId?: string | null;
+	groupSnapshot?: GroupMembershipSnapshot;
 	requiredCapabilities: string[];
 	requiredDeliverableContractIds: string[];
 	inputRefs: ContentRef[];

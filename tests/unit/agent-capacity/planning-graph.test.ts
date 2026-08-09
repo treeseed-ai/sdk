@@ -1,5 +1,6 @@
 import { describe,expect,it } from 'vitest';
 import { compileAgentPlanningGraph,evaluatePlanningGraphNode,evaluatePlanningGraphNodeInstances } from '../../../src/agent-capacity/planning-graph.ts';
+import { matchSignalGroupScope } from '../../../src/governance/groups/signal-scope.ts';
 
 const profile = (agentId: string, activityType: string, input: string[] = [], output: string[] = [], producerPolicy: 'any' | 'all' = 'any') => ({
 	agentId, activityType,
@@ -45,12 +46,39 @@ describe('agent planning graph', () => {
 	});
 
 	it('enforces repository signal publisher, subscriber, and filter contracts', () => {
-		const contract = { schemaVersion: 'treeseed.agent-signal/v1' as const, id: 'proposal-submitted', label: 'Proposal submitted', description: 'A typed proposal entered deliberation.', subjectKinds: ['proposal'], allowedOrigins: ['agent-tool' as const], payloadSchema: {}, filterableFields: ['proposalTypes'], commitEvidence: 'required' as const, allowedProducerClasses: ['steward'], subscriberActivityProfiles: ['reviewing'], idempotency: 'commit-subject' as const, supersession: 'replace-subject' as const, coalescing: 'latest-subject' as const };
+		const contract = { schemaVersion: 'treeseed.agent-signal/v1' as const, id: 'proposal-submitted', label: 'Proposal submitted', description: 'A typed proposal entered deliberation.', subjectKinds: ['proposal'], allowedOrigins: ['agent-tool' as const], payloadSchema: {}, filterableFields: ['proposalTypes'], commitEvidence: 'required' as const, allowedProducerProfiles: ['reporting'], subscriberActivityProfiles: ['reviewing'], idempotency: 'commit-subject' as const, supersession: 'replace-subject' as const, coalescing: 'latest-subject' as const };
 		const graph = compileAgentPlanningGraph([
-			{ agentId: 'author', agentClass: 'writer', activityType: 'planning', signals: { publishes: ['proposal-submitted'] } },
-			{ agentId: 'reviewer', agentClass: 'reviewer', activityType: 'estimating', signals: { subscribesTo: [{ contract: 'proposal-submitted', filters: { unknown: true } }] } },
+			{ agentId: 'author', activityType: 'planning', signals: { publishes: ['proposal-submitted'] } },
+			{ agentId: 'reviewer', activityType: 'estimating', signals: { subscribesTo: [{ contract: 'proposal-submitted', filters: { unknown: true } }] } },
 		], { contracts: { 'proposal-submitted': contract } });
 		expect(graph.diagnostics.map((entry) => entry.code)).toEqual(expect.arrayContaining(['publisher_not_allowed', 'subscriber_not_allowed', 'filter_not_allowed']));
+	});
+
+	it('uses group membership as an evidence filter without changing signal DAG edges', () => {
+		const graph = compileAgentPlanningGraph([
+			profile('author', 'planning', [], ['proposal-submitted']),
+			{ agentId: 'reviewer', activityType: 'reviewing', signals: { subscribesTo: [{ contract: 'proposal-submitted', groupScope: { mode: 'member-groups' as const } }] } },
+		]);
+		const evidence = [{ nodeId: 'author:planning', references: [{
+			contractId: 'proposal-submitted', recordId: 'signal:one',
+			groupMembership: { projectId: 'project-1', directGroupIds: ['group:research'], effectiveGroupIds: ['group:research'], provenance: [] },
+		}] }];
+		const groups = {
+			projectId: 'project-1',
+			agentMembershipByNodeId: { 'reviewer:reviewing': { projectId: 'project-1', directGroupIds: ['group:editorial'], effectiveGroupIds: ['group:editorial'], provenance: [] } },
+		};
+		expect(graph.edges).toHaveLength(1);
+		expect(evaluatePlanningGraphNode(graph, 'reviewer:reviewing', evidence, groups).ready).toBe(false);
+		groups.agentMembershipByNodeId['reviewer:reviewing'] = { projectId: 'project-1', directGroupIds: ['group:research'], effectiveGroupIds: ['group:research'], provenance: [] };
+		expect(evaluatePlanningGraphNode(graph, 'reviewer:reviewing', evidence, groups).ready).toBe(true);
+	});
+
+	it('includes nested content only when a specific group scope requests descendants', () => {
+		const agentMembership = { projectId: 'project-1', directGroupIds: ['group:parent'], effectiveGroupIds: ['group:parent'], provenance: [] };
+		const subjectMembership = { projectId: 'project-1', directGroupIds: ['group:child'], effectiveGroupIds: ['group:child', 'group:parent'], provenance: [] };
+		const groupRefs = [{ projectId: 'project-1', groupId: 'group:parent' }];
+		expect(matchSignalGroupScope({ scope: { mode: 'specific-groups', groupRefs }, agentMembership, subjectMembership }).matched).toBe(false);
+		expect(matchSignalGroupScope({ scope: { mode: 'specific-groups', groupRefs, includeDescendants: true }, agentMembership, subjectMembership }).matched).toBe(true);
 	});
 
 	it('fans evaluation nodes out once for each durable signal subject', () => {

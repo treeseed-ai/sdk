@@ -86,6 +86,10 @@ describe('capacity provider governance contracts', () => {
 	it('validates multi-team connection distribution and secret references', () => {
 		const manifest: CapacityProviderManifestV2 = {
 			schemaVersion: 2,
+			providerClass: 'agent',
+			ownership: { type: 'external' },
+			configuration: { generation: 'generation-1' },
+			supplyCeilings: { maxConcurrentAssignments: 4 },
 			identity: { privateKeyRef: 'secret://capacity/provider-identity', displayName: 'Shared provider' },
 			executionProviders: [{
 				id: 'codex', adapter: 'codex', nativeLimits: { maxConcurrentRunners: 4 },
@@ -110,6 +114,10 @@ describe('capacity provider governance contracts', () => {
 	it('keeps broadcast registration keys out of durable runtime connections', () => {
 		const manifest: CapacityProviderManifestV2 = {
 			schemaVersion: 2,
+			providerClass: 'agent',
+			ownership: { type: 'external' },
+			configuration: { generation: 'generation-1' },
+			supplyCeilings: { maxConcurrentAssignments: 1 },
 			identity: { privateKeyRef: 'secret://capacity/provider-identity', displayName: 'Join-ready provider' },
 			executionProviders: [{ id: 'codex', adapter: 'codex', nativeLimits: { maxConcurrentRunners: 1 } }],
 			connections: [],

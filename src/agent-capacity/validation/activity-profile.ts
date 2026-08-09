@@ -7,15 +7,15 @@ const PROFILE_KEYS = new Set(['activityType', 'enabled', 'handler', 'prompt', 'b
 const PROMPT_KEYS = new Set(['system', 'task', 'templates']);
 const TOOL_KEYS = new Set(['allowed', 'denied']);
 const SIGNAL_KEYS = new Set(['subscribesTo', 'publishes']);
-const SUBSCRIPTION_KEYS = new Set(['contract', 'filters', 'cardinality', 'producerPolicy', 'quorum']);
+const SUBSCRIPTION_KEYS = new Set(['contract', 'groupScope', 'filters', 'cardinality', 'producerPolicy', 'quorum']);
 const OUTPUT_KEYS = new Set(['messageTypes', 'modelMutations']);
-const EXECUTION_KEYS = new Set(['providerPreference', 'maxRuntimeSeconds', 'maxRetries', 'verificationRequired', 'allowedPaths', 'forbiddenPaths']);
+const EXECUTION_KEYS = new Set(['providerPreference', 'requiredCapabilities', 'maxRuntimeSeconds', 'maxRetries', 'verificationRequired', 'maxTotalTokens', 'warningTokens', 'maxCostAmount', 'costCurrency', 'nativeLimits', 'pricingGeneration', 'enforcementConfidence', 'allowedPaths', 'forbiddenPaths']);
 const CONTENT_ACCESS_KEYS = new Set(['read', 'write', 'commit']);
 const CONTENT_SCOPE_KEYS = new Set(['models', 'actions', 'books', 'paths', 'relations']);
 const QUESTION_KEYS = new Set(['defaultAnswerPolicy', 'blockExecutionWhenCreated']);
 const PLANNING_INTENT_KEYS = new Set(['objective', 'proposalTypes', 'artifactKind', 'subjectModel', 'subjectId', 'includeWorkdayArtifacts', 'stage', 'stages', 'requiresArtifactKinds']);
 const PLANNING_STAGE_KEYS = new Set(['stage', 'promptTask', 'signals']);
-const QUESTION_POLICY_KEYS = new Set(['kind', 'teamId', 'requiredRoles', 'allowedRoles', 'allowedAgentClasses', 'teamMemberId', 'projectId', 'agentSlug']);
+const QUESTION_POLICY_KEYS = new Set(['kind', 'teamId', 'requiredRoles', 'allowedRoles', 'allowedAgentIds', 'allowedActivityProfiles', 'teamMemberId', 'projectId', 'agentSlug']);
 const BRANCH_KEYS: Record<string, Set<string>> = {
 	'read-only': new Set(['kind', 'base']),
 	'main-planning-content': new Set(['kind', 'base']),
@@ -78,10 +78,17 @@ function validateSignals(value: unknown, path: string, add: Add) {
 		unknownKeys(candidate, SUBSCRIPTION_KEYS, itemPath, add);
 		if (typeof candidate.contract !== 'string' || !candidate.contract.trim()) add('agent_activity_signal_contract_required', `${itemPath}.contract`, 'Signal subscription contract is required.');
 		if (candidate.filters !== undefined && !record(candidate.filters)) add('agent_activity_signal_filters_invalid', `${itemPath}.filters`, 'Signal filters must be an object.');
+		if (candidate.groupScope !== undefined) validateGroupScope(candidate.groupScope, `${itemPath}.groupScope`, add);
 		if (candidate.cardinality !== undefined && !['single', 'each'].includes(String(candidate.cardinality))) add('agent_activity_signal_cardinality_invalid', `${itemPath}.cardinality`, 'cardinality must be single or each.');
 		if (candidate.producerPolicy !== undefined && !['any', 'all', 'quorum'].includes(String(candidate.producerPolicy))) add('agent_activity_producer_policy_invalid', `${itemPath}.producerPolicy`, 'producerPolicy must be any, all, or quorum.');
 		if (candidate.producerPolicy === 'quorum' && (!Number.isInteger(candidate.quorum) || Number(candidate.quorum) < 1)) add('agent_activity_signal_quorum_invalid', `${itemPath}.quorum`, 'quorum must be a positive integer.');
 	});
+}
+
+function validateGroupScope(value: unknown, path: string, add: Add) {
+	if (!record(value) || !['member-groups', 'specific-groups', 'project'].includes(String(value.mode))) { add('agent_activity_group_scope_invalid', path, 'groupScope.mode must be member-groups, specific-groups, or project.'); return; }
+	if (value.mode === 'project' && (typeof value.projectId !== 'string' || !value.projectId.trim())) add('agent_activity_group_scope_project_required', `${path}.projectId`, 'Project-scoped subscriptions require projectId.');
+	if (value.mode === 'specific-groups' && (!Array.isArray(value.groupRefs) || value.groupRefs.length === 0 || value.groupRefs.some((candidate) => !record(candidate) || typeof candidate.projectId !== 'string' || typeof candidate.groupId !== 'string'))) add('agent_activity_group_scope_refs_required', `${path}.groupRefs`, 'Specific group scopes require projectId and groupId references.');
 }
 
 function validatePlanningIntent(value: unknown, path: string, add: Add) {
@@ -159,7 +166,7 @@ function validateExecution(value: unknown, path: string, add: Add) {
 	if (value === undefined) return;
 	if (!record(value)) { add('agent_activity_execution_invalid', path, 'execution must be an object.'); return; }
 	unknownKeys(value, EXECUTION_KEYS, path, add);
-	for (const key of ['providerPreference', 'allowedPaths', 'forbiddenPaths']) if (value[key] !== undefined && !strings(value[key])) add('agent_activity_string_list_invalid', `${path}.${key}`, `${path}.${key} must contain unique non-empty strings.`);
+	for (const key of ['providerPreference', 'requiredCapabilities', 'allowedPaths', 'forbiddenPaths']) if (value[key] !== undefined && !strings(value[key])) add('agent_activity_string_list_invalid', `${path}.${key}`, `${path}.${key} must contain unique non-empty strings.`);
 	if (value.maxRuntimeSeconds !== undefined && (!Number.isInteger(value.maxRuntimeSeconds) || Number(value.maxRuntimeSeconds) < 1)) add('agent_activity_runtime_invalid', `${path}.maxRuntimeSeconds`, 'maxRuntimeSeconds must be a positive integer.');
 	if (value.maxRetries !== undefined && (!Number.isInteger(value.maxRetries) || Number(value.maxRetries) < 0)) add('agent_activity_retries_invalid', `${path}.maxRetries`, 'maxRetries must be a non-negative integer.');
 	if (value.verificationRequired !== undefined && typeof value.verificationRequired !== 'boolean') add('agent_activity_verification_invalid', `${path}.verificationRequired`, 'verificationRequired must be boolean.');

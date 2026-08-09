@@ -51,6 +51,7 @@ export interface DecisionExecutionInputRecord {
 	projectId: string;
 	decisionId: string;
 	workGraphNodeId?: string | null;
+	estimateId?: string | null;
 	projectAgentClassId: string;
 	mode: AgentExecutionMode;
 	status: DecisionExecutionInputStatus;

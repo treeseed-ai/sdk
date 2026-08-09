@@ -15,6 +15,8 @@ export interface AgentAuthoringIntent {
 	enabled: boolean;
 	designMaturity?: AgentDesignMaturity;
 	activityProfiles: AgentActivityProfilesConfiguration;
+	groupIds?: string[];
+	primaryGroupId?: string;
 }
 
 export interface LockedAgentIdentity {
@@ -32,6 +34,7 @@ export interface CompiledAgentDefinition {
 		projectAgentClassId: string;
 		projectAgentClassSlug: string;
 		groupIds: string[];
+		primaryGroupId: string;
 	};
 }
 
@@ -67,6 +70,7 @@ export function deriveAgentRuntimeStatus(evidence: AgentRuntimeEvidence): AgentR
 export function compileAgentDefinition(input: {
 	intent: AgentAuthoringIntent;
 	projectId: string;
+	contentRoot?: string;
 	existing?: { identity: LockedAgentIdentity; frontmatter?: Record<string, unknown> };
 }): CompiledAgentDefinition {
 	const agentSlug = input.existing?.identity.slug || slug(input.intent.name);
@@ -75,12 +79,15 @@ export function compileAgentDefinition(input: {
 	const identity: LockedAgentIdentity = input.existing?.identity ?? {
 		id: `agent:${agentSlug}`,
 		slug: agentSlug,
-		path: `src/content/agents/${agentSlug}.mdx`,
+		path: `${(input.contentRoot ?? 'src/content').replace(/^\/+|\/+$/gu, '')}/agents/${agentSlug}.mdx`,
 		createdAt: new Date().toISOString(),
 		createdFromTemplate: input.intent.template,
 	};
 	const prior = input.existing?.frontmatter ?? {};
-	const groupIds = unique(['agent',classSlug,...(Array.isArray(prior.groupIds) ? prior.groupIds.map(String) : [])]);
+	const priorGroups = Array.isArray(prior.groupIds) ? prior.groupIds.map(String) : [];
+	const requestedPrimary = input.intent.primaryGroupId?.trim() || (typeof prior.primaryGroupId === 'string' ? prior.primaryGroupId.trim() : '');
+	const primaryGroupId = requestedPrimary || input.intent.groupIds?.[0]?.trim() || priorGroups[0] || 'group:project';
+	const groupIds = unique([primaryGroupId, ...priorGroups, ...(input.intent.groupIds ?? [])]);
 	const frontmatter = {
 		...prior,
 		id: identity.id,
@@ -96,6 +103,7 @@ export function compileAgentDefinition(input: {
 		summary: input.intent.description.trim(),
 		designMaturity: input.intent.designMaturity ?? prior.designMaturity ?? 'draft',
 		groupIds,
+		primaryGroupId,
 		identity: {
 			purpose: input.intent.purpose.trim(),
 			responsibilities: unique(input.intent.responsibilities),
@@ -104,5 +112,5 @@ export function compileAgentDefinition(input: {
 		activityProfiles: input.intent.activityProfiles,
 	};
 	delete (frontmatter as Record<string, unknown>).runtimeStatus;
-	return { identity, frontmatter, generated: { projectAgentClassId: classSlug, projectAgentClassSlug: classSlug, groupIds } };
+	return { identity, frontmatter, generated: { projectAgentClassId: classSlug, projectAgentClassSlug: classSlug, groupIds, primaryGroupId } };
 }

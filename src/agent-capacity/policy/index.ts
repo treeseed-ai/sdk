@@ -1,5 +1,6 @@
 export * from './capacity/accounting/settlement.ts';
 export * from './capacity/assignments/assignment-capability.ts';
+export * from './capacity/providers/supply-selection.ts';
 export * from './operations/research-workflow.ts';
 export * from './runtime/runtime-diagnostics.ts';
 export * from './support/decision-work.ts';

@@ -22,7 +22,7 @@ export interface AgentChatProfileConfiguration {
 	foundation: 'discussion-v1';
 	responseStyle?: string;
 	promptTask?: string;
-	providerPreference?: string[];
+	requiredCapabilities?: string[];
 	maxRuntimeSeconds?: number;
 	maxTotalTokens?: number;
 	warningTokens?: number;

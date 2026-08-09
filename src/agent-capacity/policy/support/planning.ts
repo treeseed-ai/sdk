@@ -110,12 +110,19 @@ export function buildAgentCapacityPlanDraft(input: {
 		const estimate = normalizeDecisionExecutionEstimate(entry);
 		const decisionInput = entry.input;
 		const mode = normalizeAgentExecutionMode(entry.mode, 'acting');
+		const estimateId = typeof entry.estimateId === 'string' && entry.estimateId.trim()
+			? entry.estimateId.trim()
+			: typeof decisionInput.estimateId === 'string' && decisionInput.estimateId.trim()
+				? decisionInput.estimateId.trim()
+			: typeof entry.metadata?.estimateId === 'string' && entry.metadata.estimateId.trim()
+					? entry.metadata.estimateId.trim() : null;
 		const workGraphNodeId = typeof decisionInput.workGraphNodeId === 'string' && decisionInput.workGraphNodeId.trim()
 			? decisionInput.workGraphNodeId.trim()
 			: null;
 		if (mode === 'acting' && !workGraphNodeId) {
 			throw new Error(`Acting decision execution input ${entry.id} requires workGraphNodeId provenance.`);
 		}
+		if (mode === 'acting' && !estimateId) throw new Error(`Acting decision execution input ${entry.id} requires accepted estimate provenance.`);
 		const capacityEnvelope = {
 			...decisionInput.capacity,
 			teamId: input.teamId,
@@ -135,6 +142,7 @@ export function buildAgentCapacityPlanDraft(input: {
 			decisionExecutionInputId: entry.id,
 			decisionId: input.decisionId,
 			workGraphNodeId,
+			estimateId,
 			projectAgentClassId: entry.projectAgentClassId,
 			mode,
 			taskId: decisionInput.taskId ?? null,
@@ -152,6 +160,7 @@ export function buildAgentCapacityPlanDraft(input: {
 			capacityEnvelope,
 			decisionInput: {
 				...decisionInput,
+				estimateId,
 				capacity: capacityEnvelope,
 				metadata: {
 					...(decisionInput.metadata ?? {}),
