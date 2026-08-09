@@ -88,9 +88,11 @@ export function validateStandaloneGitDependencyLockfile(
 		validateFinalizedGitReferences(node, references);
 		emitProgress(options, node, 'lockfile', 'Validated exact finalized Git references before resolving their complete dependency closure.');
 	}
-	if (options.deferPushUntilVerified === true && references.length === 0) {
+	if (options.deferPushUntilVerified === true) {
 		if (!lockfileExists) throw new Error('standalone lockfile missing');
-		emitProgress(options, node, 'lockfile', 'Skipped dependency-closure resolution because this atomic package has no finalized internal Git dependencies.');
+		emitProgress(options, node, 'lockfile', references.length > 0
+			? 'Validated the synchronized local dependency closure without recursively preparing unpublished Git dependencies.'
+			: 'Skipped dependency-closure resolution because this atomic package has no finalized internal Git dependencies.');
 		return true;
 	}
 	const isolatedRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-lockfile-'));
