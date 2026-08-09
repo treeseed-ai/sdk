@@ -24,6 +24,7 @@ import {
 	validateStandaloneGitDependencyLockfile,
 	type RepositorySaveNode,
 } from '../../../../src/operations/services/repositories/repository-save-orchestrator.ts';
+import { STANDALONE_LOCKFILE_RESOLUTION_TIMEOUT_MS } from '../../../../src/operations/services/repository-save-orchestrator/support/standalone-lockfile.ts';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 
@@ -71,6 +72,9 @@ function commitInitial(cwd: string) {
 	git(cwd, ['commit', '--allow-empty', '-m', 'chore: initial']);
 }
 describe('repository save orchestrator helpers', () => {
+	it('allows bounded time for nested Git dependency preparation', () => {
+		expect(STANDALONE_LOCKFILE_RESOLUTION_TIMEOUT_MS).toBe(10 * 60_000);
+	});
 it('copies newly introduced runtime dependency closure into consumer locks during an atomic save', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-dependency-closure-'));
 		const sdkRoot = resolve(root, 'sdk');

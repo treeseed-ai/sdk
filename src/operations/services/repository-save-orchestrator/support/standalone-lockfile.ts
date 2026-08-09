@@ -9,6 +9,8 @@ import { emitProgress } from './repo-kind.ts';
 
 type LocalGitRepository = { sourcePath: string; remoteUrl: string };
 
+export const STANDALONE_LOCKFILE_RESOLUTION_TIMEOUT_MS = 10 * 60_000;
+
 function localGitResolutionEnv(references: Array<PackageDependencyReference | LocalGitRepository>) {
 	const rewrites = references.flatMap((reference) => {
 		if (!reference.sourcePath || !reference.remoteUrl) return [];
@@ -102,7 +104,7 @@ export function validateStandaloneGitDependencyLockfile(
 		runCapturedCommand(node, options, 'lockfile', 'npm', validateArgs, {
 			cwd: isolatedRoot,
 			env: localGitResolutionEnv([...references, ...repositories]),
-			timeoutMs: 5 * 60_000,
+			timeoutMs: STANDALONE_LOCKFILE_RESOLUTION_TIMEOUT_MS,
 		});
 		copyFileSync(resolve(isolatedRoot, 'package-lock.json'), lockfilePath);
 	} catch (error) {
