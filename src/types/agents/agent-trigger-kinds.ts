@@ -240,7 +240,7 @@ export type AgentBranchPolicy =
 
 export type AgentQuestionAnswerPolicy =
 	| { kind: 'team-human'; teamId?: string; requiredRoles?: string[] }
-	| { kind: 'human-or-agent'; teamId?: string; allowedRoles?: string[]; allowedAgentIds?: string[]; allowedActivityProfiles?: string[] }
+	| { kind: 'human-or-agent'; teamId?: string; allowedRoles?: string[]; allowedAgentIds?: string[]; allowedAgentClasses?: string[]; allowedActivityProfiles?: string[] }
 	| { kind: 'specific-human'; teamMemberId: string }
 	| { kind: 'specific-agent'; projectId: string; agentSlug: string };
 

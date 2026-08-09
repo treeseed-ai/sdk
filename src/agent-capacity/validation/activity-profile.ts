@@ -15,7 +15,7 @@ const CONTENT_SCOPE_KEYS = new Set(['models', 'actions', 'books', 'paths', 'rela
 const QUESTION_KEYS = new Set(['defaultAnswerPolicy', 'blockExecutionWhenCreated']);
 const PLANNING_INTENT_KEYS = new Set(['objective', 'proposalTypes', 'artifactKind', 'subjectModel', 'subjectId', 'includeWorkdayArtifacts', 'stage', 'stages', 'requiresArtifactKinds']);
 const PLANNING_STAGE_KEYS = new Set(['stage', 'promptTask', 'signals']);
-const QUESTION_POLICY_KEYS = new Set(['kind', 'teamId', 'requiredRoles', 'allowedRoles', 'allowedAgentIds', 'allowedActivityProfiles', 'teamMemberId', 'projectId', 'agentSlug']);
+const QUESTION_POLICY_KEYS = new Set(['kind', 'teamId', 'requiredRoles', 'allowedRoles', 'allowedAgentIds', 'allowedAgentClasses', 'allowedActivityProfiles', 'teamMemberId', 'projectId', 'agentSlug']);
 const BRANCH_KEYS: Record<string, Set<string>> = {
 	'read-only': new Set(['kind', 'base']),
 	'main-planning-content': new Set(['kind', 'base']),

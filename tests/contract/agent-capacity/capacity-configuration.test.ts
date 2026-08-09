@@ -59,6 +59,19 @@ describe('capacity configuration inventory', () => {
 		]));
 	});
 
+	it('accepts project agent classes as governed question answerers', () => {
+		const profile = {
+			planning: {
+				activityType: 'planning', enabled: true, handler: 'writer',
+				prompt: { system: 'Plan.' }, branchPolicy: { kind: 'read-only', base: 'main' },
+				tools: { allowed: [] }, outputs: { messageTypes: [], modelMutations: [] },
+				questionPolicy: { blockExecutionWhenCreated: true, defaultAnswerPolicy: { kind: 'human-or-agent', allowedAgentClasses: ['architecture'] } },
+				execution: { requiredCapabilities: ['agent-execution'] },
+			},
+		};
+		expect(validateAgentActivityProfilesConfiguration(profile)).toEqual({ ok: true, diagnostics: [] });
+	});
+
 	it('fails closed on unknown project-agent-class configuration fields', () => {
 		const result = validateProjectAgentClassConfiguration({ id: 'engineer', slug: 'engineer', allowedModes: ['planning'], requiredCapabilities: ['engineering'], obsoletePolicy: {} });
 		expect(result).toMatchObject({ ok: false, diagnostics: [{ code: 'project_agent_class_configuration_unknown_field', path: 'obsoletePolicy' }] });
