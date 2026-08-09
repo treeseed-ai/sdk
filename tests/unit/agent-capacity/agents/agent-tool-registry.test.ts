@@ -19,7 +19,7 @@ describe('agent tool registry', () => {
 		const ids = listAgentToolIds();
 		expect(new Set(ids).size).toBe(ids.length);
 		for (const definition of AGENT_TOOL_DEFINITIONS) {
-			expect(definition.id).toMatch(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/u);
+			expect(definition.id).toMatch(/^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$/u);
 			expect(definition.inputSchema).toMatchObject({ type: 'object' });
 			expect(definition.outputSchema).toMatchObject({ type: 'object' });
 			expect(definition.requirements.length).toBeGreaterThan(0);

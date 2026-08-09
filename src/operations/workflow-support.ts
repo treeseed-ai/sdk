@@ -200,10 +200,12 @@ type GitHubWorkflowRunSummary
 } from './services/repositories/github-api.ts';
 export { exportCodebase } from './services/runtime/export-runtime.ts';
 export {
-runWorkspaceCleanup,
+planProjectCleanup,
+runProjectCleanup,
 type LocalCleanupAction,
 type LocalCleanupMode,
-type LocalCleanupReport
+type LocalCleanupReport,
+type ProjectCleanupReport
 } from './services/runtime/local-cleanup.ts';
 export {
 VerificationCacheKey,readVerificationCache,writeVerificationCache,

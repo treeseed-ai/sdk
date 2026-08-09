@@ -81,7 +81,8 @@ it('derives mode-run usage settlement snapshots', () => {
 			diffLinesRemoved: null,
 			testRuns: null,
 			retryCount: null,
-			activeSeconds: 1.5,
+			activeSeconds: 120,
+			elapsedSeconds: 240,
 			actualUsd: null,
 			nativeUsage: { nativeUnit: 'wall_minute', amount: 4 },
 			metadata: { capacityLedgerEntryId: 'ledger-1' },
@@ -90,7 +91,8 @@ it('derives mode-run usage settlement snapshots', () => {
 		expect(settlement).toMatchObject({
 			capacityUsageActualId: 'usage-1',
 			capacityLedgerEntryId: 'ledger-1',
-			activeSeconds: 1.5,
+			activeSeconds: 120,
+			elapsedSeconds: 240,
 		});
 	});
 
@@ -145,8 +147,9 @@ it('derives kernel mode execution inputs from provider assignments', () => {
 					mode: 'acting',
 					capacityProviderId: 'provider-1',
 					reservationId: 'reservation-1',
-					reservedSeconds: 3,
-					availableAgentSeconds: 5,
+					requestedSeconds: 180,
+					reservedSeconds: 180,
+					availableSeconds: 300,
 				limits: { wallMinutes: 20 },
 				metadata: { capacityPlanId: 'plan-1', capacityPlanStatus: 'accepted' },
 			},
@@ -156,6 +159,7 @@ it('derives kernel mode execution inputs from provider assignments', () => {
 			teamId: 'team-1',
 			projectId: 'project-1',
 			mode: 'acting',
+			availableSeconds: 300,
 			limits: { wallMinutes: 20 },
 		});
 		expect(deriveDecisionExecutionInputFromAssignment(assignment)).toMatchObject({

@@ -6,6 +6,7 @@ export * from '../governance/policy/governance.ts';
 export * from '../governance/policy/proposal-readiness.ts';
 export * from '../governance/groups/contracts.ts';
 export * from '../governance/groups/membership.ts';
+export * from '../governance/groups/signal-scope.ts';
 
 export * from '../configuration/secrets-capability.ts';
 

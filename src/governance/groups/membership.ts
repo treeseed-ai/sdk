@@ -1,10 +1,18 @@
 import type {
-	AgentGroupSubscription, DecisionGroupSnapshot, EffectiveGroupMembership, GovernanceGroup, GovernanceGroupEdge,
+	DecisionGroupSnapshot, EffectiveGroupMembership, GovernanceGroup, GovernanceGroupEdge,
 	GroupMembershipProvenance,
+	GroupMemberRef,
 } from './contracts.ts';
 
 function unique(values: string[]) {
 	return [...new Set(values.filter(Boolean))].sort();
+}
+
+export function resolveGroupMemberMembership(input: {
+	member: GroupMemberRef;
+	edges: GovernanceGroupEdge[];
+}): EffectiveGroupMembership {
+	return resolveEffectiveGroupMembership({ projectId: input.member.projectId, directGroupIds: input.member.groupIds, edges: input.edges });
 }
 
 export function validateGovernanceGroupGraph(groups: GovernanceGroup[], edges: GovernanceGroupEdge[]) {
@@ -30,6 +38,7 @@ export function validateGovernanceGroupGraph(groups: GovernanceGroup[], edges: G
 }
 
 export function resolveEffectiveGroupMembership(input: {
+	projectId?: string;
 	directGroupIds: string[];
 	edges: GovernanceGroupEdge[];
 	subjects?: Array<{ ref: string; membership: EffectiveGroupMembership }>;
@@ -48,6 +57,7 @@ export function resolveEffectiveGroupMembership(input: {
 		for (const groupId of subject.membership.effectiveGroupIds) inherit(groupId, [], [subject.ref], 'subject');
 	}
 	return {
+		projectId: input.projectId,
 		directGroupIds: unique(input.directGroupIds),
 		effectiveGroupIds: [...provenance.keys()].sort(),
 		provenance: [...provenance.values()].sort((left, right) => left.groupId.localeCompare(right.groupId)),
@@ -59,17 +69,4 @@ export function snapshotDecisionGroups(input: {
 }): DecisionGroupSnapshot {
 	return { ...input.membership, proposalId: input.proposalId, proposalCommitSha: input.proposalCommitSha, capturedAt: input.capturedAt,
 		provenance: input.membership.provenance.map((entry) => ({ ...entry, kind: 'proposal-snapshot' })) };
-}
-
-export function subscriptionMatches(input: {
-	subscription: AgentGroupSubscription;
-	model: string;
-	event: string;
-	effectiveGroupIds: string[];
-	descendantGroupIds?: string[];
-}) {
-	if (!input.subscription.models.includes(input.model) || !input.subscription.events.includes(input.event)) return false;
-	const candidates = new Set(input.effectiveGroupIds);
-	if (input.subscription.includeDescendants) for (const id of input.descendantGroupIds ?? []) candidates.add(id);
-	return input.subscription.groupIds.some((id) => candidates.has(id));
 }

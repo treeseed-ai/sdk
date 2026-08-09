@@ -230,8 +230,9 @@ it('builds durable capacity-plan work units from accepted execution inputs', () 
 			decisionId: 'decision-1',
 			scopeHash: 'scope_abc',
 			workDayId: 'workday-1',
-			executionInputs: [{
+				executionInputs: [{
 				id: 'input-1',
+				estimateId: 'estimate-1',
 				teamId: 'team-1',
 				projectId: 'project-1',
 				decisionId: 'decision-1',

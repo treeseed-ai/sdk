@@ -1,9 +1,12 @@
+import type { EffectiveGroupMembership, SignalGroupScope } from '../governance/groups/contracts.ts';
+import { matchSignalGroupScope } from '../governance/groups/signal-scope.ts';
 import type { AgentSignalContract } from './validation/agent-signal.ts';
 
 export type SignalProducerPolicy = 'any' | 'all' | 'quorum';
 
 export interface SignalSubscription {
 	contract: string;
+	groupScope?: SignalGroupScope;
 	filters?: Record<string, unknown>;
 	cardinality?: 'single' | 'each';
 	producerPolicy?: SignalProducerPolicy;
@@ -13,7 +16,6 @@ export interface SignalSubscription {
 export interface PlanningGraphProfile {
 	id?: string;
 	agentId: string;
-	agentClass?: string | null;
 	activityType: string;
 	stage?: string | null;
 	signals?: { subscribesTo?: SignalSubscription[]; publishes?: string[] };
@@ -55,6 +57,14 @@ export interface PlanningGraphEvidenceReference {
 	subjectId?: string | null;
 	payload?: Record<string, unknown>;
 	metadata?: Record<string, unknown>;
+	groupMembership?: EffectiveGroupMembership;
+}
+
+export interface PlanningGraphGroupContext {
+	projectId: string;
+	agentMembershipByNodeId: Record<string, EffectiveGroupMembership>;
+	primaryGroupByNodeId?: Record<string, string>;
+	depthByGroupId?: Record<string, number>;
 }
 
 export interface PlanningGraphNodeEvidence {
@@ -111,9 +121,9 @@ export function compileAgentPlanningGraph(
 	}
 	const producers = new Map<string, PlanningGraphNode[]>();
 	for (const entry of byId.values()) for (const contract of entry.produces) {
-		const definition = options.contracts?.[contract]; const source = profiles.find((profile) => (profile.id?.trim() || `${profile.agentId}:${profile.activityType}`) === entry.id);
+		const definition = options.contracts?.[contract];
 		if (options.contracts && !definition) diagnostics.push({ code: 'missing_contract', nodeId: entry.id, contractId: contract, message: `${entry.id} publishes unknown signal contract ${contract}.` });
-		else if (definition?.allowedProducerClasses?.length && !definition.allowedProducerClasses.includes(source?.agentClass ?? '')) diagnostics.push({ code: 'publisher_not_allowed', nodeId: entry.id, contractId: contract, message: `${source?.agentClass ?? entry.agentId} is not allowed to publish ${contract}.` });
+		else if (definition?.allowedProducerProfiles?.length && !definition.allowedProducerProfiles.includes(entry.activityType)) diagnostics.push({ code: 'publisher_not_allowed', nodeId: entry.id, contractId: contract, message: `${entry.activityType} may not publish ${contract}.` });
 		producers.set(contract, [...(producers.get(contract) ?? []), entry]);
 	}
 	const grouped = new Map<string, string[]>();
@@ -149,19 +159,29 @@ function matchesFilters(reference: PlanningGraphEvidenceReference, filters: Reco
 	});
 }
 
-function satisfying(graph: AgentPlanningGraph, node: PlanningGraphNode, subscription: SignalSubscription, evidence: PlanningGraphNodeEvidence[]) {
+function satisfying(graph: AgentPlanningGraph, node: PlanningGraphNode, subscription: SignalSubscription, evidence: PlanningGraphNodeEvidence[], groups?: PlanningGraphGroupContext) {
 	const predecessorIds = new Set(graph.edges.filter((edge) => edge.toNodeId === node.id && edge.contracts.includes(subscription.contract)).map((edge) => edge.fromNodeId));
 	return evidence.flatMap((entry) => entry.references.filter((reference) =>
-		(entry.nodeId === '$external' || predecessorIds.has(entry.nodeId)) && normalize(reference.contractId) === subscription.contract && matchesFilters(reference, subscription.filters),
+		(entry.nodeId === '$external' || predecessorIds.has(entry.nodeId)) && normalize(reference.contractId) === subscription.contract
+		&& matchesFilters(reference, subscription.filters) && matchesGroups(node, subscription, reference, groups),
 	).map((reference) => ({ nodeId: entry.nodeId, reference })));
 }
 
-export function evaluatePlanningGraphNode(graph: AgentPlanningGraph, nodeId: string, evidence: PlanningGraphNodeEvidence[]) {
+function matchesGroups(node: PlanningGraphNode, subscription: SignalSubscription, reference: PlanningGraphEvidenceReference, groups?: PlanningGraphGroupContext) {
+	if (!subscription.groupScope) return true;
+	if (!groups) return false;
+	const agentMembership = groups.agentMembershipByNodeId[node.id];
+	const subjectMembership = reference.groupMembership;
+	if (!agentMembership || !subjectMembership) return false;
+	return matchSignalGroupScope({ scope: subscription.groupScope, agentMembership, subjectMembership, primaryGroupId: groups.primaryGroupByNodeId?.[node.id], depthByGroupId: groups.depthByGroupId }).matched;
+}
+
+export function evaluatePlanningGraphNode(graph: AgentPlanningGraph, nodeId: string, evidence: PlanningGraphNodeEvidence[], groups?: PlanningGraphGroupContext) {
 	const selected = graph.nodes.find((entry) => entry.id === nodeId);
 	if (!selected || !graph.ok) return { ready: false, missing: selected?.requires ?? [], matched: [] as PlanningGraphNodeEvidence[] };
 	const matched = new Map<string, PlanningGraphEvidenceReference[]>();
 	const missing = selected.requires.filter((subscription) => {
-		const found = satisfying(graph, selected, subscription, evidence);
+		const found = satisfying(graph, selected, subscription, evidence, groups);
 		for (const item of found) matched.set(item.nodeId, [...(matched.get(item.nodeId) ?? []), item.reference]);
 		const producerCount = new Set(found.map((item) => item.nodeId)).size;
 		if (subscription.producerPolicy === 'all') {
@@ -174,16 +194,16 @@ export function evaluatePlanningGraphNode(graph: AgentPlanningGraph, nodeId: str
 	return { ready: missing.length === 0, missing, matched: [...matched].map(([entryNodeId, references]) => ({ nodeId: entryNodeId, references })) };
 }
 
-export function evaluatePlanningGraphNodeInstances(graph: AgentPlanningGraph, nodeId: string, evidence: PlanningGraphNodeEvidence[]) {
+export function evaluatePlanningGraphNodeInstances(graph: AgentPlanningGraph, nodeId: string, evidence: PlanningGraphNodeEvidence[], groups?: PlanningGraphGroupContext) {
 	const selected = graph.nodes.find((entry) => entry.id === nodeId);
 	if (!selected) return [];
 	const each = selected.requires.find((entry) => entry.cardinality === 'each');
-	if (!each) { const result = evaluatePlanningGraphNode(graph, nodeId, evidence); return result.ready ? [{ instanceKey: 'single', matched: result.matched }] : []; }
-	const anchors = satisfying(graph, selected, each, evidence);
+	if (!each) { const result = evaluatePlanningGraphNode(graph, nodeId, evidence, groups); return result.ready ? [{ instanceKey: 'single', matched: result.matched }] : []; }
+	const anchors = satisfying(graph, selected, each, evidence, groups);
 	return anchors.flatMap(({ reference }) => {
 		const subject = reference.subjectId ?? reference.recordId;
 		const scoped = evidence.map((entry) => ({ ...entry, references: entry.references.filter((candidate) => (candidate.subjectId ?? candidate.recordId) === subject) }));
-		const result = evaluatePlanningGraphNode(graph, nodeId, scoped);
+		const result = evaluatePlanningGraphNode(graph, nodeId, scoped, groups);
 		return result.ready ? [{ instanceKey: subject, matched: result.matched }] : [];
 	}).filter((entry, index, all) => all.findIndex((candidate) => candidate.instanceKey === entry.instanceKey) === index)
 		.sort((left, right) => left.instanceKey.localeCompare(right.instanceKey));

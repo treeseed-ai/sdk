@@ -7,3 +7,6 @@ export * from './contracts/index.ts';
 export * from './policy/index.ts';
 export * from './validation/index.ts';
 export * from './workday.ts';
+export * from '../governance/groups/contracts.ts';
+export * from '../governance/groups/membership.ts';
+export * from '../governance/groups/signal-scope.ts';

@@ -77,7 +77,7 @@ export function synchronizeRepositoryAliases(root: string, node: RepositorySaveN
 		if (!aliasAlreadyMatchesTarget && !worktreeIsClean(aliasPath)) {
 			throw new Error(`Repository alias ${relativePath} has local changes and cannot be synchronized.`);
 		}
-		runGit(['fetch', 'origin', `refs/heads/${branch}:refs/remotes/origin/${branch}`], { cwd: aliasPath });
+		runGit(['fetch', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`], { cwd: aliasPath });
 		const remoteHead = runGit(['rev-parse', `refs/remotes/origin/${branch}`], { cwd: aliasPath,capture: true }).trim();
 		if (remoteHead !== targetCommit) throw new Error(`Repository alias ${relativePath} observed ${remoteHead}, expected ${targetCommit}.`);
 		const previousCommit = headCommit(aliasPath);

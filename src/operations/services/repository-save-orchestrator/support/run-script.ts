@@ -153,7 +153,7 @@ export function pullRebaseFromOrigin(node: RepositorySaveNode, options: Reposito
 		};
 	}
 	try {
-		runCapturedCommand(node, options, 'rebase', 'git', ['fetch', 'origin', `refs/heads/${branch}:refs/remotes/origin/${branch}`]);
+		runCapturedCommand(node, options, 'rebase', 'git', ['fetch', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`]);
 		const localHead = headCommit(node.path);
 		const remoteHead = runGit(['rev-parse', '--verify', `refs/remotes/origin/${branch}`], { cwd: node.path, capture: true }).trim();
 		try {
@@ -200,7 +200,7 @@ export function pushCurrentBranch(node: RepositorySaveNode, options: RepositoryS
 	let remoteHead: string | null = null;
 	let branchAlreadyPublished = false;
 	if (remoteBranchExists) {
-		runCapturedCommand(node, options, 'push', 'git', ['fetch', 'origin', `refs/heads/${branch}:refs/remotes/origin/${branch}`]);
+		runCapturedCommand(node, options, 'push', 'git', ['fetch', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`]);
 		remoteHead = runGit(['rev-parse', '--verify', `refs/remotes/origin/${branch}`], { cwd: node.path, capture: true }).trim();
 		if (localHead === remoteHead) {
 			branchAlreadyPublished = true;

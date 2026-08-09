@@ -56,6 +56,7 @@ export interface DecisionExecutionInput {
 	projectAgentClassId: string;
 	mode: AgentExecutionMode;
 	workGraphNodeId?: string | null;
+	estimateId?: string | null;
 	taskId?: string | null;
 	workDayId?: string | null;
 	agentId?: string | null;

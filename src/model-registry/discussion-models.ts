@@ -56,6 +56,7 @@ export function buildDiscussionModelRegistry(repoRoot?: string): Record<Discussi
 		mentioned_agents: field('mentioned_agents', { aliases: ['mentionedAgents'], filterable: true, comparableAs: 'string_array', contentKeys: ['mentioned_agents', 'mentionedAgents'], writeContentKey: 'mentioned_agents' }),
 		group_ids: field('group_ids', { aliases: ['groupIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['group_ids', 'groupIds'], writeContentKey: 'groupIds' }),
 		file_refs: field('file_refs', { aliases: ['fileRefs'], contentKeys: ['file_refs', 'fileRefs'], writeContentKey: 'file_refs' }),
+		context_refs: field('context_refs', { aliases: ['contextRefs'], contentKeys: ['context_refs', 'contextRefs'], writeContentKey: 'context_refs' }),
 		created_at: field('created_at', { aliases: ['createdAt'], filterable: true, sortable: true, comparableAs: 'date', contentKeys: ['created_at', 'createdAt'], writeContentKey: 'created_at' }),
 	};
 	const eventFields = {

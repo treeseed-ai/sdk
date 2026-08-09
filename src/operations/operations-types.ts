@@ -9,6 +9,7 @@ export type OperationGroup =
 export type OperationId =
 	| 'workspace.status'
 	| 'workspace.doctor'
+	| 'workspace.clean'
 	| 'branch.tasks'
 	| 'branch.switch'
 	| 'branch.save'

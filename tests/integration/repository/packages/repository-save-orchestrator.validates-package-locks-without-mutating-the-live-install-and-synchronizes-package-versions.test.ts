@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 
 import { fileURLToPath } from 'node:url';
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import {
 	applyPackageVersion,
@@ -20,15 +20,11 @@ import {
 	repositorySaveWaves,
 	runRepositorySaveOrchestrator,
 	runStreamingCommand,
-	STANDALONE_LOCKFILE_REGENERATION_TIMEOUT_MS,
 	syncDirectGitDependencyLockfileEntries,
 	validateStandaloneGitDependencyLockfile,
 	type RepositorySaveNode,
 } from '../../../../src/operations/services/repositories/repository-save-orchestrator.ts';
-
-it('allows complex standalone git dependency graphs the root-workspace validation window', () => {
-	expect(STANDALONE_LOCKFILE_REGENERATION_TIMEOUT_MS).toBe(30 * 60_000);
-});
+import { STANDALONE_LOCKFILE_RESOLUTION_TIMEOUT_MS } from '../../../../src/operations/services/repository-save-orchestrator/support/standalone-lockfile.ts';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 
@@ -76,6 +72,9 @@ function commitInitial(cwd: string) {
 	git(cwd, ['commit', '--allow-empty', '-m', 'chore: initial']);
 }
 describe('repository save orchestrator helpers', () => {
+	it('allows bounded time for nested Git dependency preparation', () => {
+		expect(STANDALONE_LOCKFILE_RESOLUTION_TIMEOUT_MS).toBe(10 * 60_000);
+	});
 it('copies newly introduced runtime dependency closure into consumer locks during an atomic save', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-dependency-closure-'));
 		const sdkRoot = resolve(root, 'sdk');
@@ -215,10 +214,16 @@ it('re-resolves a consumer lock from the local package graph before atomic publi
 		remoteUrl: 'git@github.com:treeseed-ai/sdk.git', mode: 'dev-git-commit' as const,
 	};
 	expect(syncDirectGitDependencyLockfileEntries(repo, {}, [reference])).toBe(true);
-	validateStandaloneGitDependencyLockfile(repo, { deferPushUntilVerified: true }, [reference], [{
-		sourcePath: fixtureRoot,
-		remoteUrl: 'git@github.com:treeseed-ai/treeseed-fixtures.git',
-	}]);
+	const originalPath = process.env.PATH;
+	process.env.PATH = '';
+	try {
+		validateStandaloneGitDependencyLockfile(repo, { deferPushUntilVerified: true }, [reference], [{
+			sourcePath: fixtureRoot,
+			remoteUrl: 'git@github.com:treeseed-ai/treeseed-fixtures.git',
+		}]);
+	} finally {
+		process.env.PATH = originalPath;
+	}
 	const lock = JSON.parse(readFileSync(resolve(agentRoot, 'package-lock.json'), 'utf8'));
 	expect(lock.packages['node_modules/@treeseed/sdk'].dependencies).toEqual({ yaml: '2.8.1' });
 	expect(lock.packages['node_modules/@treeseed/sdk'].resolved).toContain(`#${sourceCommit}`);
@@ -411,7 +416,7 @@ it('rebases each save node against one explicit origin branch ref', () => {
 		const source = readSourceModule(resolve(testDir, '../../../../src/operations/services/repositories/repository-save-orchestrator.ts'));
 
 		expect(source).toContain("['fetch', 'origin'");
-		expect(source).toContain('refs/heads/${branch}:refs/remotes/origin/${branch}');
+		expect(source).toContain('+refs/heads/${branch}:refs/remotes/origin/${branch}');
 		expect(source).toContain('refs/remotes/origin/${branch}');
 		expect(source).not.toContain("['pull', '--rebase', '--recurse-submodules=no', 'origin', branch]");
 	});
