@@ -26,7 +26,7 @@ export async function runGitHubCleanup(cwd: string, environment: LiveReconcileEn
 	const destroyed: CanonicalGraphNode[] = [];
 	const prefixRoot = mode === 'cleanup' ? providerPrefixRoot(environment, 'github') : prefix;
 	if (!credential.token) {
-		cleanupDrift.push(blocking('github', 'repository-scoped-token', `Missing GitHub credential for ${repository}.`));
+		cleanupDrift.push(blocking('github', 'central-token', `Missing GitHub credential for ${repository}.`));
 	} else {
 		const [owner, repo] = credential.repository.split('/');
 		const variables = await githubRequest(`/repos/${owner}/${repo}/actions/variables?per_page=100`, credential.token, fetchImpl).catch(() => ({ variables: [] })) as { variables?: Array<{ name?: string }> };
@@ -64,7 +64,7 @@ export async function runGitHubAcceptance(cwd: string, environment: LiveReconcil
 	try {
 		repository = resolveCurrentGitHubRepository(cwd, env);
 		const credential = resolveGitHubCredentialForRepository(repository, { values: env, env });
-		if (!credential.token) throw new Error(`Missing GitHub credential for ${repository}; expected ${credential.envName} or TREESEED_GITHUB_TOKEN fallback.`);
+		if (!credential.token) throw new Error(`Missing GitHub credential for ${repository}; expected ${credential.envName}.`);
 		const [owner, repo] = credential.repository.split('/');
 		const environmentName = prefix;
 		const variableName = `TREESEED_LIVE_TEST_${prefix.toUpperCase().replace(/[^A-Z0-9]/gu, '_')}`;
@@ -133,9 +133,11 @@ export async function runGitHubAcceptance(cwd: string, environment: LiveReconcil
 			onProgress,
 		}, async () => githubRequest(`/repos/${owner}/${repo}/actions/runs?per_page=1`, credential.token, fetchImpl)));
 		results.push(await measuredScenario({
-			provider: 'github', mode, environment, runId, prefix, capability: 'repository-scoped-token', phase: 'verify', action: 'noop',
-			startMessage: 'github:repository-scoped-token: resolving credential',
-			successReason: credential.fallbackUsed ? 'GitHub acceptance resolved fallback credential.' : 'GitHub acceptance resolved repository-scoped credential.',
+			provider: 'github', mode, environment, runId, prefix, capability: 'central-token', phase: 'verify', action: 'noop',
+			startMessage: 'github:central-token: resolving credential',
+			successReason: credential.envName === 'TREESEED_GITHUB_TOKEN'
+				? 'GitHub acceptance resolved the central first-party credential.'
+				: 'GitHub acceptance resolved an imported third-party repository override.',
 			locators: { repository: credential.repository, credentialKey: credential.envName },
 			onProgress,
 		}, async () => credential));
@@ -149,4 +151,3 @@ export async function runGitHubAcceptance(cwd: string, environment: LiveReconcil
 		};
 	}
 }
-

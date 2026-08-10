@@ -25,6 +25,7 @@ export const RESOURCE_BUCKETS = [
 	'teamMemberships',
 	'projects',
 	'hubRepositories',
+	'supportRepositories',
 	'products',
 	'catalogArtifacts',
 ] as const;
@@ -234,6 +235,7 @@ export function parseRepositoryPolicy(value: unknown, path: string, diagnostics:
 	if (stagingBranch !== 'staging') diagnostics.push(errorDiagnostic('seed.invalid_repository_policy', 'stagingBranch must be staging.', `${path}.stagingBranch`));
 	const issues = booleanField(value, 'issues', path, diagnostics);
 	const actions = booleanField(value, 'actions', path, diagnostics);
+	const workflows = stringArrayField(value, 'workflows', path, diagnostics) ?? [];
 	if (issues === undefined) diagnostics.push(errorDiagnostic('seed.missing_field', 'Missing required field: issues.', `${path}.issues`));
 	if (actions === undefined) diagnostics.push(errorDiagnostic('seed.missing_field', 'Missing required field: actions.', `${path}.actions`));
 	return {
@@ -244,6 +246,7 @@ export function parseRepositoryPolicy(value: unknown, path: string, diagnostics:
 		stagingBranch: 'staging',
 		issues: issues ?? false,
 		actions: actions ?? false,
+		workflows,
 	};
 }
 

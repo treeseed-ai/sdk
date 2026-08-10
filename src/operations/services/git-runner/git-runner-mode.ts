@@ -60,6 +60,7 @@ export type RunOptions = {
 	allowFailure?: boolean;
 	timeoutMs?: number;
 	maxBuffer?: number;
+	input?: string;
 	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 };
 
@@ -114,6 +115,7 @@ export function gitSync(args: string[], options: RunOptions): GitRunnerResult {
 		env,
 		encoding: 'utf8',
 		stdio: 'pipe',
+		input: options.input,
 		timeout: timeoutMs,
 		maxBuffer: options.maxBuffer ?? 1024 * 1024 * 32,
 	};
@@ -168,16 +170,22 @@ export function classifyGitMode(args: string[]): GitRunnerMode {
 	return new Set([
 		'add',
 		'checkout',
+		'commit-tree',
 		'commit',
 		'fetch',
+		'hash-object',
+		'init',
 		'merge',
 		'pull',
 		'push',
+		'read-tree',
 		'rebase',
 		'reset',
 		'restore',
 		'switch',
 		'tag',
+		'update-index',
+		'write-tree',
 		'worktree',
 	]).has(command) ? 'mutate' : 'read';
 }

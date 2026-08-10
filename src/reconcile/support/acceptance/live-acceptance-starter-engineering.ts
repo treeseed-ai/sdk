@@ -34,7 +34,7 @@ export function engineeringStarterCapacityConfig(runId: string, exactBaseRef: st
 		}),
 		projectMetadata: {
 			architecture: { topology: 'single_repository_site', rootPath: 'template', sitePath: 'template', contentPath: 'template/src/content', contentRuntimeSource: 'treedx_snapshot', localContentMaterialization: 'existing_path' },
-			repository: { provider: 'git', owner: 'treeseed-templates', name: 'engineering', defaultBranch: 'main', checkoutPath: 'starters/engineering', cloneUrl: 'https://github.com/treeseed-templates/engineering.git' },
+			repository: { provider: 'git', owner: 'treeseed-ai', name: 'template-engineering', defaultBranch: 'main', checkoutPath: 'starters/engineering', cloneUrl: 'https://github.com/treeseed-ai/template-engineering.git' },
 			agentSpecs: { root: 'template/src/content/agents', testsRoot: 'template/src/content/agent-tests' },
 		},
 	};

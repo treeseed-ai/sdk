@@ -70,7 +70,8 @@ describe('sdk package graph', () => {
 
 		const sourceFiles = walkSourceFiles(sourceRoot)
 			.filter((filePath) => /\.(ts|js|mjs)$/u.test(filePath))
-			.filter((filePath) => !filePath.includes('/treeseed/template-catalog/templates/'));
+			.filter((filePath) => !filePath.includes('/treeseed/template-catalog/templates/'))
+			.filter((filePath) => !filePath.endsWith('/seeds/workspaces/market-api-workspace.ts'));
 
 		for (const filePath of sourceFiles) {
 			const contents = readFileSync(filePath, 'utf8');

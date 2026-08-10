@@ -19,7 +19,7 @@ export function researchStarterCapacityConfig(): LocalStarterCapacityConfig {
 		parameters: { planningOnly: true, metadata: { liveAcceptance: true, starter: 'research' } },
 		projectMetadata: {
 			architecture: { topology: 'single_repository_site', rootPath: 'template', sitePath: 'template', contentPath: 'template/src/content', contentRuntimeSource: 'treedx_snapshot', localContentMaterialization: 'existing_path' },
-			repository: { provider: 'git', owner: 'treeseed-templates', name: 'research', defaultBranch: 'main', checkoutPath: 'starters/research', cloneUrl: 'https://github.com/treeseed-templates/research.git' },
+			repository: { provider: 'git', owner: 'treeseed-ai', name: 'template-research', defaultBranch: 'main', checkoutPath: 'starters/research', cloneUrl: 'https://github.com/treeseed-ai/template-research.git' },
 			agentSpecs: { root: 'template/src/content/agents', testsRoot: 'template/src/content/agent-tests' },
 		},
 	};

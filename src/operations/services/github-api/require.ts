@@ -21,6 +21,7 @@ export interface GitHubRepositoryMetadataInput {
 	hasIssues?: boolean;
 	hasProjects?: boolean;
 	hasWiki?: boolean;
+	defaultBranch?: string;
 }
 
 export interface GitHubRepositorySummary {

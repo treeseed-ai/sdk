@@ -12,9 +12,10 @@ type SeedProjectResource,
 type SeedTeamMembershipResource,
 type SeedCapacityProviderPrerequisite,
 type SeedAgentLabServicePrincipalPrerequisite,
-type SeedTeamResource
+type SeedSupportRepositoryResource,
+type SeedTeamResource,
 } from '../types.js';
-import { parseCatalogArtifact,parseHubRepository,parseOperationRecipe,parseProduct,parseProject,walkForSecrets } from './parse-project.ts';
+import { parseCatalogArtifact,parseHubRepository,parseOperationRecipe,parseProduct,parseProject,parseSupportRepository,walkForSecrets } from './parse-project.ts';
 import { RESOURCE_BUCKETS,SUPPORTED_BUCKETS,asString,isRecord,parseEnvironments,parseTeam,parseTeamMembership,requireString,stringArrayField } from './resource-buckets.ts';
 
 function parseCapacityProvider(value: unknown, index: number, diagnostics: SeedDiagnostic[]): SeedCapacityProviderPrerequisite | null {
@@ -72,6 +73,7 @@ export function validateResourceKeys(manifest: SeedManifest, diagnostics: SeedDi
 	manifest.resources.teamMemberships.forEach((member, index) => visit(member.key, `resources.teamMemberships[${index}].key`));
 	manifest.resources.projects.forEach((project, index) => visit(project.key, `resources.projects[${index}].key`));
 	manifest.resources.hubRepositories.forEach((repository, index) => visit(repository.key, `resources.hubRepositories[${index}].key`));
+	manifest.resources.supportRepositories.forEach((repository, index) => visit(repository.key, `resources.supportRepositories[${index}].key`));
 	manifest.resources.products.forEach((product, index) => visit(product.key, `resources.products[${index}].key`));
 	manifest.resources.catalogArtifacts.forEach((artifact, index) => visit(artifact.key, `resources.catalogArtifacts[${index}].key`));
 	manifest.runtime.capacityProviders.forEach((provider, index) => visit(provider.key, `runtime.capacityProviders[${index}].key`));
@@ -115,6 +117,7 @@ export function allResourceKeys(manifest: SeedManifest) {
 		...manifest.resources.teamMemberships.map((member) => member.key),
 		...manifest.resources.projects.map((project) => project.key),
 		...manifest.resources.hubRepositories.map((repository) => repository.key),
+		...manifest.resources.supportRepositories.map((repository) => repository.key),
 		...manifest.resources.products.map((product) => product.key),
 		...manifest.resources.catalogArtifacts.map((artifact) => artifact.key),
 	]);
@@ -224,6 +227,7 @@ export function parseSeedManifest(value: unknown, diagnostics: SeedDiagnostic[])
 		teamMemberships: arrayBucket(resourcesValue, 'teamMemberships', diagnostics).map((entry, index) => parseTeamMembership(entry, `resources.teamMemberships[${index}]`, diagnostics)).filter((member): member is SeedTeamMembershipResource => Boolean(member)),
 		projects: arrayBucket(resourcesValue, 'projects', diagnostics).map((entry, index) => parseProject(entry, `resources.projects[${index}]`, diagnostics)).filter((project): project is SeedProjectResource => Boolean(project)),
 		hubRepositories: arrayBucket(resourcesValue, 'hubRepositories', diagnostics).map((entry, index) => parseHubRepository(entry, `resources.hubRepositories[${index}]`, diagnostics)).filter((repository): repository is SeedHubRepositoryResource => Boolean(repository)),
+		supportRepositories: arrayBucket(resourcesValue, 'supportRepositories', diagnostics).map((entry, index) => parseSupportRepository(entry, `resources.supportRepositories[${index}]`, diagnostics)).filter((repository): repository is SeedSupportRepositoryResource => Boolean(repository)),
 		products: arrayBucket(resourcesValue, 'products', diagnostics).map((entry, index) => parseProduct(entry, `resources.products[${index}]`, diagnostics)).filter((product): product is SeedProductResource => Boolean(product)),
 		catalogArtifacts: arrayBucket(resourcesValue, 'catalogArtifacts', diagnostics).map((entry, index) => parseCatalogArtifact(entry, `resources.catalogArtifacts[${index}]`, diagnostics)).filter((artifact): artifact is SeedCatalogArtifactResource => Boolean(artifact)),
 	};

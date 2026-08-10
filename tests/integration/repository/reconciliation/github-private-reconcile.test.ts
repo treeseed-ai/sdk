@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-	createGitHubApiClient: vi.fn(() => ({ id: 'github-client' })),
+	getContent: vi.fn(),
+	createGitHubApiClient: vi.fn(() => ({ rest: { repos: { getContent: mocks.getContent } } })),
 	dispatchGitHubWorkflowRun: vi.fn(),
 	getLatestGitHubWorkflowRun: vi.fn(),
 	waitForGitHubWorkflowRunCompletion: vi.fn(),
@@ -18,9 +19,26 @@ vi.mock('../../../../src/operations/services/repositories/github-api.ts', async 
 	};
 });
 
-const { dispatchReconcileGitHubWorkflow } = await import('../../../../src/reconcile/providers/github-private.ts');
+const { dispatchReconcileGitHubWorkflow, observeReconcileGitHubWorkflow } = await import('../../../../src/reconcile/providers/github-private.ts');
 
 describe('GitHub private reconciliation workflow dispatch', () => {
+	it('treats GitHub empty-repository content responses as missing workflow source', async () => {
+		mocks.getContent.mockRejectedValueOnce(new Error('This repository is empty.'));
+
+		await expect(observeReconcileGitHubWorkflow(
+			'treeseed-ai/market-content',
+			'publish-content.yml',
+			'staging',
+			{ TREESEED_GITHUB_TOKEN: 'token' },
+		)).resolves.toMatchObject({
+			exists: false,
+			authAvailable: true,
+			repository: 'treeseed-ai/market-content',
+			workflow: 'publish-content.yml',
+			ref: 'staging',
+		});
+	});
+
 	it('fails closed when a waited workflow completes unsuccessfully', async () => {
 		mocks.dispatchGitHubWorkflowRun.mockResolvedValue({
 			status: 204,

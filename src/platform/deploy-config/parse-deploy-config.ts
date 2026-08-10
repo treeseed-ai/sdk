@@ -11,6 +11,7 @@ WebSourcePageCacheConfig
 import { CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER,DEFAULT_LONG_LIVED_CACHE_POLICY,DEFAULT_SOURCE_PAGE_PURGE_PATHS,cloudflareFieldAliases,cloudflarePagesFieldAliases,cloudflareR2FieldAliases,deployConfigFieldAliases,expectString,optionalBoolean,optionalCloudflareAccountId,optionalPositiveNumber,optionalRecord,optionalString,parseHostingConfig,parsePluginReferences } from './deploy-config-field-aliases.ts';
 import { normalizeLegacyHostingFromPlanes,normalizePlanesFromLegacyHosting,parseHubConfig,parseProviderSelections,parseRuntimeConfig } from './normalize-planes-from-legacy-hosting.ts';
 import { inferManagedRuntimeFromServices,parseConnectionsConfig,parseExportConfig,parseManagedServicesConfig,parsePlatformSurfacesConfig,parseProcessingConfig,parsePublicTreeDxFederationConfig } from './parse-public-tree-dx-federation-config.ts';
+import { assertPlatformServiceAuthority,parseControlPlane,parseMarketProfile,parsePlatformAuthority } from './parse-platform-connections.ts';
 
 export function parseDeployConfig(raw: string): DeployConfig {
 	const parsed = normalizeAliasedRecord(
@@ -33,6 +34,10 @@ export function parseDeployConfig(raw: string): DeployConfig {
 	const cloudflareLocalTunnel = optionalRecord(cloudflareTunnel.local, 'cloudflare.tunnel.local') ?? {};
 	const hosting = parseHostingConfig(parsed.hosting);
 	const services = parseManagedServicesConfig(parsed.services);
+	const authority = parsePlatformAuthority(parsed.authority);
+	const market = parseMarketProfile(parsed.market);
+	const controlPlane = parseControlPlane(parsed.controlPlane, market);
+	assertPlatformServiceAuthority(authority, services as Record<string, unknown> | undefined);
 	const processing = parseProcessingConfig(parsed.processing, services);
 	const normalizedPlanes = normalizePlanesFromLegacyHosting(hosting);
 	const inferredPlanes = !hosting && !parsed.hub && !parsed.runtime && inferManagedRuntimeFromServices(services)
@@ -59,6 +64,9 @@ export function parseDeployConfig(raw: string): DeployConfig {
 		siteUrl: expectString(parsed.siteUrl, 'siteUrl'),
 		contactEmail: expectString(parsed.contactEmail, 'contactEmail'),
 		projectRoot: optionalString(parsed.projectRoot),
+		authority,
+		market,
+		controlPlane,
 		hosting: compatibilityHosting,
 		hub,
 		runtime,

@@ -33,4 +33,23 @@ describe('MarketClient human control-plane transport', () => {
 		]);
 		expect(fetchMock.mock.calls[2]?.[1]?.method).toBe('PATCH');
 	});
+
+	it('routes sovereign control-plane calls away from the singleton Market while keeping Market operations central', async () => {
+		const fetchMock = vi.fn(async () => Response.json({ ok: true, payload: {} }));
+		const client = new MarketClient({
+			profile: { id: 'treeseed', label: 'TreeSeed Market', baseUrl: 'https://api.treeseed.dev', kind: 'central' },
+			marketBaseUrl: 'https://api.treeseed.dev',
+			controlPlaneBaseUrl: 'https://sovereign.example.test',
+			controlPlaneMode: 'external',
+			fetchImpl: fetchMock,
+		});
+
+		await (client as unknown as { request(path: string): Promise<unknown> }).request('/v1/me');
+		await (client as unknown as { request(path: string): Promise<unknown> }).request('/v1/market/catalog');
+
+		expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+			'https://sovereign.example.test/v1/me',
+			'https://api.treeseed.dev/v1/market/catalog',
+		]);
+	});
 });

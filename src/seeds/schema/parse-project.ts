@@ -12,7 +12,8 @@ type SeedOperationRecipeCommand,
 type SeedOperationRecipeStep,
 type SeedProductResource,
 type SeedProjectRepository,
-type SeedProjectResource
+type SeedProjectResource,
+type SeedSupportRepositoryResource,
 } from '../types.js';
 import { ALLOWED_RECIPE_CHANNELS,ALLOWED_RECIPE_OPERATIONS,asString,isRecord,keyBase,objectField,parseEnvironments,parseProjectArchitecture,parseRepository,parseRepositoryPolicy,recordArrayField,requireString,stringArrayField } from './resource-buckets.ts';
 
@@ -83,6 +84,26 @@ export function parseHubRepository(value: unknown, path: string, diagnostics: Se
 		submodulePath: repository.submodulePath,
 		repositoryPolicy: repository.repositoryPolicy,
 	}, path, diagnostics);
+	return repository;
+}
+
+export function parseSupportRepository(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedSupportRepositoryResource | null {
+	if (!isRecord(value)) {
+		diagnostics.push(errorDiagnostic('seed.invalid_resource', 'Expected support repository resource to be an object.', path));
+		return null;
+	}
+	const repository: SeedSupportRepositoryResource = {
+		...keyBase(value, path, diagnostics),
+		provider: requireString(value, 'provider', path, diagnostics),
+		owner: requireString(value, 'owner', path, diagnostics),
+		name: requireString(value, 'name', path, diagnostics),
+		gitUrl: requireString(value, 'gitUrl', path, diagnostics),
+		defaultBranch: asString(value.defaultBranch) || undefined,
+		description: asString(value.description) || undefined,
+		metadata: objectField(value, 'metadata', path, diagnostics),
+		repositoryPolicy: parseRepositoryPolicy(value.repositoryPolicy, `${path}.repositoryPolicy`, diagnostics),
+	};
+	validateRepository({ role: 'support', ...repository }, path, diagnostics);
 	return repository;
 }
 

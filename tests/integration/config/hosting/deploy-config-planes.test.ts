@@ -77,10 +77,89 @@ cloudflare:
 `);
 
 		const config = loadDeployConfigFromPath(configPath);
+		expect(config.authority).toEqual({ kind: 'customer-platform' });
+		expect(config.market).toEqual({
+			profile: 'treeseed',
+			kind: 'singleton_external',
+			baseUrl: 'https://api.treeseed.dev',
+			provisioningAuthority: 'forbidden',
+		});
+		expect(config.controlPlane).toEqual({
+			mode: 'market-passthrough',
+			baseUrl: 'https://api.treeseed.dev',
+		});
 		expect(config.hub).toMatchObject({ mode: 'treeseed_hosted' });
 		expect(config.runtime).toMatchObject({ mode: 'none', registration: 'none' });
 		expect(config.hosting).toMatchObject({ kind: 'self_hosted_project', registration: 'none' });
 		expect(config.processing).toMatchObject({ mode: 'market-assigned' });
+	});
+
+	it('routes sovereign deployments to an external control plane without changing the singleton Market', async () => {
+		const configPath = await writeDeployConfig(`name: Sovereign Site
+slug: sovereign-site
+siteUrl: https://sovereign.example.com
+contactEmail: hello@example.com
+market:
+  profile: treeseed
+controlPlane:
+  mode: external
+  baseUrl: https://control.sovereign.example.com
+cloudflare:
+  accountId: account-123
+`);
+
+		const config = loadDeployConfigFromPath(configPath);
+		expect(config.market.baseUrl).toBe('https://api.treeseed.dev');
+		expect(config.controlPlane).toEqual({
+			mode: 'external',
+			baseUrl: 'https://control.sovereign.example.com',
+		});
+	});
+
+	it('rejects a second persistent Market profile and customer-owned Market API infrastructure', async () => {
+		const profilePath = await writeDeployConfig(`name: Invalid Site
+slug: invalid-site
+siteUrl: https://example.com
+contactEmail: hello@example.com
+market:
+  profile: competitor
+cloudflare:
+  accountId: account-123
+`);
+		expect(() => loadDeployConfigFromPath(profilePath)).toThrow(/immutable treeseed Market profile/u);
+
+		const servicePath = await writeDeployConfig(`name: Invalid Site
+slug: invalid-site
+siteUrl: https://example.com
+contactEmail: hello@example.com
+services:
+  marketApi:
+    enabled: true
+    provider: railway
+cloudflare:
+  accountId: account-123
+`);
+		expect(() => loadDeployConfigFromPath(servicePath)).toThrow(/cannot provision singleton Market service/u);
+	});
+
+	it('allows the protected singleton authority to declare its private Market API service', async () => {
+		const configPath = await writeDeployConfig(`name: TreeSeed Market
+slug: treeseed-market
+siteUrl: https://treeseed.dev
+contactEmail: hello@treeseed.email
+authority:
+  kind: market-singleton
+services:
+  marketApi:
+    enabled: true
+    provider: railway
+cloudflare:
+  accountId: account-123
+`);
+
+		const config = loadDeployConfigFromPath(configPath);
+		expect(config.authority.kind).toBe('market-singleton');
+		expect(config.services?.marketApi?.enabled).toBe(true);
 	});
 
 	it('normalizes legacy hosted_project configs into a treeseed-managed runtime plane', async () => {
