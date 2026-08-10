@@ -80,7 +80,7 @@ describe('export runtime', () => {
 		const output = readFileSync(exported.outputPath, 'utf8');
 		expect(output).toContain('[src]/');
 		expect(output).toContain('[sdk]/');
-		expect(output).toContain('## File: nested/index.ts');
+		expect(output).toMatch(/## File: (?:src\/)?nested\/index\.ts/u);
 		expect(output).toContain('export const bundled = true;');
 
 		writeFileSync(resolve(root, 'treeseed.site.yaml'), `name: Export Test

@@ -7,7 +7,18 @@ import { discoverRepositorySaveNodes } from '../../../../src/operations/services
 import { synchronizeRepositoryAliases } from '../../../../src/operations/services/repository-save-orchestrator/repositories/repository-alias-state.ts';
 
 function git(cwd: string, args: string[]) {
-	const result = spawnSync('git', args, { cwd,stdio: 'pipe',encoding: 'utf8' });
+	const result = spawnSync('git', args, {
+		cwd,
+		stdio: 'pipe',
+		encoding: 'utf8',
+		env: {
+			...process.env,
+			GIT_AUTHOR_NAME: 'Repository Test',
+			GIT_AUTHOR_EMAIL: 'repository-test@treeseed.dev',
+			GIT_COMMITTER_NAME: 'Repository Test',
+			GIT_COMMITTER_EMAIL: 'repository-test@treeseed.dev',
+		},
+	});
 	if (result.status !== 0) throw new Error(result.stderr || result.stdout);
 	return result.stdout.trim();
 }
