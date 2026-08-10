@@ -115,14 +115,17 @@ async function buildCommit(projectRoot: string, branch: string, plan: MarketApiW
 	const indexPath = resolve(temporary, 'index');
 	const indexEnv = { ...process.env, GIT_INDEX_FILE: indexPath };
 	try {
-		if (parent) await git(projectRoot, ['fetch', '--quiet', '--no-tags', `https://github.com/${plan.repository}.git`, parent], { env: gitEnv });
-		await git(projectRoot, ['read-tree', '--empty'], { env: indexEnv });
+		await git(temporary, ['init', '--quiet']);
+		if (parent) await git(temporary, ['fetch', '--quiet', '--no-tags', `https://github.com/${plan.repository}.git`, parent], { env: gitEnv });
+		await git(temporary, ['read-tree', '--empty'], { env: indexEnv });
 		for (const [path, content] of files(projectRoot, plan.sdkRef, plan.adminApiRef).files) {
-			const blob = (await git(projectRoot, ['hash-object', '-w', '--stdin'], { input: content })).stdout;
-			await git(projectRoot, ['update-index', '--add', '--cacheinfo', '100644', blob, path], { env: indexEnv });
+			const blob = (await git(temporary, ['hash-object', '-w', '--stdin'], { input: content })).stdout;
+			await git(temporary, ['update-index', '--add', '--cacheinfo', '100644', blob, path], { env: indexEnv });
 		}
-		const tree = (await git(projectRoot, ['write-tree'], { env: indexEnv })).stdout;
-		return (await git(projectRoot, ['commit-tree', tree, ...(parent ? ['-p', parent] : []), '-m', `${parent ? 'Reconcile' : 'Create'} Market API ${branch} gateway workspace`], { env: { ...process.env, GIT_AUTHOR_NAME: 'TreeSeed migration', GIT_AUTHOR_EMAIL: 'operations@treeseed.dev', GIT_COMMITTER_NAME: 'TreeSeed migration', GIT_COMMITTER_EMAIL: 'operations@treeseed.dev' } })).stdout;
+		const tree = (await git(temporary, ['write-tree'], { env: indexEnv })).stdout;
+		const commit = (await git(temporary, ['commit-tree', tree, ...(parent ? ['-p', parent] : []), '-m', `${parent ? 'Reconcile' : 'Create'} Market API ${branch} gateway workspace`], { env: { ...process.env, GIT_AUTHOR_NAME: 'TreeSeed migration', GIT_AUTHOR_EMAIL: 'operations@treeseed.dev', GIT_COMMITTER_NAME: 'TreeSeed migration', GIT_COMMITTER_EMAIL: 'operations@treeseed.dev' } })).stdout;
+		await git(temporary, ['push', `https://github.com/${plan.repository}.git`, `${commit}:refs/heads/${branch}`], { env: gitEnv });
+		return commit;
 	} finally { rmSync(temporary, { recursive: true, force: true }); }
 }
 
@@ -136,7 +139,6 @@ export async function applyMarketApiWorkspace(input: { projectRoot: string; mani
 		let targetCommit = branch.targetCommit;
 		if (branch.action === 'create' || branch.action === 'update') {
 			targetCommit = await buildCommit(input.projectRoot, branch.branch, plan, branch.targetCommit, gitEnv);
-			await git(input.projectRoot, ['push', `https://github.com/${plan.repository}.git`, `${targetCommit}:refs/heads/${branch.branch}`], { env: gitEnv });
 		}
 		const observed = await remoteHead(input.projectRoot, plan.repository, branch.branch, gitEnv);
 		if (!targetCommit || observed !== targetCommit) throw new Error(`Fresh GitHub read-back returned ${observed ?? 'missing'}, expected ${targetCommit ?? 'missing'}.`);

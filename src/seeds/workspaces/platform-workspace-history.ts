@@ -142,19 +142,23 @@ export async function planPlatformWorkspace(input: { projectRoot: string; manife
 	return { project: 'platform', targetRepository, branches } satisfies PlatformWorkspacePlan;
 }
 
-async function buildCommit(projectRoot: string, branch: string, files: SnapshotFile[], links: SnapshotLink[], parent: string | null) {
+async function buildCommit(repository: string, branch: string, files: SnapshotFile[], links: SnapshotLink[], parent: string | null, gitEnv: NodeJS.ProcessEnv) {
 	const temporary = mkdtempSync(resolve(tmpdir(), 'trsd-platform-workspace-'));
 	const indexPath = resolve(temporary, 'index');
 	const indexEnv = { ...process.env, GIT_INDEX_FILE: indexPath };
 	try {
-		await git(projectRoot, ['read-tree', '--empty'], { env: indexEnv });
+		await git(temporary, ['init', '--quiet']);
+		if (parent) await git(temporary, ['fetch', '--quiet', '--no-tags', `https://github.com/${repository}.git`, parent], { env: gitEnv });
+		await git(temporary, ['read-tree', '--empty'], { env: indexEnv });
 		for (const file of files) {
-			const blob = (await git(projectRoot, ['hash-object', '-w', '--stdin'], { input: file.content })).stdout;
-			await git(projectRoot, ['update-index', '--add', '--cacheinfo', '100644', blob, file.path], { env: indexEnv });
+			const blob = (await git(temporary, ['hash-object', '-w', '--stdin'], { input: file.content })).stdout;
+			await git(temporary, ['update-index', '--add', '--cacheinfo', '100644', blob, file.path], { env: indexEnv });
 		}
-		for (const link of links) await git(projectRoot, ['update-index', '--add', '--cacheinfo', '160000', link.commit, link.path], { env: indexEnv });
-		const tree = (await git(projectRoot, ['write-tree'], { env: indexEnv })).stdout;
-		return (await git(projectRoot, ['commit-tree', tree, ...(parent ? ['-p', parent] : []), '-m', `${parent ? 'Update' : 'Create'} Platform ${branch} integration workspace`], { env: { ...process.env, GIT_AUTHOR_NAME: 'TreeSeed migration', GIT_AUTHOR_EMAIL: 'operations@treeseed.dev', GIT_COMMITTER_NAME: 'TreeSeed migration', GIT_COMMITTER_EMAIL: 'operations@treeseed.dev' } })).stdout;
+		for (const link of links) await git(temporary, ['update-index', '--add', '--cacheinfo', '160000', link.commit, link.path], { env: indexEnv });
+		const tree = (await git(temporary, ['write-tree'], { env: indexEnv })).stdout;
+		const commit = (await git(temporary, ['commit-tree', tree, ...(parent ? ['-p', parent] : []), '-m', `${parent ? 'Update' : 'Create'} Platform ${branch} integration workspace`], { env: { ...process.env, GIT_AUTHOR_NAME: 'TreeSeed migration', GIT_AUTHOR_EMAIL: 'operations@treeseed.dev', GIT_COMMITTER_NAME: 'TreeSeed migration', GIT_COMMITTER_EMAIL: 'operations@treeseed.dev' } })).stdout;
+		await git(temporary, ['push', `https://github.com/${repository}.git`, `${commit}:refs/heads/${branch}`], { env: gitEnv });
+		return commit;
 	} finally {
 		rmSync(temporary, { recursive: true, force: true });
 	}
@@ -169,8 +173,7 @@ export async function applyPlatformWorkspace(input: { projectRoot: string; manif
 	for (const branch of plan.branches) {
 		let commit = branch.targetCommit;
 		if (branch.action === 'create' || branch.action === 'update') {
-			commit = await buildCommit(input.projectRoot, branch.branch, baseFiles(input.projectRoot, branch.links), branch.links, branch.action === 'update' ? branch.targetCommit : null);
-			await git(input.projectRoot, ['push', `https://github.com/${plan.targetRepository}.git`, `${commit}:refs/heads/${branch.branch}`], { env: gitEnv });
+			commit = await buildCommit(plan.targetRepository, branch.branch, baseFiles(input.projectRoot, branch.links), branch.links, branch.action === 'update' ? branch.targetCommit : null, gitEnv);
 		}
 		const observed = await remoteHead(input.projectRoot, plan.targetRepository, branch.branch, gitEnv);
 		if (!commit || observed !== commit) throw new Error(`Fresh GitHub read-back for ${plan.targetRepository}@${branch.branch} returned ${observed ?? 'missing'}, expected ${commit ?? 'missing'}.`);
