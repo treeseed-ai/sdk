@@ -4,6 +4,8 @@ TEMPLATE_ID_ALIASES,
 normalizeTemplateId
 } from '../entrypoints/models/sdk-types.ts';
 export * from '../feedback/index.ts';
+export * from '../gateway/admin-passthrough.ts';
+export * from '../gateway/health.ts';
 
 export type {
 AgentMessageKind,
