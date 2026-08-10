@@ -54,6 +54,7 @@ const gatewayPaths = [
 const cliPaths = [
 	'package-lock.json',
 	'package.json',
+	'scripts/packages/release-verify.ts',
 	'src/cli/handlers/accounts/auth-login.ts',
 	'src/cli/handlers/seeds/seed-repositories.ts',
 	'src/cli/handlers/seeds/seed.ts',
