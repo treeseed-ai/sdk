@@ -25,6 +25,11 @@ export {
 resolveWorkflowPaths
 } from '../workflow/policy.ts';
 export {
+inspectWorkflowLock,
+type WorkflowLockInspection,
+type WorkflowLockScope
+} from '../workflow/runs.ts';
+export {
 loadCliDeployConfig,
 packageScriptPath,
 resolveWranglerBin
