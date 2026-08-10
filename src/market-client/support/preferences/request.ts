@@ -20,7 +20,7 @@ export async function requestMethod<T>(this: MarketClient, path: string, options
     if ((options.requireAuth ?? false) && this.accessToken) {
         headers.authorization = `Bearer ${this.accessToken}`;
     }
-    const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+    const response = await this.fetchImpl(`${this.baseUrlForPath(path)}${path}`, {
         method: options.method ?? 'GET',
         headers,
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
