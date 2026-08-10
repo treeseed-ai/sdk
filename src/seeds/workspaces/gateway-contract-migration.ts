@@ -18,6 +18,7 @@ const gatewayPaths = [
 	'src/platform/deploy-config/parse-deploy-config.ts',
 	'src/platform/deploy-config/parse-platform-connections.ts',
 	'src/platform/env.yaml',
+	'src/platform/environment/resolve-content-bucket-binding.ts',
 	'src/platform/support/contracts.ts',
 	'src/reconcile/builtin-adapters/repositories/build-github-branch-adapter.ts',
 	'src/reconcile/builtin-adapters/repositories/build-github-branch-rules-adapter.ts',
