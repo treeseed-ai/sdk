@@ -76,7 +76,7 @@ services:
 describe('config provider connection checks', () => {
 	it('checks Railway connectivity through the API instead of the CLI whoami path', async () => {
 		resolveRailwayWorkspaceContextMock.mockReset();
-		resolveRailwayWorkspaceContextMock.mockResolvedValue({ id: 'workspace-1', name: 'knowledge-coop' });
+		resolveRailwayWorkspaceContextMock.mockResolvedValue({ id: 'workspace-1', name: 'treeseed-ai' });
 		const { checkProviderConnections } = await import('../../../../../src/operations/services/configuration/config-runtime.ts');
 
 		const report = await checkProviderConnections({
@@ -85,17 +85,17 @@ describe('config provider connection checks', () => {
 			env: {},
 			valuesOverlay: {
 				TREESEED_RAILWAY_API_TOKEN: 'railway-token',
-				TREESEED_RAILWAY_WORKSPACE: 'knowledge-coop',
+				TREESEED_RAILWAY_WORKSPACE: 'treeseed-ai',
 			},
 		});
 
 		expect(report.ok).toBe(true);
 		expect(resolveRailwayWorkspaceContextMock).toHaveBeenCalledWith(expect.objectContaining({
-			workspace: 'knowledge-coop',
+			workspace: 'treeseed-ai',
 		}));
 		expect(report.checks.find((check) => check.provider === 'railway')).toMatchObject({
 			ready: true,
-			detail: 'Railway API token can access workspace knowledge-coop. Project and service existence will be reconciled during bootstrap.',
+			detail: 'Railway API token can access workspace treeseed-ai. Project and service existence will be reconciled during bootstrap.',
 		});
 	}, 30000);
 
@@ -110,7 +110,7 @@ describe('config provider connection checks', () => {
 			env: {},
 			valuesOverlay: {
 				TREESEED_RAILWAY_API_TOKEN: 'railway-token',
-				TREESEED_RAILWAY_WORKSPACE: 'knowledge-coop',
+				TREESEED_RAILWAY_WORKSPACE: 'treeseed-ai',
 			},
 		});
 

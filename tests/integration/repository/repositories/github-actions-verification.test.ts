@@ -217,7 +217,7 @@ describe('GitHub Actions verification', () => {
 		const report = createGitHubActionsGateProgressReporter({
 			name: '@treeseed/market',
 			repoPath: '/repo',
-			repository: 'knowledge-coop/market',
+			repository: 'treeseed-ai/market',
 			workflow: 'deploy-web.yml',
 			branch: 'main',
 			headSha: 'abc123',
@@ -229,13 +229,13 @@ describe('GitHub Actions verification', () => {
 		});
 		const event = {
 			type: 'running' as const,
-			repository: 'knowledge-coop/market',
+			repository: 'treeseed-ai/market',
 			workflow: 'deploy-web.yml',
 			branch: 'main',
 			headSha: 'abc123',
 			elapsedSeconds: 10,
 			runId: 123,
-			url: 'https://github.com/knowledge-coop/market/actions/runs/123',
+			url: 'https://github.com/treeseed-ai/market/actions/runs/123',
 			status: 'in_progress',
 			conclusion: null,
 			jobs: [],

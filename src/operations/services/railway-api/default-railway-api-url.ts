@@ -4,7 +4,7 @@ import { resolveRailwayCredential } from '../../../configuration/service-credent
 
 export const DEFAULT_RAILWAY_API_URL = 'https://backboard.railway.com/graphql/v2';
 
-export const DEFAULT_RAILWAY_WORKSPACE = 'knowledge-coop';
+export const DEFAULT_RAILWAY_WORKSPACE = 'treeseed-ai';
 
 export let railwayReadActive = false;
 

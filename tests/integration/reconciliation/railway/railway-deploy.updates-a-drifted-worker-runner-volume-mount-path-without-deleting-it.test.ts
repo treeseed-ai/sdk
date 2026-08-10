@@ -104,7 +104,7 @@ function railwayTopologyPayload() {
 				name: 'Adrian Webb',
 				email: 'adrian@example.com',
 				workspaces: [
-					{ id: 'workspace-1', name: 'knowledge-coop' },
+					{ id: 'workspace-1', name: 'treeseed-ai' },
 				],
 			},
 		},

@@ -55,7 +55,7 @@ export function resolveHostedProjectId(context: EnvironmentContext) {
 }
 
 export function resolveRailwayWorkspaceDefault() {
-	return 'knowledge-coop';
+	return 'treeseed-ai';
 }
 
 export function resolvePlatformRunnerIdDefault(_context: EnvironmentContext, scope: EnvironmentScope) {
