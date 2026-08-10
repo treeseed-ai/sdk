@@ -96,9 +96,9 @@ function canonicalTreeseedSeed(): SeedManifest {
 			repository: {
 				role: 'primary',
 				provider: 'github',
-				owner: 'knowledge-coop',
+				owner: 'treeseed-ai',
 				name: 'market',
-				gitUrl: 'https://github.com/knowledge-coop/market.git',
+				gitUrl: 'https://github.com/treeseed-ai/market.git',
 				defaultBranch: 'main',
 				checkoutPath: '.',
 			},
@@ -232,13 +232,13 @@ function canonicalTreeseedSeed(): SeedManifest {
 			],
 			repositoryHosts: [
 				{
-					key: 'repository-host:treeseed/knowledge-coop-github',
+					key: 'repository-host:treeseed/treeseed-ai-github',
 					team: 'team:treeseed',
 					provider: 'github',
-					name: 'knowledge-coop',
+					name: 'treeseed-ai',
 					ownership: 'treeseed_managed',
 					accountLabel: 'Knowledge Coop GitHub organization',
-					organizationOrOwner: 'knowledge-coop',
+					organizationOrOwner: 'treeseed-ai',
 					defaultVisibility: 'private',
 					softwareRepositoryNameTemplate: '{project}',
 					contentRepositoryNameTemplate: '{project}-content',

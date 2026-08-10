@@ -98,7 +98,7 @@ function railwayTopologyPayload() {
 				name: 'Adrian Webb',
 				email: 'adrian@example.com',
 				workspaces: [
-					{ id: 'workspace-1', name: 'knowledge-coop' },
+					{ id: 'workspace-1', name: 'treeseed-ai' },
 				],
 			},
 		},
@@ -2185,7 +2185,7 @@ services:
 			services,
 			env: {
 				TREESEED_RAILWAY_API_TOKEN: 'railway-token',
-				TREESEED_RAILWAY_WORKSPACE: 'knowledge-coop',
+				TREESEED_RAILWAY_WORKSPACE: 'treeseed-ai',
 			},
 			fetchImpl: fetchMock as typeof fetch,
 			pollMs: 0,

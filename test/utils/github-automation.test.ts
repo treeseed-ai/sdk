@@ -126,12 +126,12 @@ runtime:
 
 		expect(resolveGitHubRepositoryTarget(root, {
 			values: {
-				TREESEED_GITHUB_OWNER: 'knowledge-coop',
+				TREESEED_GITHUB_OWNER: 'treeseed-ai',
 				TREESEED_GITHUB_REPOSITORY_NAME: 'market',
 				TREESEED_GITHUB_REPOSITORY_VISIBILITY: 'public',
 			},
 		})).toMatchObject({
-			owner: 'knowledge-coop',
+			owner: 'treeseed-ai',
 			name: 'market',
 			visibility: 'public',
 			source: 'config',

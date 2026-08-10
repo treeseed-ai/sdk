@@ -57,7 +57,7 @@ describe('project repository import planning', () => {
 		});
 		const rootPlan = planTreeseedRepositoryImport({
 			team: 'treeseed',
-			repository: 'knowledge-coop/market',
+			repository: 'treeseed-ai/market',
 			observation: { files: ['treeseed.site.yaml', 'src/content/index.md'], directories: ['src', 'src/content'] },
 		});
 

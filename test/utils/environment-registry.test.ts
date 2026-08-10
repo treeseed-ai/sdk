@@ -825,7 +825,7 @@ describe('environment registry overlays', () => {
 		const tenantRoot = await createTenantFixture(coreFormsRegistryFixtureYaml);
 		tempRoots.add(tenantRoot);
 		spawnSync('git', ['init', '-b', 'main'], { cwd: tenantRoot, stdio: 'ignore' });
-		spawnSync('git', ['remote', 'add', 'origin', 'git@github.com:knowledge-coop/market.git'], { cwd: tenantRoot, stdio: 'ignore' });
+		spawnSync('git', ['remote', 'add', 'origin', 'git@github.com:treeseed-ai/market.git'], { cwd: tenantRoot, stdio: 'ignore' });
 		const deployConfig = {
 			name: 'Test Site',
 			slug: 'test-site',
@@ -843,7 +843,7 @@ describe('environment registry overlays', () => {
 			values: {},
 		});
 
-		expect(suggested.TREESEED_GITHUB_OWNER).toBe('knowledge-coop');
+		expect(suggested.TREESEED_GITHUB_OWNER).toBe('treeseed-ai');
 		expect(suggested.TREESEED_GITHUB_REPOSITORY_NAME).toBe('market');
 		expect(suggested.TREESEED_GITHUB_REPOSITORY_VISIBILITY).toBe('private');
 	});

@@ -6,7 +6,7 @@ import { connectRailwayServiceSourceWithCli, runRailwayCliJson } from './railway
 import { resolveTreeseedRailwayApiToken } from '../../service-credentials.ts';
 
 const DEFAULT_RAILWAY_API_URL = 'https://backboard.railway.com/graphql/v2';
-const DEFAULT_RAILWAY_WORKSPACE = 'knowledge-coop';
+const DEFAULT_RAILWAY_WORKSPACE = 'treeseed-ai';
 
 let railwayReadActive = false;
 const railwayReadWaiters: Array<() => void> = [];

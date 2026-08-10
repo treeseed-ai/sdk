@@ -546,7 +546,7 @@ function resolveHostedProjectId(context: TreeseedEnvironmentContext) {
 }
 
 function resolveRailwayWorkspaceDefault() {
-	return 'knowledge-coop';
+	return 'treeseed-ai';
 }
 
 function resolvePlatformRunnerIdDefault(_context: TreeseedEnvironmentContext, scope: TreeseedEnvironmentScope) {
