@@ -1,7 +1,7 @@
 import { branchExists,deleteLocalBranch,deleteRemoteBranchIfMerged,STAGING_BRANCH,syncBranchWithOrigin } from "../../../operations/services/operations/git-workflow.ts";
 import { currentBranch,repoRoot } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
 import { managedWorkflowWorktreeMetadata,removeManagedWorkflowWorktree } from "../../worktrees.ts";
-import { checkedOutStagePromotionRepos } from '../coordination/staging-candidate-workflow-gates.ts';
+import { checkedOutStagePromotionRepos,syncAllCheckedOutReleaseHelperRepos } from '../coordination/staging-candidate-workflow-gates.ts';
 import { StageCandidateManifest } from '../workspace-lifecycle/workflow-close.ts';
 
 export function cleanupStageSourceBranches(root: string, branchName: string, manifest: StageCandidateManifest) {
@@ -21,6 +21,7 @@ export function cleanupStageSourceBranches(root: string, branchName: string, man
 			name: repo.name, 			path: repo.dir, 			remoteDeleted, 			localDeleted: localExists && !branchExists(repo.dir, branchName),
 		});
 	}
+	syncAllCheckedOutReleaseHelperRepos(root, STAGING_BRANCH);
 	const gitRoot = repoRoot(root);
 	const rootRemoteDeleted = deleteRemoteBranchIfMerged(gitRoot, branchName, STAGING_BRANCH, manifest.root.commit);
 	const managedWorktree = managedWorkflowWorktreeMetadata(root);

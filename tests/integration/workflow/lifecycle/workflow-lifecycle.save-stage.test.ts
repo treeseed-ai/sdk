@@ -174,12 +174,20 @@ it('stages package feature branches through local ref promotion', async () => {
 		await workflow.switchTask({ branch: 'feature/demo-task' });
 		const fixtureRepo = addStaleNestedSubmodule(resolve(work, 'packages', 'sdk'), '.fixtures/treeseed-fixtures', 'feature/demo-task');
 		git(fixtureRepo, ['pull', '--ff-only', 'origin', 'feature/demo-task']);
+		const fixtureAlias = resolve(work, 'packages', 'api', '.fixtures', 'treeseed-fixtures');
+		gitAllowFile(resolve(work, 'packages', 'api'), [
+			'submodule', 'add', '-b', 'feature/demo-task', git(fixtureRepo, ['remote', 'get-url', 'origin']), '.fixtures/treeseed-fixtures',
+		]);
 		git(resolve(work, 'packages', 'sdk'), ['add', '-A']);
 		git(resolve(work, 'packages', 'sdk'), ['commit', '-m', 'test: add helper repos']);
 		git(resolve(work, 'packages', 'sdk'), ['push', 'origin', 'feature/demo-task']);
+		git(resolve(work, 'packages', 'api'), ['add', '-A']);
+		git(resolve(work, 'packages', 'api'), ['commit', '-m', 'test: add shared helper alias']);
+		git(resolve(work, 'packages', 'api'), ['push', 'origin', 'feature/demo-task']);
 		const templateRepo = addStaleNestedSubmodule(work, 'starters/research', 'feature/demo-task');
 		git(templateRepo, ['pull', '--ff-only', 'origin', 'feature/demo-task']);
 		git(work, ['add', 'packages/sdk']);
+		git(work, ['add', 'packages/api']);
 		git(work, ['add', '.gitmodules', 'starters/research']);
 		git(work, ['commit', '-m', 'test: update sdk helper repos']);
 		git(work, ['push', 'origin', 'feature/demo-task']);
@@ -224,7 +232,7 @@ it('stages package feature branches through local ref promotion', async () => {
 			message: 'stage: finish demo task',
 			verifyMode: 'none',
 			async: true,
-			cleanupMode: 'manual',
+			cleanupMode: 'success',
 		});
 
 		expect(result.payload.mode).toBe('stage-promotion');
@@ -235,13 +243,15 @@ it('stages package feature branches through local ref promotion', async () => {
 		expect(result.payload.verification.status).toBe('skipped');
 		expect(result.payload.promotion.status).toBe('completed');
 		expect(result.payload.stagingRefs.status).toBe('verified');
-		expect(result.payload.cleanup.status).toBe('skipped');
+		expect(result.payload.cleanup.status).toBe('completed');
 		expect(result.payload.finalBranch).toBe('staging');
 		expect(git(work, ['branch', '--show-current'])).toBe('staging');
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('staging');
-		expect(git(work, ['branch', '--list', 'feature/demo-task'])).toContain('feature/demo-task');
-		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--list', 'feature/demo-task'])).toContain('feature/demo-task');
+		expect(git(work, ['branch', '--list', 'feature/demo-task'])).toBe('');
+		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--list', 'feature/demo-task'])).toBe('');
 		expect(git(fixtureRepo, ['rev-parse', 'origin/staging'])).toBe(git(fixtureRepo, ['rev-parse', 'HEAD']));
+		expect(git(fixtureAlias, ['branch', '--show-current'])).toBe('staging');
+		expect(git(fixtureAlias, ['rev-parse', 'origin/staging'])).toBe(git(fixtureAlias, ['rev-parse', 'HEAD']));
 		expect(git(templateRepo, ['rev-parse', 'origin/staging'])).toBe(git(templateRepo, ['rev-parse', 'HEAD']));
 	}, 360000);
 
