@@ -95,4 +95,31 @@ describe('local TreeDX seed desired state', () => {
 			rmSync(root, { recursive: true, force: true });
 		}
 	});
+
+	it('retries a transient shared-cache load timeout during content verification', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-local-treedx-cache-retry-'));
+		mkdirSync(join(root, 'src/content'), { recursive: true });
+		writeFileSync(join(root, 'src/content/page.md'), '# Page\n');
+		const commit = 'b'.repeat(40);
+		let graphAttempts = 0;
+		const client = {
+			readRepositoryFiles: async () => ({ resolvedRef: commit, files: [{ path: 'src/content/page.md', content: '# Page\n' }] }),
+			getSearchIndexStatus: async () => ({ ready: true, stale: false, resolvedRef: commit, sourceCommit: commit, indexVersion: 'index-1', graphVersion: 'graph-1' }),
+			searchRepositoryFiles: async () => ({ resolvedRef: commit, results: [] }),
+			queryGraph: async () => {
+				graphAttempts += 1;
+				if (graphAttempts === 1) throw new Error('Timed out waiting for a shared cache load.');
+				return { graphVersion: 'graph-1', results: [] };
+			},
+		};
+		try {
+			await expect(verifyLocalTreeDxProjectContent(client as never, {
+				slug: 'page', repositoryName: 'page', localRoot: root, contentPath: 'src/content',
+				seedPaths: ['src/content'], defaultRef: 'refs/heads/main',
+			}, 'repo-page')).resolves.toMatchObject({ verified: true, resolvedRef: commit });
+			expect(graphAttempts).toBe(2);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
 });

@@ -10,6 +10,15 @@ export function safeTreeDxRepositoryName(value: string) {
 	return normalizeRepositoryName(value);
 }
 
+function projectContentPath(architecture: Record<string, unknown>) {
+	const explicit = typeof architecture.contentPath === 'string' ? architecture.contentPath.trim() : '';
+	if (explicit) return explicit.replace(/^\.\//u, '').replace(/\/+$/u, '');
+	const sitePath = typeof architecture.sitePath === 'string' && architecture.sitePath.trim()
+		? architecture.sitePath.trim().replace(/^\.\//u, '').replace(/\/+$/u, '')
+		: '.';
+	return sitePath === '.' ? 'src/content' : `${sitePath}/src/content`;
+}
+
 export function localTreeDxContentProjects(tenantRoot: string) {
 	const seedPath = resolvePath(tenantRoot, 'seeds', 'treeseed.yaml');
 	if (!existsSync(seedPath)) return [];
@@ -21,10 +30,8 @@ export function localTreeDxContentProjects(tenantRoot: string) {
 		const slug = typeof project.slug === 'string' && project.slug.trim() ? project.slug.trim() : '';
 		const repository = stringRecord(project.repository);
 		const architecture = stringRecord(project.architecture);
-		const contentPath = typeof architecture.contentPath === 'string' && architecture.contentPath.trim()
-			? architecture.contentPath.trim()
-			: null;
-		if (!slug || !contentPath) return [];
+		const contentPath = projectContentPath(architecture);
+		if (!slug) return [];
 		const checkoutPath = typeof repository.checkoutPath === 'string' && repository.checkoutPath.trim()
 			? repository.checkoutPath.trim()
 			: '.';

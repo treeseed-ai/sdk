@@ -24,7 +24,7 @@ export function createLocalTreeDxReconciliationClient(
 	});
 }
 
-export async function verifyLocalTreeDxProjectContent(
+async function verifyLocalTreeDxProjectContentOnce(
 	client: TreeDxClient,
 	project: LocalTreeDxContentProject,
 	repositoryId: string,
@@ -66,6 +66,23 @@ export async function verifyLocalTreeDxProjectContent(
 		ref, resolvedRef, graphVersion: graphProbe.graphVersion, searchIndexVersion: searchStatus.indexVersion,
 		seedDigest: project.seedDigest ?? null, frontmatterVerified,
 	};
+}
+
+export async function verifyLocalTreeDxProjectContent(
+	client: TreeDxClient,
+	project: LocalTreeDxContentProject,
+	repositoryId: string,
+) {
+	for (let attempt = 1; attempt <= 3; attempt += 1) {
+		try {
+			return await verifyLocalTreeDxProjectContentOnce(client, project, repositoryId);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			if (!/shared cache load|cache_load_timeout/iu.test(message) || attempt === 3) throw error;
+			await new Promise((resolvePromise) => setTimeout(resolvePromise, attempt * 500));
+		}
+	}
+	throw new Error(`TreeDX content verification exhausted retries for ${project.slug}.`);
 }
 
 export function buildLocalTreeDxAdapter(): ReconcileAdapter {

@@ -28,4 +28,35 @@ describe('local TreeDX project repository inputs', () => {
 		writeFileSync(join(root, 'seeds/treeseed.yaml'), `resources:\n  projects:\n    - slug: example\n      repository:\n        checkoutPath: packages/example\n      architecture:\n        contentPath: docs/src/content\n`);
 		expect(localTreeDxContentProjects(root)[0]?.seedPaths).toEqual(['docs']);
 	});
+
+	it('derives content paths and retains projects whose documentation is not prepared', () => {
+		const root = mkdtempSync(join(tmpdir(), 'local-treedx-project-closure-'));
+		mkdirSync(join(root, 'seeds'), { recursive: true });
+		mkdirSync(join(root, 'packages/ready/docs/src/content'), { recursive: true });
+		mkdirSync(join(root, 'packages/planned/guarantees'), { recursive: true });
+		writeFileSync(join(root, 'packages/ready/docs/src/content/page.md'), '# Page\n');
+		writeFileSync(join(root, 'packages/planned/package.json'), '{"name":"planned"}\n');
+		writeFileSync(join(root, 'seeds/treeseed.yaml'), `resources:
+  projects:
+    - slug: ready
+      repository:
+        checkoutPath: packages/ready
+      architecture:
+        sitePath: docs
+    - slug: planned
+      repository:
+        checkoutPath: packages/planned
+      architecture:
+        sitePath: docs
+`);
+
+		expect(localTreeDxContentProjects(root).map((project) => ({
+			slug: project.slug,
+			contentPath: project.contentPath,
+			seedPaths: project.seedPaths,
+		}))).toEqual([
+			{ slug: 'ready', contentPath: 'docs/src/content', seedPaths: ['docs'] },
+			{ slug: 'planned', contentPath: 'docs/src/content', seedPaths: ['docs/src/content', 'guarantees', 'package.json'] },
+		]);
+	});
 });

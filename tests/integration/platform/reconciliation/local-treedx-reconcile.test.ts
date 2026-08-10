@@ -137,6 +137,67 @@ describe('local TreeDX reconciliation transport', () => {
 		}
 	});
 
+	it('scopes deterministic seed workspaces to their repository', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'local-treedx-project-identity-'));
+		mkdirSync(join(root, 'docs'), { recursive: true });
+		writeFileSync(join(root, 'docs', 'page.md'), 'shared');
+		const client = {
+			listRepositories: vi.fn().mockResolvedValue([
+				{ repoId: 'repo-market', repositoryName: 'treeseed-market' },
+				{ repoId: 'repo-information-hub', repositoryName: 'treeseed-information-hub' },
+			]),
+			listRepositoryPaths: vi.fn().mockResolvedValue({ resolvedRef: 'base-sha', entries: [], page: { hasMore: false } }),
+			listRepositoryRefs: vi.fn().mockResolvedValue([]),
+			createWorkspace: vi.fn().mockImplementation(async (input) => ({ workspaceId: input.workspaceId })),
+			writeFiles: vi.fn().mockResolvedValue({ files: [] }), commit: vi.fn().mockResolvedValue({ commitSha: 'commit-1' }),
+			closeWorkspace: vi.fn().mockResolvedValue(undefined), promoteRef: vi.fn().mockResolvedValue({ afterHead: 'commit-1' }),
+			retireRef: vi.fn().mockResolvedValue({ status: 'retired' }),
+			refreshGraph: vi.fn().mockResolvedValue({ graphVersion: 'graph-1', resolvedRef: 'commit-1' }),
+			refreshSearchIndex: vi.fn().mockResolvedValue({ indexVersion: 'search-1', resolvedRef: 'commit-1', stale: false }),
+		};
+		try {
+			for (const repositoryName of ['treeseed-market', 'treeseed-information-hub']) {
+				await syncLocalTreeDxProjectContent(client as any, {
+					slug: repositoryName, repositoryName, repositoryId: repositoryName, localRoot: root,
+					contentPath: 'docs', seedPaths: ['docs'], defaultRef: 'refs/heads/main',
+				});
+			}
+			const workspaceIds = client.createWorkspace.mock.calls.map(([input]) => input.workspaceId);
+			expect(workspaceIds).toHaveLength(2);
+			expect(new Set(workspaceIds)).toHaveLength(2);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it('writes large seed deltas in bounded TreeDX batches', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'local-treedx-write-batches-'));
+		mkdirSync(join(root, 'docs'), { recursive: true });
+		for (let index = 0; index < 501; index += 1) {
+			writeFileSync(join(root, 'docs', `page-${String(index).padStart(3, '0')}.md`), `page ${index}`);
+		}
+		const client = {
+			listRepositories: vi.fn().mockResolvedValue([{ repoId: 'repo-large', repositoryName: 'large' }]),
+			listRepositoryPaths: vi.fn().mockResolvedValue({ resolvedRef: 'base-sha', entries: [], page: { hasMore: false } }),
+			listRepositoryRefs: vi.fn().mockResolvedValue([]),
+			createWorkspace: vi.fn().mockImplementation(async (input) => ({ workspaceId: input.workspaceId })),
+			writeFiles: vi.fn().mockResolvedValue({ files: [] }), commit: vi.fn().mockResolvedValue({ commitSha: 'commit-1' }),
+			closeWorkspace: vi.fn().mockResolvedValue(undefined), promoteRef: vi.fn().mockResolvedValue({ afterHead: 'commit-1' }),
+			retireRef: vi.fn().mockResolvedValue({ status: 'retired' }),
+			refreshGraph: vi.fn().mockResolvedValue({ graphVersion: 'graph-1', resolvedRef: 'commit-1' }),
+			refreshSearchIndex: vi.fn().mockResolvedValue({ indexVersion: 'search-1', resolvedRef: 'commit-1', stale: false }),
+		};
+		try {
+			await syncLocalTreeDxProjectContent(client as any, {
+				slug: 'large', repositoryName: 'large', repositoryId: 'repo-large', localRoot: root,
+				contentPath: 'docs', seedPaths: ['docs'], defaultRef: 'refs/heads/main',
+			});
+			expect(client.writeFiles.mock.calls.map(([input]) => input.files.length)).toEqual([500, 1]);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it('resumes a committed seed ref and promotes it without recreating the workspace', async () => {
 		const root = mkdtempSync(join(tmpdir(), 'local-treedx-resume-'));
 		mkdirSync(join(root, 'docs'), { recursive: true });

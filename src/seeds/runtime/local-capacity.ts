@@ -42,6 +42,19 @@ export function seedAllocationRevisionId(providerKey: string, expectedActiveAllo
 	return stableId('seed-allocation-revision', `${providerKey}:${expectedActiveAllocationSetId}`);
 }
 
+export function selectSeedExecutionProviders(
+	provider: SeedCapacityProviderPrerequisite,
+	manifest: CapacityProviderManifestV2,
+) {
+	const selected = manifest.executionProviders.filter((entry) => provider.executionProviderIds.includes(entry.id));
+	const selectedIds = new Set(selected.map((entry) => entry.id));
+	const missing = provider.executionProviderIds.filter((id) => !selectedIds.has(id));
+	if (missing.length) {
+		throw new Error(`Seed capacity prerequisite ${provider.key} references execution providers absent from ${provider.manifest}: ${missing.join(', ')}.`);
+	}
+	return selected;
+}
+
 async function atomicWrite(path: string, value: string, mode = 0o600) {
 	await mkdir(dirname(path), { recursive: true });
 	const temporary = `${path}.${process.pid}.tmp`;
@@ -208,7 +221,7 @@ async function provisionConnection(input: {
 	const privateJwk = await loadIdentity(identityPath);
 	const publicJwk = capacityProviderPublicIdentity(privateJwk);
 	const protocol = new ProviderProtocolClient({ marketUrl: input.apiUrl, userAgent: 'treeseed-seed-runtime/1' });
-	const executionProviders = input.baseManifest.executionProviders.filter((entry) => input.provider.executionProviderIds.includes(entry.id));
+	const executionProviders = selectSeedExecutionProviders(input.provider, input.baseManifest);
 	const maxConcurrentRunners = Math.max(1, ...executionProviders.map((entry) => Number(entry.nativeLimits.maxConcurrentRunners ?? 1)).filter(Number.isFinite));
 	const capabilities = [...new Set([...executionProviders.flatMap((entry) => entry.capabilities), ...input.projectCapabilities])].sort();
 	const capabilityDigest = createHash('sha256').update(`${capabilities.join('\0')}\0${maxConcurrentRunners}`).digest('hex');

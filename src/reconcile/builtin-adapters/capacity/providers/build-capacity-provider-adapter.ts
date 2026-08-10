@@ -198,8 +198,9 @@ function localTreeDxSeedOperation(project: LocalTreeDxContentProject, files: Ret
 	const digest = project.seedDigest || createHash('sha256')
 		.update(files.map((file) => `${file.path}\0${file.content}\0`).join(''))
 		.digest('hex');
+	const workspaceDigest = createHash('sha256').update(`${project.repositoryName}\0${digest}`).digest('hex');
 	return {
-		workspaceId: `ws_seed_${digest.slice(0, 32)}`,
+		workspaceId: `ws_seed_${workspaceDigest.slice(0, 32)}`,
 		branchName: `refs/heads/treeseed-seed-${digest.slice(0, 24)}`,
 	};
 }
@@ -292,10 +293,11 @@ async function resumeCommittedLocalTreeDxSeed(client: TreeDxClient, project: Loc
 
 async function applyLocalTreeDxSeedDelta(client: TreeDxClient, workspaceId: string,
 	delta: Awaited<ReturnType<typeof localTreeDxSeedDelta>>) {
-	if (delta.changed.length > 0) {
+	for (let offset = 0; offset < delta.changed.length; offset += 500) {
 		await client.writeFiles({
 			workspaceId,
-			files: delta.changed.map((file) => ({ path: file.path, content: file.content, encoding: 'utf8' })),
+			files: delta.changed.slice(offset, offset + 500)
+				.map((file) => ({ path: file.path, content: file.content, encoding: 'utf8' })),
 		});
 	}
 	for (const path of delta.removed) await client.deleteFile({ workspaceId, path });
