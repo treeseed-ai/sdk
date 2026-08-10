@@ -1,17 +1,13 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, resolve, sep } from 'node:path';
+import { runRepositoryGit, type GitRunnerMode } from '../operations/git-runner.ts';
 import type { PackageBootstrapAction, PackageBootstrapInput, PackageBootstrapResult } from './contracts.ts';
 import { renderMetadataPackage } from './template.ts';
 
-function git(args: string[], cwd: string, allowFailure = false) {
-	try {
-		return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-	} catch (error) {
-		if (allowFailure) return null;
-		const detail = error && typeof error === 'object' && 'stderr' in error ? String(error.stderr).trim() : String(error);
-		throw new Error(`Git command failed (${args.join(' ')}): ${detail}`);
-	}
+function git(args: string[], cwd: string, allowFailure = false, mode: GitRunnerMode = 'read') {
+	const result = runRepositoryGit(args, { cwd, allowFailure, mode });
+	return result.status === 0 ? result.stdout.trim() : null;
 }
 
 function installLockfile(cwd: string) {
@@ -74,10 +70,10 @@ function remoteRefs(remoteUrl: string, root: string) {
 }
 
 function registerSubmodule(root: string, packagePath: string, remoteUrl: string) {
-	git(['config', '-f', '.gitmodules', `submodule.${packagePath}.path`, packagePath], root);
-	git(['config', '-f', '.gitmodules', `submodule.${packagePath}.url`, remoteUrl], root);
-	git(['add', '.gitmodules', packagePath], root);
-	git(['submodule', 'absorbgitdirs', packagePath], root);
+	git(['config', '-f', '.gitmodules', `submodule.${packagePath}.path`, packagePath], root, false, 'mutate');
+	git(['config', '-f', '.gitmodules', `submodule.${packagePath}.url`, remoteUrl], root, false, 'mutate');
+	git(['add', '.gitmodules', packagePath], root, false, 'mutate');
+	git(['submodule', 'absorbgitdirs', packagePath], root, false, 'mutate');
 }
 
 function actions(kind: 'absent' | 'partial' | 'checkout', packagePath: string, remoteUrl: string): PackageBootstrapAction[] {
@@ -107,8 +103,8 @@ export function initializePackage(input: PackageBootstrapInput): PackageBootstra
 	if (local.kind !== 'checkout') {
 		if (local.kind === 'absent') {
 			mkdirSync(target, { recursive: true });
-			git(['init', '-b', 'main'], target);
-			git(['remote', 'add', 'origin', remoteUrl], target);
+			git(['init', '-b', 'main'], target, false, 'mutate');
+			git(['remote', 'add', 'origin', remoteUrl], target, false, 'mutate');
 		}
 		for (const [file, content] of Object.entries(rendered)) {
 			const destination = resolve(target, file);
@@ -116,10 +112,10 @@ export function initializePackage(input: PackageBootstrapInput): PackageBootstra
 			writeFileSync(destination, content, 'utf8');
 		}
 		installLockfile(target);
-		git(['add', '--all'], target);
-		git(['-c', 'user.name=TreeSeed', '-c', 'user.email=opensource@treeseed.dev', 'commit', '-m', 'chore: initialize ai appliance package'], target);
+		git(['add', '--all'], target, false, 'mutate');
+		git(['-c', 'user.name=TreeSeed', '-c', 'user.email=opensource@treeseed.dev', 'commit', '-m', 'chore: initialize ai appliance package'], target, false, 'mutate');
 		commitSha = git(['rev-parse', 'HEAD'], target);
-		git(['push', '-u', 'origin', 'main'], target);
+		git(['push', '-u', 'origin', 'main'], target, false, 'mutate');
 		const observed = git(['ls-remote', remoteUrl, 'refs/heads/main'], root)?.split(/\s+/u)[0] ?? null;
 		if (observed !== commitSha) throw new Error('Remote main did not match the initialized package commit.');
 	}
