@@ -49,6 +49,18 @@ export function resolveGitHubCredentialForRepository(
 	} = {},
 ): GitHubCredentialResolution {
 	const normalizedRepository = cleanRepositorySlug(repository);
+	const [owner] = normalizedRepository.split('/');
+	if (owner.toLowerCase() === 'treeseed-ai') {
+		const centralToken = resolveGitHubToken(values ?? {}) || resolveGitHubToken(env);
+		return {
+			repository: normalizedRepository,
+			envName: 'TREESEED_GITHUB_TOKEN',
+			configured: Boolean(centralToken),
+			fallbackUsed: false,
+			source: centralToken ? 'fallback' : 'missing',
+			token: centralToken || null,
+		};
+	}
 	const envName = githubRepositoryCredentialEnvName(normalizedRepository);
 	const repositoryToken = configuredValue(values, envName) || configuredValue(env, envName);
 	if (repositoryToken) {
