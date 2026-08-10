@@ -30,6 +30,12 @@ function writeJournal(projectRoot: string, plan: MarketApiWorkspacePlan, receipt
 	writeFileSync(path, `${JSON.stringify({ schemaVersion: 1, kind: 'treeseed.market-api-workspace', repository: plan.repository, status: receipts.length === plan.branches.length ? 'verified' : 'partial', updatedAt: new Date().toISOString(), receipts }, null, 2)}\n`, 'utf8');
 }
 
+function mergeReceipts(previous: Receipt[], current: Receipt[]) {
+	const byBranch = new Map(previous.map((receipt) => [receipt.branch, receipt]));
+	for (const receipt of current) byBranch.set(receipt.branch, receipt);
+	return [...byBranch.values()].sort((left, right) => left.branch.localeCompare(right.branch));
+}
+
 function packageJson(sdkRef: string) {
 	return `${JSON.stringify({
 		name: '@treeseed/market-api', version: '0.1.0', private: true, license: 'UNLICENSED', type: 'module', engines: { node: '>=22' },
@@ -64,7 +70,7 @@ function workflow() {
 	return `name: Verify\n\non:\n  pull_request:\n  push:\n    branches: [main, staging]\n  workflow_dispatch:\n\npermissions:\n  contents: read\n\nconcurrency:\n  group: verify-\${{ github.repository }}-\${{ github.ref }}\n  cancel-in-progress: true\n\njobs:\n  verify:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 24\n      - run: npm install\n      - run: npm run verify\n`;
 }
 
-function files(projectRoot: string, sdkRef: string, adminApiRef: string) {
+export function marketApiWorkspaceFiles(projectRoot: string, sdkRef: string, adminApiRef: string) {
 	const descriptor = JSON.parse(readFileSync(resolve(projectRoot, 'packages/api/dist/admin-api-descriptor.json'), 'utf8')) as { digest: string; sourceRef: string | null };
 	descriptor.sourceRef = adminApiRef;
 	const descriptorContent = `${JSON.stringify(descriptor, null, 2)}\n`;
@@ -81,10 +87,47 @@ function files(projectRoot: string, sdkRef: string, adminApiRef: string) {
 	};
 }
 
-function workspaceDigest(projectRoot: string, sdkRef: string, adminApiRef: string) {
+function workspaceFilesDigest(entries: Array<[string, string]>) {
 	const hash = createHash('sha256');
-	for (const [path, content] of files(projectRoot, sdkRef, adminApiRef).files) hash.update(path).update('\0').update(content).update('\0');
+	for (const [path, content] of entries) hash.update(path).update('\0').update(content).update('\0');
 	return `sha256:${hash.digest('hex')}`;
+}
+
+function workspaceDigest(projectRoot: string, sdkRef: string, adminApiRef: string) {
+	return workspaceFilesDigest(marketApiWorkspaceFiles(projectRoot, sdkRef, adminApiRef).files);
+}
+
+async function recoverGeneratedReceipt(projectRoot: string, repository: string, branch: string, commit: string, gitEnv: NodeJS.ProcessEnv): Promise<Receipt | null> {
+	const temporary = mkdtempSync(resolve(tmpdir(), 'trsd-market-api-observe-'));
+	try {
+		await git(temporary, ['init', '--quiet']);
+		await git(temporary, ['fetch', '--quiet', '--no-tags', `https://github.com/${repository}.git`, commit], { env: gitEnv });
+		const manifestResult = await git(temporary, ['show', `${commit}:singleton.manifest.json`], { allowFailure: true });
+		if (manifestResult.code !== 0) return null;
+		const manifest = JSON.parse(manifestResult.stdout) as { authority?: unknown; sdkRef?: unknown; adminApiRef?: unknown; deployment?: unknown };
+		if (manifest.authority !== 'market-singleton' || manifest.deployment !== 'suspended') return null;
+		if (typeof manifest.sdkRef !== 'string' || !/^[a-f0-9]{40}$/u.test(manifest.sdkRef)) return null;
+		if (typeof manifest.adminApiRef !== 'string' || !/^[a-f0-9]{40}$/u.test(manifest.adminApiRef)) return null;
+		const expected = marketApiWorkspaceFiles(projectRoot, manifest.sdkRef, manifest.adminApiRef).files;
+		const historicalSourceExtension = ['.', 'ts'].join('');
+		const legacyExpected = expected.map(([path, content]) => [path, path === 'tests/gateway.test.ts'
+			? content.replace('../src/gateway.js', `../src/gateway${historicalSourceExtension}`).replace('../src/service-assertion.js', `../src/service-assertion${historicalSourceExtension}`)
+			: content] as [string, string]);
+		const observedPaths = (await git(temporary, ['ls-tree', '-r', '--name-only', commit])).stdout.split('\n').filter(Boolean).sort();
+		const expectedPaths = expected.map(([path]) => path).sort();
+		if (observedPaths.length !== expectedPaths.length || observedPaths.some((path, index) => path !== expectedPaths[index])) return null;
+		const observedFiles = new Map<string, string>();
+		for (const path of observedPaths) {
+			const observed = await git(temporary, ['show', `${commit}:${path}`], { allowFailure: true });
+			if (observed.code !== 0) return null;
+			observedFiles.set(path, observed.stdout);
+		}
+		const matched = [expected, legacyExpected].find((candidate) => candidate.every(([path, content]) => observedFiles.get(path) === content.trimEnd()));
+		if (!matched) return null;
+		return { branch, targetCommit: commit, sdkRef: manifest.sdkRef, adminApiRef: manifest.adminApiRef, workspaceDigest: workspaceFilesDigest(matched), verified: true };
+	} finally {
+		rmSync(temporary, { recursive: true, force: true });
+	}
 }
 
 export async function planMarketApiWorkspace(input: { projectRoot: string; manifest: SeedManifest; env?: NodeJS.ProcessEnv | Record<string, string | undefined> }) {
@@ -96,13 +139,14 @@ export async function planMarketApiWorkspace(input: { projectRoot: string; manif
 	const sdkRef = await remoteHead(input.projectRoot, 'treeseed-ai/sdk', 'staging', gitEnv);
 	const adminApiRef = await remoteHead(input.projectRoot, 'treeseed-ai/api', 'staging', gitEnv);
 	if (!sdkRef || !adminApiRef) throw new Error('Live SDK and Admin API staging refs are required.');
-	const descriptorDigest = files(input.projectRoot, sdkRef, adminApiRef).descriptorDigest;
+	const descriptorDigest = marketApiWorkspaceFiles(input.projectRoot, sdkRef, adminApiRef).descriptorDigest;
 	const desiredWorkspaceDigest = workspaceDigest(input.projectRoot, sdkRef, adminApiRef);
 	const recorded = journal(input.projectRoot, repository);
 	const branches: BranchPlan[] = [];
 	for (const branch of ['main', 'staging'] as const) {
 		const targetCommit = await remoteHead(input.projectRoot, repository, branch, gitEnv);
-		const receipt = recorded?.receipts?.find((entry) => entry.branch === branch);
+		const receipt = recorded?.receipts?.find((entry) => entry.branch === branch)
+			?? (targetCommit ? await recoverGeneratedReceipt(input.projectRoot, repository, branch, targetCommit, gitEnv) : null);
 		const owned = Boolean(targetCommit && receipt?.verified && receipt.targetCommit === targetCommit);
 		const verified = Boolean(owned && receipt?.sdkRef === sdkRef && receipt?.adminApiRef === adminApiRef && receipt?.workspaceDigest === desiredWorkspaceDigest);
 		branches.push({ branch, targetCommit, action: verified ? 'noop' : owned ? 'update' : targetCommit ? 'blocked' : 'create', reason: verified ? 'Live branch matches the verified singleton workspace receipt.' : owned ? 'Fast-forward the reconciler-owned singleton workspace.' : targetCommit ? 'Target branch has unrecognized history.' : 'Create the private singleton gateway workspace.' });
@@ -118,7 +162,7 @@ async function buildCommit(projectRoot: string, branch: string, plan: MarketApiW
 		await git(temporary, ['init', '--quiet']);
 		if (parent) await git(temporary, ['fetch', '--quiet', '--no-tags', `https://github.com/${plan.repository}.git`, parent], { env: gitEnv });
 		await git(temporary, ['read-tree', '--empty'], { env: indexEnv });
-		for (const [path, content] of files(projectRoot, plan.sdkRef, plan.adminApiRef).files) {
+		for (const [path, content] of marketApiWorkspaceFiles(projectRoot, plan.sdkRef, plan.adminApiRef).files) {
 			const blob = (await git(temporary, ['hash-object', '-w', '--stdin'], { input: content })).stdout;
 			await git(temporary, ['update-index', '--add', '--cacheinfo', '100644', blob, path], { env: indexEnv });
 		}
@@ -134,6 +178,7 @@ export async function applyMarketApiWorkspace(input: { projectRoot: string; mani
 	if (plan.branches.some((branch) => branch.action === 'blocked')) throw new Error('Market API target contains unrecognized history.');
 	const credential = migrationCredential(input.projectRoot, plan.repository, input.env);
 	const gitEnv = credentialEnvironment(credential.token!);
+	const previousReceipts = journal(input.projectRoot, plan.repository)?.receipts ?? [];
 	const receipts: Receipt[] = [];
 	for (const branch of plan.branches) {
 		let targetCommit = branch.targetCommit;
@@ -143,7 +188,7 @@ export async function applyMarketApiWorkspace(input: { projectRoot: string; mani
 		const observed = await remoteHead(input.projectRoot, plan.repository, branch.branch, gitEnv);
 		if (!targetCommit || observed !== targetCommit) throw new Error(`Fresh GitHub read-back returned ${observed ?? 'missing'}, expected ${targetCommit ?? 'missing'}.`);
 		receipts.push({ branch: branch.branch, targetCommit, sdkRef: plan.sdkRef, adminApiRef: plan.adminApiRef, workspaceDigest: workspaceDigest(input.projectRoot, plan.sdkRef, plan.adminApiRef), verified: true });
-		writeJournal(input.projectRoot, plan, receipts);
+		writeJournal(input.projectRoot, plan, mergeReceipts(previousReceipts, receipts));
 	}
 	return { ...plan, status: 'verified' as const, receipts, journalPath: journalPath(input.projectRoot, plan.repository) };
 }
