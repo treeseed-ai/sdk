@@ -201,8 +201,14 @@ export function resolveConfiguredMarketBaseUrl(deployConfig, target) {
 
 export function resolveConfiguredControlPlaneBaseUrl(deployConfig, target) {
 	if (deployConfig.controlPlane?.mode === 'market-passthrough') return resolveConfiguredMarketBaseUrl(deployConfig, target);
+	const scope = targetEnvironmentKey(target);
 	return normalizeConfiguredBaseUrl(deployConfig.controlPlane?.baseUrl)
 		?? resolveConfiguredApiConnectionBaseUrl(deployConfig, target)
+		?? (scope === 'local'
+			? normalizeConfiguredBaseUrl(deployConfig.surfaces?.api?.localBaseUrl)
+			: normalizeConfiguredBaseUrl(deployConfig.surfaces?.api?.environments?.[scope]?.baseUrl)
+				?? domainBaseUrl(deployConfig.surfaces?.api?.environments?.[scope]?.domain))
+		?? normalizeConfiguredBaseUrl(deployConfig.surfaces?.api?.publicBaseUrl)
 		?? envOrNull('TREESEED_API_BASE_URL');
 }
 

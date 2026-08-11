@@ -18,7 +18,9 @@ content: { required: false, verifierRefs: [] }
 audit: { required: false, verifierRefs: [] }
 negativeCases:
   - "A customer-platform manifest containing a marketApi service fails before desired infrastructure is compiled."
+  - "Pass-through and external modes containing customer-owned API, PostgreSQL, operations-runner, or TreeDX resources fail before desired infrastructure is compiled."
+  - "Managed mode without the complete API, PostgreSQL, operations-runner, and TreeDX topology fails before desired infrastructure is compiled."
   - "A customer invocation of singleton reconciliation fails with singleton-authority-required."
 evidence: { required: [guarantee_report] }
 notes:
-  - "The deploy-config service guard is implemented; the guarantee remains planned until repository, DNS, and singleton-command guards share an executable verifier."
+  - "Deploy-config service and control-plane topology guards are implemented; the guarantee remains planned until repository, DNS, and singleton-command guards share an executable verifier."

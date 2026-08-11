@@ -3,6 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import { loadDeployConfigFromPath } from '../../../../src/platform/hosting/deploy-config.ts';
+import { resolveConfiguredControlPlaneBaseUrl } from '../../../../src/operations/services/deploy/hosting/assert-cloudflare-cache-purge-succeeded.ts';
 
 const tempRoots = new Set<string>();
 
@@ -114,6 +115,68 @@ cloudflare:
 			mode: 'external',
 			baseUrl: 'https://control.sovereign.example.com',
 		});
+	});
+
+	it('requires the complete customer-owned topology for an explicit managed control plane', async () => {
+		const incomplete = await writeDeployConfig(`name: Managed Site
+slug: managed-site
+siteUrl: https://managed.example.com
+contactEmail: hello@example.com
+controlPlane:
+  mode: managed
+services:
+  api: { enabled: true, provider: railway }
+cloudflare:
+  accountId: account-123
+`);
+		expect(() => loadDeployConfigFromPath(incomplete)).toThrow(/requires treeseedDatabase, operationsRunner, publicTreeDxFederation/u);
+
+		const complete = await writeDeployConfig(`name: Managed Site
+slug: managed-site
+siteUrl: https://managed.example.com
+contactEmail: hello@example.com
+controlPlane:
+  mode: managed
+surfaces:
+  api:
+    enabled: true
+    provider: railway
+    environments:
+      staging: { domain: control.managed.example.com }
+services:
+  api: { enabled: true, provider: railway }
+  treeseedDatabase: { enabled: true, provider: railway }
+  operationsRunner: { enabled: true, provider: railway }
+publicTreeDxFederation:
+  railway:
+    nodePool: { bootstrapCount: 1, maxNodes: 1 }
+cloudflare:
+  accountId: account-123
+`);
+		const config = loadDeployConfigFromPath(complete);
+		expect(config.controlPlane).toEqual({ mode: 'managed', baseUrl: undefined });
+		expect(config.market.baseUrl).toBe('https://api.treeseed.dev');
+		expect(resolveConfiguredControlPlaneBaseUrl(config, { kind: 'persistent', scope: 'staging' })).toBe('https://control.managed.example.com');
+	});
+
+	it('rejects customer-owned control-plane resources in explicit pass-through and external modes', async () => {
+		for (const plane of [
+			'market-passthrough',
+			'external\n  baseUrl: https://external.example.com',
+		]) {
+			const path = await writeDeployConfig(`name: Invalid Site
+slug: invalid-site
+siteUrl: https://example.com
+contactEmail: hello@example.com
+controlPlane:
+  mode: ${plane}
+services:
+  operationsRunner: { enabled: true, provider: railway }
+cloudflare:
+  accountId: account-123
+`);
+			expect(() => loadDeployConfigFromPath(path)).toThrow(/cannot provision customer control-plane resources/u);
+		}
 	});
 
 	it('rejects a second persistent Market profile and customer-owned Market API infrastructure', async () => {

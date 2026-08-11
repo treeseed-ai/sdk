@@ -25,4 +25,4 @@ negativeCases:
   - "Singleton reconciliation must preserve private Market implementation paths outside its declared managed overlay and must reject drift inside managed gateway paths."
 evidence: { required: [guarantee_report] }
 notes:
-  - "Typed configuration, exact Admin descriptor admission, and generated full-inventory Market API tests exist; hosted gateway, provider-protocol, and no-replication acceptance remain required before activation."
+  - "Typed configuration, managed API-surface URL resolution, exact Admin descriptor admission, and generated full-inventory Market API tests exist; hosted gateway, provider-protocol, and no-replication acceptance remain required before activation."
