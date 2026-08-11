@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.12.63-dev.migration-market-api-standalone-verifica.20260811T043310Z",
+  "version": "0.12.63-dev.fix-market-api-build-boundary.20260811T061130Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "Apache-2.0",
   "repository": {

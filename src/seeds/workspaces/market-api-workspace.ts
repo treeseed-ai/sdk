@@ -41,7 +41,7 @@ function packageJson(sdkRef: string) {
 	return `${JSON.stringify({
 		name: '@treeseed/market-api', version: '0.1.0', private: true, license: 'UNLICENSED', type: 'module', engines: { node: '>=22' },
 		workspaces: ['.'],
-		scripts: { build: 'tsc -p tsconfig.json', test: 'vitest run tests', verify: 'npm run build && npm test', start: 'node dist/server.js' },
+		scripts: { build: 'tsc -p tsconfig.build.json', test: 'vitest run tests', verify: 'npm run build && npm test', start: 'node dist/server.js' },
 		dependencies: {
 			'@octokit/auth-app': '^8.2.0', '@treeseed/sdk': `git+https://github.com/treeseed-ai/sdk.git#${sdkRef}`,
 			'drizzle-orm': '^0.45.2', hono: '^4.8.2', 'libsodium-wrappers': '0.7.15', 'libsodium-wrappers-sumo': '0.7.15', octokit: '^5.0.5', pg: '^8.21.0', stripe: '^22.3.0', yaml: '^2.8.1',
@@ -100,6 +100,7 @@ const managedPaths = [
 	'tests/gateway.test.ts',
 	'treeseed.package.yaml',
 	'treeseed.site.yaml',
+	'tsconfig.build.json',
 	'tsconfig.json',
 ].sort();
 
@@ -111,7 +112,9 @@ export function marketApiWorkspaceFiles(projectRoot: string, sdkRef: string, adm
 		descriptorDigest: descriptor.digest,
 		bootstrapFiles: [['src/market/app.ts', marketApplicationBootstrap()]] as Array<[string, string]>,
 		files: [
-			['package.json', packageJson(sdkRef)], ['treeseed.package.yaml', packageManifest()], ['treeseed.site.yaml', siteManifest()], ['tsconfig.json', `${JSON.stringify({ compilerOptions: { target: 'ES2023', module: 'NodeNext', moduleResolution: 'NodeNext', resolveJsonModule: true, outDir: 'dist', rootDir: '.', strict: true, skipLibCheck: true, lib: ['ES2023', 'DOM', 'DOM.Iterable'] }, include: ['src/**/*.ts', 'tests/**/*.ts'] }, null, 2)}\n`],
+			['package.json', packageJson(sdkRef)], ['treeseed.package.yaml', packageManifest()], ['treeseed.site.yaml', siteManifest()],
+			['tsconfig.json', `${JSON.stringify({ compilerOptions: { target: 'ES2023', module: 'NodeNext', moduleResolution: 'NodeNext', resolveJsonModule: true, noEmit: true, strict: true, skipLibCheck: true, lib: ['ES2023', 'DOM', 'DOM.Iterable'] }, include: ['src/**/*.ts', 'tests/**/*.ts'] }, null, 2)}\n`],
+			['tsconfig.build.json', `${JSON.stringify({ extends: './tsconfig.json', compilerOptions: { noEmit: false, outDir: 'dist', rootDir: 'src' }, include: ['src/**/*.ts'], exclude: ['tests/**/*.ts'] }, null, 2)}\n`],
 			['LICENSE', 'UNLICENSED\n\nCopyright (c) TreeSeed. All rights reserved. No license is granted.\n'], ['README.md', '# TreeSeed Market API\n\nPrivate singleton Market implementation and hosted Admin API gateway for `api.treeseed.dev`. This repository is never provisioned by Platform. Hosted deployment remains suspended.\n'],
 			['src/gateway.ts', gatewaySource(descriptor.digest)], ['src/service-assertion.ts', assertionSource()], ['src/server.ts', serverSource()],
 			['tests/gateway.test.ts', gatewayTest()], ['tests/descriptor.test.ts', descriptorTest()], ['artifacts/admin-api-descriptor.json', descriptorContent],

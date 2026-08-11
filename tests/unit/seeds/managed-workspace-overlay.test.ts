@@ -52,7 +52,11 @@ describe('private singleton managed workspace overlay', () => {
 			writeFileSync(resolve(root, 'packages/api/dist/admin-api-descriptor.json'), JSON.stringify({ digest: 'sha256:fixture', sourceRef: null, routes: [] }));
 			const generated = new Map(marketApiWorkspaceFiles(root, 'a'.repeat(40), 'b'.repeat(40)).files);
 			expect(generated.get('package.json')).toContain('"workspaces": [');
+			expect(generated.get('package.json')).toContain('"build": "tsc -p tsconfig.build.json"');
 			expect(generated.get('package.json')).toContain('"test": "vitest run tests"');
+			expect(generated.get('tsconfig.build.json')).toContain('"rootDir": "src"');
+			expect(generated.get('tsconfig.build.json')).toContain('"tests/**/*.ts"');
+			expect(generated.get('tsconfig.json')).toContain('"noEmit": true');
 			expect(generated.get('src/gateway.ts')).toContain("from '@treeseed/sdk/market-gateway'");
 			expect(generated.get('treeseed.site.yaml')).toContain('kind: market-singleton');
 			expect(generated.get('treeseed.package.yaml')).toContain('deploy: false');
