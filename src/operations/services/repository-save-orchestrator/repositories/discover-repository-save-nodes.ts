@@ -277,17 +277,11 @@ export function repositorySaveConcurrency(options: Pick<RepositorySaveOptions, '
 }
 
 export function remoteBranchExistsSafe(repoDir: string, branch: string) {
-	try {
-		runGit(['rev-parse', '--verify', `refs/remotes/origin/${branch}`], { cwd: repoDir, capture: true });
-		return true;
-	} catch {
-		// Fall through to live remote discovery below.
-	}
-	try {
-		return remoteBranchExists(repoDir, branch);
-	} catch {
-		return false;
-	}
+	// A checkout can retain refs/remotes/origin/* after its canonical origin is
+	// migrated to another repository. Those refs describe the previous remote,
+	// so only a fresh observation of the current origin can establish that the
+	// branch exists.
+	return remoteBranchExists(repoDir, branch);
 }
 
 export function checkoutCommandFor(repoDir: string, branch: string) {
