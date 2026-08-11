@@ -21,6 +21,7 @@ export interface ReconcileContentPublicationInput {
 	fetchImpl?: typeof fetch;
 	observeSourceCommit?: (projectRoot: string) => Promise<string>;
 	observeSourceGeneratedAt?: (projectRoot: string, sourceCommit: string) => Promise<string>;
+	verifySourceStillCurrent?: () => Promise<boolean>;
 }
 
 const digest = (value: string | Uint8Array) => createHash('sha256').update(value).digest('hex');
@@ -89,7 +90,7 @@ export async function reconcileContentPublication(input: ReconcileContentPublica
 	const provisional = { teamId: input.teamId, projectId: input.projectId, sourceCommit: input.sourceCommit, ref: input.ref, channel: input.channel };
 	const revision = digest(JSON.stringify({ ...provisional, objects: values.map(({ path, sha256 }) => ({ path, sha256 })) }));
 	const keys = publicationKeys({ ...provisional, revision });
-	const objects = values.map((value) => ({ path: value.path, objectKey: `${keys.objectRoot}/${value.sha256}`, sha256: value.sha256, byteLength: value.byteLength, mediaType: value.mediaType }));
+	const objects = values.map((value) => ({ path: value.path, objectKey: `${keys.objectRoot}/${value.path}`, sha256: value.sha256, byteLength: value.byteLength, mediaType: value.mediaType }));
 	const observeGeneratedAt = input.observeSourceGeneratedAt ?? (async (cwd: string, commit: string) => runRepositoryGit(
 		['show', '-s', '--format=%cI', commit], { cwd, mode: 'read' },
 	).stdout.trim());
@@ -100,6 +101,9 @@ export async function reconcileContentPublication(input: ReconcileContentPublica
 	const artifacts: ArtifactRef[] = objects.map((object) => ({ contract: ARTIFACT_REF_CONTRACT, kind: 'r2-object', objectKey: object.objectKey, path: object.path, commitSha: input.sourceCommit, sha256: object.sha256, byteLength: object.byteLength, mediaType: object.mediaType, visibility: input.channel === 'production' ? 'public' : 'team', provenance: { projectId: input.projectId, sourceCommit: input.sourceCommit } }));
 	if (input.validateOnly) return { contract: CONTENT_PUBLICATION_CONTRACT, teamId: input.teamId, projectId: input.projectId, sourceCommit: input.sourceCommit, channel: input.channel, revision, manifestKey: keys.manifestKey, pointerKey: keys.pointerKey, uploadedObjectCount: 0, reusedObjectCount: objects.length, artifacts, verified: true };
 	if (!input.r2) throw new Error('R2 publication credentials are required.');
+	if (input.verifySourceStillCurrent && !await input.verifySourceStillCurrent()) {
+		throw new Error('The live content repository ref changed during publication; the channel pointer was not advanced.');
+	}
 
 	const client = createR2PublicationClient(input.r2, input.fetchImpl);
 	let uploadedObjectCount = 0;
@@ -114,6 +118,9 @@ export async function reconcileContentPublication(input: ReconcileContentPublica
 			throw new Error(`R2 content object read-back verification failed for ${object.path}.`);
 		}
 	});
+	if (input.verifySourceStillCurrent && !await input.verifySourceStillCurrent()) {
+		throw new Error('The live content repository ref changed during publication; the channel pointer was not advanced.');
+	}
 	const existingManifest = await client.get(keys.manifestKey);
 	if (existingManifest && existingManifest.body !== body) throw new Error('Immutable publication manifest digest collision.');
 	if (!existingManifest) await client.put(keys.manifestKey, body, { contentType: 'application/json; charset=utf-8', ifNoneMatch: '*' });

@@ -15,6 +15,15 @@ export type ContentRepositoryHistoryPlan = {
 	branches: Array<{ branch: string; sourceRef: string; contentPath: string | null; sourceCommit: string | null; targetCommit: string | null; action: 'create' | 'update' | 'noop' | 'blocked'; reason: string }>;
 };
 
+type ContentHistoryReceipt = {
+	branch: string;
+	sourceRef?: string;
+	sourceCommit: string | null;
+	contentPath: string | null;
+	targetCommit: string | null;
+	verified: boolean;
+};
+
 type SeedGitOptions = { env?: NodeJS.ProcessEnv; input?: string; allowFailure?: boolean };
 
 export async function git(cwd: string, args: string[], options: SeedGitOptions = {}) {
@@ -96,14 +105,14 @@ function journalPath(projectRoot: string, repository: string) {
 function migrationJournal(projectRoot: string, repository: string) {
 	try {
 		return JSON.parse(readFileSync(journalPath(projectRoot, repository), 'utf8')) as {
-			receipts?: Array<{ branch?: string; sourceCommit?: string; contentPath?: string | null; targetCommit?: string; verified?: boolean }>;
+			receipts?: ContentHistoryReceipt[];
 		};
 	} catch {
 		return null;
 	}
 }
 
-export function classifyContentHistoryBranch(input: { sourceCommit: string | null; contentPath: string | null; targetCommit: string | null; receipt?: { sourceCommit?: string; contentPath?: string | null; targetCommit?: string; verified?: boolean } | null }) {
+export function classifyContentHistoryBranch(input: { sourceCommit: string | null; contentPath: string | null; targetCommit: string | null; receipt?: { sourceCommit?: string | null; contentPath?: string | null; targetCommit?: string | null; verified?: boolean } | null }) {
 	if (!input.sourceCommit) return { action: 'blocked' as const, reason: 'Source branch is missing.' };
 	const verifiedReplay = Boolean(input.targetCommit && input.receipt?.verified === true && input.receipt.sourceCommit === input.sourceCommit && input.receipt.contentPath === input.contentPath && input.receipt.targetCommit === input.targetCommit);
 	if (verifiedReplay) return { action: 'noop' as const, reason: 'Live source and target commits match the verified migration receipt.' };
@@ -119,11 +128,17 @@ export function isRecognizedOrganizationMigrationMetadata(metadata: string[]) {
 		&& metadata[2] === 'operations@treeseed.dev';
 }
 
+export function isRecognizedContentMigrationMetadata(metadata: string[], project: string) {
+	return [`Migrate ${project} content history`, `Reconcile ${project} content history`].includes(metadata[0] ?? '')
+		&& metadata[1] === 'TreeSeed migration'
+		&& metadata[2] === 'operations@treeseed.dev';
+}
+
 export function contentTreesUnchanged(previousTree: string | null, currentTree: string | null, forceSkeleton = false) {
 	return forceSkeleton || previousTree === currentTree;
 }
 
-async function recognizedOrganizationMigrationAdvance(sourcePath: string, previousTarget: string | undefined, targetCommit: string | null) {
+async function recognizedOrganizationMigrationAdvance(sourcePath: string, previousTarget: string | null | undefined, targetCommit: string | null) {
 	if (!previousTarget || !targetCommit || previousTarget === targetCommit) return false;
 	const ancestor = await git(sourcePath, ['merge-base', '--is-ancestor', previousTarget, targetCommit], { allowFailure: true });
 	if (ancestor.code !== 0) return false;
@@ -136,14 +151,24 @@ async function recognizedOrganizationMigrationAdvance(sourcePath: string, previo
 	return true;
 }
 
-function writeMigrationJournal(projectRoot: string, plan: ContentRepositoryHistoryPlan, receipts: Array<Record<string, unknown>>, status: 'partial' | 'history_verified') {
+async function recognizedContentMigrationTarget(sourcePath: string, targetCommit: string | null, project: string) {
+	if (!targetCommit) return false;
+	const metadata = (await git(sourcePath, ['show', '-s', '--format=%s%x00%an%x00%ae', targetCommit], { allowFailure: true })).stdout.split('\0');
+	return isRecognizedContentMigrationMetadata(metadata, project);
+}
+
+function writeMigrationJournal(projectRoot: string, plan: ContentRepositoryHistoryPlan, receipts: ContentHistoryReceipt[], status: 'partial' | 'history_verified') {
 	const path = journalPath(projectRoot, plan.targetRepository);
 	mkdirSync(dirname(path), { recursive: true });
 	writeFileSync(path, `${JSON.stringify({ schemaVersion: 1, kind: 'treeseed.repository-content-history-migration', project: plan.project, sourceRepository: plan.sourceRepository, targetRepository: plan.targetRepository, status, updatedAt: new Date().toISOString(), receipts }, null, 2)}\n`, 'utf8');
 }
 
 function workflow(project: SeedProjectResource) {
-	return `name: Publish content\n\non:\n  workflow_dispatch:\n\npermissions:\n  contents: read\n\nconcurrency:\n  group: content-\${{ github.repository }}-\${{ github.ref }}\n  cancel-in-progress: false\n\njobs:\n  publish:\n    runs-on: ubuntu-latest\n    environment: \${{ github.ref_name == 'main' && 'production' || (github.ref_name == 'staging' && 'staging' || 'preview') }}\n    steps:\n      - uses: actions/checkout@v4\n        with:\n          fetch-depth: 0\n      - uses: actions/checkout@v4\n        with:\n          repository: treeseed-ai/sdk\n          ref: \${{ github.ref_name == 'main' && 'main' || 'staging' }}\n          path: .treeseed/content-publisher\n          persist-credentials: false\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 24\n          cache: npm\n          cache-dependency-path: .treeseed/content-publisher/package-lock.json\n      - name: Build publisher\n        working-directory: .treeseed/content-publisher\n        run: npm ci --ignore-scripts && npm run build:dist\n      - name: Publish exact content commit\n        env:\n          TREESEED_TEAM_ID: treeseed\n          TREESEED_PROJECT_ID: ${project.slug}\n          TREESEED_CLOUDFLARE_ACCOUNT_ID: \${{ vars.TREESEED_CLOUDFLARE_ACCOUNT_ID }}\n          TREESEED_CONTENT_BUCKET_NAME: \${{ vars.TREESEED_CONTENT_BUCKET_NAME }}\n          TREESEED_R2_ACCESS_KEY_ID: \${{ secrets.TREESEED_R2_ACCESS_KEY_ID }}\n          TREESEED_R2_SECRET_ACCESS_KEY: \${{ secrets.TREESEED_R2_SECRET_ACCESS_KEY }}\n        run: node ./.treeseed/content-publisher/dist/scripts/content/publish-content.js --root . --content-path src/content --source-commit "\${GITHUB_SHA}" --ref "\${GITHUB_REF_NAME}" --channel "\${GITHUB_REF_NAME}" > content-publication-receipt.json\n      - uses: actions/upload-artifact@v4\n        with:\n          name: content-publication-\${{ github.sha }}\n          path: content-publication-receipt.json\n`;
+	return `name: Publish content\n\non:\n  workflow_dispatch:\n\npermissions:\n  contents: read\n\nconcurrency:\n  group: content-\${{ github.repository }}-\${{ github.ref }}\n  cancel-in-progress: false\n\njobs:\n  publish:\n    runs-on: ubuntu-latest\n    environment: \${{ github.ref_name == 'main' && 'production' || (github.ref_name == 'staging' && 'staging' || 'preview') }}\n    steps:\n      - uses: actions/checkout@v4\n        with:\n          fetch-depth: 0\n      - uses: actions/checkout@v4\n        with:\n          repository: treeseed-ai/sdk\n          ref: \${{ github.ref_name == 'main' && 'main' || 'staging' }}\n          path: .treeseed/content-publisher\n          persist-credentials: false\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 24\n          cache: npm\n          cache-dependency-path: .treeseed/content-publisher/package-lock.json\n      - name: Build publisher\n        working-directory: .treeseed/content-publisher\n        run: npm ci --ignore-scripts && npm run build:dist\n      - name: Publish exact content commit\n        env:\n          TREESEED_TEAM_ID: treeseed\n          TREESEED_PROJECT_ID: ${project.slug}\n          TREESEED_CONTENT_CHANNEL: \${{ github.ref_name == 'main' && 'production' || (github.ref_name == 'staging' && 'staging' || 'preview') }}\n          TREESEED_CLOUDFLARE_ACCOUNT_ID: \${{ vars.TREESEED_CLOUDFLARE_ACCOUNT_ID }}\n          TREESEED_CONTENT_BUCKET_NAME: \${{ vars.TREESEED_CONTENT_BUCKET_NAME }}\n          TREESEED_CLOUDFLARE_API_TOKEN: \${{ secrets.TREESEED_CLOUDFLARE_API_TOKEN }}\n        run: node ./.treeseed/content-publisher/dist/scripts/content/publish-content.js --root . --content-path src/content --source-commit "\${GITHUB_SHA}" --ref "\${GITHUB_REF_NAME}" --channel "\${TREESEED_CONTENT_CHANNEL}" > content-publication-receipt.json\n      - uses: actions/upload-artifact@v4\n        with:\n          name: content-publication-\${{ github.sha }}\n          path: content-publication-receipt.json\n`;
+}
+
+function readme(project: SeedProjectResource) {
+	return `# ${project.name} content\n\nAuthoritative content history for \`${project.repository.owner}/${project.repository.name}\`. Operate content through TreeDX and publish immutable runtime content through the protected workflow.\n`;
 }
 
 function license(project: SeedProjectResource, visibility: 'public' | 'private', projectRoot: string) {
@@ -154,6 +179,24 @@ function license(project: SeedProjectResource, visibility: 'public' | 'private',
 async function addBlob(sourcePath: string, indexPath: string, path: string, content: string) {
 	const blob = await git(sourcePath, ['hash-object', '-w', '--stdin'], { input: content });
 	await git(sourcePath, ['update-index', '--add', '--cacheinfo', '100644', blob.stdout, path], { env: { ...process.env, GIT_INDEX_FILE: indexPath } });
+}
+
+async function targetFile(sourcePath: string, targetCommit: string | null, path: string) {
+	if (!targetCommit) return null;
+	const result = await git(sourcePath, ['show', `${targetCommit}:${path}`], { allowFailure: true });
+	return result.code === 0 ? `${result.stdout}\n` : null;
+}
+
+async function generatedWrapperMatches(input: { projectRoot: string; project: SeedProjectResource; sourcePath: string; targetCommit: string | null; visibility: 'public' | 'private' }) {
+	const expected = {
+		'README.md': readme(input.project),
+		'LICENSE': license(input.project, input.visibility, input.projectRoot),
+		'.github/workflows/publish-content.yml': workflow(input.project),
+	};
+	for (const [path, content] of Object.entries(expected)) {
+		if (await targetFile(input.sourcePath, input.targetCommit, path) !== content) return false;
+	}
+	return true;
 }
 
 async function buildContentCommit(input: { projectRoot: string; project: SeedProjectResource; sourcePath: string; sourceRef: string; contentPath: string | null; branch: string; visibility: 'public' | 'private'; targetParent?: string | null }) {
@@ -168,7 +211,7 @@ async function buildContentCommit(input: { projectRoot: string; project: SeedPro
 			const tree = (await git(input.sourcePath, ['rev-parse', `${parent}^{tree}`])).stdout;
 			await git(input.sourcePath, ['read-tree', `--prefix=src/content/`, tree], { env: { ...process.env, GIT_INDEX_FILE: indexPath } });
 		}
-		await addBlob(input.sourcePath, indexPath, 'README.md', `# ${input.project.name} content\n\nAuthoritative content history for \`${input.project.repository.owner}/${input.project.repository.name}\`. Operate content through TreeDX and publish immutable runtime content through the protected workflow.\n`);
+		await addBlob(input.sourcePath, indexPath, 'README.md', readme(input.project));
 		await addBlob(input.sourcePath, indexPath, 'LICENSE', license(input.project, input.visibility, input.projectRoot));
 		await addBlob(input.sourcePath, indexPath, '.github/workflows/publish-content.yml', workflow(input.project));
 		const tree = (await git(input.sourcePath, ['write-tree'], { env: { ...process.env, GIT_INDEX_FILE: indexPath } })).stdout;
@@ -191,6 +234,7 @@ export async function planSeedContentRepositoryHistory(input: { projectRoot: str
 		const branches: ContentRepositoryHistoryPlan['branches'] = [];
 		for (const branch of await migrationBranches(mapping.sourcePath)) {
 			const liveSourceCommit = await remoteHead(mapping.sourcePath, sourceRepository, branch, gitEnv);
+			if (!liveSourceCommit && branch !== 'main' && branch !== 'staging') continue;
 			if (liveSourceCommit) await fetchSourceCommit(mapping.sourcePath, sourceRepository, liveSourceCommit, gitEnv);
 			const source = liveSourceCommit ? { ref: liveSourceCommit, commit: liveSourceCommit } : null;
 			const targetCommit = await remoteHead(mapping.sourcePath, mapping.targetRepository, branch, gitEnv);
@@ -205,7 +249,11 @@ export async function planSeedContentRepositoryHistory(input: { projectRoot: str
 			const recognizedTargetAdvance = receipt?.verified === true
 				&& receipt.contentPath === contentPath
 				&& await recognizedOrganizationMigrationAdvance(mapping.sourcePath, receipt.targetCommit, targetCommit);
+			const recognizedGeneratedTarget = await recognizedContentMigrationTarget(mapping.sourcePath, targetCommit, mapping.project.slug);
 			const targetMatchesCurrentContent = targetTree === currentTree;
+			const wrappersMatch = await generatedWrapperMatches({ projectRoot: input.projectRoot, project: mapping.project, sourcePath: mapping.sourcePath, targetCommit, visibility: mapping.visibility });
+			const ownedTarget = (receipt?.verified === true && (receipt.targetCommit === targetCommit || recognizedTargetAdvance))
+				|| (recognizedGeneratedTarget && targetMatchesCurrentContent);
 			const contentUnchanged = Boolean(
 				receipt?.verified
 				&& receipt.targetCommit === targetCommit
@@ -213,7 +261,9 @@ export async function planSeedContentRepositoryHistory(input: { projectRoot: str
 				&& receipt.sourceCommit !== source?.commit
 				&& contentTreesUnchanged(previousTree, currentTree, mapping.forceSkeleton),
 			);
-			const classification = recognizedTargetAdvance && targetMatchesCurrentContent
+			const classification = ownedTarget && targetMatchesCurrentContent && !wrappersMatch
+				? { action: 'update' as const, reason: 'Reconcile generated content-repository wrapper files to exact seed policy.' }
+				: recognizedTargetAdvance && targetMatchesCurrentContent
 				? { action: 'noop' as const, reason: 'The verified organization migration advanced the target to the current authoritative content tree.' }
 				: contentUnchanged
 				? { action: 'noop' as const, reason: 'Live source advanced without changing the authoritative content tree.' }
@@ -234,10 +284,19 @@ export async function applySeedContentRepositoryHistory(input: { projectRoot: st
 	const project = input.manifest.resources.projects.find((entry) => entry.slug === plan.project)!;
 	const credential = migrationCredential(input.projectRoot, plan.targetRepository, input.env);
 	const gitEnv = credentialEnvironment(credential.token!);
-	const receipts = [];
+	const receipts: ContentHistoryReceipt[] = [...(migrationJournal(input.projectRoot, plan.targetRepository)?.receipts ?? [])]
+		.filter((receipt) => plan.branches.some((branch) => branch.branch === receipt.branch));
+	const processed = new Set<string>();
+	const record = (receipt: ContentHistoryReceipt) => {
+		const index = receipts.findIndex((entry) => entry.branch === receipt.branch);
+		if (index >= 0) receipts[index] = receipt;
+		else receipts.push(receipt);
+		processed.add(receipt.branch);
+		writeMigrationJournal(input.projectRoot, plan, receipts, processed.size === plan.branches.length ? 'history_verified' : 'partial');
+	};
 	for (const branch of plan.branches) {
 		if (branch.action === 'noop') {
-			receipts.push({ branch: branch.branch, sourceRef: branch.sourceRef, sourceCommit: branch.sourceCommit, contentPath: branch.contentPath, targetCommit: branch.targetCommit, verified: true });
+			record({ branch: branch.branch, sourceRef: branch.sourceRef, sourceCommit: branch.sourceCommit, contentPath: branch.contentPath, targetCommit: branch.targetCommit, verified: true });
 			continue;
 		}
 		if (branch.action === 'update' && branch.targetCommit) await fetchSourceCommit(plan.sourcePath, plan.targetRepository, branch.targetCommit, gitEnv);
@@ -245,8 +304,7 @@ export async function applySeedContentRepositoryHistory(input: { projectRoot: st
 		await git(plan.sourcePath, ['push', `https://github.com/${plan.targetRepository}.git`, `${commit}:refs/heads/${branch.branch}`], { env: gitEnv });
 		const observed = await remoteHead(plan.sourcePath, plan.targetRepository, branch.branch, gitEnv);
 		if (observed !== commit) throw new Error(`Fresh GitHub read-back for ${plan.targetRepository}@${branch.branch} returned ${observed ?? 'missing'}, expected ${commit}.`);
-		receipts.push({ branch: branch.branch, sourceRef: branch.sourceRef, sourceCommit: branch.sourceCommit, contentPath: branch.contentPath, targetCommit: commit, verified: true });
-		writeMigrationJournal(input.projectRoot, plan, receipts, receipts.length === plan.branches.length ? 'history_verified' : 'partial');
+		record({ branch: branch.branch, sourceRef: branch.sourceRef, sourceCommit: branch.sourceCommit, contentPath: branch.contentPath, targetCommit: commit, verified: true });
 	}
 	writeMigrationJournal(input.projectRoot, plan, receipts, 'history_verified');
 	return { ...plan, status: 'history_verified' as const, receipts, journalPath: journalPath(input.projectRoot, plan.targetRepository) };

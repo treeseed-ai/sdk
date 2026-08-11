@@ -17,7 +17,6 @@ import { emptyEnvironmentStatus,emptyPersistentEnvironments,emptyProviderStatus,
 import { collectStatusConfigScope,hasStatusConfigValue,isCloudflareProviderProblem,knownRemoteTrackingBranchExists,providerStatusForScope,readinessForEnvironment,safeHeadCommit,safeResolveRemoteSession } from './readiness-for-environment.ts';
 import { recommendNextSteps } from './recommend-next-steps.ts';
 import { capObsoleteWorkflowRuns,capWorkflowRunHistory,resolveLocalStatusUrl,safeReleaseHistory } from './safe-release-history.ts';
-
 export function resolveWorkflowState(cwd: string, options: WorkflowStatusOptions = {}): WorkflowState {
 	const resolved = resolveWorkflowPaths(cwd);
 	const effectiveCwd = resolved.cwd;

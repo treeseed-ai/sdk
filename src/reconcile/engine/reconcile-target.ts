@@ -17,6 +17,10 @@ import { ensurePersistedUnitState,writeReconcileState } from '../support/state/s
 import { createRunContext,formatVerificationFailure,persistResult,runByDependencyLevel,wrapAdapterFailure } from './now-iso.ts';
 import { planReconciliation } from './refresh-units.ts';
 
+export function reconcileDiffNeedsApply(diff: ReconcileUnitDiff) {
+	return diff.action !== 'noop';
+}
+
 export async function reconcileTarget({
 	tenantRoot,
 	target,
@@ -153,6 +157,7 @@ export async function reconcileTarget({
 			wrapAdapterFailure('validate', plan.unit.provider, plan.unit.unitType, plan.unit.unitId, error);
 		}
 		let result;
+		const applyRequired = reconcileDiffNeedsApply(plan.diff);
 		try {
 			const stageStartMs = performance.now();
 			if (planOnly) {
@@ -166,7 +171,7 @@ export async function reconcileTarget({
 					state: plan.observed.live,
 					verification: null,
 				};
-			} else {
+			} else if (applyRequired) {
 				result = await Promise.resolve(adapter.apply({
 					context,
 					unit: plan.unit,
@@ -174,11 +179,22 @@ export async function reconcileTarget({
 					observed: plan.observed,
 					diff: plan.diff,
 				}));
+			} else {
+				result = {
+					unit: plan.unit,
+					observed: plan.observed,
+					diff: plan.diff,
+					action: 'noop',
+					warnings: plan.observed.warnings,
+					resourceLocators: plan.observed.locators,
+					state: plan.observed.live,
+					verification: null,
+				};
 			}
 			unitTiming.children?.push({
 				name: `${unitTiming.name}:apply`,
 				durationMs: elapsedMs(stageStartMs),
-				status: planOnly ? 'skipped' : 'success',
+				status: planOnly || !applyRequired ? 'skipped' : 'success',
 			});
 		} catch (error) {
 			unitTiming.children?.push({
@@ -200,20 +216,22 @@ export async function reconcileTarget({
 		}
 		let refreshedObserved = (result as ReconcileResult).observed;
 		try {
-				const stageStartMs = performance.now();
+			const stageStartMs = performance.now();
+			if (applyRequired) {
 				refreshedObserved = await Promise.resolve(adapter.refresh({
 					context,
 					unit: plan.unit,
 					persistedState: persisted,
 				}));
-				result = {
+			}
+			result = {
 					...(result as ReconcileResult),
 					observed: refreshedObserved,
 				};
 				unitTiming.children?.push({
 					name: `${unitTiming.name}:refresh-after-apply`,
 					durationMs: elapsedMs(stageStartMs),
-					status: 'success',
+				status: applyRequired ? 'success' : 'skipped',
 				});
 		} catch (error) {
 				unitTiming.children?.push({

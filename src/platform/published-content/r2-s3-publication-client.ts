@@ -68,14 +68,14 @@ export class R2S3PublicationClient {
 	}
 
 	async get(key: string) {
-		const response = await this.request('GET', key);
+		const response = await this.request('GET', key, '', { 'accept-encoding': 'identity' });
 		if (response.status === 404) return null;
 		if (!response.ok) throw new Error(`R2 read failed for ${key} (HTTP ${response.status}).`);
 		return { body: await response.text(), etag: response.headers.get('etag') ?? null };
 	}
 
 	async exists(key: string) {
-		const response = await this.request('HEAD', key);
+		const response = await this.request('HEAD', key, '', { 'accept-encoding': 'identity' });
 		if (response.status === 404) return false;
 		if (!response.ok) throw new Error(`R2 head failed for ${key} (HTTP ${response.status}).`);
 		return true;

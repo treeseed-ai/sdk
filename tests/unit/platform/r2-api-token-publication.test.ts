@@ -11,7 +11,10 @@ describe('R2 API-token publication client', () => {
 		expect(await client.exists('teams/team/other')).toBe(false);
 		expect(fetchImpl.mock.calls.filter(([url]) => String(url).includes('/tokens/verify'))).toHaveLength(1);
 		const [, request] = fetchImpl.mock.calls.find(([url]) => String(url).includes('r2.cloudflarestorage.com'))!;
-		expect(request?.headers).toMatchObject({ authorization: expect.stringContaining('Credential=token-identifier/') });
+		expect(request?.headers).toMatchObject({
+			'accept-encoding': 'identity',
+			authorization: expect.stringContaining('Credential=token-identifier/'),
+		});
 		expect(JSON.stringify(request)).not.toContain('secret-canary');
 	});
 

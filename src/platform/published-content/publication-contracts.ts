@@ -59,12 +59,14 @@ export function publicationKeys(input: {
 	const ref = input.ref.trim();
 	segment(ref, 'ref');
 	const refDigest = createHash('sha256').update(ref).digest('hex');
-	const root = `teams/${team}`;
-	const manifestKey = `${root}/published/manifests/${revision}.json`;
-	const pointerKey = input.channel === 'production'
-		? `${root}/published/common.json`
-		: input.channel === 'staging'
-			? `${root}/published/staging.json`
-			: `${root}/previews/${project}/${refDigest}/manifest.json`;
-	return { manifestKey, pointerKey, objectRoot: `${root}/objects/sha256` };
+	const root = `content/${team}/${project}`;
+	const channelRoot = input.channel === 'preview'
+		? `${root}/previews/${refDigest}`
+		: `${root}/${input.channel}`;
+	const releaseRoot = `${channelRoot}/releases/${revision}`;
+	return {
+		manifestKey: `${releaseRoot}/manifest.json`,
+		pointerKey: `${channelRoot}/${input.channel === 'preview' ? 'manifest.json' : 'channels/current.json'}`,
+		objectRoot: `${releaseRoot}/content`,
+	};
 }

@@ -9,11 +9,26 @@ import { reconcileContentPublication } from '../../../src/platform/published-con
 describe('content publication reconciliation', () => {
 	it('selects canonical preview, staging, production, manifest, and object keys', () => {
 		const base = { teamId: 'team-a', projectId: 'project-a', ref: 'feature/chat', revision: 'abc' };
-		expect(publicationKeys({ ...base, channel: 'production' }).pointerKey).toBe('teams/team-a/published/common.json');
-		expect(publicationKeys({ ...base, channel: 'staging' }).pointerKey).toBe('teams/team-a/published/staging.json');
-		expect(publicationKeys({ ...base, channel: 'preview' }).pointerKey).toBe('teams/team-a/previews/project-a/0e10476e6d52d119e467a7a5d365d15b0a9e45a26dd0a49886a2c9191065574f/manifest.json');
-		expect(publicationKeys({ ...base, channel: 'production' }).manifestKey).toBe('teams/team-a/published/manifests/abc.json');
-		expect(publicationKeys({ ...base, channel: 'production' }).objectRoot).toBe('teams/team-a/objects/sha256');
+		expect(publicationKeys({ ...base, channel: 'production' }).pointerKey).toBe('content/team-a/project-a/production/channels/current.json');
+		expect(publicationKeys({ ...base, channel: 'staging' }).pointerKey).toBe('content/team-a/project-a/staging/channels/current.json');
+		expect(publicationKeys({ ...base, channel: 'preview' }).pointerKey).toBe('content/team-a/project-a/previews/0e10476e6d52d119e467a7a5d365d15b0a9e45a26dd0a49886a2c9191065574f/manifest.json');
+		expect(publicationKeys({ ...base, channel: 'production' }).manifestKey).toBe('content/team-a/project-a/production/releases/abc/manifest.json');
+		expect(publicationKeys({ ...base, channel: 'production' }).objectRoot).toBe('content/team-a/project-a/production/releases/abc/content');
+	});
+
+	it('fails closed before advancing a channel when the live source ref becomes stale', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'content-publication-stale-'));
+		mkdirSync(join(root, 'src/content'), { recursive: true });
+		writeFileSync(join(root, 'src/content/example.md'), '# Exact\n');
+		const sourceCommit = '0123456789012345678901234567890123456789';
+		await expect(reconcileContentPublication({
+			projectRoot: root, contentPath: 'src/content', teamId: 'team-a', projectId: 'project-a',
+			sourceCommit, ref: 'staging', channel: 'staging', generatedAt: '2026-08-11T00:00:00.000Z',
+			observeSourceCommit: async () => sourceCommit,
+			verifySourceStillCurrent: async () => false,
+			r2: { accountId: 'account', bucket: 'bucket', accessKeyId: 'key', secretAccessKey: 'secret' },
+			fetchImpl: async () => new Response(null, { status: 404 }),
+		})).rejects.toThrow('live content repository ref changed');
 	});
 
 	it('validates exact-commit content and emits only durable artifact references', async () => {

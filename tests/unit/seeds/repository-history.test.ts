@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyContentHistoryBranch,contentTreesUnchanged,isRecognizedOrganizationMigrationMetadata } from '../../../src/seeds/repositories/repository-history.ts';
+import { classifyContentHistoryBranch,contentTreesUnchanged,isRecognizedContentMigrationMetadata,isRecognizedOrganizationMigrationMetadata } from '../../../src/seeds/repositories/repository-history.ts';
 
 describe('content repository history migration recovery', () => {
 	it('creates only when the source exists and the target is empty', () => {
@@ -24,5 +24,12 @@ describe('content repository history migration recovery', () => {
 		expect(isRecognizedOrganizationMigrationMetadata(['Migrate organization references to treeseed-ai', 'TreeSeed migration', 'operations@treeseed.dev'])).toBe(true);
 		expect(isRecognizedOrganizationMigrationMetadata(['Migrate organization references to treeseed-ai', 'Other author', 'operations@treeseed.dev'])).toBe(false);
 		expect(isRecognizedOrganizationMigrationMetadata(['Unrelated change', 'TreeSeed migration', 'operations@treeseed.dev'])).toBe(false);
+	});
+
+	it('recognizes only canonical content migration commits for the selected project', () => {
+		expect(isRecognizedContentMigrationMetadata(['Migrate market content history', 'TreeSeed migration', 'operations@treeseed.dev'], 'market')).toBe(true);
+		expect(isRecognizedContentMigrationMetadata(['Reconcile market content history', 'TreeSeed migration', 'operations@treeseed.dev'], 'market')).toBe(true);
+		expect(isRecognizedContentMigrationMetadata(['Reconcile api content history', 'TreeSeed migration', 'operations@treeseed.dev'], 'market')).toBe(false);
+		expect(isRecognizedContentMigrationMetadata(['Reconcile market content history', 'Other author', 'operations@treeseed.dev'], 'market')).toBe(false);
 	});
 });

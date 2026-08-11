@@ -44,6 +44,9 @@ resources:
       name: app-content
       gitUrl: https://github.com/test/app-content.git
       repositoryPolicy: *policy
+      publishPolicy:
+        provider: cloudflare_r2
+        environments: [staging, prod]
   supportRepositories:
     - key: repository:test/fixtures
       provider: github
@@ -112,6 +115,16 @@ describe('seed repository policy', () => {
 			dependencies: [environment.unitId],
 			spec: { repository: 'test/app', workflow: 'verify.yml', ref: 'staging' },
 		});
+		const contentBindings = units.filter((unit) =>
+			(unit.unitType === 'github-secret-binding' || unit.unitType === 'github-variable-binding')
+			&& unit.spec.repository === 'test/app-content');
+		expect(contentBindings.map((unit) => unit.spec.envName).sort()).toEqual([
+			'TREESEED_CLOUDFLARE_ACCOUNT_ID',
+			'TREESEED_CLOUDFLARE_API_TOKEN',
+			'TREESEED_CONTENT_BUCKET_NAME',
+		]);
+		const contentWorkflow = units.find((unit) => unit.logicalName === 'test/app-content:verify.yml')!;
+		expect(contentWorkflow.dependencies.sort()).toEqual(contentBindings.map((unit) => unit.unitId).sort());
 	});
 
 	it('binds production deployment policy and workflow observation to main', () => {

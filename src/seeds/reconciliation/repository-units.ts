@@ -54,6 +54,7 @@ function lifecycleUnits(input: {
 	repository: string;
 	policy: SeedRepositoryPolicy | undefined;
 	environment: SeedEnvironment;
+	contentPublication?: boolean;
 }) {
 	const defaultBranch = input.policy?.defaultBranch ?? safePolicy.defaultBranch;
 	const stagingBranch = input.policy?.stagingBranch ?? safePolicy.stagingBranch;
@@ -99,17 +100,31 @@ function lifecycleUnits(input: {
 		spec: { repository: input.repository, environment: githubEnvironment, branch: deploymentBranch },
 		metadata: { ...input.repositoryUnit.metadata, lifecyclePhase: 'rules-and-environments' },
 	};
+	const bindingNames = input.contentPublication ? [
+		{ unitType: 'github-secret-binding' as const, name: 'TREESEED_CLOUDFLARE_API_TOKEN' },
+		{ unitType: 'github-variable-binding' as const, name: 'TREESEED_CLOUDFLARE_ACCOUNT_ID' },
+		{ unitType: 'github-variable-binding' as const, name: 'TREESEED_CONTENT_BUCKET_NAME' },
+	] : [];
+	const bindingUnits = bindingNames.map(({ unitType, name }): DesiredUnit => ({
+		...input.repositoryUnit,
+		unitId: createReconcileUnitId(unitType, `${input.repository}:${githubEnvironment}:${name}`),
+		unitType,
+		logicalName: `${input.repository}:${githubEnvironment}:${name}`,
+		dependencies: [environmentUnitId],
+		spec: { repository: input.repository, environment: githubEnvironment, [unitType === 'github-secret-binding' ? 'secretName' : 'variableName']: name, envName: name },
+		metadata: { ...input.repositoryUnit.metadata, lifecyclePhase: 'secrets-and-variables' },
+	}));
 	const workflows = (input.policy ?? safePolicy).workflows ?? [];
 	const workflowUnits = workflows.map((workflow): DesiredUnit => ({
 		...input.repositoryUnit,
 		unitId: createReconcileUnitId('github-workflow-observation', `${input.repository}:${deploymentBranch}:${workflow}`),
 		unitType: 'github-workflow-observation',
 		logicalName: `${input.repository}:${workflow}`,
-		dependencies: [environmentUnitId],
+		dependencies: bindingUnits.length > 0 ? bindingUnits.map((unit) => unit.unitId) : [environmentUnitId],
 		spec: { repository: input.repository, workflow, ref: deploymentBranch },
 		metadata: { ...input.repositoryUnit.metadata, lifecyclePhase: 'workflow-observation' },
 	}));
-	return [bootstrap, branch, rulesUnit, environmentUnit, ...workflowUnits];
+	return [bootstrap, branch, rulesUnit, environmentUnit, ...bindingUnits, ...workflowUnits];
 }
 
 export function compileSeedRepositoryUnits(manifest: SeedManifest, environment: SeedEnvironment): DesiredUnit[] {
@@ -149,7 +164,7 @@ export function compileSeedRepositoryUnits(manifest: SeedManifest, environment: 
 			secrets: {},
 			metadata: { seed: manifest.name, resourceKey: repository.key, repositoryRole: repository.role },
 		};
-		units.push(repositoryUnit, ...lifecycleUnits({ repositoryUnit, repository: slug, policy: repository.repositoryPolicy, environment }));
+		units.push(repositoryUnit, ...lifecycleUnits({ repositoryUnit, repository: slug, policy: repository.repositoryPolicy, environment, contentPublication: Boolean(repository.publishPolicy) }));
 	}
 	for (const repository of manifest.resources.supportRepositories) {
 		if (!selected(repository, manifest, environment)) continue;
