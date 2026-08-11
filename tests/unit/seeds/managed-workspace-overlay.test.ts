@@ -62,7 +62,7 @@ describe('private singleton managed workspace overlay', () => {
 			expect(generated.get('package.json')).toContain('"test": "vitest run tests"');
 			expect(generated.get('package.json')).toContain('"@treeseed/sdk": "git+https://github.com/treeseed-ai/sdk.git#');
 			expect(generated.get('package.json')).not.toContain('"stripe"');
-			expect(generated.get('.github/workflows/verify.yml')).toContain('npm ci --ignore-scripts');
+			expect(generated.get('.github/workflows/verify.yml')).toContain('- run: npm ci\n');
 			expect(generated.get('singleton.manifest.json')).toContain('"package-lock.json"');
 			expect(generated.get('tsconfig.build.json')).toContain('"rootDir": "src"');
 			expect(generated.get('tsconfig.build.json')).toContain('"tests/**/*.ts"');
