@@ -93,7 +93,7 @@ async function withFetched<T>(repository: string, gitEnv: NodeJS.ProcessEnv, ope
 	const temporary = mkdtempSync(resolve(tmpdir(), 'trsd-gateway-contract-'));
 	try {
 		await git(temporary, ['init', '--quiet']);
-		await git(temporary, ['fetch', '--quiet', '--no-tags', `https://github.com/${repository}.git`, 'refs/heads/staging'], { env: gitEnv });
+		await git(temporary, ['fetch', '--quiet', '--no-tags', '--depth=1', `https://github.com/${repository}.git`, 'refs/heads/staging'], { env: gitEnv });
 		return await operation(temporary, (await git(temporary, ['rev-parse', 'FETCH_HEAD'])).stdout);
 	} finally {
 		rmSync(temporary, { recursive: true, force: true });
