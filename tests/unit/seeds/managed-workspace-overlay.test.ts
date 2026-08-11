@@ -2,6 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { gatewayContractPaths } from '../../../src/seeds/workspaces/gateway-contract-migration.ts';
 import { assertMarketApiPackageLock } from '../../../src/seeds/workspaces/market-api-package-lock.ts';
 import { managedWorkspaceMatches, managedWorkspacePaths, missingApplicationBootstrapFiles, staleManagedWorkspacePaths } from '../../../src/seeds/workspaces/managed-workspace-overlay.ts';
 import { marketApiWorkspaceFiles } from '../../../src/seeds/workspaces/market-api-workspace.ts';
@@ -12,6 +13,10 @@ const expected = [
 ] as const;
 
 describe('private singleton managed workspace overlay', () => {
+	it('publishes the SDK package export and lock with the bounded gateway implementation', () => {
+		expect(gatewayContractPaths).toEqual(expect.arrayContaining(['package.json', 'package-lock.json', 'src/gateway/admin-passthrough.ts']));
+	});
+
 	it('accepts application-owned files outside the declared overlay', () => {
 		const observed = new Map([
 			['artifacts/admin.json', '{"routes":[]}'],

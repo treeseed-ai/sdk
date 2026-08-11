@@ -4,7 +4,9 @@ import { resolve } from 'node:path';
 import { credentialEnvironment, git, migrationCredential, remoteHead } from '../repositories/repository-history.js';
 import type { SeedManifest } from '../types.js';
 
-const gatewayPaths = [
+export const gatewayContractPaths = [
+	'package-lock.json',
+	'package.json',
 	'src/entrypoints/clients/market-client.ts',
 	'src/gateway/admin-passthrough.ts',
 	'src/gateway/admin-route-inventory.ts',
@@ -92,7 +94,7 @@ function projectBySlug(manifest: SeedManifest, slug: string) {
 
 function desiredFiles(projectRoot: string) {
 	const packageRoot = resolve(projectRoot, 'packages/sdk');
-	const paths = [...new Set([...gatewayPaths, ...filesUnder(packageRoot, 'src/seeds'), ...filesUnder(packageRoot, 'tests/unit/seeds')])].sort();
+	const paths = [...new Set([...gatewayContractPaths, ...filesUnder(packageRoot, 'src/seeds'), ...filesUnder(packageRoot, 'tests/unit/seeds')])].sort();
 	return paths.map((path) => ({ path, content: readFileSync(resolve(packageRoot, path), 'utf8') }));
 }
 
