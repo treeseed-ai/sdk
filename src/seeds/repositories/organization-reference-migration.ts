@@ -1,12 +1,14 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { credentialEnvironment, git, migrationCredential, remoteHead } from './repository-history.js';
 import { loadMachineConfig, writeMachineConfig } from '../../operations/services/config-runtime/support/rotate-machine-key-passphrase.js';
+import { resolveRepositoryIdentity } from '../../repositories/repository-identity.js';
 import type { SeedManifest } from '../types.js';
 
 type Branch = 'main' | 'staging';
 type BranchPlan = { repository: string; branch: Branch; sourceCommit: string | null; files: string[]; action: 'update' | 'noop' };
+type LocalRemoteReceipt = { path: string; previous: string; current: string; action: 'update' | 'noop'; verified: boolean };
 
 function repositories(manifest: SeedManifest) {
 	return [...new Set([
@@ -70,6 +72,48 @@ async function applyBranch(projectRoot: string, plan: BranchPlan, gitEnv: NodeJS
 	});
 }
 
+function configuredLocalRemotes(projectRoot: string) {
+	const packageJson = JSON.parse(readFileSync(resolve(projectRoot, 'package.json'), 'utf8')) as { repository?: string | { url?: string } };
+	const rootUrl = typeof packageJson.repository === 'string' ? packageJson.repository : packageJson.repository?.url;
+	if (!rootUrl) throw new Error('The workspace package metadata must declare its canonical repository URL.');
+	const rootIdentity = resolveRepositoryIdentity(rootUrl);
+	const configured = [{ path: projectRoot, repository: `${rootIdentity.owner}/${rootIdentity.repository}`, canonicalKey: rootIdentity.canonicalKey }];
+	const gitmodulesPath = resolve(projectRoot, '.gitmodules');
+	if (!existsSync(gitmodulesPath)) return configured;
+	let path: string | null = null;
+	for (const line of readFileSync(gitmodulesPath, 'utf8').split('\n')) {
+		const pathMatch = /^\s*path\s*=\s*(.+?)\s*$/u.exec(line);
+		if (pathMatch) {
+			path = pathMatch[1]!.trim();
+			continue;
+		}
+		const urlMatch = /^\s*url\s*=\s*(.+?)\s*$/u.exec(line);
+		if (!urlMatch || !path) continue;
+		const identity = resolveRepositoryIdentity(urlMatch[1]!.trim());
+		configured.push({ path: resolve(projectRoot, path), repository: `${identity.owner}/${identity.repository}`, canonicalKey: identity.canonicalKey });
+		path = null;
+	}
+	return configured;
+}
+
+export async function reconcileLocalOrganizationRemotes(projectRoot: string) {
+	const receipts: LocalRemoteReceipt[] = [];
+	for (const configured of configuredLocalRemotes(projectRoot)) {
+		if (!existsSync(configured.path)) continue;
+		const observed = await git(configured.path, ['remote', 'get-url', 'origin'], { allowFailure: true });
+		if (observed.code !== 0) continue;
+		const previous = observed.stdout;
+		const desired = `git@github.com:${configured.repository}.git`;
+		const matches = resolveRepositoryIdentity(previous).canonicalKey === configured.canonicalKey;
+		if (!matches) await git(configured.path, ['remote', 'set-url', 'origin', desired]);
+		const current = (await git(configured.path, ['remote', 'get-url', 'origin'])).stdout;
+		const verified = resolveRepositoryIdentity(current).canonicalKey === configured.canonicalKey;
+		if (!verified) throw new Error(`Fresh local remote read-back for ${configured.path} returned ${current}, expected ${desired}.`);
+		receipts.push({ path: configured.path, previous, current, action: matches ? 'noop' : 'update', verified });
+	}
+	return receipts;
+}
+
 export async function applyOrganizationReferenceMigration(input: { projectRoot: string; manifest: SeedManifest; env?: NodeJS.ProcessEnv | Record<string, string | undefined> }) {
 	const planned = await planOrganizationReferenceMigration(input);
 	const credential = migrationCredential(input.projectRoot, 'treeseed-ai/platform', input.env);
@@ -87,5 +131,6 @@ export async function applyOrganizationReferenceMigration(input: { projectRoot: 
 		}
 	}
 	if (removedCredentials.length) writeMachineConfig(input.projectRoot, machineConfig);
-	return { ...planned, results, removedCredentials: [...new Set(removedCredentials)].sort() };
+	const localRemotes = await reconcileLocalOrganizationRemotes(input.projectRoot);
+	return { ...planned, results, removedCredentials: [...new Set(removedCredentials)].sort(), localRemotes };
 }
