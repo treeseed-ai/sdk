@@ -102,7 +102,13 @@ export function syncDirectGitDependencyLockfileEntries(
 				const exactVersion = typeof dependencySpec === 'string' && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(dependencySpec)
 					? dependencySpec
 					: null;
-				if (!packageEntries[entryKey] || (!consumerDeclaresDependency && exactVersion && packageEntries[entryKey].version !== exactVersion)) {
+				const existingEntry = packageEntries[entryKey];
+				const changedGitResolution = !consumerDeclaresDependency
+					&& typeof dependencySpec === 'string'
+					&& dependencySpec.includes('#')
+					&& typeof sourceEntry.resolved === 'string'
+					&& existingEntry?.resolved !== sourceEntry.resolved;
+				if (!existingEntry || (!consumerDeclaresDependency && exactVersion && existingEntry.version !== exactVersion) || changedGitResolution) {
 					packageEntries[entryKey] = structuredClone(sourceEntry);
 					changed = true;
 				}

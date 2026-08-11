@@ -83,9 +83,10 @@ it('copies newly introduced runtime dependency closure into consumer locks durin
 		writeJson(resolve(sdkRoot, 'package-lock.json'), {
 			lockfileVersion: 3,
 			packages: {
-				'': { dependencies: { 'new-runtime': '1.0.0' } },
+				'': { dependencies: { 'new-runtime': '1.0.0', '@treeseed/ui': 'github:treeseed-ai/ui#current' } },
 				'node_modules/new-runtime': { version: '1.0.0', dependencies: { 'runtime-core': '1.0.0' } },
 				'node_modules/runtime-core': { version: '1.0.0', optionalDependencies: { 'new-runtime': '1.0.0' } },
+				'node_modules/@treeseed/ui': { version: '2.0.0', resolved: 'git+ssh://git@github.com/treeseed-ai/ui.git#current' },
 			},
 		});
 		const packageJson = { name: '@treeseed/consumer', dependencies: { '@treeseed/sdk': spec } };
@@ -95,6 +96,7 @@ it('copies newly introduced runtime dependency closure into consumer locks durin
 				'': packageJson,
 				'node_modules/@treeseed/sdk': { version: '1.0.0', resolved: 'old', dependencies: {} },
 				'node_modules/new-runtime': { version: '1.1.0' },
+				'node_modules/@treeseed/ui': { version: '1.0.0', resolved: 'git+ssh://git@github.com/treeseed-ai/ui.git#stale', integrity: 'stale-integrity' },
 			},
 		});
 		const consumer = node({ id: consumerRoot, name: '@treeseed/consumer', path: consumerRoot, packageJson });
@@ -104,10 +106,17 @@ it('copies newly introduced runtime dependency closure into consumer locks durin
 			tagName: null, remoteUrl: 'git@github.com:treeseed-ai/sdk.git', sourcePath: sdkRoot, mode: 'dev-git-commit',
 		}])).toBe(true);
 		const lock = JSON.parse(readFileSync(resolve(consumerRoot, 'package-lock.json'), 'utf8'));
-		expect(lock.packages['node_modules/@treeseed/sdk'].dependencies).toEqual({ 'new-runtime': '1.0.0' });
+		expect(lock.packages['node_modules/@treeseed/sdk'].dependencies).toEqual({
+			'new-runtime': '1.0.0',
+			'@treeseed/ui': 'github:treeseed-ai/ui#current',
+		});
 		expect(lock.packages['node_modules/new-runtime'].version).toBe('1.0.0');
 		expect(lock.packages['node_modules/runtime-core'].version).toBe('1.0.0');
 		expect(lock.packages['node_modules/runtime-core'].optionalDependencies).toEqual({ 'new-runtime': '1.0.0' });
+		expect(lock.packages['node_modules/@treeseed/ui']).toEqual({
+			version: '2.0.0',
+			resolved: 'git+ssh://git@github.com/treeseed-ai/ui.git#current',
+		});
 	});
 
 it('validates package locks without mutating the live install and synchronizes package versions', () => {
