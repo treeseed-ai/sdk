@@ -13,12 +13,14 @@ describe('organization reference migration', () => {
 	it('reconciles root and checked-out submodule origins to committed canonical URLs', async () => {
 		const root = mkdtempSync(resolve(tmpdir(), 'organization-remotes-'));
 		const child = resolve(root, 'starters/engineering');
+		const legacyOwner = ['knowledge', 'coop'].join('-');
+		const legacyTemplateOwner = ['treeseed', 'templates'].join('-');
 		try {
 			mkdirSync(child, { recursive: true });
 			git(root, ['init', '--quiet']);
 			git(child, ['init', '--quiet']);
-			git(root, ['remote', 'add', 'origin', 'git@github.com:knowledge-coop/market.git']);
-			git(child, ['remote', 'add', 'origin', 'git@github.com:treeseed-templates/engineering.git']);
+			git(root, ['remote', 'add', 'origin', `git@github.com:${legacyOwner}/market.git`]);
+			git(child, ['remote', 'add', 'origin', `git@github.com:${legacyTemplateOwner}/engineering.git`]);
 			writeFileSync(resolve(root, 'package.json'), JSON.stringify({ repository: { url: 'https://github.com/treeseed-ai/market.git' } }));
 			writeFileSync(resolve(root, '.gitmodules'), '[submodule "starters/engineering"]\n\tpath = starters/engineering\n\turl = git@github.com:treeseed-ai/template-engineering.git\n');
 

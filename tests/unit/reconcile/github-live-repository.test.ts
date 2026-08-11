@@ -20,10 +20,11 @@ describe('GitHub live repository resolution', () => {
 	});
 
 	it('uses machine-wide local repository identity for staging smoke tests', () => {
+		const legacyOwner = ['knowledge', 'coop'].join('-');
 		resolveMachineEnvironmentValues.mockImplementation((_cwd, scope) => scope === 'local'
 			? { TREESEED_GITHUB_OWNER: 'treeseed-ai', TREESEED_GITHUB_REPOSITORY_NAME: 'market' }
 			: {});
-		runRepositoryGit.mockReturnValue({ stdout: 'https://github.com/knowledge-coop/market.git\n' });
+		runRepositoryGit.mockReturnValue({ stdout: `https://github.com/${legacyOwner}/market.git\n` });
 
 		expect(resolveCurrentGitHubRepository('/workspace', {})).toBe('treeseed-ai/market');
 		expect(runRepositoryGit).not.toHaveBeenCalled();

@@ -10,6 +10,11 @@ type Branch = 'main' | 'staging';
 type BranchPlan = { repository: string; branch: Branch; sourceCommit: string | null; files: string[]; action: 'update' | 'noop' };
 type LocalRemoteReceipt = { path: string; previous: string; current: string; action: 'update' | 'noop'; verified: boolean };
 
+const legacyOwners = [
+	['knowledge', 'coop'].join('-'),
+	['treeseed', 'templates'].join('-'),
+];
+
 function repositories(manifest: SeedManifest) {
 	return [...new Set([
 		...manifest.resources.projects.map((project) => `${project.repository.owner}/${project.repository.name}`),
@@ -28,7 +33,8 @@ async function withFetched<T>(repository: string, branch: Branch, gitEnv: NodeJS
 }
 
 async function matchingFiles(root: string, commit: string) {
-	const result = await git(root, ['grep', '-Il', '-e', 'knowledge-coop', commit, '--'], { allowFailure: true });
+	const patterns = legacyOwners.flatMap((owner) => ['-e', owner]);
+	const result = await git(root, ['grep', '-Il', ...patterns, commit, '--'], { allowFailure: true });
 	if (result.code !== 0 && result.code !== 1) throw new Error(result.stderr || 'Unable to scan repository references.');
 	return result.stdout.split('\n').map((entry) => entry.trim()).filter(Boolean).map((entry) => entry.replace(`${commit}:`, '')).sort();
 }
@@ -58,7 +64,7 @@ async function applyBranch(projectRoot: string, plan: BranchPlan, gitEnv: NodeJS
 		await git(root, ['read-tree', fetchedCommit], { env: indexEnv });
 		for (const path of plan.files) {
 			const source = (await git(root, ['show', `${fetchedCommit}:${path}`])).stdout;
-			const content = `${source.replaceAll('knowledge-coop', 'treeseed-ai')}\n`;
+			const content = `${legacyOwners.reduce((current, owner) => current.replaceAll(owner, 'treeseed-ai'), source)}\n`;
 			const blob = (await git(root, ['hash-object', '-w', '--stdin'], { input: content })).stdout;
 			const mode = (await git(root, ['ls-tree', fetchedCommit, '--', path])).stdout.split(/\s+/u)[0] || '100644';
 			await git(root, ['update-index', '--add', '--cacheinfo', mode, blob, path], { env: indexEnv });
