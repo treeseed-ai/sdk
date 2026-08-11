@@ -180,30 +180,34 @@ export function mergeUpdateRepo(input: {
 	};
 }
 
-export function commitRootUpdateIfNeeded(root: string, branch: string, push: boolean) {
-	const changedFiles = updateChangedFiles(repoRoot(root));
-	if (changedFiles.length === 0) {
+export function commitRootUpdateIfNeeded(root: string, branch: string, push: boolean, ownedPaths: string[]) {
+	const gitRoot = repoRoot(root);
+	const changedFiles = updateChangedFiles(gitRoot);
+	const ownedPathSet = new Set(ownedPaths);
+	const committedFiles = changedFiles.filter((path) => ownedPathSet.has(path));
+	const preservedFiles = changedFiles.filter((path) => !ownedPathSet.has(path));
+	if (committedFiles.length === 0) {
 		let pushed = false;
 		if (push) {
-			runRepositoryGit(['push', 'origin', branch], { cwd: repoRoot(root), mode: 'mutate' });
+			runRepositoryGit(['push', 'origin', branch], { cwd: gitRoot, mode: 'mutate' });
 			pushed = true;
 		}
 		return {
-			committed: false, 			pushed, 			commitSha: updateHead(repoRoot(root)), 			changedFiles,
+			committed: false, 			pushed, 			commitSha: updateHead(gitRoot), 			changedFiles: committedFiles, 			preservedFiles,
 		};
 	}
-	runRepositoryGit(['add', '-A'], { cwd: repoRoot(root), mode: 'mutate' });
-	runRepositoryGit(['commit', '-m', `chore(workflow): update ${branch} from staging`], { cwd: repoRoot(root), mode: 'mutate' });
-	const commitSha = updateHead(repoRoot(root));
+	runRepositoryGit(['commit', '--only', '-m', `chore(workflow): update ${branch} from staging`, '--', ...committedFiles], { cwd: gitRoot, mode: 'mutate' });
+	const commitSha = updateHead(gitRoot);
 	let pushed = false;
 	if (push) {
-		runRepositoryGit(['push', 'origin', branch], { cwd: repoRoot(root), mode: 'mutate' });
+		runRepositoryGit(['push', 'origin', branch], { cwd: gitRoot, mode: 'mutate' });
 		pushed = true;
 	}
 	return {
 		committed: true,
 		pushed,
 		commitSha,
-		changedFiles,
+		changedFiles: committedFiles,
+		preservedFiles,
 	};
 }

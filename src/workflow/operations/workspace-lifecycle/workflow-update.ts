@@ -133,8 +133,11 @@ export async function workflowUpdate(helpers: WorkflowOperationHelpers, input: U
 					mergeUpdateRepo({
 						name: '@treeseed/market', 						repoDir: session.gitRoot, 						branch, 						sourceBranch, 						strategy, 						push: false,
 					}));
+				const managedPointerPaths = session.managedRepos
+					.map((repo) => relative(session.gitRoot, repo.path).replaceAll('\\', '/'))
+					.filter((path) => path.length > 0 && !path.startsWith('../'));
 				const rootCommit = await executeJournalStep(root, workflowRun.runId, 'refresh-root-pointers', () =>
-					commitRootUpdateIfNeeded(root, branch, push));
+					commitRootUpdateIfNeeded(root, branch, push, managedPointerPaths));
 				const workspaceLinks = await executeJournalStep(root, workflowRun.runId, 'restore-workspace-links', () =>
 					ensureWorkflowWorkspaceLinks(root, helpers, input.workspaceLinks ?? 'auto'));
 

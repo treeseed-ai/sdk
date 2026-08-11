@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { WorkflowError, WorkflowSdk } from '../../../../src/operations/workflow.ts';
+import { commitRootUpdateIfNeeded } from '../../../../src/workflow/operations/support/update-ahead-behind.ts';
 
 function git(cwd: string, args: string[], options: { allowFailure?: boolean } = {}) {
 	const result = spawnSync('git', args, {
@@ -175,6 +176,28 @@ describe('workflow update', () => {
 		await expect(runUpdate(work, { from: 'staging' })).rejects.toMatchObject({
 			code: 'validation_failed',
 		});
+	});
+
+	it('commits only reconciliation-owned root pointers and preserves concurrent local edits', () => {
+		const { work } = createRootRepo();
+		mkdirSync(resolve(work, 'packages'), { recursive: true });
+		writeFileSync(resolve(work, 'packages', 'sdk'), 'first pointer\n', 'utf8');
+		writeFileSync(resolve(work, 'local.txt'), 'first local value\n', 'utf8');
+		git(work, ['add', '-A']);
+		git(work, ['commit', '-m', 'seed root pointer and local file']);
+		writeFileSync(resolve(work, 'packages', 'sdk'), 'second pointer\n', 'utf8');
+		writeFileSync(resolve(work, 'local.txt'), 'concurrent operator edit\n', 'utf8');
+
+		const result = commitRootUpdateIfNeeded(work, 'demo', false, ['packages/sdk']);
+
+		expect(result).toMatchObject({
+			committed: true,
+			changedFiles: ['packages/sdk'],
+			preservedFiles: ['local.txt'],
+		});
+		expect(git(work, ['show', 'HEAD:packages/sdk']).stdout).toBe('second pointer');
+		expect(git(work, ['show', 'HEAD:local.txt']).stdout).toBe('first local value');
+		expect(git(work, ['status', '--porcelain']).stdout).toContain('local.txt');
 	});
 
 	it('merges staging into a root-only task branch and pushes by default', async () => {
