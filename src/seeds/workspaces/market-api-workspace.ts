@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { credentialEnvironment, git, migrationCredential, remoteHead } from '../repositories/repository-history.js';
 import type { SeedManifest } from '../types.js';
+import { assertMarketApiPackageLock, generateMarketApiPackageLock } from './market-api-package-lock.js';
 import { managedWorkspaceMatches, managedWorkspacePaths, missingApplicationBootstrapFiles, staleManagedWorkspacePaths } from './managed-workspace-overlay.js';
 
 type BranchPlan = { branch: 'main' | 'staging'; targetCommit: string | null; action: 'create' | 'update' | 'noop' | 'blocked'; reason: string };
@@ -42,11 +43,8 @@ function packageJson(sdkRef: string) {
 		name: '@treeseed/market-api', version: '0.1.0', private: true, license: 'UNLICENSED', type: 'module', engines: { node: '>=22' },
 		workspaces: ['.'],
 		scripts: { build: 'tsc -p tsconfig.build.json', test: 'vitest run tests', verify: 'npm run build && npm test', start: 'node dist/server.js' },
-		dependencies: {
-			'@octokit/auth-app': '^8.2.0', '@treeseed/sdk': `git+https://github.com/treeseed-ai/sdk.git#${sdkRef}`,
-			'drizzle-orm': '^0.45.2', hono: '^4.8.2', 'libsodium-wrappers': '0.7.15', 'libsodium-wrappers-sumo': '0.7.15', octokit: '^5.0.5', pg: '^8.21.0', stripe: '^22.3.0', yaml: '^2.8.1',
-		},
-		devDependencies: { '@types/node': '^24.6.0', typescript: '^5.9.3', vitest: '^4.1.2' },
+		dependencies: { '@treeseed/sdk': `git+https://github.com/treeseed-ai/sdk.git#${sdkRef}` },
+		devDependencies: { '@types/node': '24.6.0', typescript: '5.9.3', vitest: '4.1.2' },
 	}, null, 2)}\n`;
 }
 
@@ -83,7 +81,7 @@ function descriptorTest() {
 }
 
 function workflow() {
-	return `name: Verify\n\non:\n  pull_request:\n  push:\n    branches: [main, staging]\n  workflow_dispatch:\n\npermissions:\n  contents: read\n\nconcurrency:\n  group: verify-\${{ github.repository }}-\${{ github.ref }}\n  cancel-in-progress: true\n\njobs:\n  verify:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 24\n      - run: npm install\n      - run: npm run verify\n`;
+	return `name: Verify\n\non:\n  pull_request:\n  push:\n    branches: [main, staging]\n  workflow_dispatch:\n\npermissions:\n  contents: read\n\nconcurrency:\n  group: verify-\${{ github.repository }}-\${{ github.ref }}\n  cancel-in-progress: true\n\njobs:\n  verify:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 24\n      - run: npm ci --ignore-scripts\n      - run: npm run verify\n`;
 }
 
 const managedPaths = [
@@ -92,6 +90,7 @@ const managedPaths = [
 	'README.md',
 	'artifacts/admin-api-descriptor.json',
 	'package.json',
+	'package-lock.json',
 	'singleton.manifest.json',
 	'src/gateway.ts',
 	'src/server.ts',
@@ -104,7 +103,7 @@ const managedPaths = [
 	'tsconfig.json',
 ].sort();
 
-export function marketApiWorkspaceFiles(projectRoot: string, sdkRef: string, adminApiRef: string) {
+export function marketApiWorkspaceFiles(projectRoot: string, sdkRef: string, adminApiRef: string, packageLock?: string) {
 	const descriptor = JSON.parse(readFileSync(resolve(projectRoot, 'packages/api/dist/admin-api-descriptor.json'), 'utf8')) as { digest: string; sourceRef: string | null; routes: Array<{ method: string; path: string }> };
 	descriptor.sourceRef = adminApiRef;
 	const descriptorContent = `${JSON.stringify(descriptor, null, 2)}\n`;
@@ -113,12 +112,13 @@ export function marketApiWorkspaceFiles(projectRoot: string, sdkRef: string, adm
 		bootstrapFiles: [['src/market/app.ts', marketApplicationBootstrap()]] as Array<[string, string]>,
 		files: [
 			['package.json', packageJson(sdkRef)], ['treeseed.package.yaml', packageManifest()], ['treeseed.site.yaml', siteManifest()],
+			...(packageLock ? [['package-lock.json', packageLock] as [string, string]] : []),
 			['tsconfig.json', `${JSON.stringify({ compilerOptions: { target: 'ES2023', module: 'NodeNext', moduleResolution: 'NodeNext', resolveJsonModule: true, noEmit: true, strict: true, skipLibCheck: true, lib: ['ES2023', 'DOM', 'DOM.Iterable'] }, include: ['src/**/*.ts', 'tests/**/*.ts'] }, null, 2)}\n`],
 			['tsconfig.build.json', `${JSON.stringify({ extends: './tsconfig.json', compilerOptions: { noEmit: false, outDir: 'dist', rootDir: 'src' }, include: ['src/**/*.ts'], exclude: ['tests/**/*.ts'] }, null, 2)}\n`],
 			['LICENSE', 'UNLICENSED\n\nCopyright (c) TreeSeed. All rights reserved. No license is granted.\n'], ['README.md', '# TreeSeed Market API\n\nPrivate singleton Market implementation and hosted Admin API gateway for `api.treeseed.dev`. This repository is never provisioned by Platform. Hosted deployment remains suspended.\n'],
 			['src/gateway.ts', gatewaySource(descriptor.digest)], ['src/service-assertion.ts', assertionSource()], ['src/server.ts', serverSource()],
 			['tests/gateway.test.ts', gatewayTest()], ['tests/descriptor.test.ts', descriptorTest()], ['artifacts/admin-api-descriptor.json', descriptorContent],
-			['singleton.manifest.json', `${JSON.stringify({ schemaVersion: 2, authority: 'market-singleton', sdkRef, adminApiRef, adminDescriptorDigest: descriptor.digest, deployment: 'suspended', managedPaths }, null, 2)}\n`],
+			['singleton.manifest.json', `${JSON.stringify({ schemaVersion: 3, authority: 'market-singleton', sdkRef, adminApiRef, adminDescriptorDigest: descriptor.digest, deployment: 'suspended', managedPaths }, null, 2)}\n`],
 			['.github/workflows/verify.yml', workflow()],
 		] as Array<[string, string]>,
 	};
@@ -145,7 +145,11 @@ async function recoverGeneratedReceipt(projectRoot: string, repository: string, 
 		if (manifest.authority !== 'market-singleton' || manifest.deployment !== 'suspended') return null;
 		if (typeof manifest.sdkRef !== 'string' || !/^[a-f0-9]{40}$/u.test(manifest.sdkRef)) return null;
 		if (typeof manifest.adminApiRef !== 'string' || !/^[a-f0-9]{40}$/u.test(manifest.adminApiRef)) return null;
-		const expected = marketApiWorkspaceFiles(projectRoot, manifest.sdkRef, manifest.adminApiRef).files;
+		const packageResult = await git(temporary, ['show', `${commit}:package.json`], { allowFailure: true });
+		const lockResult = await git(temporary, ['show', `${commit}:package-lock.json`], { allowFailure: true });
+		if (packageResult.code !== 0 || lockResult.code !== 0) return null;
+		try { assertMarketApiPackageLock(lockResult.stdout, packageResult.stdout, manifest.sdkRef); } catch { return null; }
+		const expected = marketApiWorkspaceFiles(projectRoot, manifest.sdkRef, manifest.adminApiRef, `${lockResult.stdout}\n`).files;
 		const legacySourceRoot = ['..', 'src'].join('/');
 		const historicalSourceExtension = ['.', 'ts'].join('');
 		const legacyExpected = expected.map(([path, content]) => [path, path === 'tests/gateway.test.ts'
@@ -168,7 +172,7 @@ async function recoverGeneratedReceipt(projectRoot: string, repository: string, 
 			legacyObservedPaths: observedPaths,
 		}));
 		if (!matched) return null;
-		return { branch, targetCommit: commit, sdkRef: manifest.sdkRef, adminApiRef: manifest.adminApiRef, workspaceDigest: workspaceFilesDigest(matched), verified: true };
+		return { branch, targetCommit: commit, sdkRef: manifest.sdkRef, adminApiRef: manifest.adminApiRef, workspaceDigest: workspaceDigest(projectRoot, manifest.sdkRef, manifest.adminApiRef), verified: true };
 	} finally {
 		rmSync(temporary, { recursive: true, force: true });
 	}
@@ -198,7 +202,7 @@ export async function planMarketApiWorkspace(input: { projectRoot: string; manif
 	return { repository, sdkRef, adminApiRef, descriptorDigest, branches } satisfies MarketApiWorkspacePlan;
 }
 
-async function buildCommit(projectRoot: string, branch: string, plan: MarketApiWorkspacePlan, parent: string | null, gitEnv: NodeJS.ProcessEnv) {
+async function buildCommit(projectRoot: string, branch: string, plan: MarketApiWorkspacePlan, parent: string | null, gitEnv: NodeJS.ProcessEnv, packageLock: string) {
 	const temporary = mkdtempSync(resolve(tmpdir(), 'trsd-market-api-'));
 	const indexPath = resolve(temporary, 'index');
 	const indexEnv = { ...process.env, GIT_INDEX_FILE: indexPath };
@@ -206,7 +210,7 @@ async function buildCommit(projectRoot: string, branch: string, plan: MarketApiW
 		await git(temporary, ['init', '--quiet']);
 		if (parent) await git(temporary, ['fetch', '--quiet', '--no-tags', `https://github.com/${plan.repository}.git`, parent], { env: gitEnv });
 		await git(temporary, ['read-tree', ...(parent ? [parent] : ['--empty'])], { env: indexEnv });
-		const desiredWorkspace = marketApiWorkspaceFiles(projectRoot, plan.sdkRef, plan.adminApiRef);
+		const desiredWorkspace = marketApiWorkspaceFiles(projectRoot, plan.sdkRef, plan.adminApiRef, packageLock);
 		const desiredFiles = desiredWorkspace.files;
 		const existingPaths = parent ? (await git(temporary, ['ls-tree', '-r', '--name-only', parent])).stdout.split('\n').filter(Boolean) : [];
 		let previousManagedPaths: string[] = [];
@@ -244,10 +248,14 @@ export async function applyMarketApiWorkspace(input: { projectRoot: string; mani
 	const gitEnv = credentialEnvironment(credential.token!);
 	const previousReceipts = journal(input.projectRoot, plan.repository)?.receipts ?? [];
 	const receipts: Receipt[] = [];
+	const packageLock = plan.branches.some((branch) => branch.action === 'create' || branch.action === 'update')
+		? generateMarketApiPackageLock(packageJson(plan.sdkRef), plan.sdkRef)
+		: null;
 	for (const branch of plan.branches) {
 		let targetCommit = branch.targetCommit;
 		if (branch.action === 'create' || branch.action === 'update') {
-			targetCommit = await buildCommit(input.projectRoot, branch.branch, plan, branch.targetCommit, gitEnv);
+			if (!packageLock) throw new Error('Market API package lock generation was not completed.');
+			targetCommit = await buildCommit(input.projectRoot, branch.branch, plan, branch.targetCommit, gitEnv, packageLock);
 		}
 		const observed = await remoteHead(input.projectRoot, plan.repository, branch.branch, gitEnv);
 		if (!targetCommit || observed !== targetCommit) throw new Error(`Fresh GitHub read-back returned ${observed ?? 'missing'}, expected ${targetCommit ?? 'missing'}.`);
