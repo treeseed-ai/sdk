@@ -19,6 +19,7 @@ audit: { required: false, verifierRefs: [] }
 negativeCases:
   - "A sovereign Admin request must never be sent through api.treeseed.dev."
   - "A Market request must never be sent to a sovereign control plane."
+  - "A capacity provider in external or managed mode must never receive the singleton Market URL as TREESEED_API_BASE_URL."
   - "An alternate persistent Market profile is rejected."
   - "An undeclared method/path pair must never be passed to the hosted Admin API."
   - "The Admin descriptor must never claim a route under /v1/market/**."
@@ -28,4 +29,4 @@ negativeCases:
   - "Singleton reconciliation must preserve private Market implementation paths outside its declared managed overlay and must reject drift inside managed gateway paths."
 evidence: { required: [guarantee_report] }
 notes:
-  - "Typed configuration, exact descriptor admission, bounded streaming HTTP, SSE, cookie and rate-limit propagation, structured timeout/cancellation/assertion failures, and a descriptor-gated Node WebSocket bridge have SDK contract coverage. The generated private server binds the bridge and preserves multiple Set-Cookie values. Hosted gateway, provider-protocol, and no-replication acceptance remain required before activation."
+  - "Typed configuration, separate capacity-provider Market/control-plane variables, exact descriptor admission, bounded streaming HTTP, SSE, cookie and rate-limit propagation, structured timeout/cancellation/assertion failures, and a descriptor-gated Node WebSocket bridge have SDK contract coverage. The generated private server binds the bridge and preserves multiple Set-Cookie values. Hosted gateway, end-to-end provider-protocol, migration, and no-replication acceptance remain required before activation."
