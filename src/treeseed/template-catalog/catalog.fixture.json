@@ -33,7 +33,7 @@
         "mode": "git",
         "source": {
           "kind": "git",
-          "repoUrl": "https://github.com/treeseed-templates/research.git",
+          "repoUrl": "https://github.com/treeseed-ai/research.git",
           "directory": ".",
           "ref": "staging",
           "integrity": "pending-external-repo"
@@ -217,7 +217,7 @@
         "mode": "git",
         "source": {
           "kind": "git",
-          "repoUrl": "https://github.com/treeseed-templates/engineering.git",
+          "repoUrl": "https://github.com/treeseed-ai/engineering.git",
           "directory": ".",
           "ref": "staging",
           "integrity": "pending-external-repo"

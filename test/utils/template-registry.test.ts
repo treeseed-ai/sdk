@@ -33,8 +33,8 @@ describe('template registry fulfillment', () => {
 		'engineering',
 	] as const;
 	const firstPartyStarterRepoUrls: Record<(typeof firstPartyStarterIds)[number], string> = {
-		'research': 'https://github.com/treeseed-templates/research.git',
-		'engineering': 'https://github.com/treeseed-templates/engineering.git',
+		'research': 'https://github.com/treeseed-ai/research.git',
+		'engineering': 'https://github.com/treeseed-ai/engineering.git',
 	};
 	const fixtureCatalogPath = resolve(process.cwd(), 'src/treeseed/template-catalog/catalog.fixture.json');
 	const fixtureCatalogEnv = {
