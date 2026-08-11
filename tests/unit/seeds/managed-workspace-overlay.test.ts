@@ -2,6 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { adminDescriptorRuntimePaths, retiredAdminDescriptorRuntimePaths } from '../../../src/seeds/workspaces/admin-descriptor-migration.ts';
 import { gatewayContractPaths } from '../../../src/seeds/workspaces/gateway-contract-migration.ts';
 import { assertMarketApiPackageLock } from '../../../src/seeds/workspaces/market-api-package-lock.ts';
 import { managedWorkspaceMatches, managedWorkspacePaths, missingApplicationBootstrapFiles, staleManagedWorkspacePaths } from '../../../src/seeds/workspaces/managed-workspace-overlay.ts';
@@ -21,6 +22,15 @@ describe('private singleton managed workspace overlay', () => {
 			'src/reconcile/builtin-adapters/capacity/providers/capacity-provider-variables-for-service.ts',
 			'tests/unit/reconcile/capacity-provider-control-plane-variables.test.ts',
 		]));
+	});
+
+	it('publishes the bounded Admin runtime source that reproduces the pinned descriptor', () => {
+		expect(adminDescriptorRuntimePaths).toEqual(expect.arrayContaining([
+			'src/api/routes/support/foundation-health-and-market.ts',
+			'src/api/route-descriptors-support/support/sdk-route-map.ts',
+			'tests/contract/api/api-route-descriptors.test.ts',
+		]));
+		expect(retiredAdminDescriptorRuntimePaths).toContain('tests/integration/api/runtime/logs-local-api-request-urls-with-sensitive-query-values-redacted.scenarios.ts');
 	});
 
 	it('accepts application-owned files outside the declared overlay', () => {
@@ -74,6 +84,8 @@ describe('private singleton managed workspace overlay', () => {
 			expect(generated.get('tsconfig.build.json')).toContain('"tests/**/*.ts"');
 			expect(generated.get('tsconfig.json')).toContain('"noEmit": true');
 			expect(generated.get('src/gateway.ts')).toContain("from '@treeseed/sdk/market-gateway'");
+			expect(generated.get('src/gateway.ts')).toContain("path === '/v1/market/profile'");
+			expect(generated.get('tests/profile.test.ts')).toContain('owns the canonical profile route');
 			expect(generated.get('src/server.ts')).toContain("server.on('upgrade'");
 			expect(generated.get('src/server.ts')).toContain('proxyNodeWebSocketUpgrade');
 			expect(generated.get('src/server.ts')).toContain("outgoing.setHeader('set-cookie', cookies)");

@@ -56,7 +56,30 @@ function packageManifest() {
 	return `schemaVersion: treeseed.package/v1\nid: "@treeseed/market-api"\nname: TreeSeed Market API\nkind: node-typescript\ntype: singleton-hosted-service\nrepository: treeseed-ai/market-api\ncapabilities: { save: true, verify: true, publish: false, deploy: false, localOnly: false }\nworkflowTemplateVersion: "1"\ngithubEnvironments:\n  - staging\n  - production\nverify:\n  fast: npm run verify\n  local: npm run verify\n  release: npm run verify\nreleaseGate:\n  workflow: verify.yml\n  timeoutSeconds: 1800\nprojectArchitecture:\n  topology: split_site_content\n  rootPath: .\n  contentPath: src/content\n  contentRuntimeSource: r2_preview_overlay\n  localContentMaterialization: none\n`;
 }
 function gatewaySource(descriptorDigest: string) {
-	return `import { createAdminPassthroughHandler, createGatewayHealthHandlers } from '@treeseed/sdk/market-gateway';\nimport descriptor from '../artifacts/admin-api-descriptor.json' with { type: 'json' };\n\nexport type MarketHandler = (request: Request) => Promise<Response> | Response;\nexport type DependencyChecks = Parameters<typeof createGatewayHealthHandlers>[0]['checks'];\n\nexport function createMarketGateway(options: { adminBaseUrl: string; checks: DependencyChecks; marketHandler?: MarketHandler; serviceAssertion?: (request: Request) => Promise<string | null> | string | null; fetchImpl?: typeof fetch }) {\n\tconst health = createGatewayHealthHandlers({ checks: options.checks });\n\tconst admin = createAdminPassthroughHandler({ adminBaseUrl: options.adminBaseUrl, adminRoutes: descriptor.routes, fetchImpl: options.fetchImpl, serviceAssertion: options.serviceAssertion });\n\treturn async (request: Request) => {\n\t\tconst path = new URL(request.url).pathname;\n\t\tif (path === '/healthz') return health.process();\n\t\tif (path === '/healthz/deep') return health.deep();\n\t\tif (path === '/readyz') return health.ready();\n\t\tif (path === '/v1/market/status') return Response.json({ ok: true, service: 'market-api', adminDescriptor: '${descriptorDigest}' });\n\t\tif (path.startsWith('/v1/market/')) return options.marketHandler ? options.marketHandler(request) : Response.json({ error: 'market-route-not-found' }, { status: 404 });\n\t\tif (path.startsWith('/v1/')) return admin(request);\n\t\treturn Response.json({ error: 'not-found' }, { status: 404 });\n\t};\n}\n`;
+	return `import { createAdminPassthroughHandler, createGatewayHealthHandlers } from '@treeseed/sdk/market-gateway';
+import descriptor from '../artifacts/admin-api-descriptor.json' with { type: 'json' };
+
+export type MarketHandler = (request: Request) => Promise<Response> | Response;
+export type DependencyChecks = Parameters<typeof createGatewayHealthHandlers>[0]['checks'];
+
+export function createMarketGateway(options: { adminBaseUrl: string; checks: DependencyChecks; marketHandler?: MarketHandler; serviceAssertion?: (request: Request) => Promise<string | null> | string | null; fetchImpl?: typeof fetch }) {
+	const health = createGatewayHealthHandlers({ checks: options.checks });
+	const admin = createAdminPassthroughHandler({ adminBaseUrl: options.adminBaseUrl, adminRoutes: descriptor.routes, fetchImpl: options.fetchImpl, serviceAssertion: options.serviceAssertion });
+	return async (request: Request) => {
+		const path = new URL(request.url).pathname;
+		if (path === '/healthz') return health.process();
+		if (path === '/healthz/deep') return health.deep();
+		if (path === '/readyz') return health.ready();
+		if (path === '/v1/market/status') return Response.json({ ok: true, service: 'market-api', adminDescriptor: '${descriptorDigest}' });
+		if (path === '/v1/market/profile') return request.method === 'GET'
+			? Response.json({ ok: true, payload: { id: 'central', label: 'TreeSeed Central Market', baseUrl: 'https://api.treeseed.dev', kind: 'central', alwaysAvailable: true } })
+			: Response.json({ error: 'method-not-allowed' }, { status: 405, headers: { allow: 'GET' } });
+		if (path.startsWith('/v1/market/')) return options.marketHandler ? options.marketHandler(request) : Response.json({ error: 'market-route-not-found' }, { status: 404 });
+		if (path.startsWith('/v1/')) return admin(request);
+		return Response.json({ error: 'not-found' }, { status: 404 });
+	};
+}
+`;
 }
 
 function assertionSource() {
@@ -74,6 +97,26 @@ function marketApplicationBootstrap() {
 function gatewayTest() {
 	const sourceRoot = '../src';
 	return `import { describe, expect, it, vi } from 'vitest';\nimport descriptor from '../artifacts/admin-api-descriptor.json' with { type: 'json' };\nimport { createMarketGateway } from '${sourceRoot}/gateway.js';\nimport { createAudienceBoundAssertion } from '${sourceRoot}/service-assertion.js';\n\nconst checks = { 'market-database': async () => true, 'admin-api': async () => true, 'internal-auth': async () => true, 'provider-bindings': async () => true };\nconst concretePath = (path: string) => path.replace(/:[^/]+/gu, 'fixture');\n\ndescribe('singleton Market gateway', () => {\n\tit('owns Market routes and passes every declared Admin method and path through exactly', async () => {\n\t\tconst fetchImpl = vi.fn(async () => Response.json({ admin: true }, { status: 202 }));\n\t\tconst gateway = createMarketGateway({ adminBaseUrl: 'http://admin.internal', checks, fetchImpl });\n\t\texpect((await gateway(new Request('https://api.treeseed.dev/v1/market/status'))).status).toBe(200);\n\t\tfor (const route of descriptor.routes) {\n\t\t\tconst response = await gateway(new Request(\`https://api.treeseed.dev\${concretePath(route.path)}?inventory=true\`, { method: route.method }));\n\t\t\texpect(response.status, \`\${route.method} \${route.path}\`).toBe(202);\n\t\t}\n\t\texpect(fetchImpl).toHaveBeenCalledTimes(descriptor.routeCount);\n\t});\n\n\tit('rejects undeclared paths, method mismatches, and Admin shadowing of Market', async () => {\n\t\tconst fetchImpl = vi.fn(async () => Response.json({ admin: true }));\n\t\tconst gateway = createMarketGateway({ adminBaseUrl: 'http://admin.internal', checks, fetchImpl });\n\t\tconst route = descriptor.routes[0]!;\n\t\tconst methods = new Set(descriptor.routes.filter((candidate) => candidate.path === route.path).map((candidate) => candidate.method));\n\t\tconst mismatched = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].find((method) => !methods.has(method))!;\n\t\texpect((await gateway(new Request('https://api.treeseed.dev/v1/not-declared'))).status).toBe(404);\n\t\texpect((await gateway(new Request(\`https://api.treeseed.dev\${concretePath(route.path)}\`, { method: mismatched }))).status).toBe(404);\n\t\texpect((await gateway(new Request('https://api.treeseed.dev/v1/market/not-declared'))).status).toBe(404);\n\t\texpect(fetchImpl).not.toHaveBeenCalled();\n\t});\n\n\tit('fails readiness when hosted Admin is unavailable while process health remains available', async () => {\n\t\tconst gateway = createMarketGateway({ adminBaseUrl: 'http://admin.internal', checks: { ...checks, 'admin-api': async () => false } });\n\t\texpect((await gateway(new Request('https://api.treeseed.dev/healthz'))).status).toBe(200);\n\t\texpect((await gateway(new Request('https://api.treeseed.dev/healthz/deep'))).status).toBe(503);\n\t\texpect((await gateway(new Request('https://api.treeseed.dev/readyz'))).status).toBe(503);\n\t});\n\n\tit('creates short-lived audience-bound service assertions', () => {\n\t\tconst assertion = createAudienceBoundAssertion('secret', 'http://admin.internal', () => 1000)(new Request('https://api.treeseed.dev/v1/projects', { headers: { 'x-request-id': 'request-1' } }));\n\t\tconst payload = JSON.parse(Buffer.from(assertion.split('.')[1]!, 'base64url').toString());\n\t\texpect(payload).toMatchObject({ aud: 'http://admin.internal', method: 'GET', path: '/v1/projects', requestId: 'request-1', exp: 31 });\n\t});\n});\n`;
+}
+
+function profileTest() {
+	return `import { describe, expect, it, vi } from 'vitest';
+import { createMarketGateway } from '../src/gateway.js';
+
+const checks = { 'market-database': async () => true, 'admin-api': async () => true, 'internal-auth': async () => true, 'provider-bindings': async () => true };
+
+describe('singleton Market profile', () => {
+	it('owns the canonical profile route without contacting Admin', async () => {
+		const fetchImpl = vi.fn(async () => Response.json({ admin: true }));
+		const gateway = createMarketGateway({ adminBaseUrl: 'http://admin.internal', checks, fetchImpl });
+		const response = await gateway(new Request('https://api.treeseed.dev/v1/market/profile'));
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ ok: true, payload: { id: 'central', label: 'TreeSeed Central Market', baseUrl: 'https://api.treeseed.dev', kind: 'central', alwaysAvailable: true } });
+		expect(fetchImpl).not.toHaveBeenCalled();
+		expect((await gateway(new Request('https://api.treeseed.dev/v1/market/profile', { method: 'POST' }))).status).toBe(405);
+	});
+});
+`;
 }
 
 function descriptorTest() {
@@ -97,6 +140,7 @@ const managedPaths = [
 	'src/service-assertion.ts',
 	'tests/descriptor.test.ts',
 	'tests/gateway.test.ts',
+	'tests/profile.test.ts',
 	'treeseed.package.yaml',
 	'treeseed.site.yaml',
 	'tsconfig.build.json',
@@ -117,7 +161,7 @@ export function marketApiWorkspaceFiles(projectRoot: string, sdkRef: string, adm
 			['tsconfig.build.json', `${JSON.stringify({ extends: './tsconfig.json', compilerOptions: { noEmit: false, outDir: 'dist', rootDir: 'src' }, include: ['src/**/*.ts'], exclude: ['tests/**/*.ts'] }, null, 2)}\n`],
 			['LICENSE', 'UNLICENSED\n\nCopyright (c) TreeSeed. All rights reserved. No license is granted.\n'], ['README.md', '# TreeSeed Market API\n\nPrivate singleton Market implementation and hosted Admin API gateway for `api.treeseed.dev`. This repository is never provisioned by Platform. Hosted deployment remains suspended.\n'],
 			['src/gateway.ts', gatewaySource(descriptor.digest)], ['src/service-assertion.ts', assertionSource()], ['src/server.ts', serverSource()],
-			['tests/gateway.test.ts', gatewayTest()], ['tests/descriptor.test.ts', descriptorTest()], ['artifacts/admin-api-descriptor.json', descriptorContent],
+			['tests/gateway.test.ts', gatewayTest()], ['tests/profile.test.ts', profileTest()], ['tests/descriptor.test.ts', descriptorTest()], ['artifacts/admin-api-descriptor.json', descriptorContent],
 			['singleton.manifest.json', `${JSON.stringify({ schemaVersion: 3, authority: 'market-singleton', sdkRef, adminApiRef, adminDescriptorDigest: descriptor.digest, deployment: 'suspended', managedPaths }, null, 2)}\n`],
 			['.github/workflows/verify.yml', workflow()],
 		] as Array<[string, string]>,

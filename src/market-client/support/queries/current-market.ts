@@ -3,5 +3,5 @@ export function currentMarketMethod(this: MarketClient) {
     return this.request<{
         ok: true;
         payload: MarketProfile;
-    }>('/v1/markets/current');
+    }>('/v1/market/profile');
 }

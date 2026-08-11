@@ -45,11 +45,11 @@ describe('MarketClient human control-plane transport', () => {
 		});
 
 		await (client as unknown as { request(path: string): Promise<unknown> }).request('/v1/me');
-		await (client as unknown as { request(path: string): Promise<unknown> }).request('/v1/market/catalog');
+		await client.currentMarket();
 
 		expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
 			'https://sovereign.example.test/v1/me',
-			'https://api.treeseed.dev/v1/market/catalog',
+			'https://api.treeseed.dev/v1/market/profile',
 		]);
 	});
 });

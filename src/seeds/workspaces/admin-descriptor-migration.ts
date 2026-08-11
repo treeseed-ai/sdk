@@ -4,7 +4,22 @@ import { resolve } from 'node:path';
 import { credentialEnvironment, git, migrationCredential, remoteHead } from '../repositories/repository-history.js';
 import type { SeedManifest } from '../types.js';
 
-type DescriptorFile = { path: string; content: string };
+type DescriptorFile = { path: string; content: string | null };
+
+export const adminDescriptorRuntimePaths = [
+	'guarantees/verifiers/api.verifiers.yaml',
+	'scripts/api-acceptance-support/support/sdk-method-matrix.ts',
+	'src/api/route-descriptors-support/accounts/authorization-policy.ts',
+	'src/api/route-descriptors-support/support/sdk-route-map.ts',
+	'src/api/routes/support/foundation-health-and-market.ts',
+	'tests/acceptance/api/expected-statuses.json',
+	'tests/contract/api/api-route-descriptors.test.ts',
+	'tests/integration/api/runtime/request-log-redaction.test.ts',
+] as const;
+
+export const retiredAdminDescriptorRuntimePaths = [
+	'tests/integration/api/runtime/logs-local-api-request-urls-with-sensitive-query-values-redacted.scenarios.ts',
+] as const;
 
 export type AdminDescriptorMigrationPlan = {
 	repository: string;
@@ -41,13 +56,15 @@ async function desiredFiles(projectRoot: string, root: string, commit: string, s
 		{ path: 'package.json', content: `${JSON.stringify(metadata, null, 2)}\n` },
 		{ path: 'scripts/build/build-dist.ts', content: readFileSync(resolve(projectRoot, 'packages/api/scripts/build/build-dist.ts'), 'utf8') },
 		{ path: '.github/workflows/release-gate.yml', content: readFileSync(resolve(projectRoot, 'packages/api/.github/workflows/release-gate.yml'), 'utf8') },
+		...adminDescriptorRuntimePaths.map((path) => ({ path, content: readFileSync(resolve(projectRoot, 'packages/api', path), 'utf8') })),
+		...retiredAdminDescriptorRuntimePaths.map((path) => ({ path, content: null })),
 	] satisfies DescriptorFile[];
 }
 
 async function matches(root: string, commit: string, files: DescriptorFile[]) {
 	for (const file of files) {
 		const observed = await git(root, ['show', `${commit}:${file.path}`], { allowFailure: true });
-		if (observed.code !== 0 || observed.stdout !== file.content.trimEnd()) return false;
+		if (file.content === null ? observed.code === 0 : observed.code !== 0 || observed.stdout !== file.content.trimEnd()) return false;
 	}
 	return true;
 }
@@ -62,7 +79,7 @@ export async function planAdminDescriptorMigration(input: { projectRoot: string;
 	if (!sdkRef) throw new Error('Live SDK staging ref is required for the Admin API descriptor migration.');
 	return withFetched(repository, gitEnv, async (root, sourceCommit) => {
 		const current = await matches(root, sourceCommit, await desiredFiles(input.projectRoot, root, sourceCommit, sdkRef));
-		return { repository, branch: 'staging', sourceCommit, sdkRef, action: current ? 'noop' : 'update', reason: current ? 'Live staging builds and exports the Admin descriptor against the verified SDK ref.' : 'Fast-forward the Admin descriptor build/export contract and verified SDK ref on staging.' } satisfies AdminDescriptorMigrationPlan;
+		return { repository, branch: 'staging', sourceCommit, sdkRef, action: current ? 'noop' : 'update', reason: current ? 'Live staging source reproduces and exports the Admin descriptor against the verified SDK ref.' : 'Fast-forward the bounded Admin descriptor runtime source, build contract, and verified SDK ref on staging.' } satisfies AdminDescriptorMigrationPlan;
 	});
 }
 
@@ -77,11 +94,15 @@ export async function applyAdminDescriptorMigration(input: { projectRoot: string
 		const indexEnv = { ...process.env, GIT_INDEX_FILE: indexPath };
 		await git(root, ['read-tree', fetchedCommit], { env: indexEnv });
 		for (const file of await desiredFiles(input.projectRoot, root, fetchedCommit, plan.sdkRef)) {
+			if (file.content === null) {
+				await git(root, ['update-index', '--force-remove', file.path], { env: indexEnv, allowFailure: true });
+				continue;
+			}
 			const blob = (await git(root, ['hash-object', '-w', '--stdin'], { input: file.content })).stdout;
 			await git(root, ['update-index', '--add', '--cacheinfo', '100644', blob, file.path], { env: indexEnv });
 		}
 		const tree = (await git(root, ['write-tree'], { env: indexEnv })).stdout;
-		const commit = (await git(root, ['commit-tree', tree, '-p', fetchedCommit, '-m', 'Publish versioned Admin API descriptor build contract'], { env: { ...process.env, GIT_AUTHOR_NAME: 'TreeSeed migration', GIT_AUTHOR_EMAIL: 'operations@treeseed.dev', GIT_COMMITTER_NAME: 'TreeSeed migration', GIT_COMMITTER_EMAIL: 'operations@treeseed.dev' } })).stdout;
+		const commit = (await git(root, ['commit-tree', tree, '-p', fetchedCommit, '-m', 'Publish versioned Admin API descriptor runtime contract'], { env: { ...process.env, GIT_AUTHOR_NAME: 'TreeSeed migration', GIT_AUTHOR_EMAIL: 'operations@treeseed.dev', GIT_COMMITTER_NAME: 'TreeSeed migration', GIT_COMMITTER_EMAIL: 'operations@treeseed.dev' } })).stdout;
 		await git(root, ['push', `https://github.com/${plan.repository}.git`, `${commit}:refs/heads/staging`], { env: gitEnv });
 		return commit;
 	});
