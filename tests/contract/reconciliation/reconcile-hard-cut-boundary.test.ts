@@ -29,6 +29,8 @@ describe('reconciliation hard-cut source boundaries', () => {
 		expect(stageBody.indexOf("name: '@treeseed/market'")).toBeLessThan(
 			stageBody.indexOf('for (const repo of checkedOutStagePromotionRepos(root))'),
 		);
+		const mergeHelperBody = source('packages/sdk/src/operations/services/git-workflow/inspect-detached-head-repair.ts');
+		expect(mergeHelperBody).toContain('reconciliation.resolved || repoHasStagedChanges(repoDir)');
 		expect(stageBody).toContain('promoteCommitToBranchWithExpectedHead');
 		expect(stageBody).toContain('waitForWorkflowGates');
 		expect(stageBody).toContain('stagingCandidateWorkflowGates');

@@ -194,7 +194,10 @@ export function mergeBranchDownIntoFeature(repoDir: string, input: {
 			throw conflictError;
 		}
 		generatedMetadataReconciliation = reconciliation as Record<string, unknown>;
-		if (repoHasStagedChanges(repoDir)) {
+		// A fully reconciled conflict can produce the same tree as the feature
+		// side. Git still requires a merge commit to close MERGE_HEAD even when
+		// there is no staged diff.
+		if (reconciliation.resolved || repoHasStagedChanges(repoDir)) {
 			runGit(['commit', '-m', input.message], { cwd: repoDir });
 		}
 	}
