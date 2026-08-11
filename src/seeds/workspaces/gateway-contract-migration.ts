@@ -7,6 +7,7 @@ import type { SeedManifest } from '../types.js';
 const gatewayPaths = [
 	'src/entrypoints/clients/market-client.ts',
 	'src/gateway/admin-passthrough.ts',
+	'src/gateway/admin-route-inventory.ts',
 	'src/gateway/health.ts',
 	'src/index/platform-and-hosting.ts',
 	'src/index/public-contracts.ts',

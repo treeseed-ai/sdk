@@ -1,3 +1,5 @@
+import { createAdminRouteMatcher, type AdminGatewayRoute } from './admin-route-inventory.ts';
+
 const HOP_BY_HOP_HEADERS = new Set([
 	'connection',
 	'keep-alive',
@@ -17,6 +19,7 @@ const FORBIDDEN_INTERNAL_HEADERS = new Set([
 
 export interface AdminPassthroughOptions {
 	adminBaseUrl: string;
+	adminRoutes: readonly AdminGatewayRoute[];
 	fetchImpl?: typeof fetch;
 	timeoutMs?: number;
 	maxRequestBytes?: number;
@@ -102,12 +105,9 @@ function boundedRequestBody(body: ReadableStream<Uint8Array> | null, limit: numb
 	});
 }
 
-export function isAdminPassthroughPath(pathname: string) {
-	return pathname.startsWith('/v1/') && !pathname.startsWith('/v1/market/');
-}
-
 export function createAdminPassthroughHandler(options: AdminPassthroughOptions) {
 	const adminBaseUrl = options.adminBaseUrl.replace(/\/+$/u, '');
+	const matchesAdminRoute = createAdminRouteMatcher(options.adminRoutes);
 	const fetchImpl = options.fetchImpl ?? fetch;
 	const timeoutMs = options.timeoutMs ?? 30_000;
 	const maxRequestBytes = options.maxRequestBytes ?? 10 * 1024 * 1024;
@@ -115,8 +115,8 @@ export function createAdminPassthroughHandler(options: AdminPassthroughOptions) 
 
 	return async function passthrough(request: Request) {
 		const incomingUrl = new URL(request.url);
-		if (!isAdminPassthroughPath(incomingUrl.pathname)) {
-			return Response.json({ error: 'market-route-not-proxyable' }, { status: 404 });
+		if (!matchesAdminRoute(request.method, incomingUrl.pathname)) {
+			return Response.json({ error: 'admin-route-not-declared' }, { status: 404 });
 		}
 		try {
 			byteLimit(request.headers.get('content-length'), maxRequestBytes, 'Request body');

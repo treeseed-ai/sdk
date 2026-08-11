@@ -5,6 +5,7 @@ normalizeTemplateId
 } from '../entrypoints/models/sdk-types.ts';
 export * from '../feedback/index.ts';
 export * from '../gateway/admin-passthrough.ts';
+export * from '../gateway/admin-route-inventory.ts';
 export * from '../gateway/health.ts';
 
 export type {
