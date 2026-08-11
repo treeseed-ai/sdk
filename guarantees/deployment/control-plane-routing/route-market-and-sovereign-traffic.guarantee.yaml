@@ -22,7 +22,10 @@ negativeCases:
   - "An alternate persistent Market profile is rejected."
   - "An undeclared method/path pair must never be passed to the hosted Admin API."
   - "The Admin descriptor must never claim a route under /v1/market/**."
+  - "Hop-by-hop headers and Market persistence or service secrets must never cross the gateway boundary."
+  - "Client cancellation must not be reported as an Admin timeout, and assertion failures must not escape the structured gateway error contract."
+  - "A WebSocket upgrade outside the exact Admin descriptor must never contact the hosted Admin service."
   - "Singleton reconciliation must preserve private Market implementation paths outside its declared managed overlay and must reject drift inside managed gateway paths."
 evidence: { required: [guarantee_report] }
 notes:
-  - "Typed configuration, managed API-surface URL resolution, exact Admin descriptor admission, and generated full-inventory Market API tests exist; hosted gateway, provider-protocol, and no-replication acceptance remain required before activation."
+  - "Typed configuration, exact descriptor admission, bounded streaming HTTP, SSE, cookie and rate-limit propagation, structured timeout/cancellation/assertion failures, and a descriptor-gated Node WebSocket bridge have SDK contract coverage. The generated private server binds the bridge and preserves multiple Set-Cookie values. Hosted gateway, provider-protocol, and no-replication acceptance remain required before activation."
