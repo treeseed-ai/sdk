@@ -152,6 +152,33 @@ export function mergeBranchDownIntoFeature(repoDir: string, input: {
 	allowGeneratedMetadataAutoResolution?: boolean;
 }): StageMergeDownResult {
 	const sourceBranch = input.sourceBranch ?? STAGING_BRANCH;
+	const pendingMergeHead = maybeHeadCommit(repoDir, 'MERGE_HEAD');
+	if (pendingMergeHead) {
+		if (currentBranch(repoDir) !== input.featureBranch) {
+			throw new Error(`Cannot resume staging merge on ${currentBranch(repoDir) || '(detached)'}; expected ${input.featureBranch}.`);
+		}
+		const report = collectMergeConflictReport(repoDir);
+		if (report.conflictedFiles.length > 0) {
+			const conflictError = new Error(formatMergeConflictReport(report, repoDir, sourceBranch));
+			Object.assign(conflictError, { mergeConflictReport: report, code: 'conflict_resolution_required' });
+			throw conflictError;
+		}
+		const beforeHead = headCommit(repoDir);
+		runGit(['commit', '-m', input.message], { cwd: repoDir });
+		const afterHead = headCommit(repoDir);
+		pushBranch(repoDir, input.featureBranch);
+		return {
+			repoDir,
+			featureBranch: input.featureBranch,
+			sourceBranch,
+			beforeHead,
+			sourceHead: pendingMergeHead,
+			afterHead,
+			merged: true,
+			pushed: true,
+			generatedMetadataReconciliation: { resumedResolvedMerge: true },
+		};
+	}
 	assertCleanWorktree(repoDir);
 	fetchOrigin(repoDir);
 	if (!branchExists(repoDir, input.featureBranch)) {

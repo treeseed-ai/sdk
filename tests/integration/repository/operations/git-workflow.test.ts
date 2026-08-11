@@ -262,6 +262,28 @@ describe('git workflow task helpers', () => {
 		expect(git(work, ['rev-parse', 'origin/feature/search-filters'])).toBe(result.afterHead);
 	});
 
+	it('resumes a conflict-free pending staging merge and publishes its merge commit', () => {
+		const { work } = makeRepo();
+
+		git(work, ['checkout', 'staging']);
+		git(work, ['commit', '--allow-empty', '-m', 'stage: empty policy checkpoint']);
+		git(work, ['push', 'origin', 'staging']);
+		git(work, ['checkout', 'feature/search-filters']);
+		git(work, ['merge', '--no-ff', '--no-commit', 'origin/staging']);
+		expect(git(work, ['rev-parse', '--verify', 'MERGE_HEAD'])).toMatch(/^[0-9a-f]{40}$/u);
+
+		const result = mergeBranchDownIntoFeature(work, {
+			featureBranch: 'feature/search-filters',
+			sourceBranch: 'staging',
+			message: 'integrate resolved staging',
+		});
+
+		expect(result).toMatchObject({ merged: true, pushed: true });
+		expect(result.generatedMetadataReconciliation).toEqual({ resumedResolvedMerge: true });
+		expect(() => git(work, ['rev-parse', '--verify', 'MERGE_HEAD'])).toThrow();
+		expect(git(work, ['rev-parse', 'origin/feature/search-filters'])).toBe(result.afterHead);
+	});
+
 	it('treats a missing staging branch as an initial exact-ref promotion', () => {
 		const { work } = makeRepo();
 		git(work, ['push', 'origin', '--delete', 'staging']);
