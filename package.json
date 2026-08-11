@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.12.63-dev.migration-final-platform-market-architec.20260811T023424Z",
+  "version": "0.12.63-dev.migration-market-api-standalone-verifica.20260811T043310Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "Apache-2.0",
   "repository": {
@@ -184,6 +184,10 @@
     "./market-client": {
       "types": "./dist/entrypoints/clients/market-client.d.ts",
       "default": "./dist/entrypoints/clients/market-client.js"
+    },
+    "./market-gateway": {
+      "types": "./dist/gateway/index.d.ts",
+      "default": "./dist/gateway/index.js"
     },
     "./account-contracts": {
       "types": "./dist/accounts/account-contracts.d.ts",
