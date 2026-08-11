@@ -1,21 +1,5 @@
 import { createAdminRouteMatcher, type AdminGatewayRoute } from './admin-route-inventory.ts';
-
-const HOP_BY_HOP_HEADERS = new Set([
-	'connection',
-	'keep-alive',
-	'proxy-authenticate',
-	'proxy-authorization',
-	'te',
-	'trailer',
-	'transfer-encoding',
-	'upgrade',
-]);
-
-const FORBIDDEN_INTERNAL_HEADERS = new Set([
-	'x-treeseed-market-database-url',
-	'x-treeseed-market-service-secret',
-	'x-treeseed-internal-secret',
-]);
+import { FORBIDDEN_INTERNAL_HEADERS, sanitizedGatewayHeaders } from './header-policy.ts';
 
 export interface AdminPassthroughOptions {
 	adminBaseUrl: string;
@@ -29,23 +13,6 @@ export interface AdminPassthroughOptions {
 }
 
 class GatewayBodyLimitError extends RangeError {}
-
-function connectionHeaders(headers: Headers) {
-	return new Set((headers.get('connection') ?? '').split(',').map((value) => value.trim().toLowerCase()).filter(Boolean));
-}
-
-function sanitizedHeaders(source: Headers, forbidden: Set<string> = new Set()) {
-	const connectionSpecific = connectionHeaders(source);
-	const result = new Headers();
-	for (const [name, value] of source) {
-		const normalized = name.toLowerCase();
-		if (HOP_BY_HOP_HEADERS.has(normalized) || connectionSpecific.has(normalized) || forbidden.has(normalized)) continue;
-		if (normalized !== 'set-cookie') result.append(name, value);
-	}
-	const getSetCookie = (source as Headers & { getSetCookie?: () => string[] }).getSetCookie;
-	for (const cookie of getSetCookie?.call(source) ?? []) result.append('set-cookie', cookie);
-	return result;
-}
 
 function byteLimit(value: string | null, limit: number, label: string) {
 	if (value && Number(value) > limit) throw new RangeError(`${label} exceeds the ${limit}-byte gateway limit.`);
@@ -123,9 +90,15 @@ export function createAdminPassthroughHandler(options: AdminPassthroughOptions) 
 		} catch (error) {
 			return Response.json({ error: 'request-too-large', message: error instanceof Error ? error.message : String(error) }, { status: 413 });
 		}
-		const headers = sanitizedHeaders(request.headers, FORBIDDEN_INTERNAL_HEADERS);
+		if (request.signal.aborted) return Response.json({ error: 'client-cancelled', message: 'The client cancelled the Admin API request.' }, { status: 499 });
+		const headers = sanitizedGatewayHeaders(request.headers, FORBIDDEN_INTERNAL_HEADERS);
 		headers.delete('host');
-		const assertion = await options.serviceAssertion?.(request);
+		let assertion: string | null | undefined;
+		try {
+			assertion = await options.serviceAssertion?.(request);
+		} catch (error) {
+			return Response.json({ error: 'admin-service-assertion-failed', message: error instanceof Error ? error.message : String(error) }, { status: 502 });
+		}
 		if (assertion) headers.set('x-treeseed-service-assertion', assertion);
 		const upstreamUrl = `${adminBaseUrl}${incomingUrl.pathname}${incomingUrl.search}`;
 		const timeout = new AbortController();
@@ -157,13 +130,14 @@ export function createAdminPassthroughHandler(options: AdminPassthroughOptions) 
 			return new Response(boundedBody(upstream.body, maxResponseBytes, () => clearTimeout(timer)), {
 				status: upstream.status,
 				statusText: upstream.statusText,
-				headers: sanitizedHeaders(upstream.headers, FORBIDDEN_INTERNAL_HEADERS),
+				headers: sanitizedGatewayHeaders(upstream.headers, FORBIDDEN_INTERNAL_HEADERS),
 			});
 		} catch (error) {
 			clearTimeout(timer);
 			if (error instanceof GatewayBodyLimitError) return Response.json({ error: 'request-too-large', message: error.message }, { status: 413 });
 			if (error instanceof RangeError) return Response.json({ error: 'upstream-response-too-large', message: error.message }, { status: 502 });
-			if (signal.aborted) return Response.json({ error: 'admin-upstream-timeout', message: 'Hosted Admin API did not complete before the gateway timeout.' }, { status: 504 });
+			if (request.signal.aborted) return Response.json({ error: 'client-cancelled', message: 'The client cancelled the Admin API request.' }, { status: 499 });
+			if (timeout.signal.aborted) return Response.json({ error: 'admin-upstream-timeout', message: 'Hosted Admin API did not complete before the gateway timeout.' }, { status: 504 });
 			return Response.json({ error: 'admin-upstream-unavailable', message: error instanceof Error ? error.message : String(error) }, { status: 502 });
 		}
 	};

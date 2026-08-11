@@ -79,6 +79,84 @@ describe('Admin API passthrough transport', () => {
 		expect(forwarded.get('x-treeseed-internal-secret')).toBeNull();
 	});
 
+	it('preserves multiple cookies, rate limits, and structured Admin errors while removing internal response headers', async () => {
+		const responseHeaders = new Headers({
+			'content-type': 'application/problem+json',
+			'x-ratelimit-limit': '100',
+			'x-ratelimit-remaining': '0',
+			'retry-after': '30',
+			'x-treeseed-internal-secret': 'never-return',
+		});
+		responseHeaders.append('set-cookie', 'session=next; Path=/; Secure');
+		responseHeaders.append('set-cookie', 'csrf=next; Path=/; Secure');
+		const handler = createAdminPassthroughHandler({
+			adminBaseUrl: 'http://admin.internal',
+			adminRoutes,
+			fetchImpl: async () => new Response(JSON.stringify({ error: 'rate-limited' }), { status: 429, headers: responseHeaders }),
+		});
+		const response = await handler(new Request('https://api.treeseed.dev/v1/projects/project-1'));
+
+		expect(response.status).toBe(429);
+		expect(response.headers.get('content-type')).toContain('application/problem+json');
+		expect(response.headers.get('x-ratelimit-limit')).toBe('100');
+		expect(response.headers.get('x-ratelimit-remaining')).toBe('0');
+		expect(response.headers.get('retry-after')).toBe('30');
+		expect(response.headers.get('x-treeseed-internal-secret')).toBeNull();
+		expect((response.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie?.()).toEqual([
+			'session=next; Path=/; Secure',
+			'csrf=next; Path=/; Secure',
+		]);
+		expect(await response.json()).toEqual({ error: 'rate-limited' });
+	});
+
+	it('distinguishes gateway timeouts, client cancellation, and assertion failures', async () => {
+		const waitForAbort = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+			if (init?.signal?.aborted) reject(init.signal.reason);
+			else init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+		}));
+		const timeoutHandler = createAdminPassthroughHandler({ adminBaseUrl: 'http://admin.internal', adminRoutes, fetchImpl: waitForAbort, timeoutMs: 5 });
+		expect(await (await timeoutHandler(new Request('https://api.treeseed.dev/v1/projects/project-1'))).json()).toMatchObject({ error: 'admin-upstream-timeout' });
+
+		const controller = new AbortController();
+		const cancelled = createAdminPassthroughHandler({ adminBaseUrl: 'http://admin.internal', adminRoutes, fetchImpl: waitForAbort })(new Request('https://api.treeseed.dev/v1/projects/project-1', { signal: controller.signal }));
+		controller.abort(new Error('client disconnected'));
+		const cancelledResponse = await cancelled;
+		expect(cancelledResponse.status).toBe(499);
+		expect(await cancelledResponse.json()).toMatchObject({ error: 'client-cancelled' });
+
+		const assertionResponse = await createAdminPassthroughHandler({
+			adminBaseUrl: 'http://admin.internal',
+			adminRoutes,
+			serviceAssertion: () => { throw new Error('signer unavailable'); },
+		})(new Request('https://api.treeseed.dev/v1/projects/project-1'));
+		expect(assertionResponse.status).toBe(502);
+		expect(await assertionResponse.json()).toMatchObject({ error: 'admin-service-assertion-failed' });
+	});
+
+	it('streams SSE without buffering and aborts chunked responses that exceed the configured bound', async () => {
+		const stream = new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(new TextEncoder().encode('event: ready\n\n')); } });
+		const streaming = createAdminPassthroughHandler({
+			adminBaseUrl: 'http://admin.internal',
+			adminRoutes,
+			fetchImpl: async () => new Response(stream, { headers: { 'content-type': 'text/event-stream' } }),
+			maxResponseBytes: 64,
+		});
+		const response = await streaming(new Request('https://api.treeseed.dev/v1/session/events'));
+		const reader = response.body!.getReader();
+		const first = await reader.read();
+		expect(new TextDecoder().decode(first.value)).toBe('event: ready\n\n');
+		await reader.cancel();
+
+		const oversized = createAdminPassthroughHandler({
+			adminBaseUrl: 'http://admin.internal',
+			adminRoutes,
+			fetchImpl: async () => new Response(new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode('123')); controller.enqueue(new TextEncoder().encode('456')); controller.close(); } })),
+			maxResponseBytes: 4,
+		});
+		const oversizedResponse = await oversized(new Request('https://api.treeseed.dev/v1/projects/project-1'));
+		await expect(oversizedResponse.text()).rejects.toThrow('exceeds the 4-byte gateway limit');
+	});
+
 	it('admits only the exact descriptor method and path template', async () => {
 		const fetchMock = vi.fn(async () => Response.json({ ok: true }));
 		const handler = createAdminPassthroughHandler({ adminBaseUrl: 'http://admin.internal', adminRoutes, fetchImpl: fetchMock });

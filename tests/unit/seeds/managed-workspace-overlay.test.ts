@@ -68,6 +68,9 @@ describe('private singleton managed workspace overlay', () => {
 			expect(generated.get('tsconfig.build.json')).toContain('"tests/**/*.ts"');
 			expect(generated.get('tsconfig.json')).toContain('"noEmit": true');
 			expect(generated.get('src/gateway.ts')).toContain("from '@treeseed/sdk/market-gateway'");
+			expect(generated.get('src/server.ts')).toContain("server.on('upgrade'");
+			expect(generated.get('src/server.ts')).toContain('proxyNodeWebSocketUpgrade');
+			expect(generated.get('src/server.ts')).toContain("outgoing.setHeader('set-cookie', cookies)");
 			expect(generated.get('treeseed.site.yaml')).toContain('kind: market-singleton');
 			expect(generated.get('treeseed.package.yaml')).toContain('deploy: false');
 			expect(generated.get('treeseed.package.yaml')).toContain('repository: treeseed-ai/market-api');
