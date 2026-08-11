@@ -247,6 +247,17 @@ export function repositorySaveWaves(nodes: RepositorySaveNode[]) {
 	return waves;
 }
 
+export function selectRepositorySaveNodes(nodes: RepositorySaveNode[], selectedRepositoryPath?: string | null) {
+	if (!selectedRepositoryPath) return nodes;
+	const selected = nodes.find((node) => resolve(node.path) === resolve(selectedRepositoryPath));
+	if (!selected) {
+		throw new RepositorySaveError(`Selected repository is not part of the managed workspace: ${selectedRepositoryPath}.`, {
+			details: { selectedRepositoryPath, managedRepositories: nodes.map((node) => node.path) },
+		});
+	}
+	return [selected];
+}
+
 export function compareNodes(left: RepositorySaveNode, right: RepositorySaveNode) {
 	if (left.id === '.') return 1;
 	if (right.id === '.') return -1;

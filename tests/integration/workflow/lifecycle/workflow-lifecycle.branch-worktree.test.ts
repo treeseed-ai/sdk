@@ -119,6 +119,21 @@ it('closes matching package task branches and preserves deprecated tags', async 
 		expect(git(work, ['branch', '--list', 'feature/demo-task'])).toBe('');
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--list', 'feature/demo-task'])).toBe('');
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', 'deprecated/*'])).toContain('deprecated/feature-demo-task/');
+}, 360000);
+
+it('closes a portfolio workset without gitlinks and leaves the Platform checkout clean', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true, materialization: 'portfolio' });
+		const workflow = workflowFor(work);
+		await workflow.switchTask({ branch: 'feature/demo-task' });
+
+		const result = await workflow.close({ message: 'close federated portfolio task' });
+
+		expect(result.payload.mode).toBe('recursive-workspace');
+		expect(existsSync(resolve(work, '.gitmodules'))).toBe(false);
+		expect(git(work, ['ls-files', '--stage', 'packages/sdk'])).toBe('');
+		expect(git(work, ['branch', '--show-current'])).toBe('staging');
+		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('staging');
+		expect(git(work, ['status', '--porcelain'])).toBe('');
 	}, 360000);
 
 it('creates managed worktrees for agent switch without moving the primary checkout', async () => {
@@ -266,6 +281,7 @@ it('save repairs package repos detached at the current branch head before prefli
 
 		const result = await workflow.save({
 			message: 'chore: checkpoint after failed release',
+			federated: true,
 			verify: false,
 			refreshPreview: false,
 		});
@@ -288,6 +304,7 @@ it('stages from a managed worktree after local promotion proof', async () => {
 		const managedWorkflow = new WorkflowSdk({ cwd: worktreePath, env, write: () => {} });
 		await managedWorkflow.save({
 			message: 'save managed stage',
+			federated: true,
 			verify: false,
 			refreshPreview: false,
 		});

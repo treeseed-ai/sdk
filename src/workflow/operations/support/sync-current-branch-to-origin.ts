@@ -55,6 +55,7 @@ export async function maybeAutoSaveCurrentTaskBranch(
 
 	const saveResult = await workflowSave(helpers, {
 		message: operation === 'close' ? `close: ${input.message}` : input.message,
+		federated: true,
 		verify: input.verify === true,
 		refreshPreview: false,
 		preview: input.preview,

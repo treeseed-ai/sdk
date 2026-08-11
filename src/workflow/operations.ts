@@ -2,6 +2,7 @@ export * from './operations/commerce/catalog/back-merge-production-into-staging.
 export * from './operations/commerce/catalog/run-release-production-guarantees.ts';
 export * from './operations/configuration/workflow-config.ts';
 export * from './operations/coordination/staging-candidate-workflow-gates.ts';
+export * from './operations/coordination/integration-change-set.ts';
 export * from './operations/coordination/workflow-ci.ts';
 export * from './operations/coordination/workflow-destroy.ts';
 export * from './operations/guarantees/workflow-proof.ts';

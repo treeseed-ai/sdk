@@ -72,6 +72,16 @@ export function parseGitmodulesPaths(root: string) {
 		.filter(Boolean);
 }
 
+export function parsePortfolioPaths(root: string) {
+	const path = resolve(root, 'treeseed.portfolio.json');
+	if (!existsSync(path)) return [] as string[];
+	const manifest = readJsonFile(path);
+	if (manifest?.schemaVersion !== 1 || manifest.kind !== 'treeseed.portfolio' || !Array.isArray(manifest.repositories)) return [];
+	return manifest.repositories
+		.map((entry) => entry && typeof entry === 'object' && !Array.isArray(entry) ? stringValue((entry as Record<string, unknown>).path) : null)
+		.filter((entry): entry is string => Boolean(entry));
+}
+
 function isIndependentGitRepo(repoDir: string) {
 	try {
 		return resolve(repoRoot(repoDir)) === resolve(repoDir);
@@ -162,7 +172,7 @@ export function readTemplateRepositoryManifest(repoDir: string): TemplateReposit
 
 function classifyManagedRepo(root: string, relativeDir: string, repoDir: string): ManagedRepositoryKind {
 	if (relativeDir === '.') return 'root';
-	if (/^starters\/[^/]+$/u.test(relativeDir) || readTemplateRepositoryManifest(repoDir)) return 'template';
+	if (/^(?:starters|templates)\/[^/]+$/u.test(relativeDir) || readTemplateRepositoryManifest(repoDir)) return 'template';
 	if (/(^|\/)\.fixtures\/treeseed-fixtures$/u.test(relativeDir)) return 'fixture';
 	if (/^packages\/[^/]+$/u.test(relativeDir)) return 'package';
 	return 'project';
@@ -195,6 +205,12 @@ export function discoverManagedRepositories(root: string): ManagedRepository[] {
 	for (const adapter of discoverPackageAdapters(root)) {
 		if (existsSync(resolve(adapter.dir, '.git')) && isIndependentGitRepo(adapter.dir)) {
 			repos.set(adapter.relativeDir, adapter.dir);
+		}
+	}
+	for (const portfolioPath of parsePortfolioPaths(root)) {
+		const repoDir = resolve(root, portfolioPath);
+		if (existsSync(repoDir) && isIndependentGitRepo(repoDir)) {
+			repos.set(portfolioPath, repoDir);
 		}
 	}
 	addRecursiveSubmodules(root, '.', gitRoot, repos);

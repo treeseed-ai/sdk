@@ -15,6 +15,8 @@ import { resolveWorkflowPaths } from '../../../../src/workflow/policy.ts';
 import { acquireWorkflowLock, createWorkflowRunJournal, releaseWorkflowLock, updateWorkflowRunJournal } from '../../../../src/workflow/runs.ts';
 import { runWorkspaceSavePreflight } from '../../../../src/operations/services/hosting/deployment/save-deploy-preflight.ts';
 import { inspectDetachedHeadRepair, mergeBranchIntoTarget, reattachDetachedHeadIfSafe } from '../../../../src/operations/services/operations/git-workflow.ts';
+import { repositoryIdentityKey } from '../../../../src/repositories/repository-identity.ts';
+import { materializeWorkflowRepositories } from './workflow-lifecycle.portfolio-support.ts';
 import {
 	createDefaultMachineConfig,
 	ensureSecretSessionForConfig,
@@ -49,16 +51,29 @@ export function writePassingStageCandidate(root: string) {
 	const manifest = existsSync(manifestPath)
 		? JSON.parse(readFileSync(manifestPath, 'utf8'))
 		: {
-			schemaVersion: 2,
+			schemaVersion: 3,
 			kind: 'treeseed.stage-candidate',
 			candidateId: `test-${git(root, ['rev-parse', 'HEAD'])}`,
-			root: { repo: '@treeseed/market', commit: git(root, ['rev-parse', 'HEAD']), verified: true },
+			integrationReceiptId: `test-receipt-${git(root, ['rev-parse', 'HEAD'])}`,
+			root: {
+				repo: '@treeseed/market',
+				repositoryKey: repositoryIdentityKey(git(root, ['remote', 'get-url', 'origin'])),
+				commit: git(root, ['rev-parse', 'HEAD']),
+				verified: true,
+			},
 			packages: [],
 		};
 	manifest.root.commit = git(root, ['rev-parse', 'HEAD']);
+	manifest.root.repositoryKey = repositoryIdentityKey(git(root, ['remote', 'get-url', 'origin']));
 	manifest.candidateId = `test-${manifest.root.commit}`;
+	manifest.schemaVersion = 3;
+	manifest.integrationReceiptId = manifest.integrationReceiptId ?? `test-receipt-${manifest.root.commit}`;
 	for (const pkg of manifest.packages ?? []) {
-		if (typeof pkg.path === 'string' && existsSync(pkg.path)) pkg.commit = git(pkg.path, ['rev-parse', 'HEAD']);
+		const pkgPath = typeof pkg.path === 'string' ? resolve(root, pkg.path) : null;
+		if (pkgPath && existsSync(pkgPath)) {
+			pkg.commit = git(pkgPath, ['rev-parse', 'HEAD']);
+			pkg.repositoryKey = repositoryIdentityKey(git(pkgPath, ['remote', 'get-url', 'origin']));
+		}
 	}
 	writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 }
@@ -410,7 +425,7 @@ export function addStaleNestedSubmodule(parentRepo: string, relativePath: string
 	git(work, ['push', 'origin', branch]);
 	return nestedRepo;
 }
-export function createWorkflowRepo(options: { withWorkspacePackages?: boolean } = {}) {
+export function createWorkflowRepo(options: { withWorkspacePackages?: boolean; materialization?: 'gitlinks' | 'portfolio' } = {}) {
 	const root = mkdtempSync(join(tmpdir(), 'treeseed-workflow-lifecycle-'));
 	const origin = resolve(root, 'origin.git');
 	const work = resolve(root, 'work');
@@ -442,14 +457,7 @@ export function createWorkflowRepo(options: { withWorkspacePackages?: boolean } 
 	git(work, ['config', 'user.email', 'treeseed@example.com']);
 	writeTenantFiles(work);
 	if (packages) {
-		gitAllowFile(work, ['submodule', 'add', packages.sdk.origin, 'packages/sdk']);
-		gitAllowFile(work, ['submodule', 'add', packages.ui.origin, 'packages/ui']);
-		gitAllowFile(work, ['submodule', 'add', packages.core.origin, 'packages/core']);
-		gitAllowFile(work, ['submodule', 'add', packages.admin.origin, 'packages/admin']);
-		gitAllowFile(work, ['submodule', 'add', packages.cli.origin, 'packages/cli']);
-		gitAllowFile(work, ['submodule', 'add', packages.agent.origin, 'packages/agent']);
-		gitAllowFile(work, ['submodule', 'add', packages.api.origin, 'packages/api']);
-		gitAllowFile(work, ['submodule', 'add', packages.treedx.origin, 'packages/treedx']);
+		materializeWorkflowRepositories({ work, materialization: options.materialization ?? 'gitlinks', repositories: packages, git, gitAllowFile });
 		for (const dirName of ['sdk', 'ui', 'core', 'admin', 'cli', 'agent', 'api', 'treedx']) {
 			const packageRoot = resolve(work, 'packages', dirName);
 			git(packageRoot, ['config', 'user.name', 'Treeseed Test']);

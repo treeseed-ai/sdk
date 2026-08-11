@@ -68,7 +68,7 @@ export function nextPendingJournalStep(journal: WorkflowRunJournal) {
 	return journal.steps.find((step) => step.status === 'pending') ?? null;
 }
 
-export function findAutoResumableSaveRun(root: string, branch: string | null) {
+export function findAutoResumableSaveRun(root: string, branch: string | null, selectedRepositoryPath?: string | null) {
 	if (!branch) return null;
 	if (branch === STAGING_BRANCH
 		&& (hasMeaningfulChanges(repoRoot(root)) || checkedOutWorkspacePackageRepos(root).some((repo) => hasMeaningfulChanges(repo.dir)))) {
@@ -85,6 +85,7 @@ export function findAutoResumableSaveRun(root: string, branch: string | null) {
 		if (journal.command !== 'save' || !journal.resumable || journal.session.branchName !== branch) {
 			return false;
 		}
+		if (selectedRepositoryPath && !journal.session.repos.some((repo) => resolve(repo.path) === resolve(selectedRepositoryPath))) return false;
 		const classification = classifyWorkflowRunJournal(journal, {
 			currentBranch: branch, 			currentHeads,
 		});

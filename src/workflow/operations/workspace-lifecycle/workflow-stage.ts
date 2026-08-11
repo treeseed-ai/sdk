@@ -6,7 +6,7 @@ import { workspaceRoot } from "../../../operations/services/treedx/workspaces/wo
 import type { StageInput } from "../../../operations/workflow.ts";
 import { resolveWorkflowSession } from "../../session.ts";
 import { managedWorkflowWorktreeMetadata } from "../../worktrees.ts";
-import { resolveProjectRootOrThrow,withContextEnv,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { ensureLocalStateExcluded,resolveProjectRootOrThrow,withContextEnv,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
 import { buildStagePromotionPlan,checkedOutStagePromotionRepos,createStageCandidateManifest,normalizeStageCiMode,normalizeStageCleanupMode,normalizeStageVerifyMode,stageConflictError,stagePreflightBlockers,stagingCandidateWorkflowGates,writeStageCandidateManifest } from '../coordination/staging-candidate-workflow-gates.ts';
 import { helpersForCwd,waitForWorkflowGates,worktreePayload } from '../packages/normalize-release-candidate-mode.ts';
 import { acquireWorkflowRun,completeWorkflowRun,executeJournalStep,skipJournalStep } from '../packages/prepare-fresh-release-run.ts';
@@ -26,6 +26,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: St
 		return await withContextEnv(helpers.context.env, async () => {
 			const tenantRoot = resolveProjectRootOrThrow('stage', helpers.cwd());
 			const root = workspaceRoot(tenantRoot);
+			ensureLocalStateExcluded(root);
 			const executionMode = normalizeExecutionMode(input);
 			const session = resolveWorkflowSession(root);
 			const explicitResumeRunId = helpers.context.workflow?.resumeRunId
@@ -157,6 +158,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: St
 							context: { ...helpers.context, workflow: undefined },
 						}, root), {
 							message: `integrate staging before stage: ${message}`,
+							federated: true,
 							verifyMode: 'skip', 							ciMode: 'off', 							refreshPreview: false, 							preview: false, 							workspaceLinks: effectiveInput.workspaceLinks ?? 'auto',
 						}))
 					: (skipJournalStep(root, workflowRun.runId, 'save-integrated-feature', { skippedReason: 'staging already integrated' }), null);

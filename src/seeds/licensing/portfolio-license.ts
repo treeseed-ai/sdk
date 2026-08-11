@@ -9,6 +9,14 @@ type LicenseKind = 'Apache-2.0' | 'AGPL-3.0-only';
 type LicenseFile = { path: string; content: string };
 type Receipt = { branch: string; sourceCommit: string; targetCommit: string; contentDigest: string; verified: boolean };
 
+export const apiLicensePolicyPaths = [
+	'COMMERCIAL.md',
+	'CONTRIBUTING.md',
+	'.github/PULL_REQUEST_TEMPLATE.md',
+	'.github/workflows/contributor-license.yml',
+	'docs/licensing-provenance.md',
+] as const;
+
 export type PortfolioLicensePlan = {
 	project: string;
 	repository: string;
@@ -40,7 +48,7 @@ function writeJournal(projectRoot: string, plan: PortfolioLicensePlan, receipts:
 
 function supplementalFiles(projectRoot: string, project: SeedProjectResource) {
 	if (project.slug !== 'api') return [];
-	return ['COMMERCIAL.md', 'CONTRIBUTING.md', '.github/PULL_REQUEST_TEMPLATE.md', 'docs/licensing-provenance.md']
+	return apiLicensePolicyPaths
 		.map((path) => ({ path, content: readFileSync(resolve(projectRoot, 'packages/api', path), 'utf8') }));
 }
 
@@ -79,8 +87,8 @@ async function withFetchedBranch<T>(input: { repository: string; branch: string;
 
 async function filesMatch(root: string, commit: string, files: LicenseFile[]) {
 	for (const file of files) {
-		const observed = await git(root, ['show', `${commit}:${file.path}`], { allowFailure: true });
-		if (observed.code !== 0 || observed.stdout !== file.content.trimEnd()) return false;
+		const observed = await git(root, ['show', `${commit}:${file.path}`], { allowFailure: true, preserveOutput: true });
+		if (observed.code !== 0 || observed.stdout !== file.content) return false;
 	}
 	return true;
 }

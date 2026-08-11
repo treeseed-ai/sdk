@@ -24,11 +24,19 @@ type ContentHistoryReceipt = {
 	verified: boolean;
 };
 
-type SeedGitOptions = { env?: NodeJS.ProcessEnv; input?: string; allowFailure?: boolean };
+type SeedGitOptions = { env?: NodeJS.ProcessEnv; input?: string; allowFailure?: boolean; preserveOutput?: boolean };
+
+export function normalizeSeedGitOutput(output: string, preserveOutput = false) {
+	return preserveOutput ? output : output.trim();
+}
 
 export async function git(cwd: string, args: string[], options: SeedGitOptions = {}) {
 	const result = runRepositoryGit(args, { cwd, ...options, mode: classifyGitMode(args) });
-	return { stdout: result.stdout.trim(), stderr: result.stderr.trim(), code: result.status ?? 1 };
+	return {
+		stdout: normalizeSeedGitOutput(result.stdout, options.preserveOutput),
+		stderr: result.stderr.trim(),
+		code: result.status ?? 1,
+	};
 }
 
 export function credentialEnvironment(token: string) {

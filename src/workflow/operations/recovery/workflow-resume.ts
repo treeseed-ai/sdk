@@ -58,6 +58,12 @@ export async function workflowResume(helpers: WorkflowOperationHelpers, input: R
 			const resumeRoot = typeof journal.session?.root === 'string' && existsSync(journal.session.root)
 				? journal.session.root
 				: root;
+			const resumeCwd = journal.command === 'save'
+				&& (journal.input as Record<string, unknown>).federated !== true
+				&& typeof journal.session.repos[0]?.path === 'string'
+				&& existsSync(journal.session.repos[0].path)
+				? journal.session.repos[0].path
+				: resumeRoot;
 			const resumedHelpers: WorkflowOperationHelpers = helpersForCwd({
 				...helpers,
 				context: {
@@ -67,7 +73,7 @@ export async function workflowResume(helpers: WorkflowOperationHelpers, input: R
 						resumeRunId: runId,
 					},
 				},
-			}, resumeRoot);
+			}, resumeCwd);
 			switch (journal.command) {
 				case 'switch':
 					return workflowSwitch(resumedHelpers, journal.input as unknown as SwitchInput);

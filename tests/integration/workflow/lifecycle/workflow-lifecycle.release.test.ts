@@ -90,6 +90,7 @@ it('blocks release gate execution when staging state is not ready', async () => 
 		writeFileSync(resolve(work, 'feature.txt'), 'demo\nrelease auto resume\n', 'utf8');
 		await workflow.save({
 			message: 'feat: release auto resume sdk change',
+			federated: true,
 			verify: false,
 			refreshPreview: false,
 		});
@@ -402,6 +403,7 @@ it('returns a recursive release plan without mutating package or market state', 
 		writeFileSync(resolve(work, 'feature.txt'), 'demo\nrelease plan\n', 'utf8');
 		await workflow.save({
 			message: 'feat: release plan sdk change',
+			federated: true,
 			verify: false,
 			refreshPreview: false,
 		});

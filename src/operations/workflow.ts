@@ -151,6 +151,7 @@ export type WorkflowWorkstreamSummary = {
 
 export type SaveInput = {
 	message?: string;
+	federated?: boolean;
 	hotfix?: boolean;
 	verify?: boolean;
 	refreshPreview?: boolean;

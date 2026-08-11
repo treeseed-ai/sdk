@@ -194,3 +194,30 @@ export function resolveWorkflowSession(cwd: string): WorkflowSession {
 		packageSelection: collectReleasePackageSelection(root),
 	};
 }
+
+export function resolveRepositoryWorkflowSession(cwd: string): WorkflowSession {
+	const base = resolveWorkflowSession(cwd);
+	const selectedRoot = repoRoot(cwd);
+	if (resolve(selectedRoot) === resolve(base.gitRoot)) {
+		return {
+			...base,
+			mode: 'root-only',
+			managedRepos: [],
+			packageRepos: [],
+			packageSelection: { changed: [], dependents: [], selected: [base.rootRepo.name] },
+		};
+	}
+	const selected = base.managedRepos.find((repo) => resolve(repo.path) === resolve(selectedRoot));
+	if (!selected) throw new Error(`Current repository is not part of the managed workspace: ${selectedRoot}.`);
+	return {
+		...base,
+		gitRoot: selectedRoot,
+		mode: 'root-only',
+		branchName: selected.branchName,
+		branchRole: selected.branchRole,
+		rootRepo: selected,
+		managedRepos: [],
+		packageRepos: [],
+		packageSelection: { changed: selected.dirty ? [selected.name] : [], dependents: [], selected: [selected.name] },
+	};
+}

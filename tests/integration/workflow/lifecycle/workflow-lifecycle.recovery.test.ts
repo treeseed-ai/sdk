@@ -107,6 +107,7 @@ it('does not auto-resume a failed save when the workspace has new edits', async 
 
 		await expect(workflow.save({
 			message: 'feat: original dirty save',
+			federated: true,
 			verify: false,
 			ciMode: 'off',
 			refreshPreview: false,
@@ -121,6 +122,7 @@ it('does not auto-resume a failed save when the workspace has new edits', async 
 
 		const freshResult = await workflow.save({
 			message: 'fix: save repair edits',
+			federated: true,
 			verify: false,
 			ciMode: 'off',
 			refreshPreview: false,
@@ -131,7 +133,7 @@ it('does not auto-resume a failed save when the workspace has new edits', async 
 	}, 360000);
 
 it('lists interrupted workflow runs and resumes them after the workspace is repaired', async () => {
-		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
+		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true, materialization: 'portfolio' });
 		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-updated";\n', 'utf8');
 		writeFileSync(resolve(work, 'packages', 'core', 'index.js'), 'export const name = "core-updated";\n', 'utf8');
 		git(resolve(work, 'packages', 'core'), ['remote', 'remove', 'origin']);
@@ -139,6 +141,7 @@ it('lists interrupted workflow runs and resumes them after the workspace is repa
 
 		await expect(workflow.save({
 			message: 'feat: recursive save',
+			federated: true,
 			verify: false,
 			refreshPreview: false,
 		})).rejects.toBeInstanceOf(WorkflowError);
@@ -155,6 +158,8 @@ it('lists interrupted workflow runs and resumes them after the workspace is repa
 		expect(resumeResult.payload.repos.find((repo: { name: string }) => repo.name === '@treeseed/sdk')?.commitSha).toBeTruthy();
 		expect(resumeResult.payload.repos.find((repo: { name: string }) => repo.name === '@treeseed/core')?.pushed).toBe(true);
 		expect(resumeResult.payload.rootRepo.pushed).toBe(true);
+		expect(existsSync(resolve(work, '.gitmodules'))).toBe(false);
+		expect(git(work, ['status', '--porcelain'])).toBe('');
 
 		const finalRecover = await workflow.recover();
 		expect(finalRecover.payload.interruptedRuns.length).toBe(0);
@@ -170,6 +175,7 @@ it('reports partial recursive save state when a later package repo cannot be pus
 		try {
 			await workflow.save({
 				message: 'feat: recursive save',
+				federated: true,
 				verify: false,
 				refreshPreview: false,
 			});
@@ -206,6 +212,7 @@ it('requires explicit resume for the newest failed same-branch save', async () =
 
 		await expect(workflow.save({
 			message: 'feat: original save',
+			federated: true,
 			verify: false,
 			refreshPreview: false,
 		})).rejects.toBeInstanceOf(WorkflowError);
@@ -218,6 +225,7 @@ it('requires explicit resume for the newest failed same-branch save', async () =
 
 		await expect(workflow.save({
 			message: 'feat: new hint should not win',
+			federated: true,
 			verify: false,
 			refreshPreview: false,
 		})).rejects.toThrow(new RegExp(`trsd resume ${runId}`, 'u'));

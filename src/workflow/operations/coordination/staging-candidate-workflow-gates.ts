@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync,mkdirSync,readFileSync,writeFileSync } from 'node:fs';
-import { dirname,relative,resolve } from 'node:path';
+import { dirname,resolve } from 'node:path';
 import { hostedWorkflowForPackage } from "../../../operations/services/guarantees/release-proof-planner.ts";
 import { branchExists,headCommit,PRODUCTION_BRANCH,remoteBranchExists,remoteHeadCommit,STAGING_BRANCH,syncBranchWithOrigin } from "../../../operations/services/operations/git-workflow.ts";
 import { discoverPackageAdapters } from "../../../operations/services/reconciliation/package-adapters.ts";
@@ -12,6 +12,7 @@ import { workflowFileExists } from '../support/workflow-helpers.ts';
 import { WorkflowError } from '../recovery/workflow-write.ts';
 import { StageCandidateManifest,StageCiMode,StageCleanupMode,StageRepoPlan,StageVerifyMode } from '../workspace-lifecycle/workflow-close.ts';
 import { repositoryIdentityKey } from '../../../repositories/repository-identity.ts';
+import { integrationChangeSetBlockers,observeRemoteBranchCommit,readLatestIntegrationChangeSet } from './integration-change-set.ts';
 
 export function stagingCandidateWorkflowGates(root: string, manifest: StageCandidateManifest): GitHubActionsWorkflowGate[] {
 	const gates: GitHubActionsWorkflowGate[] = [];
@@ -89,10 +90,25 @@ export function stageCandidateAttestationBlockers(root: string) {
 	const manifest = readJsonFile<StageCandidateManifest>(stageCandidateManifestPath(root, 'unused').latest);
 	if (!manifest) return ['No staging candidate manifest is available. Run `trsd stage` and wait for staging verification workflows.'];
 	const blockers: string[] = [];
-	if (manifest.root.commit !== headCommit(repoRoot(root))) blockers.push('The local Market staging head no longer matches the latest staged candidate.');
+	if (manifest.schemaVersion !== 3 || !manifest.integrationReceiptId) blockers.push('The staging candidate predates receipt-based repository federation. Run `trsd stage` again.');
+	const rootPath = repoRoot(root);
+	if (manifest.root.commit !== headCommit(rootPath)) blockers.push('The local root staging head no longer matches the latest staged candidate.');
+	try {
+		if (repositoryIdentityKey(originRemoteUrl(rootPath)) !== manifest.root.repositoryKey) blockers.push('The root checkout repository identity does not match the staged receipt.');
+		if (observeRemoteBranchCommit(rootPath, STAGING_BRANCH) !== manifest.root.commit) blockers.push('The live root staging ref no longer matches the staged receipt.');
+	} catch (error) {
+		blockers.push(`The live root staging ref could not be verified: ${error instanceof Error ? error.message : String(error)}`);
+	}
 	for (const pkg of manifest.packages) {
 		const repoPath = resolve(root, pkg.path);
 		if (!existsSync(repoPath) || headCommit(repoPath) !== pkg.commit) blockers.push(`${pkg.name} no longer matches staged commit ${pkg.commit}.`);
+		if (!existsSync(repoPath)) continue;
+		try {
+			if (repositoryIdentityKey(originRemoteUrl(repoPath)) !== pkg.repositoryKey) blockers.push(`${pkg.name} checkout repository identity does not match the staged receipt.`);
+			if (observeRemoteBranchCommit(repoPath, STAGING_BRANCH) !== pkg.commit) blockers.push(`${pkg.name} live staging ref no longer matches staged commit ${pkg.commit}.`);
+		} catch (error) {
+			blockers.push(`${pkg.name} live staging ref could not be verified: ${error instanceof Error ? error.message : String(error)}`);
+		}
 	}
 	return blockers;
 }
@@ -209,6 +225,7 @@ export function stagePreflightBlockers(root: string, branchName: string, plan: {
 			}
 		}
 	}
+	blockers.push(...integrationChangeSetBlockers(root, branchName));
 	return blockers;
 }
 
@@ -220,36 +237,31 @@ export function stageConflictError(message: string, details: Record<string, unkn
 }
 
 export function createStageCandidateManifest(root: string, runId: string, branchName: string, plan: { repos: StageRepoPlan[] }, verification: StageCandidateManifest['verification']): StageCandidateManifest {
-	const gitRoot = repoRoot(root);
-	const packageRepos = plan.repos.filter((repo) => repo.kind === 'managed');
-	const rootCommit = headCommit(gitRoot);
-	const submodules = packageRepos
-		.map((repo) => `${relative(root, repo.path).replaceAll('\\', '/')}:${headCommit(repo.path)}`)
-		.sort();
+	const receipt = readLatestIntegrationChangeSet(root);
+	if (!receipt) throw new Error('The saved integration change-set receipt is missing. Run `trsd save` before staging.');
+	if (receipt.sourceBranch !== branchName) throw new Error(`Integration receipt ${receipt.receiptId} is for ${receipt.sourceBranch}, not ${branchName}.`);
+	const rootRepository = receipt.repositories.find((repository) => repository.role === 'root');
+	if (!rootRepository) throw new Error(`Integration receipt ${receipt.receiptId} has no root repository.`);
+	const packageRepos = receipt.repositories.filter((repository) => repository.role !== 'root');
 	const candidateId = createHash('sha256').update(JSON.stringify({
-		rootSha: rootCommit,
-		submodules,
+		integrationReceiptId: receipt.receiptId,
+		verification,
 	})).digest('hex');
 	return {
-		schemaVersion: 2,
+		schemaVersion: 3,
 		kind: 'treeseed.stage-candidate',
 		candidateId,
+		integrationReceiptId: receipt.receiptId,
 		runId,
 		branchName,
 		targetBranch: STAGING_BRANCH,
 		createdAt: new Date().toISOString(),
 		root: {
-			repo: '@treeseed/market', 			commit: rootCommit, 			verified: verification.status === 'passed' || verification.status === 'skipped',
+			repo: rootRepository.name, 			repositoryKey: rootRepository.repository.canonicalKey, 			commit: rootRepository.commit, 			verified: verification.status === 'passed' || verification.status === 'skipped',
 		},
 		packages: packageRepos.map((repo) => ({
-			name: repo.name, 			path: repo.path, 			repoKind: repo.repoKind, 			commit: headCommit(repo.path), 			lockfileHash: sha256File(resolve(repo.path, 'package-lock.json')), 			dependencies: internalPackageDependencies(repo.path),
-			remote: (() => {
-				try {
-					return originRemoteUrl(repo.path);
-				} catch {
-					return null;
-				}
-			})(),
+			name: repo.name, 			path: repo.workspacePath, 			repoKind: repo.role === 'package' || repo.role === 'template' || repo.role === 'fixture' || repo.role === 'project' ? repo.role : undefined, 			repositoryKey: repo.repository.canonicalKey, 			commit: repo.commit, 			lockfileHash: repo.contractDigests.lockfile, 			dependencies: repo.dependencies,
+			remote: repo.repository.remoteUrl,
 			verified: verification.status === 'passed' || verification.status === 'skipped',
 		})),
 		verification,

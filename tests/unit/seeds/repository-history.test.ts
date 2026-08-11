@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyContentHistoryBranch,contentTreesUnchanged,isRecognizedContentMigrationMetadata,isRecognizedOrganizationMigrationMetadata } from '../../../src/seeds/repositories/repository-history.ts';
+import { classifyContentHistoryBranch,contentTreesUnchanged,isRecognizedContentMigrationMetadata,isRecognizedOrganizationMigrationMetadata,normalizeSeedGitOutput } from '../../../src/seeds/repositories/repository-history.ts';
 
 describe('content repository history migration recovery', () => {
 	it('creates only when the source exists and the target is empty', () => {
@@ -18,6 +18,12 @@ describe('content repository history migration recovery', () => {
 		expect(contentTreesUnchanged(null, null)).toBe(true);
 		expect(contentTreesUnchanged('old', 'new')).toBe(false);
 		expect(contentTreesUnchanged('old', 'new', true)).toBe(true);
+	});
+
+	it('preserves exact file bytes when a reconciler requests raw Git output', () => {
+		const content = '                    GNU AFFERO GENERAL PUBLIC LICENSE\n';
+		expect(normalizeSeedGitOutput(content)).toBe('GNU AFFERO GENERAL PUBLIC LICENSE');
+		expect(normalizeSeedGitOutput(content, true)).toBe(content);
 	});
 
 	it('recognizes only the exact TreeSeed organization-migration identity', () => {

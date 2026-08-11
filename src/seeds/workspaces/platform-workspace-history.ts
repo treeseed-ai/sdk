@@ -7,7 +7,7 @@ import type { SeedManifest } from '../types.js';
 
 type PlatformReceipt = { branch: string; sourceDigest: string; targetCommit: string; verified: boolean };
 type SnapshotFile = { path: string; content: string };
-type SnapshotLink = { path: string; repository: string; commit: string };
+export type SnapshotLink = { path: string; repository: string; commit: string };
 
 export type PlatformWorkspacePlan = {
 	project: 'platform';
@@ -67,7 +67,7 @@ export function platformDeployConfig() {
 }
 
 function readme() {
-	return `# TreeSeed Platform\n\nPublic Apache-2.0 installer and integration workspace for customer-centric TreeSeed deployments. Platform manages Admin, an optional sovereign Admin API control plane, Core, CLI, capacity providers, TreeDX, and AI services.\n\nMarket is external and immutable at \`https://api.treeseed.dev\`. This repository cannot provision, deploy, or check out Market or Market API.\n\n## Workspace\n\nPrimary projects are checked out under \`packages/\`; templates live under \`templates/\`; the shared integration fixture lives under \`.fixtures/\`. Paired content repositories are logical TreeDX/R2 bindings and are never submodules.\n`;
+	return `# TreeSeed Platform\n\nPublic Apache-2.0 installer and integration workspace for customer-centric TreeSeed deployments. Platform manages Admin, an optional sovereign Admin API control plane, Core, CLI, capacity providers, TreeDX, and AI services.\n\nMarket is external and immutable at \`https://api.treeseed.dev\`. This repository cannot provision, deploy, or check out Market or Market API.\n\n## Workspace\n\n\`treeseed.portfolio.json\` binds independent project repositories to exact refs. \`trsd platform workset --plan --json\` previews local materialization and \`trsd platform workset --apply --yes --json\` assembles an ephemeral workset under \`packages/\`, \`templates/\`, and \`.fixtures/\`. Add \`--branch feature/name\` for cross-project development. The Platform Git repository contains no project gitlinks, and replay never resets dirty or divergent checkouts. Paired content repositories are logical TreeDX/R2 bindings and are never workset checkouts.\n`;
 }
 
 function agentsGuide() {
@@ -75,32 +75,41 @@ function agentsGuide() {
 }
 
 function workflow() {
-	return `name: Verify\n\non:\n  pull_request:\n  push:\n    branches: [main, staging]\n  workflow_dispatch:\n\npermissions:\n  contents: read\n\nconcurrency:\n  group: verify-\${{ github.repository }}-\${{ github.ref }}\n  cancel-in-progress: true\n\njobs:\n  verify:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n        with:\n          submodules: recursive\n          fetch-depth: 0\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 24\n      - run: npm run verify\n`;
+	return `name: Verify\n\non:\n  pull_request:\n  push:\n    branches: [main, staging]\n  workflow_dispatch:\n\npermissions:\n  contents: read\n\nconcurrency:\n  group: verify-\${{ github.repository }}-\${{ github.ref }}\n  cancel-in-progress: true\n\njobs:\n  verify:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n        with:\n          fetch-depth: 0\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 24\n      - run: npm run verify\n`;
 }
 
 function boundaryVerifier() {
-	return `import { execFileSync } from 'node:child_process';\nimport { existsSync, readFileSync } from 'node:fs';\nimport { resolve } from 'node:path';\n\nconst root = resolve(import.meta.dirname, '..');\nconst fail = (message) => { throw new Error(message); };\nconst modules = readFileSync(resolve(root, '.gitmodules'), 'utf8');\nif (/treeseed-ai\\/(market|market-api)(?:\\.git)?/u.test(modules)) fail('Platform contains a Market checkout.');\nconst paths = [...modules.matchAll(/^\\s*path = (.+)$/gmu)].map((match) => match[1]);\nif (paths.length !== 13) fail(\`Expected 13 bundled project/fixture repositories, found \${paths.length}.\`);\nconst gitCommand = ['g', 'it'].join('');\nconst status = execFileSync(gitCommand, ['submodule', 'status', '--recursive'], { cwd: root, encoding: 'utf8' });\nif (status.split('\\n').filter(Boolean).some((line) => /^[-+U]/u.test(line))) fail('A bundled repository is missing or does not match its pinned commit.');\nfor (const path of paths) {\n\tconst packagePath = resolve(root, path, 'package.json');\n\tif (!existsSync(packagePath)) continue;\n\tconst metadata = JSON.parse(readFileSync(packagePath, 'utf8'));\n\tconst expected = path === 'packages/api' ? 'AGPL-3.0-only' : 'Apache-2.0';\n\tif (metadata.license !== expected) fail(\`\${path} license is \${metadata.license}, expected \${expected}.\`);\n}\nconst config = readFileSync(resolve(root, 'treeseed.site.yaml'), 'utf8');\nconst requiredConfig = [/^\\s*kind: customer-platform\\s*$/mu, /^\\s*profile: treeseed\\s*$/mu, /^\\s*mode: market-passthrough\\s*$/mu, /^runtime:\\s*\\n\\s+mode: none\\s*$/mu, /^\\s*enabled: false\\s*$/mu, /^services: \\{\\}\\s*$/mu];\nif (requiredConfig.some((pattern) => !pattern.test(config))) fail('Platform configuration does not preserve its non-hosted customer authority and singleton Market binding.');\nif (/^\\s*market-?api:/imu.test(config)) fail('Platform configuration declares a forbidden Market API service.');\nconst seed = readFileSync(resolve(root, 'seeds/treeseed.yaml'), 'utf8');\nif (/^\\s+slug: market(?:-api)?\\s*$/mu.test(seed)) fail('Platform seed declares a Market project.');\nif (/information-hub/iu.test(seed)) fail('Platform seed contains a retired repository identity.');\nconsole.log(JSON.stringify({ ok: true, repositories: paths.length, marketCheckouts: 0, authority: 'customer-platform', marketProfile: 'treeseed', hostedSurfaces: 0 }));\n`;
+	return `import { existsSync, readFileSync } from 'node:fs';\nimport { resolve } from 'node:path';\n\nconst root = resolve(import.meta.dirname, '..');\nconst fail = (message) => { throw new Error(message); };\nif (existsSync(resolve(root, '.gitmodules'))) fail('Platform must not encode its portfolio as gitlinks.');\nconst portfolio = JSON.parse(readFileSync(resolve(root, 'treeseed.portfolio.json'), 'utf8'));\nif (portfolio.kind !== 'treeseed.portfolio' || portfolio.schemaVersion !== 1) fail('Platform portfolio contract is invalid.');\nconst repositories = Array.isArray(portfolio.repositories) ? portfolio.repositories : [];\nif (repositories.length !== 13) fail(\`Expected 13 federated project/fixture repositories, found \${repositories.length}.\`);\nif (repositories.some((entry) => /treeseed-ai\\/(market|market-api)$/u.test(entry.repository))) fail('Platform portfolio contains Market.');\nif (repositories.some((entry) => /-content$/u.test(entry.repository))) fail('Platform portfolio materializes a content repository.');\nif (repositories.some((entry) => !/^[a-f0-9]{40}$/u.test(entry.commit))) fail('Platform portfolio contains a non-exact repository ref.');\nconst paths = new Set(repositories.map((entry) => entry.path));\nif (paths.size !== repositories.length) fail('Platform portfolio contains duplicate workset paths.');\nconst config = readFileSync(resolve(root, 'treeseed.site.yaml'), 'utf8');\nconst requiredConfig = [/^\\s*kind: customer-platform\\s*$/mu, /^\\s*profile: treeseed\\s*$/mu, /^\\s*mode: market-passthrough\\s*$/mu, /^runtime:\\s*\\n\\s+mode: none\\s*$/mu, /^\\s*enabled: false\\s*$/mu, /^services: \\{\\}\\s*$/mu];\nif (requiredConfig.some((pattern) => !pattern.test(config))) fail('Platform configuration does not preserve its non-hosted customer authority and singleton Market binding.');\nif (/^\\s*market-?api:/imu.test(config)) fail('Platform configuration declares a forbidden Market API service.');\nconst seed = readFileSync(resolve(root, 'seeds/treeseed.yaml'), 'utf8');\nif (/^\\s+slug: market(?:-api)?\\s*$/mu.test(seed)) fail('Platform seed declares a Market project.');\nif (/information-hub/iu.test(seed)) fail('Platform seed contains a retired repository identity.');\nconsole.log(JSON.stringify({ ok: true, repositories: repositories.length, gitlinks: 0, marketCheckouts: 0, authority: 'customer-platform', marketProfile: 'treeseed', hostedSurfaces: 0 }));\n`;
+}
+
+export function platformPortfolio(links: SnapshotLink[]) {
+	return `${JSON.stringify({
+		schemaVersion: 1,
+		kind: 'treeseed.portfolio',
+		materialization: 'ephemeral_workset',
+		integrationAuthority: 'treeseed.integration-change-set/v1',
+		repositories: links.map((link) => ({ path: link.path, repository: link.repository, commit: link.commit })),
+	}, null, 2)}\n`;
 }
 
 function baseFiles(projectRoot: string, links: SnapshotLink[]): SnapshotFile[] {
-	const modules = links.map((link) => `[submodule "${link.path}"]\n\tpath = ${link.path}\n\turl = https://github.com/${link.repository}.git\n`).join('');
 	return [
 		...copiedFiles.map((path) => ({ path, content: readFileSync(resolve(projectRoot, path), 'utf8') })),
-		{ path: '.gitmodules', content: modules },
 		{ path: '.github/workflows/verify.yml', content: workflow() },
-		{ path: '.gitignore', content: 'node_modules/\n.treeseed/\ndist/\n' },
+		{ path: '.gitignore', content: 'node_modules/\n.treeseed/\ndist/\n/packages/\n/templates/\n/.fixtures/\n' },
 		{ path: 'AGENTS.md', content: agentsGuide() },
 		{ path: 'README.md', content: readme() },
 		{ path: 'package.json', content: platformPackage() },
+		{ path: 'treeseed.portfolio.json', content: platformPortfolio(links) },
 		{ path: 'treeseed.site.yaml', content: platformDeployConfig() },
 		{ path: 'scripts/verify-platform.mjs', content: boundaryVerifier() },
 	];
 }
 
 async function linksForBranch(projectRoot: string, manifest: SeedManifest, branch: 'main' | 'staging', env: NodeJS.ProcessEnv | Record<string, string | undefined> | undefined) {
-	const projects = manifest.resources.projects.filter((project) => project.slug !== 'platform' && project.repository.submodulePath);
+	const projects = manifest.resources.projects.filter((project) => project.slug !== 'platform' && project.repository.checkoutPath);
 	const repositories = [
-		...projects.map((project) => ({ path: project.repository.submodulePath!, repository: `${project.repository.owner}/${project.repository.name}` })),
+		...projects.map((project) => ({ path: project.repository.checkoutPath!, repository: `${project.repository.owner}/${project.repository.name}` })),
 		...manifest.resources.supportRepositories.map((repository) => ({ path: '.fixtures/treeseed-fixtures', repository: `${repository.owner}/${repository.name}` })),
 	];
 	const links: SnapshotLink[] = [];
@@ -147,7 +156,7 @@ export async function planPlatformWorkspace(input: { projectRoot: string; manife
 	return { project: 'platform', targetRepository, branches } satisfies PlatformWorkspacePlan;
 }
 
-async function buildCommit(repository: string, branch: string, files: SnapshotFile[], links: SnapshotLink[], parent: string | null, gitEnv: NodeJS.ProcessEnv) {
+async function buildCommit(repository: string, branch: string, files: SnapshotFile[], parent: string | null, gitEnv: NodeJS.ProcessEnv) {
 	const temporary = mkdtempSync(resolve(tmpdir(), 'trsd-platform-workspace-'));
 	const indexPath = resolve(temporary, 'index');
 	const indexEnv = { ...process.env, GIT_INDEX_FILE: indexPath };
@@ -159,7 +168,6 @@ async function buildCommit(repository: string, branch: string, files: SnapshotFi
 			const blob = (await git(temporary, ['hash-object', '-w', '--stdin'], { input: file.content })).stdout;
 			await git(temporary, ['update-index', '--add', '--cacheinfo', '100644', blob, file.path], { env: indexEnv });
 		}
-		for (const link of links) await git(temporary, ['update-index', '--add', '--cacheinfo', '160000', link.commit, link.path], { env: indexEnv });
 		const tree = (await git(temporary, ['write-tree'], { env: indexEnv })).stdout;
 		const commit = (await git(temporary, ['commit-tree', tree, ...(parent ? ['-p', parent] : []), '-m', `${parent ? 'Update' : 'Create'} Platform ${branch} integration workspace`], { env: { ...process.env, GIT_AUTHOR_NAME: 'TreeSeed migration', GIT_AUTHOR_EMAIL: 'operations@treeseed.dev', GIT_COMMITTER_NAME: 'TreeSeed migration', GIT_COMMITTER_EMAIL: 'operations@treeseed.dev' } })).stdout;
 		await git(temporary, ['push', `https://github.com/${repository}.git`, `${commit}:refs/heads/${branch}`], { env: gitEnv });
@@ -178,7 +186,7 @@ export async function applyPlatformWorkspace(input: { projectRoot: string; manif
 	for (const branch of plan.branches) {
 		let commit = branch.targetCommit;
 		if (branch.action === 'create' || branch.action === 'update') {
-			commit = await buildCommit(plan.targetRepository, branch.branch, baseFiles(input.projectRoot, branch.links), branch.links, branch.action === 'update' ? branch.targetCommit : null, gitEnv);
+			commit = await buildCommit(plan.targetRepository, branch.branch, baseFiles(input.projectRoot, branch.links), branch.action === 'update' ? branch.targetCommit : null, gitEnv);
 		}
 		const observed = await remoteHead(input.projectRoot, plan.targetRepository, branch.branch, gitEnv);
 		if (!commit || observed !== commit) throw new Error(`Fresh GitHub read-back for ${plan.targetRepository}@${branch.branch} returned ${observed ?? 'missing'}, expected ${commit ?? 'missing'}.`);

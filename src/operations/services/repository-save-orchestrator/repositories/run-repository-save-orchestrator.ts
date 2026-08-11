@@ -8,7 +8,7 @@ import { createReport } from '../support/classify-repo-kind.ts';
 import { RepositorySaveError,RepositorySaveOptions,RepositorySaveResult,SaveState } from '../support/repo-kind.ts';
 import { publishDeferredRepositoryPushes } from '../support/run-script.ts';
 import { tagState } from '../support/tag-state.ts';
-import { compareNodes,discoverRepositorySaveNodes,repositorySaveConcurrency,repositorySaveWaves,runLimited } from './discover-repository-save-nodes.ts';
+import { compareNodes,discoverRepositorySaveNodes,repositorySaveConcurrency,repositorySaveWaves,runLimited,selectRepositorySaveNodes } from './discover-repository-save-nodes.ts';
 import { saveOneRepository } from './save-one-repository.ts';
 
 export function initialPackageDependencyReferences(
@@ -42,8 +42,10 @@ export async function runRepositorySaveOrchestrator(options: RepositorySaveOptio
 	const allNodes = discoverRepositorySaveNodes(root, gitRoot, branch, {
 		stablePackageRelease: options.stablePackageRelease === true,
 	});
-	const nodes = options.includeRoot === false ? allNodes.filter((node) => node.id !== '.') : allNodes;
-	const mode = nodes.some((node) => node.id !== '.') ? 'recursive-workspace' : 'root-only';
+	const includedNodes = options.includeRoot === false ? allNodes.filter((node) => node.id !== '.') : allNodes;
+	const nodes = selectRepositorySaveNodes(includedNodes, options.selectedRepositoryPath);
+	const mode = nodes.length > 1 ? 'recursive-workspace' : 'root-only';
+	const repositoryScope = options.selectedRepositoryPath ? 'repository' : 'federated';
 	const waves = repositorySaveWaves(nodes);
 	const state: SaveState = {
 		finalizedVersions: new Map(),
@@ -135,7 +137,7 @@ export async function runRepositorySaveOrchestrator(options: RepositorySaveOptio
 
 	await publishDeferredRepositoryPushes(options, state);
 
-	const rootNode = nodes.find((node) => node.id === '.') ?? allNodes.find((node) => node.id === '.');
+	const rootNode = nodes.find((node) => node.id === '.') ?? nodes[0];
 	const rootReport = rootNode
 		? (state.reports.get(rootNode.id) ?? createReport(rootNode))
 		: createReport({
@@ -159,12 +161,14 @@ export async function runRepositorySaveOrchestrator(options: RepositorySaveOptio
 			plannedDependencySpec: null,
 		});
 	const packageReports = nodes
-		.filter((node) => node.id !== '.')
+		.filter((node) => node.id !== rootNode?.id)
 		.sort(compareNodes)
 		.map((node) => state.reports.get(node.id) ?? createReport(node));
 
 	return {
 		mode,
+		repositoryScope,
+		repositoryIds: nodes.map((node) => node.id),
 		branch,
 		scope,
 		repos: packageReports,

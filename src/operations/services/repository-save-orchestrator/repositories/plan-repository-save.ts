@@ -18,15 +18,17 @@ import { canManagePackageJsonVersion,emptyManifestVerifyCommands,headCommitOrPla
 import { hasNpmLockfile } from '../support/has-staged-changes.ts';
 import { RepositoryInstallResult,RepositoryLockfileValidationResult,RepositorySaveError,RepositorySaveNode,RepositorySaveOptions,RepositorySavePlan,RepositorySavePlanRepo,readJson } from '../support/repo-kind.ts';
 import { runNpmInstallWithRetry,validateRepositoryLockfile } from '../treedx/repositories/sync-root-workspace-lockfile-metadata.ts';
-import { compareNodes,discoverRepositorySaveNodes,repositorySaveWaves } from './discover-repository-save-nodes.ts';
+import { compareNodes,discoverRepositorySaveNodes,repositorySaveWaves,selectRepositorySaveNodes } from './discover-repository-save-nodes.ts';
 
 export function planRepositorySave(options: RepositorySaveOptions): RepositorySavePlan {
 	const scope = options.branch === STAGING_BRANCH ? 'staging' : options.branch === PRODUCTION_BRANCH ? 'prod' : 'local';
 	const allNodes = discoverRepositorySaveNodes(options.root, options.gitRoot, options.branch, {
 		stablePackageRelease: options.stablePackageRelease === true,
 	});
-	const nodes = options.includeRoot === false ? allNodes.filter((node) => node.id !== '.') : allNodes;
-	const mode = nodes.some((node) => node.id !== '.') ? 'recursive-workspace' : 'root-only';
+	const includedNodes = options.includeRoot === false ? allNodes.filter((node) => node.id !== '.') : allNodes;
+	const nodes = selectRepositorySaveNodes(includedNodes, options.selectedRepositoryPath);
+	const mode = nodes.length > 1 ? 'recursive-workspace' : 'root-only';
+	const repositoryScope = options.selectedRepositoryPath ? 'repository' : 'federated';
 	const waves = repositorySaveWaves(nodes);
 	const plannedVersions = new Map<string, string>();
 	const plannedReferences = new Map<string, PackageDependencyReference>();
@@ -105,13 +107,13 @@ export function planRepositorySave(options: RepositorySaveOptions): RepositorySa
 		}
 	}
 
-	const rootNode = nodes.find((node) => node.id === '.') ?? allNodes.find((node) => node.id === '.');
+	const rootNode = nodes.find((node) => node.id === '.') ?? nodes[0];
 	const rootRepo = rootNode ? plans.get(rootNode.id) : null;
 	if (!rootRepo) {
 		throw new RepositorySaveError('Unable to build repository save plan for root repository.');
 	}
 	const repoPlans = nodes
-		.filter((node) => node.id !== '.')
+		.filter((node) => node.id !== rootNode?.id)
 		.sort(compareNodes)
 		.map((node) => plans.get(node.id))
 		.filter((plan): plan is RepositorySavePlanRepo => Boolean(plan));
@@ -126,6 +128,8 @@ export function planRepositorySave(options: RepositorySaveOptions): RepositorySa
 	}));
 	return {
 		mode,
+		repositoryScope,
+		repositoryIds: nodes.map((node) => node.id),
 		branch: options.branch,
 		scope,
 		devDependencyReferenceMode: options.devDependencyReferenceMode ?? 'git-commit',

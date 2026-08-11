@@ -130,6 +130,8 @@ export type RepositoryCommitMessageProvider = CommitMessageProvider;
 
 export type RepositorySaveResult = {
 	mode: 'root-only' | 'recursive-workspace';
+	repositoryScope: 'repository' | 'federated';
+	repositoryIds: string[];
 	branch: string;
 	scope: 'local' | 'staging' | 'prod';
 	repos: RepositorySaveReport[];
@@ -173,6 +175,8 @@ export type RepositorySavePlanWave = {
 
 export type RepositorySavePlan = {
 	mode: 'root-only' | 'recursive-workspace';
+	repositoryScope: 'repository' | 'federated';
+	repositoryIds: string[];
 	branch: string;
 	scope: 'local' | 'staging' | 'prod';
 	devDependencyReferenceMode: DevDependencyReferenceMode;
@@ -201,6 +205,7 @@ export type RepositorySaveOptions = {
 	commitMessageProvider?: RepositoryCommitMessageProvider;
 	workflowRunId?: string | null;
 	includeRoot?: boolean;
+	selectedRepositoryPath?: string | null;
 	deferPushUntilVerified?: boolean;
 	stablePackageRelease?: boolean;
 	onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void;

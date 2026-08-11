@@ -238,15 +238,17 @@ export type StageRepoPlan = {
 };
 
 export type StageCandidateManifest = {
-	schemaVersion: 2;
+	schemaVersion: 3;
 	kind: 'treeseed.stage-candidate';
 	candidateId: string;
+	integrationReceiptId: string;
 	runId: string;
 	branchName: string;
 	targetBranch: typeof STAGING_BRANCH;
 	createdAt: string;
 	root: {
-		repo: '@treeseed/market';
+		repo: string;
+		repositoryKey: string;
 		commit: string;
 		verified: boolean;
 	};
@@ -254,6 +256,7 @@ export type StageCandidateManifest = {
 		name: string;
 		path: string;
 		repoKind?: ManagedRepository['kind'];
+		repositoryKey: string;
 		commit: string;
 		lockfileHash: string | null;
 		dependencies: string[];

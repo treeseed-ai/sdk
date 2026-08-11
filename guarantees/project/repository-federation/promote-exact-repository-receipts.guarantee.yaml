@@ -1,0 +1,26 @@
+schemaVersion: treeseed.guarantee/v1
+id: guarantee.project.repository-federation.promote-exact-repository-receipts.813
+journeyIndex: 813
+type: project
+subtype: repository-federation
+journey: "Promote an exact repository federation receipt"
+ownerPackage: "@treeseed/sdk"
+surface: cli
+summary: "Guarantee that save records fresh live repository refs and stage/release consume that exact receipt without treating parent gitlinks as portfolio authority."
+status: planned
+dependencies: { journeys: [], guarantees: [] }
+actors: { allowed: [team_owner, platform_admin], forbidden: [unauthorized_user] }
+devices: { required: [] }
+gates: [future]
+preconditions: { fixtures: [integrated_treeseed_project], notes: [] }
+api: { required: false, verifierRefs: [] }
+content: { required: false, verifierRefs: [] }
+audit: { required: false, verifierRefs: [] }
+negativeCases:
+  - "Stage is blocked when any receipt repository identity or live source ref moves."
+  - "Release is blocked when any live staging ref differs from the receipt-derived stage candidate."
+  - "Platform cannot encode Market, Market API, content repositories, or project gitlinks in its portfolio."
+  - "Workset replay blocks dirty, divergent, nested, or incorrectly sourced existing repository paths without resetting them."
+evidence: { required: [guarantee_report] }
+notes:
+  - "Repository-scoped save defaults, explicit federated save, stale-ref rejection, receipt-derived stage candidates, live staging read-back, a zero-gitlink live Platform portfolio, and clean-clone thirteen-repository workset, stage, close, release-plan, interruption, and recovery acceptance are implemented without `.gitmodules`. The guarantee remains planned until its verifier is registered and produces repeatable evidence."

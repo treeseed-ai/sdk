@@ -149,6 +149,13 @@ type RepositoryIdentityProvider
 } from '../repositories/repository-identity.ts';
 
 export {
+applyPlatformWorkset,
+planPlatformWorkset,
+type PlatformWorksetAction,
+type PlatformWorksetPlan
+} from '../operations/services/repositories/platform-workset.ts';
+
+export {
 assertIsolatedRepositoryStorage,
 repositoryStorageOverlap,
 type ManagedRepositoryStorageMarker,

@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { applyEnvironmentToProcess } from "../../../operations/services/configuration/config-runtime.ts";
 import { runProof } from "../../../operations/services/guarantees/release-proof-runner.ts";
 import { PRODUCTION_BRANCH,STAGING_BRANCH } from "../../../operations/services/operations/git-workflow.ts";
@@ -7,9 +8,10 @@ import { currentBranch,hasMeaningfulChanges,originRemoteUrl,repoRoot } from "../
 import { workspaceRoot } from "../../../operations/services/treedx/workspaces/workspace-tools.ts";
 import { resolveWorkflowState } from "../../../operations/workflow-state.ts";
 import type { SaveInput } from "../../../operations/workflow.ts";
-import { resolveWorkflowSession } from "../../session.ts";
+import { resolveRepositoryWorkflowSession,resolveWorkflowSession } from "../../session.ts";
 import { runReleaseCandidateProofForPlan } from '../commerce/catalog/back-merge-production-into-staging.ts';
 import { WorkflowRepoReport,ensureCommandReadiness,ensureLocalStateExcluded,resolveProjectRootOrThrow,withContextEnv,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { writeIntegrationChangeSet } from '../coordination/integration-change-set.ts';
 import { buildReleasePlanSnapshot } from '../guarantees/workflow-proof.ts';
 import { assertSessionBranchSafety,branchPreviewInitialized,reconcileWorkflowBranchPreview } from '../packages/collect-published-release-artifact-checks.ts';
 import { saveHostedEnvironmentForBranch,shouldUseHostedSaveCi,waitForWorkflowGates,worktreePayload } from '../packages/normalize-release-candidate-mode.ts';
@@ -29,29 +31,33 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Sav
 			const tenantRoot = resolveProjectRootOrThrow('save', helpers.cwd());
 			const root = workspaceRoot(tenantRoot);
 			ensureLocalStateExcluded(root);
+			const federated = input.federated === true;
 			const rootBranch = currentBranch(repoRoot(root)) || null;
-			reattachRepairablePackageRepos(root, [rootBranch, STAGING_BRANCH, PRODUCTION_BRANCH].filter((branch): branch is string => Boolean(branch)), {
-				operation: 'save', 				onProgress: (line, stream) => helpers.write(line, stream), 				throwOnBlocker: true,
-			});
-			const session = resolveWorkflowSession(root);
+			if (federated) {
+				reattachRepairablePackageRepos(root, [rootBranch, STAGING_BRANCH, PRODUCTION_BRANCH].filter((branch): branch is string => Boolean(branch)), {
+					operation: 'save', 					onProgress: (line, stream) => helpers.write(line, stream), 					throwOnBlocker: true,
+				});
+			}
+			const session = federated ? resolveWorkflowSession(root) : resolveRepositoryWorkflowSession(helpers.context.cwd ?? helpers.cwd());
 			const gitRoot = session.gitRoot;
 			const branch = session.branchName;
 			const scope = branch === STAGING_BRANCH ? 'staging' : branch === PRODUCTION_BRANCH ? 'prod' : 'local';
 			const beforeState = resolveWorkflowState(root);
-			const recursiveWorkspace = session.mode === 'recursive-workspace';
 			const mode = session.mode;
 			const executionMode = normalizeExecutionMode(input);
 			const explicitResumeRunId = helpers.context.workflow?.resumeRunId
 				?? (input as SaveInput & { resumeRunId?: string }).resumeRunId
 				?? null;
 			const autoResumeRun = executionMode === 'execute' && !explicitResumeRunId
-				? findAutoResumableSaveRun(root, branch)
+				? findAutoResumableSaveRun(root, branch, federated ? null : gitRoot)
 				: null;
 			rejectImplicitWorkflowResume('save', autoResumeRun);
 			const planAutoResumeRun = null;
 			const effectiveInput = autoResumeRun
 				? (autoResumeRun.input as unknown as SaveInput)
 				: input;
+			if ((effectiveInput.federated === true) !== federated) workflowError('save', 'stale_plan', 'Save scope changed while resuming; rerun the original repository or federated save.');
+			const workspaceLinksMode = federated ? effectiveInput.workspaceLinks ?? 'auto' : 'off';
 			const localCleanup = maybeRunLocalWorkflowCleanup(helpers, root, 'save', effectiveInput);
 			const message = String(effectiveInput.message ?? '').trim();
 			const saveLane = normalizeSaveLane(effectiveInput.lane);
@@ -68,35 +74,39 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Sav
 			if (branch === PRODUCTION_BRANCH && !optionsHotfix) {
 				workflowError('save', 'unsupported_state', 'Treeseed save is blocked on main unless --hotfix is explicitly set.');
 			}
+			if (!federated && resolve(gitRoot) !== resolve(repoRoot(root)) && effectiveInput.preview === true) {
+				workflowError('save', 'validation_failed', 'Package repository saves cannot reconcile a tenant preview. Run the Platform-root federated save after integration.');
+			}
 
-			const packageReports = createManagedWorkflowRepoReports(root);
-			const rootRepo = createRepoReport('@treeseed/market', gitRoot, branch, hasMeaningfulChanges(gitRoot));
+			const packageReports = federated ? createManagedWorkflowRepoReports(root) : [];
+			const rootRepo = createRepoReport(session.rootRepo.name, gitRoot, branch, hasMeaningfulChanges(gitRoot));
 			const blockers: string[] = [];
 
 			if (executionMode === 'plan') {
 				if (!session.rootRepo.hasOriginRemote) {
-					blockers.push('Market repo is missing origin remote.');
+					blockers.push(`${session.rootRepo.name} is missing an origin remote.`);
 				}
 				if (branch === PRODUCTION_BRANCH && !optionsHotfix) {
 					blockers.push('Main saves require --hotfix.');
 				}
 				const repositoryPlan = planRepositorySave({
-					root, 					gitRoot, 					branch, 					message, 					bump: (effectiveInput.bump ?? 'patch') as ReleaseBumpLevel, 					devVersionStrategy: (effectiveInput.devVersionStrategy ?? 'prerelease') as SaveDevVersionStrategy, 					devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-commit', 					gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin', 					gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl', 					verifyMode: normalizeSaveVerifyMode(effectiveInput.verify === false ? 'skip' : effectiveInput.verifyMode), 					commitMessageMode: (effectiveInput.commitMessageMode ?? 'auto') as SaveCommitMessageMode,
+					root, 					gitRoot, 					branch, 					message, 					selectedRepositoryPath: federated ? null : gitRoot, 					bump: (effectiveInput.bump ?? 'patch') as ReleaseBumpLevel, 					devVersionStrategy: (effectiveInput.devVersionStrategy ?? 'prerelease') as SaveDevVersionStrategy, 					devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-commit', 					gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin', 					gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl', 					verifyMode: normalizeSaveVerifyMode(effectiveInput.verify === false ? 'skip' : effectiveInput.verifyMode), 					commitMessageMode: (effectiveInput.commitMessageMode ?? 'auto') as SaveCommitMessageMode,
 				});
 				const applicationSelection = selectWorkflowApplications(root);
-				const workspaceLinks = inspectWorkspaceDependencyMode(root, { mode: effectiveInput.workspaceLinks ?? 'auto', env: helpers.context.env });
+				const workspaceLinks = inspectWorkspaceDependencyMode(root, { mode: workspaceLinksMode, env: helpers.context.env });
 				return buildWorkflowResult(
 					'save', 					root,
 					{
-						mode, 						branch, 						scope, 						hotfix: optionsHotfix, 						message, 						repos: repositoryPlan.repos, 						rootRepo: repositoryPlan.rootRepo, 						blockers,
+						mode: repositoryPlan.mode, 						repositoryScope: repositoryPlan.repositoryScope, 						branch, 						scope, 						hotfix: optionsHotfix, 						message, 						repos: repositoryPlan.repos, 						rootRepo: repositoryPlan.rootRepo, 						blockers,
 						autoResumeCandidate: planAutoResumeRun
 							? {
 								runId: planAutoResumeRun.runId, 								branch: planAutoResumeRun.session.branchName, 								failure: planAutoResumeRun.failure,
 							}
 							: null, 						workspaceLinks, 						sceneArtifacts: normalizeSceneArtifactsMode(effectiveInput.sceneArtifacts), 						localCleanup, 						ciMode: saveCiMode, 						lane: saveLane, 						verifyMode: effectiveInput.verifyMode ?? 'fast', 						releaseCandidateMode, 						applicationSelection, 						...worktreePayload(root, effectiveInput.worktreeMode), 						repositoryPlan, 						waves: repositoryPlan.waves, 						plannedVersions: repositoryPlan.plannedVersions,
 						plannedSteps: [
-							{ id: 'workspace-unlink', description: 'Remove local workspace links before deployment install and lockfile updates' },
+							...(federated ? [{ id: 'workspace-unlink', description: 'Remove local workspace links before deployment install and lockfile updates' }] : []),
 							...repositoryPlan.plannedSteps,
+							{ id: 'integration-receipt', description: 'Verify live repository refs and write the exact integration change-set receipt' },
 							{ id: 'lockfile-validation', description: 'Validate refreshed package-lock.json files before any save commit is pushed' },
 							...(shouldUseHostedSaveCi(effectiveInput, branch, saveLane)
 								? [{ id: 'hosted-ci', description: saveHostedEnvironmentForBranch(branch) ? `Reconcile and verify hosted deployments for ${saveHostedEnvironmentForBranch(branch)}` : `Wait for hosted save workflows on ${branch}` }]
@@ -107,7 +117,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Sav
 							...(branch === STAGING_BRANCH && releaseCandidateMode !== 'skip'
 								? [{ id: 'release-candidate', description: `Run ${releaseCandidateMode} release-candidate readiness checks for the saved staging state` }]
 								: []),
-							{ id: 'workspace-link', description: 'Restore local workspace links after save' },
+							...(federated ? [{ id: 'workspace-link', description: 'Restore local workspace links after save' }] : []),
 							...((beforeState.branchRole === 'feature' && (effectiveInput.preview === true || previewInitialized))
 								? [{ id: 'preview', description: `Refresh preview deployment for ${branch}` }]
 								: []),
@@ -116,7 +126,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Sav
 					{
 						executionMode,
 						nextSteps: createNextSteps([
-							{ operation: 'save', reason: planAutoResumeRun ? `Run without --plan to resume ${planAutoResumeRun.runId}.` : 'Run without --plan to persist the workspace checkpoint.', input: { message, hotfix: optionsHotfix, preview: effectiveInput.preview === true } },
+							{ operation: 'save', reason: planAutoResumeRun ? `Run without --plan to resume ${planAutoResumeRun.runId}.` : 'Run without --plan to persist the workspace checkpoint.', input: { message, federated, hotfix: optionsHotfix, preview: effectiveInput.preview === true } },
 						]),
 					},
 				);
@@ -134,11 +144,14 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Sav
 			const workflowRun = acquireWorkflowRun(
 				'save', 				session,
 				{
-					message, 					hotfix: optionsHotfix, 					preview: effectiveInput.preview === true, 					refreshPreview: effectiveInput.refreshPreview !== false, 					verify: effectiveInput.verify !== false, 					bump: effectiveInput.bump ?? 'patch', 					devVersionStrategy: effectiveInput.devVersionStrategy ?? 'prerelease', 					devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-commit', 					gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin', 					gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl', 						verifyMode: effectiveInput.verifyMode ?? (effectiveInput.verify === false ? 'skip' : 'fast'), 					ciMode: saveCiMode, 					lane: saveLane, 					worktreeMode: effectiveInput.worktreeMode ?? 'auto', 					commitMessageMode: effectiveInput.commitMessageMode ?? 'auto', 					workspaceLinks: effectiveInput.workspaceLinks ?? 'auto', 					releaseCandidate: releaseCandidateMode, 					verifyDeployedResources: effectiveInput.verifyDeployedResources === true,
+					message, 					federated, 					hotfix: optionsHotfix, 					preview: effectiveInput.preview === true, 					refreshPreview: effectiveInput.refreshPreview !== false, 					verify: effectiveInput.verify !== false, 					bump: effectiveInput.bump ?? 'patch', 					devVersionStrategy: effectiveInput.devVersionStrategy ?? 'prerelease', 					devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-commit', 					gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin', 					gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl', 						verifyMode: effectiveInput.verifyMode ?? (effectiveInput.verify === false ? 'skip' : 'fast'), 					ciMode: saveCiMode, 					lane: saveLane, 					worktreeMode: effectiveInput.worktreeMode ?? 'auto', 					commitMessageMode: effectiveInput.commitMessageMode ?? 'auto', 					workspaceLinks: workspaceLinksMode, 					releaseCandidate: releaseCandidateMode, 					verifyDeployedResources: effectiveInput.verifyDeployedResources === true,
 				},
 				[
 					{
 						id: 'save-repositories', 						description: 'Save dependency-ordered repositories', 						repoName: rootRepo.name, 						repoPath: rootRepo.path, 						branch, 						resumable: true,
+					},
+					{
+						id: 'integration-receipt', description: 'Verify and record the exact repository federation', repoName: rootRepo.name, repoPath: rootRepo.path, branch, resumable: true,
 					},
 					...(shouldUseHostedSaveCi(effectiveInput, branch, saveLane)
 						? [{
@@ -189,10 +202,10 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Sav
 				const saveResult = await executeJournalStep(root, workflowRun.runId, 'save-repositories', () =>
 					(async () => {
 						helpers.write('[save][workflow] Saving repositories and validating lockfiles.');
-						unlinkWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
+						unlinkWorkflowWorkspaceLinks(root, helpers, workspaceLinksMode);
 						try {
 							return await runRepositorySaveOrchestrator({
-								root, 								gitRoot, 								branch, 								message, 								bump: (effectiveInput.bump ?? 'patch') as ReleaseBumpLevel, 								devVersionStrategy: (effectiveInput.devVersionStrategy ?? 'prerelease') as SaveDevVersionStrategy, 								devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-commit', 								gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin', 								gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl', 								verifyMode: normalizeSaveVerifyMode(effectiveInput.verify === false ? 'skip' : effectiveInput.verifyMode), 								commitMessageMode: (effectiveInput.commitMessageMode ?? 'auto') as SaveCommitMessageMode, 								workflowRunId: workflowRun.runId, 								deferPushUntilVerified: true, 								onProgress: (line, stream) => helpers.write(line, stream), 								onWaveSaved: branch === STAGING_BRANCH && shouldUseHostedSaveCi(effectiveInput, branch, saveLane)
+								root, 								gitRoot, 								branch, 								message, 								selectedRepositoryPath: federated ? null : gitRoot, 								bump: (effectiveInput.bump ?? 'patch') as ReleaseBumpLevel, 								devVersionStrategy: (effectiveInput.devVersionStrategy ?? 'prerelease') as SaveDevVersionStrategy, 								devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-commit', 								gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin', 								gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl', 								verifyMode: normalizeSaveVerifyMode(effectiveInput.verify === false ? 'skip' : effectiveInput.verifyMode), 								commitMessageMode: (effectiveInput.commitMessageMode ?? 'auto') as SaveCommitMessageMode, 								workflowRunId: workflowRun.runId, 								deferPushUntilVerified: true, 								onProgress: (line, stream) => helpers.write(line, stream), 								onWaveSaved: branch === STAGING_BRANCH && shouldUseHostedSaveCi(effectiveInput, branch, saveLane)
 									? async ({ nodes, reports, rootRepo: waveRootRepo }) => {
 										const nonRootReportsForWave = reports.filter((repo, index) => nodes[index]?.id !== '.');
 										const rootReportForWave = nodes.some((node) => node.id === '.')
@@ -218,11 +231,16 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Sav
 									: undefined,
 							});
 						} finally {
-							ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
+							ensureWorkflowWorkspaceLinks(root, helpers, workspaceLinksMode);
 						}
 					})());
 				const savedPackageReports = saveResult?.repos ?? packageReports;
 				const savedRootRepo = saveResult?.rootRepo ?? rootRepo;
+				const integrationReceipt = await executeJournalStep(root, workflowRun.runId, 'integration-receipt', () => {
+					if (!saveResult) throw new Error('Repository save result is unavailable for integration receipt creation.');
+					helpers.write('[save][workflow] Verifying live refs and recording the integration change set.');
+					return writeIntegrationChangeSet({ root, gitRoot, runId: workflowRun.runId, branch, result: saveResult });
+				});
 				helpers.write('[save][workflow] Repository save phase complete; checking command readiness.');
 				const head = savedRootRepo.commitSha ?? runGit(['rev-parse', 'HEAD'], { cwd: gitRoot, capture: true }).trim();
 				const commitCreated = savedRootRepo.committed === true;
@@ -230,8 +248,8 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Sav
 					...(savedRootRepo.publishWait ?? {}),
 					pushed: savedRootRepo.pushed === true,
 				};
-				const workspaceLinks = inspectWorkspaceDependencyMode(root, { mode: effectiveInput.workspaceLinks ?? 'auto', env: helpers.context.env });
-				const commandReadiness = ensureCommandReadiness(root);
+				const workspaceLinks = inspectWorkspaceDependencyMode(root, { mode: workspaceLinksMode, env: helpers.context.env });
+				const commandReadiness = federated ? ensureCommandReadiness(root) : { status: 'skipped', reason: 'repository-scoped save' };
 				const lockfileValidation = {
 					root: savedRootRepo.lockfileValidation,
 					repos: savedPackageReports.map((repo) => ({
@@ -342,10 +360,10 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Sav
 				);
 
 				const payload = {
-					mode: saveResult?.mode ?? mode, 					branch, 					scope, 					hotfix: optionsHotfix, 					message, 					resumed: workflowRun.resumed, 					resumedRunId: workflowRun.resumed ? workflowRun.runId : null, 					autoResumed: autoResumeRun != null, 					commitSha: head, 					commitCreated, 					noChanges: !commitCreated, 					branchSync, 					repos: savedPackageReports, 					rootRepo: savedRootRepo,
+					mode: saveResult?.mode ?? mode, 					repositoryScope: saveResult?.repositoryScope ?? (federated ? 'federated' : 'repository'), 					branch, 					scope, 					hotfix: optionsHotfix, 					message, 					resumed: workflowRun.resumed, 					resumedRunId: workflowRun.resumed ? workflowRun.runId : null, 					autoResumed: autoResumeRun != null, 					commitSha: head, 					commitCreated, 					noChanges: !commitCreated, 					branchSync, 					repos: savedPackageReports, 					rootRepo: savedRootRepo,
 					waves: saveResult?.waves ?? [],
 					plannedVersions: saveResult?.plannedVersions ?? {},
-					partialFailure: null, 					previewAction, 					mergeConflict: null, 					workspaceLinks, 					commandReadiness, 					lockfileValidation, 					ciMode: saveCiMode, 					lane: saveLane, 					verifyMode: effectiveInput.verifyMode ?? 'fast', 					releaseCandidateMode, 					applicationSelection,
+					partialFailure: null, 					integrationReceipt, 					previewAction, 					mergeConflict: null, 					workspaceLinks, 					commandReadiness, 					lockfileValidation, 					ciMode: saveCiMode, 					lane: saveLane, 					verifyMode: effectiveInput.verifyMode ?? 'fast', 					releaseCandidateMode, 					applicationSelection,
 					workflowGates: saveWorkflowGates?.workflowGates ?? [],
 					hostedReconcile: saveWorkflowGates?.hostedReconcile ?? null, 					releaseCandidate, 					releaseProof, 					hostingAudit, 					...worktreePayload(root, effectiveInput.worktreeMode),
 				};
@@ -354,8 +372,10 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Sav
 					'save', 					root, 					payload,
 					{
 						runId: workflowRun.runId,
-						nextSteps: createNextSteps([
-							branch === STAGING_BRANCH
+							nextSteps: createNextSteps([
+								!federated && branch !== PRODUCTION_BRANCH
+									? { operation: 'save', reason: 'Create the reviewed integration receipt before staging.', input: { message: 'integrate repository checkpoints', federated: true } }
+									: branch === STAGING_BRANCH
 								? { operation: 'release', reason: 'Promote the validated staging branch into production.', input: { bump: 'patch' } }
 								: branch === PRODUCTION_BRANCH
 									? { operation: 'status', reason: 'Inspect production state after the explicit hotfix save.' }
