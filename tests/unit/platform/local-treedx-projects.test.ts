@@ -59,4 +59,37 @@ describe('local TreeDX project repository inputs', () => {
 			{ slug: 'planned', contentPath: 'docs/src/content', seedPaths: ['docs/src/content', 'guarantees', 'package.json'] },
 		]);
 	});
+
+	it('binds split content projects to the paired live GitHub staging repository', () => {
+		const root = mkdtempSync(join(tmpdir(), 'local-treedx-remote-content-'));
+		mkdirSync(join(root, 'seeds'), { recursive: true });
+		writeFileSync(join(root, 'seeds/treeseed.yaml'), `resources:
+  projects:
+    - key: project:treeseed/admin
+      slug: admin
+      repository:
+        checkoutPath: packages/admin
+      architecture:
+        topology: split_site_content
+        sitePath: docs
+        contentPath: src/content
+  hubRepositories:
+    - project: project:treeseed/admin
+      role: content
+      owner: treeseed-ai
+      name: admin-content
+      gitUrl: https://github.com/treeseed-ai/admin-content.git
+`);
+
+		expect(localTreeDxContentProjects(root)[0]).toMatchObject({
+			projectKey: 'project:treeseed/admin',
+			contentPath: 'src/content',
+			defaultRef: 'refs/heads/staging',
+			remoteUrl: 'https://github.com/treeseed-ai/admin-content.git',
+			remoteOwner: 'treeseed-ai',
+			remoteName: 'admin-content',
+			sourceBranch: 'staging',
+			seedPaths: ['src/content'],
+		});
+	});
 });

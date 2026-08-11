@@ -7,6 +7,7 @@ import { LocalTreeDxContentProject,ensureLocalTreeDxProjectRepositoryRef,localTr
 import { verificationCheck } from '../../hosting/first-railway-domain-string.ts';
 import { genericObservedState,genericResult,noopDiff } from '../../hosting/to-deploy-target.ts';
 import { summarizeVerification } from '../../support/summarize-verification.ts';
+import { localTreeDxRemoteHead,observeRemoteContentHead,syncRemoteTreeDxProjectContent } from './reconcile-remote-tree-dx-content.ts';
 
 const LOCAL_TREEDX_RECONCILIATION_TIMEOUT_MS = 120_000;
 
@@ -28,8 +29,9 @@ async function verifyLocalTreeDxProjectContentOnce(
 	client: TreeDxClient,
 	project: LocalTreeDxContentProject,
 	repositoryId: string,
+	expectedHead?: string | null,
 ) {
-	const desiredFiles = collectLocalTreeDxSeedFiles(project);
+	const desiredFiles = project.remoteUrl ? [] : collectLocalTreeDxSeedFiles(project);
 	const response = desiredFiles.length
 		? await client.readRepositoryFiles({ repoId: repositoryId, ref: project.defaultRef ?? 'refs/heads/main',
 			paths: desiredFiles.map((file) => file.path), encoding: 'utf8', parseFrontmatter: false })
@@ -39,6 +41,7 @@ async function verifyLocalTreeDxProjectContentOnce(
 		.map(treeDxSeedFileRecord);
 	const resolvedRef = typeof response.resolvedRef === 'string' ? response.resolvedRef : '';
 	if (!/^[a-f0-9]{40}$/u.test(resolvedRef)) throw new Error(`TreeDX did not resolve an immutable commit for ${project.slug}.`);
+	if (expectedHead && resolvedRef !== expectedHead) throw new Error(`TreeDX resolved ${project.slug} at ${resolvedRef}, not live GitHub commit ${expectedHead}.`);
 	const ref = project.defaultRef ?? 'refs/heads/main';
 	const frontmatterSource = desiredFiles.find((file) => /^---\r?\n/u.test(file.content));
 	const [searchStatus, searchProbe, graphProbe, frontmatterProbe] = await Promise.all([
@@ -72,10 +75,11 @@ export async function verifyLocalTreeDxProjectContent(
 	client: TreeDxClient,
 	project: LocalTreeDxContentProject,
 	repositoryId: string,
+	expectedHead?: string | null,
 ) {
 	for (let attempt = 1; attempt <= 3; attempt += 1) {
 		try {
-			return await verifyLocalTreeDxProjectContentOnce(client, project, repositoryId);
+			return await verifyLocalTreeDxProjectContentOnce(client, project, repositoryId, expectedHead);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			if (!/shared cache load|cache_load_timeout/iu.test(message) || attempt === 3) throw error;
@@ -113,6 +117,26 @@ export function buildLocalTreeDxAdapter(): ReconcileAdapter {
 				const name = nonEmptyString(record.repositoryName) || nonEmptyString(record.name);
 				return name ? [name] : [];
 			});
+			const repositoryObservations = [];
+			if (baseUrl && token) {
+				const client = createLocalTreeDxReconciliationClient(baseUrl, token);
+				for (const project of projects.filter((entry) => entry.remoteUrl)) {
+					const repo = repositories.find((entry) => {
+						const record = recordValue(entry);
+						return record.repositoryName === project.repositoryName || record.name === project.repositoryName;
+					});
+					const repositoryId = nonEmptyString(recordValue(repo).repoId);
+					try {
+						const [remoteHead, localHead] = await Promise.all([
+							observeRemoteContentHead(project, input.context.launchEnv),
+							repositoryId ? localTreeDxRemoteHead(client, repositoryId, project) : Promise.resolve(null),
+						]);
+						repositoryObservations.push({ project: project.slug, repositoryId, remoteHead, localHead });
+					} catch (error) {
+						warnings.push(`Live content repository ${project.slug} could not be observed: ${error instanceof Error ? error.message : String(error)}`);
+					}
+				}
+			}
 			const allRegistered = projects.every((project) => registeredRepositoryNames.includes(project.repositoryName));
 			return {
 				...genericObservedState(input, warnings.length === 0, warnings),
@@ -121,6 +145,7 @@ export function buildLocalTreeDxAdapter(): ReconcileAdapter {
 					...input.unit.spec,
 					dependencies: input.unit.dependencies,
 					registeredRepositoryNames,
+					repositoryObservations,
 				},
 			};
 		},
@@ -138,6 +163,22 @@ export function buildLocalTreeDxAdapter(): ReconcileAdapter {
 				return {
 					action: 'update',
 					reasons: [`TreeDX repositories are missing: ${missing.map((project) => project.repositoryName).join(', ')}`],
+					before: input.observed.live,
+					after: input.unit.spec,
+				};
+			}
+			const observations = Array.isArray(input.observed.live.repositoryObservations)
+				? input.observed.live.repositoryObservations.map(recordValue)
+				: [];
+			const remoteDrift = projects.filter((project) => project.remoteUrl).filter((project) => {
+				const observation = observations.find((entry) => entry.project === project.slug);
+				return !observation || !nonEmptyString(observation.remoteHead)
+					|| nonEmptyString(observation.localHead) !== nonEmptyString(observation.remoteHead);
+			});
+			if (remoteDrift.length > 0) {
+				return {
+					action: 'update',
+					reasons: [`TreeDX content refs differ from live GitHub: ${remoteDrift.map((project) => project.slug).join(', ')}`],
 					before: input.observed.live,
 					after: input.unit.spec,
 				};
@@ -161,11 +202,17 @@ export function buildLocalTreeDxAdapter(): ReconcileAdapter {
 			const client = createLocalTreeDxReconciliationClient(baseUrl, token);
 			const syncedProjects = [];
 			const syncSeedContent = input.unit.spec.syncSeedContent !== false;
+			const observations = Array.isArray(input.observed.live.repositoryObservations)
+				? input.observed.live.repositoryObservations.map(recordValue)
+				: [];
 			for (const [index, project] of projects.entries()) {
 				input.context.write?.(`Syncing local TreeDX project ${index + 1}/${projects.length} (${project.slug})...`);
-				const synced = syncSeedContent
-					? await syncLocalTreeDxProjectContent(client, project)
-					: await ensureLocalTreeDxProjectRepositoryRef(client, project);
+				const expectedRemoteHead = nonEmptyString(observations.find((entry) => entry.project === project.slug)?.remoteHead);
+				const synced = project.remoteUrl
+					? await syncRemoteTreeDxProjectContent({ client, project, expectedRemoteHead, env: input.context.launchEnv })
+					: syncSeedContent
+						? await syncLocalTreeDxProjectContent(client, project)
+						: await ensureLocalTreeDxProjectRepositoryRef(client, project);
 				syncedProjects.push(synced);
 				input.context.write?.(`Synced local TreeDX project ${index + 1}/${projects.length} (${project.slug}, ${synced.files} files).`);
 			}
@@ -228,6 +275,9 @@ export function buildLocalTreeDxAdapter(): ReconcileAdapter {
 				}),
 			];
 			const repositoryChecks: UnitVerificationCheck[] = [];
+			const remoteObservations = Array.isArray(input.observed.live.repositoryObservations)
+				? input.observed.live.repositoryObservations.map(recordValue)
+				: [];
 			const baseUrl = nonEmptyString(input.unit.spec.baseUrl);
 			const token = nonEmptyString(input.unit.spec.token) || mintLocalTreeDxJwt(recordValue(input.unit.spec.auth));
 			if (baseUrl && token) {
@@ -258,9 +308,23 @@ export function buildLocalTreeDxAdapter(): ReconcileAdapter {
 							verified: true,
 							observed: repo,
 						}));
+						if (project.remoteUrl) {
+							const observation = remoteObservations.find((entry) => entry.project === project.slug);
+							const remoteHead = nonEmptyString(observation?.remoteHead);
+							const localHead = nonEmptyString(observation?.localHead);
+							const exact = /^[a-f0-9]{40}$/u.test(remoteHead) && localHead === remoteHead;
+							repositoryChecks.push(verificationCheck(`treedx-live-ref:${project.slug}`, `TreeDX resolves ${project.slug} at the exact live GitHub content commit`, 'api', {
+								exists: Boolean(localHead), configured: true, ready: exact, verified: exact,
+								expected: remoteHead || null, observed: localHead || null,
+								issues: exact ? [] : ['TreeDX content ref differs from the live GitHub staging ref.'],
+							}));
+						}
 						if (!statusOnly && input.unit.spec.syncSeedContent !== false && repositoryId) {
 							try {
-								const content = await verifyLocalTreeDxProjectContent(client, project, repositoryId);
+								const expectedHead = project.remoteUrl
+									? await observeRemoteContentHead(project, input.context.launchEnv)
+									: null;
+								const content = await verifyLocalTreeDxProjectContent(client, project, repositoryId, expectedHead);
 								repositoryChecks.push(verificationCheck(`treedx-content:${project.slug}`, `TreeDX repository ${project.repositoryId} exposes the exact desired seed content from ${project.defaultRef ?? 'refs/heads/main'}`, 'api', {
 									exists: content.verifiedFileCount > 0 || content.desiredFileCount === 0,
 									configured: true,

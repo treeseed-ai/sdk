@@ -110,11 +110,11 @@ describe('canonical desired resource graph', () => {
 		for (const adapter of adapters.filter((entry) =>
 			entry.id === 'treedx' || entry.id.startsWith('@treeseed/'))) {
 			expect(adapter.metadata.projectArchitecture).toMatchObject({
-				topology: 'single_repository_site',
+				topology: 'split_site_content',
 				rootPath: '.',
 				sitePath: 'docs',
-				contentPath: 'docs',
-				contentRuntimeSource: 'r2_published_manifest',
+				contentPath: 'src/content',
+				contentRuntimeSource: 'r2_preview_overlay',
 			});
 			expect(adapter.metadata.projectArchitecture).toHaveProperty('contentPublishTarget');
 			expect(JSON.stringify(adapter.metadata)).not.toContain('TREESEED_GITHUB_TOKEN');

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createLocalTreeDxReconciliationClient } from '../../../../src/reconcile/builtin-adapters/projects/knowledge/verify-local-tree-dx-project-content.ts';
 import { refreshLocalTreeDxProjectIndexes, syncLocalTreeDxProjectContent } from '../../../../src/reconcile/builtin-adapters/capacity/providers/build-capacity-provider-adapter.ts';
+import { syncRemoteTreeDxProjectContent } from '../../../../src/reconcile/builtin-adapters/projects/knowledge/reconcile-remote-tree-dx-content.ts';
 
 function healthResponse() {
 	return new Response(JSON.stringify({
@@ -94,6 +95,42 @@ describe('local TreeDX reconciliation transport', () => {
 			slug: 'admin', repositoryName: 'treeseed-admin', repositoryId: 'repo-1', localRoot: '/tmp/admin',
 			contentPath: 'docs/src/content', defaultRef: 'refs/heads/main',
 		}, 'repo-1', 'commit-1')).rejects.toThrow('did not resolve the reconciled commit');
+	});
+
+	it('fetches the exact live GitHub staging ref before indexing remote content', async () => {
+		const sha = 'a'.repeat(40);
+		const client = {
+			listRepositories: vi.fn().mockResolvedValue([{ repoId: 'repo-admin', repositoryName: 'treeseed-admin' }]),
+			fetchRemote: vi.fn().mockResolvedValue({ fetch: { status: 'synced' } }),
+			listRepositoryRefs: vi.fn().mockResolvedValue([{ name: 'refs/heads/staging', target: sha }]),
+			refreshGraph: vi.fn().mockResolvedValue({ graphVersion: 'graph-1', resolvedRef: sha }),
+			refreshSearchIndex: vi.fn().mockResolvedValue({ indexVersion: 'search-1', resolvedRef: sha, stale: false }),
+		};
+		const fetchImpl = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ object: { sha } }), {
+			status: 200, headers: { 'content-type': 'application/json' },
+		}));
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = fetchImpl as typeof fetch;
+		try {
+			const result = await syncRemoteTreeDxProjectContent({
+				client: client as any,
+				project: {
+					slug: 'admin', repositoryName: 'treeseed-admin', repositoryId: 'treeseed-admin', localRoot: '/unused',
+					contentPath: 'src/content', defaultRef: 'refs/heads/staging', sourceBranch: 'staging',
+					remoteUrl: 'https://github.com/treeseed-ai/admin-content.git', remoteOwner: 'treeseed-ai', remoteName: 'admin-content',
+				},
+				expectedRemoteHead: sha,
+				env: {},
+			});
+			expect(client.fetchRemote).toHaveBeenCalledWith({
+				repoId: 'repo-admin', remoteName: 'origin',
+				remoteUrl: 'https://github.com/treeseed-ai/admin-content.git',
+				refspecs: ['+refs/heads/staging:refs/heads/staging'],
+			});
+			expect(result).toMatchObject({ fetched: true, commitSha: sha, ref: 'refs/heads/staging' });
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 
 	it('writes only changed seed files and removes stale managed files', async () => {

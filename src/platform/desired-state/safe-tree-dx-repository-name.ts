@@ -4,7 +4,7 @@ import { parse as parseYaml } from 'yaml';
 import { normalizeRepositoryName,projectRepositoryName } from '../../treedx/accounts/repository-name.ts';
 import type { DesiredUnit } from '../../reconcile/support/contracts/contracts.ts';
 import { localTreeDxSeedDigest } from '../treedx/repositories/local-treedx-seed.ts';
-import { DesiredEnvironment,DesiredResource,DesiredResourceKind,INTERNAL_PACKAGE_DEPENDENCY_FIELDS,PackageUnit,TemplateUnit,stringRecord } from './desired-environment.ts';
+import { DesiredEnvironment,DesiredResource,DesiredResourceKind,INTERNAL_PACKAGE_DEPENDENCY_FIELDS,PackageUnit,stringRecord } from './desired-environment.ts';
 
 export function safeTreeDxRepositoryName(value: string) {
 	return normalizeRepositoryName(value);
@@ -25,12 +25,23 @@ export function localTreeDxContentProjects(tenantRoot: string) {
 	const parsed = parseYaml(readFileSync(seedPath, 'utf8')) as unknown;
 	const resources = stringRecord((parsed as Record<string, unknown> | null)?.resources);
 	const projects = Array.isArray(resources.projects) ? resources.projects : [];
+	const contentRepositories = new Map<string, Record<string, unknown>>();
+	for (const entry of Array.isArray(resources.hubRepositories) ? resources.hubRepositories : []) {
+		const repository = stringRecord(entry);
+		const projectKey = typeof repository.project === 'string' ? repository.project.trim() : '';
+		if (projectKey && repository.role === 'content') contentRepositories.set(projectKey, repository);
+	}
 	return projects.flatMap((entry) => {
 		const project = stringRecord(entry);
+		const projectKey = typeof project.key === 'string' && project.key.trim()
+			? project.key.trim()
+			: `project:treeseed/${String(project.slug ?? '').trim()}`;
 		const slug = typeof project.slug === 'string' && project.slug.trim() ? project.slug.trim() : '';
 		const repository = stringRecord(project.repository);
 		const architecture = stringRecord(project.architecture);
-		const contentPath = projectContentPath(architecture);
+		const contentRepository = contentRepositories.get(projectKey);
+		const remoteUrl = typeof contentRepository?.gitUrl === 'string' ? contentRepository.gitUrl.trim() : '';
+		const contentPath = remoteUrl ? 'src/content' : projectContentPath(architecture);
 		if (!slug) return [];
 		const checkoutPath = typeof repository.checkoutPath === 'string' && repository.checkoutPath.trim()
 			? repository.checkoutPath.trim()
@@ -49,35 +60,19 @@ export function localTreeDxContentProjects(tenantRoot: string) {
 			...(existsSync(signalContractsPath) ? ['.treeseed/agents/signals'] : []),
 			...(existsSync(proposalTypesPath) ? ['.treeseed/governance/proposal-types'] : []), ...repositoryFiles];
 		return [{
-			projectKey: typeof project.key === 'string' ? project.key : `project:treeseed/${slug}`,
+			projectKey,
 			slug,
 			repositoryName: projectRepositoryName(slug),
 			repositoryId: projectRepositoryName(slug),
 			localRoot,
 			contentPath,
-			defaultRef: 'refs/heads/main',
-			seedPaths,
-			seedDigest: localTreeDxSeedDigest({ localRoot, contentPath, seedPaths }),
-		}];
-	});
-}
-
-export function localTreeDxTemplateContentProjects(tenantRoot: string, templates: TemplateUnit[]) {
-	return templates.flatMap((template) => {
-		const localRoot = resolvePath(tenantRoot, template.path);
-		const contentPath = 'template/src/content';
-		if (!existsSync(resolvePath(localRoot, contentPath))) return [];
-		const slug = `starter-${safeTreeDxRepositoryName(template.id)}`;
-		return [{
-			projectKey: `template:${template.id}`,
-			slug,
-			repositoryName: projectRepositoryName(slug),
-			repositoryId: projectRepositoryName(slug),
-			localRoot,
-			contentPath,
-			defaultRef: 'refs/heads/main',
-			seedPaths: [contentPath],
-			seedDigest: localTreeDxSeedDigest({ localRoot, contentPath, seedPaths: [contentPath] }),
+			defaultRef: remoteUrl ? 'refs/heads/staging' : 'refs/heads/main',
+			remoteUrl: remoteUrl || undefined,
+			remoteOwner: typeof contentRepository?.owner === 'string' ? contentRepository.owner : undefined,
+			remoteName: typeof contentRepository?.name === 'string' ? contentRepository.name : undefined,
+			sourceBranch: remoteUrl ? 'staging' : undefined,
+			seedPaths: remoteUrl ? ['src/content'] : seedPaths,
+			seedDigest: remoteUrl ? undefined : localTreeDxSeedDigest({ localRoot, contentPath, seedPaths }),
 		}];
 	});
 }

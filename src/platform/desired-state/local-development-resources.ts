@@ -5,7 +5,7 @@ buildProjectLocalContentResources,
 type LocalContentMode,
 } from '../content/local-content-materialization.ts';
 import { DesiredEnvironment,DesiredResource,TemplateUnit,hashJson } from './desired-environment.ts';
-import { localTreeDxContentProjects,localTreeDxTemplateContentProjects } from './safe-tree-dx-repository-name.ts';
+import { localTreeDxContentProjects } from './safe-tree-dx-repository-name.ts';
 import { managedDevSourceClosureDigest } from '../../local-dev/source-closure.ts';
 import { dockerSourceClosureDigest } from './docker-source-closure.ts';
 import { scopedLocalTunnelIdentity } from './local-tunnel-identity.ts';
@@ -122,7 +122,7 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 			logicalName: 'local TreeDX team content repository plane',
 			dependencies: [treeDxComposeId],
 			spec: {
-				contentSyncVersion: 2,
+				contentSyncVersion: 3,
 				mode: 'private-team',
 				contentRepositoryAccessMode: 'treedx',
 				siteRepositoryAccessMode: 'filesystem',
@@ -136,10 +136,7 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 				},
 				healthEndpoint: 'http://127.0.0.1:4000/api/v1/health',
 				auth: localTreeDxApiEnv,
-				projects: [
-					...localTreeDxContentProjects(tenantRoot),
-					...localTreeDxTemplateContentProjects(tenantRoot, templates),
-				],
+				projects: localTreeDxContentProjects(tenantRoot),
 			},
 			source: { type: 'package-adapter', id: 'treedx' },
 		},

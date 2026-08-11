@@ -127,6 +127,10 @@ export interface LocalTreeDxContentProject {
 	defaultRef?: string;
 	seedPaths?: string[];
 	seedDigest?: string;
+	remoteUrl?: string;
+	remoteOwner?: string;
+	remoteName?: string;
+	sourceBranch?: string;
 }
 
 export function recordValue(value: unknown): Record<string, unknown> {
@@ -157,6 +161,10 @@ export function localTreeDxProjects(value: unknown): LocalTreeDxContentProject[]
 				defaultRef: nonEmptyString(record.defaultRef) || 'refs/heads/main',
 				seedPaths: Array.isArray(record.seedPaths) ? record.seedPaths.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : [],
 				seedDigest: nonEmptyString(record.seedDigest) || undefined,
+				remoteUrl: nonEmptyString(record.remoteUrl) || undefined,
+				remoteOwner: nonEmptyString(record.remoteOwner) || undefined,
+				remoteName: nonEmptyString(record.remoteName) || undefined,
+				sourceBranch: nonEmptyString(record.sourceBranch) || undefined,
 			}];
 		})
 		: [];
