@@ -11,7 +11,7 @@ WebSourcePageCacheConfig
 import { CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER,DEFAULT_LONG_LIVED_CACHE_POLICY,DEFAULT_SOURCE_PAGE_PURGE_PATHS,cloudflareFieldAliases,cloudflarePagesFieldAliases,cloudflareR2FieldAliases,deployConfigFieldAliases,expectString,optionalBoolean,optionalCloudflareAccountId,optionalPositiveNumber,optionalRecord,optionalString,parseHostingConfig,parsePluginReferences } from './deploy-config-field-aliases.ts';
 import { normalizeLegacyHostingFromPlanes,normalizePlanesFromLegacyHosting,parseHubConfig,parseProviderSelections,parseRuntimeConfig } from './normalize-planes-from-legacy-hosting.ts';
 import { inferManagedRuntimeFromServices,parseConnectionsConfig,parseExportConfig,parseManagedServicesConfig,parsePlatformSurfacesConfig,parseProcessingConfig,parsePublicTreeDxFederationConfig } from './parse-public-tree-dx-federation-config.ts';
-import { assertPlatformServiceAuthority,parseControlPlane,parseMarketProfile,parsePlatformAuthority } from './parse-platform-connections.ts';
+import { assertControlPlaneTopology,assertPlatformServiceAuthority,parseControlPlane,parseMarketProfile,parsePlatformAuthority } from './parse-platform-connections.ts';
 
 export function parseDeployConfig(raw: string): DeployConfig {
 	const parsed = normalizeAliasedRecord(
@@ -38,6 +38,8 @@ export function parseDeployConfig(raw: string): DeployConfig {
 	const market = parseMarketProfile(parsed.market);
 	const controlPlane = parseControlPlane(parsed.controlPlane, market);
 	assertPlatformServiceAuthority(authority, services as Record<string, unknown> | undefined);
+	const publicTreeDxFederation = parsePublicTreeDxFederationConfig(parsed.publicTreeDxFederation);
+	assertControlPlaneTopology({ controlPlane, services, publicTreeDxFederation, explicit: parsed.controlPlane !== undefined });
 	const processing = parseProcessingConfig(parsed.processing, services);
 	const normalizedPlanes = normalizePlanesFromLegacyHosting(hosting);
 	const inferredPlanes = !hosting && !parsed.hub && !parsed.runtime && inferManagedRuntimeFromServices(services)
@@ -121,7 +123,7 @@ export function parseDeployConfig(raw: string): DeployConfig {
 		providers: parseProviderSelections(parsed.providers),
 		surfaces: parsePlatformSurfacesConfig(parsed.surfaces),
 		services,
-		publicTreeDxFederation: parsePublicTreeDxFederationConfig(parsed.publicTreeDxFederation),
+		publicTreeDxFederation,
 		connections: parseConnectionsConfig(parsed.connections),
 		processing,
 		smtp: {

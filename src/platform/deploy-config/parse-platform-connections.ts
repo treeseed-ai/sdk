@@ -1,7 +1,9 @@
 import type {
 	ControlPlaneConfig,
+	ManagedServicesConfig,
 	MarketProfileConfig,
 	PlatformAuthorityConfig,
+	PublicTreeDxFederationConfig,
 } from '../support/contracts.ts';
 import { optionalEnum, optionalRecord, optionalString } from './deploy-config-field-aliases.ts';
 
@@ -58,5 +60,27 @@ export function assertPlatformServiceAuthority(
 	const forbidden = Object.keys(services ?? {}).find((key) => /^market-?api$/iu.test(key));
 	if (forbidden) {
 		throw new Error(`Invalid deploy config: customer Platform authority cannot provision singleton Market service ${forbidden}.`);
+	}
+}
+
+export function assertControlPlaneTopology(input: {
+	controlPlane: ControlPlaneConfig;
+	services: ManagedServicesConfig | undefined;
+	publicTreeDxFederation: PublicTreeDxFederationConfig | undefined;
+	explicit: boolean;
+}) {
+	if (!input.explicit) return;
+	const enabled = (key: string) => input.services?.[key]?.enabled !== false && Boolean(input.services?.[key]);
+	const owned = ['api', 'treeseedDatabase', 'operationsRunner'].filter(enabled);
+	if (input.controlPlane.mode !== 'managed') {
+		if (owned.length || input.publicTreeDxFederation) {
+			throw new Error(`Invalid deploy config: controlPlane.mode ${input.controlPlane.mode} cannot provision customer control-plane resources (${[...owned, ...(input.publicTreeDxFederation ? ['publicTreeDxFederation'] : [])].join(', ')}).`);
+		}
+		return;
+	}
+	const missing = ['api', 'treeseedDatabase', 'operationsRunner'].filter((key) => !enabled(key));
+	if (!input.publicTreeDxFederation) missing.push('publicTreeDxFederation');
+	if (missing.length) {
+		throw new Error(`Invalid deploy config: controlPlane.mode managed requires ${missing.join(', ')}.`);
 	}
 }

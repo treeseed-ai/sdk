@@ -2,6 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { assertMarketApiPackageLock } from '../../../src/seeds/workspaces/market-api-package-lock.ts';
 import { managedWorkspaceMatches, managedWorkspacePaths, missingApplicationBootstrapFiles, staleManagedWorkspacePaths } from '../../../src/seeds/workspaces/managed-workspace-overlay.ts';
 import { marketApiWorkspaceFiles } from '../../../src/seeds/workspaces/market-api-workspace.ts';
 
@@ -54,6 +55,10 @@ describe('private singleton managed workspace overlay', () => {
 			expect(generated.get('package.json')).toContain('"workspaces": [');
 			expect(generated.get('package.json')).toContain('"build": "tsc -p tsconfig.build.json"');
 			expect(generated.get('package.json')).toContain('"test": "vitest run tests"');
+			expect(generated.get('package.json')).toContain('"@treeseed/sdk": "git+https://github.com/treeseed-ai/sdk.git#');
+			expect(generated.get('package.json')).not.toContain('"stripe"');
+			expect(generated.get('.github/workflows/verify.yml')).toContain('npm ci --ignore-scripts');
+			expect(generated.get('singleton.manifest.json')).toContain('"package-lock.json"');
 			expect(generated.get('tsconfig.build.json')).toContain('"rootDir": "src"');
 			expect(generated.get('tsconfig.build.json')).toContain('"tests/**/*.ts"');
 			expect(generated.get('tsconfig.json')).toContain('"noEmit": true');
@@ -64,5 +69,15 @@ describe('private singleton managed workspace overlay', () => {
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}
+	});
+
+	it('rejects incomplete or incorrectly pinned generated package locks', () => {
+		const sdkRef = 'a'.repeat(40);
+		const dependency = `git+https://github.com/treeseed-ai/sdk.git#${sdkRef}`;
+		const manifest = JSON.stringify({ dependencies: { '@treeseed/sdk': dependency }, devDependencies: { vitest: '4.1.2' } });
+		const lock = JSON.stringify({ lockfileVersion: 3, packages: { '': { dependencies: { '@treeseed/sdk': dependency }, devDependencies: { vitest: '4.1.2' } }, 'node_modules/@treeseed/sdk': { resolved: `git+ssh://git@github.com/treeseed-ai/sdk.git#${sdkRef}` } } });
+		expect(() => assertMarketApiPackageLock(lock, manifest, sdkRef)).not.toThrow();
+		expect(() => assertMarketApiPackageLock('{}', manifest, sdkRef)).toThrow(/complete npm v3/u);
+		expect(() => assertMarketApiPackageLock(lock, manifest, 'b'.repeat(40))).toThrow(/does not pin SDK commit/u);
 	});
 });

@@ -3,6 +3,7 @@ import { parseDeployConfig } from '../../../src/platform/deploy-config/parse-dep
 import {
 	classifyPlatformWorkspaceBranch,
 	platformDeployConfig,
+	platformPortfolio,
 } from '../../../src/seeds/workspaces/platform-workspace-history.ts';
 
 describe('Platform workspace migration recovery', () => {
@@ -35,5 +36,23 @@ describe('Platform workspace migration recovery', () => {
 		expect(config.processing).toEqual({ mode: 'none' });
 		expect(config.surfaces?.web?.enabled).toBe(false);
 		expect(config.services).toEqual({});
+	});
+
+	it('represents bundled projects as an exact-ref portfolio instead of gitlinks', () => {
+		const portfolio = JSON.parse(platformPortfolio([
+			{ path: 'packages/api', repository: 'treeseed-ai/api', commit: 'a'.repeat(40) },
+			{ path: 'templates/engineering', repository: 'treeseed-ai/template-engineering', commit: 'b'.repeat(40) },
+		]));
+
+		expect(portfolio).toMatchObject({
+			schemaVersion: 1,
+			kind: 'treeseed.portfolio',
+			materialization: 'ephemeral_workset',
+			integrationAuthority: 'treeseed.integration-change-set/v1',
+		});
+		expect(portfolio.repositories).toEqual([
+			{ path: 'packages/api', repository: 'treeseed-ai/api', commit: 'a'.repeat(40) },
+			{ path: 'templates/engineering', repository: 'treeseed-ai/template-engineering', commit: 'b'.repeat(40) },
+		]);
 	});
 });
