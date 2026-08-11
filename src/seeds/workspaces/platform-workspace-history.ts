@@ -21,6 +21,7 @@ const copiedFiles = [
 	'docs/local-dev-instances.md',
 	'docs/package-ownership.md',
 	'docs/platform-north-star.md',
+	'docs/production-readiness-migration-ledger.md',
 	'docs/project-architecture-migration.md',
 	'docs/reconciliation-platform.md',
 	'seeds/agents.yaml',

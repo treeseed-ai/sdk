@@ -12,7 +12,7 @@ export type ContentRepositoryHistoryPlan = {
 	sourceRepository: string;
 	targetRepository: string;
 	visibility: 'public' | 'private';
-	branches: Array<{ branch: string; sourceRef: string; contentPath: string | null; sourceCommit: string | null; targetCommit: string | null; action: 'create' | 'update' | 'noop' | 'blocked'; reason: string }>;
+	branches: Array<{ branch: string; sourceRef: string; contentPath: string | null; journalContentPath: string | null; sourceCommit: string | null; targetCommit: string | null; action: 'create' | 'update' | 'noop' | 'blocked'; reason: string }>;
 };
 
 type ContentHistoryReceipt = {
@@ -22,6 +22,24 @@ type ContentHistoryReceipt = {
 	contentPath: string | null;
 	targetCommit: string | null;
 	verified: boolean;
+};
+
+type ContentCutoverReceipt = {
+	contract?: string;
+	verified?: boolean;
+	softwarePathRemoved?: boolean;
+	evidence?: {
+		project?: string;
+		sourceRepository?: string;
+		targetRepository?: string;
+		contentPath?: string | null;
+		sourceTree?: string | null;
+		targetTree?: string | null;
+		historyVerified?: boolean;
+		publicationVerified?: boolean;
+		treeDxVerified?: boolean;
+		status?: string;
+	};
 };
 
 type SeedGitOptions = { env?: NodeJS.ProcessEnv; input?: string; allowFailure?: boolean; preserveOutput?: boolean };
@@ -118,6 +136,44 @@ function migrationJournal(projectRoot: string, repository: string) {
 	} catch {
 		return null;
 	}
+}
+
+function cutoverJournal(projectRoot: string, repository: string, branch: 'main' | 'staging') {
+	try {
+		return JSON.parse(readFileSync(resolve(projectRoot, '.treeseed', 'content-cutovers', `${repository.replace('/', '--')}--${branch}.json`), 'utf8')) as ContentCutoverReceipt;
+	} catch {
+		return null;
+	}
+}
+
+export function isVerifiedSoftwareContentRemoval(input: {
+	cutover: ContentCutoverReceipt | null;
+	project: string;
+	sourceRepository: string;
+	targetRepository: string;
+	contentPath: string | null | undefined;
+	previousTree: string | null;
+	targetTree: string | null;
+}) {
+	const evidence = input.cutover?.evidence;
+	return Boolean(
+		input.contentPath
+		&& input.targetTree
+		&& input.cutover?.contract === 'treeseed.content-cutover/v1'
+		&& input.cutover.verified === true
+		&& input.cutover.softwarePathRemoved === true
+		&& evidence?.status === 'ready'
+		&& evidence.project === input.project
+		&& evidence.sourceRepository === input.sourceRepository
+		&& evidence.targetRepository === input.targetRepository
+		&& evidence.contentPath === input.contentPath
+		&& evidence.sourceTree === input.targetTree
+		&& evidence.targetTree === input.targetTree
+		&& (input.previousTree === null || input.previousTree === input.targetTree)
+		&& evidence.historyVerified === true
+		&& evidence.publicationVerified === true
+		&& evidence.treeDxVerified === true,
+	);
 }
 
 export function classifyContentHistoryBranch(input: { sourceCommit: string | null; contentPath: string | null; targetCommit: string | null; receipt?: { sourceCommit?: string | null; contentPath?: string | null; targetCommit?: string | null; verified?: boolean } | null }) {
@@ -254,6 +310,16 @@ export async function planSeedContentRepositoryHistory(input: { projectRoot: str
 			const previousTree = await contentTreeAtRef(mapping.sourcePath, receipt?.sourceCommit, receipt?.contentPath);
 			const currentTree = await contentTreeAtRef(mapping.sourcePath, source?.commit, contentPath);
 			const targetTree = await contentTreeAtRef(mapping.sourcePath, targetCommit ?? undefined, 'src/content');
+			const verifiedRemoval = !contentPath && receipt?.verified === true && receipt.targetCommit === targetCommit
+				&& (['main', 'staging'] as const).some((cutoverBranch) => isVerifiedSoftwareContentRemoval({
+					cutover: cutoverJournal(input.projectRoot, mapping.targetRepository, cutoverBranch),
+					project: mapping.project.slug,
+					sourceRepository,
+					targetRepository: mapping.targetRepository,
+					contentPath: receipt.contentPath,
+					previousTree,
+					targetTree,
+				}));
 			const recognizedTargetAdvance = receipt?.verified === true
 				&& receipt.contentPath === contentPath
 				&& await recognizedOrganizationMigrationAdvance(mapping.sourcePath, receipt.targetCommit, targetCommit);
@@ -275,9 +341,11 @@ export async function planSeedContentRepositoryHistory(input: { projectRoot: str
 				? { action: 'noop' as const, reason: 'The verified organization migration advanced the target to the current authoritative content tree.' }
 				: contentUnchanged
 				? { action: 'noop' as const, reason: 'Live source advanced without changing the authoritative content tree.' }
+				: verifiedRemoval
+				? { action: 'noop' as const, reason: 'The legacy software content path was removed after a verified Git, R2, and TreeDX cutover.' }
 				: classifyContentHistoryBranch({ sourceCommit: source?.commit ?? null, contentPath, targetCommit,
 					receipt: recognizedTargetAdvance ? { ...receipt, targetCommit } : receipt });
-			branches.push({ branch, sourceRef: source?.ref ?? branch, contentPath, sourceCommit: source?.commit ?? null, targetCommit, action: classification.action, reason: !source ? `Source branch ${branch} is missing.` : classification.reason });
+			branches.push({ branch, sourceRef: source?.ref ?? branch, contentPath, journalContentPath: verifiedRemoval ? receipt?.contentPath ?? null : contentPath, sourceCommit: source?.commit ?? null, targetCommit, action: classification.action, reason: !source ? `Source branch ${branch} is missing.` : classification.reason });
 		}
 		plans.push({ project: mapping.project.slug, sourcePath: mapping.sourcePath, sourceRepository, targetRepository: mapping.targetRepository, visibility: mapping.visibility, branches });
 	}
@@ -304,7 +372,7 @@ export async function applySeedContentRepositoryHistory(input: { projectRoot: st
 	};
 	for (const branch of plan.branches) {
 		if (branch.action === 'noop') {
-			record({ branch: branch.branch, sourceRef: branch.sourceRef, sourceCommit: branch.sourceCommit, contentPath: branch.contentPath, targetCommit: branch.targetCommit, verified: true });
+			record({ branch: branch.branch, sourceRef: branch.sourceRef, sourceCommit: branch.sourceCommit, contentPath: branch.journalContentPath, targetCommit: branch.targetCommit, verified: true });
 			continue;
 		}
 		if (branch.action === 'update' && branch.targetCommit) await fetchSourceCommit(plan.sourcePath, plan.targetRepository, branch.targetCommit, gitEnv);
