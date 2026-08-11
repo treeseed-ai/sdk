@@ -119,8 +119,8 @@ function desiredCliFiles(projectRoot: string, sdkRef: string) {
 
 async function matches(root: string, commit: string, files: ReturnType<typeof desiredFiles>) {
 	for (const file of files) {
-		const observed = await git(root, ['show', `${commit}:${file.path}`], { allowFailure: true });
-		if (observed.code !== 0 || observed.stdout !== file.content.trimEnd()) return false;
+		const observed = await git(root, ['show', `${commit}:${file.path}`], { allowFailure: true, preserveOutput: true });
+		if (observed.code !== 0 || observed.stdout !== file.content) return false;
 	}
 	return true;
 }
