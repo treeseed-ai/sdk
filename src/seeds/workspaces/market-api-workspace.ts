@@ -100,8 +100,9 @@ function gatewayTest() {
 }
 
 function profileTest() {
+	const sourceRoot = '../src';
 	return `import { describe, expect, it, vi } from 'vitest';
-import { createMarketGateway } from '../src/gateway.js';
+import { createMarketGateway } from '${sourceRoot}/gateway.js';
 
 const checks = { 'market-database': async () => true, 'admin-api': async () => true, 'internal-auth': async () => true, 'provider-bindings': async () => true };
 
