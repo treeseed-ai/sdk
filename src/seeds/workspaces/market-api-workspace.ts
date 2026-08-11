@@ -109,9 +109,10 @@ async function recoverGeneratedReceipt(projectRoot: string, repository: string, 
 		if (typeof manifest.sdkRef !== 'string' || !/^[a-f0-9]{40}$/u.test(manifest.sdkRef)) return null;
 		if (typeof manifest.adminApiRef !== 'string' || !/^[a-f0-9]{40}$/u.test(manifest.adminApiRef)) return null;
 		const expected = marketApiWorkspaceFiles(projectRoot, manifest.sdkRef, manifest.adminApiRef).files;
+		const legacySourceRoot = ['..', 'src'].join('/');
 		const historicalSourceExtension = ['.', 'ts'].join('');
 		const legacyExpected = expected.map(([path, content]) => [path, path === 'tests/gateway.test.ts'
-			? content.replace('../src/gateway.js', `../src/gateway${historicalSourceExtension}`).replace('../src/service-assertion.js', `../src/service-assertion${historicalSourceExtension}`)
+			? content.replace(`${legacySourceRoot}/gateway.js`, `${legacySourceRoot}/gateway${historicalSourceExtension}`).replace(`${legacySourceRoot}/service-assertion.js`, `${legacySourceRoot}/service-assertion${historicalSourceExtension}`)
 			: content] as [string, string]);
 		const observedPaths = (await git(temporary, ['ls-tree', '-r', '--name-only', commit])).stdout.split('\n').filter(Boolean).sort();
 		const expectedPaths = expected.map(([path]) => path).sort();
