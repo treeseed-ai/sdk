@@ -47,8 +47,10 @@ export function reconcileCloudflareUnit(input: ReconcileAdapterInput, diff: Reco
 		for (;;) {
 			try {
 				const reconciled = reconcileCloudflareTarget(input);
-				syncCloudflareSecretsForTarget(input);
-				syncPagesEnvironmentVariablesForTarget(input);
+				if (input.unit.unitType !== 'content-store') {
+					syncCloudflareSecretsForTarget(input);
+					syncPagesEnvironmentVariablesForTarget(input);
+				}
 				return reconciled;
 			} catch (error) {
 				if (attempt >= 2 || !isTransientCloudflareReconcileError(error)) {

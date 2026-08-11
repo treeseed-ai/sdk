@@ -2,7 +2,7 @@ export * from '../published-content/hmac-sha256-base64-url.ts';
 export * from '../published-content/published-content-manifest-schema-version.ts';
 export * from '../published-content/publication-contracts.ts';
 export * from '../published-content/r2-s3-publication-client.ts';
-export * from '../published-content/cloudflare-r2-rest-client.ts';
+export * from '../published-content/r2-api-token-publication-client.ts';
 export * from '../published-content/r2-publication-client.ts';
 export * from '../published-content/r2-publication-acceptance.ts';
 export * from '../published-content/reconcile-content-publication.ts';

@@ -39,11 +39,11 @@ export function observeCloudflareUnit(input: ReconcileAdapterInput): ObservedUni
 		case 'content-store': {
 			const liveBucket = buckets.find((entry) => entry?.name === state.content?.bucketName);
 			return {
-				exists: Boolean(liveBucket || state.content?.bucketName),
+				exists: Boolean(liveBucket),
 				status: liveBucket ? 'ready' : 'pending',
 				live: { ...(state.content ?? {}) },
 				locators: {
-					bucketName: liveBucket?.name ?? state.content?.bucketName ?? null,
+					bucketName: liveBucket?.name ?? null,
 				},
 				warnings: [],
 			};

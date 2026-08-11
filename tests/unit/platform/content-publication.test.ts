@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync,mkdirSync,writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -26,6 +27,7 @@ describe('content publication reconciliation', () => {
 			projectId: 'project-a',
 			sourceCommit: '0123456789012345678901234567890123456789',
 			observeSourceCommit: async () => '0123456789012345678901234567890123456789',
+			generatedAt: '2026-08-11T00:00:00.000Z',
 			ref: 'feature/content',
 			channel: 'preview',
 			validateOnly: true,
@@ -49,5 +51,23 @@ describe('content publication reconciliation', () => {
 			.rejects.toThrow('does not match');
 		await expect(reconcileContentPublication({ ...base, contentPath: '../outside', observeSourceCommit: async () => base.sourceCommit }))
 			.rejects.toThrow('inside projectRoot');
+	});
+
+	it('derives deterministic provenance from a clean Git commit and rejects dirty content', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'content-publication-git-'));
+		mkdirSync(join(root, 'src/content'), { recursive: true });
+		writeFileSync(join(root, 'src/content/example.md'), '# Exact\n');
+		execFileSync('git', ['init', '--quiet'], { cwd: root });
+		execFileSync('git', ['config', 'user.name', 'Content test'], { cwd: root });
+		execFileSync('git', ['config', 'user.email', 'content-test@treeseed.dev'], { cwd: root });
+		execFileSync('git', ['add', '.'], { cwd: root });
+		execFileSync('git', ['commit', '--quiet', '-m', 'content'], { cwd: root });
+		const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+		const input = { projectRoot: root, contentPath: 'src/content', teamId: 'team-a', projectId: 'project-a', sourceCommit, ref: 'staging', channel: 'staging' as const, validateOnly: true };
+		const first = await reconcileContentPublication(input);
+		const replay = await reconcileContentPublication(input);
+		expect(replay).toEqual(first);
+		writeFileSync(join(root, 'src/content/example.md'), '# Dirty\n');
+		await expect(reconcileContentPublication(input)).rejects.toThrow('exact clean content tree');
 	});
 });

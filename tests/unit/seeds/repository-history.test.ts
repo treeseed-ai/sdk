@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyContentHistoryBranch } from '../../../src/seeds/repositories/repository-history.ts';
+import { classifyContentHistoryBranch,contentTreesUnchanged,isRecognizedOrganizationMigrationMetadata } from '../../../src/seeds/repositories/repository-history.ts';
 
 describe('content repository history migration recovery', () => {
 	it('creates only when the source exists and the target is empty', () => {
@@ -12,5 +12,17 @@ describe('content repository history migration recovery', () => {
 		expect(classifyContentHistoryBranch({ sourceCommit: 'source', contentPath: 'docs/src/content', targetCommit: 'target', receipt })).toMatchObject({ action: 'noop' });
 		expect(classifyContentHistoryBranch({ sourceCommit: 'moved', contentPath: 'docs/src/content', targetCommit: 'target', receipt })).toMatchObject({ action: 'update' });
 		expect(classifyContentHistoryBranch({ sourceCommit: 'source', contentPath: 'docs/src/content', targetCommit: 'unexpected', receipt })).toMatchObject({ action: 'blocked' });
+	});
+
+	it('treats two absent content trees as unchanged', () => {
+		expect(contentTreesUnchanged(null, null)).toBe(true);
+		expect(contentTreesUnchanged('old', 'new')).toBe(false);
+		expect(contentTreesUnchanged('old', 'new', true)).toBe(true);
+	});
+
+	it('recognizes only the exact TreeSeed organization-migration identity', () => {
+		expect(isRecognizedOrganizationMigrationMetadata(['Migrate organization references to treeseed-ai', 'TreeSeed migration', 'operations@treeseed.dev'])).toBe(true);
+		expect(isRecognizedOrganizationMigrationMetadata(['Migrate organization references to treeseed-ai', 'Other author', 'operations@treeseed.dev'])).toBe(false);
+		expect(isRecognizedOrganizationMigrationMetadata(['Unrelated change', 'TreeSeed migration', 'operations@treeseed.dev'])).toBe(false);
 	});
 });

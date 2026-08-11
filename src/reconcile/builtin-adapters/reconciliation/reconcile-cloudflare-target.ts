@@ -10,12 +10,13 @@ export function reconcileCloudflareTarget(input: ReconcileAdapterInput, { planOn
 	const deployConfig = input.context.deployConfig;
 	const state = loadDeployState(input.context.tenantRoot, deployConfig, { target });
 	const env = buildCloudflareEnv(input);
-	const kvNamespaces = planOnly ? [] : listKvNamespaces(input.context.tenantRoot, env);
-	const d1Databases = planOnly ? [] : listD1Databases(input.context.tenantRoot, env);
-	const queues = planOnly ? [] : listQueues(input.context.tenantRoot, env);
+	const contentStoreOnly = input.unit.unitType === 'content-store';
+	const kvNamespaces = planOnly || contentStoreOnly ? [] : listKvNamespaces(input.context.tenantRoot, env);
+	const d1Databases = planOnly || contentStoreOnly ? [] : listD1Databases(input.context.tenantRoot, env);
+	const queues = planOnly || contentStoreOnly ? [] : listQueues(input.context.tenantRoot, env);
 	const buckets = planOnly ? [] : listR2Buckets(input.context.tenantRoot, env);
-	const pagesProjects = planOnly ? [] : listPagesProjects(input.context.tenantRoot, env);
-	const turnstileWidgets = planOnly ? [] : listTurnstileWidgets(input.context.tenantRoot, env);
+	const pagesProjects = planOnly || contentStoreOnly ? [] : listPagesProjects(input.context.tenantRoot, env);
+	const turnstileWidgets = planOnly || contentStoreOnly ? [] : listTurnstileWidgets(input.context.tenantRoot, env);
 	const runStep = <T>(label: string, fn: () => T): T => {
 		try {
 			return fn();
@@ -228,12 +229,14 @@ export function reconcileCloudflareTarget(input: ReconcileAdapterInput, { planOn
 		current.lastSyncedAt = nowIso();
 	};
 
-	runStep('kv-form-guard', () => ensureKv('FORM_GUARD_KV'));
-	runStep('d1', ensureD1);
 	runStep('r2', ensureR2Bucket);
-	runStep('pages', ensurePagesProject);
-	runStep('turnstile-widget', ensureTurnstileWidget);
-	runStep('web-cache', () => reconcileCloudflareWebCacheRules(input.context.tenantRoot, deployConfig, state, target, { planOnly, env }));
+	if (!contentStoreOnly) {
+		runStep('kv-form-guard', () => ensureKv('FORM_GUARD_KV'));
+		runStep('d1', ensureD1);
+		runStep('pages', ensurePagesProject);
+		runStep('turnstile-widget', ensureTurnstileWidget);
+		runStep('web-cache', () => reconcileCloudflareWebCacheRules(input.context.tenantRoot, deployConfig, state, target, { planOnly, env }));
+	}
 	state.readiness.configured = true;
 	state.readiness.provisioned = hasProvisionedCloudflareResources(state);
 	state.readiness.deployable = state.readiness.provisioned === true;

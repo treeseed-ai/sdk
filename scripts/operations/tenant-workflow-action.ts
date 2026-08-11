@@ -84,6 +84,12 @@ async function main() {
 			if (!value?.trim()) throw new Error(`${name} is required.`);
 			return value.trim();
 		};
+		const accountId = !validateOnly ? required(process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID, 'TREESEED_CLOUDFLARE_ACCOUNT_ID') : null;
+		const bucket = !validateOnly ? required(process.env.TREESEED_CONTENT_BUCKET_NAME, 'TREESEED_CONTENT_BUCKET_NAME') : null;
+		const r2 = validateOnly ? null
+			: process.env.TREESEED_R2_ACCESS_KEY_ID && process.env.TREESEED_R2_SECRET_ACCESS_KEY
+				? { accountId: accountId!, bucket: bucket!, accessKeyId: process.env.TREESEED_R2_ACCESS_KEY_ID, secretAccessKey: process.env.TREESEED_R2_SECRET_ACCESS_KEY }
+				: { authMode: 'api-token' as const, accountId: accountId!, bucket: bucket!, apiToken: required(process.env.TREESEED_CLOUDFLARE_API_TOKEN, 'TREESEED_CLOUDFLARE_API_TOKEN or R2 access-key pair') };
 		const result = await reconcileContentPublication({
 			projectRoot: tenantRoot,
 			contentPath: process.env.TREESEED_CONTENT_PATH ?? 'src/content',
@@ -93,12 +99,7 @@ async function main() {
 			ref: required(process.env.GITHUB_REF_NAME ?? process.env.TREESEED_SOURCE_REF, 'source ref'),
 			channel: options.previewId ? 'preview' : environment === 'prod' || environment === 'production' ? 'production' : 'staging',
 			validateOnly,
-			...(!validateOnly ? { r2: {
-				accountId: required(process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID, 'TREESEED_CLOUDFLARE_ACCOUNT_ID'),
-				bucket: required(process.env.TREESEED_CONTENT_BUCKET_NAME, 'TREESEED_CONTENT_BUCKET_NAME'),
-				accessKeyId: required(process.env.TREESEED_R2_ACCESS_KEY_ID, 'TREESEED_R2_ACCESS_KEY_ID'),
-				secretAccessKey: required(process.env.TREESEED_R2_SECRET_ACCESS_KEY, 'TREESEED_R2_SECRET_ACCESS_KEY'),
-			} } : {}),
+			...(r2 ? { r2 } : {}),
 		});
 		process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 		writeStatus('complete.');

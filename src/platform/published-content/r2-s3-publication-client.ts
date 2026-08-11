@@ -45,8 +45,26 @@ export class R2S3PublicationClient {
 	constructor(private readonly config: R2S3PublicationConfig, private readonly fetchImpl: typeof fetch = fetch) {}
 
 	private async request(method: string, key: string, body = '', headers?: Record<string, string>, query?: URLSearchParams) {
-		const signed = sign({ config: this.config, method, key, body, headers, query });
-		return this.fetchImpl(signed.url, { method, headers: signed.headers, body: method === 'GET' || method === 'HEAD' ? undefined : body });
+		for (let attempt = 0; attempt < 4; attempt += 1) {
+			const signed = sign({ config: this.config, method, key, body, headers, query });
+			try {
+				const response = await this.fetchImpl(signed.url, { method, headers: signed.headers, body: method === 'GET' || method === 'HEAD' ? undefined : body });
+				if (attempt < 3 && (response.status === 429 || response.status >= 500)) {
+					await response.body?.cancel();
+					await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+					continue;
+				}
+				return response;
+			} catch (error) {
+				if (attempt < 3) {
+					await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+					continue;
+				}
+				const cause = error instanceof Error && error.cause instanceof Error ? `: ${error.cause.message}` : '';
+				throw new Error(`R2 ${method} transport failed for ${key || '(bucket)'}${cause}`, { cause: error });
+			}
+		}
+		throw new Error(`R2 ${method} transport retry limit reached for ${key || '(bucket)'}.`);
 	}
 
 	async get(key: string) {
@@ -68,7 +86,11 @@ export class R2S3PublicationClient {
 		if (options.ifMatch) headers['if-match'] = options.ifMatch;
 		if (options.ifNoneMatch) headers['if-none-match'] = options.ifNoneMatch;
 		const response = await this.request('PUT', key, body, headers);
-		if (response.status === 412) throw new Error(`R2 conditional write conflict for ${key}.`);
+		if (response.status === 412) {
+			const readback = await this.get(key);
+			if (readback?.body === body) return;
+			throw new Error(`R2 conditional write conflict for ${key}.`);
+		}
 		if (!response.ok) throw new Error(`R2 write failed for ${key} (HTTP ${response.status}).`);
 	}
 

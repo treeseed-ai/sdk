@@ -58,6 +58,8 @@ type GitRunnerResult,
 type GitWorkspaceLockDiagnostics
 } from '../operations/services/operations/git-runner.ts';
 
+export { resolveMachineEnvironmentValues } from '../operations/services/config-runtime/support/resolve-entry-value-from-buckets.ts';
+
 export {
 discoverPackageAdapters,
 findPackageAdapter,

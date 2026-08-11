@@ -30,12 +30,12 @@ function channel(value: string): ContentPublicationChannel {
 async function main() {
 	const input = args(process.argv.slice(2));
 	const validateOnly = input['validate-only'] === true;
-	const r2 = !validateOnly ? {
-		accountId: required(process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID, 'TREESEED_CLOUDFLARE_ACCOUNT_ID'),
-		bucket: required(process.env.TREESEED_CONTENT_BUCKET_NAME, 'TREESEED_CONTENT_BUCKET_NAME'),
-		accessKeyId: required(process.env.TREESEED_R2_ACCESS_KEY_ID, 'TREESEED_R2_ACCESS_KEY_ID'),
-		secretAccessKey: required(process.env.TREESEED_R2_SECRET_ACCESS_KEY, 'TREESEED_R2_SECRET_ACCESS_KEY'),
-	} : undefined;
+	const accountId = !validateOnly ? required(process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID, 'TREESEED_CLOUDFLARE_ACCOUNT_ID') : null;
+	const bucket = !validateOnly ? required(process.env.TREESEED_CONTENT_BUCKET_NAME, 'TREESEED_CONTENT_BUCKET_NAME') : null;
+	const r2 = validateOnly ? undefined
+		: process.env.TREESEED_R2_ACCESS_KEY_ID && process.env.TREESEED_R2_SECRET_ACCESS_KEY
+			? { accountId: accountId!, bucket: bucket!, accessKeyId: process.env.TREESEED_R2_ACCESS_KEY_ID, secretAccessKey: process.env.TREESEED_R2_SECRET_ACCESS_KEY }
+			: { authMode: 'api-token' as const, accountId: accountId!, bucket: bucket!, apiToken: required(process.env.TREESEED_CLOUDFLARE_API_TOKEN, 'TREESEED_CLOUDFLARE_API_TOKEN or R2 access-key pair') };
 	if (input.acceptance === true) {
 		if (!r2) throw new Error('R2 credentials are required for acceptance.');
 		process.stdout.write(`${JSON.stringify(await runR2PublicationAcceptance({ teamId: required(input['team-id'] ?? process.env.TREESEED_TEAM_ID, 'team-id'), r2 }), null, 2)}\n`);

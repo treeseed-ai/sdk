@@ -113,6 +113,29 @@ export function classifyContentHistoryBranch(input: { sourceCommit: string | nul
 	return { action: 'create' as const, reason: input.contentPath ? `Extract ${input.contentPath} with history into src/content.` : 'Create the required content repository skeleton because this source ref has no content path.' };
 }
 
+export function isRecognizedOrganizationMigrationMetadata(metadata: string[]) {
+	return metadata[0] === 'Migrate organization references to treeseed-ai'
+		&& metadata[1] === 'TreeSeed migration'
+		&& metadata[2] === 'operations@treeseed.dev';
+}
+
+export function contentTreesUnchanged(previousTree: string | null, currentTree: string | null, forceSkeleton = false) {
+	return forceSkeleton || previousTree === currentTree;
+}
+
+async function recognizedOrganizationMigrationAdvance(sourcePath: string, previousTarget: string | undefined, targetCommit: string | null) {
+	if (!previousTarget || !targetCommit || previousTarget === targetCommit) return false;
+	const ancestor = await git(sourcePath, ['merge-base', '--is-ancestor', previousTarget, targetCommit], { allowFailure: true });
+	if (ancestor.code !== 0) return false;
+	const commits = (await git(sourcePath, ['rev-list', `${previousTarget}..${targetCommit}`])).stdout.split('\n').filter(Boolean);
+	if (!commits.length) return false;
+	for (const commit of commits) {
+		const metadata = (await git(sourcePath, ['show', '-s', '--format=%s%x00%an%x00%ae', commit])).stdout.split('\0');
+		if (!isRecognizedOrganizationMigrationMetadata(metadata)) return false;
+	}
+	return true;
+}
+
 function writeMigrationJournal(projectRoot: string, plan: ContentRepositoryHistoryPlan, receipts: Array<Record<string, unknown>>, status: 'partial' | 'history_verified') {
 	const path = journalPath(projectRoot, plan.targetRepository);
 	mkdirSync(dirname(path), { recursive: true });
@@ -174,18 +197,28 @@ export async function planSeedContentRepositoryHistory(input: { projectRoot: str
 			const contentPath = source && !mapping.forceSkeleton ? await contentPathAtRef(mapping.sourcePath, source.ref) : null;
 			const receipt = journal?.receipts?.find((entry) => entry.branch === branch);
 			if (receipt?.sourceCommit) await fetchSourceCommit(mapping.sourcePath, sourceRepository, receipt.sourceCommit, gitEnv);
+			if (receipt?.targetCommit) await fetchSourceCommit(mapping.sourcePath, mapping.targetRepository, receipt.targetCommit, gitEnv);
+			if (targetCommit) await fetchSourceCommit(mapping.sourcePath, mapping.targetRepository, targetCommit, gitEnv);
 			const previousTree = await contentTreeAtRef(mapping.sourcePath, receipt?.sourceCommit, receipt?.contentPath);
 			const currentTree = await contentTreeAtRef(mapping.sourcePath, source?.commit, contentPath);
+			const targetTree = await contentTreeAtRef(mapping.sourcePath, targetCommit ?? undefined, 'src/content');
+			const recognizedTargetAdvance = receipt?.verified === true
+				&& receipt.contentPath === contentPath
+				&& await recognizedOrganizationMigrationAdvance(mapping.sourcePath, receipt.targetCommit, targetCommit);
+			const targetMatchesCurrentContent = targetTree === currentTree;
 			const contentUnchanged = Boolean(
 				receipt?.verified
 				&& receipt.targetCommit === targetCommit
 				&& receipt.contentPath === contentPath
 				&& receipt.sourceCommit !== source?.commit
-				&& (mapping.forceSkeleton || (previousTree && previousTree === currentTree)),
+				&& contentTreesUnchanged(previousTree, currentTree, mapping.forceSkeleton),
 			);
-			const classification = contentUnchanged
+			const classification = recognizedTargetAdvance && targetMatchesCurrentContent
+				? { action: 'noop' as const, reason: 'The verified organization migration advanced the target to the current authoritative content tree.' }
+				: contentUnchanged
 				? { action: 'noop' as const, reason: 'Live source advanced without changing the authoritative content tree.' }
-				: classifyContentHistoryBranch({ sourceCommit: source?.commit ?? null, contentPath, targetCommit, receipt });
+				: classifyContentHistoryBranch({ sourceCommit: source?.commit ?? null, contentPath, targetCommit,
+					receipt: recognizedTargetAdvance ? { ...receipt, targetCommit } : receipt });
 			branches.push({ branch, sourceRef: source?.ref ?? branch, contentPath, sourceCommit: source?.commit ?? null, targetCommit, action: classification.action, reason: !source ? `Source branch ${branch} is missing.` : classification.reason });
 		}
 		plans.push({ project: mapping.project.slug, sourcePath: mapping.sourcePath, sourceRepository, targetRepository: mapping.targetRepository, visibility: mapping.visibility, branches });

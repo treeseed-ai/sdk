@@ -14,8 +14,10 @@ resolveTeamScopedContentLocator,
 signEditorialPreviewToken,
 verifyEditorialPreviewToken
 } from '../platform/packages/published-content.ts';
-export { CloudflareR2RestClient, type CloudflareR2RestConfig } from '../platform/published-content/cloudflare-r2-rest-client.ts';
+export { R2ApiTokenPublicationClient, type R2ApiTokenPublicationConfig } from '../platform/published-content/r2-api-token-publication-client.ts';
 export { createR2PublicationClient, type R2PublicationClient, type R2PublicationConfig } from '../platform/published-content/r2-publication-client.ts';
+export { reconcileContentPublication, type ReconcileContentPublicationInput } from '../platform/published-content/reconcile-content-publication.ts';
+export type { ContentPublicationChannel,ContentPublicationReceipt } from '../platform/published-content/publication-contracts.ts';
 
 export {
 createFilesystemContentSource,

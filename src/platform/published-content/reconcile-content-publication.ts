@@ -1,8 +1,7 @@
 import { createHash } from 'node:crypto';
-import { execFile } from 'node:child_process';
 import { readdir,readFile } from 'node:fs/promises';
 import { relative,resolve } from 'node:path';
-import { promisify } from 'node:util';
+import { runRepositoryGit } from '../../operations/services/operations/git-runner.ts';
 import type { ArtifactRef } from '../../treedx/types.ts';
 import { ARTIFACT_REF_CONTRACT } from '../../treedx/types.ts';
 import { CONTENT_PUBLICATION_CONTRACT,publicationKeys,type ContentPublicationChannel,type ContentPublicationManifest,type ContentPublicationReceipt } from './publication-contracts.ts';
@@ -21,15 +20,35 @@ export interface ReconcileContentPublicationInput {
 	r2?: R2PublicationConfig;
 	fetchImpl?: typeof fetch;
 	observeSourceCommit?: (projectRoot: string) => Promise<string>;
+	observeSourceGeneratedAt?: (projectRoot: string, sourceCommit: string) => Promise<string>;
 }
 
 const digest = (value: string | Uint8Array) => createHash('sha256').update(value).digest('hex');
-const execFileAsync = promisify(execFile);
 const mediaType = (path: string) => path.endsWith('.mdx') ? 'text/mdx; charset=utf-8' : path.endsWith('.md') ? 'text/markdown; charset=utf-8' : 'text/plain; charset=utf-8';
+
+async function forEachConcurrent<T>(values: T[], concurrency: number, operation: (value: T, index: number) => Promise<void>) {
+	let next = 0;
+	const worker = async () => {
+		for (;;) {
+			const index = next;
+			next += 1;
+			if (index >= values.length) return;
+			await operation(values[index]!, index);
+		}
+	};
+	await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, worker));
+}
 
 async function filesUnder(root: string): Promise<string[]> {
 	const result: string[] = [];
-	for (const entry of await readdir(root, { withFileTypes: true })) {
+	let entries;
+	try {
+		entries = await readdir(root, { withFileTypes: true });
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+		throw error;
+	}
+	for (const entry of entries) {
 		const path = resolve(root, entry.name);
 		if (entry.isDirectory()) result.push(...await filesUnder(path));
 		else if (entry.isFile()) result.push(path);
@@ -49,12 +68,15 @@ export async function reconcileContentPublication(input: ReconcileContentPublica
 	if (!contentRelative || contentRelative === '..' || contentRelative.startsWith('../') || contentRelative.startsWith('..\\')) {
 		throw new Error('contentPath must identify a directory inside projectRoot.');
 	}
-	const observeSourceCommit = input.observeSourceCommit ?? (async (cwd: string) => {
-		const result = await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' });
-		return result.stdout.trim();
-	});
+	const observeSourceCommit = input.observeSourceCommit ?? (async (cwd: string) => runRepositoryGit(
+		['rev-parse', 'HEAD'], { cwd, mode: 'read' },
+	).stdout.trim());
 	if (await observeSourceCommit(projectRoot) !== input.sourceCommit) {
 		throw new Error('sourceCommit does not match the fetched project checkout HEAD.');
+	}
+	if (!input.observeSourceCommit) {
+		const dirty = runRepositoryGit(['status', '--porcelain=v1', '--', contentRelative], { cwd: projectRoot, mode: 'read' }).stdout.trim();
+		if (dirty) throw new Error('Content publication requires the exact clean content tree from sourceCommit.');
 	}
 	const sourceFiles = await filesUnder(root);
 	const values = await Promise.all(sourceFiles.map(async (file) => {
@@ -68,7 +90,12 @@ export async function reconcileContentPublication(input: ReconcileContentPublica
 	const revision = digest(JSON.stringify({ ...provisional, objects: values.map(({ path, sha256 }) => ({ path, sha256 })) }));
 	const keys = publicationKeys({ ...provisional, revision });
 	const objects = values.map((value) => ({ path: value.path, objectKey: `${keys.objectRoot}/${value.sha256}`, sha256: value.sha256, byteLength: value.byteLength, mediaType: value.mediaType }));
-	const manifest: ContentPublicationManifest = { contract: CONTENT_PUBLICATION_CONTRACT, ...provisional, revision, generatedAt: input.generatedAt ?? new Date().toISOString(), objects };
+	const observeGeneratedAt = input.observeSourceGeneratedAt ?? (async (cwd: string, commit: string) => runRepositoryGit(
+		['show', '-s', '--format=%cI', commit], { cwd, mode: 'read' },
+	).stdout.trim());
+	const generatedAt = input.generatedAt ?? await observeGeneratedAt(projectRoot, input.sourceCommit);
+	if (!generatedAt) throw new Error('The exact source commit timestamp is required for deterministic publication replay.');
+	const manifest: ContentPublicationManifest = { contract: CONTENT_PUBLICATION_CONTRACT, ...provisional, revision, generatedAt, objects };
 	const body = `${JSON.stringify(manifest, null, 2)}\n`;
 	const artifacts: ArtifactRef[] = objects.map((object) => ({ contract: ARTIFACT_REF_CONTRACT, kind: 'r2-object', objectKey: object.objectKey, path: object.path, commitSha: input.sourceCommit, sha256: object.sha256, byteLength: object.byteLength, mediaType: object.mediaType, visibility: input.channel === 'production' ? 'public' : 'team', provenance: { projectId: input.projectId, sourceCommit: input.sourceCommit } }));
 	if (input.validateOnly) return { contract: CONTENT_PUBLICATION_CONTRACT, teamId: input.teamId, projectId: input.projectId, sourceCommit: input.sourceCommit, channel: input.channel, revision, manifestKey: keys.manifestKey, pointerKey: keys.pointerKey, uploadedObjectCount: 0, reusedObjectCount: objects.length, artifacts, verified: true };
@@ -76,23 +103,24 @@ export async function reconcileContentPublication(input: ReconcileContentPublica
 
 	const client = createR2PublicationClient(input.r2, input.fetchImpl);
 	let uploadedObjectCount = 0;
-	for (let index = 0; index < objects.length; index += 1) {
-		const object = objects[index]!;
-		if (await client.exists(object.objectKey)) continue;
+	await forEachConcurrent(objects, 8, async (object, index) => {
+		if (await client.exists(object.objectKey)) return;
 		await client.put(object.objectKey, values[index]!.bytes.toString('utf8'), { contentType: object.mediaType, ifNoneMatch: '*' });
 		uploadedObjectCount += 1;
-	}
-	for (const object of objects) {
+	});
+	await forEachConcurrent(objects, 8, async (object) => {
 		const readback = await client.get(object.objectKey);
 		if (!readback || digest(readback.body) !== object.sha256 || Buffer.byteLength(readback.body, 'utf8') !== object.byteLength) {
 			throw new Error(`R2 content object read-back verification failed for ${object.path}.`);
 		}
-	}
+	});
 	const existingManifest = await client.get(keys.manifestKey);
 	if (existingManifest && existingManifest.body !== body) throw new Error('Immutable publication manifest digest collision.');
 	if (!existingManifest) await client.put(keys.manifestKey, body, { contentType: 'application/json; charset=utf-8', ifNoneMatch: '*' });
 	const prior = await client.get(keys.pointerKey);
-	await client.put(keys.pointerKey, body, { contentType: 'application/json; charset=utf-8', ...(prior?.etag ? { ifMatch: prior.etag } : { ifNoneMatch: '*' as const }) });
+	if (prior?.body !== body) {
+		await client.put(keys.pointerKey, body, { contentType: 'application/json; charset=utf-8', ...(prior?.etag ? { ifMatch: prior.etag } : { ifNoneMatch: '*' as const }) });
+	}
 	const [manifestReadback, pointerReadback] = await Promise.all([client.get(keys.manifestKey), client.get(keys.pointerKey)]);
 	if (manifestReadback?.body !== body || pointerReadback?.body !== body) throw new Error('R2 publication read-back verification failed.');
 	return { contract: CONTENT_PUBLICATION_CONTRACT, teamId: input.teamId, projectId: input.projectId, sourceCommit: input.sourceCommit, channel: input.channel, revision, manifestKey: keys.manifestKey, pointerKey: keys.pointerKey, uploadedObjectCount, reusedObjectCount: objects.length - uploadedObjectCount, artifacts, verified: true };
