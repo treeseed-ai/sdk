@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { credentialEnvironment, git, migrationCredential, remoteHead } from '../repositories/repository-history.js';
 import type { SeedManifest } from '../types.js';
+import { managedWorkspaceMatches, managedWorkspacePaths, missingApplicationBootstrapFiles, staleManagedWorkspacePaths } from './managed-workspace-overlay.js';
 
 type BranchPlan = { branch: 'main' | 'staging'; targetCommit: string | null; action: 'create' | 'update' | 'noop' | 'blocked'; reason: string };
 type Receipt = { branch: string; targetCommit: string; sdkRef: string; adminApiRef: string; workspaceDigest?: string; verified: boolean };
@@ -40,7 +41,10 @@ function packageJson(sdkRef: string) {
 	return `${JSON.stringify({
 		name: '@treeseed/market-api', version: '0.1.0', private: true, license: 'UNLICENSED', type: 'module', engines: { node: '>=22' },
 		scripts: { build: 'tsc -p tsconfig.json', test: 'vitest run tests/gateway.test.ts tests/descriptor.test.ts', verify: 'npm run build && npm test', start: 'node dist/server.js' },
-		dependencies: { '@treeseed/sdk': `git+https://github.com/treeseed-ai/sdk.git#${sdkRef}` },
+		dependencies: {
+			'@octokit/auth-app': '^8.2.0', '@treeseed/sdk': `git+https://github.com/treeseed-ai/sdk.git#${sdkRef}`,
+			'drizzle-orm': '^0.45.2', hono: '^4.8.2', 'libsodium-wrappers': '0.7.15', 'libsodium-wrappers-sumo': '0.7.15', octokit: '^5.0.5', pg: '^8.21.0', stripe: '^22.3.0', yaml: '^2.8.1',
+		},
 		devDependencies: { '@types/node': '^24.6.0', typescript: '^5.9.3', vitest: '^4.1.2' },
 	}, null, 2)}\n`;
 }
@@ -54,7 +58,11 @@ function assertionSource() {
 }
 
 function serverSource() {
-	return `import { createServer } from 'node:http';\nimport { Readable } from 'node:stream';\nimport { createMarketGateway } from './gateway.js';\nimport { createAudienceBoundAssertion } from './service-assertion.js';\n\nconst adminBaseUrl = process.env.TREESEED_ADMIN_API_INTERNAL_URL ?? '';\nif (!adminBaseUrl) throw new Error('TREESEED_ADMIN_API_INTERNAL_URL is required.');\nconst assertionSecret = process.env.TREESEED_MARKET_SERVICE_ASSERTION_SECRET ?? '';\nconst checkUrl = async (url: string) => { try { return (await fetch(url, { signal: AbortSignal.timeout(3000) })).ok; } catch { return false; } };\nconst gateway = createMarketGateway({\n\tadminBaseUrl,\n\tserviceAssertion: createAudienceBoundAssertion(assertionSecret, adminBaseUrl),\n\tchecks: {\n\t\t'market-database': async () => Boolean(process.env.TREESEED_MARKET_DATABASE_URL),\n\t\t'admin-api': async () => checkUrl(\`\${adminBaseUrl.replace(/\\/$/u, '')}/healthz\`),\n\t\t'internal-auth': async () => Boolean(assertionSecret),\n\t\t'provider-bindings': async () => process.env.TREESEED_PROVIDER_BINDINGS_READY === 'true',\n\t},\n});\n\nconst server = createServer(async (incoming, outgoing) => {\n\tconst origin = \`http://\${incoming.headers.host ?? '127.0.0.1'}\`;\n\tconst body = incoming.method === 'GET' || incoming.method === 'HEAD' ? undefined : Readable.toWeb(incoming) as ReadableStream<Uint8Array>;\n\tconst response = await gateway(new Request(new URL(incoming.url ?? '/', origin), { method: incoming.method, headers: incoming.headers as HeadersInit, body, duplex: body ? 'half' : undefined } as RequestInit & { duplex?: 'half' }));\n\toutgoing.statusCode = response.status;\n\tfor (const [name, value] of response.headers) outgoing.setHeader(name, value);\n\tif (!response.body) return outgoing.end();\n\tReadable.fromWeb(response.body as never).pipe(outgoing);\n});\nserver.listen(Number(process.env.PORT ?? 3000));\n`;
+	return `import { createServer } from 'node:http';\nimport { Readable } from 'node:stream';\nimport { createMarketGateway, type MarketHandler } from './gateway.js';\nimport { createAudienceBoundAssertion } from './service-assertion.js';\n\nconst adminBaseUrl = process.env.TREESEED_ADMIN_API_INTERNAL_URL ?? '';\nif (!adminBaseUrl) throw new Error('TREESEED_ADMIN_API_INTERNAL_URL is required.');\nconst assertionSecret = process.env.TREESEED_MARKET_SERVICE_ASSERTION_SECRET ?? '';\nconst checkUrl = async (url: string) => { try { return (await fetch(url, { signal: AbortSignal.timeout(3000) })).ok; } catch { return false; } };\nconst applicationModulePath = './market/app.js';\nconst application = await import(applicationModulePath) as { createMarketHandler: () => MarketHandler };\nconst gateway = createMarketGateway({\n\tadminBaseUrl,\n\tmarketHandler: application.createMarketHandler(),\n\tserviceAssertion: createAudienceBoundAssertion(assertionSecret, adminBaseUrl),\n\tchecks: {\n\t\t'market-database': async () => Boolean(process.env.TREESEED_MARKET_DATABASE_URL),\n\t\t'admin-api': async () => checkUrl(\`\${adminBaseUrl.replace(/\\/$/u, '')}/healthz\`),\n\t\t'internal-auth': async () => Boolean(assertionSecret),\n\t\t'provider-bindings': async () => process.env.TREESEED_PROVIDER_BINDINGS_READY === 'true',\n\t},\n});\n\nconst server = createServer(async (incoming, outgoing) => {\n\tconst origin = \`http://\${incoming.headers.host ?? '127.0.0.1'}\`;\n\tconst body = incoming.method === 'GET' || incoming.method === 'HEAD' ? undefined : Readable.toWeb(incoming) as ReadableStream<Uint8Array>;\n\tconst response = await gateway(new Request(new URL(incoming.url ?? '/', origin), { method: incoming.method, headers: incoming.headers as HeadersInit, body, duplex: body ? 'half' : undefined } as RequestInit & { duplex?: 'half' }));\n\toutgoing.statusCode = response.status;\n\tfor (const [name, value] of response.headers) outgoing.setHeader(name, value);\n\tif (!response.body) return outgoing.end();\n\tReadable.fromWeb(response.body as never).pipe(outgoing);\n});\nserver.listen(Number(process.env.PORT ?? 3000));\n`;
+}
+
+function marketApplicationBootstrap() {
+	return `import type { MarketHandler } from '../gateway.js';\n\nexport function createMarketHandler(): MarketHandler {\n\treturn async () => Response.json({ error: 'market-route-not-implemented' }, { status: 501 });\n}\n`;
 }
 
 function gatewayTest() {
@@ -70,18 +78,34 @@ function workflow() {
 	return `name: Verify\n\non:\n  pull_request:\n  push:\n    branches: [main, staging]\n  workflow_dispatch:\n\npermissions:\n  contents: read\n\nconcurrency:\n  group: verify-\${{ github.repository }}-\${{ github.ref }}\n  cancel-in-progress: true\n\njobs:\n  verify:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 24\n      - run: npm install\n      - run: npm run verify\n`;
 }
 
+const managedPaths = [
+	'.github/workflows/verify.yml',
+	'LICENSE',
+	'README.md',
+	'artifacts/admin-api-descriptor.json',
+	'package.json',
+	'singleton.manifest.json',
+	'src/gateway.ts',
+	'src/server.ts',
+	'src/service-assertion.ts',
+	'tests/descriptor.test.ts',
+	'tests/gateway.test.ts',
+	'tsconfig.json',
+].sort();
+
 export function marketApiWorkspaceFiles(projectRoot: string, sdkRef: string, adminApiRef: string) {
 	const descriptor = JSON.parse(readFileSync(resolve(projectRoot, 'packages/api/dist/admin-api-descriptor.json'), 'utf8')) as { digest: string; sourceRef: string | null; routes: Array<{ method: string; path: string }> };
 	descriptor.sourceRef = adminApiRef;
 	const descriptorContent = `${JSON.stringify(descriptor, null, 2)}\n`;
 	return {
 		descriptorDigest: descriptor.digest,
+		bootstrapFiles: [['src/market/app.ts', marketApplicationBootstrap()]] as Array<[string, string]>,
 		files: [
 			['package.json', packageJson(sdkRef)], ['tsconfig.json', `${JSON.stringify({ compilerOptions: { target: 'ES2023', module: 'NodeNext', moduleResolution: 'NodeNext', resolveJsonModule: true, outDir: 'dist', rootDir: '.', strict: true, skipLibCheck: true, lib: ['ES2023', 'DOM', 'DOM.Iterable'] }, include: ['src/**/*.ts', 'tests/**/*.ts'] }, null, 2)}\n`],
 			['LICENSE', 'UNLICENSED\n\nCopyright (c) TreeSeed. All rights reserved. No license is granted.\n'], ['README.md', '# TreeSeed Market API\n\nPrivate singleton Market implementation and hosted Admin API gateway for `api.treeseed.dev`. This repository is never provisioned by Platform. Hosted deployment remains suspended.\n'],
 			['src/gateway.ts', gatewaySource(descriptor.digest)], ['src/service-assertion.ts', assertionSource()], ['src/server.ts', serverSource()],
 			['tests/gateway.test.ts', gatewayTest()], ['tests/descriptor.test.ts', descriptorTest()], ['artifacts/admin-api-descriptor.json', descriptorContent],
-			['singleton.manifest.json', `${JSON.stringify({ schemaVersion: 1, authority: 'market-singleton', sdkRef, adminApiRef, adminDescriptorDigest: descriptor.digest, deployment: 'suspended' }, null, 2)}\n`],
+			['singleton.manifest.json', `${JSON.stringify({ schemaVersion: 2, authority: 'market-singleton', sdkRef, adminApiRef, adminDescriptorDigest: descriptor.digest, deployment: 'suspended', managedPaths }, null, 2)}\n`],
 			['.github/workflows/verify.yml', workflow()],
 		] as Array<[string, string]>,
 	};
@@ -104,7 +128,7 @@ async function recoverGeneratedReceipt(projectRoot: string, repository: string, 
 		await git(temporary, ['fetch', '--quiet', '--no-tags', `https://github.com/${repository}.git`, commit], { env: gitEnv });
 		const manifestResult = await git(temporary, ['show', `${commit}:singleton.manifest.json`], { allowFailure: true });
 		if (manifestResult.code !== 0) return null;
-		const manifest = JSON.parse(manifestResult.stdout) as { authority?: unknown; sdkRef?: unknown; adminApiRef?: unknown; deployment?: unknown };
+		const manifest = JSON.parse(manifestResult.stdout) as { authority?: unknown; sdkRef?: unknown; adminApiRef?: unknown; deployment?: unknown; managedPaths?: unknown };
 		if (manifest.authority !== 'market-singleton' || manifest.deployment !== 'suspended') return null;
 		if (typeof manifest.sdkRef !== 'string' || !/^[a-f0-9]{40}$/u.test(manifest.sdkRef)) return null;
 		if (typeof manifest.adminApiRef !== 'string' || !/^[a-f0-9]{40}$/u.test(manifest.adminApiRef)) return null;
@@ -115,15 +139,21 @@ async function recoverGeneratedReceipt(projectRoot: string, repository: string, 
 			? content.replace(`${legacySourceRoot}/gateway.js`, `${legacySourceRoot}/gateway${historicalSourceExtension}`).replace(`${legacySourceRoot}/service-assertion.js`, `${legacySourceRoot}/service-assertion${historicalSourceExtension}`)
 			: content] as [string, string]);
 		const observedPaths = (await git(temporary, ['ls-tree', '-r', '--name-only', commit])).stdout.split('\n').filter(Boolean).sort();
-		const expectedPaths = expected.map(([path]) => path).sort();
-		if (observedPaths.length !== expectedPaths.length || observedPaths.some((path, index) => path !== expectedPaths[index])) return null;
 		const observedFiles = new Map<string, string>();
-		for (const path of observedPaths) {
+		for (const path of managedWorkspacePaths(expected)) {
 			const observed = await git(temporary, ['show', `${commit}:${path}`], { allowFailure: true });
 			if (observed.code !== 0) return null;
 			observedFiles.set(path, observed.stdout);
 		}
-		const matched = [expected, legacyExpected].find((candidate) => candidate.every(([path, content]) => observedFiles.get(path) === content.trimEnd()));
+		const declaredManagedPaths = Array.isArray(manifest.managedPaths) && manifest.managedPaths.every((path) => typeof path === 'string')
+			? manifest.managedPaths as string[]
+			: null;
+		const matched = [expected, legacyExpected].find((candidate) => managedWorkspaceMatches({
+			expected: candidate,
+			observed: observedFiles,
+			declaredManagedPaths,
+			legacyObservedPaths: observedPaths,
+		}));
 		if (!matched) return null;
 		return { branch, targetCommit: commit, sdkRef: manifest.sdkRef, adminApiRef: manifest.adminApiRef, workspaceDigest: workspaceFilesDigest(matched), verified: true };
 	} finally {
@@ -162,8 +192,28 @@ async function buildCommit(projectRoot: string, branch: string, plan: MarketApiW
 	try {
 		await git(temporary, ['init', '--quiet']);
 		if (parent) await git(temporary, ['fetch', '--quiet', '--no-tags', `https://github.com/${plan.repository}.git`, parent], { env: gitEnv });
-		await git(temporary, ['read-tree', '--empty'], { env: indexEnv });
-		for (const [path, content] of marketApiWorkspaceFiles(projectRoot, plan.sdkRef, plan.adminApiRef).files) {
+		await git(temporary, ['read-tree', ...(parent ? [parent] : ['--empty'])], { env: indexEnv });
+		const desiredWorkspace = marketApiWorkspaceFiles(projectRoot, plan.sdkRef, plan.adminApiRef);
+		const desiredFiles = desiredWorkspace.files;
+		const existingPaths = parent ? (await git(temporary, ['ls-tree', '-r', '--name-only', parent])).stdout.split('\n').filter(Boolean) : [];
+		let previousManagedPaths: string[] = [];
+		if (parent) {
+			const previousManifest = await git(temporary, ['show', `${parent}:singleton.manifest.json`], { allowFailure: true });
+			if (previousManifest.code === 0) {
+				try {
+					const parsed = JSON.parse(previousManifest.stdout) as { managedPaths?: unknown };
+					if (Array.isArray(parsed.managedPaths) && parsed.managedPaths.every((path) => typeof path === 'string')) previousManagedPaths = parsed.managedPaths as string[];
+				} catch { /* A malformed managed manifest is rejected during planning. */ }
+			}
+		}
+		for (const path of staleManagedWorkspacePaths(previousManagedPaths, managedWorkspacePaths(desiredFiles))) {
+			await git(temporary, ['update-index', '--force-remove', path], { env: indexEnv });
+		}
+		for (const [path, content] of desiredFiles) {
+			const blob = (await git(temporary, ['hash-object', '-w', '--stdin'], { input: content })).stdout;
+			await git(temporary, ['update-index', '--add', '--cacheinfo', '100644', blob, path], { env: indexEnv });
+		}
+		for (const [path, content] of missingApplicationBootstrapFiles(existingPaths, desiredWorkspace.bootstrapFiles)) {
 			const blob = (await git(temporary, ['hash-object', '-w', '--stdin'], { input: content })).stdout;
 			await git(temporary, ['update-index', '--add', '--cacheinfo', '100644', blob, path], { env: indexEnv });
 		}
