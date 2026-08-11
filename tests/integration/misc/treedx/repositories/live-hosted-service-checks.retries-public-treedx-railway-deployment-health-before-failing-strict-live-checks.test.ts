@@ -121,7 +121,7 @@ services:
 				] },
 			};
 			if (query.includes('TreeseedRailwayAuthProfile')) {
-				return Response.json({ data: { me: { id: 'user-1', name: 'Test', email: 'test@example.com', workspaces: [{ id: 'workspace-1', name: 'knowledge-coop' }] } } });
+				return Response.json({ data: { me: { id: 'user-1', name: 'Test', email: 'test@example.com', workspaces: [{ id: 'workspace-1', name: 'treeseed-ai' }] } } });
 			}
 			if (query.includes('TreeseedRailwayProjects')) {
 				return Response.json({ data: { projects: { edges: [{ node: project }] } } });
@@ -173,7 +173,7 @@ services:
 			requireLiveRailway: true,
 			requireLiveHttp: false,
 			retry: { attempts: 2, intervalMs: 1 },
-			env: { TREESEED_RAILWAY_API_TOKEN: 'test-token', TREESEED_RAILWAY_WORKSPACE: 'knowledge-coop' },
+			env: { TREESEED_RAILWAY_API_TOKEN: 'test-token', TREESEED_RAILWAY_WORKSPACE: 'treeseed-ai' },
 			fetchImpl,
 		});
 

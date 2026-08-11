@@ -244,7 +244,7 @@ export function sanitizeRemoteRailwayServiceUrls(
 	if (isLoopbackServiceUrl(values.TREESEED_API_BASE_URL)) {
 		values.TREESEED_API_BASE_URL = apiBaseUrl;
 	}
-	for (const key of ['TREESEED_CENTRAL_MARKET_API_BASE_URL', 'TREESEED_CATALOG_MARKET_API_BASE_URLS'] as const) {
+	for (const key of ['TREESEED_MARKET_API_BASE_URL', 'TREESEED_CATALOG_MARKET_API_BASE_URLS'] as const) {
 		if (isLoopbackServiceUrl(values[key])) {
 			values[key] = apiBaseUrl;
 		}

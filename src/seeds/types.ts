@@ -51,6 +51,7 @@ export type SeedRepositoryPolicy = {
 	stagingBranch: 'staging';
 	issues: boolean;
 	actions: boolean;
+	workflows?: string[];
 };
 
 export type SeedProjectArchitecture = {
@@ -82,6 +83,7 @@ export type SeedManifestResources = {
 	teamMemberships: SeedTeamMembershipResource[];
 	projects: SeedProjectResource[];
 	hubRepositories: SeedHubRepositoryResource[];
+	supportRepositories: SeedSupportRepositoryResource[];
 	products: SeedProductResource[];
 	catalogArtifacts: SeedCatalogArtifactResource[];
 };
@@ -162,6 +164,17 @@ export type SeedHubRepositoryResource = SeedResourceBase & {
 	accessPolicy?: Record<string, unknown>;
 	releasePolicy?: Record<string, unknown>;
 	publishPolicy?: Record<string, unknown>;
+	metadata?: Record<string, unknown>;
+	repositoryPolicy?: SeedRepositoryPolicy;
+};
+
+export type SeedSupportRepositoryResource = SeedResourceBase & {
+	provider: string;
+	owner: string;
+	name: string;
+	gitUrl: string;
+	defaultBranch?: string;
+	description?: string;
 	metadata?: Record<string, unknown>;
 	repositoryPolicy?: SeedRepositoryPolicy;
 };

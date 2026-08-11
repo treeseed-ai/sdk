@@ -1,4 +1,5 @@
 import { runRepositoryGit } from '../../operations/services/operations/git-runner.ts';
+import { resolveMachineEnvironmentValues } from '../../operations/services/configuration/config-runtime.ts';
 import { configuredLiveAcceptanceValue,type LiveAcceptanceEnv } from '../support/acceptance/live-acceptance-values.ts';
 
 export function parseGitHubRepository(value: string) {
@@ -16,6 +17,13 @@ export function parseGitHubRepository(value: string) {
 export function resolveCurrentGitHubRepository(cwd: string, env: LiveAcceptanceEnv) {
 	const configured = configuredLiveAcceptanceValue(env, ['TREESEED_REPOSITORY', 'GITHUB_REPOSITORY']);
 	if (configured) return parseGitHubRepository(configured);
+	const values = {
+		...resolveMachineEnvironmentValues(cwd, 'local'),
+		...resolveMachineEnvironmentValues(cwd, 'staging'),
+	};
+	const owner = configuredLiveAcceptanceValue({ ...values, ...env }, ['TREESEED_GITHUB_OWNER']);
+	const name = configuredLiveAcceptanceValue({ ...values, ...env }, ['TREESEED_GITHUB_REPOSITORY_NAME']);
+	if (owner && name) return parseGitHubRepository(`${owner}/${name}`);
 	const remote = runRepositoryGit(['config', '--get', 'remote.origin.url'], { cwd, mode: 'read' }).stdout.trim();
 	return parseGitHubRepository(remote);
 }

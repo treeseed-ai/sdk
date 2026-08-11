@@ -60,7 +60,7 @@ export * from '../configuration/service-credentials.ts';
 
 export {
 API_BASE_URL_ENV,CATALOG_MARKET_API_BASE_URLS_ENV,
-CENTRAL_MARKET_API_BASE_URL_ENV,DEFAULT_MARKET_BASE_URL,MarketClient,
+MARKET_API_BASE_URL_ENV,DEFAULT_MARKET_BASE_URL,MarketClient,
 MarketClientError,addMarketProfile,
 clearMarketSession,
 listIntegratedMarketCatalog,

@@ -71,7 +71,6 @@ function localWebEnvironment(apiPort: number, webPort: number) {
 	const apiBaseUrl = `http://127.0.0.1:${apiPort}`;
 	return {
 		TREESEED_MARKET_API_BASE_URL: apiBaseUrl,
-		TREESEED_CENTRAL_MARKET_API_BASE_URL: apiBaseUrl,
 		TREESEED_API_BASE_URL: apiBaseUrl,
 		TREESEED_SITE_URL: `http://127.0.0.1:${webPort}`,
 		TREESEED_CAPACITY_ACCEPTANCE_API_URL: apiBaseUrl,

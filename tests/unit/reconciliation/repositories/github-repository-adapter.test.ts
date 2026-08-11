@@ -32,6 +32,7 @@ const matching = {
 	hasProjects: false,
 	hasWiki: false,
 	actionsEnabled: true,
+	defaultBranch: 'main',
 	archived: false,
 };
 
@@ -52,15 +53,19 @@ describe('GitHub repository reconciliation', () => {
 
 	it('detects description, visibility, feature, and archive drift', () => {
 		const adapter = buildGitHubRepositoryAdapter();
-		for (const drift of [
-			{ description: 'Wrong description.' },
-			{ visibility: 'private' },
-			{ hasIssues: false },
-			{ actionsEnabled: false },
-			{ archived: true },
-		]) {
+		const drifts: Array<[string, Record<string, unknown>]> = [
+			['description', { description: 'Wrong description.' }],
+			['visibility', { visibility: 'private' }],
+			['hasIssues', { hasIssues: false }],
+			['actionsEnabled', { actionsEnabled: false }],
+			['defaultBranch', { defaultBranch: 'staging' }],
+			['archived', { archived: true }],
+		];
+		for (const [field, drift] of drifts) {
 			const input = { unit, observed: observed({ ...matching, ...drift }) } as never;
-			expect(adapter.diff(input).action, JSON.stringify(drift)).toBe('update');
+			const diff = adapter.diff(input);
+			expect(diff.action, JSON.stringify(drift)).toBe('update');
+			expect(diff.reasons[0], JSON.stringify(drift)).toContain(`field ${field} drifted`);
 			expect(adapter.verify(input).verified, JSON.stringify(drift)).toBe(false);
 		}
 	});

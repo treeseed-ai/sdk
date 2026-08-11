@@ -383,12 +383,34 @@ export interface ApiConnectionConfig {
 	}>>;
 }
 
+export type PlatformAuthorityKind = 'customer-platform' | 'market-singleton';
+export type ControlPlaneMode = 'market-passthrough' | 'external' | 'managed';
+
+export interface PlatformAuthorityConfig {
+	kind: PlatformAuthorityKind;
+}
+
+export interface MarketProfileConfig {
+	profile: 'treeseed';
+	kind: 'singleton_external';
+	baseUrl: 'https://api.treeseed.dev';
+	provisioningAuthority: 'forbidden';
+}
+
+export interface ControlPlaneConfig {
+	mode: ControlPlaneMode;
+	baseUrl?: string;
+}
+
 export interface DeployConfig {
 	name: string;
 	slug: string;
 	siteUrl: string;
 	contactEmail: string;
 	projectRoot?: string;
+	authority: PlatformAuthorityConfig;
+	market: MarketProfileConfig;
+	controlPlane: ControlPlaneConfig;
 	hosting?: HostingConfig;
 	hub: HubConfig;
 	runtime: RuntimeConfig;

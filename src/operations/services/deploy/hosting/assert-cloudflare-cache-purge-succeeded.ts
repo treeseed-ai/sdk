@@ -194,18 +194,16 @@ export function resolveConfiguredApiConnectionBaseUrl(deployConfig, target) {
 }
 
 export function resolveConfiguredMarketBaseUrl(deployConfig, target) {
-	return resolveConfiguredApiConnectionBaseUrl(deployConfig, target)
-		?? envOrNull('TREESEED_API_BASE_URL')
-		?? deployConfig.runtime?.marketBaseUrl
-		?? deployConfig.hosting?.marketBaseUrl
-		?? envOrNull('TREESEED_CENTRAL_MARKET_API_BASE_URL')
+	return normalizeConfiguredBaseUrl(deployConfig.market?.baseUrl)
+		?? envOrNull('TREESEED_MARKET_API_BASE_URL')
 		?? DEFAULT_MARKET_BASE_URL;
 }
 
-export function resolveConfiguredCentralMarketBaseUrl(deployConfig, target) {
-	return resolveConfiguredApiConnectionBaseUrl(deployConfig, target)
-		?? envOrNull('TREESEED_CENTRAL_MARKET_API_BASE_URL')
-		?? DEFAULT_MARKET_BASE_URL;
+export function resolveConfiguredControlPlaneBaseUrl(deployConfig, target) {
+	if (deployConfig.controlPlane?.mode === 'market-passthrough') return resolveConfiguredMarketBaseUrl(deployConfig, target);
+	return normalizeConfiguredBaseUrl(deployConfig.controlPlane?.baseUrl)
+		?? resolveConfiguredApiConnectionBaseUrl(deployConfig, target)
+		?? envOrNull('TREESEED_API_BASE_URL');
 }
 
 export function resolveConfiguredPagesProjectName(deployConfig) {

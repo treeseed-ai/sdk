@@ -1,0 +1,28 @@
+schemaVersion: treeseed.guarantee/v1
+id: guarantee.deployment.control-plane-routing.route-market-and-sovereign-traffic.811
+journeyIndex: 811
+type: deployment
+subtype: control-plane-routing
+journey: "Route Market and sovereign control-plane traffic"
+ownerPackage: "@treeseed/sdk"
+surface: cli
+summary: "Guarantee that Market operations always use api.treeseed.dev while Admin operations use the resolved pass-through, external, or managed control-plane URL."
+status: planned
+dependencies: { journeys: [], guarantees: [] }
+actors: { allowed: [authenticated_user, team_owner, platform_admin], forbidden: [unauthorized_user] }
+devices: { required: [] }
+gates: [future]
+preconditions: { fixtures: [integrated_treeseed_project], notes: [] }
+api: { required: true, verifierRefs: [market.gateway.admin-route-inventory, market.gateway.private-workspace-overlay] }
+content: { required: false, verifierRefs: [] }
+audit: { required: false, verifierRefs: [] }
+negativeCases:
+  - "A sovereign Admin request must never be sent through api.treeseed.dev."
+  - "A Market request must never be sent to a sovereign control plane."
+  - "An alternate persistent Market profile is rejected."
+  - "An undeclared method/path pair must never be passed to the hosted Admin API."
+  - "The Admin descriptor must never claim a route under /v1/market/**."
+  - "Singleton reconciliation must preserve private Market implementation paths outside its declared managed overlay and must reject drift inside managed gateway paths."
+evidence: { required: [guarantee_report] }
+notes:
+  - "Typed configuration, exact Admin descriptor admission, and generated full-inventory Market API tests exist; hosted gateway, provider-protocol, and no-replication acceptance remain required before activation."

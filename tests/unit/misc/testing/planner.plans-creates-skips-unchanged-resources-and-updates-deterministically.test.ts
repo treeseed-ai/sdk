@@ -104,9 +104,9 @@ function canonicalSeed(): SeedManifest {
 			repository: {
 				role: 'primary',
 				provider: 'github',
-				owner: 'knowledge-coop',
+				owner: 'treeseed-ai',
 				name: 'market',
-				gitUrl: 'https://github.com/knowledge-coop/market.git',
+				gitUrl: 'https://github.com/treeseed-ai/market.git',
 				defaultBranch: 'main',
 				checkoutPath: '.',
 			},

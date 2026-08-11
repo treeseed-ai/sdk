@@ -1,7 +1,7 @@
 import { withDockerhubServiceCredentialEnv } from "../../../../configuration/service-credentials.ts";
 import { resolveMachineEnvironmentValues } from "../../../../operations/services/configuration/config-runtime.ts";
 import { resolveGitHubCredentialForRepository } from "../../../../operations/services/configuration/github-credentials.ts";
-import { ensureReconcileGitHubEnvironment,observeGitHubEnvironment,upsertReconcileGitHubSecret,upsertReconcileGitHubVariable } from "../../../providers/github-private.ts";
+import { ensureReconcileGitHubEnvironment,observeGitHubEnvironment,observeReconcileGitHubBranch,upsertReconcileGitHubSecret,upsertReconcileGitHubVariable } from "../../../providers/github-private.ts";
 import type { ReconcileAdapter,ReconcileAdapterInput,ReconcileUnitType } from "../../../support/contracts/contracts.ts";
 import { genericObservedState,genericResult,genericVerification,noopDiff } from '../../hosting/to-deploy-target.ts';
 import { normalizeEnvironmentValues,resolveReconcileEnvironmentValues } from '../../reconciliation/build-workflow-meta-adapter.ts';
@@ -72,6 +72,16 @@ export function environmentFromUnit(input: ReconcileAdapterInput) {
 }
 
 export function buildGitHubEnvironmentAdapter(): ReconcileAdapter {
+	const matchesBranchPolicy = (live: Record<string, unknown>, branch: string | null) => {
+		if (!branch) return true;
+		const policy = live.deploymentBranchPolicy as { protected_branches?: boolean; custom_branch_policies?: boolean } | null;
+		const branches = Array.isArray(live.branchPolicies) ? live.branchPolicies as Array<{ name?: string; type?: string }> : [];
+		return policy?.protected_branches === false
+			&& policy.custom_branch_policies === true
+			&& branches.length === 1
+			&& branches[0]?.type === 'branch'
+			&& branches[0]?.name === branch;
+	};
 	return {
 		providerId: 'github',
 		unitTypes: ['github-environment'],
@@ -81,31 +91,48 @@ export function buildGitHubEnvironmentAdapter(): ReconcileAdapter {
 		async refresh(input) {
 			const repository = repositoryFromUnit(input);
 			const environment = environmentFromUnit(input);
-			const observed = await observeGitHubEnvironment(repository, environment, buildGitHubEnv(input));
+			const branch = typeof input.unit.spec.branch === 'string' ? input.unit.spec.branch : null;
+			const env = buildGitHubEnv(input);
+			const [observed, observedBranch] = await Promise.all([
+				observeGitHubEnvironment(repository, environment, env),
+				branch ? observeReconcileGitHubBranch(repository, branch, env) : Promise.resolve(null),
+			]);
+			const configured = observed.exists && matchesBranchPolicy(observed, branch);
 			const warnings = observed.exists
 				? []
 				: [String(observed.error ?? 'GitHub environment is missing')];
 			return {
 				...genericObservedState(input, observed.exists, warnings),
-				status: observed.exists ? 'ready' : 'pending',
-				live: observed,
+				status: configured ? 'ready' : observed.exists ? 'drifted' : 'pending',
+				live: { ...observed, branchExists: observedBranch?.exists ?? true },
 			};
 		},
 		diff(input) {
 			if (input.observed.live?.authAvailable === false) {
 				return { action: 'blocked', reasons: input.observed.warnings, before: input.observed.live, after: input.unit.spec };
 			}
-			return input.observed.exists ? noopDiff() : { action: 'create', reasons: ['GitHub environment is missing'], before: input.observed.live, after: input.unit.spec };
+			if (input.observed.live.branchExists !== true) return { action: 'blocked', reasons: ['GitHub environment cannot be reconciled before its deployment branch exists.'], before: input.observed.live, after: input.unit.spec };
+			if (!input.observed.exists) return { action: 'create', reasons: ['GitHub environment is missing'], before: input.observed.live, after: input.unit.spec };
+			const branch = typeof input.unit.spec.branch === 'string' ? input.unit.spec.branch : null;
+			return matchesBranchPolicy(input.observed.live, branch)
+				? noopDiff()
+				: { action: 'update', reasons: [`GitHub environment branch policy must allow only ${branch}.`], before: input.observed.live, after: input.unit.spec };
 		},
 		async apply(input) {
-			if (input.diff.action !== 'noop') {
+			if (input.diff.action === 'create' || input.diff.action === 'update') {
 				const result = await ensureReconcileGitHubEnvironment(repositoryFromUnit(input), environmentFromUnit(input), typeof input.unit.spec.branch === 'string' ? input.unit.spec.branch : null, buildGitHubEnv(input));
 				return genericResult(input, { ...input.observed.live, result });
 			}
 			return genericResult(input);
 		},
 		verify(input) {
-			return genericVerification(input, input.observed, 'GitHub environment exists');
+			const branch = typeof input.unit.spec.branch === 'string' ? input.unit.spec.branch : null;
+			const configured = input.observed.exists && matchesBranchPolicy(input.observed.live, branch);
+			return {
+				unitId: input.unit.unitId, supported: true, exists: input.observed.exists, configured, ready: configured, verified: configured,
+				checks: [{ key: 'github.environment-policy', description: 'GitHub environment and branch policy match desired state', source: 'api', exists: input.observed.exists, configured, ready: configured, verified: configured, expected: { branch }, observed: input.observed.live, issues: configured ? [] : ['Environment or branch policy drifted.'] }],
+				missing: input.observed.exists ? [] : ['github.environment'], drifted: input.observed.exists && !configured ? ['github.environment-policy'] : [], warnings: input.observed.warnings,
+			};
 		},
 	};
 }

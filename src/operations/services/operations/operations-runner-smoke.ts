@@ -171,7 +171,6 @@ export async function runOperationsRunnerSmoke(options: OperationsRunnerSmokeOpt
 		options.baseUrl
 		?? manifestApiBaseUrl(options.tenantRoot, options.environment)
 		?? (options.environment === 'local' ? value('TREESEED_API_BASE_URL', values, env) : null)
-		?? (options.environment === 'local' ? value('TREESEED_CENTRAL_MARKET_API_BASE_URL', values, env) : null)
 		?? defaultBaseUrl(options.environment),
 	);
 	if (options.environment !== 'local' && isLoopbackBaseUrl(baseUrl)) {

@@ -20,6 +20,7 @@ function desired(input: ReconcileAdapterInput) {
 		hasProjects: input.unit.spec.projects === true,
 		hasWiki: input.unit.spec.wiki === true,
 		actionsEnabled: input.unit.spec.actions !== false,
+		defaultBranch: typeof input.unit.spec.defaultBranch === 'string' ? input.unit.spec.defaultBranch : 'main',
 	};
 }
 
@@ -32,7 +33,26 @@ function matches(live: Record<string, unknown>, expected: ReturnType<typeof desi
 		&& live.hasProjects === expected.hasProjects
 		&& live.hasWiki === expected.hasWiki
 		&& live.actionsEnabled === expected.actionsEnabled
+		&& live.defaultBranch === expected.defaultBranch
 		&& live.archived !== true;
+}
+
+function driftReasons(live: Record<string, unknown>, expected: ReturnType<typeof desired>) {
+	const fields: Array<[string, unknown, unknown]> = [
+		['slug', live.slug, expected.repository],
+		['visibility', live.visibility, expected.visibility],
+		['description', live.description, expected.description],
+		['homepageUrl', live.homepageUrl, expected.homepageUrl],
+		['hasIssues', live.hasIssues, expected.hasIssues],
+		['hasProjects', live.hasProjects, expected.hasProjects],
+		['hasWiki', live.hasWiki, expected.hasWiki],
+		['actionsEnabled', live.actionsEnabled, expected.actionsEnabled],
+		['defaultBranch', live.defaultBranch, expected.defaultBranch],
+		['archived', live.archived, false],
+	];
+	return fields
+		.filter(([, observed, desiredValue]) => observed !== desiredValue)
+		.map(([field, observed, desiredValue]) => `GitHub repository field ${field} drifted: observed ${JSON.stringify(observed)}, expected ${JSON.stringify(desiredValue)}.`);
 }
 
 export function buildGitHubRepositoryAdapter(): ReconcileAdapter {
@@ -65,7 +85,7 @@ export function buildGitHubRepositoryAdapter(): ReconcileAdapter {
 			}
 			return matches(input.observed.live, expected)
 				? noopDiff()
-				: { action: 'update', reasons: ['GitHub repository metadata drifted.'], before: input.observed.live, after: input.unit.spec };
+				: { action: 'update', reasons: driftReasons(input.observed.live, expected), before: input.observed.live, after: input.unit.spec };
 		},
 		async apply(input) {
 			if (input.diff.action === 'noop' || input.diff.action === 'blocked') return genericResult(input);

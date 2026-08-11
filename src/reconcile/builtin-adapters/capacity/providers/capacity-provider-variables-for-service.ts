@@ -24,7 +24,6 @@ export function capacityProviderVariablesForService(
 	};
 	const marketUrl = resolveCapacityProviderMarketUrl(input, scope, values);
 	if (marketUrl) {
-		variables.TREESEED_MARKET_URL = marketUrl;
 		variables.TREESEED_API_BASE_URL = marketUrl;
 	}
 	if (role === 'runner') {
@@ -41,7 +40,7 @@ export function resolveCapacityProviderMarketUrl(
 ) {
 	const hostedApiBaseUrl = resolveHostedApiBaseUrl(input, scope);
 	if (hostedApiBaseUrl) return hostedApiBaseUrl;
-	for (const key of ['TREESEED_MARKET_URL', 'TREESEED_MARKET_API_BASE_URL', 'TREESEED_STAGING_MARKET_API_BASE_URL', 'TREESEED_API_BASE_URL', 'TREESEED_CENTRAL_MARKET_API_BASE_URL', 'TREESEED_PUBLIC_MARKET_URL', 'TREESEED_SITE_URL']) {
+	for (const key of ['TREESEED_MARKET_API_BASE_URL', 'TREESEED_STAGING_MARKET_API_BASE_URL', 'TREESEED_API_BASE_URL', 'TREESEED_PUBLIC_MARKET_URL', 'TREESEED_SITE_URL']) {
 		const value = String(values[key] ?? '').trim();
 		if (/^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(?:\/|$)/iu.test(value)) continue;
 		if (value) return value.replace(/\/+$/u, '');

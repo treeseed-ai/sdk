@@ -201,7 +201,7 @@ export function compileLiveAcceptanceScenarios(input: {
 		: [input.provider];
 	return providers.flatMap((provider) => PROVIDER_CAPABILITIES[provider].map((capability) => {
 		const probeOnly = input.mode === 'smoke'
-			|| (provider === 'github' && ['workflow-observation', 'repository-scoped-token'].includes(capability))
+			|| (provider === 'github' && ['workflow-observation', 'central-token'].includes(capability))
 			|| (provider === 'cloudflare' && capability === 'cache-rules')
 			|| isCapacityRuntimeProofCapability(capability);
 		const desiredResources = probeOnly
@@ -346,7 +346,7 @@ async function runSmokeProvider({
 			repository = resolveCurrentGitHubRepository(cwd, env);
 			const credential = resolveGitHubCredentialForRepository(repository, { values: env, env });
 			if (!credential.token) {
-				throw new Error(`Missing GitHub credential for ${repository}; expected ${credential.envName} or TREESEED_GITHUB_TOKEN fallback.`);
+				throw new Error(`Missing GitHub credential for ${repository}; expected ${credential.envName}.`);
 			}
 			const [owner, repo] = credential.repository.split('/');
 			const checks: Array<[string, string]> = [
@@ -364,7 +364,7 @@ async function runSmokeProvider({
 					return scenario({ provider, mode, prefix, capability, ok: false, phase: 'blocked', action: 'blocked', reason: error instanceof Error ? error.message : String(error), locators: { repository: credential.repository, credentialKey: credential.envName } });
 				}
 			}));
-			results.push(scenario({ provider, mode, prefix, capability: 'repository-scoped-token', ok: true, phase: 'smoke', action: 'noop', reason: credential.fallbackUsed ? 'GitHub credential resolved through fallback.' : 'GitHub credential resolved through repository-scoped key.', locators: { repository: credential.repository, credentialKey: credential.envName } }));
+			results.push(scenario({ provider, mode, prefix, capability: 'central-token', ok: true, phase: 'smoke', action: 'noop', reason: credential.envName === 'TREESEED_GITHUB_TOKEN' ? 'GitHub credential resolved through the central first-party token.' : 'GitHub credential resolved through an imported repository override.', locators: { repository: credential.repository, credentialKey: credential.envName } }));
 			return results;
 		} catch (error) {
 			const reason = error instanceof Error ? error.message : String(error);

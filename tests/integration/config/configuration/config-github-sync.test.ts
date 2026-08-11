@@ -10,13 +10,16 @@ const listGitHubEnvironmentVariablesMock = vi.fn();
 const upsertGitHubEnvironmentSecretMock = vi.fn();
 const upsertGitHubEnvironmentVariableMock = vi.fn();
 const maybeResolveGitHubRepositorySlugMock = vi.fn((root: string) => root.includes('/packages/api') ? 'treeseed-ai/api' : 'owner/repo');
+const githubRequestMock = vi.fn(async (route: string) => ({
+	data: route.includes('deployment-branch-policies') ? { branch_policies: [] } : { deployment_branch_policy: null },
+}));
 
 vi.mock('../../../../src/operations/services/repositories/github-automation.ts', () => ({
 	maybeResolveGitHubRepositorySlug: maybeResolveGitHubRepositorySlugMock,
 }));
 
 vi.mock('../../../../src/operations/services/repositories/github-api.ts', () => ({
-	createGitHubApiClient: vi.fn(() => ({ id: 'github-client' })),
+	createGitHubApiClient: vi.fn(() => ({ id: 'github-client', request: githubRequestMock })),
 	ensureGitHubActionsEnvironment: ensureGitHubActionsEnvironmentMock,
 	ensureGitHubBranchFromBase: vi.fn(),
 	listGitHubEnvironmentSecretNames: listGitHubEnvironmentSecretNamesMock,
@@ -252,6 +255,7 @@ function hasConfigEntry(tenantRoot: string, id: string) {
 
 describe('config GitHub environment sync reconciliation', () => {
 	beforeEach(() => {
+		githubRequestMock.mockClear();
 		vi.stubEnv('HOME', mkdtempSync(join(tmpdir(), 'treeseed-config-github-home-')));
 		const secretNames = new Set<string>();
 		const variableNames = new Set<string>();

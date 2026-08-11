@@ -143,8 +143,8 @@ describe('local TreeDX reconciliation transport', () => {
 		writeFileSync(join(root, 'docs', 'page.md'), 'shared');
 		const client = {
 			listRepositories: vi.fn().mockResolvedValue([
-				{ repoId: 'repo-market', repositoryName: 'treeseed-market' },
-				{ repoId: 'repo-information-hub', repositoryName: 'treeseed-information-hub' },
+				{ repoId: 'repo-platform', repositoryName: 'treeseed-platform' },
+				{ repoId: 'repo-template-research', repositoryName: 'treeseed-template-research' },
 			]),
 			listRepositoryPaths: vi.fn().mockResolvedValue({ resolvedRef: 'base-sha', entries: [], page: { hasMore: false } }),
 			listRepositoryRefs: vi.fn().mockResolvedValue([]),
@@ -156,7 +156,7 @@ describe('local TreeDX reconciliation transport', () => {
 			refreshSearchIndex: vi.fn().mockResolvedValue({ indexVersion: 'search-1', resolvedRef: 'commit-1', stale: false }),
 		};
 		try {
-			for (const repositoryName of ['treeseed-market', 'treeseed-information-hub']) {
+			for (const repositoryName of ['treeseed-platform', 'treeseed-template-research']) {
 				await syncLocalTreeDxProjectContent(client as any, {
 					slug: repositoryName, repositoryName, repositoryId: repositoryName, localRoot: root,
 					contentPath: 'docs', seedPaths: ['docs'], defaultRef: 'refs/heads/main',

@@ -207,7 +207,7 @@ function resolveRepositorySlug(repoDir) {
 }
 
 function isProductionLikeTarget(repository, siteUrl) {
-	const productionRepositories = new Set(['knowledge-coop/market', 'treeseed-ai/market']);
+	const productionRepositories = new Set(['treeseed-ai/market', 'treeseed-ai/market']);
 	const normalizedSiteUrl = String(siteUrl ?? '').replace(/\/+$/u, '').toLowerCase();
 	return productionRepositories.has(repository) || ['https://treeseed.dev', 'https://www.treeseed.dev'].includes(normalizedSiteUrl);
 }

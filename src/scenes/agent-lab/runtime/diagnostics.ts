@@ -15,7 +15,7 @@ export function withAgentLabDiagnostic(day: AgentLabWorkdaySnapshot, value: unkn
 export function localAgentLabApiConfig(env: Record<string, string | undefined>) {
 	const text = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 	return {
-		apiUrl: text(env.TREESEED_CAPACITY_ACCEPTANCE_API_URL) || text(env.TREESEED_MARKET_URL) || text(env.TREESEED_API_BASE_URL) || 'http://127.0.0.1:3000',
+		apiUrl: text(env.TREESEED_CAPACITY_ACCEPTANCE_API_URL) || text(env.TREESEED_API_BASE_URL) || 'http://127.0.0.1:3000',
 		adminToken: text(env.TREESEED_CAPACITY_ACCEPTANCE_ADMIN_TOKEN) || 'tsk_local_treeseed_acceptance_admin',
 	};
 }

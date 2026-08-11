@@ -8,7 +8,7 @@ import * as extractedMethods from "../../market-client/methods.ts";
 import { clearRemoteSession,resolveRemoteSession,setRemoteSession,} from '../../operations/services/configuration/config-runtime.ts';
 import type { ApiPrincipal } from './remote.ts';
 export const DEFAULT_MARKET_BASE_URL = 'https://api.treeseed.dev';
-export const CENTRAL_MARKET_API_BASE_URL_ENV = 'TREESEED_CENTRAL_MARKET_API_BASE_URL';
+export const MARKET_API_BASE_URL_ENV = 'TREESEED_MARKET_API_BASE_URL';
 export const API_BASE_URL_ENV = 'TREESEED_API_BASE_URL';
 export const CATALOG_MARKET_API_BASE_URLS_ENV = 'TREESEED_CATALOG_MARKET_API_BASE_URLS';
 export type MarketProfileKind = 'central' | 'specialized';
@@ -104,6 +104,9 @@ export interface IntegratedMarketCatalogResult<T extends Record<string, unknown>
 }
 export interface MarketClientOptions {
     profile: MarketProfile;
+    marketBaseUrl?: string;
+    controlPlaneBaseUrl?: string;
+    controlPlaneMode?: 'market-passthrough' | 'external' | 'managed';
     accessToken?: string | null;
     fetchImpl?: typeof fetch;
     userAgent?: string;
@@ -112,14 +115,13 @@ export const MARKET_REGISTRY_RELATIVE_PATH = '.treeseed/config/markets.json';
 export function envValue(name: string, env: Record<string, string | undefined> = process.env) {
     return typeof env[name] === 'string' && env[name]!.trim().length > 0 ? env[name]!.trim() : null;
 }
-export function resolveDefaultCentralMarketBaseUrl(env: Record<string, string | undefined> = process.env) {
-    return normalizeBaseUrl(envValue(CENTRAL_MARKET_API_BASE_URL_ENV, env)
-        ?? DEFAULT_MARKET_BASE_URL);
+export function resolveDefaultCentralMarketBaseUrl(_env: Record<string, string | undefined> = process.env) {
+    return DEFAULT_MARKET_BASE_URL;
 }
 export function defaultCentralMarket(): MarketProfile {
     return {
-        id: 'central',
-        label: 'TreeSeed Central Market',
+        id: 'treeseed',
+        label: 'TreeSeed Market',
         baseUrl: resolveDefaultCentralMarketBaseUrl(),
         kind: 'central',
         alwaysAvailable: true,
@@ -143,20 +145,21 @@ export function normalizeBaseUrl(baseUrl: string) {
     return baseUrl.trim().replace(/\/+$/u, '');
 }
 export function normalizeProfile(profile: MarketProfile): MarketProfile {
+    const normalizedId = profile.id.trim() === 'central' ? 'treeseed' : profile.id.trim();
     return {
         ...profile,
-        id: profile.id.trim(),
-        label: profile.label.trim() || profile.id.trim(),
+        id: normalizedId,
+        label: profile.label.trim() || normalizedId,
         baseUrl: normalizeBaseUrl(profile.baseUrl),
         kind: profile.kind === 'specialized' ? 'specialized' : 'central',
         teamId: profile.teamId ?? null,
-        alwaysAvailable: profile.alwaysAvailable === true || profile.id === 'central',
+        alwaysAvailable: profile.alwaysAvailable === true || profile.id === 'treeseed',
     };
 }
 export function uniqueProfiles(profiles: MarketProfile[]) {
     const byId = new Map<string, MarketProfile>();
     for (const profile of [defaultCentralMarket(), ...profiles].map(normalizeProfile)) {
-        if (profile.id === 'central') {
+        if (profile.id === 'treeseed') {
             profile.baseUrl = resolveDefaultCentralMarketBaseUrl();
             profile.label = profile.label || 'TreeSeed Central Market';
             profile.kind = 'central';
@@ -165,9 +168,9 @@ export function uniqueProfiles(profiles: MarketProfile[]) {
         byId.set(profile.id, profile);
     }
     return [...byId.values()].sort((left, right) => {
-        if (left.id === 'central')
+        if (left.id === 'treeseed')
             return -1;
-        if (right.id === 'central')
+        if (right.id === 'treeseed')
             return 1;
         return left.id.localeCompare(right.id);
     });
@@ -177,15 +180,16 @@ export function loadMarketRegistryState(): MarketRegistryState {
     if (!existsSync(path)) {
         return {
             version: 1,
-            activeMarketId: 'central',
+            activeMarketId: 'treeseed',
             profiles: [defaultCentralMarket()],
         };
     }
     const parsed = JSON.parse(readFileSync(path, 'utf8')) as Partial<MarketRegistryState>;
     const profiles = uniqueProfiles(Array.isArray(parsed.profiles) ? parsed.profiles : []);
-    const activeMarketId = typeof parsed.activeMarketId === 'string' && profiles.some((profile) => profile.id === parsed.activeMarketId)
-        ? parsed.activeMarketId
-        : 'central';
+    const requestedActiveMarketId = parsed.activeMarketId === 'central' ? 'treeseed' : parsed.activeMarketId;
+    const activeMarketId = typeof requestedActiveMarketId === 'string' && profiles.some((profile) => profile.id === requestedActiveMarketId)
+        ? requestedActiveMarketId
+        : 'treeseed';
     return {
         version: 1,
         activeMarketId,
@@ -213,13 +217,13 @@ export function addMarketProfile(profile: MarketProfile) {
     });
 }
 export function removeMarketProfile(id: string) {
-    if (id === 'central') {
+    if (id === 'treeseed' || id === 'central') {
         throw new Error('The central market profile cannot be removed.');
     }
     const state = loadMarketRegistryState();
     return writeMarketRegistryState({
         ...state,
-        activeMarketId: state.activeMarketId === id ? 'central' : state.activeMarketId,
+        activeMarketId: state.activeMarketId === id ? 'treeseed' : state.activeMarketId,
         profiles: state.profiles.filter((profile) => profile.id !== id),
     });
 }
@@ -248,7 +252,7 @@ export function resolveMarketProfile(selector?: string | null): MarketProfile {
     if (trimmed === 'local') {
         return defaultLocalMarket();
     }
-    const marketId = trimmed || state.activeMarketId || 'central';
+    const marketId = trimmed === 'central' ? 'treeseed' : trimmed || state.activeMarketId || 'treeseed';
     const profile = state.profiles.find((entry) => entry.id === marketId);
     if (!profile) {
         throw new Error(`Unknown market profile "${marketId}".`);
@@ -332,9 +336,9 @@ export function resolveCatalogMarketProfiles(selector?: string | null, env: Reco
         }
     }
     return [...byKey.values()].sort((left, right) => {
-        if (left.id === 'central')
+        if (left.id === 'treeseed')
             return -1;
-        if (right.id === 'central')
+        if (right.id === 'treeseed')
             return 1;
         return left.id.localeCompare(right.id);
     });
@@ -347,14 +351,24 @@ export class MarketClientError extends Error {
 }
 export class MarketClient {
     readonly baseUrl: string;
+    readonly marketBaseUrl: string;
+    readonly controlPlaneBaseUrl: string;
+    readonly controlPlaneMode: 'market-passthrough' | 'external' | 'managed';
     readonly accessToken: string | null;
     readonly fetchImpl: typeof fetch;
     readonly userAgent?: string;
     constructor(readonly options: MarketClientOptions) {
-        this.baseUrl = normalizeBaseUrl(options.profile.baseUrl);
+        this.marketBaseUrl = normalizeBaseUrl(options.marketBaseUrl ?? options.profile.baseUrl);
+        this.controlPlaneMode = options.controlPlaneMode ?? 'market-passthrough';
+        this.controlPlaneBaseUrl = normalizeBaseUrl(options.controlPlaneBaseUrl ?? this.marketBaseUrl);
+        this.baseUrl = this.controlPlaneBaseUrl;
         this.accessToken = options.accessToken ?? null;
         this.fetchImpl = options.fetchImpl ?? fetch;
         this.userAgent = options.userAgent;
+    }
+
+    baseUrlForPath(path: string) {
+        return /^\/v1\/market(?:\/|$)/u.test(path) ? this.marketBaseUrl : this.controlPlaneBaseUrl;
     }
 }
 extractedMethods.installMarketClientMethods(MarketClient.prototype);

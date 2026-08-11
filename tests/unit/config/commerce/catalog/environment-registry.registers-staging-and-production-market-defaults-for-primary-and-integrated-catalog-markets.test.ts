@@ -34,15 +34,15 @@ it('registers staging and production market defaults for primary and integrated 
 			plugins: [],
 		});
 
-		const centralApiBaseUrl = findRegistryEntry(registry, 'TREESEED_CENTRAL_MARKET_API_BASE_URL');
-		if (!centralApiBaseUrl) {
+		const marketApiBaseUrl = findRegistryEntry(registry, 'TREESEED_MARKET_API_BASE_URL');
+		if (!marketApiBaseUrl) {
 			expect(findRegistryEntry(registry, 'TREESEED_API_BASE_URL')).toBeUndefined();
 			return;
 		}
 
-		expect(centralApiBaseUrl).toMatchObject({
+		expect(marketApiBaseUrl).toMatchObject({
 			scopes: ['staging', 'prod'],
-			requirement: 'optional',
+			requirement: 'required',
 		});
 		expect([
 			['staging', 'prod'],
@@ -58,7 +58,7 @@ it('registers staging and production market defaults for primary and integrated 
 			deployConfig,
 			plugins: [],
 			values: {},
-		}).TREESEED_CENTRAL_MARKET_API_BASE_URL).toBe('https://api.treeseed.dev');
+		}).TREESEED_MARKET_API_BASE_URL).toBe('https://api.treeseed.dev');
 		expect([
 			'https://staging-market.example.com',
 			'https://api.example.com',
@@ -68,7 +68,7 @@ it('registers staging and production market defaults for primary and integrated 
 			deployConfig,
 			plugins: [],
 			values: {
-				TREESEED_CENTRAL_MARKET_API_BASE_URL: 'https://staging-market.example.com',
+				TREESEED_MARKET_API_BASE_URL: 'https://staging-market.example.com',
 			},
 		}).TREESEED_CATALOG_MARKET_API_BASE_URLS);
 	});

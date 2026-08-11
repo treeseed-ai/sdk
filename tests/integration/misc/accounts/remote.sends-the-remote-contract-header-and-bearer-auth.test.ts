@@ -191,8 +191,8 @@ it('stores market profiles and calls market-owned v1 endpoints as a client', asy
 		expect(resolveDefaultCentralMarketBaseUrl({})).toBe('https://api.treeseed.dev');
 		expect(resolveDefaultCentralMarketBaseUrl({ TREESEED_API_BASE_URL: 'http://127.0.0.1:3000' }))
 			.toBe('https://api.treeseed.dev');
-		expect(resolveDefaultCentralMarketBaseUrl({ TREESEED_CENTRAL_MARKET_API_BASE_URL: 'https://central.example.com/' }))
-			.toBe('https://central.example.com');
+		expect(resolveDefaultCentralMarketBaseUrl({ TREESEED_MARKET_API_BASE_URL: 'https://central.example.com/' }))
+			.toBe('https://api.treeseed.dev');
 		addMarketProfile({
 			id: 'enterprise',
 			label: 'Enterprise',
@@ -201,7 +201,7 @@ it('stores market profiles and calls market-owned v1 endpoints as a client', asy
 			teamId: 'team-1',
 		});
 		const state = loadMarketRegistryState();
-		expect(state.profiles.map((profile) => profile.id)).toContain('central');
+		expect(state.profiles.map((profile) => profile.id)).toContain('treeseed');
 		expect(resolveMarketProfile('enterprise').baseUrl).toBe('https://enterprise.example.com');
 		expect(resolveMarketProfile('local')).toMatchObject({
 			id: 'local',
@@ -269,7 +269,7 @@ it('builds an integrated catalog across configured markets and labels item sourc
 			expect(calls).toContain('https://enterprise.example.com/v1/catalog?kind=template');
 			expect(response.errors).toEqual([]);
 			expect(response.payload.map((item) => [item.id, item.sourceMarket.id])).toEqual([
-				['central-template', 'central'],
+			['central-template', 'treeseed'],
 				['enterprise-template', 'enterprise'],
 			]);
 		});

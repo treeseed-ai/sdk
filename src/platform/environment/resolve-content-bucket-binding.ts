@@ -14,12 +14,9 @@ export function resolveMarketBaseUrl(
 	_scope: EnvironmentScope,
 	values: Record<string, string | undefined> = {},
 ) {
-	return values.TREESEED_API_BASE_URL?.trim()
-		|| values.TREESEED_CENTRAL_MARKET_API_BASE_URL?.trim()
-		|| process.env.TREESEED_API_BASE_URL?.trim()
-		|| process.env.TREESEED_CENTRAL_MARKET_API_BASE_URL?.trim()
-		|| context.deployConfig.runtime?.marketBaseUrl?.trim()
-		|| context.deployConfig.hosting?.marketBaseUrl?.trim()
+	return values.TREESEED_MARKET_API_BASE_URL?.trim()
+		|| process.env.TREESEED_MARKET_API_BASE_URL?.trim()
+		|| context.deployConfig.market?.baseUrl?.trim()
 		|| DEFAULT_MARKET_BASE_URL;
 }
 
@@ -28,10 +25,7 @@ export function resolveCentralMarketBaseUrl(
 	scope: EnvironmentScope,
 	values: Record<string, string | undefined> = {},
 ) {
-	return values.TREESEED_CENTRAL_MARKET_API_BASE_URL?.trim()
-		|| process.env.TREESEED_CENTRAL_MARKET_API_BASE_URL?.trim()
-		|| resolveMarketBaseUrl(context, scope, values)
-		|| DEFAULT_MARKET_BASE_URL;
+	return resolveMarketBaseUrl(context, scope, values);
 }
 
 export function resolveCatalogMarketBaseUrls(
@@ -40,10 +34,9 @@ export function resolveCatalogMarketBaseUrls(
 	values: Record<string, string | undefined> = {},
 ) {
 	return values.TREESEED_CATALOG_MARKET_API_BASE_URLS?.trim()
-		|| values.TREESEED_API_BASE_URL?.trim()
-		|| values.TREESEED_CENTRAL_MARKET_API_BASE_URL?.trim()
+		|| values.TREESEED_MARKET_API_BASE_URL?.trim()
 		|| process.env.TREESEED_CATALOG_MARKET_API_BASE_URLS?.trim()
-		|| resolveCentralMarketBaseUrl(context, scope, values);
+		|| resolveMarketBaseUrl(context, scope, values);
 }
 
 export function resolveHostedTeamId(context: EnvironmentContext) {
@@ -55,7 +48,7 @@ export function resolveHostedProjectId(context: EnvironmentContext) {
 }
 
 export function resolveRailwayWorkspaceDefault() {
-	return 'knowledge-coop';
+	return 'treeseed-ai';
 }
 
 export function resolvePlatformRunnerIdDefault(_context: EnvironmentContext, scope: EnvironmentScope) {

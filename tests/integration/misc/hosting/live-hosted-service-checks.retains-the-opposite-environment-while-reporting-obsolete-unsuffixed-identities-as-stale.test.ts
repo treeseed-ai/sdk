@@ -115,7 +115,7 @@ services:
 			const body = JSON.parse(String(init?.body ?? '{}')) as { query?: string; variables?: Record<string, unknown> };
 			const query = String(body.query ?? '');
 			if (query.includes('TreeseedRailwayAuthProfile')) {
-				return Response.json({ data: { me: { id: 'user-1', name: 'Test', email: 'test@example.com', workspaces: [{ id: 'workspace-1', name: 'knowledge-coop' }] } } });
+				return Response.json({ data: { me: { id: 'user-1', name: 'Test', email: 'test@example.com', workspaces: [{ id: 'workspace-1', name: 'treeseed-ai' }] } } });
 			}
 			if (query.includes('TreeseedRailwayProjects')) {
 				return Response.json({ data: { projects: { edges: [{ node: { id: 'project-api', name: 'treeseed-api', workspaceId: 'workspace-1', deletedAt: null } }] } } });
@@ -148,7 +148,7 @@ services:
 			serviceKeys: ['operationsRunner'],
 			requireLiveRailway: true,
 			requireLiveHttp: false,
-			env: { TREESEED_RAILWAY_API_TOKEN: 'test-token', TREESEED_RAILWAY_WORKSPACE: 'knowledge-coop' },
+			env: { TREESEED_RAILWAY_API_TOKEN: 'test-token', TREESEED_RAILWAY_WORKSPACE: 'treeseed-ai' },
 			fetchImpl,
 		});
 		const issues = report.liveObservation.issues.join('\n');
@@ -165,7 +165,7 @@ services:
 			requireLiveHttp: false,
 			env: {
 				TREESEED_RAILWAY_API_TOKEN: 'test-token',
-				TREESEED_RAILWAY_WORKSPACE: 'knowledge-coop',
+				TREESEED_RAILWAY_WORKSPACE: 'treeseed-ai',
 				TREESEED_API_IMAGE_REF: 'treeseed/api:1.2.3',
 				TREESEED_OPERATIONS_RUNNER_IMAGE_REF: 'treeseed/op-runner:1.2.3',
 				TREESEED_PUBLIC_TREEDX_IMAGE_REF: 'treeseed/treedx:1.2.3',
@@ -196,7 +196,7 @@ it('uses release image refs when checking production Railway image services', as
 				] },
 			};
 			if (query.includes('TreeseedRailwayAuthProfile')) {
-				return Response.json({ data: { me: { id: 'user-1', name: 'Test', email: 'test@example.com', workspaces: [{ id: 'workspace-1', name: 'knowledge-coop' }] } } });
+				return Response.json({ data: { me: { id: 'user-1', name: 'Test', email: 'test@example.com', workspaces: [{ id: 'workspace-1', name: 'treeseed-ai' }] } } });
 			}
 			if (query.includes('TreeseedRailwayProjects')) {
 				return Response.json({ data: { projects: { edges: [{ node: project }] } } });
@@ -244,7 +244,7 @@ it('uses release image refs when checking production Railway image services', as
 			requireLiveHttp: false,
 			env: {
 				TREESEED_RAILWAY_API_TOKEN: 'test-token',
-				TREESEED_RAILWAY_WORKSPACE: 'knowledge-coop',
+				TREESEED_RAILWAY_WORKSPACE: 'treeseed-ai',
 				TREESEED_API_IMAGE_REF: 'treeseed/api:0.6.14',
 				TREESEED_OPERATIONS_RUNNER_IMAGE_REF: 'treeseed/op-runner:0.6.14',
 				TREESEED_PUBLIC_TREEDX_IMAGE_REF: 'treeseed/treedx:0.6.14',

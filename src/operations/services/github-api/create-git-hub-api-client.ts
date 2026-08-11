@@ -90,6 +90,9 @@ export async function ensureGitHubRepository(
 			has_issues: input.hasIssues,
 			has_projects: input.hasProjects,
 			has_wiki: input.hasWiki,
+			...(input.defaultBranch && repository.defaultBranch !== input.defaultBranch
+				? { default_branch: input.defaultBranch }
+				: {}),
 		});
 		repository = normalizeRepositorySummary(updated.data as Record<string, any>);
 		if (Array.isArray(input.topics)) {

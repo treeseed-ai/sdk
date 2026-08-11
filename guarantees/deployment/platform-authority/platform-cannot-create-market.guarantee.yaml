@@ -1,0 +1,24 @@
+schemaVersion: treeseed.guarantee/v1
+id: guarantee.deployment.platform-authority.platform-cannot-create-market.810
+journeyIndex: 810
+type: deployment
+subtype: platform-authority
+journey: "Prevent customer Platform installations from creating Market"
+ownerPackage: "@treeseed/sdk"
+surface: cli
+summary: "Guarantee that customer Platform graphs cannot compile Market services, repositories, DNS identities, or deployment resources."
+status: planned
+dependencies: { journeys: [], guarantees: [] }
+actors: { allowed: [team_owner, platform_admin], forbidden: [unauthorized_user] }
+devices: { required: [] }
+gates: [future]
+preconditions: { fixtures: [integrated_treeseed_project], notes: [] }
+api: { required: false, verifierRefs: [] }
+content: { required: false, verifierRefs: [] }
+audit: { required: false, verifierRefs: [] }
+negativeCases:
+  - "A customer-platform manifest containing a marketApi service fails before desired infrastructure is compiled."
+  - "A customer invocation of singleton reconciliation fails with singleton-authority-required."
+evidence: { required: [guarantee_report] }
+notes:
+  - "The deploy-config service guard is implemented; the guarantee remains planned until repository, DNS, and singleton-command guards share an executable verifier."
