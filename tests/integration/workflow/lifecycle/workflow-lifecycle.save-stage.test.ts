@@ -9,12 +9,16 @@ import {
 	normalizeSaveCiMode,
 	normalizeSaveLane,
 	shouldUseHostedSaveCi,
+	integrationChangeSetBlockers,
+	readLatestIntegrationChangeSet,
 	WorkflowError,
 } from '../../../../src/workflow/operations.ts';
 import { resolveWorkflowPaths } from '../../../../src/workflow/policy.ts';
 import { acquireWorkflowLock, createWorkflowRunJournal, releaseWorkflowLock, updateWorkflowRunJournal } from '../../../../src/workflow/runs.ts';
 import { runWorkspaceSavePreflight } from '../../../../src/operations/services/hosting/deployment/save-deploy-preflight.ts';
 import { inspectDetachedHeadRepair, mergeBranchIntoTarget, reattachDetachedHeadIfSafe } from '../../../../src/operations/services/operations/git-workflow.ts';
+import { writeGovernedExecutionAuthority } from '../../../../src/operations/agents/execution-authority-receipt.ts';
+import { repositoryIdentityKey } from '../../../../src/repositories/repository-identity.ts';
 import {
 	createDefaultMachineConfig,
 	ensureSecretSessionForConfig,
@@ -117,8 +121,52 @@ it('loads existing machine config secrets before evaluating status readiness', a
 		expect(hostedCiSource).toContain("status: 'reconciled'");
 	});
 
-it('recursively saves dirty checked-out workspace packages before saving the market repo', async () => {
+it('saves only the invoking repository by default and emits a non-staging repository receipt', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const sdk = resolve(work, 'packages', 'sdk');
+		writeFileSync(resolve(sdk, 'index.js'), 'export const name = "sdk-remains-dirty";\n', 'utf8');
+		writeFileSync(resolve(work, 'feature.txt'), 'demo\nroot-only\n', 'utf8');
+
+		const result = await workflowFor(work).save({ message: 'feat: root checkpoint', verify: false, refreshPreview: false });
+
+		expect(result.ok).toBe(true);
+		expect(result.payload.mode).toBe('root-only');
+		expect(result.payload.repositoryScope).toBe('repository');
+		expect(result.payload.integrationReceipt.scope).toBe('repository');
+		expect(result.payload.integrationReceipt.repositories).toHaveLength(1);
+		expect(result.payload.integrationReceipt.repositories[0].role).toBe('root');
+		expect(git(sdk, ['status', '--porcelain'])).toContain('index.js');
+		expect(integrationChangeSetBlockers(work, 'feature/demo-task')).toContain('The latest integration receipt is repository-scoped. Run `trsd save --federated` before staging.');
+	}, 360000);
+
+it('saves an invoked package repository without sweeping sibling or Platform changes', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const sdk = resolve(work, 'packages', 'sdk');
+		writeFileSync(resolve(sdk, 'index.js'), 'export const name = "sdk-only";\n', 'utf8');
+		writeFileSync(resolve(work, 'feature.txt'), 'demo\nplatform-remains-dirty\n', 'utf8');
+
+		const result = await workflowFor(sdk).save({ message: 'feat: sdk checkpoint', verify: false, refreshPreview: false });
+
+		expect(result.ok).toBe(true);
+		expect(result.payload.repositoryScope).toBe('repository');
+		expect(result.payload.rootRepo.name).toBe('@treeseed/sdk');
+		expect(result.payload.integrationReceipt.repositories).toHaveLength(1);
+		expect(result.payload.integrationReceipt.repositories[0]).toMatchObject({ name: '@treeseed/sdk', role: 'package', workspacePath: 'packages/sdk' });
+		expect(git(work, ['status', '--porcelain'])).toContain('feature.txt');
+		expect(git(sdk, ['status', '--porcelain'])).toBe('');
+	}, 360000);
+
+it('recursively saves dirty checked-out workspace packages before saving the market repo when explicitly federated', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const sdkPath = resolve(work, 'packages', 'sdk');
+		const sdkBase = git(sdkPath, ['rev-parse', 'HEAD']);
+		const sdkRemote = git(sdkPath, ['remote', 'get-url', 'origin']);
+		writeGovernedExecutionAuthority(work, {
+			teamId: 'team-a', projectId: 'project-sdk', proposalId: 'proposal-a', proposalVersion: 2, proposalContentHash: 'sha256:proposal-a', decisionId: 'decision-a',
+			decisionDependencies: [{ projectId: 'project-api', decisionId: 'decision-api' }], assignmentId: 'assignment-a', graphId: 'graph-a', graphNodeId: 'node-a',
+			deliverableManifestId: 'deliverable:assignment-a', deliverableContractId: 'contract-a', repository: { canonicalKey: repositoryIdentityKey(sdkRemote)!, remoteUrl: sdkRemote },
+			sourceBranch: 'feature/demo-task', baseCommit: sdkBase, checkpointCommit: sdkBase, integratedCommit: sdkBase, changedPaths: ['index.js'],
+		});
 		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-updated";\n', 'utf8');
 		writeFileSync(resolve(work, 'packages', 'core', 'index.js'), 'export const name = "core-updated";\n', 'utf8');
 		writeFileSync(resolve(work, 'feature.txt'), 'demo\nupdated\n', 'utf8');
@@ -126,6 +174,7 @@ it('recursively saves dirty checked-out workspace packages before saving the mar
 
 		const result = await workflow.save({
 			message: 'feat: recursive save',
+			federated: true,
 			verify: false,
 			refreshPreview: false,
 		});
@@ -148,6 +197,12 @@ it('recursively saves dirty checked-out workspace packages before saving the mar
 		expect(result.payload.repos[0].tagName).toBeNull();
 		expect(result.payload.repos.find((repo) => repo.name === '@treeseed/cli')?.tagName).toBeNull();
 		expect(result.payload.rootRepo.committed).toBe(true);
+		expect(result.payload.integrationReceipt.kind).toBe('treeseed.integration-change-set/v1');
+		expect(result.payload.integrationReceipt.repositories).toHaveLength(9);
+		expect(result.payload.integrationReceipt.repositories.every((repo: { remoteVerified?: boolean }) => repo.remoteVerified)).toBe(true);
+		expect(result.payload.integrationReceipt.repositories.find((repo: { name: string }) => repo.name === '@treeseed/sdk').executionAuthorities).toEqual([
+			expect.objectContaining({ authorityId: expect.any(String), decisionId: 'decision-a', assignmentId: 'assignment-a' }),
+		]);
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('feature/demo-task');
 		expect(git(resolve(work, 'packages', 'core'), ['branch', '--show-current'])).toBe('feature/demo-task');
 		expect(git(work, ['ls-tree', 'HEAD', 'packages/sdk'])).toContain(result.payload.repos[0].commitSha);
@@ -166,7 +221,36 @@ it('resolves status from nested directories against the tenant root', () => {
 		expect(result.cwd).toBe(work);
 		expect(result.branchName).toBe('feature/demo-task');
 		expect(result.branchRole).toBe('feature');
-	});
+});
+
+it('saves and stages a portfolio workset without gitlinks or parent repository dirtiness', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true, materialization: 'portfolio' });
+		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-portfolio";\n', 'utf8');
+		writeFileSync(resolve(work, 'feature.txt'), 'demo\nportfolio\n', 'utf8');
+		const workflow = workflowFor(work);
+
+		const saved = await workflow.save({ message: 'feat: portfolio integration', federated: true, verify: false, refreshPreview: false });
+
+		expect(saved.payload.repositoryScope).toBe('federated');
+		expect(saved.payload.integrationReceipt.scope).toBe('federated');
+		expect(saved.payload.integrationReceipt.repositories).toHaveLength(9);
+		expect(existsSync(resolve(work, '.gitmodules'))).toBe(false);
+		expect(git(work, ['ls-files', '--stage', 'packages/sdk'])).toBe('');
+		expect(git(work, ['status', '--porcelain'])).toBe('');
+
+		const staged = await workflow.stage({ message: 'stage: portfolio integration', verifyMode: 'none', async: true, cleanupMode: 'success' });
+
+		expect(staged.payload.stagingRefs.status).toBe('verified');
+		expect(staged.payload.manifest.integrationReceiptId).toBe(saved.payload.integrationReceipt.receiptId);
+		expect(git(work, ['branch', '--show-current'])).toBe('staging');
+		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('staging');
+		expect(git(work, ['status', '--porcelain'])).toBe('');
+		const releasePlan = await workflow.release({ bump: 'patch', plan: true });
+		expect(releasePlan.executionMode).toBe('plan');
+		expect(releasePlan.payload.mode).toBe('reconcile-release-gates');
+		expect(releasePlan.payload.packageSelection.selected).toContain('@treeseed/sdk');
+		expect(existsSync(resolve(work, '.gitmodules'))).toBe(false);
+	}, 360000);
 
 it('stages package feature branches through local ref promotion', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -195,6 +279,7 @@ it('stages package feature branches through local ref promotion', async () => {
 		writeFileSync(resolve(work, 'feature.txt'), 'demo\nstage\n', 'utf8');
 			await workflow.save({
 				message: 'feat: prepare stage',
+				federated: true,
 				verify: false,
 				refreshPreview: false,
 			});
@@ -243,6 +328,8 @@ it('stages package feature branches through local ref promotion', async () => {
 		expect(result.payload.verification.status).toBe('skipped');
 		expect(result.payload.promotion.status).toBe('completed');
 		expect(result.payload.stagingRefs.status).toBe('verified');
+		expect(result.payload.manifest.schemaVersion).toBe(3);
+		expect(result.payload.manifest.integrationReceiptId).toMatch(/^[a-f0-9]{64}$/u);
 		expect(result.payload.cleanup.status).toBe('completed');
 		expect(result.payload.finalBranch).toBe('staging');
 		expect(git(work, ['branch', '--show-current'])).toBe('staging');
@@ -285,7 +372,39 @@ it('treats save with no new changes as a successful sync checkpoint', async () =
 		expect(result.payload.noChanges).toBe(true);
 		expect(result.payload.branchSync.pushed).toBe(true);
 		expect(result.payload.finalState.branchName).toBe('feature/demo-task');
+		expect(readLatestIntegrationChangeSet(work)?.receiptId).toBe(result.payload.integrationReceipt.receiptId);
 	}, 360000);
+
+it('blocks receipt consumption after a live repository ref moves', async () => {
+	const { work } = createWorkflowRepo();
+	const workflow = workflowFor(work);
+	await workflow.save({ message: 'chore: receipt checkpoint', federated: true, verify: false, refreshPreview: false });
+	const advance = resolve(work, '..', 'remote-advance');
+	gitAllowFile(resolve(work, '..'), ['clone', git(work, ['remote', 'get-url', 'origin']), advance]);
+	git(advance, ['config', 'user.name', 'Treeseed Test']);
+	git(advance, ['config', 'user.email', 'treeseed@example.com']);
+	git(advance, ['checkout', 'feature/demo-task']);
+	writeFileSync(resolve(advance, 'remote-only.txt'), 'advance\n', 'utf8');
+	git(advance, ['add', 'remote-only.txt']);
+	git(advance, ['commit', '-m', 'test: advance receipt ref']);
+	git(advance, ['push', 'origin', 'feature/demo-task']);
+
+	const blockers = integrationChangeSetBlockers(work, 'feature/demo-task');
+
+	expect(blockers.join('\n')).toContain('remote feature/demo-task moved after receipt');
+}, 360000);
+
+it('rejects a locally altered integration receipt before stage can consume it', async () => {
+	const { work } = createWorkflowRepo();
+	const workflow = workflowFor(work);
+	await workflow.save({ message: 'chore: immutable receipt', federated: true, verify: false, refreshPreview: false });
+	const path = resolve(work, '.treeseed', 'workflow', 'integration-receipts', 'latest.json');
+	const receipt = JSON.parse(readFileSync(path, 'utf8'));
+	receipt.repositories[0].commit = '0'.repeat(40);
+	writeFileSync(path, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
+	expect(readLatestIntegrationChangeSet(work)).toBeNull();
+	expect(integrationChangeSetBlockers(work, 'feature/demo-task')).toContain('No integration change-set receipt is available. Run `trsd save` first.');
+}, 360000);
 
 it('uses dev-save mode for staging even when package repos start on main', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -297,6 +416,7 @@ it('uses dev-save mode for staging even when package repos start on main', async
 		const workflow = workflowFor(work);
 
 		const result = await workflow.save({
+			federated: true,
 			verify: false,
 			refreshPreview: false,
 			lane: 'promotion',
