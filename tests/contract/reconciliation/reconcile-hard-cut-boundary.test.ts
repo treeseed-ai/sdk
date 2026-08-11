@@ -26,6 +26,9 @@ describe('reconciliation hard-cut source boundaries', () => {
 		const stageBody = functionBody(operations, 'workflowStage');
 		expect(stageBody).toContain('mode: \'stage-promotion\'');
 		expect(stageBody).toContain('mergeBranchDownIntoFeature');
+		expect(stageBody.indexOf("name: '@treeseed/market'")).toBeLessThan(
+			stageBody.indexOf('for (const repo of checkedOutStagePromotionRepos(root))'),
+		);
 		expect(stageBody).toContain('promoteCommitToBranchWithExpectedHead');
 		expect(stageBody).toContain('waitForWorkflowGates');
 		expect(stageBody).toContain('stagingCandidateWorkflowGates');

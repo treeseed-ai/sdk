@@ -113,9 +113,20 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: St
 					}
 					return { status: 'passed', checkedAt: new Date().toISOString() };
 				});
-				const mergeDown = await executeJournalStep(root, workflowRun.runId, 'merge-staging-down', () => {
+			const mergeDown = await executeJournalStep(root, workflowRun.runId, 'merge-staging-down', () => {
 					const results: Array<Record<string, unknown>> = [];
 					try {
+						// Merge the workspace root before child repositories. A child merge
+						// changes its checked-out commit and therefore dirties the root
+						// submodule pointer until save-integrated-feature records the exact
+						// result. Git must see a clean root while staging is merged down.
+						results.push({
+							name: '@treeseed/market', 							path: repoRoot(root), 							...mergeBranchDownIntoFeature(repoRoot(root), {
+								featureBranch, 								sourceBranch: STAGING_BRANCH,
+								message: `stage: merge ${STAGING_BRANCH} into ${featureBranch}`,
+								allowGeneratedMetadataAutoResolution: true,
+							}),
+						});
 						for (const repo of checkedOutStagePromotionRepos(root)) {
 							if (!remoteBranchExists(repo.dir, featureBranch)) {
 								results.push({ name: repo.name, path: repo.dir, skipped: true, reason: 'remote-branch-missing' });
@@ -129,13 +140,6 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: St
 								}),
 							});
 						}
-						results.push({
-							name: '@treeseed/market', 							path: repoRoot(root), 							...mergeBranchDownIntoFeature(repoRoot(root), {
-								featureBranch, 								sourceBranch: STAGING_BRANCH,
-								message: `stage: merge ${STAGING_BRANCH} into ${featureBranch}`,
-								allowGeneratedMetadataAutoResolution: true,
-							}),
-						});
 					} catch (error) {
 						const details = error && typeof error === 'object' ? error as Record<string, unknown> : {};
 						throw stageConflictError(error instanceof Error ? error.message : String(error), {
