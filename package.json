@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.12.63-dev.fix-organization-reference-idempotency.20260811T063458Z",
+  "version": "0.12.63-dev.feature-platform-live-workspace.20260811T072057Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "Apache-2.0",
   "repository": {
