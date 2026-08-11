@@ -1,4 +1,3 @@
-import { resolve } from 'node:path';
 import { discoverApplications } from "../../../../hosting/apps.ts";
 import { resolveCloudflareZoneIdForHost } from "../../../../operations/services/hosting/deployment/deploy.ts";
 import { configuredRailwayServices } from "../../../../operations/services/hosting/railway/railway-deploy.ts";
@@ -22,9 +21,13 @@ export function capacityProviderVariablesForService(
 		TREESEED_PROVIDER_ENVIRONMENT: scope === 'prod' ? 'production' : scope,
 		TREESEED_PROVIDER_ROLE: role,
 	};
-	const marketUrl = resolveCapacityProviderMarketUrl(input, scope, values);
+	const marketUrl = resolveCapacityProviderMarketUrl(input, values);
 	if (marketUrl) {
-		variables.TREESEED_API_BASE_URL = marketUrl;
+		variables.TREESEED_MARKET_API_BASE_URL = marketUrl;
+	}
+	const controlPlaneUrl = resolveCapacityProviderControlPlaneUrl(input, scope, values, marketUrl);
+	if (controlPlaneUrl) {
+		variables.TREESEED_API_BASE_URL = controlPlaneUrl;
 	}
 	if (role === 'runner') {
 		variables.TREESEED_PROVIDER_RUNNER_ID = String(configuredService?.runnerId ?? configuredService?.serviceName ?? 'treeseed-agent-runner-01');
@@ -35,25 +38,33 @@ export function capacityProviderVariablesForService(
 
 export function resolveCapacityProviderMarketUrl(
 	input: ReconcileAdapterInput,
-	scope: string,
 	values: Record<string, string | undefined>,
 ) {
-	const hostedApiBaseUrl = resolveHostedApiBaseUrl(input, scope);
-	if (hostedApiBaseUrl) return hostedApiBaseUrl;
-	for (const key of ['TREESEED_MARKET_API_BASE_URL', 'TREESEED_STAGING_MARKET_API_BASE_URL', 'TREESEED_API_BASE_URL', 'TREESEED_PUBLIC_MARKET_URL', 'TREESEED_SITE_URL']) {
+	const configured = input.context.deployConfig.market?.baseUrl?.trim();
+	if (configured) return configured.replace(/\/+$/u, '');
+	for (const key of ['TREESEED_MARKET_API_BASE_URL', 'TREESEED_STAGING_MARKET_API_BASE_URL']) {
 		const value = String(values[key] ?? '').trim();
-		if (/^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(?:\/|$)/iu.test(value)) continue;
 		if (value) return value.replace(/\/+$/u, '');
 	}
-	const applications = discoverApplications(input.context.tenantRoot);
-	const webApplication = applications.find((application) => application.roles.includes('web'))
-		?? applications.find((application) => application.root === resolve(input.context.tenantRoot));
-	const web = webApplication?.config?.surfaces?.web;
-	const environment = scope === 'prod' ? 'prod' : scope;
-	const domain = String(web?.environments?.[environment]?.domain ?? web?.publicBaseUrl ?? '').trim();
-	if (!domain) return '';
-	if (/^https?:\/\//u.test(domain)) return domain.replace(/\/+$/u, '');
-	return `https://${domain.replace(/\/+$/u, '')}`;
+	return '';
+}
+
+export function resolveCapacityProviderControlPlaneUrl(
+	input: ReconcileAdapterInput,
+	scope: string,
+	values: Record<string, string | undefined>,
+	marketUrl = resolveCapacityProviderMarketUrl(input, values),
+) {
+	const mode = input.context.deployConfig.controlPlane?.mode ?? 'market-passthrough';
+	if (mode === 'market-passthrough') return marketUrl;
+	if (mode === 'external') {
+		return String(input.context.deployConfig.controlPlane?.baseUrl ?? '').trim().replace(/\/+$/u, '');
+	}
+	const hostedApiBaseUrl = resolveHostedApiBaseUrl(input, scope);
+	if (hostedApiBaseUrl) return hostedApiBaseUrl;
+	const configured = String(values.TREESEED_API_BASE_URL ?? '').trim();
+	if (!configured || /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(?:\/|$)/iu.test(configured)) return '';
+	return configured.replace(/\/+$/u, '');
 }
 
 export function resolveHostedApiBaseUrl(input: ReconcileAdapterInput, scope: string) {
@@ -61,6 +72,13 @@ export function resolveHostedApiBaseUrl(input: ReconcileAdapterInput, scope: str
 	const rootConnections = input.context.deployConfig.connections as Record<string, any> | undefined;
 	const configuredConnectionUrl = String(rootConnections?.api?.environments?.[environment]?.baseUrl ?? '').trim();
 	if (configuredConnectionUrl) return configuredConnectionUrl.replace(/\/+$/u, '');
+	const rootApiSurface = input.context.deployConfig.surfaces?.api;
+	const rootBaseUrl = String(rootApiSurface?.environments?.[environment]?.baseUrl ?? '').trim();
+	if (rootBaseUrl) return rootBaseUrl.replace(/\/+$/u, '');
+	const rootDomain = String(rootApiSurface?.environments?.[environment]?.domain ?? '').trim();
+	if (rootDomain) return /^https?:\/\//u.test(rootDomain)
+		? rootDomain.replace(/\/+$/u, '')
+		: `https://${rootDomain.replace(/\/+$/u, '')}`;
 	const applications = discoverApplications(input.context.tenantRoot);
 	for (const application of applications) {
 		const apiSurface = application.config?.surfaces?.api;

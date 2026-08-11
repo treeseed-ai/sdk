@@ -14,7 +14,13 @@ const expected = [
 
 describe('private singleton managed workspace overlay', () => {
 	it('publishes the SDK package export and lock with the bounded gateway implementation', () => {
-		expect(gatewayContractPaths).toEqual(expect.arrayContaining(['package.json', 'package-lock.json', 'src/gateway/admin-passthrough.ts']));
+		expect(gatewayContractPaths).toEqual(expect.arrayContaining([
+			'package.json',
+			'package-lock.json',
+			'src/gateway/admin-passthrough.ts',
+			'src/reconcile/builtin-adapters/capacity/providers/capacity-provider-variables-for-service.ts',
+			'tests/unit/reconcile/capacity-provider-control-plane-variables.test.ts',
+		]));
 	});
 
 	it('accepts application-owned files outside the declared overlay', () => {
