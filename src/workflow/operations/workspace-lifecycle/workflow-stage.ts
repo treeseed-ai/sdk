@@ -152,7 +152,10 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: St
 					&& mergeDown.results.some((entry) => Boolean((entry as Record<string, unknown>).merged));
 				const saveResult = mergeChanged || hasMeaningfulChanges(repoRoot(root))
 					? await executeJournalStep(root, workflowRun.runId, 'save-integrated-feature', () =>
-						workflowSave(helpersForCwd(helpers, root), {
+						workflowSave(helpersForCwd({
+							...helpers,
+							context: { ...helpers.context, workflow: undefined },
+						}, root), {
 							message: `integrate staging before stage: ${message}`,
 							verifyMode: 'skip', 							ciMode: 'off', 							refreshPreview: false, 							preview: false, 							workspaceLinks: effectiveInput.workspaceLinks ?? 'auto',
 						}))

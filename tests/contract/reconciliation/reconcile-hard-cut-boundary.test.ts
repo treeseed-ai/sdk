@@ -32,6 +32,7 @@ describe('reconciliation hard-cut source boundaries', () => {
 		const mergeHelperBody = source('packages/sdk/src/operations/services/git-workflow/inspect-detached-head-repair.ts');
 		expect(mergeHelperBody).toContain('reconciliation.resolved || repoHasStagedChanges(repoDir)');
 		expect(stageBody).toContain('promoteCommitToBranchWithExpectedHead');
+		expect(stageBody).toContain('context: { ...helpers.context, workflow: undefined }');
 		expect(stageBody).toContain('waitForWorkflowGates');
 		expect(stageBody).toContain('stagingCandidateWorkflowGates');
 		expect(stageBody).toContain('legacyMutationPathDisabled');
