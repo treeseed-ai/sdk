@@ -3,7 +3,7 @@ import {
 normalizeRailwayEnvironmentName
 } from '../../hosting/railway/railway-api.ts';
 import { resolveConfiguredContentBucketBinding,resolveConfiguredContentBucketName,resolveConfiguredContentPublicBaseUrl,resolveConfiguredMarketBaseUrl,resolveConfiguredPagesProjectName } from '../hosting/assert-cloudflare-cache-purge-succeeded.ts';
-import { configuredSurfaceHosts,envValue,environmentScopedIdentityName,scopeFromTarget,sharedDeploymentName,targetWorkerName,targetWorkersDevUrl } from '../hosting/configured-surface-hosts.ts';
+import { configuredSurfaceHosts,envValue,environmentScopedIdentityName,resolveContentKeyTemplate,scopeFromTarget,sharedDeploymentName,targetWorkerName,targetWorkersDevUrl } from '../hosting/configured-surface-hosts.ts';
 import { MANAGED_SERVICE_KEYS,TRESEED_ENVELOPE_SCHEMA_GENERATION,TRESEED_MIGRATION_WAVE_ID,TRESEED_SUPPORTED_PAYLOAD_RANGE,envOrNull,resolveConfiguredSurfaceBaseUrl,resolveResourceIdentity,sanitizeSegment } from '../support/default-compatibility-date.ts';
 
 export const LOCAL_RUNTIME_AUTH_ENV_KEYS = [
@@ -97,7 +97,7 @@ export function defaultStateFromConfig(deployConfig, target) {
 	const contentManifestKeyTemplate = deployConfig.cloudflare.r2?.manifestKeyTemplate ?? 'teams/{teamId}/published/common.json';
 	const contentPreviewRootTemplate = deployConfig.cloudflare.r2?.previewRootTemplate ?? 'teams/{teamId}/previews';
 	const contentDefaultTeamId = identity.teamId;
-	const contentManifestKey = contentManifestKeyTemplate.replaceAll('{teamId}', contentDefaultTeamId);
+	const contentManifestKey = resolveContentKeyTemplate(contentManifestKeyTemplate, identity, target);
 	const turnstileName = environmentScopedIdentityName(identity, 'turnstile', target);
 	const turnstileDomains = configuredSurfaceHosts(deployConfig, target, 'web');
 

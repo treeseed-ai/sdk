@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto';
 import type { ArtifactRef } from '../../treedx/types.ts';
+import type {
+	PublishedContentEntry,
+	PublishedContentObjectPointer,
+	PublishedRuntimePointers,
+} from './published-content-manifest-schema-version.ts';
 
-export const CONTENT_PUBLICATION_CONTRACT = 'treeseed.content-publication/v1' as const;
+export const CONTENT_PUBLICATION_CONTRACT = 'treeseed.content-publication/v3' as const;
 
 export type ContentPublicationChannel = 'preview' | 'staging' | 'production';
 
@@ -15,6 +20,8 @@ export interface ContentPublicationObject {
 
 export interface ContentPublicationManifest {
 	contract: typeof CONTENT_PUBLICATION_CONTRACT;
+	schemaVersion: number;
+	siteSlug: string;
 	teamId: string;
 	projectId: string;
 	sourceCommit: string;
@@ -23,6 +30,13 @@ export interface ContentPublicationManifest {
 	revision: string;
 	generatedAt: string;
 	objects: ContentPublicationObject[];
+	mode: 'production';
+	collections: Record<string, PublishedContentObjectPointer>;
+	entries: PublishedContentEntry[];
+	artifacts: [];
+	runtime: PublishedRuntimePointers;
+	tombstones: [];
+	metadata: { channel: ContentPublicationChannel; ref: string; projectId: string };
 }
 
 export interface ContentPublicationReceipt {

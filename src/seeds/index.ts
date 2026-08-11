@@ -12,6 +12,7 @@ export { formatSeedPlan } from './planner.js';
 export { reconcileLocalSeedRuntime } from './runtime/local-capacity.js';
 export { compileSeedRepositoryUnits };
 export { applySeedContentRepositoryHistory, planSeedContentRepositoryHistory } from './repositories/repository-history.js';
+export { classifyContentCutover, planContentCutover, recordContentCutover, removeVerifiedSoftwareContent, type ContentCutoverEvidence, type ContentCutoverPlan } from './repositories/content-cutover.js';
 export type { ContentRepositoryHistoryPlan } from './repositories/repository-history.js';
 export { applySeedSourceRepositoryHistory, planSeedSourceRepositoryHistory } from './repositories/source-repository-history.js';
 export type { SourceRepositoryHistoryPlan } from './repositories/source-repository-history.js';

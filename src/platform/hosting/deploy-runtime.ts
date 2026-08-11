@@ -73,7 +73,7 @@ export function getContentPublishProvider() {
 	return getDeployConfig().providers?.content?.publish ?? DEFAULT_PROVIDER_SELECTIONS.content.publish;
 }
 
-export function getContentServingMode() {
+export function getContentServingMode(config: DeployConfig = getDeployConfig()) {
 	const override = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process
 		?.env?.TREESEED_CONTENT_SERVING_MODE
 		?.trim();
@@ -81,7 +81,7 @@ export function getContentServingMode() {
 		return override;
 	}
 
-	return getDeployConfig().providers?.content?.serving ?? DEFAULT_PROVIDER_SELECTIONS.content.serving;
+	return config.providers?.content?.serving ?? DEFAULT_PROVIDER_SELECTIONS.content.serving;
 }
 
 export function getDocsProvider() {

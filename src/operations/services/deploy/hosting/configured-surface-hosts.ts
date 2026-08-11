@@ -76,6 +76,15 @@ export function scopeFromTarget(target) {
 		: 'staging';
 }
 
+export function resolveContentKeyTemplate(template, identity, target) {
+	const scope = scopeFromTarget(target);
+	const environment = scope === 'prod' ? 'production' : scope === 'local' ? 'staging' : scope;
+	return template
+		.replaceAll('{teamId}', identity.teamId)
+		.replaceAll('{projectId}', identity.projectId)
+		.replaceAll('{environment}', environment);
+}
+
 export function targetDirectoryParts(target) {
 	if (target.kind === 'persistent') {
 		return ['environments', target.scope];
@@ -161,14 +170,14 @@ export function resolveContentServingMode(deployConfig, options = {}) {
 
 export function buildPublicVars(deployConfig, options = {}) {
 	const target = options.target ? normalizeTarget(options.target) : createPersistentDeployTarget('prod');
-	const identity = resolveResourceIdentity(deployConfig, createPersistentDeployTarget('prod'));
+	const identity = resolveResourceIdentity(deployConfig, target);
 	const contentRuntimeProvider = deployConfig.providers?.content?.runtime ?? 'team_scoped_r2_overlay';
 	const contentPublishProvider = deployConfig.providers?.content?.publish ?? contentRuntimeProvider;
 	const contentServingMode = resolveContentServingMode(deployConfig, options);
 	const contentDefaultTeamId = identity.teamId;
 	const contentManifestKeyTemplate = deployConfig.cloudflare.r2?.manifestKeyTemplate ?? 'teams/{teamId}/published/common.json';
 	const contentPreviewRootTemplate = deployConfig.cloudflare.r2?.previewRootTemplate ?? 'teams/{teamId}/previews';
-	const contentManifestKey = contentManifestKeyTemplate.replaceAll('{teamId}', contentDefaultTeamId);
+	const contentManifestKey = resolveContentKeyTemplate(contentManifestKeyTemplate, identity, target);
 	const managedRuntime = deployConfig.runtime?.mode === 'treeseed_managed';
 	const workerRailway = deployConfig.services?.worker?.railway ?? {};
 	const webCachePolicy = resolveWebCachePolicy(deployConfig);
@@ -197,7 +206,7 @@ export function buildPublicVars(deployConfig, options = {}) {
 		TREESEED_CONTENT_MANIFEST_KEY: contentManifestKey,
 		TREESEED_CONTENT_MANIFEST_KEY_TEMPLATE: contentManifestKeyTemplate,
 		TREESEED_CONTENT_PREVIEW_ROOT_TEMPLATE: contentPreviewRootTemplate,
-		TREESEED_EDITORIAL_PREVIEW_ROOT: contentPreviewRootTemplate.replaceAll('{teamId}', contentDefaultTeamId),
+		TREESEED_EDITORIAL_PREVIEW_ROOT: resolveContentKeyTemplate(contentPreviewRootTemplate, identity, target),
 		TREESEED_EDITORIAL_PREVIEW_TTL_HOURS: String(deployConfig.cloudflare.r2?.previewTtlHours ?? 168),
 		CONTENT_BUCKET_NAME: resolveConfiguredContentBucketName(deployConfig),
 		TREESEED_CONTENT_PUBLIC_BASE_URL: resolveConfiguredContentPublicBaseUrl(deployConfig),

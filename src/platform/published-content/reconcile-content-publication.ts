@@ -6,6 +6,8 @@ import type { ArtifactRef } from '../../treedx/types.ts';
 import { ARTIFACT_REF_CONTRACT } from '../../treedx/types.ts';
 import { CONTENT_PUBLICATION_CONTRACT,publicationKeys,type ContentPublicationChannel,type ContentPublicationManifest,type ContentPublicationReceipt } from './publication-contracts.ts';
 import { createR2PublicationClient,type R2PublicationConfig } from './r2-publication-client.ts';
+import { buildRuntimePublication,verifyRuntimePublicationManifest } from './runtime/build-runtime-publication.ts';
+import { PUBLISHED_CONTENT_MANIFEST_SCHEMA_VERSION } from './published-content-manifest-schema-version.ts';
 
 export interface ReconcileContentPublicationInput {
 	projectRoot: string;
@@ -80,7 +82,7 @@ export async function reconcileContentPublication(input: ReconcileContentPublica
 		if (dirty) throw new Error('Content publication requires the exact clean content tree from sourceCommit.');
 	}
 	const sourceFiles = await filesUnder(root);
-	const values = await Promise.all(sourceFiles.map(async (file) => {
+	const sourceValues = await Promise.all(sourceFiles.map(async (file) => {
 		const bytes = await readFile(file);
 		const text = bytes.toString('utf8');
 		if (!Buffer.from(text, 'utf8').equals(bytes)) throw new Error(`${file} is not valid UTF-8.`);
@@ -88,17 +90,36 @@ export async function reconcileContentPublication(input: ReconcileContentPublica
 		return { path: relative(root, file).replaceAll('\\', '/'), bytes, sha256, byteLength: bytes.byteLength, mediaType: mediaType(file) };
 	}));
 	const provisional = { teamId: input.teamId, projectId: input.projectId, sourceCommit: input.sourceCommit, ref: input.ref, channel: input.channel };
-	const revision = digest(JSON.stringify({ ...provisional, objects: values.map(({ path, sha256 }) => ({ path, sha256 })) }));
+	const revision = digest(JSON.stringify({ contract: CONTENT_PUBLICATION_CONTRACT, ...provisional, objects: sourceValues.map(({ path, sha256 }) => ({ path, sha256 })) }));
 	const keys = publicationKeys({ ...provisional, revision });
-	const objects = values.map((value) => ({ path: value.path, objectKey: `${keys.objectRoot}/${value.path}`, sha256: value.sha256, byteLength: value.byteLength, mediaType: value.mediaType }));
+	const sourceObjects = sourceValues.map((value) => ({ path: value.path, objectKey: `${keys.objectRoot}/${value.path}`, sha256: value.sha256, byteLength: value.byteLength, mediaType: value.mediaType }));
 	const observeGeneratedAt = input.observeSourceGeneratedAt ?? (async (cwd: string, commit: string) => runRepositoryGit(
 		['show', '-s', '--format=%cI', commit], { cwd, mode: 'read' },
 	).stdout.trim());
 	const generatedAt = input.generatedAt ?? await observeGeneratedAt(projectRoot, input.sourceCommit);
 	if (!generatedAt) throw new Error('The exact source commit timestamp is required for deterministic publication replay.');
-	const manifest: ContentPublicationManifest = { contract: CONTENT_PUBLICATION_CONTRACT, ...provisional, revision, generatedAt, objects };
+	const runtime = buildRuntimePublication({ files: sourceValues.map((value) => ({ ...value, body: value.bytes.toString('utf8') })), teamId: input.teamId, generatedAt, objectRoot: keys.objectRoot });
+	const runtimeObjects = runtime.objects.map((entry) => entry.object);
+	const objects = [...sourceObjects, ...runtimeObjects];
+	const bodies = [...sourceValues.map((value) => value.bytes.toString('utf8')), ...runtime.objects.map((entry) => entry.body)];
+	const manifest: ContentPublicationManifest = {
+		contract: CONTENT_PUBLICATION_CONTRACT,
+		schemaVersion: PUBLISHED_CONTENT_MANIFEST_SCHEMA_VERSION,
+		siteSlug: input.projectId,
+		...provisional,
+		revision,
+		generatedAt,
+		objects,
+		mode: 'production',
+		collections: runtime.collections,
+		entries: runtime.entries,
+		artifacts: [],
+		runtime: runtime.runtime,
+		tombstones: [],
+		metadata: { channel: input.channel, ref: input.ref, projectId: input.projectId },
+	};
 	const body = `${JSON.stringify(manifest, null, 2)}\n`;
-	const artifacts: ArtifactRef[] = objects.map((object) => ({ contract: ARTIFACT_REF_CONTRACT, kind: 'r2-object', objectKey: object.objectKey, path: object.path, commitSha: input.sourceCommit, sha256: object.sha256, byteLength: object.byteLength, mediaType: object.mediaType, visibility: input.channel === 'production' ? 'public' : 'team', provenance: { projectId: input.projectId, sourceCommit: input.sourceCommit } }));
+	const artifacts: ArtifactRef[] = sourceObjects.map((object) => ({ contract: ARTIFACT_REF_CONTRACT, kind: 'r2-object', objectKey: object.objectKey, path: object.path, commitSha: input.sourceCommit, sha256: object.sha256, byteLength: object.byteLength, mediaType: object.mediaType, visibility: input.channel === 'production' ? 'public' : 'team', provenance: { projectId: input.projectId, sourceCommit: input.sourceCommit } }));
 	if (input.validateOnly) return { contract: CONTENT_PUBLICATION_CONTRACT, teamId: input.teamId, projectId: input.projectId, sourceCommit: input.sourceCommit, channel: input.channel, revision, manifestKey: keys.manifestKey, pointerKey: keys.pointerKey, uploadedObjectCount: 0, reusedObjectCount: objects.length, artifacts, verified: true };
 	if (!input.r2) throw new Error('R2 publication credentials are required.');
 	if (input.verifySourceStillCurrent && !await input.verifySourceStillCurrent()) {
@@ -109,7 +130,7 @@ export async function reconcileContentPublication(input: ReconcileContentPublica
 	let uploadedObjectCount = 0;
 	await forEachConcurrent(objects, 8, async (object, index) => {
 		if (await client.exists(object.objectKey)) return;
-		await client.put(object.objectKey, values[index]!.bytes.toString('utf8'), { contentType: object.mediaType, ifNoneMatch: '*' });
+		await client.put(object.objectKey, bodies[index]!, { contentType: object.mediaType, ifNoneMatch: '*' });
 		uploadedObjectCount += 1;
 	});
 	await forEachConcurrent(objects, 8, async (object) => {
@@ -130,5 +151,10 @@ export async function reconcileContentPublication(input: ReconcileContentPublica
 	}
 	const [manifestReadback, pointerReadback] = await Promise.all([client.get(keys.manifestKey), client.get(keys.pointerKey)]);
 	if (manifestReadback?.body !== body || pointerReadback?.body !== body) throw new Error('R2 publication read-back verification failed.');
+	verifyRuntimePublicationManifest(pointerReadback.body, {
+		revision,
+		sourceCommit: input.sourceCommit,
+		entryCount: runtime.entries.length,
+	});
 	return { contract: CONTENT_PUBLICATION_CONTRACT, teamId: input.teamId, projectId: input.projectId, sourceCommit: input.sourceCommit, channel: input.channel, revision, manifestKey: keys.manifestKey, pointerKey: keys.pointerKey, uploadedObjectCount, reusedObjectCount: objects.length - uploadedObjectCount, artifacts, verified: true };
 }

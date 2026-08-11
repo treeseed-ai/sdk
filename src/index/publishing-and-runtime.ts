@@ -17,6 +17,7 @@ verifyEditorialPreviewToken
 export { R2ApiTokenPublicationClient, type R2ApiTokenPublicationConfig } from '../platform/published-content/r2-api-token-publication-client.ts';
 export { createR2PublicationClient, type R2PublicationClient, type R2PublicationConfig } from '../platform/published-content/r2-publication-client.ts';
 export { reconcileContentPublication, type ReconcileContentPublicationInput } from '../platform/published-content/reconcile-content-publication.ts';
+export { buildRuntimePublication, verifyRuntimePublicationManifest, type RuntimePublicationObject, type RuntimePublicationSource } from '../platform/published-content/runtime/build-runtime-publication.ts';
 export type { ContentPublicationChannel,ContentPublicationReceipt } from '../platform/published-content/publication-contracts.ts';
 
 export {
