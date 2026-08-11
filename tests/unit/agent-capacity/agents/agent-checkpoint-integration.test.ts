@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -50,7 +50,7 @@ describe('supervised agent checkpoint integration', () => {
 			id: graphId, projectId: 'project-sdk', decisionId: 'decision-1', status: 'completed', nodes,
 			deliverableContracts: [implementationContractId, 'contract-verification', 'contract-review', 'contract-release']
 				.map((id) => ({ id, status: 'approved', metadata: id === implementationContractId ? { assignmentId: 'assignment-1', modeRunId: 'mode-run-1', deliverableManifestId: 'deliverable:assignment-1' } : {} })),
-			metadata: { exactBaseRef: baseCommit },
+			metadata: { exactBaseRef: baseCommit, proposalId: 'proposal-1', proposalVersion: 3, proposalContentHash: 'sha256:proposal', decisionDependencies: [{ projectId: 'project-api', decisionId: 'decision-api' }] },
 		};
 		const assignment = {
 			id: 'assignment-1', projectId: 'project-sdk', status: 'completed', mode: 'acting',
@@ -80,11 +80,23 @@ describe('supervised agent checkpoint integration', () => {
 		expect(integrated.ok).toBe(true);
 		expect(integrated.integratedCommit).toBe(input.checkpointCommit);
 		expect(integrated.nextOperation).toBe('treeseed save');
+		expect(integrated.authorityId).toMatch(/^[a-f0-9]{64}$/u);
+		const authority = JSON.parse(await readFile(integrated.authorityReceiptPath!, 'utf8'));
+		expect(authority).toMatchObject({
+			kind: 'treeseed.governed-execution-authority/v1',
+			projectId: 'project-sdk',
+			proposalId: 'proposal-1',
+			proposalVersion: 3,
+			decisionId: 'decision-1',
+			decisionDependencies: [{ projectId: 'project-api', decisionId: 'decision-api' }],
+			checkpointCommit: input.checkpointCommit,
+			repository: { canonicalKey: 'github.com/treeseed-ai/sdk' },
+		});
 		expect(await git(input.repositoryPath, 'branch', '--show-current')).toBe('feature/supervised-agent');
 		expect(await git(input.repositoryPath, 'status', '--porcelain')).toBe('');
 		expect(await git(input.repositoryPath, 'rev-parse', 'HEAD^{tree}')).toBe(await git(input.repositoryPath, 'rev-parse', `${input.checkpointCommit}^{tree}`));
 		const replay = await integrateAgentCheckpoint({ workspaceRoot: input.root, assignment: input.assignment, graph: input.graph, projectRepository: input.projectRepository, deliverableManifest: input.deliverableManifest, mode: 'execute' });
-		expect(replay).toMatchObject({ ok: true, alreadyIntegrated: true, integratedCommit: integrated.integratedCommit });
+		expect(replay).toMatchObject({ ok: true, alreadyIntegrated: true, integratedCommit: integrated.integratedCommit, authorityId: integrated.authorityId });
 	});
 
 	it('fails closed when the task branch has diverged from the governed base', async () => {

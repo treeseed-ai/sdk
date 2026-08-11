@@ -21,6 +21,7 @@ negativeCases:
   - "Release is blocked when any live staging ref differs from the receipt-derived stage candidate."
   - "Platform cannot encode Market, Market API, content repositories, or project gitlinks in its portfolio."
   - "Workset replay blocks dirty, divergent, nested, or incorrectly sourced existing repository paths without resetting them."
+  - "A governance execution authority is excluded when its repository identity, task branch, or integrated-commit ancestry does not match the saved repository."
 evidence: { required: [guarantee_report] }
 notes:
-  - "Repository-scoped save defaults, explicit federated save, stale-ref rejection, receipt-derived stage candidates, live staging read-back, a zero-gitlink live Platform portfolio, and clean-clone thirteen-repository workset, stage, close, release-plan, interruption, and recovery acceptance are implemented without `.gitmodules`. The guarantee remains planned until its verifier is registered and produces repeatable evidence."
+  - "Repository-scoped save defaults, explicit federated save, stale-ref rejection, receipt-derived stage candidates, live staging read-back, governed checkpoint authority capture, a zero-gitlink live Platform portfolio, and clean-clone thirteen-repository workset, stage, close, release-plan, interruption, and recovery acceptance are implemented without `.gitmodules`. The guarantee remains planned until its verifier is registered, decision freshness is revalidated at stage, and it produces repeatable evidence."

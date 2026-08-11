@@ -4,6 +4,8 @@ import { relative,resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { validateAgentArtifactManifest,type AgentArtifactManifest } from '../../agent-capacity/artifacts.ts';
 import type { DecisionAssignmentGraphRecord } from '../../agent-capacity/contracts/support/decision-work.ts';
+import { repositoryIdentityKey } from '../../repositories/repository-identity.ts';
+import { writeGovernedExecutionAuthority } from './execution-authority-receipt.ts';
 
 export const execFileAsync = promisify(execFile);
 export const PROTECTED_BRANCHES = new Set(['main', 'master', 'staging', 'production']);
@@ -36,6 +38,8 @@ export interface AgentCheckpointIntegrationResult {
 	checkpointCommit: string;
 	integratedCommit: string | null;
 	alreadyIntegrated: boolean;
+	authorityId: string | null;
+	authorityReceiptPath: string | null;
 	commits: string[];
 	changedPaths: string[];
 	blockers: string[];
@@ -170,6 +174,9 @@ export async function integrateAgentCheckpoint(
 	let changedPaths: string[] = [];
 	let integratedCommit: string | null = null;
 	let alreadyIntegrated = false;
+	let authorityId: string | null = null;
+	let authorityReceiptPath: string | null = null;
+	let observedRemote = '';
 	try {
 		const [realWorkspaceRoot, realRepositoryPath] = await Promise.all([realpath(workspaceRoot), realpath(repositoryPath)]);
 		if (!isInside(realWorkspaceRoot, realRepositoryPath)) blockers.push('Project repository symlink resolves outside the operator workspace.');
@@ -201,8 +208,9 @@ export async function integrateAgentCheckpoint(
 		const repositoryName = text(repository.name);
 		const expectedRemote = text(repository.url, repository.cloneUrl, repository.webUrl)
 			|| (repositoryOwner && repositoryName ? `https://github.com/${repositoryOwner}/${repositoryName}` : '');
-		const observedRemote = await inspectGit(executor, repositoryPath, ['config', '--get', 'remote.origin.url']);
+		observedRemote = await inspectGit(executor, repositoryPath, ['config', '--get', 'remote.origin.url']);
 		if (!expectedRemote || normalizeRemote(expectedRemote) !== normalizeRemote(observedRemote)) blockers.push('Local repository origin does not match the assignment project repository.');
+		if (!repositoryIdentityKey(observedRemote)) blockers.push('Local repository origin has no canonical repository identity.');
 	} catch (error) {
 		blockers.push(`Git checkpoint inspection failed: ${error instanceof Error ? error.message : String(error)}`);
 	}
@@ -218,6 +226,35 @@ export async function integrateAgentCheckpoint(
 			throw new Error('Fast-forwarded task branch does not match the selected assignment checkpoint.');
 		}
 	}
+	if (input.mode === 'execute' && blockers.length === 0 && integratedCommit) {
+		const graphMetadata = record(graph.metadata);
+		const proposalVersionValue = Number(graphMetadata.proposalVersion ?? record(decisionInput).proposalVersion);
+		const dependencies = array(graphMetadata.decisionDependencies ?? graphMetadata.executionDependencies).map(record)
+			.map((dependency) => ({ projectId: text(dependency.projectId), decisionId: text(dependency.decisionId) }))
+			.filter((dependency) => dependency.projectId && dependency.decisionId);
+		const written = writeGovernedExecutionAuthority(workspaceRoot, {
+			teamId: text(assignment.teamId, manifestRecord.teamId) || null,
+			projectId,
+			proposalId: text(graphMetadata.proposalId, record(decisionInput).proposalId) || null,
+			proposalVersion: Number.isInteger(proposalVersionValue) && proposalVersionValue > 0 ? proposalVersionValue : null,
+			proposalContentHash: text(graphMetadata.proposalContentHash, record(decisionInput).proposalContentHash) || null,
+			decisionId: text(graph.decisionId),
+			decisionDependencies: dependencies,
+			assignmentId,
+			graphId,
+			graphNodeId,
+			deliverableManifestId: text(deliverableManifest.id),
+			deliverableContractId: contractId,
+			repository: { canonicalKey: repositoryIdentityKey(observedRemote)!, remoteUrl: observedRemote },
+			sourceBranch: targetBranch!,
+			baseCommit,
+			checkpointCommit,
+			integratedCommit,
+			changedPaths,
+		});
+		authorityId = written.receipt.authorityId;
+		authorityReceiptPath = written.path;
+	}
 
 	return {
 		ok: blockers.length === 0,
@@ -232,6 +269,8 @@ export async function integrateAgentCheckpoint(
 		checkpointCommit,
 		integratedCommit,
 		alreadyIntegrated,
+		authorityId,
+		authorityReceiptPath,
 		commits,
 		changedPaths,
 		blockers,

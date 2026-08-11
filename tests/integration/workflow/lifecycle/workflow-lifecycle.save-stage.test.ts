@@ -17,6 +17,8 @@ import { resolveWorkflowPaths } from '../../../../src/workflow/policy.ts';
 import { acquireWorkflowLock, createWorkflowRunJournal, releaseWorkflowLock, updateWorkflowRunJournal } from '../../../../src/workflow/runs.ts';
 import { runWorkspaceSavePreflight } from '../../../../src/operations/services/hosting/deployment/save-deploy-preflight.ts';
 import { inspectDetachedHeadRepair, mergeBranchIntoTarget, reattachDetachedHeadIfSafe } from '../../../../src/operations/services/operations/git-workflow.ts';
+import { writeGovernedExecutionAuthority } from '../../../../src/operations/agents/execution-authority-receipt.ts';
+import { repositoryIdentityKey } from '../../../../src/repositories/repository-identity.ts';
 import {
 	createDefaultMachineConfig,
 	ensureSecretSessionForConfig,
@@ -156,6 +158,15 @@ it('saves an invoked package repository without sweeping sibling or Platform cha
 
 it('recursively saves dirty checked-out workspace packages before saving the market repo when explicitly federated', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const sdkPath = resolve(work, 'packages', 'sdk');
+		const sdkBase = git(sdkPath, ['rev-parse', 'HEAD']);
+		const sdkRemote = git(sdkPath, ['remote', 'get-url', 'origin']);
+		writeGovernedExecutionAuthority(work, {
+			teamId: 'team-a', projectId: 'project-sdk', proposalId: 'proposal-a', proposalVersion: 2, proposalContentHash: 'sha256:proposal-a', decisionId: 'decision-a',
+			decisionDependencies: [{ projectId: 'project-api', decisionId: 'decision-api' }], assignmentId: 'assignment-a', graphId: 'graph-a', graphNodeId: 'node-a',
+			deliverableManifestId: 'deliverable:assignment-a', deliverableContractId: 'contract-a', repository: { canonicalKey: repositoryIdentityKey(sdkRemote)!, remoteUrl: sdkRemote },
+			sourceBranch: 'feature/demo-task', baseCommit: sdkBase, checkpointCommit: sdkBase, integratedCommit: sdkBase, changedPaths: ['index.js'],
+		});
 		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-updated";\n', 'utf8');
 		writeFileSync(resolve(work, 'packages', 'core', 'index.js'), 'export const name = "core-updated";\n', 'utf8');
 		writeFileSync(resolve(work, 'feature.txt'), 'demo\nupdated\n', 'utf8');
@@ -189,6 +200,9 @@ it('recursively saves dirty checked-out workspace packages before saving the mar
 		expect(result.payload.integrationReceipt.kind).toBe('treeseed.integration-change-set/v1');
 		expect(result.payload.integrationReceipt.repositories).toHaveLength(9);
 		expect(result.payload.integrationReceipt.repositories.every((repo: { remoteVerified?: boolean }) => repo.remoteVerified)).toBe(true);
+		expect(result.payload.integrationReceipt.repositories.find((repo: { name: string }) => repo.name === '@treeseed/sdk').executionAuthorities).toEqual([
+			expect.objectContaining({ authorityId: expect.any(String), decisionId: 'decision-a', assignmentId: 'assignment-a' }),
+		]);
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('feature/demo-task');
 		expect(git(resolve(work, 'packages', 'core'), ['branch', '--show-current'])).toBe('feature/demo-task');
 		expect(git(work, ['ls-tree', 'HEAD', 'packages/sdk'])).toContain(result.payload.repos[0].commitSha);
@@ -378,6 +392,18 @@ it('blocks receipt consumption after a live repository ref moves', async () => {
 	const blockers = integrationChangeSetBlockers(work, 'feature/demo-task');
 
 	expect(blockers.join('\n')).toContain('remote feature/demo-task moved after receipt');
+}, 360000);
+
+it('rejects a locally altered integration receipt before stage can consume it', async () => {
+	const { work } = createWorkflowRepo();
+	const workflow = workflowFor(work);
+	await workflow.save({ message: 'chore: immutable receipt', federated: true, verify: false, refreshPreview: false });
+	const path = resolve(work, '.treeseed', 'workflow', 'integration-receipts', 'latest.json');
+	const receipt = JSON.parse(readFileSync(path, 'utf8'));
+	receipt.repositories[0].commit = '0'.repeat(40);
+	writeFileSync(path, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
+	expect(readLatestIntegrationChangeSet(work)).toBeNull();
+	expect(integrationChangeSetBlockers(work, 'feature/demo-task')).toContain('No integration change-set receipt is available. Run `trsd save` first.');
 }, 360000);
 
 it('uses dev-save mode for staging even when package repos start on main', async () => {

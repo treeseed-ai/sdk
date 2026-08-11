@@ -5,6 +5,7 @@ import { runRepositoryGit } from '../../../operations/services/operations/git-ru
 import { discoverRepositorySaveNodes } from '../../../operations/services/repositories/repository-save-orchestrator.ts';
 import type { RepositorySaveReport,RepositorySaveResult } from '../../../operations/services/repositories/repository-save-orchestrator.ts';
 import { currentBranch,originRemoteUrl } from '../../../operations/services/treedx/workspaces/workspace-save.ts';
+import { authorityMatchesRepository,governedExecutionAuthorityValid,readGovernedExecutionAuthorities,type GovernedExecutionAuthority } from '../../../operations/agents/execution-authority-receipt.ts';
 import { repositoryIdentityKey } from '../../../repositories/repository-identity.ts';
 
 export type IntegrationRepository = {
@@ -26,6 +27,7 @@ export type IntegrationRepository = {
 		status: 'passed' | 'skipped';
 		mode: string | null;
 	};
+	executionAuthorities: GovernedExecutionAuthority[];
 	remoteProof: {
 		kind: 'branch_head' | 'reachable';
 		ref: string;
@@ -103,10 +105,23 @@ function writeReceipt(root: string, receipt: IntegrationChangeSet) {
 	return receipt;
 }
 
+function receiptIdentity(receipt: Pick<IntegrationChangeSet, 'sourceBranch' | 'scope' | 'repositories'>) {
+	return createHash('sha256').update(JSON.stringify({
+		sourceBranch: receipt.sourceBranch,
+		scope: receipt.scope,
+		repositories: receipt.repositories.map(({ name,role,repository,workspacePath,sourceBranch,commit,dependencies,contractDigests,verification,executionAuthorities,remoteProof }) => ({
+			name,role,repository,workspacePath,sourceBranch,commit,dependencies,contractDigests,verification,executionAuthorities,remoteProof,
+		})),
+	})).digest('hex');
+}
+
 export function readLatestIntegrationChangeSet(root: string): IntegrationChangeSet | null {
 	try {
 		const receipt = JSON.parse(readFileSync(receiptPaths(root, 'unused').latest, 'utf8')) as IntegrationChangeSet;
-		return receipt?.kind === 'treeseed.integration-change-set/v1' && receipt.schemaVersion === 1 ? receipt : null;
+		if (receipt?.kind !== 'treeseed.integration-change-set/v1' || receipt.schemaVersion !== 1) return null;
+		if (receipt.receiptId !== receiptIdentity(receipt)) return null;
+		if (receipt.repositories.some((repository) => repository.executionAuthorities?.some((authority) => !governedExecutionAuthorityValid(authority)))) return null;
+		return receipt;
 	} catch {
 		return null;
 	}
@@ -138,6 +153,14 @@ function verifiedRepository(input: {
 	}
 	const verificationStatus = report.verification?.status;
 	if (verificationStatus === 'failed') throw new Error(`${node.name} has a failed save verification.`);
+	const executionAuthorities = readGovernedExecutionAuthorities(root).filter((authority) =>
+		authority.sourceBranch === branch
+		&& authorityMatchesRepository(authority, remoteUrl)
+		&& runRepositoryGit(['merge-base', '--is-ancestor', authority.integratedCommit, commit], {
+			cwd: node.path,
+			mode: 'read',
+			allowFailure: true,
+		}).status === 0);
 	return {
 		name: node.name,
 		role: node.id === '.' ? 'root' : node.kind,
@@ -154,6 +177,7 @@ function verifiedRepository(input: {
 			status: verificationStatus === 'passed' ? 'passed' : 'skipped',
 			mode: report.verification?.mode ?? null,
 		},
+		executionAuthorities,
 		remoteProof,
 		remoteVerified: true,
 	};
@@ -175,13 +199,7 @@ export function writeIntegrationChangeSet(input: {
 		if (!report) throw new Error(`Saved repository report is missing for ${node.name}.`);
 		return verifiedRepository({ root: input.root, branch: input.branch, node, report, namesById });
 	}).sort((left, right) => left.repository.canonicalKey.localeCompare(right.repository.canonicalKey));
-	const receiptId = createHash('sha256').update(JSON.stringify({
-		sourceBranch: input.branch,
-		scope: input.result.repositoryScope,
-		repositories: repositories.map(({ name,role,repository,workspacePath,sourceBranch,commit,dependencies,contractDigests,verification,remoteProof }) => ({
-			name,role,repository,workspacePath,sourceBranch,commit,dependencies,contractDigests,verification,remoteProof,
-		})),
-	})).digest('hex');
+	const receiptId = receiptIdentity({ sourceBranch: input.branch, scope: input.result.repositoryScope, repositories });
 	return writeReceipt(input.root, {
 		schemaVersion: 1,
 		kind: 'treeseed.integration-change-set/v1',

@@ -19,7 +19,10 @@ describe('private singleton managed workspace overlay', () => {
 			'package.json',
 			'package-lock.json',
 			'src/gateway/admin-passthrough.ts',
+			'src/operations/agents/execution-authority-receipt.ts',
+			'src/workflow/operations/coordination/integration-change-set.ts',
 			'src/reconcile/builtin-adapters/capacity/providers/capacity-provider-variables-for-service.ts',
+			'tests/integration/workflow/lifecycle/workflow-lifecycle.save-stage.test.ts',
 			'tests/unit/reconcile/capacity-provider-control-plane-variables.test.ts',
 		]));
 	});

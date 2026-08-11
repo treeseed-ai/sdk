@@ -17,6 +17,8 @@ export const gatewayContractPaths = [
 	'src/index/platform-and-hosting.ts',
 	'src/index/public-contracts.ts',
 	'src/market-client/support/preferences/request.ts',
+	'src/operations/agents/agent-checkpoint-integration.ts',
+	'src/operations/agents/execution-authority-receipt.ts',
 	'src/operations/services/configuration/github-credentials.ts',
 	'src/operations/services/git-runner/git-runner-mode.ts',
 	'src/operations/services/github-api/create-git-hub-api-client.ts',
@@ -40,7 +42,10 @@ export const gatewayContractPaths = [
 	'src/reconcile/support/acceptance/live-acceptance-starter-planning.ts',
 	'src/reconcile/support/acceptance/live-acceptance.ts',
 	'src/reconcile/support/contracts/contracts.ts',
+	'src/workflow/operations/coordination/integration-change-set.ts',
+	'guarantees/project/repository-federation/promote-exact-repository-receipts.guarantee.yaml',
 	'guarantees/project/repository-migration/separate-software-and-content-repositories.guarantee.yaml',
+	'tests/integration/workflow/lifecycle/workflow-lifecycle.save-stage.test.ts',
 	'tests/integration/misc/testing/export-runtime.test.ts',
 	'tests/integration/misc/accounts/remote.sends-the-remote-contract-header-and-bearer-auth.test.ts',
 	'tests/integration/config/configuration/config-github-sync.test.ts',
@@ -57,6 +62,7 @@ export const gatewayContractPaths = [
 	'tests/unit/reconcile/capacity-provider-control-plane-variables.test.ts',
 	'tests/unit/misc/seeds/repository-policy.test.ts',
 	'tests/unit/misc/testing/market-client.test.ts',
+	'tests/unit/agent-capacity/agents/agent-checkpoint-integration.test.ts',
 	'tests/unit/reconcile/github-live-repository.test.ts',
 	'tests/unit/reconciliation/repositories/github-repository-adapter.test.ts',
 ];
@@ -66,11 +72,13 @@ const cliPaths = [
 	'package.json',
 	'scripts/packages/release-verify.ts',
 	'src/cli/handlers/accounts/auth-login.ts',
+	'src/cli/handlers/capacity/capacity-core/capacity-checkpoint-integration.ts',
 	'src/cli/handlers/seeds/seed-repositories.ts',
 	'src/cli/handlers/seeds/seed.ts',
 	'src/cli/seeds/operations-seed-and-demo.ts',
 	'tests/support/help-harness.ts',
 	'tests/support/seed-command-harness.ts',
+	'tests/integration/capacity/checkpoint.test.ts',
 ];
 
 function filesUnder(root: string, relativeDirectory: string): string[] {
