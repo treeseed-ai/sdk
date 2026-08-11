@@ -23,7 +23,9 @@ export function inspectDetachedHeadRepair(repoDir, expectedBranches = [STAGING_B
 	}
 
 	for (const branch of expectedBranches) {
-		const branchSha = branchExists(repoDir, branch) ? maybeHeadCommit(repoDir, branch) : null;
+		const branchSha = branchExists(repoDir, branch)
+			? maybeHeadCommit(repoDir, branch)
+			: maybeHeadCommit(repoDir, `refs/remotes/origin/${branch}`);
 		if (headSha && branchSha && headSha === branchSha) {
 			return {
 				repoDir,

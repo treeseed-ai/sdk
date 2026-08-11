@@ -55,12 +55,16 @@ export function resolveWorkflowState(cwd: string, options: WorkflowStatusOptions
 					}
 				}
 				const remoteBranch = Boolean(expectedBranch) ? knownRemoteTrackingBranchExists(packageDir, expectedBranch) : false;
+				const aligned = expectedBranch
+					? repoBranch === expectedBranch
+						|| (detachedRepair?.repairable === true && detachedRepair.targetBranch === expectedBranch)
+					: true;
 				return {
 					name: pkg.id,
 					path: pkg.path,
 					branchName: repoBranch,
 					dirty,
-					aligned: expectedBranch ? repoBranch === expectedBranch : true,
+					aligned,
 					localBranch,
 					remoteBranch,
 					detached: repoBranch == null,

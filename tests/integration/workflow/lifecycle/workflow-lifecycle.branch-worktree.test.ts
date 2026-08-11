@@ -180,7 +180,27 @@ it('reattaches a clean detached package repo at staging head', () => {
 		expect(report.repaired).toBe(true);
 		expect(report.targetBranch).toBe('staging');
 		expect(git(sdkRoot, ['branch', '--show-current'])).toBe('staging');
-	}, 15_000);
+}, 15_000);
+
+it('reattaches an exact staging gitlink when only the remote-tracking branch exists', () => {
+	const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+	const sdkRoot = resolve(work, 'packages', 'sdk');
+	const stagingHead = git(sdkRoot, ['rev-parse', 'staging']);
+	git(sdkRoot, ['checkout', '--detach', stagingHead]);
+	git(sdkRoot, ['update-ref', 'refs/remotes/origin/staging', stagingHead]);
+	git(sdkRoot, ['branch', '-D', 'staging']);
+
+	const inspection = inspectDetachedHeadRepair(sdkRoot, ['staging', 'main']);
+	const report = reattachDetachedHeadIfSafe(sdkRoot, ['staging', 'main']);
+
+	expect(inspection).toMatchObject({
+		repairable: true,
+		targetBranch: 'staging',
+		targetSha: stagingHead,
+	});
+	expect(report.repaired).toBe(true);
+	expect(git(sdkRoot, ['branch', '--show-current'])).toBe('staging');
+}, 15_000);
 
 it('reattaches a dirty detached package repo at the same staging head without losing changes', () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
