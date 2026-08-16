@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseDeployConfig } from '../../../src/platform/deploy-config/parse-deploy-config.ts';
 import {
 	classifyPlatformWorkspaceBranch,
+	platformConfigurationAssets,
 	platformDeployConfig,
 } from '../../../src/seeds/workspaces/platform-workspace-history.ts';
 
@@ -33,6 +34,17 @@ describe('Platform workspace migration recovery', () => {
 		expect(config.surfaces?.web?.enabled).toBe(true);
 		expect(config.services.api).toMatchObject({ enabled: true, provider: 'local' });
 		expect(config.services.treedx).toMatchObject({ enabled: true, provider: 'local' });
+	});
+
+	it('materializes byte-identical configuration assets into templates and the Platform root', () => {
+		const seed = 'name: platform\n';
+		const scene = 'kind: scene\n';
+		const assets = platformConfigurationAssets(seed, scene, ['platform-local-managed-codex']);
+
+		expect(assets).toContainEqual({ path: 'scenes/team-project-portfolio-demo.yaml', content: scene });
+		expect(assets).toContainEqual({ path: 'templates/platform-local-managed-codex/template/scenes/team-project-portfolio-demo.yaml', content: scene });
+		expect(assets).toContainEqual({ path: 'templates/platform-local-managed-codex/template/seeds/platform.yaml', content: seed });
+		expect(assets.every((asset) => asset.content.endsWith('\n'))).toBe(true);
 	});
 
 });

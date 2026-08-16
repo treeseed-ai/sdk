@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.12.63-dev.fix-stage-helper-alias-cleanup.20260816T114310Z",
+  "version": "0.12.63-dev.fix-platform-template-fulfillment.20260816T135610Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "Apache-2.0",
   "repository": {

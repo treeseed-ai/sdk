@@ -93,26 +93,33 @@ function boundaryVerifier() {
 	return `import { existsSync, readFileSync } from 'node:fs';\nimport { resolve } from 'node:path';\n\nconst root = resolve(import.meta.dirname, '..');\nconst fail = (message) => { throw new Error(message); };\nif (existsSync(resolve(root, '.gitmodules'))) fail('Platform must not encode team inventory as gitlinks.');\nif (existsSync(resolve(root, 'treeseed.portfolio.json'))) fail('Platform must read live team inventory instead of a repository portfolio file.');\nconst config = readFileSync(resolve(root, 'treeseed.site.yaml'), 'utf8');\nconst requiredConfig = [/^\\s*kind: customer-platform\\s*$/mu, /^\\s*profile: treeseed\\s*$/mu, /^controlPlane: \\{ mode: managed \\}\\s*$/mu, /^processing: \\{ mode: local, providerRef: codex-sub \\}\\s*$/mu, /^\\s*api: \\{ enabled: true, provider: local \\}\\s*$/mu, /^\\s*treedx: \\{ enabled: true, provider: local \\}\\s*$/mu];\nif (requiredConfig.some((pattern) => !pattern.test(config))) fail('Platform configuration does not match the canonical local-managed Codex template.');\nif (/^\\s*market-?api:/imu.test(config)) fail('Platform configuration declares a forbidden Market API service.');\nconst seed = readFileSync(resolve(root, 'seeds/treeseed.yaml'), 'utf8');\nif (/^\\s+slug: market(?:-api)?\\s*$/mu.test(seed)) fail('Platform seed declares a Market project.');\nif (/information-hub/iu.test(seed)) fail('Platform seed contains a retired repository identity.');\nconsole.log(JSON.stringify({ ok: true, inventoryAuthority: 'api', gitlinks: 0, marketCheckouts: 0, authority: 'customer-platform', template: 'platform-local-managed-codex', hostedDeployment: false }));\n`;
 }
 
+export function platformConfigurationAssets(seedContent: string, sceneContent: string, templateIds: string[]): SnapshotFile[] {
+	return [
+		...templateIds.flatMap((id) => [
+			{ path: `templates/${id}/template/seeds/platform.yaml`, content: seedContent },
+			{ path: `templates/${id}/template/scenes/team-project-portfolio-demo.yaml`, content: sceneContent },
+		]),
+		{ path: 'scenes/team-project-portfolio-demo.yaml', content: sceneContent },
+	];
+}
+
 async function baseFiles(projectRoot: string, sourceRef: string): Promise<SnapshotFile[]> {
 	if (!/^[a-f0-9]{40}$/u.test(sourceRef)) throw new Error('Platform workspace source ref must be an exact 40-character commit SHA.');
 	const copied = await Promise.all(copiedFiles.map(async (path) => {
-		const observed = await git(projectRoot, ['show', `${sourceRef}:${path}`], { allowFailure: true });
+		const observed = await git(projectRoot, ['show', `${sourceRef}:${path}`], { allowFailure: true, preserveOutput: true });
 		if (observed.code !== 0) throw new Error(`Platform workspace source ${sourceRef} is missing ${path}.`);
 		return { path, content: observed.stdout };
 	}));
 	const templatePaths = (await git(projectRoot, ['ls-tree', '-r', '--name-only', sourceRef, 'platform-templates'], { allowFailure: true })).stdout.split('\n').filter(Boolean);
 	if (templatePaths.length === 0) throw new Error(`Platform workspace source ${sourceRef} has no canonical Platform templates.`);
 	const templates = await Promise.all(templatePaths.map(async (sourcePath) => {
-		const observed = await git(projectRoot, ['show', `${sourceRef}:${sourcePath}`]);
+		const observed = await git(projectRoot, ['show', `${sourceRef}:${sourcePath}`], { preserveOutput: true });
 		return { path: sourcePath.replace(/^platform-templates\//u, 'templates/'), content: observed.stdout };
 	}));
-	const seed = await git(projectRoot, ['show', `${sourceRef}:seeds/platform.yaml`]);
-	const scene = await git(projectRoot, ['show', `${sourceRef}:scenes/team-project-portfolio-demo.yaml`]);
+	const seed = await git(projectRoot, ['show', `${sourceRef}:seeds/platform.yaml`], { preserveOutput: true });
+	const scene = await git(projectRoot, ['show', `${sourceRef}:scenes/team-project-portfolio-demo.yaml`], { preserveOutput: true });
 	const templateIds = templatePaths.filter((path) => path.endsWith('/template.config.json')).map((path) => path.split('/')[1]!).sort();
-	const configurationAssets = templateIds.flatMap((id) => [
-		{ path: `templates/${id}/template/seeds/platform.yaml`, content: seed.stdout },
-		{ path: `templates/${id}/template/scenes/team-project-portfolio-demo.yaml`, content: scene.stdout },
-	]);
+	const configurationAssets = platformConfigurationAssets(seed.stdout, scene.stdout, templateIds);
 	return [
 		...copied,
 		...templates,
