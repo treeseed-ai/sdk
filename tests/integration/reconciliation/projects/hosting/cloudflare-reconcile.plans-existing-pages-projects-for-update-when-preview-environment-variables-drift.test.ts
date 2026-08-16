@@ -229,6 +229,7 @@ vi.mock('../../../../../src/reconcile/providers/railway-iac.ts', () => ({
 import { cloudflareApiRequestMock, runWranglerMock, resolveMachineEnvironmentValuesMock, upsertRailwayVariablesMock, deployRailwayServiceInstanceMock, ensureRailwayServiceMock, updateRailwayServiceImageSourceMock, updateRailwayServiceGitSourceMock, renderRailwayIacProjectMock, planRailwayIacProjectMock, applyRailwayIacProjectMock, cleanupRailwayIacRenderMock, railwayEnvMock, listRailwayCustomDomainsMock, listRailwayServiceDomainsMock, listRailwayEnvironmentServicesMock, ensureRailwayCustomDomainMock, deleteRailwayCustomDomainMock, reconcileState, deployState } from '../../cloudflare/cloudflare-reconcile.support.ts';
 describe('cloudflare reconcile adapters', () => {
 beforeEach(() => {
+	vi.stubEnv('TREESEED_MARKET_API_BASE_URL', '');
 	reconcileState.kvCreated = false;
 	reconcileState.d1Created = false;
 	reconcileState.turnstileWidgets = [];

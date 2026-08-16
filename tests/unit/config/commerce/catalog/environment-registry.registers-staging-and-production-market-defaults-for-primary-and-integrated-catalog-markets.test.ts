@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	getEnvironmentSuggestedValues,
 	isEnvironmentEntryRequired,
@@ -10,6 +10,7 @@ import {
 	resolveEnvironmentRegistry,
 } from '../../../../../src/platform/configuration/environment.ts';
 afterEach(async () => {
+	vi.unstubAllEnvs();
 	for (const tenantRoot of tempRoots) {
 		await rm(tenantRoot, { recursive: true, force: true });
 	}
@@ -18,6 +19,7 @@ afterEach(async () => {
 import { tempRoots, agentProcessingRegistryFixtureYaml, codexRegistryFixtureYaml, coreFormsRegistryFixtureYaml, createTenantFixture, findRegistryEntry } from '../../configuration/environment-registry.support.ts';
 describe('environment registry overlays', () => {
 it('registers staging and production market defaults for primary and integrated catalog markets', async () => {
+		vi.stubEnv('TREESEED_MARKET_API_BASE_URL', '');
 		const tenantRoot = await createTenantFixture(coreFormsRegistryFixtureYaml);
 		tempRoots.add(tenantRoot);
 		const deployConfig = {

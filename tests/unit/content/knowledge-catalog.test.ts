@@ -131,7 +131,7 @@ describe('knowledge catalog', () => {
 	it('reports Zod field diagnostics before semantic knowledge parsing', () => {
 		expect(() => parseKnowledgePage({ path: 'missing-book.md', raw: page().replace('bookId: knowledge-book\n', '') }))
 			.toThrow(expect.objectContaining({ code: 'content_model_invalid', details: [expect.objectContaining({
-				path: 'missing-book.md', model: 'knowledge', field: 'book_id', code: 'content_zod_invalid_type',
+			path: 'missing-book.md', model: 'knowledge', field: 'bookId', code: 'content_zod_invalid_type',
 			})] }));
 	});
 
