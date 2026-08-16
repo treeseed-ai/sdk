@@ -234,7 +234,7 @@ export async function integrateAgentCheckpoint(
 	if (input.mode === 'execute' && blockers.length === 0 && integratedCommit) {
 		const graphMetadata = record(graph.metadata);
 		const proposalVersionValue = Number(graphMetadata.proposalVersion ?? record(decisionInput).proposalVersion);
-		const dependencies = array(graphMetadata.decisionDependencies).map(record)
+		const dependencies = array(graphMetadata.decisionDependencies ?? graphMetadata.executionDependencies).map(record)
 			.map((dependency) => ({ projectId: text(dependency.projectId), decisionId: text(dependency.decisionId) }))
 			.filter((dependency) => dependency.projectId && dependency.decisionId);
 		const written = writeGovernedExecutionAuthority(workspaceRoot, {
