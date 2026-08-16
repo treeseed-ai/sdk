@@ -248,6 +248,10 @@ export function resolveVariableValue(variable: TemplateVariableDefinition, input
 			return `^${corePackageVersion}`;
 		case 'sdkVersion':
 			return `^${sdkPackageVersion}`;
+		case 'runtime':
+			// Scene inputs generated for each execution are part of the reusable
+			// scene contract, not installation-time Platform configuration.
+			return variable.token;
 		default:
 			return variable.default ?? '';
 	}

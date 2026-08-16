@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { describe,expect,it } from 'vitest';
 import { type ResolvedTemplateDefinition,type TemplateManifest,validateTemplateManifest } from '../../../src/operations/services/template-registry/template-categories.ts';
+import { resolveVariableValue } from '../../../src/operations/services/template-registry/validate-template-placeholders.ts';
 
 function definition(platform: TemplateManifest['platform'], assets = ['seeds/platform.yaml','scenes/portfolio.yaml']) {
 	const root = mkdtempSync(resolve(tmpdir(),'platform-template-contract-'));
@@ -45,5 +46,10 @@ describe('Platform template contract', () => {
 
 	it('requires an explicit external control-plane binding', () => {
 		expect(() => validateTemplateManifest(definition({ ...managed, controlPlane: { mode: 'external' } }))).toThrow(/external control-plane URL/u);
+	});
+
+	it('preserves declared per-run scene inputs until the scene generator resolves them', () => {
+		const variable = { name: 'Runtime username', token: '__PORTFOLIO_USERNAME__', deriveFrom: 'runtime' };
+		expect(resolveVariableValue(variable, { target: 'platform' })).toBe(variable.token);
 	});
 });
