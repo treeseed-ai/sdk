@@ -87,7 +87,13 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: St
 				blockers = stagePreflightBlockers(root, featureBranch, plan);
 				blockers.push(...await integrationGovernanceAuthorityBlockers(root, helpers.context.validateExecutionAuthorities));
 			}
-			if (blockers.length > 0) {
+			// A resumed run has already durably completed (or will rerun) its journaled
+			// preflight. Later stage steps intentionally advance feature refs and root
+			// package pointers, so reapplying the original receipt preflight here would
+			// reject the stage operation's own recorded mutations before the integrated
+			// save can issue the replacement receipt. The journaled preflight below
+			// remains authoritative when it is still pending or failed.
+			if (blockers.length > 0 && !explicitResumeRunId) {
 				workflowError('stage', 'validation_failed', `stage is blocked:\n${blockers.map((entry) => `- ${entry}`).join('\n')}`, {
 					details: { blockers, plan },
 				});

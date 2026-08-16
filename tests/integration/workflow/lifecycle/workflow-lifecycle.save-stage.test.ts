@@ -420,6 +420,16 @@ it('blocks receipt consumption after a live repository ref moves', async () => {
 	expect(blockers.join('\n')).toContain('remote feature/demo-task moved after receipt');
 }, 360000);
 
+it('does not reapply the initial receipt gate before a journaled stage resume', () => {
+	const body = sourceFunctionBody(
+		readSourceModule('src/workflow/operations/workspace-lifecycle/workflow-stage.ts'),
+		'workflowStage',
+	);
+
+	expect(body).toContain('if (blockers.length > 0 && !explicitResumeRunId)');
+	expect(body).toContain("executeJournalStep(root, workflowRun.runId, 'preflight'");
+});
+
 it('rejects a locally altered integration receipt before stage can consume it', async () => {
 	const { work } = createWorkflowRepo();
 	const workflow = workflowFor(work);
