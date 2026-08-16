@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseDeployConfig } from '../../../src/platform/deploy-config/parse-deploy-config.ts';
 import {
 	classifyPlatformWorkspaceBranch,
+	normalizePlatformBoundaryVerifier,
 	platformConfigurationAssets,
 	platformDeployConfig,
 } from '../../../src/seeds/workspaces/platform-workspace-history.ts';
@@ -45,6 +46,12 @@ describe('Platform workspace migration recovery', () => {
 		expect(assets).toContainEqual({ path: 'templates/platform-local-managed-codex/template/scenes/team-project-portfolio-demo.yaml', content: scene });
 		expect(assets).toContainEqual({ path: 'templates/platform-local-managed-codex/template/seeds/platform.yaml', content: seed });
 		expect(assets.every((asset) => asset.content.endsWith('\n'))).toBe(true);
+	});
+
+	it('verifies the canonical inline Platform authority and Market configuration', () => {
+		const normalized = normalizePlatformBoundaryVerifier('/^\\s*kind: customer-platform\\s*$/mu /^\\s*profile: treeseed\\s*$/mu');
+		expect(normalized).toContain('^authority: \\{ kind: customer-platform \\}\\s*$');
+		expect(normalized).toContain('^market: \\{ profile: treeseed \\}\\s*$');
 	});
 
 });

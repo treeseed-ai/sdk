@@ -132,7 +132,7 @@ export function applyPlatformInitialization(input: PlatformInitializationInput) 
 	if (plan.targetState === 'absent') {
 		const clone = git(['clone','--branch',SHA.test(input.ref) ? 'staging' : input.ref,'--single-branch',plan.repositoryUrl,plan.targetRoot]);
 		if (clone.status !== 0) throw new Error(clone.stderr.trim() || 'Unable to clone Platform repository.');
-		git(['checkout','--detach',plan.observedRef],plan.targetRoot);
+		if (SHA.test(input.ref)) git(['checkout','--detach',plan.observedRef],plan.targetRoot);
 	}
 	const inspected = inspectCheckout(plan.targetRoot, input, plan.observedRef);
 	copyTemplateTree(inspected.item.templateRoot, plan.targetRoot, inspected.replacements);

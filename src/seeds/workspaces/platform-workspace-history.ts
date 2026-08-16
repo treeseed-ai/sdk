@@ -93,6 +93,12 @@ function boundaryVerifier() {
 	return `import { existsSync, readFileSync } from 'node:fs';\nimport { resolve } from 'node:path';\n\nconst root = resolve(import.meta.dirname, '..');\nconst fail = (message) => { throw new Error(message); };\nif (existsSync(resolve(root, '.gitmodules'))) fail('Platform must not encode team inventory as gitlinks.');\nif (existsSync(resolve(root, 'treeseed.portfolio.json'))) fail('Platform must read live team inventory instead of a repository portfolio file.');\nconst config = readFileSync(resolve(root, 'treeseed.site.yaml'), 'utf8');\nconst requiredConfig = [/^\\s*kind: customer-platform\\s*$/mu, /^\\s*profile: treeseed\\s*$/mu, /^controlPlane: \\{ mode: managed \\}\\s*$/mu, /^processing: \\{ mode: local, providerRef: codex-sub \\}\\s*$/mu, /^\\s*api: \\{ enabled: true, provider: local \\}\\s*$/mu, /^\\s*treedx: \\{ enabled: true, provider: local \\}\\s*$/mu];\nif (requiredConfig.some((pattern) => !pattern.test(config))) fail('Platform configuration does not match the canonical local-managed Codex template.');\nif (/^\\s*market-?api:/imu.test(config)) fail('Platform configuration declares a forbidden Market API service.');\nconst seed = readFileSync(resolve(root, 'seeds/treeseed.yaml'), 'utf8');\nif (/^\\s+slug: market(?:-api)?\\s*$/mu.test(seed)) fail('Platform seed declares a Market project.');\nif (/information-hub/iu.test(seed)) fail('Platform seed contains a retired repository identity.');\nconsole.log(JSON.stringify({ ok: true, inventoryAuthority: 'api', gitlinks: 0, marketCheckouts: 0, authority: 'customer-platform', template: 'platform-local-managed-codex', hostedDeployment: false }));\n`;
 }
 
+export function normalizePlatformBoundaryVerifier(content: string) {
+	return content
+		.replace('^\\s*kind: customer-platform\\s*$', '^authority: \\{ kind: customer-platform \\}\\s*$')
+		.replace('^\\s*profile: treeseed\\s*$', '^market: \\{ profile: treeseed \\}\\s*$');
+}
+
 export function platformConfigurationAssets(seedContent: string, sceneContent: string, templateIds: string[]): SnapshotFile[] {
 	return [
 		...templateIds.flatMap((id) => [
@@ -130,7 +136,7 @@ async function baseFiles(projectRoot: string, sourceRef: string): Promise<Snapsh
 		{ path: 'README.md', content: readme() },
 		{ path: 'package.json', content: platformPackage() },
 		{ path: 'treeseed.site.yaml', content: platformDeployConfig() },
-		{ path: 'scripts/verify-platform.mjs', content: boundaryVerifier() },
+		{ path: 'scripts/verify-platform.mjs', content: normalizePlatformBoundaryVerifier(boundaryVerifier()) },
 	];
 }
 
