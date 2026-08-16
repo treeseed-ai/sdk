@@ -267,6 +267,7 @@ export type SeedPlan = {
 	ok: boolean;
 	seed: string;
 	version: 1;
+	references: string[];
 	mode: 'plan' | 'validate' | 'apply';
 	environments: SeedEnvironment[];
 	summary: SeedPlanSummary;

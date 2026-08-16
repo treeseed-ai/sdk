@@ -70,7 +70,7 @@ export type DevLogReadResult = {
 };
 
 function splitSurfaces(value: string | undefined) {
-	return (value ?? 'web,api')
+	return (value ?? 'web,api,operations-runner')
 		.split(',')
 		.map((entry) => entry.trim())
 		.filter(Boolean);
@@ -334,8 +334,7 @@ export async function startManagedDev(options: ManagedDevOptions = {}): Promise<
 	const tenantRoot=resolve(options.cwd ?? process.cwd()); const surfaces=splitSurfaces(options.surfaces);
 	const stalePackages=managedDevStaleRuntimePackages({tenantRoot,surfaces});
 	if(stalePackages.length) {
-		const restartSurfaces=stalePackages.includes('packages/sdk') ? 'web,api,operations-runner' : 'web';
-		const runtimePlan=createIntegratedDevPlan({...options,surfaces:restartSurfaces});
+		const runtimePlan=createIntegratedDevPlan({...options,surfaces:surfaces.join(',')});
 		await Promise.all(runtimePlan.processes.map((spec)=>stopSpec(spec)));
 	}
 	ensureManagedDevRuntimeBuilds({tenantRoot,surfaces});

@@ -66,6 +66,7 @@ export function localComposeDriftReasons(input: {
 	reconciledSpecHash?: string;
 	configHash: unknown;
 	services?: LocalComposeServiceObservation[];
+	desiredImageIds?: Record<string, string | null>;
 	requiredPaths: LocalComposeRequiredPathObservation[];
 }) {
 	const previous = input.persistedState;
@@ -89,6 +90,7 @@ export function localComposeDriftReasons(input: {
 		reasons.push('rendered compose configuration changed');
 	}
 	reasons.push(...localComposeRuntimeConfigDrift(input.configHash, input.services ?? []));
+	reasons.push(...localComposeRuntimeImageDrift(input.desiredImageIds ?? {}, input.services ?? []));
 	if (input.requiredPaths.length > 0) {
 		const previousSignature = requiredPathSignature(previous.lastReconciledState.requiredPaths);
 		const currentSignature = requiredPathSignature(input.requiredPaths);
@@ -108,6 +110,7 @@ export interface LocalComposeServiceObservation {
 	state: string;
 	health: string;
 	configHash: string | null;
+	imageId?: string | null;
 }
 
 function composeLabel(record: Record<string, unknown>, key: string) {
@@ -143,7 +146,20 @@ export function parseLocalComposeServices(stdout: unknown): LocalComposeServiceO
 			state: String(record.State ?? record.state ?? '').toLowerCase(),
 			health: String(record.Health ?? record.health ?? '').toLowerCase(),
 			configHash: composeLabel(record, 'com.docker.compose.config-hash'),
+			imageId: composeLabel(record, 'com.docker.compose.image')
+				?? (typeof record.Image === 'string' && record.Image.trim() ? record.Image.trim() : null),
 		}];
+	});
+}
+
+export function localComposeRuntimeImageDrift(
+	desiredImageIds: Record<string, string | null>,
+	services: LocalComposeServiceObservation[],
+) {
+	return services.flatMap((service) => {
+		const expected = desiredImageIds[service.service];
+		if (!expected || service.imageId === expected) return [];
+		return [`running compose service ${service.service} uses stale image ${service.imageId ?? '<unknown>'}; expected ${expected}`];
 	});
 }
 

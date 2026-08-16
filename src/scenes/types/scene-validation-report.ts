@@ -96,6 +96,7 @@ export type SceneRunOptions = {
 	onProgress?: (event: SceneProgressEvent) => void;
 	sleep?: (ms: number) => Promise<void>;
 	agentLabExecutor?: AgentLabExecutor;
+	agentLabContentRef?: string;
 	agentLabPresentations?: AgentLabPresentationAdapter[];
 	onAgentLabReportReady?: (input: { url: string; path: string }) => Promise<void> | void;
 };

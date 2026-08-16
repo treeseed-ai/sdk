@@ -35,12 +35,14 @@ describe('proposal readiness', () => {
 		expect(result.missingContent).toContain('research evidence');
 	});
 
-	it('requires estimate, independent review, and resolved blockers for voting', () => {
+	it('requires participation and review before decision, then estimates only when explicitly requested', () => {
 		const content = evaluateGovernanceProposalReadiness(complete);
 		expect(content.contentReady).toBe(true);
 		expect(content.votingReady).toBe(false);
-		expect(content.missingVoting).toEqual(['independent review', 'structured estimate']);
-		const voting = evaluateGovernanceProposalReadiness({ ...complete, independentReviewCount: 1, estimateCount: 1 });
+		expect(content.missingVoting).toEqual(['independent review']);
+		const estimating = evaluateGovernanceProposalReadiness({ ...complete, independentReviewCount: 1, requiresEstimate: true });
+		expect(estimating.missingVoting).toContain('structured estimate');
+		const voting = evaluateGovernanceProposalReadiness({ ...complete, independentReviewCount: 1 });
 		expect(voting.votingReady).toBe(true);
 	});
 
@@ -49,5 +51,18 @@ describe('proposal readiness', () => {
 		expect(result.votingReady).toBe(false);
 		expect(result.missingReviewerClasses).toEqual(['audience-review']);
 		expect(result.missingVoting).toContain('required proposal-type reviews');
+	});
+
+	it('requires exact-version participation and an author-independent group review', () => {
+		const snapshot = { proposalVersion: 3, planningGraphRevision: 'graph-7', digest: 'snapshot-digest',
+			groupIds: ['group:guide'], memberIds: ['author', 'reviewer'], authorAgentId: 'author' };
+		const stale = evaluateGovernanceProposalReadiness({ ...complete, proposalVersion: 4, participationSnapshot: snapshot,
+			independentReviewCount: 1, estimateCount: 2, completedParticipantIds: ['author', 'reviewer'], independentReviewerIds: ['author'] });
+		expect(stale.participationVersionReady).toBe(false);
+		expect(stale.authorIndependent).toBe(false);
+		expect(stale.missingVoting).toEqual(expect.arrayContaining(['participation for the exact proposal version', 'author-independent group review']));
+		const ready = evaluateGovernanceProposalReadiness({ ...complete, proposalVersion: 3, participationSnapshot: snapshot,
+			independentReviewCount: 1, estimateCount: 2, completedParticipantIds: ['author', 'reviewer'], independentReviewerIds: ['reviewer'] });
+		expect(ready.votingReady).toBe(true);
 	});
 });

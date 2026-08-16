@@ -38,18 +38,27 @@ export class PlatformOperationStore {
 
 	private async appendPlatformOperationEvent(operationId: string, kind: string, data: Record<string, unknown> = {}) {
 		await this.ensureInitialized();
-		const row = await this.database.first<{ next_seq?: number }>(
-			`SELECT COALESCE(MAX(seq), 0) + 1 AS next_seq FROM platform_operation_events WHERE operation_id = ?`,
-			[operationId],
-		);
-		const seq = Number(row?.next_seq ?? 1);
 		const timestamp = isoNow(this.now);
 		const id = randomUUID();
-		await this.database.run(
-			`INSERT INTO platform_operation_events (id, operation_id, seq, kind, data_json, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?)`,
-			[id, operationId, seq, kind, JSON.stringify(data ?? {}), timestamp],
-		);
+		for (let attempt = 0; ; attempt += 1) {
+			const row = await this.database.first<{ next_seq?: number }>(
+				`SELECT COALESCE(MAX(seq), 0) + 1 AS next_seq FROM platform_operation_events WHERE operation_id = ?`,
+				[operationId],
+			);
+			try {
+				await this.database.run(
+					`INSERT INTO platform_operation_events (id, operation_id, seq, kind, data_json, created_at)
+					 VALUES (?, ?, ?, ?, ?, ?)`,
+					[id, operationId, Number(row?.next_seq ?? 1), kind, JSON.stringify(data ?? {}), timestamp],
+				);
+				break;
+			} catch (error) {
+				const conflict = String((error as { code?: unknown }).code ?? '') === '23505'
+					|| /idx_platform_operation_events_seq|operation_id.*seq/iu.test(error instanceof Error ? error.message : String(error));
+				if (!conflict || attempt >= 63) throw error;
+				await new Promise((resolveWait) => setTimeout(resolveWait, Math.min(attempt + 1, 8)));
+			}
+		}
 		return rowEvent(await this.database.first(`SELECT * FROM platform_operation_events WHERE id = ?`, [id]))!;
 	}
 
@@ -124,7 +133,7 @@ export class PlatformOperationStore {
 				`SELECT * FROM platform_operations
 				 WHERE id = ? AND (
 				    status = 'queued'
-				    OR (status = 'leased' AND lease_expires_at IS NOT NULL AND lease_expires_at < ?)
+				    OR (status IN ('leased', 'running') AND lease_expires_at IS NOT NULL AND lease_expires_at < ?)
 				 )
 				 ${capabilityWhere}
 				 ORDER BY created_at ASC LIMIT 1`,
@@ -134,7 +143,7 @@ export class PlatformOperationStore {
 				`SELECT * FROM platform_operations
 				 WHERE (
 				    status = 'queued'
-				    OR (status = 'leased' AND lease_expires_at IS NOT NULL AND lease_expires_at < ?)
+				    OR (status IN ('leased', 'running') AND lease_expires_at IS NOT NULL AND lease_expires_at < ?)
 				 )
 				 ${capabilityWhere}
 				 ORDER BY created_at ASC LIMIT 1`,
@@ -152,7 +161,12 @@ export class PlatformOperationStore {
 			 WHERE id = ?`,
 			[runnerId, leaseExpiresAt, now, now, row.id],
 		);
-		await this.appendPlatformOperationEvent(String(row.id), 'claimed', { runnerId, leaseExpiresAt });
+		const reclaimed = ['leased', 'running'].includes(String(row.status));
+		await this.appendPlatformOperationEvent(String(row.id), reclaimed ? 'runner.lease_reclaimed' : 'claimed', {
+			runnerId,
+			leaseExpiresAt,
+			...(reclaimed ? { previousRunnerId: row.assigned_runner_id ?? null, previousStatus: row.status } : {}),
+		});
 		const operation = rowOperation(await this.database.first(`SELECT * FROM platform_operations WHERE id = ?`, [row.id]));
 		return { ok: true as const, operation };
 	}

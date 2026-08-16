@@ -7,7 +7,7 @@ import { LocalTreeDxContentProject,ensureLocalTreeDxProjectRepositoryRef,localTr
 import { verificationCheck } from '../../hosting/first-railway-domain-string.ts';
 import { genericObservedState,genericResult,noopDiff } from '../../hosting/to-deploy-target.ts';
 import { summarizeVerification } from '../../support/summarize-verification.ts';
-import { localTreeDxRemoteHead,observeRemoteContentHead,syncRemoteTreeDxProjectContent } from './reconcile-remote-tree-dx-content.ts';
+import { localTreeDxRemoteHead,observeRemoteContentHead,observeUnpublishedTreeDxAuthoring,syncRemoteTreeDxProjectContent } from './reconcile-remote-tree-dx-content.ts';
 
 const LOCAL_TREEDX_RECONCILIATION_TIMEOUT_MS = 120_000;
 
@@ -120,18 +120,26 @@ export function buildLocalTreeDxAdapter(): ReconcileAdapter {
 			const repositoryObservations = [];
 			if (baseUrl && token) {
 				const client = createLocalTreeDxReconciliationClient(baseUrl, token);
-				for (const project of projects.filter((entry) => entry.remoteUrl)) {
+				for (const project of projects) {
 					const repo = repositories.find((entry) => {
 						const record = recordValue(entry);
 						return record.repositoryName === project.repositoryName || record.name === project.repositoryName;
 					});
 					const repositoryId = nonEmptyString(recordValue(repo).repoId);
 					try {
-						const [remoteHead, localHead] = await Promise.all([
-							observeRemoteContentHead(project, input.context.launchEnv),
+						const ref = project.defaultRef ?? 'refs/heads/main';
+						const [remoteHead, localHead, searchStatus] = await Promise.all([
+							project.remoteUrl ? observeRemoteContentHead(project, input.context.launchEnv) : Promise.resolve(null),
 							repositoryId ? localTreeDxRemoteHead(client, repositoryId, project) : Promise.resolve(null),
+							repositoryId ? client.getSearchIndexStatus({ repoId: repositoryId, ref }) : Promise.resolve(null),
 						]);
-						repositoryObservations.push({ project: project.slug, repositoryId, remoteHead, localHead });
+						const unpublished = project.remoteUrl && remoteHead && localHead && remoteHead !== localHead
+							? await observeUnpublishedTreeDxAuthoring(project,input.context.launchEnv)
+							: [];
+						repositoryObservations.push({ project: project.slug, repositoryId, remoteHead, localHead,unpublished,
+							searchReady: searchStatus?.ready === true, searchStale: searchStatus?.stale === true,
+							searchResolvedHead: nonEmptyString(searchStatus?.resolvedRef),
+							searchSourceHead: nonEmptyString(searchStatus?.sourceCommit) });
 					} catch (error) {
 						warnings.push(`Live content repository ${project.slug} could not be observed: ${error instanceof Error ? error.message : String(error)}`);
 					}
@@ -175,10 +183,35 @@ export function buildLocalTreeDxAdapter(): ReconcileAdapter {
 				return !observation || !nonEmptyString(observation.remoteHead)
 					|| nonEmptyString(observation.localHead) !== nonEmptyString(observation.remoteHead);
 			});
+			const unpublishedDrift = remoteDrift.filter((project) => {
+				const observation = observations.find((entry) => entry.project === project.slug);
+				return Array.isArray(observation?.unpublished) && observation.unpublished.some((entry) =>
+					nonEmptyString(recordValue(entry).commitSha) === nonEmptyString(observation.localHead));
+			});
+			if (unpublishedDrift.length > 0) return {
+				action:'blocked',reasons:[`TreeDX has journaled unpublished authoring state: ${unpublishedDrift.map((project) => project.slug).join(', ')}`],
+				before:input.observed.live,after:input.unit.spec,
+			};
 			if (remoteDrift.length > 0) {
 				return {
 					action: 'update',
 					reasons: [`TreeDX content refs differ from live GitHub: ${remoteDrift.map((project) => project.slug).join(', ')}`],
+					before: input.observed.live,
+					after: input.unit.spec,
+				};
+			}
+			const indexDrift = projects.filter((project) => {
+				const observation = observations.find((entry) => entry.project === project.slug);
+				const localHead = nonEmptyString(observation?.localHead);
+				const sourceHead = nonEmptyString(observation?.searchSourceHead);
+				return !observation || observation.searchReady !== true || observation.searchStale === true
+					|| nonEmptyString(observation.searchResolvedHead) !== localHead
+					|| (sourceHead && sourceHead !== localHead);
+			});
+			if (indexDrift.length > 0) {
+				return {
+					action: 'update',
+					reasons: [`TreeDX graph/search indexes differ from content refs: ${indexDrift.map((project) => project.slug).join(', ')}`],
 					before: input.observed.live,
 					after: input.unit.spec,
 				};

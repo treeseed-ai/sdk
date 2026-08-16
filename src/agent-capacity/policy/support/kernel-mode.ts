@@ -72,6 +72,7 @@ export function deriveAgentCapacityEnvelopeFromAssignment(
 		elapsedSeconds: numberOrNull(envelope.elapsedSeconds),
 		releasedSeconds: numberOrNull(envelope.releasedSeconds),
 		overrunSeconds: numberOrNull(envelope.overrunSeconds),
+		budget: envelope.budget && typeof envelope.budget === 'object' ? envelope.budget as AgentCapacityEnvelope['budget'] : null,
 		limits: record(envelope.limits),
 		metadata: record(envelope.metadata),
 	};

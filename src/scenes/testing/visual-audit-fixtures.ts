@@ -2,6 +2,7 @@ import { MarketClient,MarketClientError } from '../../entrypoints/clients/market
 import { resolveMachineEnvironmentValues } from '../../operations/services/configuration/config-runtime.ts';
 import { sceneErrorDiagnostic,sceneWarningDiagnostic } from '../support/reporting/diagnostics.ts';
 import type { SceneDiagnostic,SceneVisualAuditRole } from '../types.ts';
+import { reconcileVisualAuditTreeDxProject } from './visual-audit-tree-dx.ts';
 
 export const VISUAL_AUDIT_PASSWORD = 'TreeSeedVisualAudit!2026';
 
@@ -102,6 +103,21 @@ function isSignInUrl(value: string) {
 	return /\/auth\/sign-in/u.test(value);
 }
 
+async function visualAuditTeamId(client: MarketClient) {
+	try {
+		const response = await client.teams();
+		const teams = Array.isArray(response.payload) ? response.payload : [];
+		const team = teams.find((entry) => {
+			if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+			const record = entry as Record<string, unknown>;
+			return record.slug === 'visual-audit-team' || record.name === 'visual-audit-team';
+		}) as Record<string, unknown> | undefined;
+		return typeof team?.id === 'string' && team.id.trim() ? team.id.trim() : null;
+	} catch {
+		return null;
+	}
+}
+
 function seedActorsForRoles(roles: SceneVisualAuditRole[]) {
 	const actors: Record<string, Record<string, unknown>> = {};
 	for (const role of roles) {
@@ -145,7 +161,34 @@ async function seedVisualAuditFixtures(input: {
 				}),
 			});
 			const text = await response.text();
-			if (response.ok) return [];
+			if (response.ok) {
+				const result = JSON.parse(text || '{}') as Record<string, any>;
+				const fixtures = result.payload?.fixtures;
+				const adminToken = result.payload?.actors?.admin?.accessToken
+					?? result.payload?.actors?.platform_admin?.accessToken
+					?? result.payload?.actors?.owner?.accessToken;
+				if (input.environment === 'local' && input.projectRoot && fixtures?.project?.id
+					&& fixtures.project.slug && fixtures.team?.slug && adminToken) {
+					const reconciled = await reconcileVisualAuditTreeDxProject({
+						projectRoot: input.projectRoot,
+						projectId: String(fixtures.project.id),
+						projectSlug: String(fixtures.project.slug),
+						teamSlug: String(fixtures.team.slug),
+					});
+					const binding = await clientFor(input.baseUrl, String(adminToken)).upsertProjectTreeDxLibrary(String(fixtures.project.id), {
+						repositoryId: reconciled.repositoryId,
+						contentPath: 'src/content',
+						contentRepositoryDefaultBranch: 'main',
+						contentRepositoryRef: 'refs/heads/main',
+						topology: { contentRepository: { authoringBranch: 'main' } },
+						metadata: { acceptance: true, publicationMode: 'local-only', source: 'local_reconciliation' },
+					});
+					if (binding.payload?.topology?.contentRepository?.authoringBranch !== 'main') {
+						throw new Error('Visual-audit TreeDX binding did not preserve its reconciled authoring branch.');
+					}
+				}
+				return [];
+			}
 			lastFailure = `HTTP ${response.status}: ${text.slice(0, 500)}`;
 			if (!isRetryableStatus(response.status) || attempt >= 3) break;
 		} catch (error) {
@@ -175,7 +218,7 @@ export async function ensureSceneVisualAuditRoleFixtures(input: {
 		projectRoot: input.projectRoot,
 		environment: input.environment,
 	});
-	let roleSetupFailed = false;
+	diagnostics.push(...seedDiagnostics);
 	for (const role of roles) {
 		const user = SceneVisualAuditUserForRole(role);
 		if (!user) continue;
@@ -185,7 +228,6 @@ export async function ensureSceneVisualAuditRoleFixtures(input: {
 			continue;
 		} catch (error) {
 			if (!isAuthFailure(error)) {
-				roleSetupFailed = true;
 				diagnostics.push(sceneWarningDiagnostic(
 					'scene.visual_audit_fixture_unavailable',
 					`Visual audit fixture setup for ${role} failed against ${input.baseUrl}: ${error instanceof Error ? error.message : String(error ?? 'local fixture API is unavailable')}. Authenticated screenshots require the local API and database to be healthy.`,
@@ -208,14 +250,12 @@ export async function ensureSceneVisualAuditRoleFixtures(input: {
 			if (payload.confirmationToken) {
 				await client.confirmWebEmail({ token: payload.confirmationToken });
 			} else if (payload.confirmationRequired) {
-				roleSetupFailed = true;
 				diagnostics.push(sceneWarningDiagnostic('scene.visual_audit_fixture_unavailable', `Visual audit fixture user ${user.email} requires email confirmation, but the local API did not return a confirmation token.`, 'roles'));
 			}
 		} catch (error) {
 			try {
 				await client.webSignIn({ login: user.email, password: user.password });
 			} catch {
-				roleSetupFailed = true;
 				diagnostics.push(sceneWarningDiagnostic(
 					'scene.visual_audit_fixture_unavailable',
 					`Visual audit fixture setup for ${role} failed against ${input.baseUrl}: ${error instanceof Error ? error.message : String(error ?? 'local fixture API is unavailable')}. Authenticated screenshots require the local API and database to be healthy.`,
@@ -224,7 +264,6 @@ export async function ensureSceneVisualAuditRoleFixtures(input: {
 			}
 		}
 	}
-	if (roleSetupFailed) diagnostics.unshift(...seedDiagnostics);
 	return diagnostics;
 }
 
@@ -242,11 +281,13 @@ export async function signInSceneVisualAuditRole(input: {
 	let lastError: unknown = null;
 	try {
 		for (let attempt = 1; attempt <= 3; attempt += 1) {
-			const session = await clientFor(apiBaseUrl).webSignIn({ login: user.email, password: user.password });
+			const api = clientFor(apiBaseUrl);
+			const session = await api.webSignIn({ login: user.email, password: user.password });
 			const accessToken = session.payload.accessToken;
 			if (accessToken) {
 				const webUrl = new URL(input.baseUrl);
-				await input.page.context().addCookies([{
+				const activeTeamId = await visualAuditTeamId(clientFor(apiBaseUrl, accessToken));
+				const cookies = [{
 					name: 'ts_market_api_access',
 					value: accessToken,
 					domain: webUrl.hostname,
@@ -255,7 +296,17 @@ export async function signInSceneVisualAuditRole(input: {
 					secure: webUrl.protocol === 'https:',
 					sameSite: 'Lax',
 					expires: Math.floor(Date.now() / 1000) + Number(session.payload.expiresInSeconds ?? 900),
-				}]);
+				}, ...(activeTeamId ? [{
+					name: 'treeseed_active_team',
+					value: activeTeamId,
+					domain: webUrl.hostname,
+					path: '/app',
+					httpOnly: false,
+					secure: webUrl.protocol === 'https:',
+					sameSite: 'Lax' as const,
+					expires: Math.floor(Date.now() / 1000) + 31_536_000,
+				}] : [])];
+				await input.page.context().addCookies(cookies);
 				await gotoSceneFixturePage(input.page, new URL('/app/', input.baseUrl).toString());
 				if (!isSignInUrl(input.page.url())) return [];
 			}

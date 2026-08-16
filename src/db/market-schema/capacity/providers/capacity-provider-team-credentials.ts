@@ -171,6 +171,12 @@ export const capacityReservations = pgTable('capacity_reservations', {
 	capacityProviderId: text('capacity_provider_id').notNull(),
 	executionProviderId: text('execution_provider_id'),
 	laneId: text('lane_id'),
+	lanePurpose: text('lane_purpose'),
+	communicationOverflow: integer('communication_overflow').notNull().default(0),
+	executionKind: text('execution_kind').notNull().default('workday'),
+	triggerKind: text('trigger_kind').notNull().default('scheduled'),
+	invocationId: text('invocation_id'),
+	operationHandoffId: text('operation_handoff_id'),
 	allocationSetId: text('allocation_set_id').notNull(),
 	allocationVersion: integer('allocation_version').notNull(),
 	allocationSliceIdsJson: text('allocation_slice_ids_json').notNull().default('[]'),
@@ -220,6 +226,10 @@ export const capacityReservations = pgTable('capacity_reservations', {
 	index('idx_capacity_reservations_lane_state').on(table.laneId, table.state, table.createdAt),
 	check('chk_capacity_reservations_allocation_version', sql`${table.allocationVersion} >= 1`),
 	check('chk_capacity_reservations_mode', sql`${table.mode} IN ('planning', 'acting')`),
+	check('chk_capacity_reservations_lane_purpose', sql`${table.lanePurpose} IS NULL OR ${table.lanePurpose} IN ('communication','operation')`),
+	check('chk_capacity_reservations_overflow', sql`${table.communicationOverflow} IN (0,1)`),
+	check('chk_capacity_reservations_execution_kind', sql`${table.executionKind} IN ('workday','conversation','simulation','recovery')`),
+	check('chk_capacity_reservations_trigger_kind', sql`${table.triggerKind} IN ('scheduled','manual','discussion','agent-handoff')`),
 	check('chk_capacity_reservations_state', sql`${table.state} IN ('reserved', 'consuming', 'consumed', 'released', 'expired', 'failed', 'overran_pending_approval', 'continuation_required')`),
 	check('chk_capacity_reservations_time', sql`${table.requestedSeconds} > 0 AND ${table.reservedSeconds} > 0 AND ${table.activeSeconds} >= 0 AND ${table.elapsedSeconds} >= 0 AND ${table.releasedSeconds} >= 0 AND ${table.overrunSeconds} >= 0`)
 ]);

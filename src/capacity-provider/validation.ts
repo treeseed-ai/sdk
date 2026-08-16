@@ -115,6 +115,18 @@ export function validateCapacityProviderManifestV2(manifest: CapacityProviderMan
 		for (const entry of validateExecutionProviderRuntimeConfiguration(executionProvider, path).diagnostics) add(diagnostics, entry.code, entry.path, entry.message);
 		for (const bindingId of executionProvider.credentialBindings ?? []) if (!bindingIds.has(bindingId)) add(diagnostics, 'provider_execution_provider_credential_unknown', `${path}.credentialBindings`, `Execution provider references unknown credential binding ${bindingId}.`);
 		if (!executionProvider.nativeLimits || typeof executionProvider.nativeLimits !== 'object' || Array.isArray(executionProvider.nativeLimits)) add(diagnostics, 'provider_execution_provider_limits_invalid', `${path}.nativeLimits`, 'Execution provider nativeLimits must be an object.');
+		const minimumDuration = executionProvider.minimumAssignmentDuration;
+		if (minimumDuration !== undefined) {
+			if (!Number.isInteger(minimumDuration.amount) || minimumDuration.amount < 1) add(diagnostics, 'provider_execution_provider_minimum_duration_invalid', `${path}.minimumAssignmentDuration.amount`, 'Minimum assignment duration amount must be a positive integer.');
+			if (!['seconds', 'business-days'].includes(minimumDuration.unit)) add(diagnostics, 'provider_execution_provider_minimum_duration_unit_invalid', `${path}.minimumAssignmentDuration.unit`, 'Minimum assignment duration unit must be seconds or business-days.');
+			if (minimumDuration.unit === 'business-days') {
+				try { new Intl.DateTimeFormat('en', { timeZone: minimumDuration.calendar?.timeZone }).format(); }
+				catch { add(diagnostics, 'provider_execution_provider_minimum_duration_timezone_invalid', `${path}.minimumAssignmentDuration.calendar.timeZone`, 'Business-day duration requires a valid IANA time zone.'); }
+				const weekdays = minimumDuration.calendar?.weekdays ?? [1, 2, 3, 4, 5];
+				if (!Array.isArray(weekdays) || weekdays.length === 0 || weekdays.some((day) => !Number.isInteger(day) || day < 1 || day > 7) || new Set(weekdays).size !== weekdays.length) add(diagnostics, 'provider_execution_provider_minimum_duration_weekdays_invalid', `${path}.minimumAssignmentDuration.calendar.weekdays`, 'Business weekdays must be unique ISO weekday numbers from 1 through 7.');
+				if ((minimumDuration.calendar?.holidayDates ?? []).some((date) => !/^\d{4}-\d{2}-\d{2}$/u.test(date))) add(diagnostics, 'provider_execution_provider_minimum_duration_holidays_invalid', `${path}.minimumAssignmentDuration.calendar.holidayDates`, 'Business-day holidays must use YYYY-MM-DD dates.');
+			}
+		}
 		if (executionProvider.researchSourcePolicy !== undefined) {
 			for (const diagnostic of validateResearchSourcePolicy(executionProvider.researchSourcePolicy).diagnostics) {
 				add(diagnostics, diagnostic.code, `${path}.researchSourcePolicy.${diagnostic.path}`, diagnostic.message);
@@ -124,9 +136,22 @@ export function validateCapacityProviderManifestV2(manifest: CapacityProviderMan
 			const lanePath = `${path}.lanes[${laneIndex}]`;
 			if (!nonEmpty(lane.id) || laneIds.has(lane.id)) add(diagnostics, 'provider_lane_id_invalid', `${lanePath}.id`, 'Provider lane id must be non-empty and provider-global unique.');
 			laneIds.add(lane.id);
+			if (!['communication','operation'].includes(lane.purpose)) add(diagnostics, 'provider_lane_purpose_invalid', `${lanePath}.purpose`, 'Provider lane purpose must be communication or operation.');
 			if (!Number.isInteger(lane.maxConcurrentRunners) || lane.maxConcurrentRunners < 1) add(diagnostics, 'provider_lane_concurrency_invalid', `${lanePath}.maxConcurrentRunners`, 'Provider lane concurrency must be a positive integer.');
+			const laneMinimum = lane.minimumAssignmentDuration;
+			if (laneMinimum !== undefined) {
+				if (!Number.isInteger(laneMinimum.amount) || laneMinimum.amount < 1) add(diagnostics, 'provider_lane_minimum_duration_invalid', `${lanePath}.minimumAssignmentDuration.amount`, 'Lane minimum assignment duration amount must be a positive integer.');
+				if (!['seconds', 'business-days'].includes(laneMinimum.unit)) add(diagnostics, 'provider_lane_minimum_duration_unit_invalid', `${lanePath}.minimumAssignmentDuration.unit`, 'Lane minimum assignment duration unit must be seconds or business-days.');
+				if (laneMinimum.unit === 'business-days') {
+					try { new Intl.DateTimeFormat('en', { timeZone: laneMinimum.calendar?.timeZone }).format(); }
+					catch { add(diagnostics, 'provider_lane_minimum_duration_timezone_invalid', `${lanePath}.minimumAssignmentDuration.calendar.timeZone`, 'Business-day lane duration requires a valid IANA time zone.'); }
+				}
+			}
 			if (lane.capabilities && lane.capabilities.some((entry) => !nonEmpty(entry))) add(diagnostics, 'provider_lane_capabilities_invalid', `${lanePath}.capabilities`, 'Provider lane capabilities must be non-empty strings.');
 		}
+	}
+	if (manifest?.defaultExecutionProviderId !== undefined && !executionProviderIds.has(manifest.defaultExecutionProviderId)) {
+		add(diagnostics, 'provider_default_execution_provider_unknown', 'defaultExecutionProviderId', 'The default execution provider must reference a configured execution provider id.');
 	}
 	if (!Array.isArray(manifest?.connections)) add(diagnostics, 'provider_manifest_connections_required', 'connections', 'connections must be an array.');
 	const ids = new Set<string>();

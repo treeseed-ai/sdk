@@ -205,6 +205,8 @@ export type SceneLocator = {
 
 export type ScenePage = {
 	goto(url: string, options?: { waitUntil?: 'load' | 'domcontentLoaded' | 'domcontentloaded' | 'networkidle'; timeout?: number }): Promise<{ status(): number; url(): string } | null | undefined>;
+	goBack?(options?: { waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'; timeout?: number }): Promise<unknown>;
+	goForward?(options?: { waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'; timeout?: number }): Promise<unknown>;
 	url(): string;
 	locator(selector: string): SceneLocator;
 	getByTestId(testId: string): SceneLocator;

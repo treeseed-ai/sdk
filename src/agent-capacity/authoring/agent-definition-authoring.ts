@@ -1,4 +1,4 @@
-import type { AgentActivityProfilesConfiguration } from '../../types/agents/agent-activity-profile.ts';
+import type { AgentActivityProfilesConfiguration,AgentContentRevisionRef } from '../../types/agents/agent-activity-profile.ts';
 
 export const AGENT_RUNTIME_STATUSES = ['dormant','blocked','queued','running','waiting','degraded','idle'] as const;
 export type AgentRuntimeStatus = (typeof AGENT_RUNTIME_STATUSES)[number];
@@ -16,7 +16,10 @@ export interface AgentAuthoringIntent {
 	designMaturity?: AgentDesignMaturity;
 	activityProfiles: AgentActivityProfilesConfiguration;
 	groupIds?: string[];
-	primaryGroupId?: string;
+	topicIds?: string[];
+	contextQueryRefs?: AgentContentRevisionRef[];
+	contextQuerySetRefs?: AgentContentRevisionRef[];
+	instructionTemplateRefs?: AgentContentRevisionRef[];
 }
 
 export interface LockedAgentIdentity {
@@ -34,7 +37,6 @@ export interface CompiledAgentDefinition {
 		projectAgentClassId: string;
 		projectAgentClassSlug: string;
 		groupIds: string[];
-		primaryGroupId: string;
 	};
 }
 
@@ -55,6 +57,12 @@ function slug(value: string) {
 
 function unique(values: string[]) {
 	return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+function revisionRefs(values:unknown):AgentContentRevisionRef[] {
+	if(!Array.isArray(values)) return [];
+	const refs=values.flatMap((value)=>value&&typeof value==='object'&&!Array.isArray(value)&&typeof (value as Record<string,unknown>).id==='string'&&Number.isInteger((value as Record<string,unknown>).revision)
+		?[{id:String((value as Record<string,unknown>).id).trim(),revision:Number((value as Record<string,unknown>).revision)}]:[]);
+	return [...new Map(refs.map((ref)=>[`${ref.id}@${ref.revision}`,ref])).values()];
 }
 
 export function deriveAgentRuntimeStatus(evidence: AgentRuntimeEvidence): AgentRuntimeStatus {
@@ -84,10 +92,11 @@ export function compileAgentDefinition(input: {
 		createdFromTemplate: input.intent.template,
 	};
 	const prior = input.existing?.frontmatter ?? {};
+	const legacyField = ['primaryGroupId', 'permissionPolicy', 'contentAccess'].find((field) => field in prior);
+	if (legacyField) throw new Error(`Existing agent definition uses removed field ${legacyField}. Migrate it before authoring a revision.`);
 	const priorGroups = Array.isArray(prior.groupIds) ? prior.groupIds.map(String) : [];
-	const requestedPrimary = input.intent.primaryGroupId?.trim() || (typeof prior.primaryGroupId === 'string' ? prior.primaryGroupId.trim() : '');
-	const primaryGroupId = requestedPrimary || input.intent.groupIds?.[0]?.trim() || priorGroups[0] || 'group:project';
-	const groupIds = unique([primaryGroupId, ...priorGroups, ...(input.intent.groupIds ?? [])]);
+	const groupIds = unique([...priorGroups,...(input.intent.groupIds ?? [])]);
+	if (!groupIds.length) groupIds.push('group:project');
 	const frontmatter = {
 		...prior,
 		id: identity.id,
@@ -103,7 +112,10 @@ export function compileAgentDefinition(input: {
 		summary: input.intent.description.trim(),
 		designMaturity: input.intent.designMaturity ?? prior.designMaturity ?? 'draft',
 		groupIds,
-		primaryGroupId,
+		topicIds: unique(input.intent.topicIds ?? (Array.isArray(prior.topicIds) ? prior.topicIds.map(String) : [])),
+		contextQueryRefs: revisionRefs(input.intent.contextQueryRefs ?? prior.contextQueryRefs),
+		contextQuerySetRefs: revisionRefs(input.intent.contextQuerySetRefs ?? prior.contextQuerySetRefs),
+		instructionTemplateRefs: revisionRefs(input.intent.instructionTemplateRefs ?? prior.instructionTemplateRefs),
 		identity: {
 			purpose: input.intent.purpose.trim(),
 			responsibilities: unique(input.intent.responsibilities),
@@ -112,5 +124,6 @@ export function compileAgentDefinition(input: {
 		activityProfiles: input.intent.activityProfiles,
 	};
 	delete (frontmatter as Record<string, unknown>).runtimeStatus;
-	return { identity, frontmatter, generated: { projectAgentClassId: classSlug, projectAgentClassSlug: classSlug, groupIds, primaryGroupId } };
+	delete (frontmatter as Record<string,unknown>).execution;
+	return { identity,frontmatter,generated:{ projectAgentClassId:classSlug,projectAgentClassSlug:classSlug,groupIds } };
 }

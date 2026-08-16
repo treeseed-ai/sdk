@@ -21,7 +21,8 @@ export function hasAuthenticatedCommittedContentReferences(contentReferences: un
 			const event = eventsById.get(toolEventId);
 			return Boolean(receiptId && toolEventId && event?.status === 'completed'
 				&& Array.isArray(event.derivedEventTypes)
-				&& event.derivedEventTypes.includes('content_created'));
+				&& (event.derivedEventTypes.includes('content_created')
+					|| event.derivedEventTypes.includes('content_updated')));
 		})
 		&& (references.length === 0 || hasCommit);
 }
@@ -75,7 +76,7 @@ export async function verifyCapacityAcceptanceTerminal(input: {
 		.map((entry) => String((entry as Record<string, unknown>).toolId ?? ''));
 	const minimumArtifactCount = input.minimumArtifactCount ?? 1;
 	if (!hasAuthenticatedCommittedContentReferences(contentReferences, toolEvents, minimumArtifactCount)) {
-		throw new Error(`Capacity acceptance required at least ${minimumArtifactCount} unique content artifact(s), each tied to a completed content_created event and an authenticated assignment commit; observed ${contentReferences.length} artifact(s) and tools [${completedToolIds.join(', ')}].`);
+		throw new Error(`Capacity acceptance required at least ${minimumArtifactCount} unique content artifact(s), each tied to a completed content mutation event and an authenticated assignment commit; observed ${contentReferences.length} artifact(s) and tools [${completedToolIds.join(', ')}].`);
 	}
 	const library = (await input.adminClient.projectTreeDxLibrary(input.config.projectId)).payload;
 	if (!library?.repositoryId) throw new Error('Capacity acceptance cannot read back its artifact without the project TreeDX repository binding.');

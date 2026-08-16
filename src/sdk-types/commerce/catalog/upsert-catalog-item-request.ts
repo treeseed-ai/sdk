@@ -75,7 +75,7 @@ export interface SdkPickResult<TItem> {
 
 export type SdkTemplateCatalogStatus = 'draft' | 'live' | 'archived';
 
-export type SdkTemplateCategory = 'starter' | 'example' | 'fixture' | 'reference-app';
+export type SdkTemplateCategory = 'starter' | 'example' | 'fixture' | 'reference-app' | 'platform';
 
 export interface SdkTemplateCatalogPublisher {
 	id: string;

@@ -122,7 +122,7 @@ it('closes matching package task branches and preserves deprecated tags', async 
 }, 360000);
 
 it('closes a portfolio workset without gitlinks and leaves the Platform checkout clean', async () => {
-		const { work } = createWorkflowRepo({ withWorkspacePackages: true, materialization: 'portfolio' });
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true, materialization: 'workset' });
 		const workflow = workflowFor(work);
 		await workflow.switchTask({ branch: 'feature/demo-task' });
 

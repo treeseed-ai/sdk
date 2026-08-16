@@ -1,12 +1,14 @@
 import { GuaranteeJourneyAuditItem } from './guarantee-journey-audit-item.ts';
+import type { GuaranteeCatalogContract } from '../contracts/agent-guarantee-contracts.ts';
 
 export const GUARANTEE_SCHEMA_VERSION = 'treeseed.guarantee/v1' as const;
+export const GUARANTEE_SCHEMA_VERSIONS = [GUARANTEE_SCHEMA_VERSION, 'treeseed.guarantee/v2'] as const;
 
 export const GUARANTEE_VERIFIERS_SCHEMA_VERSION = 'treeseed.guarantee-verifiers/v1' as const;
 
 export const GUARANTEE_JOURNEY_AUDIT_SCHEMA_VERSION = 'treeseed.guarantee-journey-audit/v1' as const;
 
-export type GuaranteeSchemaVersion = typeof GUARANTEE_SCHEMA_VERSION;
+export type GuaranteeSchemaVersion = (typeof GUARANTEE_SCHEMA_VERSIONS)[number];
 
 export type GuaranteeVerifiersSchemaVersion = typeof GUARANTEE_VERIFIERS_SCHEMA_VERSION;
 
@@ -125,6 +127,7 @@ export type GuaranteeManifest = {
 	};
 	notes?: string[];
 	dependsOnGuarantees?: string[];
+	catalogContract?: GuaranteeCatalogContract;
 };
 
 export type LoadedGuarantee = {
@@ -159,6 +162,7 @@ export type GuaranteeVerifierDefinition = {
 	evidence?: string[];
 	description?: string;
 	shareable?: boolean;
+	resultSchema?: 'treeseed.guarantee-verifier-result/v1';
 };
 
 export type GuaranteeVerifierRegistry = {

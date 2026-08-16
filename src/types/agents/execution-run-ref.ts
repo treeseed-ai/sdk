@@ -1,6 +1,6 @@
 
 import { AgentActivityProfile,AgentDefinitionIdentity,AgentExecutionConfig,AgentHandlerConfig } from './agent-activity-profile.ts';
-import { AgentActivityType,AgentBranchPolicy,AgentCliAllowTool,AgentContentAccessPolicy,AgentHandlerKind,AgentMessageStatus,AgentOutputContract,AgentPermissionConfig,AgentPermissionPolicy,AgentQuestionPolicy,AgentRunStatus,AgentSignalPolicy,AgentToolPolicy,AgentTriggerConfig,ExecutionRunStatus } from './agent-trigger-kinds.ts';
+import { AgentActivityPermissions,AgentActivityType,AgentBranchPolicy,AgentCliAllowTool,AgentContentAccessPolicy,AgentHandlerKind,AgentMessageStatus,AgentOutputContract,AgentPermissionConfig,AgentQuestionPolicy,AgentRunStatus,AgentSignalPolicy,AgentToolPolicy,AgentTriggerConfig,ExecutionRunStatus } from './agent-trigger-kinds.ts';
 
 export interface ExecutionRunRef {
 	assignmentId: string;
@@ -72,6 +72,13 @@ export interface AgentRuntimeSpec {
 	handler: AgentHandlerKind;
 	activityType?: AgentActivityType;
 	activityProfiles?: Partial<Record<AgentActivityType, AgentActivityProfile>>;
+	authorityPresetIds?: import('../../agent-capacity/authority/agent-authority-presets.ts').AgentAuthorityPresetId[];
+	authoritySnapshot?: {
+		presetIds: import('../../agent-capacity/authority/agent-authority-presets.ts').AgentAuthorityPresetId[];
+		permissions?: AgentActivityPermissions;
+		tools: AgentToolPolicy;
+		branchPolicy: AgentBranchPolicy;
+	};
 	branchPolicy?: AgentBranchPolicy;
 	questionPolicy?: AgentQuestionPolicy;
 	identity?: AgentDefinitionIdentity;
@@ -85,10 +92,9 @@ export interface AgentRuntimeSpec {
 	triggers: AgentTriggerConfig[];
 	triggerPolicy?: AgentTriggerPolicy;
 	permissions: AgentPermissionConfig[];
-	permissionPolicy?: AgentPermissionPolicy;
 	tools: AgentToolPolicy;
 	signalPolicy?: AgentSignalPolicy;
-	contentAccess?: AgentContentAccessPolicy;
+	permissionProjection?: AgentContentAccessPolicy;
 	context?: {
 		queries?: import('../../graph/context-query-contracts.ts').DeclarativeContextQuery[];
 	};

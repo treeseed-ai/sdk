@@ -32,6 +32,7 @@ export type GuaranteeRunState = {
 	schemaVersion: 'treeseed.guarantee-run-state/v2';
 	runId: string;
 	sourceClosure?: GuaranteeSourceClosure;
+	variant?: string;
 	values: Record<string, {
 		producerGuaranteeId: string;
 		executionKey: string;
@@ -46,6 +47,8 @@ export type GuaranteeSourceClosure = {
 	schemaVersion: 'treeseed.guarantee-source-closure/v1';
 	web: string | null;
 	api: string | null;
+	agent?: string | null;
+	cli?: string | null;
 	contracts: string;
 };
 

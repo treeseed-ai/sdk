@@ -37,7 +37,9 @@ export function parseVerifierRegistry(value: unknown, diagnostics: GuaranteeDiag
 			...(Array.isArray(entry.evidence) ? { evidence: stringArray(entry.evidence) } : {}),
 			...(typeof entry.description === 'string' ? { description: entry.description } : {}),
 			...(typeof entry.shareable === 'boolean' ? { shareable: entry.shareable } : {}),
+			...(entry.resultSchema === 'treeseed.guarantee-verifier-result/v1' ? { resultSchema: entry.resultSchema } : {}),
 		};
+		if (entry.resultSchema !== undefined && entry.resultSchema !== 'treeseed.guarantee-verifier-result/v1') diagnostics.push(diagnostic('error', 'guarantee_verifiers.invalid_result_schema', `Verifier "${id}" has unsupported resultSchema "${String(entry.resultSchema)}".`, `verifiers.${id}.resultSchema`, sourcePath));
 		if (!verifiers[id].kind) diagnostics.push(diagnostic('error', 'guarantee_verifiers.missing_kind', `Verifier "${id}" is missing kind.`, `verifiers.${id}.kind`, sourcePath));
 		if (verifiers[id].kind && !KNOWN_VERIFIER_KINDS.has(verifiers[id].kind)) diagnostics.push(diagnostic('error', 'guarantee_verifiers.invalid_kind', `Verifier "${id}" has unsupported kind "${verifiers[id].kind}".`, `verifiers.${id}.kind`, sourcePath));
 	}

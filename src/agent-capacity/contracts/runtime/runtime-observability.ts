@@ -367,10 +367,10 @@ export interface WorkdayCapacitySummaryPayload {
 	totals: WorkdayCapacitySummaryTotals;
 	settlement: CapacitySettlementSummary;
 	evidence: {
-		assignments: CapacityEvidenceWindow<ProviderAssignment>;
-		modeRuns: CapacityEvidenceWindow<AgentModeRun>;
-		reservations: CapacityEvidenceWindow<CapacityReservation>;
-		usageActuals: CapacityEvidenceWindow<CapacityUsageActual>;
-		ledgerEntries: CapacityEvidenceWindow<CapacityLedgerEntry>;
-	};
+		assignments?: CapacityEvidenceWindow<ProviderAssignment>;
+		modeRuns?: CapacityEvidenceWindow<AgentModeRun>;
+		reservations?: CapacityEvidenceWindow<CapacityReservation>;
+		usageActuals?: CapacityEvidenceWindow<CapacityUsageActual>;
+		ledgerEntries?: CapacityEvidenceWindow<CapacityLedgerEntry>;
+	} | null;
 }

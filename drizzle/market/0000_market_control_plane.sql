@@ -78,6 +78,7 @@ CREATE TABLE "capacity_provider_lanes" (
 	"capacity_provider_id" text NOT NULL,
 	"execution_provider_id" text NOT NULL,
 	"display_name" text NOT NULL,
+	"purpose" text DEFAULT 'operation' NOT NULL,
 	"status" text DEFAULT 'active' NOT NULL,
 	"capabilities_json" text DEFAULT '[]' NOT NULL,
 	"max_concurrent_runners" integer NOT NULL,
@@ -87,6 +88,7 @@ CREATE TABLE "capacity_provider_lanes" (
 	"updated_at" text NOT NULL,
 	CONSTRAINT "capacity_provider_lanes_capacity_provider_id_id_pk" PRIMARY KEY("capacity_provider_id","id"),
 	CONSTRAINT "chk_capacity_provider_lanes_status" CHECK ("capacity_provider_lanes"."status" IN ('active', 'paused', 'degraded', 'revoked')),
+	CONSTRAINT "chk_capacity_provider_lanes_purpose" CHECK ("capacity_provider_lanes"."purpose" IN ('communication', 'operation')),
 	CONSTRAINT "chk_capacity_provider_lanes_concurrency" CHECK ("capacity_provider_lanes"."max_concurrent_runners" >= 1)
 );
 
@@ -188,6 +190,48 @@ CREATE TABLE "team_invites" (
 	"updated_at" text NOT NULL
 );
 
+CREATE TABLE "agent_lab_view_state" (
+	"id" text PRIMARY KEY NOT NULL,
+	"user_id" text NOT NULL,
+	"team_id" text NOT NULL,
+	"namespace" text NOT NULL,
+	"entity_kind" text NOT NULL,
+	"entity_id" text NOT NULL,
+	"pinned" integer DEFAULT 0 NOT NULL,
+	"hidden" integer DEFAULT 0 NOT NULL,
+	"resolved" integer DEFAULT 0 NOT NULL,
+	"layout_json" text DEFAULT '{}' NOT NULL,
+	"version" integer DEFAULT 1 NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "cursor_state" (
+	"agent_slug" text,
+	"cursor_key" text,
+	"status" text NOT NULL,
+	"schema_version" integer DEFAULT 1 NOT NULL,
+	"updated_at" text NOT NULL,
+	"payload_json" text NOT NULL,
+	"meta_json" text NOT NULL,
+	CONSTRAINT "cursor_state_agent_slug_cursor_key_pk" PRIMARY KEY("agent_slug","cursor_key")
+);
+
+CREATE TABLE "lease_state" (
+	"model" text,
+	"item_key" text,
+	"status" text NOT NULL,
+	"schema_version" integer DEFAULT 1 NOT NULL,
+	"claimed_by" text,
+	"claimed_at" text,
+	"lease_expires_at" text,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL,
+	"payload_json" text NOT NULL,
+	"meta_json" text NOT NULL,
+	CONSTRAINT "lease_state_model_item_key_pk" PRIMARY KEY("model","item_key")
+);
+
 CREATE TABLE "credit_conversion_profiles" (
 	"id" text PRIMARY KEY NOT NULL,
 	"task_signature" text NOT NULL,
@@ -216,32 +260,6 @@ CREATE TABLE "credit_conversion_profiles" (
 	CONSTRAINT "chk_credit_conversion_profiles_actual_p50" CHECK ("credit_conversion_profiles"."actual_credits_p50" IS NULL OR "credit_conversion_profiles"."actual_credits_p50" >= 0),
 	CONSTRAINT "chk_credit_conversion_profiles_actual_p90" CHECK ("credit_conversion_profiles"."actual_credits_p90" IS NULL OR "credit_conversion_profiles"."actual_credits_p90" >= 0),
 	CONSTRAINT "chk_credit_conversion_profiles_confidence" CHECK ("credit_conversion_profiles"."confidence" IN ('low', 'medium', 'high'))
-);
-
-CREATE TABLE "cursor_state" (
-	"agent_slug" text,
-	"cursor_key" text,
-	"status" text NOT NULL,
-	"schema_version" integer DEFAULT 1 NOT NULL,
-	"updated_at" text NOT NULL,
-	"payload_json" text NOT NULL,
-	"meta_json" text NOT NULL,
-	CONSTRAINT "cursor_state_agent_slug_cursor_key_pk" PRIMARY KEY("agent_slug","cursor_key")
-);
-
-CREATE TABLE "lease_state" (
-	"model" text,
-	"item_key" text,
-	"status" text NOT NULL,
-	"schema_version" integer DEFAULT 1 NOT NULL,
-	"claimed_by" text,
-	"claimed_at" text,
-	"lease_expires_at" text,
-	"created_at" text NOT NULL,
-	"updated_at" text NOT NULL,
-	"payload_json" text NOT NULL,
-	"meta_json" text NOT NULL,
-	CONSTRAINT "lease_state_model_item_key_pk" PRIMARY KEY("model","item_key")
 );
 
 CREATE TABLE "market_auth_credentials" (
@@ -392,6 +410,17 @@ CREATE TABLE "seed_runs" (
 	"created_at" text NOT NULL,
 	"updated_at" text NOT NULL,
 	"completed_at" text
+);
+
+CREATE TABLE "session_events" (
+	"sequence" bigserial PRIMARY KEY NOT NULL,
+	"event_type" text NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text,
+	"resource_id" text NOT NULL,
+	"payload_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"expires_at" text NOT NULL
 );
 
 CREATE TABLE "user_notifications" (
@@ -545,6 +574,51 @@ CREATE TABLE "agent_fallback_outputs" (
 	"created_at" text NOT NULL
 );
 
+CREATE TABLE "agent_invocation_requests" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"decision_id" text,
+	"project_agent_class_id" text,
+	"agent_id" text,
+	"agent_revision" text,
+	"mode" text DEFAULT 'planning' NOT NULL,
+	"execution_kind" text DEFAULT 'workday' NOT NULL,
+	"trigger_kind" text DEFAULT 'manual' NOT NULL,
+	"status" text DEFAULT 'queued' NOT NULL,
+	"scope_hash" text NOT NULL,
+	"prompt" text,
+	"content_refs_json" text DEFAULT '[]' NOT NULL,
+	"parent_workday_id" text,
+	"parent_assignment_id" text,
+	"handoff_root_id" text,
+	"handoff_parent_id" text,
+	"handoff_depth" integer DEFAULT 0 NOT NULL,
+	"recipients_json" text DEFAULT '[]' NOT NULL,
+	"blocking_state_json" text DEFAULT '{}' NOT NULL,
+	"subject_digest" text,
+	"priority_class" text DEFAULT 'operational' NOT NULL,
+	"available_at" text NOT NULL,
+	"idempotency_key" text NOT NULL,
+	"request_digest" text NOT NULL,
+	"admitted_demand_id" text,
+	"execution_id" text,
+	"assignment_id" text,
+	"final_message_ref" text,
+	"response_json" text DEFAULT '{}' NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"requested_at" text NOT NULL,
+	"updated_at" text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	"completed_at" text,
+	"stale_at" text,
+	CONSTRAINT "chk_agent_invocations_mode" CHECK ("agent_invocation_requests"."mode" IN ('planning','acting')),
+	CONSTRAINT "chk_agent_invocations_execution_kind" CHECK ("agent_invocation_requests"."execution_kind" IN ('workday','conversation','simulation','recovery')),
+	CONSTRAINT "chk_agent_invocations_trigger_kind" CHECK ("agent_invocation_requests"."trigger_kind" IN ('scheduled','manual','discussion','agent-handoff')),
+	CONSTRAINT "chk_agent_invocations_priority" CHECK ("agent_invocation_requests"."priority_class" IN ('human-interactive','workday-blocking-agent','agent-asynchronous','operational')),
+	CONSTRAINT "chk_agent_invocations_status" CHECK ("agent_invocation_requests"."status" IN ('queued','blocked','coalesced','admitted','running','suspended','completed','failed','cancelled','expired','stale')),
+	CONSTRAINT "chk_agent_invocations_handoff_depth" CHECK ("agent_invocation_requests"."handoff_depth" >= 0)
+);
+
 CREATE TABLE "agent_mode_runs" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
@@ -581,6 +655,9 @@ CREATE TABLE "capacity_workday_runs" (
 	"scenario_id" text DEFAULT 'portfolio-local' NOT NULL,
 	"status" text DEFAULT 'queued' NOT NULL,
 	"environment" text DEFAULT 'local' NOT NULL,
+	"execution_kind" text DEFAULT 'workday' NOT NULL,
+	"trigger_kind" text DEFAULT 'scheduled' NOT NULL,
+	"hidden" integer DEFAULT 0 NOT NULL,
 	"requested_by_id" text,
 	"parameters_json" text DEFAULT '{}' NOT NULL,
 	"summary_json" text DEFAULT '{}' NOT NULL,
@@ -595,6 +672,9 @@ CREATE TABLE "capacity_workday_runs" (
 	"created_at" text NOT NULL,
 	"updated_at" text NOT NULL,
 	CONSTRAINT "chk_capacity_workday_runs_status" CHECK ("capacity_workday_runs"."status" IN ('queued','running','completed','cancelled','failed','degraded')),
+	CONSTRAINT "chk_capacity_workday_runs_execution_kind" CHECK ("capacity_workday_runs"."execution_kind" IN ('workday','conversation','simulation','recovery')),
+	CONSTRAINT "chk_capacity_workday_runs_trigger_kind" CHECK ("capacity_workday_runs"."trigger_kind" IN ('scheduled','manual','discussion','agent-handoff')),
+	CONSTRAINT "chk_capacity_workday_runs_hidden" CHECK ("capacity_workday_runs"."hidden" IN (0,1)),
 	CONSTRAINT "chk_capacity_workday_runs_next_event" CHECK ("capacity_workday_runs"."next_event_index" >= 0)
 );
 
@@ -683,25 +763,6 @@ CREATE TABLE "deliverable_manifests" (
 	CONSTRAINT "chk_deliverable_manifests_ready" CHECK ("deliverable_manifests"."ready_for_review" IN (0,1))
 );
 
-CREATE TABLE "planning_input_requests" (
-	"id" text PRIMARY KEY NOT NULL,
-	"team_id" text NOT NULL,
-	"project_id" text NOT NULL,
-	"decision_id" text NOT NULL,
-	"project_agent_class_id" text,
-	"mode" text DEFAULT 'planning' NOT NULL,
-	"status" text DEFAULT 'requested' NOT NULL,
-	"scope_hash" text NOT NULL,
-	"prompt" text,
-	"response_json" text DEFAULT '{}' NOT NULL,
-	"metadata_json" text DEFAULT '{}' NOT NULL,
-	"requested_at" text NOT NULL,
-	"completed_at" text,
-	"stale_at" text,
-	CONSTRAINT "chk_planning_input_requests_mode" CHECK ("planning_input_requests"."mode" IN ('planning','acting')),
-	CONSTRAINT "chk_planning_input_requests_status" CHECK ("planning_input_requests"."status" IN ('requested','complete','waived','rejected','stale'))
-);
-
 CREATE TABLE "research_workflows" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
@@ -736,6 +797,88 @@ CREATE TABLE "structured_agent_estimates" (
 	CONSTRAINT "chk_structured_agent_estimates_status" CHECK ("structured_agent_estimates"."status" IN ('submitted','accepted','rejected','superseded'))
 );
 
+CREATE TABLE "agent_context_query_checks" (
+	"id" text PRIMARY KEY NOT NULL,
+	"idempotency_key" text NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"test_id" text NOT NULL,
+	"test_ref" text NOT NULL,
+	"definition_kind" text NOT NULL,
+	"definition_id" text NOT NULL,
+	"definition_revision" integer NOT NULL,
+	"definition_commit" text NOT NULL,
+	"status" text NOT NULL,
+	"checked_at" text NOT NULL,
+	"expires_at" text NOT NULL,
+	"latency_ms" integer NOT NULL,
+	"stats_json" text NOT NULL,
+	"assertions_json" text NOT NULL,
+	"result_digest" text NOT NULL,
+	CONSTRAINT "chk_agent_context_query_checks_kind" CHECK ("agent_context_query_checks"."definition_kind" IN ('query','query-set')),
+	CONSTRAINT "chk_agent_context_query_checks_status" CHECK ("agent_context_query_checks"."status" IN ('passing','failing','stale'))
+);
+
+CREATE TABLE "agent_client_actions" (
+	"id" text PRIMARY KEY NOT NULL,
+	"session_id" text,
+	"assignment_id" text NOT NULL,
+	"user_id" text NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"kind" text NOT NULL,
+	"payload_json" text DEFAULT '{}' NOT NULL,
+	"status" text DEFAULT 'pending' NOT NULL,
+	"idempotency_key" text NOT NULL,
+	"request_digest" text NOT NULL,
+	"expires_at" text NOT NULL,
+	"completed_at" text,
+	"result_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL,
+	CONSTRAINT "chk_agent_client_actions_kind" CHECK ("agent_client_actions"."kind" IN ('navigate','reveal-resource','set-view-filter','populate-draft','present-confirmation')),
+	CONSTRAINT "chk_agent_client_actions_status" CHECK ("agent_client_actions"."status" IN ('pending','completed','rejected','expired','failed','unavailable'))
+);
+
+CREATE TABLE "agent_client_sessions" (
+	"id" text PRIMARY KEY NOT NULL,
+	"user_id" text NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"route" text NOT NULL,
+	"capabilities_json" text DEFAULT '[]' NOT NULL,
+	"status" text DEFAULT 'active' NOT NULL,
+	"heartbeat_at" text NOT NULL,
+	"expires_at" text NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL,
+	CONSTRAINT "chk_agent_client_sessions_status" CHECK ("agent_client_sessions"."status" IN ('active','closed','expired'))
+);
+
+CREATE TABLE "agent_operation_handoffs" (
+	"id" text PRIMARY KEY NOT NULL,
+	"assignment_id" text NOT NULL,
+	"invocation_id" text,
+	"discussion_id" text NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"status" text DEFAULT 'awaiting-approval' NOT NULL,
+	"target" text NOT NULL,
+	"expected_effect" text NOT NULL,
+	"inputs_json" text DEFAULT '{}' NOT NULL,
+	"source_message_refs_json" text DEFAULT '[]' NOT NULL,
+	"required_authority_json" text DEFAULT '[]' NOT NULL,
+	"proposal_id" text,
+	"decision_id" text,
+	"approval_request_id" text,
+	"resulting_assignment_id" text,
+	"idempotency_key" text NOT NULL,
+	"request_digest" text NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL,
+	CONSTRAINT "chk_agent_operation_handoffs_status" CHECK ("agent_operation_handoffs"."status" IN ('awaiting-approval','approved','scheduled','running','completed','failed','cancelled'))
+);
+
 CREATE TABLE "capacity_allocation_sets" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
@@ -762,6 +905,14 @@ CREATE TABLE "capacity_ledger_entries" (
 	"settlement_key" text NOT NULL,
 	"membership_id" text NOT NULL,
 	"capacity_provider_id" text NOT NULL,
+	"execution_provider_id" text,
+	"lane_id" text,
+	"lane_purpose" text,
+	"communication_overflow" integer DEFAULT 0 NOT NULL,
+	"execution_kind" text DEFAULT 'workday' NOT NULL,
+	"trigger_kind" text DEFAULT 'scheduled' NOT NULL,
+	"invocation_id" text,
+	"operation_handoff_id" text,
 	"reservation_id" text,
 	"assignment_id" text,
 	"mode_run_id" text,
@@ -771,13 +922,18 @@ CREATE TABLE "capacity_ledger_entries" (
 	"work_day_id" text,
 	"task_id" text,
 	"phase" text NOT NULL,
-	"credits" real NOT NULL,
+	"active_seconds" integer NOT NULL,
+	"elapsed_seconds" integer NOT NULL,
 	"provider_units" real,
 	"usd" real,
 	"source" text NOT NULL,
 	"metadata_json" text DEFAULT '{}' NOT NULL,
 	"created_at" text NOT NULL,
-	CONSTRAINT "chk_capacity_ledger_credits" CHECK ("capacity_ledger_entries"."credits" >= 0)
+	CONSTRAINT "chk_capacity_ledger_time" CHECK ("capacity_ledger_entries"."active_seconds" >= 0 AND "capacity_ledger_entries"."elapsed_seconds" >= 0),
+	CONSTRAINT "chk_capacity_ledger_lane_purpose" CHECK ("capacity_ledger_entries"."lane_purpose" IS NULL OR "capacity_ledger_entries"."lane_purpose" IN ('communication','operation')),
+	CONSTRAINT "chk_capacity_ledger_overflow" CHECK ("capacity_ledger_entries"."communication_overflow" IN (0,1)),
+	CONSTRAINT "chk_capacity_ledger_execution_kind" CHECK ("capacity_ledger_entries"."execution_kind" IN ('workday','conversation','simulation','recovery')),
+	CONSTRAINT "chk_capacity_ledger_trigger_kind" CHECK ("capacity_ledger_entries"."trigger_kind" IN ('scheduled','manual','discussion','agent-handoff'))
 );
 
 CREATE TABLE "capacity_provider_assignments" (
@@ -789,6 +945,18 @@ CREATE TABLE "capacity_provider_assignments" (
 	"provider_session_id" text,
 	"execution_provider_id" text,
 	"lane_id" text,
+	"lane_purpose" text,
+	"communication_overflow" integer DEFAULT 0 NOT NULL,
+	"execution_kind" text DEFAULT 'workday' NOT NULL,
+	"trigger_kind" text DEFAULT 'scheduled' NOT NULL,
+	"invocation_id" text,
+	"parent_workday_id" text,
+	"parent_assignment_id" text,
+	"handoff_root_id" text,
+	"handoff_parent_id" text,
+	"handoff_depth" integer DEFAULT 0 NOT NULL,
+	"source_message_refs_json" text DEFAULT '[]' NOT NULL,
+	"operation_handoff_id" text,
 	"allocation_set_id" text,
 	"project_agent_class_id" text NOT NULL,
 	"reservation_id" text,
@@ -829,6 +997,11 @@ CREATE TABLE "capacity_provider_assignments" (
 	"updated_at" text NOT NULL,
 	CONSTRAINT "chk_capacity_provider_assignments_state_version" CHECK ("capacity_provider_assignments"."state_version" >= 1),
 	CONSTRAINT "chk_capacity_provider_assignments_mode" CHECK ("capacity_provider_assignments"."mode" IN ('planning', 'acting')),
+	CONSTRAINT "chk_capacity_provider_assignments_lane_purpose" CHECK ("capacity_provider_assignments"."lane_purpose" IS NULL OR "capacity_provider_assignments"."lane_purpose" IN ('communication','operation')),
+	CONSTRAINT "chk_capacity_provider_assignments_overflow" CHECK ("capacity_provider_assignments"."communication_overflow" IN (0,1)),
+	CONSTRAINT "chk_capacity_provider_assignments_handoff_depth" CHECK ("capacity_provider_assignments"."handoff_depth" >= 0),
+	CONSTRAINT "chk_capacity_provider_assignments_execution_kind" CHECK ("capacity_provider_assignments"."execution_kind" IN ('workday','conversation','simulation','recovery')),
+	CONSTRAINT "chk_capacity_provider_assignments_trigger_kind" CHECK ("capacity_provider_assignments"."trigger_kind" IN ('scheduled','manual','discussion','agent-handoff')),
 	CONSTRAINT "chk_capacity_provider_assignments_status" CHECK ("capacity_provider_assignments"."status" IN ('pending', 'leased', 'running', 'completed', 'failed', 'returned', 'expired', 'cancelled')),
 	CONSTRAINT "chk_capacity_provider_assignments_lease_state" CHECK ("capacity_provider_assignments"."lease_state" IN ('unleased', 'leased', 'released', 'expired'))
 );
@@ -849,11 +1022,24 @@ CREATE TABLE "capacity_usage_actuals" (
 	"capacity_provider_id" text,
 	"execution_provider_id" text,
 	"lane_id" text,
+	"lane_purpose" text,
+	"communication_overflow" integer DEFAULT 0 NOT NULL,
+	"execution_kind" text DEFAULT 'workday' NOT NULL,
+	"trigger_kind" text DEFAULT 'scheduled' NOT NULL,
+	"invocation_id" text,
+	"parent_workday_id" text,
+	"parent_assignment_id" text,
+	"handoff_root_id" text,
+	"handoff_parent_id" text,
+	"handoff_depth" integer DEFAULT 0 NOT NULL,
+	"source_message_refs_json" text DEFAULT '[]' NOT NULL,
+	"operation_handoff_id" text,
 	"business_model" text NOT NULL,
 	"model_name" text,
 	"input_tokens" integer,
 	"output_tokens" integer,
 	"cached_input_tokens" integer,
+	"reasoning_tokens" integer,
 	"quota_minutes" real,
 	"wall_minutes" real,
 	"files_opened" integer,
@@ -862,15 +1048,14 @@ CREATE TABLE "capacity_usage_actuals" (
 	"diff_lines_removed" integer,
 	"test_runs" integer,
 	"retry_count" integer,
-	"actual_credits" real NOT NULL,
+	"active_seconds" integer NOT NULL,
+	"elapsed_seconds" integer NOT NULL,
 	"actual_usd" real,
-	"credit_formula_version" text DEFAULT 'treeseed.actual-credits.v1' NOT NULL,
-	"actual_credit_source" text DEFAULT 'central_calculator' NOT NULL,
 	"native_usage_json" text DEFAULT '{}' NOT NULL,
 	"metadata_json" text DEFAULT '{}' NOT NULL,
 	"created_at" text NOT NULL,
 	"execution_profile_id" text DEFAULT 'standard-code-model' NOT NULL,
-	CONSTRAINT "chk_capacity_usage_actuals_credits" CHECK ("capacity_usage_actuals"."actual_credits" >= 0),
+	CONSTRAINT "chk_capacity_usage_actuals_time" CHECK ("capacity_usage_actuals"."active_seconds" >= 0 AND "capacity_usage_actuals"."elapsed_seconds" >= 0),
 	CONSTRAINT "chk_capacity_usage_actuals_assignment_attempt" CHECK ("capacity_usage_actuals"."assignment_attempt" >= 0),
 	CONSTRAINT "chk_capacity_usage_actuals_accounting_mode" CHECK ("capacity_usage_actuals"."accounting_mode" IN ('informational', 'incremental', 'aggregate'))
 );
@@ -965,8 +1150,8 @@ CREATE TABLE "capacity_grants" (
 	"lane_ids_json" text DEFAULT '[]' NOT NULL,
 	"capabilities_json" text DEFAULT '[]' NOT NULL,
 	"allowed_modes_json" text DEFAULT '[]' NOT NULL,
-	"daily_credit_limit" real,
-	"monthly_credit_limit" real,
+	"daily_agent_seconds_limit" integer,
+	"monthly_agent_seconds_limit" integer,
 	"max_concurrent_assignments" integer,
 	"unmetered" integer DEFAULT 0 NOT NULL,
 	"expires_at" text,
@@ -975,8 +1160,8 @@ CREATE TABLE "capacity_grants" (
 	"updated_at" text NOT NULL,
 	CONSTRAINT "chk_capacity_grants_status" CHECK ("capacity_grants"."status" IN ('planned', 'active', 'paused', 'revoked', 'expired')),
 	CONSTRAINT "chk_capacity_grants_unmetered" CHECK ("capacity_grants"."unmetered" IN (0, 1)),
-	CONSTRAINT "chk_capacity_grants_daily_limit" CHECK ("capacity_grants"."daily_credit_limit" IS NULL OR "capacity_grants"."daily_credit_limit" >= 0),
-	CONSTRAINT "chk_capacity_grants_monthly_limit" CHECK ("capacity_grants"."monthly_credit_limit" IS NULL OR "capacity_grants"."monthly_credit_limit" >= 0),
+	CONSTRAINT "chk_capacity_grants_daily_time_limit" CHECK ("capacity_grants"."daily_agent_seconds_limit" IS NULL OR "capacity_grants"."daily_agent_seconds_limit" >= 0),
+	CONSTRAINT "chk_capacity_grants_monthly_time_limit" CHECK ("capacity_grants"."monthly_agent_seconds_limit" IS NULL OR "capacity_grants"."monthly_agent_seconds_limit" >= 0),
 	CONSTRAINT "chk_capacity_grants_concurrency" CHECK ("capacity_grants"."max_concurrent_assignments" IS NULL OR "capacity_grants"."max_concurrent_assignments" >= 0)
 );
 
@@ -1076,6 +1261,12 @@ CREATE TABLE "capacity_reservations" (
 	"capacity_provider_id" text NOT NULL,
 	"execution_provider_id" text,
 	"lane_id" text,
+	"lane_purpose" text,
+	"communication_overflow" integer DEFAULT 0 NOT NULL,
+	"execution_kind" text DEFAULT 'workday' NOT NULL,
+	"trigger_kind" text DEFAULT 'scheduled' NOT NULL,
+	"invocation_id" text,
+	"operation_handoff_id" text,
 	"allocation_set_id" text NOT NULL,
 	"allocation_version" integer NOT NULL,
 	"allocation_slice_ids_json" text DEFAULT '[]' NOT NULL,
@@ -1090,8 +1281,12 @@ CREATE TABLE "capacity_reservations" (
 	"state" text DEFAULT 'reserved' NOT NULL,
 	"usage_report_token" text,
 	"settlement_token" text,
-	"reserved_credits" real NOT NULL,
-	"consumed_credits" real DEFAULT 0 NOT NULL,
+	"requested_seconds" integer NOT NULL,
+	"reserved_seconds" integer NOT NULL,
+	"active_seconds" integer DEFAULT 0 NOT NULL,
+	"elapsed_seconds" integer DEFAULT 0 NOT NULL,
+	"released_seconds" integer DEFAULT 0 NOT NULL,
+	"overrun_seconds" integer DEFAULT 0 NOT NULL,
 	"native_unit" text,
 	"reserved_native_amount" real,
 	"consumed_native_amount" real,
@@ -1105,9 +1300,12 @@ CREATE TABLE "capacity_reservations" (
 	"updated_at" text NOT NULL,
 	CONSTRAINT "chk_capacity_reservations_allocation_version" CHECK ("capacity_reservations"."allocation_version" >= 1),
 	CONSTRAINT "chk_capacity_reservations_mode" CHECK ("capacity_reservations"."mode" IN ('planning', 'acting')),
+	CONSTRAINT "chk_capacity_reservations_lane_purpose" CHECK ("capacity_reservations"."lane_purpose" IS NULL OR "capacity_reservations"."lane_purpose" IN ('communication','operation')),
+	CONSTRAINT "chk_capacity_reservations_overflow" CHECK ("capacity_reservations"."communication_overflow" IN (0,1)),
+	CONSTRAINT "chk_capacity_reservations_execution_kind" CHECK ("capacity_reservations"."execution_kind" IN ('workday','conversation','simulation','recovery')),
+	CONSTRAINT "chk_capacity_reservations_trigger_kind" CHECK ("capacity_reservations"."trigger_kind" IN ('scheduled','manual','discussion','agent-handoff')),
 	CONSTRAINT "chk_capacity_reservations_state" CHECK ("capacity_reservations"."state" IN ('reserved', 'consuming', 'consumed', 'released', 'expired', 'failed', 'overran_pending_approval', 'continuation_required')),
-	CONSTRAINT "chk_capacity_reservations_reserved_credits" CHECK ("capacity_reservations"."reserved_credits" > 0),
-	CONSTRAINT "chk_capacity_reservations_consumed_credits" CHECK ("capacity_reservations"."consumed_credits" >= 0)
+	CONSTRAINT "chk_capacity_reservations_time" CHECK ("capacity_reservations"."requested_seconds" > 0 AND "capacity_reservations"."reserved_seconds" > 0 AND "capacity_reservations"."active_seconds" >= 0 AND "capacity_reservations"."elapsed_seconds" >= 0 AND "capacity_reservations"."released_seconds" >= 0 AND "capacity_reservations"."overrun_seconds" >= 0)
 );
 
 CREATE TABLE "agent_capacity_plans" (
@@ -1119,8 +1317,8 @@ CREATE TABLE "agent_capacity_plans" (
 	"scope_hash" text NOT NULL,
 	"allocation_set_id" text,
 	"work_day_id" text,
-	"expected_credits" real DEFAULT 0 NOT NULL,
-	"high_credits" real DEFAULT 0 NOT NULL,
+	"expected_seconds" integer DEFAULT 0 NOT NULL,
+	"high_seconds" integer DEFAULT 0 NOT NULL,
 	"work_units_json" text DEFAULT '[]' NOT NULL,
 	"capability_needs_json" text DEFAULT '[]' NOT NULL,
 	"environment_needs_json" text DEFAULT '[]' NOT NULL,
@@ -1135,7 +1333,34 @@ CREATE TABLE "agent_capacity_plans" (
 	"created_at" text NOT NULL,
 	"updated_at" text NOT NULL,
 	CONSTRAINT "chk_agent_capacity_plans_status" CHECK ("agent_capacity_plans"."status" IN ('draft','accepted','revision_requested','deferred','scheduled','active','completed','superseded')),
-	CONSTRAINT "chk_agent_capacity_plans_credits" CHECK ("agent_capacity_plans"."expected_credits" >= 0 AND "agent_capacity_plans"."high_credits" >= "agent_capacity_plans"."expected_credits")
+	CONSTRAINT "chk_agent_capacity_plans_time" CHECK ("agent_capacity_plans"."expected_seconds" >= 0 AND "agent_capacity_plans"."high_seconds" >= "agent_capacity_plans"."expected_seconds")
+);
+
+CREATE TABLE "agent_signals" (
+	"id" text PRIMARY KEY NOT NULL,
+	"contract_id" text NOT NULL,
+	"subject_kind" text NOT NULL,
+	"subject_id" text NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"workday_run_id" text,
+	"assignment_id" text,
+	"agent_id" text,
+	"activity_type" text,
+	"capacity_provider_id" text,
+	"causation_id" text NOT NULL,
+	"correlation_id" text NOT NULL,
+	"origin" text NOT NULL,
+	"commit_sha" text,
+	"immutable_ref" text,
+	"digest" text,
+	"changed_paths_json" text DEFAULT '[]' NOT NULL,
+	"change_summary" text,
+	"evidence_ref" text,
+	"payload_json" text DEFAULT '{}' NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	CONSTRAINT "chk_agent_signals_origin" CHECK ("agent_signals"."origin" IN ('treedx-change','deterministic-handler','agent-tool'))
 );
 
 CREATE TABLE "capacity_workday_demands" (
@@ -1155,7 +1380,7 @@ CREATE TABLE "capacity_workday_demands" (
 	"capacity_plan_id" text,
 	"status" text DEFAULT 'pending' NOT NULL,
 	"priority" integer DEFAULT 0 NOT NULL,
-	"requested_credits" real NOT NULL,
+	"requested_seconds" integer NOT NULL,
 	"idempotency_key" text NOT NULL,
 	"claim_token" text,
 	"assignment_id" text,
@@ -1170,7 +1395,7 @@ CREATE TABLE "capacity_workday_demands" (
 	CONSTRAINT "chk_capacity_workday_demands_mode" CHECK ("capacity_workday_demands"."mode" IN ('planning','acting')),
 	CONSTRAINT "chk_capacity_workday_demands_status" CHECK ("capacity_workday_demands"."status" IN ('pending','claimed','admitted','completed','blocked','cancelled','superseded')),
 	CONSTRAINT "chk_capacity_workday_demands_source" CHECK ("capacity_workday_demands"."source_type" IN ('objective','question','proposal','decision-review','knowledge-gap','release-readiness','idle-intent','planning-input','capacity-plan','assignment-completion','assignment-blockage','workday-summary','handoff','research-workflow')),
-	CONSTRAINT "chk_capacity_workday_demands_credits" CHECK ("capacity_workday_demands"."requested_credits" > 0)
+	CONSTRAINT "chk_capacity_workday_demands_time" CHECK ("capacity_workday_demands"."requested_seconds" > 0)
 );
 
 CREATE TABLE "capacity_workday_events" (
@@ -1230,6 +1455,35 @@ CREATE TABLE "capacity_workday_participation_entries" (
 	CONSTRAINT "chk_capacity_workday_participation_entries_status" CHECK ("capacity_workday_participation_entries"."status" IN ('pending','assigned','completed','excluded','blocked'))
 );
 
+CREATE TABLE "capacity_workday_schedules" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"capacity_provider_id" text NOT NULL,
+	"status" text DEFAULT 'active' NOT NULL,
+	"purpose" text NOT NULL,
+	"project_ids_json" text DEFAULT '[]' NOT NULL,
+	"agent_selection_json" text DEFAULT '{}' NOT NULL,
+	"cadence_seconds" integer NOT NULL,
+	"duration_seconds" integer NOT NULL,
+	"max_active_assignments" integer NOT NULL,
+	"available_seconds" integer NOT NULL,
+	"time_policy_json" text DEFAULT '{}' NOT NULL,
+	"planning_only" integer DEFAULT 1 NOT NULL,
+	"publication_policy_json" text DEFAULT '{}' NOT NULL,
+	"last_run_id" text,
+	"next_run_at" text NOT NULL,
+	"state_version" integer DEFAULT 1 NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL,
+	CONSTRAINT "chk_capacity_workday_schedules_status" CHECK ("capacity_workday_schedules"."status" IN ('active','paused','completed','failed')),
+	CONSTRAINT "chk_capacity_workday_schedules_cadence" CHECK ("capacity_workday_schedules"."cadence_seconds" >= 60),
+	CONSTRAINT "chk_capacity_workday_schedules_duration" CHECK ("capacity_workday_schedules"."duration_seconds" >= 60),
+	CONSTRAINT "chk_capacity_workday_schedules_concurrency" CHECK ("capacity_workday_schedules"."max_active_assignments" >= 1),
+	CONSTRAINT "chk_capacity_workday_schedules_time" CHECK ("capacity_workday_schedules"."available_seconds" > 0),
+	CONSTRAINT "chk_capacity_workday_schedules_planning" CHECK ("capacity_workday_schedules"."planning_only" IN (0,1)),
+	CONSTRAINT "chk_capacity_workday_schedules_version" CHECK ("capacity_workday_schedules"."state_version" >= 1)
+);
+
 CREATE TABLE "treedx_project_proxy_audit" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
@@ -1284,6 +1538,57 @@ CREATE TABLE "workday_capacity_envelopes" (
 	"created_at" text NOT NULL,
 	"updated_at" text NOT NULL,
 	CONSTRAINT "chk_workday_capacity_envelopes_status" CHECK ("workday_capacity_envelopes"."status" IN ('draft','queued','active','paused','completed','cancelled','failed','degraded'))
+);
+
+CREATE TABLE "workday_planning_participants" (
+	"id" text PRIMARY KEY NOT NULL,
+	"session_id" text NOT NULL,
+	"agent_id" text NOT NULL,
+	"node_id" text NOT NULL,
+	"project_agent_class_id" text NOT NULL,
+	"status" text DEFAULT 'scheduled' NOT NULL,
+	"requested_by_signal_id" text,
+	"rationale" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "workday_planning_sessions" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"workday_run_id" text NOT NULL,
+	"graph_revision" text NOT NULL,
+	"status" text DEFAULT 'scheduled' NOT NULL,
+	"agenda_json" text DEFAULT '{}' NOT NULL,
+	"objectives_json" text DEFAULT '[]' NOT NULL,
+	"proposal_ids_json" text DEFAULT '[]' NOT NULL,
+	"rounds" integer NOT NULL,
+	"current_round" integer DEFAULT 0 NOT NULL,
+	"allocated_seconds" integer NOT NULL,
+	"reserved_seconds" integer DEFAULT 0 NOT NULL,
+	"started_at" text,
+	"deadline" text NOT NULL,
+	"completed_at" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL,
+	CONSTRAINT "chk_workday_planning_sessions_status" CHECK ("workday_planning_sessions"."status" IN ('scheduled','running','completed','failed','cancelled'))
+);
+
+CREATE TABLE "workday_planning_waves" (
+	"id" text PRIMARY KEY NOT NULL,
+	"session_id" text NOT NULL,
+	"round" integer NOT NULL,
+	"wave" integer NOT NULL,
+	"status" text DEFAULT 'scheduled' NOT NULL,
+	"snapshot_ref" text NOT NULL,
+	"snapshot_json" text DEFAULT '{}' NOT NULL,
+	"assignment_ids_json" text DEFAULT '[]' NOT NULL,
+	"started_at" text,
+	"completed_at" text,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
 );
 
 CREATE TABLE "better_auth_session" (
@@ -2189,6 +2494,7 @@ CREATE TABLE "governance_proposals" (
 	"summary" text NOT NULL,
 	"body" text NOT NULL,
 	"proposal_type" text DEFAULT 'implementation' NOT NULL,
+	"proposal_types_json" text DEFAULT '[]' NOT NULL,
 	"content_proposal_slug" text,
 	"content_decision_slug" text,
 	"active_version" integer DEFAULT 1 NOT NULL,
@@ -2752,6 +3058,190 @@ CREATE TABLE "knowledge_workspace_presence" (
 	"last_seen_at" text NOT NULL
 );
 
+CREATE TABLE "project_remote_repository_bindings" (
+	"id" text PRIMARY KEY NOT NULL,
+	"project_id" text NOT NULL,
+	"team_id" text NOT NULL,
+	"service_connection_id" text NOT NULL,
+	"capability_binding_id" text NOT NULL,
+	"provider_id" text NOT NULL,
+	"provider_repository_id" text NOT NULL,
+	"owner" text NOT NULL,
+	"name" text NOT NULL,
+	"clone_url" text NOT NULL,
+	"default_ref" text NOT NULL,
+	"publication_ref" text NOT NULL,
+	"authority_id" text NOT NULL,
+	"expected_head" text,
+	"observed_head" text,
+	"grant_status" text DEFAULT 'missing' NOT NULL,
+	"drift" text DEFAULT 'unknown' NOT NULL,
+	"version" integer DEFAULT 1 NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL,
+	CONSTRAINT "project_remote_repository_bindings_project_id_unique" UNIQUE("project_id")
+);
+
+CREATE TABLE "project_workflow_operations" (
+	"id" text PRIMARY KEY NOT NULL,
+	"project_id" text NOT NULL,
+	"team_id" text NOT NULL,
+	"workflow_binding_id" text NOT NULL,
+	"repository_binding_id" text NOT NULL,
+	"workflow_id" text NOT NULL,
+	"ref_policy_json" text DEFAULT '[]' NOT NULL,
+	"allowed_inputs_json" text DEFAULT '{}' NOT NULL,
+	"required_secrets_json" text DEFAULT '[]' NOT NULL,
+	"required_variables_json" text DEFAULT '[]' NOT NULL,
+	"actor_policy_json" text DEFAULT '[]' NOT NULL,
+	"mode_policy_json" text DEFAULT '[]' NOT NULL,
+	"version" integer DEFAULT 1 NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "provider_connector_authorizations" (
+	"id" text PRIMARY KEY NOT NULL,
+	"provider_id" text NOT NULL,
+	"connector_kind" text NOT NULL,
+	"team_id" text NOT NULL,
+	"connection_id" text NOT NULL,
+	"actor_user_id" text NOT NULL,
+	"state_hash" text NOT NULL,
+	"phase" text NOT NULL,
+	"installation_id" text,
+	"account_id" text,
+	"account_login" text,
+	"expires_at" text NOT NULL,
+	"consumed_at" text,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL,
+	CONSTRAINT "provider_connector_authorizations_state_hash_unique" UNIQUE("state_hash")
+);
+
+CREATE TABLE "provider_credential_authorities" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"connection_id" text NOT NULL,
+	"credential_profile_id" text NOT NULL,
+	"scheme" text NOT NULL,
+	"reference" text NOT NULL,
+	"capabilities_json" text DEFAULT '[]' NOT NULL,
+	"status" text DEFAULT 'reauthorization-required' NOT NULL,
+	"version" integer DEFAULT 1 NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "provider_webhook_deliveries" (
+	"id" text PRIMARY KEY NOT NULL,
+	"provider_id" text NOT NULL,
+	"delivery_id" text NOT NULL,
+	"event_type" text NOT NULL,
+	"status" text NOT NULL,
+	"body_digest" text NOT NULL,
+	"correlation_id" text,
+	"received_at" text NOT NULL,
+	"processed_at" text
+);
+
+CREATE TABLE "remote_credential_deliveries" (
+	"id" text PRIMARY KEY NOT NULL,
+	"grant_id" text NOT NULL,
+	"operation_id" text NOT NULL,
+	"node_id" text NOT NULL,
+	"operation_kind" text NOT NULL,
+	"allowed_host" text NOT NULL,
+	"refspec_digest" text NOT NULL,
+	"delivery_mode" text NOT NULL,
+	"ciphertext" text,
+	"algorithm" text,
+	"status" text DEFAULT 'ready' NOT NULL,
+	"expires_at" text NOT NULL,
+	"consumed_at" text,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL,
+	CONSTRAINT "remote_credential_deliveries_grant_id_unique" UNIQUE("grant_id")
+);
+
+CREATE TABLE "remote_git_operation_grants" (
+	"id" text PRIMARY KEY NOT NULL,
+	"operation_id" text NOT NULL,
+	"actor_id" text NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"repository_binding_id" text NOT NULL,
+	"treedx_node_id" text NOT NULL,
+	"source_ref" text NOT NULL,
+	"destination_ref" text NOT NULL,
+	"reviewed_commit" text NOT NULL,
+	"expected_remote_head" text NOT NULL,
+	"credential_authority_id" text NOT NULL,
+	"status" text DEFAULT 'pending' NOT NULL,
+	"expires_at" text NOT NULL,
+	"idempotency_key" text NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL,
+	CONSTRAINT "remote_git_operation_grants_idempotency_key_unique" UNIQUE("idempotency_key")
+);
+
+CREATE TABLE "workflow_configuration_deliveries" (
+	"id" text PRIMARY KEY NOT NULL,
+	"operation_id" text NOT NULL,
+	"record_id" text NOT NULL,
+	"action" text NOT NULL,
+	"payload_digest" text,
+	"key_id" text,
+	"status" text NOT NULL,
+	"expires_at" text NOT NULL,
+	"consumed_at" text,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL,
+	CONSTRAINT "workflow_configuration_deliveries_operation_id_unique" UNIQUE("operation_id")
+);
+
+CREATE TABLE "workflow_configuration_records" (
+	"id" text PRIMARY KEY NOT NULL,
+	"project_id" text NOT NULL,
+	"team_id" text NOT NULL,
+	"workflow_binding_id" text NOT NULL,
+	"repository_binding_id" text NOT NULL,
+	"kind" text NOT NULL,
+	"scope" text NOT NULL,
+	"environment" text,
+	"name" text NOT NULL,
+	"status" text NOT NULL,
+	"value_digest" text,
+	"provider_updated_at" text,
+	"last_observed_at" text,
+	"updated_by_user_id" text,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "workflow_operation_runs" (
+	"id" text PRIMARY KEY NOT NULL,
+	"operation_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"team_id" text NOT NULL,
+	"actor_type" text NOT NULL,
+	"actor_id" text NOT NULL,
+	"mode" text NOT NULL,
+	"assignment_id" text,
+	"handle_id" text,
+	"provider_id" text NOT NULL,
+	"provider_run_id" text,
+	"provider_run_url" text,
+	"source_sha" text NOT NULL,
+	"ref" text NOT NULL,
+	"correlation_id" text NOT NULL,
+	"status" text DEFAULT 'authorizing' NOT NULL,
+	"artifacts_json" text DEFAULT '[]' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL,
+	CONSTRAINT "workflow_operation_runs_correlation_id_unique" UNIQUE("correlation_id")
+);
+
 CREATE TABLE "agent_messages" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"type" text NOT NULL,
@@ -2859,6 +3349,22 @@ CREATE TABLE "runtime_envelopes" (
 	"record_type" text NOT NULL,
 	"payload_json" text NOT NULL,
 	"created_at" text NOT NULL
+);
+
+CREATE TABLE "seed_team_membership_claims" (
+	"id" text PRIMARY KEY NOT NULL,
+	"seed_name" text NOT NULL,
+	"resource_key" text NOT NULL,
+	"team_id" text NOT NULL,
+	"normalized_email" text NOT NULL,
+	"roles_json" text DEFAULT '[]' NOT NULL,
+	"status" text DEFAULT 'pending' NOT NULL,
+	"user_id" text,
+	"membership_id" text,
+	"binding_ids_json" text DEFAULT '[]' NOT NULL,
+	"bound_at" text,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
 );
 
 CREATE TABLE "service_credentials" (
@@ -2994,6 +3500,9 @@ ALTER TABLE "team_capacity_registration_keys" ADD CONSTRAINT "fk_team_capacity_r
 ALTER TABLE "agent_fallback_outputs" ADD CONSTRAINT "fk_agent_fallback_outputs_team" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;
 ALTER TABLE "agent_fallback_outputs" ADD CONSTRAINT "fk_agent_fallback_outputs_project" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE restrict ON UPDATE no action;
 ALTER TABLE "agent_fallback_outputs" ADD CONSTRAINT "fk_agent_fallback_outputs_assignment" FOREIGN KEY ("assignment_id") REFERENCES "public"."capacity_provider_assignments"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "agent_invocation_requests" ADD CONSTRAINT "fk_agent_invocations_team" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "agent_invocation_requests" ADD CONSTRAINT "fk_agent_invocations_project" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "agent_invocation_requests" ADD CONSTRAINT "fk_agent_invocations_agent_class" FOREIGN KEY ("project_agent_class_id") REFERENCES "public"."project_agent_classes"("id") ON DELETE restrict ON UPDATE no action;
 ALTER TABLE "agent_mode_runs" ADD CONSTRAINT "fk_agent_mode_runs_team" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;
 ALTER TABLE "agent_mode_runs" ADD CONSTRAINT "fk_agent_mode_runs_project" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE restrict ON UPDATE no action;
 ALTER TABLE "agent_mode_runs" ADD CONSTRAINT "fk_agent_mode_runs_assignment" FOREIGN KEY ("provider_assignment_id") REFERENCES "public"."capacity_provider_assignments"("id") ON DELETE restrict ON UPDATE no action;
@@ -3012,17 +3521,29 @@ ALTER TABLE "deliverable_contracts" ADD CONSTRAINT "fk_deliverable_contracts_tea
 ALTER TABLE "deliverable_contracts" ADD CONSTRAINT "fk_deliverable_contracts_project" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;
 ALTER TABLE "deliverable_manifests" ADD CONSTRAINT "fk_deliverable_manifests_contract" FOREIGN KEY ("deliverable_contract_id") REFERENCES "public"."deliverable_contracts"("id") ON DELETE cascade ON UPDATE no action;
 ALTER TABLE "deliverable_manifests" ADD CONSTRAINT "fk_deliverable_manifests_project" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "planning_input_requests" ADD CONSTRAINT "fk_planning_input_requests_team" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "planning_input_requests" ADD CONSTRAINT "fk_planning_input_requests_project" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "planning_input_requests" ADD CONSTRAINT "fk_planning_input_requests_agent_class" FOREIGN KEY ("project_agent_class_id") REFERENCES "public"."project_agent_classes"("id") ON DELETE restrict ON UPDATE no action;
 ALTER TABLE "research_workflows" ADD CONSTRAINT "fk_research_workflows_team" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;
 ALTER TABLE "research_workflows" ADD CONSTRAINT "fk_research_workflows_project" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE no action ON UPDATE no action;
 ALTER TABLE "structured_agent_estimates" ADD CONSTRAINT "fk_structured_agent_estimates_team" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;
 ALTER TABLE "structured_agent_estimates" ADD CONSTRAINT "fk_structured_agent_estimates_project" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "agent_context_query_checks" ADD CONSTRAINT "fk_agent_context_query_checks_team" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "agent_context_query_checks" ADD CONSTRAINT "fk_agent_context_query_checks_project" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "agent_client_actions" ADD CONSTRAINT "fk_agent_client_actions_session" FOREIGN KEY ("session_id") REFERENCES "public"."agent_client_sessions"("id") ON DELETE set null ON UPDATE no action;
+ALTER TABLE "agent_client_actions" ADD CONSTRAINT "fk_agent_client_actions_assignment" FOREIGN KEY ("assignment_id") REFERENCES "public"."capacity_provider_assignments"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "agent_client_actions" ADD CONSTRAINT "fk_agent_client_actions_user" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "agent_client_actions" ADD CONSTRAINT "fk_agent_client_actions_team" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "agent_client_actions" ADD CONSTRAINT "fk_agent_client_actions_project" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "agent_client_sessions" ADD CONSTRAINT "fk_agent_client_sessions_user" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "agent_client_sessions" ADD CONSTRAINT "fk_agent_client_sessions_team" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "agent_client_sessions" ADD CONSTRAINT "fk_agent_client_sessions_project" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "agent_operation_handoffs" ADD CONSTRAINT "fk_agent_operation_handoffs_assignment" FOREIGN KEY ("assignment_id") REFERENCES "public"."capacity_provider_assignments"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "agent_operation_handoffs" ADD CONSTRAINT "fk_agent_operation_handoffs_team" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "agent_operation_handoffs" ADD CONSTRAINT "fk_agent_operation_handoffs_project" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;
 ALTER TABLE "capacity_allocation_sets" ADD CONSTRAINT "fk_capacity_allocation_sets_team" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;
 ALTER TABLE "capacity_allocation_sets" ADD CONSTRAINT "fk_capacity_allocation_sets_superseded_by" FOREIGN KEY ("superseded_by_id") REFERENCES "public"."capacity_allocation_sets"("id") ON DELETE restrict ON UPDATE no action;
 ALTER TABLE "capacity_ledger_entries" ADD CONSTRAINT "fk_capacity_ledger_membership" FOREIGN KEY ("membership_id") REFERENCES "public"."capacity_provider_team_memberships"("id") ON DELETE restrict ON UPDATE no action;
 ALTER TABLE "capacity_ledger_entries" ADD CONSTRAINT "fk_capacity_ledger_provider" FOREIGN KEY ("capacity_provider_id") REFERENCES "public"."capacity_providers"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "capacity_ledger_entries" ADD CONSTRAINT "fk_capacity_ledger_execution_provider" FOREIGN KEY ("capacity_provider_id","execution_provider_id") REFERENCES "public"."capacity_execution_providers"("capacity_provider_id","id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "capacity_ledger_entries" ADD CONSTRAINT "fk_capacity_ledger_lane" FOREIGN KEY ("capacity_provider_id","lane_id") REFERENCES "public"."capacity_provider_lanes"("capacity_provider_id","id") ON DELETE restrict ON UPDATE no action;
 ALTER TABLE "capacity_ledger_entries" ADD CONSTRAINT "fk_capacity_ledger_reservation" FOREIGN KEY ("reservation_id") REFERENCES "public"."capacity_reservations"("id") ON DELETE restrict ON UPDATE no action;
 ALTER TABLE "capacity_ledger_entries" ADD CONSTRAINT "fk_capacity_ledger_assignment" FOREIGN KEY ("assignment_id") REFERENCES "public"."capacity_provider_assignments"("id") ON DELETE restrict ON UPDATE no action;
 ALTER TABLE "capacity_ledger_entries" ADD CONSTRAINT "fk_capacity_ledger_mode_run" FOREIGN KEY ("mode_run_id") REFERENCES "public"."agent_mode_runs"("id") ON DELETE restrict ON UPDATE no action;
@@ -3074,6 +3595,9 @@ ALTER TABLE "agent_capacity_plans" ADD CONSTRAINT "fk_agent_capacity_plans_team"
 ALTER TABLE "agent_capacity_plans" ADD CONSTRAINT "fk_agent_capacity_plans_project" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;
 ALTER TABLE "agent_capacity_plans" ADD CONSTRAINT "fk_agent_capacity_plans_allocation" FOREIGN KEY ("allocation_set_id") REFERENCES "public"."capacity_allocation_sets"("id") ON DELETE restrict ON UPDATE no action;
 ALTER TABLE "agent_capacity_plans" ADD CONSTRAINT "fk_agent_capacity_plans_workday" FOREIGN KEY ("work_day_id") REFERENCES "public"."workday_capacity_envelopes"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "agent_signals" ADD CONSTRAINT "fk_agent_signals_team" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "agent_signals" ADD CONSTRAINT "fk_agent_signals_project" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "agent_signals" ADD CONSTRAINT "fk_agent_signals_assignment" FOREIGN KEY ("assignment_id") REFERENCES "public"."capacity_provider_assignments"("id") ON DELETE restrict ON UPDATE no action;
 ALTER TABLE "capacity_workday_demands" ADD CONSTRAINT "fk_capacity_workday_demands_team" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;
 ALTER TABLE "capacity_workday_demands" ADD CONSTRAINT "fk_capacity_workday_demands_project" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE restrict ON UPDATE no action;
 ALTER TABLE "capacity_workday_demands" ADD CONSTRAINT "fk_capacity_workday_demands_run" FOREIGN KEY ("workday_run_id") REFERENCES "public"."capacity_workday_runs"("id") ON DELETE restrict ON UPDATE no action;
@@ -3094,10 +3618,18 @@ ALTER TABLE "capacity_workday_participation_entries" ADD CONSTRAINT "fk_capacity
 ALTER TABLE "capacity_workday_participation_entries" ADD CONSTRAINT "fk_capacity_workday_participation_entries_agent_class" FOREIGN KEY ("project_agent_class_id") REFERENCES "public"."project_agent_classes"("id") ON DELETE restrict ON UPDATE no action;
 ALTER TABLE "capacity_workday_participation_entries" ADD CONSTRAINT "fk_capacity_workday_participation_entries_demand" FOREIGN KEY ("demand_id") REFERENCES "public"."capacity_workday_demands"("id") ON DELETE restrict ON UPDATE no action;
 ALTER TABLE "capacity_workday_participation_entries" ADD CONSTRAINT "fk_capacity_workday_participation_entries_assignment" FOREIGN KEY ("assignment_id") REFERENCES "public"."capacity_provider_assignments"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "capacity_workday_schedules" ADD CONSTRAINT "fk_capacity_workday_schedules_team" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;
 ALTER TABLE "workday_capacity_envelopes" ADD CONSTRAINT "workday_capacity_envelopes_workday_run_id_capacity_workday_runs_id_fk" FOREIGN KEY ("workday_run_id") REFERENCES "public"."capacity_workday_runs"("id") ON DELETE restrict ON UPDATE no action;
 ALTER TABLE "workday_capacity_envelopes" ADD CONSTRAINT "fk_workday_capacity_envelopes_team" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;
 ALTER TABLE "workday_capacity_envelopes" ADD CONSTRAINT "fk_workday_capacity_envelopes_project" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE restrict ON UPDATE no action;
 ALTER TABLE "workday_capacity_envelopes" ADD CONSTRAINT "fk_workday_capacity_envelopes_allocation" FOREIGN KEY ("allocation_set_id") REFERENCES "public"."capacity_allocation_sets"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "workday_planning_participants" ADD CONSTRAINT "fk_workday_planning_participants_session" FOREIGN KEY ("session_id") REFERENCES "public"."workday_planning_sessions"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "workday_planning_participants" ADD CONSTRAINT "fk_workday_planning_participants_signal" FOREIGN KEY ("requested_by_signal_id") REFERENCES "public"."agent_signals"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "workday_planning_sessions" ADD CONSTRAINT "fk_workday_planning_sessions_team" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "workday_planning_sessions" ADD CONSTRAINT "fk_workday_planning_sessions_run" FOREIGN KEY ("workday_run_id") REFERENCES "public"."capacity_workday_runs"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "workday_planning_waves" ADD CONSTRAINT "fk_workday_planning_waves_session" FOREIGN KEY ("session_id") REFERENCES "public"."workday_planning_sessions"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "seed_team_membership_claims" ADD CONSTRAINT "fk_seed_team_membership_claim_team" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "seed_team_membership_claims" ADD CONSTRAINT "fk_seed_team_membership_claim_membership" FOREIGN KEY ("membership_id") REFERENCES "public"."team_memberships"("id") ON DELETE set null ON UPDATE no action;
 CREATE INDEX "idx_better_auth_account_userId" ON "better_auth_account" USING btree ("userId");
 CREATE UNIQUE INDEX "idx_better_auth_account_provider_account" ON "better_auth_account" USING btree ("providerId","accountId");
 CREATE INDEX "idx_better_auth_verification_identifier" ON "better_auth_verification" USING btree ("identifier");
@@ -3126,11 +3658,13 @@ CREATE UNIQUE INDEX "idx_team_capacity_registration_keys_rotation" ON "team_capa
 CREATE INDEX "idx_team_capacity_registration_keys_current" ON "team_capacity_registration_keys" USING btree ("team_id","status","generation");
 CREATE INDEX "idx_team_invites_team_status" ON "team_invites" USING btree ("team_id","status","created_at");
 CREATE INDEX "idx_team_invites_token_prefix" ON "team_invites" USING btree ("token_prefix");
-CREATE UNIQUE INDEX "idx_credit_conversion_profiles_profile_key" ON "credit_conversion_profiles" USING btree ("task_signature","execution_profile_id","execution_provider_kind","native_unit");
-CREATE INDEX "idx_credit_conversion_profiles_kind_unit" ON "credit_conversion_profiles" USING btree ("execution_provider_kind","native_unit","updated_at");
+CREATE UNIQUE INDEX "idx_agent_lab_view_state_owner_entity" ON "agent_lab_view_state" USING btree ("user_id","team_id","namespace","entity_kind","entity_id");
+CREATE INDEX "idx_agent_lab_view_state_owner_namespace" ON "agent_lab_view_state" USING btree ("user_id","team_id","namespace","updated_at");
 CREATE INDEX "idx_cursor_state_updated" ON "cursor_state" USING btree ("updated_at");
 CREATE INDEX "idx_lease_state_status_expires" ON "lease_state" USING btree ("status","lease_expires_at");
 CREATE INDEX "idx_lease_state_claimed_by" ON "lease_state" USING btree ("claimed_by","updated_at");
+CREATE UNIQUE INDEX "idx_credit_conversion_profiles_profile_key" ON "credit_conversion_profiles" USING btree ("task_signature","execution_profile_id","execution_provider_kind","native_unit");
+CREATE INDEX "idx_credit_conversion_profiles_kind_unit" ON "credit_conversion_profiles" USING btree ("execution_provider_kind","native_unit","updated_at");
 CREATE INDEX "idx_message_queue_claimable" ON "message_queue" USING btree ("status","available_at","priority");
 CREATE INDEX "idx_message_queue_related" ON "message_queue" USING btree ("related_model","related_id","created_at");
 CREATE INDEX "idx_notification_email_deliveries_due" ON "notification_email_deliveries" USING btree ("status","due_at");
@@ -3142,6 +3676,8 @@ CREATE INDEX "idx_runtime_records_type_lookup_updated" ON "runtime_records" USIN
 CREATE INDEX "idx_runtime_records_type_status_updated" ON "runtime_records" USING btree ("record_type","status","updated_at");
 CREATE INDEX "idx_seed_runs_seed_created" ON "seed_runs" USING btree ("seed_name","created_at");
 CREATE INDEX "idx_seed_runs_state_created" ON "seed_runs" USING btree ("state","created_at");
+CREATE INDEX "idx_session_events_team_sequence" ON "session_events" USING btree ("team_id","sequence");
+CREATE INDEX "idx_session_events_expiry" ON "session_events" USING btree ("expires_at");
 CREATE UNIQUE INDEX "idx_user_notifications_event" ON "user_notifications" USING btree ("user_id","event_id");
 CREATE INDEX "idx_user_notifications_user" ON "user_notifications" USING btree ("user_id","read_at","created_at");
 CREATE INDEX "idx_credential_envelopes_connection_status" ON "credential_envelopes" USING btree ("connection_id","status");
@@ -3162,6 +3698,10 @@ CREATE UNIQUE INDEX "idx_user_vault_keys_user_version" ON "user_vault_keys" USIN
 CREATE INDEX "idx_agent_fallback_outputs_project_created" ON "agent_fallback_outputs" USING btree ("project_id","created_at");
 CREATE INDEX "idx_agent_fallback_outputs_project_mode_status" ON "agent_fallback_outputs" USING btree ("project_id","mode","status","created_at");
 CREATE INDEX "idx_agent_fallback_outputs_assignment" ON "agent_fallback_outputs" USING btree ("assignment_id","created_at");
+CREATE UNIQUE INDEX "idx_agent_invocations_idempotency" ON "agent_invocation_requests" USING btree ("team_id","idempotency_key");
+CREATE INDEX "idx_agent_invocations_decision" ON "agent_invocation_requests" USING btree ("decision_id","status","requested_at");
+CREATE INDEX "idx_agent_invocations_admission" ON "agent_invocation_requests" USING btree ("team_id","status","priority_class","available_at");
+CREATE INDEX "idx_agent_invocations_discussion_agent" ON "agent_invocation_requests" USING btree ("project_id","agent_id","subject_digest","status");
 CREATE INDEX "idx_agent_mode_runs_assignment" ON "agent_mode_runs" USING btree ("provider_assignment_id","status");
 CREATE INDEX "idx_agent_mode_runs_project_mode" ON "agent_mode_runs" USING btree ("project_id","mode","created_at");
 CREATE INDEX "idx_agent_mode_runs_provider" ON "agent_mode_runs" USING btree ("capacity_provider_id","created_at");
@@ -3178,11 +3718,16 @@ CREATE UNIQUE INDEX "idx_decision_planning_statuses_decision" ON "decision_plann
 CREATE INDEX "idx_decision_planning_statuses_project" ON "decision_planning_statuses" USING btree ("project_id","execution_readiness","updated_at");
 CREATE INDEX "idx_deliverable_contracts_decision" ON "deliverable_contracts" USING btree ("decision_id","status","deliverable_type");
 CREATE INDEX "idx_deliverable_manifests_contract" ON "deliverable_manifests" USING btree ("deliverable_contract_id","submitted_at");
-CREATE INDEX "idx_planning_input_requests_decision" ON "planning_input_requests" USING btree ("decision_id","status","requested_at");
-CREATE INDEX "idx_planning_input_requests_project" ON "planning_input_requests" USING btree ("project_id","status","requested_at");
 CREATE UNIQUE INDEX "idx_research_workflows_idempotency" ON "research_workflows" USING btree ("project_id","idempotency_key");
 CREATE INDEX "idx_research_workflows_question" ON "research_workflows" USING btree ("project_id","question_ref","status","updated_at");
 CREATE INDEX "idx_structured_agent_estimates_decision" ON "structured_agent_estimates" USING btree ("decision_id","status","created_at");
+CREATE UNIQUE INDEX "idx_agent_context_query_checks_idempotency" ON "agent_context_query_checks" USING btree ("team_id","idempotency_key");
+CREATE INDEX "idx_agent_context_query_checks_latest" ON "agent_context_query_checks" USING btree ("project_id","definition_kind","definition_id","definition_revision","checked_at");
+CREATE UNIQUE INDEX "idx_agent_client_actions_idempotency" ON "agent_client_actions" USING btree ("assignment_id","idempotency_key");
+CREATE INDEX "idx_agent_client_actions_session_status" ON "agent_client_actions" USING btree ("session_id","status","created_at");
+CREATE INDEX "idx_agent_client_sessions_scope" ON "agent_client_sessions" USING btree ("user_id","team_id","project_id","status","expires_at");
+CREATE UNIQUE INDEX "idx_agent_operation_handoffs_idempotency" ON "agent_operation_handoffs" USING btree ("assignment_id","idempotency_key");
+CREATE INDEX "idx_agent_operation_handoffs_discussion" ON "agent_operation_handoffs" USING btree ("project_id","discussion_id","status","created_at");
 CREATE UNIQUE INDEX "idx_capacity_allocation_sets_team_version" ON "capacity_allocation_sets" USING btree ("team_id","version");
 CREATE INDEX "idx_capacity_allocation_sets_team_status" ON "capacity_allocation_sets" USING btree ("team_id","status","effective_from");
 CREATE INDEX "idx_capacity_allocation_sets_team_created" ON "capacity_allocation_sets" USING btree ("team_id","created_at");
@@ -3242,6 +3787,10 @@ CREATE INDEX "idx_capacity_reservations_lane_state" ON "capacity_reservations" U
 CREATE INDEX "idx_agent_capacity_plans_decision" ON "agent_capacity_plans" USING btree ("decision_id","status","created_at");
 CREATE INDEX "idx_agent_capacity_plans_project" ON "agent_capacity_plans" USING btree ("project_id","status","created_at");
 CREATE INDEX "idx_agent_capacity_plans_workday" ON "agent_capacity_plans" USING btree ("work_day_id","status","created_at");
+CREATE UNIQUE INDEX "idx_agent_signals_causation" ON "agent_signals" USING btree ("assignment_id","contract_id","subject_id","causation_id");
+CREATE INDEX "idx_agent_signals_workday" ON "agent_signals" USING btree ("workday_run_id","contract_id","created_at");
+CREATE INDEX "idx_agent_signals_subject" ON "agent_signals" USING btree ("team_id","project_id","subject_kind","subject_id","created_at");
+CREATE INDEX "idx_agent_signals_commit" ON "agent_signals" USING btree ("project_id","commit_sha");
 CREATE UNIQUE INDEX "idx_capacity_workday_demands_idempotency" ON "capacity_workday_demands" USING btree ("team_id","idempotency_key");
 CREATE UNIQUE INDEX "idx_capacity_workday_demands_assignment" ON "capacity_workday_demands" USING btree ("assignment_id");
 CREATE UNIQUE INDEX "idx_capacity_workday_demands_claim" ON "capacity_workday_demands" USING btree ("claim_token");
@@ -3254,6 +3803,8 @@ CREATE INDEX "idx_capacity_workday_participation_cycles_status" ON "capacity_wor
 CREATE UNIQUE INDEX "idx_capacity_workday_participation_entries_agent" ON "capacity_workday_participation_entries" USING btree ("cycle_id","agent_id");
 CREATE UNIQUE INDEX "idx_capacity_workday_participation_entries_demand" ON "capacity_workday_participation_entries" USING btree ("demand_id");
 CREATE INDEX "idx_capacity_workday_participation_entries_status" ON "capacity_workday_participation_entries" USING btree ("workday_run_id","project_id","status","agent_id");
+CREATE INDEX "idx_capacity_workday_schedules_due" ON "capacity_workday_schedules" USING btree ("status","next_run_at");
+CREATE INDEX "idx_capacity_workday_schedules_team" ON "capacity_workday_schedules" USING btree ("team_id","updated_at");
 CREATE INDEX "idx_treedx_project_proxy_audit_project" ON "treedx_project_proxy_audit" USING btree ("project_id","created_at");
 CREATE INDEX "idx_treedx_project_proxy_audit_assignment" ON "treedx_project_proxy_audit" USING btree ("assignment_id","created_at");
 CREATE INDEX "idx_treedx_project_proxy_audit_result" ON "treedx_project_proxy_audit" USING btree ("project_id","result_status","created_at");
@@ -3262,6 +3813,10 @@ CREATE INDEX "idx_treedx_proxy_handles_project" ON "treedx_proxy_handles" USING 
 CREATE INDEX "idx_workday_capacity_envelopes_run_status" ON "workday_capacity_envelopes" USING btree ("workday_run_id","status","id");
 CREATE INDEX "idx_workday_capacity_envelopes_project_status" ON "workday_capacity_envelopes" USING btree ("project_id","status","created_at");
 CREATE INDEX "idx_workday_capacity_envelopes_team_status" ON "workday_capacity_envelopes" USING btree ("team_id","status","created_at");
+CREATE UNIQUE INDEX "idx_workday_planning_participants_node" ON "workday_planning_participants" USING btree ("session_id","node_id");
+CREATE INDEX "idx_workday_planning_participants_agent" ON "workday_planning_participants" USING btree ("session_id","agent_id");
+CREATE UNIQUE INDEX "idx_workday_planning_sessions_run" ON "workday_planning_sessions" USING btree ("workday_run_id");
+CREATE UNIQUE INDEX "idx_workday_planning_waves_order" ON "workday_planning_waves" USING btree ("session_id","round","wave");
 CREATE INDEX "idx_better_auth_session_token" ON "better_auth_session" USING btree ("token");
 CREATE INDEX "idx_better_auth_session_userId" ON "better_auth_session" USING btree ("userId");
 CREATE UNIQUE INDEX "idx_better_auth_user_username" ON "better_auth_user" USING btree ("username");
@@ -3478,10 +4033,27 @@ CREATE UNIQUE INDEX "idx_knowledge_publications_review" ON "knowledge_publicatio
 CREATE INDEX "idx_knowledge_review_comments_review_status" ON "knowledge_review_comments" USING btree ("review_id","status");
 CREATE INDEX "idx_knowledge_reviews_workspace_status" ON "knowledge_reviews" USING btree ("workspace_id","status");
 CREATE UNIQUE INDEX "idx_knowledge_workspace_presence_actor" ON "knowledge_workspace_presence" USING btree ("workspace_id","user_id");
+CREATE INDEX "idx_remote_repository_team_provider" ON "project_remote_repository_bindings" USING btree ("team_id","provider_id");
+CREATE UNIQUE INDEX "idx_remote_repository_provider_id" ON "project_remote_repository_bindings" USING btree ("provider_id","provider_repository_id");
+CREATE INDEX "idx_workflow_operations_project" ON "project_workflow_operations" USING btree ("project_id","workflow_id");
+CREATE INDEX "idx_provider_connector_authorizations" ON "provider_connector_authorizations" USING btree ("provider_id","connector_kind","expires_at");
+CREATE INDEX "idx_provider_authorities_team_status" ON "provider_credential_authorities" USING btree ("team_id","status");
+CREATE UNIQUE INDEX "idx_provider_authorities_connection_profile" ON "provider_credential_authorities" USING btree ("connection_id","credential_profile_id");
+CREATE UNIQUE INDEX "idx_provider_webhook_delivery" ON "provider_webhook_deliveries" USING btree ("provider_id","delivery_id");
+CREATE INDEX "idx_remote_deliveries_node_status" ON "remote_credential_deliveries" USING btree ("node_id","status","expires_at");
+CREATE INDEX "idx_remote_git_grants_status" ON "remote_git_operation_grants" USING btree ("status","expires_at");
+CREATE INDEX "idx_workflow_configuration_delivery_status" ON "workflow_configuration_deliveries" USING btree ("status","expires_at");
+CREATE UNIQUE INDEX "idx_workflow_configuration_target" ON "workflow_configuration_records" USING btree ("repository_binding_id","workflow_binding_id","kind","scope","environment","name");
+CREATE INDEX "idx_workflow_configuration_project" ON "workflow_configuration_records" USING btree ("project_id","kind","status");
+CREATE INDEX "idx_workflow_runs_operation_status" ON "workflow_operation_runs" USING btree ("operation_id","status","updated_at");
+CREATE INDEX "idx_workflow_runs_assignment" ON "workflow_operation_runs" USING btree ("assignment_id","status","updated_at");
+CREATE UNIQUE INDEX "idx_workflow_runs_provider_id" ON "workflow_operation_runs" USING btree ("provider_id","provider_run_id");
 CREATE INDEX "idx_api_tokens_user_id" ON "api_tokens" USING btree ("user_id");
 CREATE INDEX "idx_api_tokens_prefix" ON "api_tokens" USING btree ("token_prefix");
 CREATE INDEX "idx_audit_events_target" ON "audit_events" USING btree ("target_type","target_id");
 CREATE INDEX "idx_auth_sessions_user_id" ON "auth_sessions" USING btree ("user_id");
+CREATE UNIQUE INDEX "idx_seed_team_membership_claim_resource" ON "seed_team_membership_claims" USING btree ("seed_name","resource_key");
+CREATE INDEX "idx_seed_team_membership_claim_email" ON "seed_team_membership_claims" USING btree ("normalized_email","status");
 CREATE UNIQUE INDEX "idx_team_memberships_team_user" ON "team_memberships" USING btree ("team_id","user_id");
 CREATE UNIQUE INDEX "idx_teams_name" ON "teams" USING btree ("name");
 CREATE INDEX "idx_user_email_addresses_user" ON "user_email_addresses" USING btree ("user_id","status","is_primary");

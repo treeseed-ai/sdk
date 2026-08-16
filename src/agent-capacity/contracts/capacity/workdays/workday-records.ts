@@ -1,5 +1,6 @@
 /** Portable durable records shared by workday control-plane and operator consumers. */
 import type { WorkdayAgentSelection } from '../../../workday.ts';
+import type { AgentWorkExecutionMode } from '../../support/execution-mode.ts';
 
 export type CapacityWorkdayRunStatus =
 	| 'queued'
@@ -58,6 +59,10 @@ export interface CapacityWorkdayRunRecord {
 	scenarioId: string;
 	status: CapacityWorkdayRunStatus;
 	environment: string;
+	executionMode?: AgentWorkExecutionMode;
+	executionKind?: import('../communication/communication-records.ts').CapacityExecutionKind;
+	triggerKind?: import('../communication/communication-records.ts').CapacityTriggerKind;
+	hidden?: boolean;
 	requestedById: string | null;
 	parameters: Record<string, unknown>;
 	summary: Record<string, unknown>;
@@ -154,6 +159,7 @@ export interface CapacityWorkdayScheduleRecord {
 	availableSeconds: number;
 	timePolicy: import('../../support/time-capacity.ts').WorkdayTimePolicy;
 	planningOnly: boolean;
+	executionMode?: AgentWorkExecutionMode;
 	publicationPolicy: {
 		bookIds: string[];
 		target: 'staging' | 'production';
@@ -179,6 +185,7 @@ export interface CapacityWorkdayDemandRecord {
 	sourceType: CapacityWorkdayDemandSource;
 	sourceId: string;
 	mode: 'planning' | 'acting';
+	executionMode?: AgentWorkExecutionMode;
 	projectAgentClassId: string;
 	agentId: string | null;
 	handlerId: string;

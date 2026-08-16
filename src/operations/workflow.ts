@@ -22,6 +22,7 @@ type WorkflowErrorCode,
 import { resolveWorkflowPaths } from '../workflow/policy.ts';
 import { listTaskBranches } from './services/operations/git-workflow.ts';
 import type { GitHubActionsVerificationReport } from './services/repositories/github-actions-verification.ts';
+import type { GovernedExecutionAuthority } from './agents/execution-authority-receipt.ts';
 import { resolveWorkflowState,type WorkflowStatusOptions } from './workflow-state.ts';
 
 export type WorkflowOperationId =
@@ -92,6 +93,12 @@ export type WorkflowContext = {
 	prompt?: (message: string) => Promise<string> | string;
 	confirm?: (message: string, expected: string) => Promise<boolean> | boolean;
 	transport?: 'sdk' | 'cli' | 'api';
+	validateExecutionAuthorities?: (authorities: GovernedExecutionAuthority[]) => Promise<Array<{
+		authorityId: string | null;
+		valid: boolean;
+		code: string | null;
+		message: string | null;
+	}>>;
 	workflow?: {
 		resumeRunId?: string;
 	};

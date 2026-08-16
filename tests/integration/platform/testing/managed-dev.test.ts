@@ -123,6 +123,35 @@ describe('managed dev process ownership', () => {
 		expect(spawn).toHaveBeenCalledOnce();
 	});
 
+	it('does not stop an unselected runtime while rebuilding a shared dependency', async () => {
+		const cwd = mkdtempSync(resolve(tmpdir(), 'treeseed-managed-dev-scoped-'));
+		seedBuildableRuntimePackages(cwd, ['sdk', 'api']);
+		const [api] = createIntegratedDevPlan({ cwd, surfaces: 'api' }).processes;
+		const [runner] = createIntegratedDevPlan({ cwd, surfaces: 'operations-runner' }).processes;
+		for (const [spec, pid] of [[api, 43121], [runner, 43123]] as const) {
+			mkdirSync(resolve(spec.pidPath, '..'), { recursive: true });
+			mkdirSync(resolve(spec.instancePath, '..'), { recursive: true });
+			writeFileSync(spec.pidPath, String(pid), 'utf8');
+			writeFileSync(spec.instancePath, JSON.stringify({ pid, sourceClosureDigest: 'stale' }), 'utf8');
+		}
+		let apiAlive = true;
+		const kill = vi.spyOn(process, 'kill').mockImplementation(((pid: number, signal?: NodeJS.Signals | number) => {
+			if (pid === -43121 && signal === 0 && apiAlive) return true;
+			if (pid === -43121 && signal === 'SIGTERM') { apiAlive = false; return true; }
+			if (pid === -43122 && signal === 0) return true;
+			if (pid === -43123 && signal === 0) return true;
+			throw Object.assign(new Error('missing'), { code: 'ESRCH' });
+		}) as typeof process.kill);
+		vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }));
+		vi.mocked(spawn).mockReturnValue({ pid: 43122, unref: vi.fn() } as never);
+
+		const result = await startManagedDev({ cwd, surfaces: 'api' });
+
+		expect(result.ok).toBe(true);
+		expect(kill).toHaveBeenCalledWith(-43121, 'SIGTERM');
+		expect(kill).not.toHaveBeenCalledWith(-43123, 'SIGTERM');
+	});
+
 	it('changes the API source closure when configured runtime values change', () => {
 		const cwd = mkdtempSync(resolve(tmpdir(), 'treeseed-managed-dev-env-'));
 		const [original] = createIntegratedDevPlan({
@@ -137,6 +166,19 @@ describe('managed dev process ownership', () => {
 		}).processes;
 
 		expect(original?.sourceClosureDigest).not.toBe(updated?.sourceClosureDigest);
+	});
+
+	it('keeps the source closure stable when an identical build output is rewritten', () => {
+		const cwd = mkdtempSync(resolve(tmpdir(), 'treeseed-managed-dev-identical-build-'));
+		seedBuildableRuntimePackages(cwd, ['sdk', 'api']);
+		mkdirSync(resolve(cwd, 'packages/sdk/dist'), { recursive: true });
+		const output = resolve(cwd, 'packages/sdk/dist/index.js');
+		writeFileSync(output, 'export const version = 1;\n', 'utf8');
+		const [original] = createIntegratedDevPlan({ cwd, surfaces: 'api' }).processes;
+		writeFileSync(output, 'export const version = 1;\n', 'utf8');
+		const [rebuilt] = createIntegratedDevPlan({ cwd, surfaces: 'api' }).processes;
+
+		expect(rebuilt?.sourceClosureDigest).toBe(original?.sourceClosureDigest);
 	});
 
 	it('pins both canonical service credential names in local API and web processes', () => {

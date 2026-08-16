@@ -268,5 +268,12 @@ export type StageCandidateManifest = {
 		status: 'passed' | 'skipped';
 		completedAt: string | null;
 	};
+	governanceAuthority: {
+		status: 'not_required' | 'passed';
+		checkedAt: string | null;
+		authorityIds: string[];
+		results: Array<{ authorityId: string | null; valid: boolean; code: string | null; message: string | null }>;
+		blockers: string[];
+	};
 	stagingHeadsBefore: Record<string, string | null>;
 };

@@ -89,6 +89,7 @@ const PROJECT_STANDARD_TARGETS = [
 	'.treeseed/workplans',
 	'.treeseed/guarantees/runs',
 	'.treeseed/generated/hosted-artifacts',
+	'.treeseed/docker',
 	'.treeseed/npm-cache',
 	'coverage',
 	'.astro',

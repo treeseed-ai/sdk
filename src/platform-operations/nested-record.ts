@@ -192,12 +192,35 @@ export async function runPlatformOperationOnce(options: PlatformOperationRunnerC
 			await options.throwIfCancelled?.(operation);
 		},
 	};
+	const leaseSeconds = Math.max(30, Math.min(Number(options.leaseSeconds ?? 300), 3600));
+	const leaseRenewalIntervalMs = Math.max(1, options.leaseRenewalIntervalMs ?? Math.min(60_000, Math.floor(leaseSeconds * 1000 / 3)));
+	let leaseRenewalFailure: Error | null = null;
+	let leaseRenewal: Promise<void> = Promise.resolve();
+	let leaseTimer: ReturnType<typeof setInterval> | null = null;
+	const assertLeaseRenewal = () => {
+		if (leaseRenewalFailure) throw leaseRenewalFailure;
+	};
 	try {
 		await context.emit({ kind: 'runner.started', data: { namespace: operation.namespace, operation: operation.operation } });
 		await context.throwIfCancelled();
-		await context.renewLease(options.leaseSeconds);
+		await context.renewLease(leaseSeconds);
+		if (options.client.renewLease) {
+			leaseTimer = setInterval(() => {
+				leaseRenewal = leaseRenewal.then(async () => {
+					if (leaseRenewalFailure) return;
+					try {
+						await context.renewLease(leaseSeconds);
+					} catch (error) {
+						leaseRenewalFailure = new Error(`Platform operation lease renewal failed: ${error instanceof Error ? error.message : String(error)}`);
+					}
+				});
+			}, leaseRenewalIntervalMs);
+			leaseTimer.unref?.();
+		}
 		const output = await executor.run(operation.input, context);
+		assertLeaseRenewal();
 		await context.throwIfCancelled();
+		assertLeaseRenewal();
 		const completed = await options.client.complete(operation.id, {
 			runnerId: options.runnerId,
 			output,
@@ -232,5 +255,8 @@ export async function runPlatformOperationOnce(options: PlatformOperationRunnerC
 			event: { kind: eventKind, data: failure },
 		});
 		return { ok: false, claimed: true, operation: failed.operation, error: failure };
+	} finally {
+		if (leaseTimer) clearInterval(leaseTimer);
+		await leaseRenewal;
 	}
 }

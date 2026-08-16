@@ -119,6 +119,7 @@ export function buildCapacityProviderAdapter(providerId: 'local' | 'railway'): R
 
 export interface LocalTreeDxContentProject {
 	projectKey?: string;
+	teamSlug?: string;
 	slug: string;
 	repositoryName: string;
 	repositoryId: string;
@@ -130,6 +131,7 @@ export interface LocalTreeDxContentProject {
 	remoteUrl?: string;
 	remoteOwner?: string;
 	remoteName?: string;
+	remoteVisibility?: 'public' | 'private';
 	sourceBranch?: string;
 }
 
@@ -153,6 +155,7 @@ export function localTreeDxProjects(value: unknown): LocalTreeDxContentProject[]
 			if (!slug || !repositoryName || !repositoryId || !localRoot || !contentPath) return [];
 			return [{
 				projectKey: nonEmptyString(record.projectKey) || undefined,
+				teamSlug: nonEmptyString(record.teamSlug) || undefined,
 				slug,
 				repositoryName,
 				repositoryId,
@@ -164,6 +167,7 @@ export function localTreeDxProjects(value: unknown): LocalTreeDxContentProject[]
 				remoteUrl: nonEmptyString(record.remoteUrl) || undefined,
 				remoteOwner: nonEmptyString(record.remoteOwner) || undefined,
 				remoteName: nonEmptyString(record.remoteName) || undefined,
+				remoteVisibility: record.remoteVisibility === 'private' ? 'private' : 'public',
 				sourceBranch: nonEmptyString(record.sourceBranch) || undefined,
 			}];
 		})
@@ -230,7 +234,8 @@ export async function refreshLocalTreeDxProjectIndexes(client: TreeDxClient, pro
 	}
 	const search = await client.refreshSearchIndex({ repoId: repositoryId, ref, paths });
 	const resolved = nonEmptyString(search.resolvedRef) || nonEmptyString(search.sourceCommit);
-	if (search.stale || (commitSha && resolved !== commitSha)) {
+	const sourceCommit = nonEmptyString(search.sourceCommit);
+	if (search.stale || (commitSha && (resolved !== commitSha || (sourceCommit && sourceCommit !== commitSha)))) {
 		throw new Error(`TreeDX search index did not resolve the reconciled commit for ${project.slug}.`);
 	}
 	return { graphRefresh: graph, searchIndex: search };
@@ -319,6 +324,8 @@ export async function syncLocalTreeDxProjectContent(client: TreeDxClient, projec
 	}
 	const delta = await localTreeDxSeedDelta(client, project, repository.repoId, files);
 	if (delta.changed.length === 0 && delta.removed.length === 0) {
+		if (!delta.resolvedRef) throw new Error(`TreeDX did not resolve the current publication ref for ${project.slug}.`);
+		const indexes = await refreshLocalTreeDxProjectIndexes(client, project, repository.repoId, delta.resolvedRef);
 		return {
 			project: project.slug,
 			repositoryId: repository.repoId,
@@ -328,6 +335,7 @@ export async function syncLocalTreeDxProjectContent(client: TreeDxClient, projec
 			removedFiles: 0,
 			committed: false,
 			commitSha: delta.resolvedRef,
+			...indexes,
 		};
 	}
 	if (!delta.resolvedRef) throw new Error(`TreeDX did not resolve the current publication ref for ${project.slug}.`);

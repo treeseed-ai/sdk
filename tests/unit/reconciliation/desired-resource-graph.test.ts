@@ -205,6 +205,10 @@ describe('canonical desired resource graph', () => {
 				seedName: 'treeseed',
 				environments: 'local',
 				manifestDigest: expect.stringMatching(/^sha256:/u),
+				providerManifests: expect.arrayContaining([
+					expect.objectContaining({ seedName: 'agents' }),
+					expect.objectContaining({ seedName: 'platform' }),
+				]),
 			}),
 		});
 		const capacityProvider = graph.resources.find((entry) => entry.id === 'capacity-provider:agent-capacity-provider-treeseed-agents');
@@ -232,9 +236,16 @@ describe('canonical desired resource graph', () => {
 			managedStorage: expect.objectContaining({ custody: 'capacity-provider', servicePath: '/data' }),
 		}));
 		expect(capacityProviderCompose?.dependencies).toEqual(expect.arrayContaining([
-			'docker-image-build:treeseed/agent-manager',
-			'docker-image-build:treeseed/agent-runner',
+			'docker-image-build:treeseed/agent-runtime',
 		]));
+		const runtimeImage = graph.resources.find((entry) => entry.id === 'docker-image-build:treeseed/agent-runtime');
+		expect(runtimeImage?.spec).toEqual(expect.objectContaining({
+			target: 'agent-runtime',
+			tags: ['treeseed/agent-manager:local', 'treeseed/agent-runner:local'],
+			prepareCommand: expect.objectContaining({ args: expect.arrayContaining([expect.stringContaining('--prepare-only')]) }),
+		}));
+		expect(graph.resources.find((entry) => entry.id === 'docker-image-build:treeseed/agent-manager')).toBeUndefined();
+		expect(graph.resources.find((entry) => entry.id === 'docker-image-build:treeseed/agent-runner')).toBeUndefined();
 		expect(platformProviderCompose?.spec).toEqual(expect.objectContaining({
 			manifestDigest: platformProvider?.spec.manifestDigest,
 			projectName: expect.stringContaining('platform-operation'),
@@ -250,7 +261,10 @@ describe('canonical desired resource graph', () => {
 		expect(graph.resources.find((entry) => entry.id === 'local-docker-compose:treedx')?.spec).toEqual(expect.objectContaining({
 			managedStorage: expect.objectContaining({ custody: 'treedx', servicePath: '/var/lib/treedx' }),
 		}));
-		expect(graph.resources.find((entry) => entry.id === 'local-process:operations-runner')).toBeUndefined();
+		expect(graph.resources.find((entry) => entry.id === 'local-process:operations-runner')).toMatchObject({
+			dependencies: ['local-process:api'], spec: { surfaces: ['operations-runner'],
+				env: { TREESEED_TENANT_ROOT: root } },
+		});
 		expect(capacityProvider?.spec).not.toHaveProperty('healthEndpoint');
 		const mailpit = graph.resources.find((entry) => entry.id === 'local-docker-compose:mailpit');
 		expect(mailpit).toMatchObject({

@@ -7,6 +7,7 @@ import { dockerSourceClosureDigest } from './docker-source-closure.ts';
 export function packageResources(adapter: PackageAdapter, environment: DesiredEnvironment): DesiredResource[] {
 	const resources: DesiredResource[] = [];
 	const packageId = adapter.id;
+	const sharedLocalAgentRuntime = environment === 'local' && packageId === '@treeseed/agent';
 	const repository = typeof adapter.metadata.repository === 'string' ? adapter.metadata.repository : null;
 	const dockerImageConfig = stringRecord(adapter.metadata.dockerImages);
 	const dockerWorkflow = workflowName(
@@ -122,6 +123,8 @@ export function packageResources(adapter: PackageAdapter, environment: DesiredEn
 		}
 	}
 	let previousLocalDockerBuild: string | null = null;
+	const localAgentTags: string[] = [];
+	let localAgentSourceClosureDigest: string | null = null;
 	for (const artifact of adapter.artifacts) {
 		if (artifact.provider !== 'docker') continue;
 		const dockerfile = artifact.dockerfile ?? 'Dockerfile';
@@ -137,6 +140,9 @@ export function packageResources(adapter: PackageAdapter, environment: DesiredEn
 			? ['local']
 			: materializeDockerImageTags(imageTagTemplates, adapter, branch);
 		const sourceClosureDigest = dockerSourceClosureDigest(adapter.dir, packageId);
+		const agentRoleFlag = packageId === '@treeseed/agent' && (artifact.role === 'manager' || artifact.role === 'runner')
+			? ` --roles ${artifact.role}`
+			: '';
 		const workflowSpec = repository
 			? {
 				packageId,
@@ -174,6 +180,11 @@ export function packageResources(adapter: PackageAdapter, environment: DesiredEn
 			},
 			source: { type: 'package-adapter', id: packageId },
 		});
+		if (sharedLocalAgentRuntime) {
+			localAgentTags.push(...imageTags.map((tag) => `${artifact.name}:${tag}`));
+			localAgentSourceClosureDigest = sourceClosureDigest;
+			continue;
+		}
 		const dockerBuildId = `docker-image-build:${artifact.name}`;
 		resources.push({
 			id: dockerBuildId,
@@ -193,7 +204,7 @@ export function packageResources(adapter: PackageAdapter, environment: DesiredEn
 				prepareCommand: packageId === '@treeseed/agent'
 					? {
 						command: 'bash',
-						args: ['-lc', 'ulimit -n 65535 2>/dev/null || true; npm run capacity-provider:build -- --prepare-only'],
+						args: ['-lc', `ulimit -n 65535 2>/dev/null || true; npm run capacity-provider:build -- --prepare-only${agentRoleFlag}`],
 					}
 					: null,
 				target: artifact.target ?? null,
@@ -215,6 +226,45 @@ export function packageResources(adapter: PackageAdapter, environment: DesiredEn
 			source: { type: 'package-adapter', id: packageId },
 		});
 		if (environment === 'local') previousLocalDockerBuild = dockerBuildId;
+	}
+	if (sharedLocalAgentRuntime && localAgentTags.length > 0 && localAgentSourceClosureDigest) {
+		resources.push({
+			id: 'docker-image-build:treeseed/agent-runtime',
+			kind: 'docker-image-build',
+			provider: 'docker',
+			environment,
+			packageId,
+			serviceId: null,
+			logicalName: 'treeseed/agent-runtime',
+			dependencies: [`package-manifest:${packageId}`],
+			spec: {
+				packageId,
+				packageRoot: adapter.dir,
+				image: 'treeseed/agent-runtime',
+				dockerfile: 'Dockerfile',
+				context: '.',
+				prepareCommand: {
+					command: 'bash',
+					args: ['-lc', 'ulimit -n 65535 2>/dev/null || true; npm run capacity-provider:build -- --prepare-only'],
+				},
+				target: 'agent-runtime',
+				role: 'shared-runtime',
+				platforms: [localDockerPlatform()],
+				tags: [...new Set(localAgentTags)].sort(),
+				labels: {
+					'org.opencontainers.image.source': repository ? `https://github.com/${repository}` : adapter.relativeDir,
+					'org.treeseed.package': packageId,
+					'org.treeseed.source-closure': localAgentSourceClosureDigest,
+				},
+				sourceClosureDigest: localAgentSourceClosureDigest,
+				buildArgs: {},
+				push: false,
+				load: true,
+				provenance: false,
+				workflow: dockerWorkflow,
+			},
+			source: { type: 'package-adapter', id: packageId },
+		});
 	}
 	return resources;
 }

@@ -16,7 +16,7 @@ import { acquireWorkflowLock, createWorkflowRunJournal, releaseWorkflowLock, upd
 import { runWorkspaceSavePreflight } from '../../../../src/operations/services/hosting/deployment/save-deploy-preflight.ts';
 import { inspectDetachedHeadRepair, mergeBranchIntoTarget, reattachDetachedHeadIfSafe } from '../../../../src/operations/services/operations/git-workflow.ts';
 import { repositoryIdentityKey } from '../../../../src/repositories/repository-identity.ts';
-import { materializeWorkflowRepositories } from './workflow-lifecycle.portfolio-support.ts';
+import { materializeWorkflowRepositories } from './workflow-lifecycle.workset-support.ts';
 import {
 	createDefaultMachineConfig,
 	ensureSecretSessionForConfig,
@@ -425,7 +425,7 @@ export function addStaleNestedSubmodule(parentRepo: string, relativePath: string
 	git(work, ['push', 'origin', branch]);
 	return nestedRepo;
 }
-export function createWorkflowRepo(options: { withWorkspacePackages?: boolean; materialization?: 'gitlinks' | 'portfolio' } = {}) {
+export function createWorkflowRepo(options: { withWorkspacePackages?: boolean; materialization?: 'gitlinks' | 'workset' } = {}) {
 	const root = mkdtempSync(join(tmpdir(), 'treeseed-workflow-lifecycle-'));
 	const origin = resolve(root, 'origin.git');
 	const work = resolve(root, 'work');

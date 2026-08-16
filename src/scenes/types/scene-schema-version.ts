@@ -201,6 +201,7 @@ export type SceneAction =
 	| { fill: SceneSelector & { value: string } }
 	| { select: SceneSelector & { value?: string; label?: string } }
 	| { keyboard: string }
+	| { browserHistory: 'back' | 'forward' }
 	| { pause: { mode: 'manual' | 'timed'; prompt?: string; durationSeconds?: number } }
 	| { mailpitConfirmLatest: { mailpitUrl: string; email: string; subjectIncludes?: string; displayInboxSeconds?: number; displayMessageSeconds?: number; navigate?: boolean } }
 	| { apiRequest: Record<string, unknown> }

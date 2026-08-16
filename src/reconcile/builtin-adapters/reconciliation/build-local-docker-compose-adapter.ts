@@ -1,7 +1,7 @@
 import { existsSync,mkdirSync,rmSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { inspectDockerAvailability,repairDockerComposeDataOwnership,runDockerCompose } from "../../providers/docker-private.ts";
-import { localComposeDriftReasons,localComposeReconciledSpecHash,localComposeRequiredPathWarnings,localComposeRuntimeConfigDrift,localComposeServiceReady,observeLocalComposeRequiredPaths,parseLocalComposeServices,waitForLocalComposeServices } from "../../runtime/local-compose-state.ts";
+import { inspectDockerAvailability,inspectDockerImage,repairDockerComposeDataOwnership,runDockerCompose } from "../../providers/docker-private.ts";
+import { localComposeDriftReasons,localComposeReconciledSpecHash,localComposeRequiredPathWarnings,localComposeRuntimeConfigDrift,localComposeRuntimeImageDrift,localComposeServiceReady,observeLocalComposeRequiredPaths,parseLocalComposeServices,waitForLocalComposeServices } from "../../runtime/local-compose-state.ts";
 import type { ReconcileAdapter,ReconcileAdapterInput,UnitVerificationCheck } from "../../support/contracts/contracts.ts";
 import { desiredUnitSpecHash } from "../../support/state/state.ts";
 import { buildLocalComposeLaunchEnv,checkHttpHealthWithRetry,localComposeBuildPolicy,runLocalComposePrepareCommand } from '../build/local-compose-build-policy.ts';
@@ -27,6 +27,12 @@ export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
 			const env = buildLocalComposeLaunchEnv(input);
 			const profiles = localComposeProfiles(input);
 			const buildPolicy = localComposeBuildPolicy(input);
+			const serviceImages = input.unit.spec.serviceImages && typeof input.unit.spec.serviceImages === 'object'
+				? input.unit.spec.serviceImages as Record<string, unknown> : {};
+			const desiredImageIds = Object.fromEntries(Object.entries(serviceImages).map(([service, image]) => {
+				const inspected = typeof image === 'string' ? inspectDockerImage(image) : null;
+				return [service, typeof inspected?.Id === 'string' ? inspected.Id : null];
+			}));
 			const ps = composeFilesExist && docker.available
 				? runDockerCompose({ composeFiles, projectName, cwd, env, profiles, buildPolicy, action: 'ps' })
 				: null;
@@ -59,6 +65,7 @@ export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
 					ps,
 					hasContainers,
 					configHash: config?.stdout?.trim() || null,
+					desiredImageIds,
 					managedStorage,
 					requiredPaths,
 				},
@@ -85,6 +92,7 @@ export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
 						? (input.observed.live.ps as Record<string, unknown>).stdout
 						: null,
 				),
+				desiredImageIds: input.observed.live.desiredImageIds as Record<string, string | null> | undefined,
 				requiredPaths: Array.isArray(input.observed.live.requiredPaths) ? input.observed.live.requiredPaths as ReturnType<typeof observeLocalComposeRequiredPaths> : [],
 			});
 			if (driftReasons.length > 0) {
@@ -235,6 +243,10 @@ export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
 			});
 			const services = serviceWait.observations;
 			const configDrift = localComposeRuntimeConfigDrift(input.observed.live.configHash, services);
+			const imageDrift = localComposeRuntimeImageDrift(
+				input.observed.live.desiredImageIds as Record<string, string | null> ?? {},
+				services,
+			);
 			checks.push(verificationCheck('compose-config', 'Running Compose services use the rendered desired configuration', 'cli', {
 				exists: services.length > 0,
 				configured: true,
@@ -242,6 +254,14 @@ export function buildLocalDockerComposeAdapter(): ReconcileAdapter {
 				verified: services.length > 0 && configDrift.length === 0,
 				observed: services.map(({ service, configHash }) => ({ service, configHash })),
 				issues: configDrift,
+			}));
+			checks.push(verificationCheck('compose-images', 'Running Compose services use the exact desired local image identities', 'cli', {
+				exists: services.length > 0,
+				configured: true,
+				ready: imageDrift.length === 0,
+				verified: services.length > 0 && imageDrift.length === 0,
+				observed: services.map(({ service, imageId }) => ({ service, imageId })),
+				issues: imageDrift,
 			}));
 			for (const service of declaredServices) {
 				const observation = services.find((entry) => entry.service === service);

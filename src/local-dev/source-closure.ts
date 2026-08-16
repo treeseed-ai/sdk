@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync,lstatSync,readdirSync } from 'node:fs';
+import { existsSync,lstatSync,readdirSync,readFileSync } from 'node:fs';
 import { relative,resolve } from 'node:path';
 
 const API_RUNTIME_INPUTS = [
@@ -32,6 +32,9 @@ const WEB_RUNTIME_INPUTS = [
 	'packages/sdk/package.json',
 	'packages/sdk/src',
 ] as const;
+
+const AGENT_RUNTIME_INPUTS = ['packages/agent/src','packages/agent/package.json','treeseed.agents-capacity-provider.yaml'] as const;
+const CLI_RUNTIME_INPUTS = ['packages/cli/src','packages/cli/package.json'] as const;
 
 const WEB_BUILD_ORDER = ['packages/sdk','packages/ui','packages/core','packages/admin'] as const;
 
@@ -103,6 +106,10 @@ export function managedDevSourceClosureDigest(input: {
 }): string | null {
 	const configuredPaths = input.surface === 'web'
 		? WEB_RUNTIME_INPUTS
+		: input.surface === 'agent'
+			? AGENT_RUNTIME_INPUTS
+		: input.surface === 'cli'
+			? CLI_RUNTIME_INPUTS
 		: input.surface === 'treedx'
 			? TREEDX_RUNTIME_INPUTS
 		: input.surface === 'api' || input.surface === 'operations-runner'
@@ -121,12 +128,9 @@ export function managedDevSourceClosureDigest(input: {
 			continue;
 		}
 		for (const file of files) {
-			const stat = lstatSync(file);
 			hash.update(relative(input.tenantRoot, file));
 			hash.update('\0');
-			hash.update(String(stat.size));
-			hash.update('\0');
-			hash.update(String(stat.mtimeMs));
+			hash.update(readFileSync(file));
 			hash.update('\0');
 		}
 	}

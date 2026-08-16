@@ -11,16 +11,19 @@ import {
 import { hasFailedAgentLabContentTool } from './report-model.ts';
 import { retryAgentLabControlPlaneOperation } from './terminal-verification.ts';
 import { verifyAgentLabTerminal } from './terminal-verification.ts';
+import { semanticArtifactAssertions, type AgentLabArtifactExpectation } from './semantic-artifact-assertions.ts';
 
 type Row = Record<string, unknown>;
 const TERMINAL = new Set(['completed', 'cancelled', 'failed', 'degraded']);
+const TERMINAL_ASSIGNMENTS = new Set(['completed', 'failed', 'expired', 'cancelled']);
+const FAILED_ASSIGNMENTS = new Set(['failed', 'expired', 'cancelled']);
 const record = (value: unknown): Row => value && typeof value === 'object' && !Array.isArray(value) ? value as Row : {};
 const text = (...values: unknown[]): string => {
 	for (const value of values) if (typeof value === 'string' && value.trim()) return value.trim();
 	return '';
 };
 
-export function assertionsFor(day: AgentLabWorkdaySnapshot, expectedAgents: string[], expectedProfiles: string[], verifiedAssignments: Set<string>) {
+export function assertionsFor(day: AgentLabWorkdaySnapshot, expectedAgents: string[], expectedProfiles: string[], verifiedAssignments: Set<string>, expectedArtifacts: AgentLabArtifactExpectation[] = []) {
 	const completed = day.executions.filter((entry) => entry.status === 'completed');
 	const completedProfiles = new Set(completed.filter((entry) => verifiedAssignments.has(entry.assignmentId)).map((entry) => `${entry.agentId}:${entry.activityType}`));
 	const completedAgents = new Set(completed.filter((entry) => verifiedAssignments.has(entry.assignmentId)).map((entry) => entry.agentId).filter((value): value is string => Boolean(value)));
@@ -38,7 +41,44 @@ export function assertionsFor(day: AgentLabWorkdaySnapshot, expectedAgents: stri
 			: 'TreeDX evidence was captured without failed content operations.' },
 		...(governanceRequired ? [{ id: 'governance', label: 'A real proposal vote authorized acting', status: result(acceptedGovernance), detail: acceptedGovernance ? 'Accepted decision provenance is attached to acting assignments.' : 'No accepted proposal vote is recorded.' }] : []),
 		{ id: 'settlement', label: 'Every required profile settled exactly once', status: result(expectedProfiles.every((profile) => completedProfiles.has(profile))), detail: `${verifiedAssignments.size} assignment settlement(s) verified` },
+		...semanticArtifactAssertions(day, expectedArtifacts),
 	];
+}
+
+export function agentLabWorkdayReadyToComplete(
+	day: AgentLabWorkdaySnapshot,
+	expectedProfiles: string[],
+	verifiedAssignments: Set<string>,
+	expectedArtifacts: AgentLabArtifactExpectation[] = [],
+) {
+	const completedProfiles = new Set(day.executions
+		.filter((entry) => entry.status === 'completed' && verifiedAssignments.has(entry.assignmentId))
+		.map((entry) => `${entry.agentId}:${entry.activityType}`));
+	return expectedProfiles.every((profile) => completedProfiles.has(profile))
+		&& semanticArtifactAssertions(day, expectedArtifacts).every((assertion) => assertion.status === 'passed')
+		&& day.assignments.every((assignment) => TERMINAL_ASSIGNMENTS.has(text(assignment.status)));
+}
+
+export function agentLabTickReadyToComplete(response: unknown) {
+	const payload = record(record(response).payload);
+	const continuation = Array.isArray(payload.continuation) ? payload.continuation.map(record) : [];
+	return continuation.length > 0 && continuation.every((entry) => entry.continue === false && text(entry.reason) === 'no_useful_eligible_work');
+}
+
+export function agentLabTerminalProfileFailure(day: AgentLabWorkdaySnapshot, expectedProfiles: string[]) {
+	const now = Date.now();
+	return day.assignments.find((assignment) => (FAILED_ASSIGNMENTS.has(text(assignment.status)) || returnedAssignmentDeadlineElapsed(assignment, now))
+		&& expectedProfiles.includes(`${text(assignment.agentId)}:${text(assignment.activityType ?? assignment.mode)}`));
+}
+
+function returnedAssignmentDeadlineElapsed(assignment: Record<string, unknown>, now: number) {
+	if (text(assignment.status) !== 'returned') return false;
+	const envelope = record(assignment.capacityEnvelope ?? assignment.capacity_envelope_json);
+	const budget = record(envelope.budget);
+	const time = record(budget.time);
+	const deadline = text(time.hardDeadlineAt, budget.deadline, envelope.hardDeadlineAt, assignment.leaseExpiresAt);
+	const deadlineAt = Date.parse(deadline);
+	return Number.isFinite(deadlineAt) && deadlineAt <= now;
 }
 
 function artifactKey(value: Row) {
@@ -80,7 +120,7 @@ export async function hydrateAgentLabArtifacts(
 
 export async function refreshAgentLabWorkday(input: {
 	client: MarketClient; teamId: string; projectId: string; repositoryId: string; day: AgentLabWorkdaySnapshot;
-	expectedAgents: string[]; expectedProfiles: string[]; verifiedAssignments: Set<string>;
+	expectedAgents: string[]; expectedProfiles: string[]; verifiedAssignments: Set<string>; expectedArtifacts?: AgentLabArtifactExpectation[];
 }) {
 	return retryAgentLabControlPlaneOperation(async () => {
 		const activity = await readAgentLabActivity({ client: input.client, teamId: input.teamId, workdayRunId: input.day.workdayRunId! });
@@ -106,7 +146,7 @@ export async function refreshAgentLabWorkday(input: {
 			...input.day, status: status || input.day.status, startedAt: text(run.startedAt) || input.day.startedAt,
 			finishedAt: text(run.completedAt) || (TERMINAL.has(status) ? new Date().toISOString() : null), activity: events,
 			executions, providerExecutions, assignments, accounting,
-			assertions: assertionsFor({ ...input.day, activity: events, executions }, input.expectedAgents, input.expectedProfiles, input.verifiedAssignments),
+			assertions: assertionsFor({ ...input.day, activity: events, executions }, input.expectedAgents, input.expectedProfiles, input.verifiedAssignments, input.expectedArtifacts),
 		};
 	});
 }

@@ -1,24 +1,18 @@
 declare module "../support/market-client.ts" {
   interface MarketClient {
-    request<T>(
-      path: string,
-      options?: {
+    request<T>(path: string, options?: {
         method?: string;
         body?: unknown;
         requireAuth?: boolean;
         headers?: Record<string, string>;
-      },
-    ): Promise<T>;
+      }): Promise<T>;
     localAuthPaths: OmitThisParameter<typeof import("./accounts/contracts/local-auth-paths.ts").localAuthPathsMethod>;
-    requestFirst<T>(
-      paths: string[],
-      options?: {
+    requestFirst<T>(paths: string[], options?: {
         method?: string;
         body?: unknown;
         requireAuth?: boolean;
         headers?: Record<string, string>;
-      },
-    ): Promise<T>;
+      }): Promise<T>;
     startDeviceLogin: OmitThisParameter<typeof import("./accounts/creation/start-device-login.ts").startDeviceLoginMethod>;
     pollDeviceLogin: OmitThisParameter<typeof import("./accounts/contracts/poll-device-login.ts").pollDeviceLoginMethod>;
     refreshToken: OmitThisParameter<typeof import("./accounts/updates/refresh-token.ts").refreshTokenMethod>;
@@ -110,6 +104,8 @@ declare module "../support/market-client.ts" {
     currentMarket: OmitThisParameter<
       typeof import("./support/queries/current-market.ts").currentMarketMethod
     >;
+    discussions: OmitThisParameter<typeof import("./discussions/contracts/discussions.ts").discussionsMethod>;
+    createDiscussionMessage: OmitThisParameter<typeof import("./discussions/contracts/discussions.ts").createDiscussionMessageMethod>;
     teams: OmitThisParameter<
       typeof import("./teams/contracts/teams.ts").teamsMethod
     >;
@@ -148,6 +144,8 @@ declare module "../support/market-client.ts" {
     >; projectDeletionBlockers: OmitThisParameter<
       typeof import("./projects/projects-core/contracts/project-deletion-blockers.ts").projectDeletionBlockersMethod
     >;
+	archiveProject: OmitThisParameter<typeof import("./projects/projects-core/updates/set-project-inventory-status.ts").archiveProjectMethod>;
+	restoreProject: OmitThisParameter<typeof import("./projects/projects-core/updates/set-project-inventory-status.ts").restoreProjectMethod>;
     projectAccess: OmitThisParameter<
       typeof import("./projects/access/contracts/project-access.ts").projectAccessMethod
     >;
@@ -323,6 +321,7 @@ declare module "../support/market-client.ts" {
     capacityProviderAssignment: OmitThisParameter<
       typeof import("./capacity/assignments/contracts/capacity-provider-assignment.ts").capacityProviderAssignmentMethod
     >;
+    assignmentAuthorityProbe: OmitThisParameter<typeof import("./capacity/assignments/contracts/assignment-authority-probe.ts").assignmentAuthorityProbeMethod>;
     capacityReservations: OmitThisParameter<
       typeof import("./capacity/accounting/contracts/capacity-reservations.ts").capacityReservationsMethod
     >;
@@ -395,6 +394,8 @@ declare module "../support/market-client.ts" {
     deliverableManifest: OmitThisParameter<
       typeof import("./support/delivery/deliverable-manifest.ts").deliverableManifestMethod
     >;
+    submitDeliverableManifest: OmitThisParameter<typeof import("./support/delivery/deliverable-manifest.ts").submitDeliverableManifestMethod>;
+    approveDeliverableContract: OmitThisParameter<typeof import("./support/delivery/deliverable-manifest.ts").approveDeliverableContractMethod>;
     decisionCapacityPlans: OmitThisParameter<
       typeof import("./capacity/planning/contracts/decision-capacity-plans.ts").decisionCapacityPlansMethod
     >;
@@ -446,6 +447,9 @@ declare module "../support/market-client.ts" {
     createWorkdayRun: OmitThisParameter<
       typeof import("./capacity/workdays/creation/create-workday-run.ts").createWorkdayRunMethod
     >;
+    preflightWorkdayRun: OmitThisParameter<
+      typeof import("./capacity/workdays/creation/preflight-workday-run.ts").preflightWorkdayRunMethod
+    >;
     workdayRun: OmitThisParameter<
       typeof import("./capacity/workdays/contracts/workday-run.ts").workdayRunMethod
     >;
@@ -454,6 +458,9 @@ declare module "../support/market-client.ts" {
     >;
     tickWorkdayRun: OmitThisParameter<
       typeof import("./capacity/workdays/lifecycle/tick-workday-run.ts").tickWorkdayRunMethod
+    >;
+    closeWorkdayAdmission: OmitThisParameter<
+      typeof import("./capacity/workdays/lifecycle/close-workday-admission.ts").closeWorkdayAdmissionMethod
     >;
     createResearchWorkflow: OmitThisParameter<
       typeof import("./operations/creation/create-research-workflow.ts").createResearchWorkflowMethod
@@ -466,6 +473,12 @@ declare module "../support/market-client.ts" {
     >;
     requeueCapacityAssignment: OmitThisParameter<
       typeof import("./capacity/assignments/lifecycle/requeue-capacity-assignment.ts").requeueCapacityAssignmentMethod
+    >;
+    abandonAssignmentContent: OmitThisParameter<
+      typeof import("./capacity/assignments/retirement/abandon-assignment-content.ts").abandonAssignmentContentMethod
+    >;
+    integrateAssignmentContent: OmitThisParameter<
+      typeof import("./capacity/assignments/lifecycle/integrate-assignment-content.ts").integrateAssignmentContentMethod
     >;
     decideCapacityOverrun: OmitThisParameter<
       typeof import("./capacity/accounting/lifecycle/decide-capacity-overrun.ts").decideCapacityOverrunMethod
@@ -483,5 +496,4 @@ declare module "../support/market-client.ts" {
       typeof import("./support/delivery/artifact-download.ts").artifactDownloadMethod
     >;
   }
-}
-export {};
+} export {};

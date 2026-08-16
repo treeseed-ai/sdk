@@ -238,6 +238,7 @@ export function createReport(node: RepositorySaveNode): RepositorySaveReport {
 		deletedRemote: false,
 		tagName: null,
 		commitSha: node.branch ? headCommit(node.path) : null,
+		baseCommit: node.branch ? headCommit(node.path) : null,
 		skippedReason: null,
 		publishWait: null,
 		version: typeof node.packageJson?.version === 'string' ? node.packageJson.version : null,

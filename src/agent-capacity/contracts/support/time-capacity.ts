@@ -2,13 +2,55 @@ export const CAPACITY_BUDGET_SCHEMA = 'treeseed.capacity-budget/v2' as const;
 
 export interface CapacityTimeDimensions {
 	requestedSeconds: number;
+	/** Productive provider execution time. Preparation and closeout are separate. */
+	executionSeconds?: number;
+	preparationSeconds?: number;
+	closeoutSeconds?: number;
 	reservedSeconds: number;
 	activeSeconds: number;
 	elapsedSeconds: number;
 	releasedSeconds: number;
 	overrunSeconds: number;
 	hardDeadlineAt?: string | null;
+	authorityDeadlineAt?: string | null;
+	preparationStartedAt?: string | null;
+	preparationDeadlineAt?: string | null;
+	executionStartedAt?: string | null;
+	executionDeadlineAt?: string | null;
+	closeoutStartedAt?: string | null;
+	closeoutDeadlineAt?: string | null;
 	remainingSeconds?: number | null;
+	closeoutWarningSeconds?: number | null;
+}
+
+export type AssignmentTimePhase = 'preparation' | 'working' | 'closeout' | 'expired';
+
+export function assignmentTimeWindow(time: Partial<CapacityTimeDimensions>, nowMs = Date.now()) {
+	const timestamp = (value: unknown) => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? Date.parse(value) : null;
+	const phased=time.preparationDeadlineAt!==undefined||time.executionStartedAt!==undefined||time.executionDeadlineAt!==undefined||time.closeoutDeadlineAt!==undefined;
+	if(!phased){
+		const deadline=timestamp(time.hardDeadlineAt); const remaining=deadline===null?null:Math.max(0,Math.floor((deadline-nowMs)/1_000)); const warning=Number(time.closeoutWarningSeconds??0);
+		const phase:AssignmentTimePhase=remaining===0?'expired':remaining!==null&&remaining<=warning?'closeout':'working';
+		return { phase,deadlineAt:typeof time.hardDeadlineAt==='string'?time.hardDeadlineAt:null,preparationRemainingSeconds:0,executionRemainingSeconds:phase==='working'?remaining:0,closeoutRemainingSeconds:phase==='closeout'?remaining:0,shouldCloseOut:phase==='closeout'||phase==='expired' };
+	}
+	const preparationDeadlineMs = timestamp(time.preparationDeadlineAt);
+	const executionStartedMs = timestamp(time.executionStartedAt);
+	const executionDeadlineMs = timestamp(time.executionDeadlineAt);
+	const closeoutDeadlineMs = timestamp(time.closeoutDeadlineAt ?? time.hardDeadlineAt);
+	let phase: AssignmentTimePhase;
+	if (closeoutDeadlineMs !== null && nowMs >= closeoutDeadlineMs) phase = 'expired';
+	else if (executionStartedMs === null) phase = preparationDeadlineMs !== null && nowMs >= preparationDeadlineMs ? 'closeout' : 'preparation';
+	else if (executionDeadlineMs !== null && nowMs >= executionDeadlineMs) phase = 'closeout';
+	else phase = 'working';
+	const remaining = (deadline: number | null) => deadline === null ? null : Math.max(0, Math.floor((deadline - nowMs) / 1_000));
+	return {
+		phase,
+		deadlineAt: phase === 'preparation' ? time.preparationDeadlineAt ?? null : phase === 'working' ? time.executionDeadlineAt ?? null : time.closeoutDeadlineAt ?? time.hardDeadlineAt ?? null,
+		preparationRemainingSeconds: phase === 'preparation' ? remaining(preparationDeadlineMs) : 0,
+		executionRemainingSeconds: phase === 'working' ? remaining(executionDeadlineMs) : phase === 'preparation' ? Number(time.executionSeconds ?? time.requestedSeconds) : 0,
+		closeoutRemainingSeconds: phase === 'closeout' ? remaining(closeoutDeadlineMs) : phase === 'expired' ? 0 : Number(time.closeoutSeconds ?? time.closeoutWarningSeconds ?? 0),
+		shouldCloseOut: phase === 'closeout' || phase === 'expired',
+	};
 }
 
 export interface CapacityTokenDimensions {
@@ -71,7 +113,27 @@ export interface AssignmentCompletionEvidence {
 	noUsefulScopedWorkRemaining: boolean;
 }
 
-export const ASSIGNMENT_PERFORMANCE_SCHEMA = 'treeseed.assignment-performance/v1' as const;
+export const ASSIGNMENT_PERFORMANCE_SCHEMA = 'treeseed.assignment-performance/v2' as const;
+
+export interface AssignmentConfigurationAttribution {
+	planningGraphRevision: string | null;
+	agentDefinitionRevision: string | null;
+	agentClassRevision: string | null;
+	activityProfileRevision: string | null;
+	handlerRevision: string | null;
+	groupMembershipRevision: string | null;
+	executionProviderConfigurationRevision: string | null;
+}
+
+export interface AssignmentDownstreamOutcome {
+	kind: 'validation' | 'revision' | 'rejection' | 'review' | 'signal' | 'integration' | 'deployment';
+	status: string;
+	evidenceRefs: string[];
+	artifactMutationReceiptIds: string[];
+	proposalId?: string | null;
+	proposalVersion?: number | null;
+	occurredAt: string;
+}
 
 export interface AssignmentPerformanceSummary {
 	schemaVersion: typeof ASSIGNMENT_PERFORMANCE_SCHEMA;
@@ -87,6 +149,7 @@ export interface AssignmentPerformanceSummary {
 	executionProviderId: string | null;
 	model: string | null;
 	groupIds: string[];
+	configuration: AssignmentConfigurationAttribution;
 	taskSignature: string;
 	disposition: AssignmentTerminalDisposition;
 	reason: string;
@@ -96,6 +159,10 @@ export interface AssignmentPerformanceSummary {
 	artifactRefs: string[];
 	budget: CapacityBudgetV2;
 	actual: {
+		preparationSeconds: number;
+		executionSeconds: number;
+		closeoutSeconds: number;
+		custodySeconds: number;
 		activeSeconds: number;
 		elapsedSeconds: number;
 		inputTokens: number;
@@ -110,7 +177,7 @@ export interface AssignmentPerformanceSummary {
 	noUsefulScopedWorkRemaining: boolean;
 	agentAssessment: Record<string, unknown> | null;
 	systemAssessment: { generatedBy: 'agent-runner' | 'api-recovery'; measuredAt: string; enforcementConfidence: CapacityBudgetV2['enforcementConfidence'] };
-	downstreamOutcomes: Array<{ kind: 'validation' | 'revision' | 'rejection'; status: string; evidenceRefs: string[]; occurredAt: string }>;
+	downstreamOutcomes: AssignmentDownstreamOutcome[];
 }
 
 export interface WorkdayTimePolicy {

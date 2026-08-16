@@ -288,7 +288,7 @@ export function registerScenePageObservers(input: {
 				return false;
 			}
 		})();
-		if (message === 'net::ERR_ABORTED' && resourceType && ['document', 'image', 'media', 'font', 'stylesheet', 'script'].includes(resourceType)) {
+		if (message === 'net::ERR_ABORTED' && resourceType && ['document', 'image', 'media', 'font', 'stylesheet', 'script', 'eventsource'].includes(resourceType)) {
 			return;
 		}
 		if (message === 'net::ERR_ABORTED' && isSpeculativePrefetch) return;

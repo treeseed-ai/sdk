@@ -3,6 +3,8 @@ export * from './market-schema/accounts/agent-lab-view-state.ts';
 export * from './market-schema/accounts/notification-events.ts';
 export * from './market-schema/accounts/team-services.ts';
 export * from './market-schema/agents/agent-mode-runs.ts';
+export * from './market-schema/agents/agent-context-query-checks.ts';
+export * from './market-schema/agents/communication-control.ts';
 export * from './market-schema/capacity/accounting/capacity-ledger-entries.ts';
 export * from './market-schema/capacity/providers/capacity-provider-team-credentials.ts';
 export * from './market-schema/capacity/workdays/capacity-workday-events.ts';

@@ -20,7 +20,6 @@ export function matchSignalGroupScope(input: {
 	scope: SignalGroupScope;
 	agentMembership: EffectiveGroupMembership;
 	subjectMembership: EffectiveGroupMembership;
-	primaryGroupId?: string;
 	depthByGroupId?: Record<string, number>;
 }): GroupScopeMatch {
 	const { scope, agentMembership, subjectMembership } = input;
@@ -44,9 +43,6 @@ export function matchSignalGroupScope(input: {
 			matchedGroupIds: matches,
 			reason: selection.ambiguous ? 'ambiguous' : matches.length ? 'explicit' : 'outside-scope',
 		};
-	}
-	if (input.primaryGroupId && effective.includes(input.primaryGroupId)) {
-		return { matched: true, coordinationGroupId: input.primaryGroupId, matchedGroupIds: effective, reason: 'primary' };
 	}
 	const direct = shared(agentMembership.directGroupIds, subjectMembership.directGroupIds);
 	const directSelection = mostSpecific(direct, input.depthByGroupId ?? {});

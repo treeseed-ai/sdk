@@ -98,13 +98,13 @@ describe('agent capacity market schema', () => {
 		expect(baseline).toContain('chk_capacity_usage_actuals_assignment_attempt');
 		expect(baseline).toContain('chk_workday_capacity_envelopes_status');
 		expect(baseline).toContain('chk_agent_capacity_plans_status');
-		expect(baseline).toContain('chk_agent_capacity_plans_credits');
 		expect(baseline).toContain('chk_decision_planning_statuses_readiness');
-		expect(baseline).toContain('chk_planning_input_requests_status');
+		expect(baseline).toContain('chk_agent_invocations_status');
+		expect(baseline).not.toContain('planning_input_requests');
 		expect(baseline).toContain('chk_decision_execution_inputs_status');
 		expect(baseline).toContain('work_graph_node_id');
 		expect(baseline).toContain('idx_decision_execution_inputs_graph_scope');
-		expect(baseline).toContain('chk_capacity_workday_demands_credits');
+		expect(baseline).toContain('chk_capacity_workday_demands_time');
 		expect(baseline).toContain('idx_capacity_workday_demands_idempotency');
 		expect(baseline).toContain('idx_capacity_workday_participation_cycles_number');
 		expect(baseline).toContain('idx_capacity_workday_participation_entries_agent');

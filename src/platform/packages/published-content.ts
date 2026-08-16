@@ -6,5 +6,6 @@ export * from '../published-content/r2-api-token-publication-client.ts';
 export * from '../published-content/r2-publication-client.ts';
 export * from '../published-content/r2-publication-acceptance.ts';
 export * from '../published-content/reconcile-content-publication.ts';
+export * from '../published-content/validation/model-content.ts';
 export * from '../published-content/team-scoped-r2-overlay-content-runtime-provider.ts';
 export * from '../published-content/verify-editorial-preview-token.ts';

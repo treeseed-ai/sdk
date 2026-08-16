@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseFrontmatterDocument } from '../content/frontmatter.ts';
+import { assertPortableContentData } from '../content/validation/portable-content-data.ts';
 import {
 	BOOK_SCHEMA_VERSION, KNOWLEDGE_PAGE_SCHEMA_VERSION, KNOWLEDGE_STATUSES, KNOWLEDGE_VISIBILITIES,
 	type BookDefinition, type KnowledgeContextRequest, type KnowledgePageDefinition, type KnowledgePageSummary,
@@ -37,6 +38,7 @@ export function markdownFiles(root: string): string[] {
 
 export function parseBook(input: { path: string; raw: string }): BookDefinition {
 	const data = parseFrontmatterDocument(input.raw).frontmatter;
+	assertPortableContentData('book', data, { path: input.path });
 	if (data.schemaVersion !== BOOK_SCHEMA_VERSION) throw new Error(`Book ${input.path} must use ${BOOK_SCHEMA_VERSION}.`);
 	const visibility = String(data.visibility ?? 'public');
 	const status = String(data.status ?? 'draft');
@@ -64,6 +66,7 @@ export function parseBook(input: { path: string; raw: string }): BookDefinition 
 export function parseKnowledgePage(input: { path: string; raw: string; updatedAt?: string; sourcePackage?: string }): KnowledgePageDefinition {
 	const parsed = parseFrontmatterDocument(input.raw);
 	const data = parsed.frontmatter;
+	assertPortableContentData('knowledge', data, { path: input.path });
 	if (data.schemaVersion !== KNOWLEDGE_PAGE_SCHEMA_VERSION) throw new Error(`Knowledge page ${input.path} must use ${KNOWLEDGE_PAGE_SCHEMA_VERSION}.`);
 	const visibility = String(data.visibility ?? 'public');
 	const status = String(data.status ?? 'published');

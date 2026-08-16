@@ -34,6 +34,20 @@ describe('MarketClient human control-plane transport', () => {
 		expect(fetchMock.mock.calls[2]?.[1]?.method).toBe('PATCH');
 	});
 
+	it('launches a repository-authored Agent Lab simulation at an immutable ref', async () => {
+		const fetchMock = vi.fn(async () => Response.json({ ok: true, payload: { id: 'operation-1', status: 'queued' } }));
+		const client = new MarketClient({
+			profile: { id: 'test', label: 'Test', baseUrl: 'https://market.example.test', kind: 'specialized' },
+			accessToken: 'human-token', fetchImpl: fetchMock,
+		});
+		await client.launchProjectAgentSimulation('team/a', {
+			projectId: 'project-1', scenePath: 'scenes/agent-lab/demo.yaml', immutableRef: 'a'.repeat(40), requestId: 'request-1',
+		});
+		const [url, init] = fetchMock.mock.calls[0] ?? [];
+		expect(String(url)).toBe('https://market.example.test/v1/teams/team%2Fa/agent-lab/simulations');
+		expect(init?.method).toBe('POST');
+	});
+
 	it('routes sovereign control-plane calls away from the singleton Market while keeping Market operations central', async () => {
 		const fetchMock = vi.fn(async () => Response.json({ ok: true, payload: {} }));
 		const client = new MarketClient({
@@ -50,6 +64,22 @@ describe('MarketClient human control-plane transport', () => {
 		expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
 			'https://sovereign.example.test/v1/me',
 			'https://api.treeseed.dev/v1/market/profile',
+		]);
+	});
+
+	it('archives and restores project inventory through control-plane routes', async () => {
+		const fetchMock = vi.fn(async () => Response.json({ ok: true, payload: {} }));
+		const client = new MarketClient({
+			profile: { id: 'test', label: 'Test', baseUrl: 'https://api.example.test', kind: 'specialized' },
+			accessToken: 'human-token', fetchImpl: fetchMock,
+		});
+
+		await client.archiveProject('project/a');
+		await client.restoreProject('project/a');
+
+		expect(fetchMock.mock.calls.map(([url, init]) => [String(url), init?.method])).toEqual([
+			['https://api.example.test/v1/projects/project%2Fa/archive', 'POST'],
+			['https://api.example.test/v1/projects/project%2Fa/restore', 'POST'],
 		]);
 	});
 });

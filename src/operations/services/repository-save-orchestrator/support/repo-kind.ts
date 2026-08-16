@@ -88,6 +88,7 @@ export type RepositorySaveReport = {
 	deletedRemote: boolean;
 	tagName: string | null;
 	commitSha: string | null;
+	baseCommit: string | null;
 	skippedReason: string | null;
 	publishWait: Record<string, unknown> | null;
 	version: string | null;

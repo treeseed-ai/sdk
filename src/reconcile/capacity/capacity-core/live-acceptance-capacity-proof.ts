@@ -119,7 +119,7 @@ export async function runCapacityProviderAssignmentProof(input: {
 		executionProviders: [{
 			id: 'codex', adapter: 'codex', status: 'available',
 			capabilities: ['planning', 'agent_mode_run', 'repo_read', 'usage_report'],
-			maxConcurrentRunners: 1, activeRunners: 0, nativeLimits: { availableAgentSeconds: 1_800 }, lanes: [],
+			maxConcurrentRunners: 1, activeRunners: 0, nativeLimits: { availableAgentSeconds: 1_800 }, lanes: [{ id:'codex-operation',executionProviderId:'codex',purpose:'operation',status:'active',capabilities:[],maxConcurrentRunners:1,activeRunners:0,nativeLimits:{} }],
 		}],
 	});
 	sessionIdForCleanup = String(availabilitySession.payload.id ?? '');
@@ -218,7 +218,7 @@ export async function runCapacityProviderAssignmentProof(input: {
 		executionProviders: [{
 			id: 'codex', adapter: 'codex', status: 'available',
 			capabilities: ['planning', 'agent_mode_run', 'repo_read', 'usage_report'],
-			maxConcurrentRunners: 1, activeRunners: 0, nativeLimits: { availableAgentSeconds: 1_800 }, lanes: [],
+			maxConcurrentRunners: 1, activeRunners: 0, nativeLimits: { availableAgentSeconds: 1_800 }, lanes: [{ id:'codex-operation',executionProviderId:'codex',purpose:'operation',status:'active',capabilities:[],maxConcurrentRunners:1,activeRunners:0,nativeLimits:{} }],
 		}],
 	});
 	const sessionId = String(availabilitySession.payload.id ?? '');

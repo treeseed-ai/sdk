@@ -66,6 +66,7 @@ describe('local TreeDX project repository inputs', () => {
 		writeFileSync(join(root, 'seeds/treeseed.yaml'), `resources:
   projects:
     - key: project:treeseed/admin
+      team: team:treeseed
       slug: admin
       repository:
         checkoutPath: packages/admin
@@ -79,17 +80,46 @@ describe('local TreeDX project repository inputs', () => {
       owner: treeseed-ai
       name: admin-content
       gitUrl: https://github.com/treeseed-ai/admin-content.git
+      repositoryPolicy:
+        visibility: private
 `);
 
 		expect(localTreeDxContentProjects(root)[0]).toMatchObject({
 			projectKey: 'project:treeseed/admin',
+			teamSlug: 'treeseed',
 			contentPath: 'src/content',
 			defaultRef: 'refs/heads/staging',
 			remoteUrl: 'https://github.com/treeseed-ai/admin-content.git',
 			remoteOwner: 'treeseed-ai',
 			remoteName: 'admin-content',
+			remoteVisibility: 'private',
 			sourceBranch: 'staging',
 			seedPaths: ['src/content'],
 		});
+	});
+
+	it('composes the exact selected local seed inventory', () => {
+		const root = mkdtempSync(join(tmpdir(), 'local-treedx-selected-seeds-'));
+		mkdirSync(join(root, 'seeds'), { recursive: true });
+		writeFileSync(join(root, 'seeds/treeseed.yaml'), `environments: [local]\nresources:\n  projects:\n    - key: project:treeseed/platform\n      slug: platform\n`);
+		writeFileSync(join(root, 'seeds/market-singleton.yaml'), `environments: [local, staging, prod]\nresources:\n  projects:\n    - key: project:treeseed/market\n      slug: market\n  hubRepositories:\n    - key: repository:treeseed/market-content\n      project: project:treeseed/market\n      role: content\n      owner: treeseed-ai\n      name: market-content\n      gitUrl: https://github.com/treeseed-ai/market-content.git\n`);
+
+		expect(localTreeDxContentProjects(root, ['treeseed', 'market-singleton']).map((project) => project.projectKey)).toEqual([
+			'project:treeseed/platform',
+			'project:treeseed/market',
+		]);
+		expect(localTreeDxContentProjects(root, ['market-singleton'])[0]).toMatchObject({
+			projectKey: 'project:treeseed/market',
+			remoteName: 'market-content',
+		});
+	});
+
+	it('fails closed when selected seeds conflict on a project definition', () => {
+		const root = mkdtempSync(join(tmpdir(), 'local-treedx-conflicting-seeds-'));
+		mkdirSync(join(root, 'seeds'), { recursive: true });
+		writeFileSync(join(root, 'seeds/one.yaml'), `environments: [local]\nresources:\n  projects:\n    - key: project:treeseed/example\n      slug: first\n`);
+		writeFileSync(join(root, 'seeds/two.yaml'), `environments: [local]\nresources:\n  projects:\n    - key: project:treeseed/example\n      slug: second\n`);
+
+		expect(() => localTreeDxContentProjects(root, ['one', 'two'])).toThrow(/conflicting TreeDX input project:treeseed\/example/u);
 	});
 });

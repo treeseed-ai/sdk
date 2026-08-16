@@ -40,6 +40,24 @@ describe('capacity supply selection', () => {
 		expect(result.selected?.executionProviderId).toBe('preferred');
 	});
 
+	it('uses the provider default when team policy does not prefer another eligible provider', () => {
+		const result = selectCapacitySupply({
+			policy: { ...policy, preferredExecutionProviderIds: undefined },
+			requiredCapabilities: ['agent-execution'],
+			candidates: [candidate('codex-key'), candidate('codex-sub', { preferred: true })],
+		});
+		expect(result.selected?.executionProviderId).toBe('codex-sub');
+	});
+
+	it('lets explicit team policy override the provider default', () => {
+		const result = selectCapacitySupply({
+			policy: { ...policy, preferredExecutionProviderIds: ['codex-key'] },
+			requiredCapabilities: ['agent-execution'],
+			candidates: [candidate('codex-sub', { preferred: true }), candidate('codex-key')],
+		});
+		expect(result.selected?.executionProviderId).toBe('codex-key');
+	});
+
 	it('reports unavailable, exhausted, unreliable, and incapable supply', () => {
 		const result = selectCapacitySupply({
 			policy,
@@ -50,5 +68,29 @@ describe('capacity supply selection', () => {
 		expect(result.rejected[0]?.reasons).toEqual(expect.arrayContaining([
 			'pressure:exhausted', 'reliability_below_floor', 'missing_capability:repository-write',
 		]));
+	});
+
+	it('rejects an execution provider when the assignment window is shorter than its declared minimum', () => {
+		const result = selectCapacitySupply({
+			policy,
+			requiredCapabilities: ['agent-execution'],
+			assignmentWindow: { startedAt: '2026-08-14T12:00:00.000Z', durationSeconds: 599 },
+			candidates: [candidate('codex', { minimumAssignmentDuration: { amount: 600, unit: 'seconds' } })],
+		});
+		expect(result.selected).toBeNull();
+		expect(result.rejected[0]?.reasons).toContain('assignment_duration_below_provider_minimum');
+	});
+
+	it('evaluates business-day minimums against the actual start date', () => {
+		const result = selectCapacitySupply({
+			policy,
+			requiredCapabilities: ['agent-execution'],
+			assignmentWindow: { startedAt: '2026-08-14T12:00:00.000Z', durationSeconds: 5 * 86_400 },
+			candidates: [candidate('human-queue', { minimumAssignmentDuration: {
+				amount: 5, unit: 'business-days', calendar: { timeZone: 'America/New_York' },
+			} })],
+		});
+		expect(result.selected).toBeNull();
+		expect(result.rejected[0]?.reasons).toContain('assignment_duration_below_provider_minimum');
 	});
 });

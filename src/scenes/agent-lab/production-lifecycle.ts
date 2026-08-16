@@ -12,7 +12,8 @@ import { applyAgentLabAccounting,collectAgentLabExecutions,followAgentLabActivit
 import { initialAgentLabSnapshot,sanitizeAgentLabSnapshot } from './report-model.ts';
 import { seedAgentLabPlanningProfileInputs } from './profile-input-seed.ts';
 import { retryAgentLabControlPlaneOperation,verifyAgentLabTerminal } from './terminal-verification.ts';
-import { refreshAgentLabWorkday,verifyCompletedAgentLabAssignments } from './workday-snapshot.ts';
+import { agentLabTerminalProfileFailure,agentLabTickReadyToComplete,agentLabWorkdayReadyToComplete,refreshAgentLabWorkday,verifyCompletedAgentLabAssignments } from './workday-snapshot.ts';
+import { selectedAgentLabArtifactExpectations } from './semantic-artifact-assertions.ts';
 import { resolveTeamAgentLabRuntime } from './runtime/team-scope.ts';
 import { agentLabDiagnostic, localAgentLabApiConfig, withAgentLabDiagnostic as withDiagnostic } from './runtime/diagnostics.ts';
 import { resolveAgentLabInitiator } from './runtime/metadata.ts';
@@ -21,7 +22,6 @@ type Row = Record<string, unknown>;
 type AssignmentExecutor = (input: CapacityAcceptanceExecutionInput) => Promise<CapacityAcceptanceExecutionResult>;
 const BASE_CAPABILITIES = ['planning', 'repo_read', 'agent_mode_run', 'usage_report'];
 const TERMINAL = new Set(['completed', 'cancelled', 'failed', 'degraded']);
-const EDITORIAL_AGENTS = new Set(['guide-steward', 'knowledge-cartographer', 'evidence-researcher', 'guide-writer', 'technical-verifier', 'audience-reviewer', 'publication-steward', 'workday-reporter']);
 
 function record(value: unknown): Row {
 	return value && typeof value === 'object' && !Array.isArray(value) ? value as Row : {};
@@ -29,6 +29,10 @@ function record(value: unknown): Row {
 function text(...values: unknown[]): string {
 	for (const value of values) if (typeof value === 'string' && value.trim()) return value.trim();
 	return '';
+}
+
+export function agentLabSimulationClassification() {
+	return { executionKind: 'simulation' as const, triggerKind: 'manual' as const, hidden: true };
 }
 
 async function withdrawLegacySyntheticProposals(client: MarketClient, projectId: string) {
@@ -45,16 +49,32 @@ async function withdrawLegacySyntheticProposals(client: MarketClient, projectId:
 	}
 }
 export { agentLabDiagnostic } from './runtime/diagnostics.ts';
+export async function resolveAgentDefinitionPaths(client: MarketClient, projectId: string, agentSlugs: string[]) {
+	const classes = (await client.projectAgentClasses(projectId, { limit: 200 })).payload.items.map(record);
+	const paths = new Map<string, string>();
+	for (const agentClass of classes) {
+		const agents = record(agentClass.handlerRefs).agents;
+		if (!Array.isArray(agents)) continue;
+		for (const candidate of agents.map(record)) {
+			const slug = text(candidate.slug); const contentPath = text(candidate.contentPath);
+			if (slug && contentPath) paths.set(slug, contentPath);
+		}
+	}
+	const missing = agentSlugs.filter((slug) => !paths.has(slug));
+	if (missing.length) throw new Error(`Agent Lab could not resolve TreeDX definition paths for: ${missing.join(', ')}.`);
+	return agentSlugs.map((slug) => paths.get(slug)!);
+}
 async function resolveGuideSelection(input: {
 	client: MarketClient;
 	projectId: string;
 	repositoryId: string;
+	contentRef?: string;
 	agentTests: string[];
 	agents: string[];
 }) {
 	const testPaths = input.agentTests.map((id) => `src/content/agent-tests/${id}.mdx`);
 	const tests = await input.client.treeDxReadRepositoryFiles(input.projectId, input.repositoryId, {
-		ref: 'refs/heads/main', paths: testPaths, encoding: 'utf8', parseFrontmatter: true,
+		ref: input.contentRef, paths: testPaths, encoding: 'utf8', parseFrontmatter: true,
 	});
 	const payload = record(tests.payload);
 	const resolvedRef = text(payload.resolvedRef);
@@ -72,9 +92,9 @@ async function resolveGuideSelection(input: {
 	}))];
 	const agentSlugs = input.agents.length ? input.agents : testAgentSlugs;
 	if (!agentSlugs.length) throw new Error('Selected workday agent tests contain no production agent selection.');
-	const agentPaths = agentSlugs.map((slug) => `src/content/agents/${EDITORIAL_AGENTS.has(slug) ? 'editorial/' : ''}${slug}.mdx`);
+	const agentPaths = await resolveAgentDefinitionPaths(input.client, input.projectId, agentSlugs);
 	const synchronized = await syncLocalAcceptanceAgentClasses(input.client, {
-		projectId: input.projectId, repositoryId: input.repositoryId, agentPaths, runId: resolvedRef.slice(0, 16),
+		projectId: input.projectId, repositoryId: input.repositoryId, agentPaths, runId: resolvedRef.slice(0, 16), ref: resolvedRef,
 	});
 	if (synchronized.resolvedRef !== resolvedRef) {
 		throw new Error('Agent Lab agent definitions and tests did not resolve from the same immutable TreeDX commit.');
@@ -111,6 +131,16 @@ async function resolveGuideSelection(input: {
 			frontmatter: record(file.frontmatter),
 		})),
 	};
+}
+
+export function resolveAgentLabSelectionRef(explicitRef: string | undefined, expectedAuthoringBase: string | undefined) {
+	const explicit = text(explicitRef);
+	if (explicit) return explicit;
+	const expectedBase = text(expectedAuthoringBase);
+	if (!/^[a-f0-9]{40}$/u.test(expectedBase)) {
+		throw new Error('Agent Lab requires an exact current TreeDX authoring revision when no explicit content ref is selected.');
+	}
+	return expectedBase;
 }
 
 function replaceDay(snapshot: AgentLabSnapshot, day: AgentLabWorkdaySnapshot): AgentLabSnapshot {
@@ -167,7 +197,8 @@ export function createProductionAgentLabExecutor(options: {
 			snapshot = { ...snapshot, status: 'running' }; await publish();
 			if (input.config.scope.kind === 'team') {
 				const resolved = await resolveTeamAgentLabRuntime({
-					projectRoot: input.projectRoot, client, apiUrl: api.apiUrl, teamKey: input.config.scope.team,
+					projectRoot: text(options.env.TREESEED_TENANT_ROOT) || input.projectRoot,
+					client, apiUrl: api.apiUrl, teamKey: input.config.scope.team,
 					providerKey: input.config.scope.capacityProvider, repositories: input.config.repositories,
 				});
 				scope = resolved.scope;
@@ -182,10 +213,14 @@ export function createProductionAgentLabExecutor(options: {
 			await withdrawLegacySyntheticProposals(client,scope.projectId);
 			const repositoryId = text(library.repositoryId);
 			if (!repositoryId) throw new Error('Agent Lab isolated project has no authoritative TreeDX repository binding.');
+			const authoringDraft = input.contentRef
+				? null
+				: (await client.projectAgentAuthoringDraft(scope.teamId, scope.projectId)).payload;
+			const selectionRef = resolveAgentLabSelectionRef(input.contentRef, text(record(authoringDraft).expectedBase));
 			const selections = new Map<string, Awaited<ReturnType<typeof resolveGuideSelection>>>();
 			for (const workday of input.config.workdays) {
 				const resolved = await resolveGuideSelection({
-					client, projectId: scope.projectId, repositoryId, agentTests: workday.agentTests,
+					client, projectId: scope.projectId, repositoryId, contentRef: selectionRef, agentTests: workday.agentTests,
 					agents: input.config.agents,
 				});
 				const filtered = resolved.agentSlugs.filter((slug) =>
@@ -200,7 +235,10 @@ export function createProductionAgentLabExecutor(options: {
 			});
 			protocol = new ProviderProtocolClient({ marketUrl: api.apiUrl, accessToken: provider.providerAccessToken, fetchImpl });
 			const totalAgentSeconds = input.config.workdays.reduce((total, entry) => total + entry.durationSeconds * entry.maxActiveAssignments, 0);
-			const executionProvider = { id: 'codex', adapter: 'codex', status: 'available', capabilities, maxConcurrentRunners: maxConcurrency, activeRunners: 0, nativeLimits: { availableAgentSeconds: totalAgentSeconds }, lanes: [] };
+			const lanes = maxConcurrency >= 2
+				? [{ id:'codex-communication',purpose:'communication' as const,maxConcurrentRunners:1,activeRunners:0,capabilities,nativeLimits:{} },{ id:'codex-operation',purpose:'operation' as const,maxConcurrentRunners:1,activeRunners:0,capabilities,nativeLimits:{} }]
+				: [{ id:'codex-operation',purpose:'operation' as const,maxConcurrentRunners:1,activeRunners:0,capabilities,nativeLimits:{} }];
+			const executionProvider = { id: 'codex', adapter: 'codex', status: 'available', capabilities, maxConcurrentRunners: maxConcurrency, activeRunners: 0, nativeLimits: { availableAgentSeconds: totalAgentSeconds }, lanes };
 			let availability: Awaited<ReturnType<ProviderProtocolClient['createAvailabilitySession']>> | null = null;
 			if (!persistentTeam) {
 				availability = await protocol.createAvailabilitySession({
@@ -243,8 +281,11 @@ export function createProductionAgentLabExecutor(options: {
 			for (const config of input.config.workdays) {
 				const selection = selections.get(config.id)!;
 				const expectedProfiles = selection.agentDefinitions.flatMap((agent) => agent.activityProfiles
-					.filter((profile) => profile.enabled && (!config.planningOnly || profile.activityType !== 'acting'))
+					.filter((profile) => profile.enabled
+						&& (!config.planningOnly || profile.activityType !== 'acting')
+						&& (!config.activityTypes.length || config.activityTypes.includes(profile.activityType)))
 					.map((profile) => `${agent.id}:${profile.activityType}`));
+				const expectedArtifacts = selectedAgentLabArtifactExpectations(selection.normalizedTests,selection.agentSlugs,expectedProfiles);
 				const workdayRunId = `agent-lab:${input.runId}:${config.id}`;
 				await seedAgentLabPlanningProfileInputs({
 					client, projectId: scope.projectId, runId: input.runId, workdayId: config.id,
@@ -254,12 +295,14 @@ export function createProductionAgentLabExecutor(options: {
 				});
 				await client.createWorkdayRun(scope.teamId, {
 					id: workdayRunId, capacityProviderId: provider.providerId, environment: 'local', status: 'running',
+					...agentLabSimulationClassification(),
 					parameters: {
 						projects: [scope.projectSlug], durationSeconds: config.durationSeconds, allocationSetId: allocation.id,
+						executionMode: 'simulation',
 						timePolicy: config.timePolicy, planningSession: config.planningSession, maxActiveAssignments: config.maxActiveAssignments,
-						planningOnly: config.planningOnly, agentSelection: { agentSlugs: selection.agentSlugs, mode: 'intersection' },
+						planningOnly: config.planningOnly, agentSelection: { agentSlugs: selection.agentSlugs, activityTypes: config.activityTypes, mode: 'intersection' },
 						objectiveRefs: config.objectiveRefs,
-						agentLab: { sceneId: input.sceneId, runId: input.runId, scope: input.config.scope.kind, initiatingUser, tests: selection.normalizedTests, resolvedRef: selection.resolvedRef, reportLocation: input.reportPath },
+						agentLab: { sceneId: input.sceneId, runId: input.runId, scope: input.config.scope.kind, initiatingUser, tests: selection.normalizedTests, expectedArtifacts, admissionPolicy:'single-scenario', resolvedRef: selection.resolvedRef, reportLocation: input.reportPath },
 					},
 				});
 				let day = { ...snapshot.workdays.find((entry) => entry.id === config.id)!, workdayRunId, status: 'running' as const, startedAt: new Date().toISOString() };
@@ -316,9 +359,11 @@ export function createProductionAgentLabExecutor(options: {
 				const deadline = Date.now() + config.durationSeconds * 1_000;
 				let iteration = 0;
 				const verifiedAssignments = new Set<string>();
+				let admissionFenced = false;
 				try { while (Date.now() < deadline && !TERMINAL.has(day.status)) {
+					let tickResult: unknown;
 					try {
-						await retryAgentLabControlPlaneOperation(() => client.tickWorkdayRun(scope!.teamId, workdayRunId, { idempotencyKey: `agent-lab:${input.runId}:${config.id}:tick:${iteration}` }));
+						tickResult = await retryAgentLabControlPlaneOperation(() => client.tickWorkdayRun(scope!.teamId, workdayRunId, { idempotencyKey: `agent-lab:${input.runId}:${config.id}:tick:${iteration}` }));
 					} catch (error) {
 						day = withDiagnostic(day, error, 'Workday tick: '); snapshot = replaceDay(snapshot, day); await publish();
 						await new Promise((resolve) => setTimeout(resolve, 1_000)); continue;
@@ -348,13 +393,25 @@ export function createProductionAgentLabExecutor(options: {
 						if (!idle && Date.now() + 2_000 >= deadline) throw error;
 						await new Promise((resolve) => setTimeout(resolve, 1_000));
 					}
-					day = await refreshAgentLabWorkday({ client, teamId: scope.teamId, projectId: scope.projectId, repositoryId, day, expectedAgents: selection.agentSlugs, expectedProfiles, verifiedAssignments });
+					day = await refreshAgentLabWorkday({ client, teamId: scope.teamId, projectId: scope.projectId, repositoryId, day, expectedAgents: selection.agentSlugs, expectedProfiles, expectedArtifacts, verifiedAssignments });
 					day = await verifyCompletedAgentLabAssignments({ client, teamId: scope.teamId, projectId: scope.projectId, day, verifiedAssignments });
-					const terminalProfileFailure = day.assignments.find((entry) => ['failed', 'cancelled'].includes(text(entry.status))
-							&& expectedProfiles.includes(`${text(entry.agentId)}:${text(entry.activityType ?? entry.mode)}`));
+					let terminalProfileFailure = agentLabTerminalProfileFailure(day, expectedProfiles);
 					const completedProfiles = new Set(day.executions.filter((entry) => entry.status === 'completed' && verifiedAssignments.has(entry.assignmentId)).map((entry) => `${entry.agentId}:${entry.activityType}`));
 					const coverageComplete = expectedProfiles.every((profile) => completedProfiles.has(profile));
-					if (terminalProfileFailure || coverageComplete) {
+					const semanticFailure = day.assertions.find((assertion) => assertion.id.startsWith('semantic-artifact:') && assertion.status === 'failed');
+					if (semanticFailure) terminalProfileFailure = terminalProfileFailure ?? { id: semanticFailure.id } as never;
+					let readyToComplete = false;
+					if (agentLabWorkdayReadyToComplete(day,expectedProfiles,verifiedAssignments,expectedArtifacts) && agentLabTickReadyToComplete(tickResult)) {
+						const fenced = (await client.closeWorkdayAdmission(scope.teamId,workdayRunId,{ idempotencyKey: `agent-lab:${input.runId}:${config.id}:admission-fence` })).payload;
+						admissionFenced = true;
+						day = await refreshAgentLabWorkday({ client,teamId: scope.teamId,projectId: scope.projectId,repositoryId,day,expectedAgents: selection.agentSlugs,expectedProfiles,expectedArtifacts,verifiedAssignments });
+						day = await verifyCompletedAgentLabAssignments({ client,teamId: scope.teamId,projectId: scope.projectId,day,verifiedAssignments });
+						terminalProfileFailure = agentLabTerminalProfileFailure(day,expectedProfiles);
+						if (!fenced.successful) terminalProfileFailure = terminalProfileFailure ?? { id: fenced.problemAssignmentIds[0] ?? 'authoritative-workday-failure' } as never;
+						readyToComplete = fenced.ready && fenced.successful
+							&& agentLabWorkdayReadyToComplete(day,expectedProfiles,verifiedAssignments,expectedArtifacts);
+					}
+					if (terminalProfileFailure || readyToComplete) {
 						await client.updateWorkdayRun(scope.teamId, workdayRunId, {
 							status: terminalProfileFailure ? 'failed' : 'completed',
 							summary: {
@@ -363,7 +420,7 @@ export function createProductionAgentLabExecutor(options: {
 								...(terminalProfileFailure ? { failedAssignmentId: text(record(terminalProfileFailure).assignmentId ?? record(terminalProfileFailure).id) } : {}),
 							},
 						});
-						day = await refreshAgentLabWorkday({ client, teamId: scope.teamId, projectId: scope.projectId, repositoryId, day, expectedAgents: selection.agentSlugs, expectedProfiles, verifiedAssignments });
+						day = await refreshAgentLabWorkday({ client, teamId: scope.teamId, projectId: scope.projectId, repositoryId, day, expectedAgents: selection.agentSlugs, expectedProfiles, expectedArtifacts, verifiedAssignments });
 					}
 					snapshot = replaceDay(snapshot, day); await publish(); iteration += 1;
 				} } finally {
@@ -371,15 +428,24 @@ export function createProductionAgentLabExecutor(options: {
 					semanticRefreshTimer = null; semanticRefreshPending = false;
 					activityController.abort(); await activityStream; await semanticRefreshQueue;
 				}
-				day = await refreshAgentLabWorkday({ client, teamId: scope.teamId, projectId: scope.projectId, repositoryId, day, expectedAgents: selection.agentSlugs, expectedProfiles, verifiedAssignments });
+				day = await refreshAgentLabWorkday({ client, teamId: scope.teamId, projectId: scope.projectId, repositoryId, day, expectedAgents: selection.agentSlugs, expectedProfiles, expectedArtifacts, verifiedAssignments });
 				day = await verifyCompletedAgentLabAssignments({ client, teamId: scope.teamId, projectId: scope.projectId, day, verifiedAssignments });
 				const finalProfiles = new Set(day.executions.filter((entry) => entry.status === 'completed' && verifiedAssignments.has(entry.assignmentId)).map((entry) => `${entry.agentId}:${entry.activityType}`));
 				const finalCoverageComplete = expectedProfiles.every((profile) => finalProfiles.has(profile));
+				let finalAssignmentsTerminal = false;
+				if (finalCoverageComplete && agentLabWorkdayReadyToComplete(day,expectedProfiles,verifiedAssignments,expectedArtifacts)) {
+					const fenced = (await client.closeWorkdayAdmission(scope.teamId,workdayRunId,{ idempotencyKey: `agent-lab:${input.runId}:${config.id}:admission-fence` })).payload;
+					admissionFenced = true;
+					day = await refreshAgentLabWorkday({ client,teamId: scope.teamId,projectId: scope.projectId,repositoryId,day,expectedAgents: selection.agentSlugs,expectedProfiles,expectedArtifacts,verifiedAssignments });
+					day = await verifyCompletedAgentLabAssignments({ client,teamId: scope.teamId,projectId: scope.projectId,day,verifiedAssignments });
+					finalAssignmentsTerminal = fenced.ready && fenced.successful
+						&& agentLabWorkdayReadyToComplete(day,expectedProfiles,verifiedAssignments,expectedArtifacts);
+				}
 				if (!TERMINAL.has(day.status)) await client.updateWorkdayRun(scope.teamId, workdayRunId, {
-					status: finalCoverageComplete ? 'completed' : 'failed',
-					summary: { agentLab: true, durationElapsed: Date.now() >= deadline, profileCoverageComplete: finalCoverageComplete },
+					status: finalCoverageComplete && finalAssignmentsTerminal ? 'completed' : 'failed',
+					summary: { agentLab: true,durationElapsed: Date.now() >= deadline,profileCoverageComplete: finalCoverageComplete,admissionFenced },
 				});
-				day = await refreshAgentLabWorkday({ client, teamId: scope.teamId, projectId: scope.projectId, repositoryId, day, expectedAgents: selection.agentSlugs, expectedProfiles, verifiedAssignments });
+				day = await refreshAgentLabWorkday({ client, teamId: scope.teamId, projectId: scope.projectId, repositoryId, day, expectedAgents: selection.agentSlugs, expectedProfiles, expectedArtifacts, verifiedAssignments });
 				const failedAssertion = day.assertions.some((entry) => entry.status !== 'passed');
 				day = { ...day, status: failedAssertion ? 'degraded' : day.status, diagnostics: failedAssertion ? [...day.diagnostics, 'One or more production-path assertions lacked durable evidence.'] : day.diagnostics };
 				snapshot = replaceDay(snapshot, day); await publish();

@@ -91,11 +91,13 @@ describe('live acceptance scenario contract', () => {
 		const events = [
 			{ id: 'tool:create-question', toolId: 'treeseed.content.create', status: 'completed', derivedEventTypes: ['question_created', 'content_created'] },
 			{ id: 'tool:write-note', toolId: 'treedx.apply_workspace_changeset', status: 'completed', derivedEventTypes: ['content_created'] },
+			{ id: 'tool:update-status', toolId: 'treeseed.assignment_status_update', status: 'completed', derivedEventTypes: ['content_updated'] },
 			{ id: 'tool:commit', toolId: 'treeseed.content.commit', status: 'completed', derivedEventTypes: ['content_committed'] },
 		];
 		expect(hasAuthenticatedCommittedContentReferences([
 			{ model: 'question', contentPath: 'questions/decomposition.mdx', receiptId: 'receipt:question', toolEventId: 'tool:create-question' },
 			{ model: 'note', contentPath: 'notes/research/context.mdx', receiptId: 'receipt:note', toolEventId: 'tool:write-note' },
+			{ model: 'assignment_status', contentPath: 'assignment-statuses/status.mdx', receiptId: 'receipt:status', toolEventId: 'tool:update-status' },
 		], events, 1)).toBe(true);
 		expect(hasAuthenticatedCommittedContentReferences([
 			{ model: 'question', contentPath: 'questions/decomposition.mdx', receiptId: 'receipt:question', toolEventId: 'tool:missing' },

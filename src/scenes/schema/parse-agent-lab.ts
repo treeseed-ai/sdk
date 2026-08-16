@@ -32,6 +32,7 @@ function parseWorkday(value: unknown, index: number, diagnostics: SceneDiagnosti
 		durationSeconds: positiveNumberField(value, 'durationSeconds', 1800, path, diagnostics) ?? 1800,
 		maxActiveAssignments: positiveNumberField(value, 'maxActiveAssignments', 4, path, diagnostics) ?? 4,
 		planningOnly: booleanField(value, 'planningOnly', true, path, diagnostics),
+		activityTypes: stringArrayField(value, 'activityTypes', path, diagnostics),
 		timePolicy: { cooperativePlanningPercent, governedExecutionPercent, reservePercent },
 		planningSession: {
 			rounds: positiveNumberField(planningSession, 'rounds', 3, `${path}.planningSession`, diagnostics) ?? 3,

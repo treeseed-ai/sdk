@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync,readFileSync,writeFileSync } from 'node:fs';
 import { basename,resolve } from 'node:path';
 import { parse as parseYaml,stringify as stringifyYaml } from 'yaml';
@@ -112,6 +113,16 @@ export function buildTemplateReplacements(manifest: TemplateManifest, input: Sta
 	return replacements;
 }
 
+function definitionDigest(definition: ResolvedTemplateDefinition, replacements: Record<string, string>) {
+	return `sha256:${createHash('sha256').update(JSON.stringify({
+		id: definition.product.id,
+		version: definition.product.templateVersion,
+		source: definition.product.fulfillment.source,
+		manifest: definition.manifest,
+		replacements,
+	})).digest('hex')}`;
+}
+
 export async function scaffoldTemplateProject(templateId: string, targetRoot: string, input: StarterResolutionInput, options: TemplateCatalogOptions = {}) {
 	const definition = await resolveTemplateDefinition(templateId, options);
 	const replacements = buildTemplateReplacements(definition.manifest, {
@@ -126,6 +137,10 @@ export async function scaffoldTemplateProject(templateId: string, targetRoot: st
 		installedAt: new Date().toISOString(),
 		lastSyncedAt: new Date().toISOString(),
 		replacements,
+		definitionDigest: definitionDigest(definition, replacements),
+		managedPaths: [...(definition.manifest.managedSurface?.coreManaged ?? [])].sort(),
+		seedPaths: [...(definition.manifest.platform?.seeds ?? [])].sort(),
+		scenePaths: [...(definition.manifest.platform?.scenes ?? [])].sort(),
 	});
 	return definition.product;
 }
@@ -196,6 +211,10 @@ export async function syncTemplateProject(siteRoot: string, options: TemplateCat
 			templateVersion: definition.product.templateVersion,
 			sourceRef: definition.product.fulfillment.source.ref,
 			lastSyncedAt: new Date().toISOString(),
+			definitionDigest: definitionDigest(definition, state.replacements),
+			managedPaths: [...(definition.manifest.managedSurface?.coreManaged ?? [])].sort(),
+			seedPaths: [...(definition.manifest.platform?.seeds ?? [])].sort(),
+			scenePaths: [...(definition.manifest.platform?.scenes ?? [])].sort(),
 		});
 	}
 

@@ -43,6 +43,8 @@ export function buildDiscussionModelRegistry(repoRoot?: string): Record<Discussi
 		participant_ids: field('participant_ids', { aliases: ['participantIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['participant_ids', 'participantIds'], writeContentKey: 'participant_ids' }),
 		agent_ids: field('agent_ids', { aliases: ['agentIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['agent_ids', 'agentIds'], writeContentKey: 'agent_ids' }),
 		group_ids: field('group_ids', { aliases: ['groupIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['group_ids', 'groupIds'], writeContentKey: 'groupIds' }),
+		parent_workday_id: field('parent_workday_id', { aliases: ['parentWorkdayId'], filterable: true, contentKeys: ['parent_workday_id', 'parentWorkdayId'], writeContentKey: 'parent_workday_id' }),
+		legacy_status: field('legacy_status', { aliases: ['legacyStatus'], filterable: true, contentKeys: ['legacy_status', 'legacyStatus'], writeContentKey: 'legacy_status' }),
 		created_at: field('created_at', { aliases: ['createdAt'], filterable: true, sortable: true, comparableAs: 'date', contentKeys: ['created_at', 'createdAt'], writeContentKey: 'created_at' }),
 		updated_at: field('updated_at', { aliases: ['updatedAt'], filterable: true, sortable: true, comparableAs: 'date', contentKeys: ['updated_at', 'updatedAt'], writeContentKey: 'updated_at' }),
 	};
@@ -53,7 +55,13 @@ export function buildDiscussionModelRegistry(repoRoot?: string): Record<Discussi
 		author_type: field('author_type', { aliases: ['authorType'], filterable: true, contentKeys: ['author_type', 'authorType'], writeContentKey: 'author_type' }),
 		intent: field('intent', { filterable: true, contentKeys: ['intent'], writeContentKey: 'intent' }),
 		reply_to: field('reply_to', { aliases: ['replyTo'], filterable: true, contentKeys: ['reply_to', 'replyTo'], writeContentKey: 'reply_to' }),
+		source_message_refs: field('source_message_refs', { aliases: ['sourceMessageRefs'], filterable: true, comparableAs: 'string_array', contentKeys: ['source_message_refs', 'sourceMessageRefs'], writeContentKey: 'source_message_refs' }),
 		mentioned_agents: field('mentioned_agents', { aliases: ['mentionedAgents'], filterable: true, comparableAs: 'string_array', contentKeys: ['mentioned_agents', 'mentionedAgents'], writeContentKey: 'mentioned_agents' }),
+		recipient_ids: field('recipient_ids', { aliases: ['recipientIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['recipient_ids', 'recipientIds'], writeContentKey: 'recipient_ids' }),
+		author_agent_id: field('author_agent_id', { aliases: ['authorAgentId'], filterable: true, contentKeys: ['author_agent_id', 'authorAgentId'], writeContentKey: 'author_agent_id' }),
+		handoff_id: field('handoff_id', { aliases: ['handoffId'], filterable: true, contentKeys: ['handoff_id', 'handoffId'], writeContentKey: 'handoff_id' }),
+		parent_workday_id: field('parent_workday_id', { aliases: ['parentWorkdayId'], filterable: true, contentKeys: ['parent_workday_id', 'parentWorkdayId'], writeContentKey: 'parent_workday_id' }),
+		resulting_operation_id: field('resulting_operation_id', { aliases: ['resultingOperationId'], filterable: true, contentKeys: ['resulting_operation_id', 'resultingOperationId'], writeContentKey: 'resulting_operation_id' }),
 		group_ids: field('group_ids', { aliases: ['groupIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['group_ids', 'groupIds'], writeContentKey: 'groupIds' }),
 		file_refs: field('file_refs', { aliases: ['fileRefs'], contentKeys: ['file_refs', 'fileRefs'], writeContentKey: 'file_refs' }),
 		context_refs: field('context_refs', { aliases: ['contextRefs'], contentKeys: ['context_refs', 'contextRefs'], writeContentKey: 'context_refs' }),
@@ -76,7 +84,12 @@ export function buildDiscussionModelRegistry(repoRoot?: string): Record<Discussi
 	};
 	return {
 		discussion: definition({ name: 'discussion', aliases: ['discussions'], collection: 'discussions', entityType: 'Discussion', fields: discussionFields, pickField: 'updated_at', repoRoot }),
-		discussion_message: definition({ name: 'discussion_message', aliases: ['discussion_messages'], collection: 'discussion-messages', entityType: 'DiscussionMessage', fields: messageFields, referenceFields: [{ field: 'discussion_id', edgeType: 'REFERENCES', targetModels: ['discussion'] }, { field: 'reply_to', edgeType: 'REFERENCES', targetModels: ['discussion_message'] }], pickField: 'created_at', repoRoot }),
+		discussion_message: definition({ name: 'discussion_message', aliases: ['discussion_messages'], collection: 'discussion-messages', entityType: 'DiscussionMessage', fields: messageFields, referenceFields: [
+			{ field: 'discussion_id', edgeType: 'REFERENCES', targetModels: ['discussion'] },
+			{ field: 'reply_to', edgeType: 'REFERENCES', targetModels: ['discussion_message'] },
+			{ field: 'source_message_refs', edgeType: 'DERIVED_FROM', targetModels: ['discussion_message'] },
+			{ field: 'parent_workday_id', edgeType: 'REFERENCES', targetModels: ['workday_report'] },
+		], pickField: 'created_at', repoRoot }),
 		discussion_event: definition({ name: 'discussion_event', aliases: ['discussion_events'], collection: 'discussion-events', entityType: 'DiscussionEvent', fields: eventFields, referenceFields: [{ field: 'discussion_id', edgeType: 'REFERENCES', targetModels: ['discussion'] }, { field: 'message_id', edgeType: 'REFERENCES', targetModels: ['discussion_message'] }], pickField: 'occurred_at', repoRoot }),
 	};
 }

@@ -125,6 +125,8 @@ export { OperationsSdk } from '../operations/runtime/runtime.ts';
 
 export { WorkflowSdk } from '../operations/workflow.ts';
 
+export { integrationChangeSetReceiptId } from '../workflow/operations/coordination/integration-change-set.ts';
+
 export {
 collectReconcileStatus,
 createReconcileRegistry,
@@ -152,7 +154,8 @@ export {
 applyPlatformWorkset,
 planPlatformWorkset,
 type PlatformWorksetAction,
-type PlatformWorksetPlan
+type PlatformWorksetPlan,
+type PlatformWorksetInventoryRepository
 } from '../operations/services/repositories/platform-workset.ts';
 
 export {

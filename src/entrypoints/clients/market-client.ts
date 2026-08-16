@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { dirname,resolve } from 'node:path';
 import "../../market-client/interface.ts";
 import "../../market-client/agent-lab-interface.ts";
+import "../../market-client/project-agent-interface.ts";
 import * as extractedMethods from "../../market-client/methods.ts";
 import { clearRemoteSession,resolveRemoteSession,setRemoteSession,} from '../../operations/services/configuration/config-runtime.ts';
 import type { ApiPrincipal } from './remote.ts';
@@ -54,7 +55,10 @@ export interface MarketRegistryState {
 export interface TeamAccessSummary {
     teamId: string;
     roles: string[];
+    capabilities: string[];
     permissions: string[];
+    teamPermissions: string[];
+    accountPermissions: string[];
     summary: {
         canAdminStaging: boolean;
         canAdminProduction: boolean;

@@ -100,6 +100,7 @@ export interface SdkContextPack {
 }
 
 export interface SdkContextPackRequest extends SdkGraphQueryRequest {
+	mode?: 'brief'|'detailed'|'citations'|'mixed';
 	budget?: {
 		maxNodes?: number;
 		maxTokens?: number;

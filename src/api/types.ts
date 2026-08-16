@@ -242,4 +242,5 @@ export interface ApiServerOptions {
 	extensions?: ApiExtension[];
 	extendApp?: (app: Hono<any>, runtime: ApiAppRuntime) => void;
 	log?: (message: string, details?: Record<string, unknown>) => void;
+	authenticateBearerOverride?: (token: string) => Promise<{ principal: ApiPrincipal; credential: ApiCredential } | null>;
 }

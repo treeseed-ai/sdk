@@ -1,5 +1,6 @@
 import { ContentStore } from '../content/content-store.ts';
 import { parseFrontmatterDocument,serializeFrontmatterDocument } from '../content/frontmatter.ts';
+import { validatePortableContentData } from '../content/validation/portable-content-data.ts';
 import { resolveModelDefinition } from '../entrypoints/models/model-registry.ts';
 import {
 canonicalizeFrontmatter,
@@ -27,7 +28,31 @@ import { assertExpectedVersion } from '../packages/sdk-version.ts';
 import { ContentGraphRuntime } from '../treedx/graph/graph.ts';
 import { TreeDxClient } from '../treedx/support/client.ts';
 import { TreeDxPortfolioResolver,mutationPath,normalizePathRule } from './normalize-path-rule.ts';
-import { ContentBackend,GraphBackend,TreeDxContentPathRule,TreeDxRepositoryCandidate,compactObject,dateForEntry,ensureMutationAllowed,entryMatchesIdentity,extractTextPayload,inferSlug,isMarkdownPath,makeDefaultPathRule,normalizePathList,pathMatchesPattern,sanitizeFrontmatterInput,stringValue,titleForEntry } from './tree-dx-repository-hint.ts';
+import { ContentBackend,GraphBackend,TreeDxContentPathRule,TreeDxRepositoryCandidate,compactObject,dateForEntry,ensureMutationAllowed,entryMatchesIdentity,extractTextPayload,inferSlug,isMarkdownPath,makeDefaultPathRule,normalizePathList,normalizePathPattern,pathMatchesPattern,sanitizeFrontmatterInput,stringValue,titleForEntry } from './tree-dx-repository-hint.ts';
+
+export interface TreeDxContentDiagnostic {
+	path: string;
+	model: string;
+	field?: string;
+	code: string;
+	message: string;
+}
+
+export class TreeDxContentValidationError extends Error {
+	readonly code = 'treedx_content_model_invalid';
+	constructor(readonly details: TreeDxContentDiagnostic[]) {
+		super(`TreeDX content failed model validation with ${details.length} field error${details.length === 1 ? '' : 's'}.`);
+		this.name = 'TreeDxContentValidationError';
+	}
+}
+
+function assertValidContent(definition: SdkModelDefinition, frontmatter: Record<string, unknown>, path: string) {
+	const result = validatePortableContentData(definition.name, frontmatter);
+	if (!result.portable) return;
+	if (!result.ok) throw new TreeDxContentValidationError(result.diagnostics.map((diagnostic) => ({
+		path, model: definition.name, field: diagnostic.field, code: diagnostic.code, message: diagnostic.message,
+	})));
+}
 
 export class TreeDxContentBackend implements ContentBackend {
 	constructor(
@@ -65,8 +90,15 @@ export class TreeDxContentBackend implements ContentBackend {
 		}));
 		const payloadRecord = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {};
 		const payloadFile = payloadRecord.file && typeof payloadRecord.file === 'object' ? payloadRecord.file as Record<string, unknown> : {};
-		const parsed = parseFrontmatterDocument(extractTextPayload(payloadFile) || extractTextPayload(payload));
 		const resolvedPath = stringValue(payloadFile.path) ?? stringValue(payloadRecord.path) ?? filePath;
+		let parsed: ReturnType<typeof parseFrontmatterDocument>;
+		try {
+			parsed = parseFrontmatterDocument(extractTextPayload(payloadFile) || extractTextPayload(payload));
+		} catch (error) {
+			throw new TreeDxContentValidationError([{ path: resolvedPath, model: definition.name, field: 'frontmatter',
+				code: 'content_frontmatter_invalid', message: error instanceof Error ? error.message : 'Content frontmatter is invalid.' }]);
+		}
+		assertValidContent(definition, parsed.frontmatter, resolvedPath);
 		const slug = inferSlug(resolvedPath, candidate.path);
 		return {
 			id: slug,
@@ -113,6 +145,7 @@ export class TreeDxContentBackend implements ContentBackend {
 			const identities = [request.id, request.slug, request.key].filter((value): value is string => Boolean(value));
 			for (const identity of identities) {
 				for (const basePath of rule.paths) {
+					const baseDirectory = normalizePathPattern(basePath).replace(/\*\*.*$/u, '').replace(/\/+$/u, '');
 					for (const extension of ['.md', '.mdx']) {
 						try {
 							return await this.readEntry(definition, {
@@ -120,8 +153,9 @@ export class TreeDxContentBackend implements ContentBackend {
 								ref: this.options.ref,
 								path: basePath,
 								repository: { repoId: this.options.directRepoId },
-							}, `${basePath.replace(/\/$/u, '')}/${identity}${extension}`);
-						} catch {
+							}, `${baseDirectory}/${identity}${extension}`);
+						} catch (error) {
+							if (error instanceof TreeDxContentValidationError) throw error;
 							// Try the next identity/path/extension candidate.
 						}
 					}
@@ -211,6 +245,7 @@ export class TreeDxContentBackend implements ContentBackend {
 			updated_at: mutationData.updated_at ?? new Date().toISOString(),
 		});
 		const filePath = await this.resolveWritePath(definition, slug);
+		assertValidContent(definition, frontmatter, filePath);
 		const workspaceId = this.options.workspaceId ?? await this.createDirectWorkspace() ?? this.requireWorkspaceId();
 		await this.options.client.writeFile({
 			workspaceId,
@@ -264,6 +299,7 @@ export class TreeDxContentBackend implements ContentBackend {
 			},
 		);
 		const nextBody = typeof request.data.body === 'string' ? request.data.body : existing.body;
+		assertValidContent(definition, nextFrontmatter, existing.path);
 		await this.options.client.patchFile({
 			workspaceId,
 			path: existing.path,

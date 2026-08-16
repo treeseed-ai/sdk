@@ -247,7 +247,7 @@ export type SdkGraphDslRelation =
 	| 'supersedes';
 
 export interface SdkGraphWhereFilter {
-	field: 'type' | 'status' | 'audience' | 'directGroupId' | 'effectiveGroupId' | 'domain';
+	field: 'type' | 'model' | 'status' | 'audience' | 'directGroupId' | 'effectiveGroupId' | 'domain';
 	op: 'eq' | 'in';
 	value: string | string[];
 }

@@ -102,6 +102,7 @@ export function createSeedPlan(input: {
 		ok: summary.error === 0 && !(input.diagnostics ?? []).some((diagnostic) => diagnostic.severity === 'error'),
 		seed: input.manifest.name,
 		version: input.manifest.version,
+		references: [...(input.manifest.references ?? [])],
 		mode: input.mode,
 		environments: input.environments,
 		summary,

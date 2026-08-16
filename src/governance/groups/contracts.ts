@@ -92,7 +92,7 @@ export interface GroupScopeMatch {
 	matched: boolean;
 	coordinationGroupId: string | null;
 	matchedGroupIds: string[];
-	reason: 'explicit' | 'primary' | 'shared-direct' | 'shared-effective' | 'project' | 'outside-scope' | 'ambiguous';
+	reason: 'explicit' | 'shared-direct' | 'shared-effective' | 'project' | 'outside-scope' | 'ambiguous';
 }
 
 export interface GroupedEntityReference {

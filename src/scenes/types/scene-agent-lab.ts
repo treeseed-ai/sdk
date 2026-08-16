@@ -11,6 +11,7 @@ export type AgentLabWorkdayConfig = {
 	durationSeconds: number;
 	maxActiveAssignments: number;
 	planningOnly: boolean;
+	activityTypes: string[];
 	timePolicy: {
 		cooperativePlanningPercent: number;
 		governedExecutionPercent: number;
@@ -170,6 +171,7 @@ export type AgentLabRunUpdate = {
 
 export type AgentLabExecutorInput = {
 	projectRoot: string;
+	contentRef?: string;
 	config: AgentLabSceneConfig;
 	sceneId: string;
 	runId: string;

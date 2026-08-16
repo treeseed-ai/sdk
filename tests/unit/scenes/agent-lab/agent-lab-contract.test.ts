@@ -15,7 +15,9 @@ import {
 	type AgentLabSnapshot,
 } from '../../../../src/scenes/index.ts';
 import { applyAgentLabAccounting,collectAgentLabExecutions,normalizeAgentLabProviderExecutions,readAgentLabAssignments } from '../../../../src/scenes/agent-lab/activity-collector.ts';
-import { agentLabDiagnostic } from '../../../../src/scenes/agent-lab/production-lifecycle.ts';
+import { agentLabDiagnostic,agentLabSimulationClassification,resolveAgentDefinitionPaths,resolveAgentLabSelectionRef } from '../../../../src/scenes/agent-lab/production-lifecycle.ts';
+import { agentLabTerminalProfileFailure,agentLabTickReadyToComplete,agentLabWorkdayReadyToComplete } from '../../../../src/scenes/agent-lab/workday-snapshot.ts';
+import { agentLabArtifactExpectations,selectedAgentLabArtifactExpectations,semanticArtifactAssertions } from '../../../../src/scenes/agent-lab/semantic-artifact-assertions.ts';
 
 function manifest() {
 	return {
@@ -23,13 +25,19 @@ function manifest() {
 		journey: { kind: 'agent-lab' }, target: { app: 'market', environment: 'local' }, workflow: [],
 		setup: { seeds: [{ name: 'treeseed', environments: ['local'], apply: true }] },
 		agentLab: {
-			scope: { kind: 'team', team: 'team:treeseed', capacityProvider: 'capacity-provider:treeseed/local' }, provider: 'local', executionProvider: 'codex',
+			scope: { kind: 'team', team: 'team:treeseed', capacityProvider: 'capacity-provider:treeseed/agents' }, provider: 'local', executionProvider: 'codex',
 			presentation: 'race-control', timeZone: 'America/New_York', repositories: ['market'],
 			agents: [], agentClasses: [],
-			workdays: [{ id: 'guide', agentTests: ['guide-editorial-cycle'], objectiveRefs: ['objective:harden-documentation-automation-workday-loop'], durationSeconds: 1800, timePolicy: { cooperativePlanningPercent: 90, governedExecutionPercent: 0, reservePercent: 10 }, planningSession: { rounds: 3, assignmentTimeboxSeconds: 300 }, maxActiveAssignments: 4, planningOnly: true, profileInputs: {} }],
+			workdays: [{ id: 'guide', agentTests: ['guide-editorial-cycle'], objectiveRefs: ['objective:harden-documentation-automation-workday-loop'], durationSeconds: 1800, timePolicy: { cooperativePlanningPercent: 90, governedExecutionPercent: 0, reservePercent: 10 }, planningSession: { rounds: 3, assignmentTimeboxSeconds: 300 }, maxActiveAssignments: 4, planningOnly: true, activityTypes: [], profileInputs: {} }],
 		},
 	};
 }
+
+it('keeps Agent Lab simulations out of ordinary workday selectors', () => {
+	expect(agentLabSimulationClassification()).toEqual({
+		executionKind: 'simulation', triggerKind: 'manual', hidden: true,
+	});
+});
 
 function snapshot(): AgentLabSnapshot {
 	const value = initialAgentLabSnapshot({
@@ -63,12 +71,18 @@ function snapshot(): AgentLabSnapshot {
 }
 
 describe('production Agent Lab scene contract', () => {
+	it('freezes the current TreeDX authoring base unless an explicit forensic ref is selected', () => {
+		const authoringBase = 'a'.repeat(40);
+		expect(resolveAgentLabSelectionRef(undefined, authoringBase)).toBe(authoringBase);
+		expect(resolveAgentLabSelectionRef('refs/heads/main', authoringBase)).toBe('refs/heads/main');
+		expect(() => resolveAgentLabSelectionRef(undefined, 'refs/heads/staging')).toThrow(/exact current TreeDX authoring revision/u);
+	});
 	it('parses a non-browser production scene and rejects mock providers', () => {
 		const diagnostics: Array<{ severity: string; code: string }> = [];
 		const parsed = parseSceneManifest(manifest(), diagnostics as never);
 		expect(parsed?.journey?.kind).toBe('agent-lab');
 		expect(parsed?.setup.seeds).toEqual([{ name: 'treeseed', environments: ['local'], apply: true }]);
-		expect(parsed?.agentLab?.scope).toEqual({ kind: 'team', team: 'team:treeseed', capacityProvider: 'capacity-provider:treeseed/local' });
+		expect(parsed?.agentLab?.scope).toEqual({ kind: 'team', team: 'team:treeseed', capacityProvider: 'capacity-provider:treeseed/agents' });
 		expect(parsed?.agentLab?.workdays[0]?.agentTests).toEqual(['guide-editorial-cycle']);
 		expect(parsed?.agentLab?.workdays[0]?.objectiveRefs).toEqual(['objective:harden-documentation-automation-workday-loop']);
 		expect(diagnostics).toEqual([]);
@@ -92,6 +106,92 @@ describe('production Agent Lab scene contract', () => {
 		expect(payload.authorization).toBe('[REDACTED]');
 		expect(sanitized.workdays[0]!.executions[0]!.transcript[0]!.text).toBe('Inspecting evidence');
 		expect(sanitizeAgentLabValue({ tokenCounts: { inputTokens: 42 }, token_usage: { output_tokens: 8 }, input_tokens: 41, reasoning_output_tokens: 9, tokenEstimate: 120, tokenEstimateSource: 'character-estimate', total_token_estimate: 240, accessToken: 'secret' })).toEqual({ tokenCounts: { inputTokens: 42 }, token_usage: { output_tokens: 8 }, input_tokens: 41, reasoning_output_tokens: 9, tokenEstimate: 120, tokenEstimateSource: 'character-estimate', total_token_estimate: 240, accessToken: '[REDACTED]' });
+	});
+
+	it('bounds standalone presentation evidence while retaining durable identifiers and digests', () => {
+		const value = snapshot();
+		value.workdays[0]!.executions[0]!.transcript[0]!.payload.largeEvidence = 'x'.repeat(1_000_000);
+		value.workdays[0]!.executions[0]!.assignment = { id: 'assignment-1', prompt: 'y'.repeat(1_000_000) };
+		const sanitized = sanitizeAgentLabSnapshot(value);
+		const encoded = JSON.stringify(sanitized);
+		expect(Buffer.byteLength(encoded, 'utf8')).toBeLessThan(100_000);
+		expect(encoded).toContain('assignment-1');
+		expect(encoded).toContain('sha256:');
+		expect(sanitized.workdays[0]!.activity[0]!.transcriptRef).toBe('mode-run://mode-1');
+	});
+
+	it('preserves bounded model and Zod field feedback from API client errors', () => {
+		const error = Object.assign(new Error('TreeDX planning content failed model validation.'),{ status:409,payload:{ code:'capacity_workday_content_model_invalid',details:{ model:'question',path:'src/content/questions/invalid.mdx',diagnostics:[{field:'title',code:'content_zod_invalid_type',message:'Required'}] },accessToken:'must-not-render' } });
+
+		expect(agentLabDiagnostic(error)).toBe('TreeDX planning content failed model validation. · capacity_workday_content_model_invalid · model=question · path=src/content/questions/invalid.mdx · title: Required (content_zod_invalid_type)');
+		expect(agentLabDiagnostic(error)).not.toContain('must-not-render');
+	});
+
+	it('resolves agent definition paths from the synchronized project inventory instead of filenames', async () => {
+		const client = { projectAgentClasses: async () => ({ payload: { items: [{ handlerRefs: { agents: [
+			{ slug: 'self-hosting-architect', contentPath: 'src/content/agents/architect.mdx' },
+			{ slug: 'guide-writer', contentPath: 'src/content/agents/editorial/guide-writer.mdx' },
+		] } }] } }) };
+		await expect(resolveAgentDefinitionPaths(client as never, 'project-1', ['self-hosting-architect', 'guide-writer']))
+			.resolves.toEqual(['src/content/agents/architect.mdx', 'src/content/agents/editorial/guide-writer.mdx']);
+	});
+
+	it('does not complete profile coverage while a later graph assignment is still active', () => {
+		const value = snapshot().workdays[0]!;
+		value.executions[0] = { ...value.executions[0]!, status: 'completed', finishedAt: '2026-08-03T14:05:00.000Z' };
+		value.assignments = [{ id: 'assignment-1', status: 'completed' }, { id: 'assignment-revision', status: 'leased' }];
+		const verified = new Set(['assignment-1']);
+		expect(agentLabWorkdayReadyToComplete(value, ['guide-steward:planning'], verified)).toBe(false);
+		value.assignments[1] = { ...value.assignments[1]!, status: 'completed' };
+		expect(agentLabWorkdayReadyToComplete(value, ['guide-steward:planning'], verified)).toBe(true);
+	});
+
+	it('requires exact semantic repository artifacts rather than a completed execution', () => {
+		const value = snapshot().workdays[0]!;
+		value.executions[0] = { ...value.executions[0]!, status:'completed',agentId:'guide-steward',activityType:'planning',artifacts:[] };
+		value.assignments = [{ id:'assignment-1',status:'completed' }];
+		const expected = agentLabArtifactExpectations([{ frontmatter:{ expect:{ semanticArtifacts:[{
+			id:'proposal',agentId:'guide-steward',activityType:'planning',model:'proposal',pathPrefix:'src/content/proposals/',
+			subjectRefs:['objective:core'],relationFields:['relatedObjectives'],requiredClaims:['Acceptance Criteria'],
+		}] } } }]);
+		expect(semanticArtifactAssertions(value, expected)[0]?.status).toBe('failed');
+		expect(agentLabWorkdayReadyToComplete(value,['guide-steward:planning'],new Set(['assignment-1']),expected)).toBe(false);
+		value.executions[0]!.artifacts = [{ model:'proposal',contentPath:'src/content/proposals/guide.mdx',commitSha:'a'.repeat(40),
+			frontmatter:{ relatedObjectives:['objective:core'] },content:'## Acceptance Criteria\n\nThe exact repository result is required.' }];
+		expect(semanticArtifactAssertions(value, expected)[0]?.status).toBe('passed');
+		expect(agentLabWorkdayReadyToComplete(value,['guide-steward:planning'],new Set(['assignment-1']),expected)).toBe(true);
+	});
+
+	it('evaluates only semantic artifacts owned by selected activity profiles', () => {
+		const tests=[{ frontmatter:{ expect:{ semanticArtifacts:[
+			{id:'research',agentId:'researcher',activityType:'planning',model:'note',pathPrefix:'src/content/notes/',subjectRefs:[],relationFields:[],requiredClaims:[]},
+			{id:'review',agentId:'reviewer',activityType:'reviewing',model:'note',pathPrefix:'src/content/notes/',subjectRefs:[],relationFields:[],requiredClaims:[]},
+		] } } }];
+		expect(selectedAgentLabArtifactExpectations(tests,['researcher'],['researcher:planning']).map((entry)=>entry.id)).toEqual(['research']);
+	});
+
+	it('does not complete until the authoritative tick reports no useful eligible work', () => {
+		expect(agentLabTickReadyToComplete({ payload: { continuation: [{ continue: false, reason: 'no_useful_eligible_work' }] } })).toBe(true);
+		expect(agentLabTickReadyToComplete({ payload: { continuation: [{ continue: true, reason: 'within_duration_and_budget' }] } })).toBe(false);
+		expect(agentLabTickReadyToComplete({ payload: { continuation: [] } })).toBe(false);
+		expect(agentLabTickReadyToComplete({ payload: {} })).toBe(false);
+	});
+
+	it('fails a required profile immediately when its assignment expires', () => {
+		const value = snapshot().workdays[0]!;
+		value.assignments = [{ id: 'assignment-expired', agentId: 'guide-steward', activityType: 'planning', status: 'expired' }];
+		expect(agentLabTerminalProfileFailure(value, ['guide-steward:planning'])).toEqual(value.assignments[0]);
+	});
+
+	it('fails a returned required profile once its retry deadline has elapsed', () => {
+		const value = snapshot().workdays[0]!;
+		value.assignments = [{
+			id: 'assignment-returned', agentId: 'guide-steward', activityType: 'planning', status: 'returned',
+			capacityEnvelope: { budget: { time: { hardDeadlineAt: '2020-01-01T00:00:00.000Z' } } },
+		}];
+		expect(agentLabTerminalProfileFailure(value, ['guide-steward:planning'])).toEqual(value.assignments[0]);
+		value.assignments[0] = { ...value.assignments[0]!, capacityEnvelope: { budget: { time: { hardDeadlineAt: '2999-01-01T00:00:00.000Z' } } } };
+		expect(agentLabTerminalProfileFailure(value, ['guide-steward:planning'])).toBeUndefined();
 	});
 
 	it('normalizes only canonical execution-provider attempts for selected assignments', () => {

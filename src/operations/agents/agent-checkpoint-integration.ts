@@ -116,6 +116,7 @@ export async function integrateAgentCheckpoint(
 	const manifestRecord = manifestFromAssignment(assignment);
 	const manifest = manifestRecord as unknown as AgentArtifactManifest;
 	const deliverableManifest = record(input.deliverableManifest);
+	const executionMode = text(assignment.executionMode,record(assignment.metadata).executionMode,graph.executionMode,record(graph.metadata).executionMode) === 'production' ? 'production' : 'simulation';
 	const checkpointCommit = text(record(manifestRecord.commit).sha);
 	const baseCommit = text(record(graph.metadata).exactBaseRef);
 	const blockers: string[] = [];
@@ -124,18 +125,20 @@ export async function integrateAgentCheckpoint(
 	if (assignment.status !== 'completed' || assignment.mode !== 'acting') blockers.push('Only completed acting assignments can be integrated.');
 	if (!projectId || graph.projectId !== projectId) blockers.push('Assignment and graph project scope do not match.');
 	if (!graphId || graph.id !== graphId) blockers.push('Assignment does not identify the supplied decision graph.');
-	if (graph.status !== 'completed') blockers.push('Decision graph is not completed.');
+	const genericWorkflow = record(graph.metadata).compiler === 'compileDecisionAssignmentGraphFromEstimates';
+	if (genericWorkflow ? !['ready','executing','completed'].includes(graph.status) : graph.status !== 'completed') blockers.push('Decision graph is not integration-eligible.');
 	if (!checkoutPath) blockers.push('Project repository topology checkoutPath is missing.');
 	if (!isInside(workspaceRoot, repositoryPath)) blockers.push('Project repository resolves outside the operator workspace.');
 	if (!immutableCommit(baseCommit)) blockers.push('Decision graph exact base ref is missing or mutable.');
 	if (!immutableCommit(checkpointCommit)) blockers.push('Assignment artifact manifest has no immutable source checkpoint.');
+	if (graph.executionMode && graph.executionMode !== executionMode) blockers.push('Assignment and decision graph execution modes do not match.');
 
 	const nodes = array(graph.nodes).map(record);
 	const contracts = array(graph.deliverableContracts).map(record);
 	const selectedNode = nodes.find((node) => text(node.id) === graphNodeId);
-	const implementationNodes = nodes.filter((node) => graphNodeStage(node) === 'implementation');
+	const implementationNodes = nodes.filter((node) => node.activityType === 'acting' && ['implementation','revision'].includes(graphNodeStage(node)));
 	const latestImplementation = implementationNodes.sort((left, right) => revisionCycle(right) - revisionCycle(left))[0];
-	if (!selectedNode || graphNodeStage(selectedNode) !== 'implementation') blockers.push('Assignment is not an engineering implementation checkpoint.');
+	if (!selectedNode || selectedNode.activityType !== 'acting' || !['implementation','revision'].includes(graphNodeStage(selectedNode))) blockers.push('Assignment is not an implementation checkpoint.');
 	if (latestImplementation && text(latestImplementation.id) !== graphNodeId) blockers.push('Assignment checkpoint was superseded by a later implementation revision.');
 	if (selectedNode?.status !== 'completed') blockers.push('Selected implementation graph node is not completed.');
 	const contractId = text(record(selectedNode?.metadata).producesDeliverableContractId);
@@ -149,14 +152,16 @@ export async function integrateAgentCheckpoint(
 		|| text(sourceAuthority.checkpointCommit) !== checkpointCommit) {
 		blockers.push('Approved implementation deliverable does not select this assignment checkpoint authority.');
 	}
-	const finalReview = nodes.filter((node) => graphNodeStage(node) === 'review').sort((left, right) => revisionCycle(right) - revisionCycle(left))[0];
+	const finalReview = nodes.filter((node) => graphNodeStage(node) === 'review' && (!genericWorkflow || text(record(node.metadata).reviewedNodeId) === graphNodeId)).sort((left, right) => revisionCycle(right) - revisionCycle(left))[0];
 	const finalReviewContractId = text(record(finalReview?.metadata).producesDeliverableContractId);
 	const finalReviewContract = contracts.find((entry) => text(entry.id) === finalReviewContractId);
 	if (!finalReview || finalReview.status !== 'completed' || finalReviewContract?.status !== 'approved') blockers.push('Final independent review is not approved.');
-	const finalVerification = nodes.filter((node) => graphNodeStage(node) === 'verification').sort((left, right) => revisionCycle(right) - revisionCycle(left))[0];
-	if (!finalVerification || finalVerification.status !== 'completed') blockers.push('Final verification stage is not completed.');
-	const releaseNode = nodes.find((node) => graphNodeStage(node) === 'release');
-	if (!releaseNode || releaseNode.status !== 'completed') blockers.push('Release-readiness stage is not completed.');
+	if (!genericWorkflow) {
+		const finalVerification = nodes.filter((node) => graphNodeStage(node) === 'verification').sort((left, right) => revisionCycle(right) - revisionCycle(left))[0];
+		if (!finalVerification || finalVerification.status !== 'completed') blockers.push('Final verification stage is not completed.');
+		const releaseNode = nodes.find((node) => graphNodeStage(node) === 'release');
+		if (!releaseNode || releaseNode.status !== 'completed') blockers.push('Release-readiness stage is not completed.');
+	}
 
 	try {
 		const validation = validateAgentArtifactManifest(manifest);
@@ -229,10 +234,12 @@ export async function integrateAgentCheckpoint(
 	if (input.mode === 'execute' && blockers.length === 0 && integratedCommit) {
 		const graphMetadata = record(graph.metadata);
 		const proposalVersionValue = Number(graphMetadata.proposalVersion ?? record(decisionInput).proposalVersion);
-		const dependencies = array(graphMetadata.decisionDependencies ?? graphMetadata.executionDependencies).map(record)
+		const dependencies = array(graphMetadata.decisionDependencies).map(record)
 			.map((dependency) => ({ projectId: text(dependency.projectId), decisionId: text(dependency.decisionId) }))
 			.filter((dependency) => dependency.projectId && dependency.decisionId);
 		const written = writeGovernedExecutionAuthority(workspaceRoot, {
+			executionMode,
+			upstreamMutationPolicy: executionMode === 'production' ? 'exact-approved-ref' : 'denied',
 			teamId: text(assignment.teamId, manifestRecord.teamId) || null,
 			projectId,
 			proposalId: text(graphMetadata.proposalId, record(decisionInput).proposalId) || null,
@@ -274,6 +281,6 @@ export async function integrateAgentCheckpoint(
 		commits,
 		changedPaths,
 		blockers,
-		nextOperation: blockers.length === 0 && input.mode === 'execute' ? 'treeseed save' : null,
+		nextOperation: blockers.length === 0 && input.mode === 'execute' && executionMode === 'production' ? 'treeseed save' : null,
 	};
 }

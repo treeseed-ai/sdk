@@ -20,6 +20,15 @@ export interface GovernanceProposalContentProvenance {
 	repositoryId?: string | null;
 }
 
+export interface GovernanceProposalParticipationSnapshot {
+	proposalVersion: number;
+	planningGraphRevision: string;
+	digest: string;
+	groupIds: string[];
+	memberIds: string[];
+	authorAgentId: string;
+}
+
 export interface GovernanceProposalReadinessInput {
 	title?: string;
 	summary?: string;
@@ -37,6 +46,10 @@ export interface GovernanceProposalReadinessInput {
 	requiredReviewerClasses?: string[];
 	reviewedReviewerClasses?: string[];
 	requiresEstimate?: boolean;
+	proposalVersion?: number;
+	participationSnapshot?: GovernanceProposalParticipationSnapshot | null;
+	completedParticipantIds?: string[];
+	independentReviewerIds?: string[];
 }
 
 export interface GovernanceProposalReadiness {
@@ -49,6 +62,8 @@ export interface GovernanceProposalReadiness {
 	unresolvedBlockerCount: number;
 	missingParticipantEstimates: string[];
 	missingReviewerClasses: string[];
+	participationVersionReady: boolean;
+	authorIndependent: boolean;
 }
 
 function strings(value: unknown): string[] {
@@ -94,14 +109,22 @@ export function evaluateGovernanceProposalReadiness(input: GovernanceProposalRea
 	const estimateCount = Math.max(0, Number(input.estimateCount ?? 0));
 	const unresolvedBlockerCount = Math.max(0, Number(input.unresolvedBlockerCount ?? 0));
 	const estimated = new Set(strings(input.estimatedParticipantIds));
-	const missingParticipantEstimates = strings(input.requiredParticipantIds).filter((id) => !estimated.has(id));
+	const snapshot = input.participationSnapshot;
+	const requiredParticipants = snapshot?.memberIds?.length ? strings(snapshot.memberIds) : strings(input.requiredParticipantIds);
+	const completedParticipants = new Set(strings(input.completedParticipantIds).length ? strings(input.completedParticipantIds) : [...estimated]);
+	const missingParticipantEstimates = requiredParticipants.filter((id) => !completedParticipants.has(id));
+	const participationVersionReady = !snapshot || snapshot.proposalVersion === input.proposalVersion;
+	const independentReviewerIds = strings(input.independentReviewerIds).filter((id) => id !== snapshot?.authorAgentId);
+	const authorIndependent = !snapshot || independentReviewerIds.length > 0;
 	const reviewedClasses = new Set(strings(input.reviewedReviewerClasses));
 	const missingReviewerClasses = strings(input.requiredReviewerClasses).filter((id) => !reviewedClasses.has(id));
 	const missingVoting = [...missingContent];
 	if (independentReviewCount < 1) missingVoting.push('independent review');
-	if (input.requiresEstimate !== false && estimateCount < 1) missingVoting.push('structured estimate');
+	if (input.requiresEstimate === true && estimateCount < 1) missingVoting.push('structured estimate');
 	if (unresolvedBlockerCount > 0) missingVoting.push('resolved blocking questions and concerns');
 	if (missingParticipantEstimates.length) missingVoting.push('estimate or not-applicable rationale from every participant');
 	if (missingReviewerClasses.length) missingVoting.push('required proposal-type reviews');
-	return { contentReady: missingContent.length === 0, votingReady: missingVoting.length === 0, missingContent, missingVoting, independentReviewCount, estimateCount, unresolvedBlockerCount, missingParticipantEstimates, missingReviewerClasses };
+	if (!participationVersionReady) missingVoting.push('participation for the exact proposal version');
+	if (!authorIndependent) missingVoting.push('author-independent group review');
+	return { contentReady: missingContent.length === 0, votingReady: missingVoting.length === 0, missingContent, missingVoting, independentReviewCount, estimateCount, unresolvedBlockerCount, missingParticipantEstimates, missingReviewerClasses, participationVersionReady, authorIndependent };
 }

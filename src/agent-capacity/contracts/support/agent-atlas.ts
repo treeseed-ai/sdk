@@ -163,6 +163,23 @@ export interface AgentAtlasActivityItem {
   metadata: Record<string, unknown>;
 }
 
+export interface AgentAtlasWorkdaySummary {
+  id: string;
+  title: string;
+  status: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  assignments: {
+    total: number;
+    active: number;
+    completed: number;
+    failed: number;
+    cancelled: number;
+  };
+  eventCount: number;
+  message: string;
+}
+
 export interface AgentAtlasProjection {
   revision: string;
   generatedAt: string;
@@ -172,6 +189,12 @@ export interface AgentAtlasProjection {
   nodeStates: AgentAtlasNodeState[];
   assignments: AgentAtlasAssignmentSummary[];
   activity: AgentAtlasActivityItem[];
+  workdaySummary: AgentAtlasWorkdaySummary | null;
+  activityWindow: {
+    total: number;
+    loaded: number;
+    truncated: boolean;
+  };
   playback: AgentAtlasPlayback;
   alerts: Array<{
     id: string;

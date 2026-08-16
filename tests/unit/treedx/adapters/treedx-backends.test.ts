@@ -10,6 +10,7 @@ import { TreeDxApiError, TreeDxClient } from '../../../../src/treedx/index.ts';
 import {
 	LocalContentBackend,
 	TreeDxContentBackend,
+	TreeDxContentValidationError,
 	TreeDxContentRepositoryConfigError,
 	TreeDxExecBackend,
 	TreeDxGraphBackend,
@@ -73,6 +74,7 @@ function makeBackend(options: {
 	repoRoot?: string;
 	workspaceId?: string;
 	contentPathMap?: Record<string, string>;
+	directRepoId?: string;
 }) {
 	const repoRoot = options.repoRoot ?? sdkFixtureRoot;
 	const client = makeTreeDxClient(options.transport);
@@ -87,6 +89,7 @@ function makeBackend(options: {
 		resolver,
 		ref: 'refs/heads/main',
 		workspaceId: options.workspaceId,
+		directRepoId: options.directRepoId,
 		contentPathMap: options.contentPathMap,
 		localLeaseStore: makeLocalContentStore(repoRoot),
 	});
@@ -152,6 +155,13 @@ describe('TreeDX-backed TreeSeed content repository', () => {
 		await expect(sdk.search({ model: 'knowledge', limit: 1 }))
 			.rejects
 			.toBeInstanceOf(TreeDxContentRepositoryConfigError);
+	});
+
+	it('places the default local database inside the resolved repository root', () => {
+		const repoRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-sdk-local-'));
+		const sdk = AgentSdk.createLocal({ repoRoot });
+		const database = sdk.database as unknown as { db: { path: string } };
+		expect(database.db.path).toBe(resolve(repoRoot, '.treeseed/generated/environments/local/site-data.sqlite'));
 	});
 
 	it('keeps explicit AgentSdk.createLocal filesystem content selection local', () => {
@@ -289,6 +299,43 @@ describe('TreeDX-backed TreeSeed content repository', () => {
 		expect(transport.requests.some((request) =>
 			request.method === 'PUT' && request.path === '/api/v1/workspaces/workspace-1/files',
 		)).toBe(true);
+	});
+
+	it('rejects invalid known-model TreeDX content during read with exact diagnostics', async () => {
+		const transport = new RecordingTransport((request) => {
+			if (request.method === 'GET' && request.path === '/api/v1/repos') return { items: [{ id: 'repo-a', name: 'content-a' }] };
+			if (request.method === 'POST' && request.path.endsWith('/paths/list')) return { paths: ['src/content/pages/invalid.mdx'] };
+			if (request.method === 'POST' && request.path.endsWith('/files/read')) return { content: '---\nslug: invalid\n---\nInvalid page.\n' };
+			return {};
+		});
+		const backend = makeBackend({ transport, contentPathMap: { page: 'src/content/pages/**' } });
+
+		await expect(backend.list('page')).rejects.toMatchObject({
+			name: 'TreeDxContentValidationError',
+			code: 'treedx_content_model_invalid',
+			details: [{ path: 'src/content/pages/invalid.mdx', model: 'page', field: 'title' }],
+		});
+	});
+
+	it('does not hide invalid direct TreeDX content as a missing record', async () => {
+		const transport = new RecordingTransport((request) => request.method === 'POST' && request.path.endsWith('/files/read')
+			? { content: '---\ntitle: [unterminated\n---\n' }
+			: {});
+		const backend = makeBackend({ transport, directRepoId: 'repo-a', contentPathMap: { page: 'src/content/pages/**' } });
+
+		await expect(backend.get({ model: 'page', slug: 'invalid' })).rejects.toMatchObject({
+			code: 'treedx_content_model_invalid',
+			details: [{ path: 'src/content/pages/invalid.md', model: 'page', field: 'frontmatter', code: 'content_frontmatter_invalid' }],
+		});
+	});
+
+	it('rejects invalid known-model writes before opening or mutating a TreeDX workspace', async () => {
+		const transport = new RecordingTransport(() => ({}));
+		const backend = makeBackend({ transport, workspaceId: 'workspace-1', contentPathMap: { page: 'src/content/pages/**' } });
+
+		await expect(backend.create({ model: 'page', actor: 'tester', data: { slug: 'invalid' } }))
+			.rejects.toBeInstanceOf(TreeDxContentValidationError);
+		expect(transport.requests).toEqual([]);
 	});
 
 	it('preserves TreeDxApiError failures from the local TreeDX client', async () => {

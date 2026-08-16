@@ -91,6 +91,10 @@ export function stageCandidateAttestationBlockers(root: string) {
 	if (!manifest) return ['No staging candidate manifest is available. Run `trsd stage` and wait for staging verification workflows.'];
 	const blockers: string[] = [];
 	if (manifest.schemaVersion !== 3 || !manifest.integrationReceiptId) blockers.push('The staging candidate predates receipt-based repository federation. Run `trsd stage` again.');
+	if (manifest.governanceAuthority) {
+		if (manifest.candidateId !== stageCandidateIdentity(manifest.integrationReceiptId, manifest.verification, manifest.governanceAuthority)) blockers.push('The staging candidate governance evidence or verification identity has been altered. Run `trsd stage` again.');
+		if (manifest.governanceAuthority.authorityIds.length > 0 && manifest.governanceAuthority.status !== 'passed') blockers.push('The staging candidate does not contain successful governance authority validation.');
+	}
 	const rootPath = repoRoot(root);
 	if (manifest.root.commit !== headCommit(rootPath)) blockers.push('The local root staging head no longer matches the latest staged candidate.');
 	try {
@@ -236,17 +240,14 @@ export function stageConflictError(message: string, details: Record<string, unkn
 	});
 }
 
-export function createStageCandidateManifest(root: string, runId: string, branchName: string, plan: { repos: StageRepoPlan[] }, verification: StageCandidateManifest['verification']): StageCandidateManifest {
+export function createStageCandidateManifest(root: string, runId: string, branchName: string, plan: { repos: StageRepoPlan[] }, verification: StageCandidateManifest['verification'], governanceAuthority: StageCandidateManifest['governanceAuthority']): StageCandidateManifest {
 	const receipt = readLatestIntegrationChangeSet(root);
 	if (!receipt) throw new Error('The saved integration change-set receipt is missing. Run `trsd save` before staging.');
 	if (receipt.sourceBranch !== branchName) throw new Error(`Integration receipt ${receipt.receiptId} is for ${receipt.sourceBranch}, not ${branchName}.`);
 	const rootRepository = receipt.repositories.find((repository) => repository.role === 'root');
 	if (!rootRepository) throw new Error(`Integration receipt ${receipt.receiptId} has no root repository.`);
 	const packageRepos = receipt.repositories.filter((repository) => repository.role !== 'root');
-	const candidateId = createHash('sha256').update(JSON.stringify({
-		integrationReceiptId: receipt.receiptId,
-		verification,
-	})).digest('hex');
+	const candidateId = stageCandidateIdentity(receipt.receiptId, verification, governanceAuthority);
 	return {
 		schemaVersion: 3,
 		kind: 'treeseed.stage-candidate',
@@ -265,6 +266,11 @@ export function createStageCandidateManifest(root: string, runId: string, branch
 			verified: verification.status === 'passed' || verification.status === 'skipped',
 		})),
 		verification,
+		governanceAuthority,
 		stagingHeadsBefore: Object.fromEntries(plan.repos.map((repo) => [repo.name, repo.stagingHeadBefore])),
 	};
+}
+
+function stageCandidateIdentity(integrationReceiptId: string, verification: StageCandidateManifest['verification'], governanceAuthority: StageCandidateManifest['governanceAuthority']) {
+	return createHash('sha256').update(JSON.stringify({ integrationReceiptId,verification,governanceAuthority })).digest('hex');
 }

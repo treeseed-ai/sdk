@@ -361,6 +361,7 @@ it('records console and network failures in reports and jsonl artifacts', async 
 			adapter.page.emitAbortedResource('http://example.test/logo.svg', 'image');
 			adapter.page.emitAbortedResource('http://example.test/next', 'document');
 			adapter.page.emitAbortedResource('http://example.test/lazy-module.js', 'script');
+			adapter.page.emitAbortedResource('http://example.test/v1/events/stream', 'eventsource');
 			adapter.page.emitAbortedResource(url, 'fetch');
 			adapter.page.emitAbortedResource('http://example.test/submit', 'fetch');
 			adapter.page.emitAbortedPrefetch('http://example.test/account');
@@ -375,6 +376,7 @@ it('records console and network failures in reports and jsonl artifacts', async 
 		expect(report.steps[0]?.networkErrors.some((entry) => entry.url?.endsWith('/logo.svg'))).toBe(false);
 		expect(report.steps[0]?.networkErrors.some((entry) => entry.url?.endsWith('/next'))).toBe(false);
 		expect(report.steps[0]?.networkErrors.some((entry) => entry.url?.endsWith('/lazy-module.js'))).toBe(false);
+		expect(report.steps[0]?.networkErrors.some((entry) => entry.url?.endsWith('/v1/events/stream'))).toBe(false);
 		expect(report.steps[0]?.networkErrors.some((entry) => entry.url === 'http://example.test/')).toBe(false);
 		expect(report.steps[0]?.networkErrors.some((entry) => entry.url?.endsWith('/account'))).toBe(false);
 		expect(report.steps[0]?.networkErrors.some((entry) => entry.url?.endsWith('/submit'))).toBe(true);

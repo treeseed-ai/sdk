@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { describe,expect,it } from 'vitest';
-import { applyPlatformWorkset,planPlatformWorkset } from '../../../src/operations/services/repositories/platform-workset.ts';
+import { applyPlatformWorkset,planPlatformWorkset,verifiedPlatformWorksetReceipt } from '../../../src/operations/services/repositories/platform-workset.ts';
 import { discoverManagedRepositories } from '../../../src/operations/services/support/managed-repositories.ts';
 
 function git(cwd: string, args: string[]) {
@@ -34,66 +34,75 @@ function platformFixture() {
 	const platform = resolve(root, 'platform');
 	mkdirSync(platform);
 	writeFileSync(resolve(platform, '.gitignore'), '.treeseed/\n/packages/\n/templates/\n/.fixtures/\n');
-	writeFileSync(resolve(platform, 'treeseed.portfolio.json'), `${JSON.stringify({
-		schemaVersion: 1,
-		kind: 'treeseed.portfolio',
-		materialization: 'ephemeral_workset',
-		integrationAuthority: 'treeseed.integration-change-set/v1',
-		repositories: [
-			{ path: 'packages/sdk', repository: first.repository, commit: first.commit },
-			{ path: 'templates/engineering', repository: second.repository, commit: second.commit },
-		],
-	}, null, 2)}\n`);
 	git(platform, ['init', '--quiet']);
 	git(platform, ['config', 'user.name', 'Workset Test']);
 	git(platform, ['config', 'user.email', 'workset@example.test']);
-	git(platform, ['add', '.gitignore', 'treeseed.portfolio.json']);
-	git(platform, ['commit', '--quiet', '-m', 'Create Platform portfolio']);
-	return { platform, first, second };
+	git(platform, ['add', '.gitignore']);
+	git(platform, ['commit', '--quiet', '-m', 'Create Platform workspace']);
+	const inventory = [
+		{ projectId: 'project-sdk', role: 'primary', path: 'packages/sdk', repository: first.repository, branch: 'main' },
+		{ projectId: 'project-template-engineering', role: 'primary', path: 'templates/engineering', repository: second.repository, branch: 'main' },
+	];
+	return { platform, first, second, inventory };
 }
 
 describe('Platform repository worksets', () => {
 	it('plans, materializes, verifies, receipts, and idempotently replays exact detached repositories', () => {
 		const fixture = platformFixture();
-		const plan = planPlatformWorkset({ root: fixture.platform });
+		const input = { root: fixture.platform, teamId: 'team-a', inventory: fixture.inventory };
+		const plan = planPlatformWorkset(input);
 		expect(plan.summary).toEqual({ create: 2, noop: 0, blocked: 0 });
 
-		const applied = applyPlatformWorkset({ root: fixture.platform });
+		const applied = applyPlatformWorkset(input);
 		expect(applied.summary).toEqual({ create: 0, noop: 2, blocked: 0 });
 		expect(git(resolve(fixture.platform, 'packages/sdk'), ['rev-parse', 'HEAD'])).toBe(fixture.first.commit);
 		expect(git(resolve(fixture.platform, 'packages/sdk'), ['branch', '--show-current'])).toBe('');
 		expect(existsSync(applied.receiptPath)).toBe(true);
-		expect(JSON.parse(readFileSync(applied.receiptPath, 'utf8'))).toMatchObject({ kind: 'treeseed.platform-workset-receipt', status: 'verified' });
-		expect(planPlatformWorkset({ root: fixture.platform }).summary).toEqual({ create: 0, noop: 2, blocked: 0 });
+		expect(JSON.parse(readFileSync(applied.receiptPath, 'utf8'))).toMatchObject({ kind: 'treeseed.platform-workset-receipt', status: 'verified', teamId: 'team-a', inventoryDigest: expect.any(String) });
+		expect(planPlatformWorkset(input).summary).toEqual({ create: 0, noop: 2, blocked: 0 });
 		expect(git(fixture.platform, ['status', '--porcelain'])).toBe('');
 		expect(discoverManagedRepositories(fixture.platform).map(({ relativeDir, kind }) => ({ relativeDir, kind })).sort((left, right) => left.relativeDir.localeCompare(right.relativeDir))).toEqual([
 			{ relativeDir: '.', kind: 'root' },
 			{ relativeDir: 'packages/sdk', kind: 'package' },
 			{ relativeDir: 'templates/engineering', kind: 'template' },
 		]);
+		const receipt = JSON.parse(readFileSync(applied.receiptPath, 'utf8'));
+		receipt.completed[0].commit = '0'.repeat(40);
+		writeFileSync(applied.receiptPath, `${JSON.stringify(receipt)}\n`, 'utf8');
+		expect(verifiedPlatformWorksetReceipt(fixture.platform)).toBeNull();
+		expect(discoverManagedRepositories(fixture.platform).map((entry) => entry.relativeDir)).toEqual(['.']);
 	});
 
 	it('creates a requested branch and blocks dirty or divergent replays without resetting them', () => {
 		const fixture = platformFixture();
-		applyPlatformWorkset({ root: fixture.platform, branch: 'feature/federation' });
+		const input = { root: fixture.platform, teamId: 'team-a', inventory: fixture.inventory, branch: 'feature/federation', authority: {
+			schemaVersion: 1 as const, kind: 'treeseed.governed-workset-authority' as const, status: 'active' as const,
+			teamId: 'team-a', projectId: 'project-sdk', decisionId: 'decision-a', capacityPlanId: 'plan-a', workDayId: 'workday-a',
+			assignmentId: 'assignment-a', mode: 'acting' as const, baseCommit: fixture.first.commit, expiresAt: new Date(Date.now() + 60_000).toISOString(),
+		} };
+		applyPlatformWorkset(input);
 		const sdk = resolve(fixture.platform, 'packages/sdk');
 		expect(git(sdk, ['branch', '--show-current'])).toBe('feature/federation');
 		writeFileSync(resolve(sdk, 'README.md'), '# locally edited\n');
-		const dirty = planPlatformWorkset({ root: fixture.platform, branch: 'feature/federation' });
+		const dirty = planPlatformWorkset(input);
 		expect(dirty.summary).toEqual({ create: 0, noop: 1, blocked: 1 });
 		expect(dirty.actions.find((entry) => entry.path === 'packages/sdk')?.reason).toContain('uncommitted');
+		expect(dirty.actions.find((entry) => entry.path === 'packages/sdk')?.custody).toBe('assignment-write');
+		expect(dirty.actions.find((entry) => entry.path === 'templates/engineering')?.custody).toBe('read-only');
 	});
 
-	it('rejects Market, content, duplicate, unsafe, and non-exact portfolio entries', () => {
+	it('rejects writable custody without an acting assignment authority', () => {
+		const fixture = platformFixture();
+		expect(() => planPlatformWorkset({ root: fixture.platform, teamId: 'team-a', inventory: fixture.inventory, branch: 'feature/unsafe' }))
+			.toThrow(/acting-assignment authority/iu);
+	});
+
+	it('rejects Market, content, duplicate, unsafe, and unresolved team inventory entries', () => {
 		const root = mkdtempSync(resolve(tmpdir(), 'trsd-platform-workset-invalid-'));
-		const manifest = (repositories: unknown[]) => writeFileSync(resolve(root, 'treeseed.portfolio.json'), JSON.stringify({ schemaVersion: 1, kind: 'treeseed.portfolio', materialization: 'ephemeral_workset', repositories }));
-		manifest([{ path: 'packages/market', repository: 'treeseed-ai/market', commit: 'a'.repeat(40) }]);
-		expect(() => planPlatformWorkset({ root })).toThrow(/cannot materialize/iu);
-		manifest([{ path: '../api', repository: 'treeseed-ai/api', commit: 'a'.repeat(40) }]);
-		expect(() => planPlatformWorkset({ root })).toThrow(/safe relative path/iu);
-		manifest([{ path: 'packages/api', repository: 'treeseed-ai/api-content', commit: 'a'.repeat(40) }]);
-		expect(() => planPlatformWorkset({ root })).toThrow(/cannot materialize/iu);
-		manifest([{ path: 'packages/api', repository: 'treeseed-ai/api', commit: 'main' }]);
-		expect(() => planPlatformWorkset({ root })).toThrow(/exact 40-character/iu);
+		const entry = (path: string, repository: string, branch = 'main') => ({ projectId: 'project-a', role: 'primary', path, repository, branch });
+		expect(() => planPlatformWorkset({ root, teamId: 'team-a', inventory: [entry('packages/market', 'treeseed-ai/market')] })).toThrow(/cannot materialize/iu);
+		expect(() => planPlatformWorkset({ root, teamId: 'team-a', inventory: [entry('../api', 'treeseed-ai/api')] })).toThrow(/safe relative path/iu);
+		expect(() => planPlatformWorkset({ root, teamId: 'team-a', inventory: [entry('packages/api', 'treeseed-ai/api-content')] })).toThrow(/cannot materialize/iu);
+		expect(() => planPlatformWorkset({ root, teamId: 'team-a', inventory: [entry('packages/api', 'file:///missing/repository.git')] })).toThrow(/could not be resolved/iu);
 	});
 });

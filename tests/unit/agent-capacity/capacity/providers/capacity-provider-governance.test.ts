@@ -101,6 +101,15 @@ describe('capacity provider governance contracts', () => {
 			],
 		};
 		expect(validateCapacityProviderManifestV2(manifest)).toEqual({ ok: true, diagnostics: [] });
+		manifest.executionProviders[0]!.minimumAssignmentDuration = { amount: 5, unit: 'business-days', calendar: { timeZone: 'America/New_York' } };
+		expect(validateCapacityProviderManifestV2(manifest)).toEqual({ ok: true, diagnostics: [] });
+		manifest.executionProviders[0]!.minimumAssignmentDuration = { amount: 0, unit: 'seconds' };
+		expect(validateCapacityProviderManifestV2(manifest).diagnostics.map((entry) => entry.code)).toContain('provider_execution_provider_minimum_duration_invalid');
+		delete manifest.executionProviders[0]!.minimumAssignmentDuration;
+		manifest.defaultExecutionProviderId = 'missing';
+		expect(validateCapacityProviderManifestV2(manifest).diagnostics.map((entry) => entry.code)).toContain('provider_default_execution_provider_unknown');
+		manifest.defaultExecutionProviderId = 'codex';
+		expect(validateCapacityProviderManifestV2(manifest)).toEqual({ ok: true, diagnostics: [] });
 		manifest.executionProviders[0]!.researchSourcePolicy!.allowedDomains = [];
 		expect(validateCapacityProviderManifestV2(manifest).diagnostics.map((entry) => entry.code)).toContain('research_source_policy_domains_invalid');
 		manifest.executionProviders[0]!.researchSourcePolicy!.allowedDomains = ['example.test'];

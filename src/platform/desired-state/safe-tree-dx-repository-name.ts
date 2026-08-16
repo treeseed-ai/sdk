@@ -19,14 +19,56 @@ function projectContentPath(architecture: Record<string, unknown>) {
 	return sitePath === '.' ? 'src/content' : `${sitePath}/src/content`;
 }
 
-export function localTreeDxContentProjects(tenantRoot: string) {
-	const seedPath = resolvePath(tenantRoot, 'seeds', 'treeseed.yaml');
-	if (!existsSync(seedPath)) return [];
-	const parsed = parseYaml(readFileSync(seedPath, 'utf8')) as unknown;
-	const resources = stringRecord((parsed as Record<string, unknown> | null)?.resources);
-	const projects = Array.isArray(resources.projects) ? resources.projects : [];
+function persistedSeedNames(tenantRoot: string) {
+	const statePath = resolvePath(tenantRoot, '.treeseed', 'run', 'state.json');
+	if (!existsSync(statePath)) return [];
+	try {
+		const state = stringRecord(JSON.parse(readFileSync(statePath, 'utf8')));
+		return Array.isArray(state.seeds) ? state.seeds.map(String).filter(Boolean) : [];
+	} catch {
+		return [];
+	}
+}
+
+function selectedSeedResources(tenantRoot: string, selectedSeedNames?: string[]) {
+	const selected = selectedSeedNames?.length ? selectedSeedNames : persistedSeedNames(tenantRoot);
+	const names = selected.length ? selected : ['treeseed'];
+	return names.flatMap((seedName) => {
+		const seedPath = resolvePath(tenantRoot, 'seeds', `${seedName}.yaml`);
+		if (!existsSync(seedPath)) return [];
+		const parsed = stringRecord(parseYaml(readFileSync(seedPath, 'utf8')));
+		const environments = Array.isArray(parsed.environments) ? parsed.environments.map(String) : ['local'];
+		return environments.includes('local') ? [stringRecord(parsed.resources)] : [];
+	});
+}
+
+function uniqueSeedEntries(entries: unknown[], identity: (entry: Record<string, unknown>) => string) {
+	const unique = new Map<string, Record<string, unknown>>();
+	for (const entry of entries) {
+		const value = stringRecord(entry);
+		const key = identity(value);
+		if (!key) continue;
+		const current = unique.get(key);
+		if (current && JSON.stringify(current) !== JSON.stringify(value)) {
+			throw new Error(`Selected local seeds declare conflicting TreeDX input ${key}.`);
+		}
+		unique.set(key, value);
+	}
+	return [...unique.values()];
+}
+
+export function localTreeDxContentProjects(tenantRoot: string, selectedSeedNames?: string[]) {
+	const resourceSets = selectedSeedResources(tenantRoot, selectedSeedNames);
+	const projects = uniqueSeedEntries(resourceSets.flatMap((resources) => Array.isArray(resources.projects) ? resources.projects : []), (project) => (
+		typeof project.key === 'string' && project.key.trim()
+			? project.key.trim()
+			: `project:treeseed/${String(project.slug ?? '').trim()}`
+	));
 	const contentRepositories = new Map<string, Record<string, unknown>>();
-	for (const entry of Array.isArray(resources.hubRepositories) ? resources.hubRepositories : []) {
+	const repositoryEntries = uniqueSeedEntries(resourceSets.flatMap((resources) => Array.isArray(resources.hubRepositories) ? resources.hubRepositories : []), (repository) => (
+		String(repository.key ?? `${String(repository.project ?? '')}:${String(repository.role ?? '')}`)
+	));
+	for (const entry of repositoryEntries) {
 		const repository = stringRecord(entry);
 		const projectKey = typeof repository.project === 'string' ? repository.project.trim() : '';
 		if (projectKey && repository.role === 'content') contentRepositories.set(projectKey, repository);
@@ -37,10 +79,13 @@ export function localTreeDxContentProjects(tenantRoot: string) {
 			? project.key.trim()
 			: `project:treeseed/${String(project.slug ?? '').trim()}`;
 		const slug = typeof project.slug === 'string' && project.slug.trim() ? project.slug.trim() : '';
+		const teamKey = typeof project.team === 'string' ? project.team.trim() : '';
+		const teamSlug = teamKey.split(/[:/]/u).filter(Boolean).at(-1) ?? '';
 		const repository = stringRecord(project.repository);
 		const architecture = stringRecord(project.architecture);
 		const contentRepository = contentRepositories.get(projectKey);
 		const remoteUrl = typeof contentRepository?.gitUrl === 'string' ? contentRepository.gitUrl.trim() : '';
+		const remotePolicy = stringRecord(contentRepository?.repositoryPolicy);
 		const contentPath = remoteUrl ? 'src/content' : projectContentPath(architecture);
 		if (!slug) return [];
 		const checkoutPath = typeof repository.checkoutPath === 'string' && repository.checkoutPath.trim()
@@ -61,6 +106,7 @@ export function localTreeDxContentProjects(tenantRoot: string) {
 			...(existsSync(proposalTypesPath) ? ['.treeseed/governance/proposal-types'] : []), ...repositoryFiles];
 		return [{
 			projectKey,
+			teamSlug,
 			slug,
 			repositoryName: projectRepositoryName(slug),
 			repositoryId: projectRepositoryName(slug),
@@ -70,6 +116,7 @@ export function localTreeDxContentProjects(tenantRoot: string) {
 			remoteUrl: remoteUrl || undefined,
 			remoteOwner: typeof contentRepository?.owner === 'string' ? contentRepository.owner : undefined,
 			remoteName: typeof contentRepository?.name === 'string' ? contentRepository.name : undefined,
+			remoteVisibility: remotePolicy.visibility === 'private' ? 'private' : 'public',
 			sourceBranch: remoteUrl ? 'staging' : undefined,
 			seedPaths: remoteUrl ? ['src/content'] : seedPaths,
 			seedDigest: remoteUrl ? undefined : localTreeDxSeedDigest({ localRoot, contentPath, seedPaths }),

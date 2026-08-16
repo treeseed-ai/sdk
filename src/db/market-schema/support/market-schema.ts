@@ -2,7 +2,9 @@ import { betterAuthAccount,betterAuthVerification,capacityExecutionProviders,cap
 import { agentLabViewState } from '../accounts/agent-lab-view-state.ts';
 import { legacyCreditConversionProfiles,cursorState,leaseState,marketAuthCredentials,marketAuthPasswordResets,marketOperationRunners,messageQueue,notificationEmailDeliveries,notificationEvents,platformOperationEvents,platformOperations,runtimeRecords,seedRuns,sessionEvents,userNotifications } from '../accounts/notification-events.ts';
 import { credentialEnvelopes,externalVaultBindings,secretOperationLeases,teamServiceCapabilityBindings,teamServiceConnections,teamServiceCredentialProfiles,teamVaultGrants,teamVaults,userVaultKeys } from '../accounts/team-services.ts';
-import { agentFallbackOutputs,agentModeRuns,capacityWorkdayRuns,decisionAssignmentGraphs,decisionExecutionInputs,decisionPlanningStatuses,deliverableContracts,deliverableManifests,planningInputRequests,structuredAgentEstimates } from '../agents/agent-mode-runs.ts';
+import { agentFallbackOutputs,agentInvocationRequests,agentModeRuns,capacityWorkdayRuns,decisionAssignmentGraphs,decisionExecutionInputs,decisionPlanningStatuses,deliverableContracts,deliverableManifests,structuredAgentEstimates } from '../agents/agent-mode-runs.ts';
+import { agentContextQueryChecks } from '../agents/agent-context-query-checks.ts';
+import { agentClientActions,agentClientSessions,agentOperationHandoffs } from '../agents/communication-control.ts';
 import { capacityAllocationSets,capacityLedgerEntries,capacityProviderAssignments,capacityUsageActuals,projectAgentClasses,providerAvailabilitySessions } from '../capacity/accounting/capacity-ledger-entries.ts';
 import { approvalRequests,hubContentSources,hubRepositories,treeDxInstances } from '../projects/knowledge/project-knowledge-governance.ts';
 import { projectRemoteRepositoryBindings,projectWorkflowOperations,providerConnectorAuthorizations,providerCredentialAuthorities,providerWebhookDeliveries,remoteCredentialDeliveries,remoteGitOperationGrants,workflowConfigurationDeliveries,workflowConfigurationRecords,workflowOperationRuns } from '../projects/integrations/provider-operations.ts';
@@ -20,6 +22,10 @@ import { agentMessages,agentRuns,apiTokens,auditEvents,authSessions,contactSubmi
 import { feedbackAttachments,feedbackExportItems,feedbackExports,feedbackStatusEvents,feedbackSubmissions } from './feedback.ts';
 
 export const MarketSchema = {
+	agentContextQueryChecks,
+	agentClientSessions,
+	agentClientActions,
+	agentOperationHandoffs,
 	agentLabViewState,
 	subscribers,
 	agentRuns,
@@ -185,7 +191,7 @@ export const MarketSchema = {
 	projectAgentClasses,
 	providerAvailabilitySessions,
 	decisionPlanningStatuses,
-	planningInputRequests,
+	agentInvocationRequests,
 	decisionExecutionInputs,
 	structuredAgentEstimates,
 	decisionAssignmentGraphs,

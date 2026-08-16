@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
-import { createLocalSeedBootstrapAdapter } from '../../../../src/reconcile/seeds/local-seed-bootstrap-adapter.ts';
+import { createLocalSeedBootstrapAdapter,localSeedHostApiUrl } from '../../../../src/reconcile/seeds/local-seed-bootstrap-adapter.ts';
 import type { DesiredUnit, ReconcileAdapterInput } from '../../../../src/reconcile/support/contracts/contracts.ts';
 
 function adapterInput(root: string, modulePath: string): ReconcileAdapterInput {
@@ -45,24 +45,38 @@ function adapterInput(root: string, modulePath: string): ReconcileAdapterInput {
 }
 
 describe('local seed bootstrap reconciliation adapter', () => {
+	it('never routes host reconciliation through a container-only Market URL',()=>{
+		const input=adapterInput('/tmp/tenant','/tmp/seed.mjs');
+		input.context.launchEnv={TREESEED_MARKET_PROFILE_LOCAL_URL:'http://host.docker.internal:3000'};
+		expect(localSeedHostApiUrl(input)).toBe('http://127.0.0.1:3000');
+		input.context.launchEnv.TREESEED_CAPACITY_ACCEPTANCE_API_URL='http://127.0.0.1:3100';
+		expect(localSeedHostApiUrl(input)).toBe('http://127.0.0.1:3000');
+		input.unit.spec.apiUrl='http://127.0.0.1:3200';
+		expect(localSeedHostApiUrl(input)).toBe('http://127.0.0.1:3200');
+	});
 	it('plans, applies, and verifies the API-owned seed service to convergence', async () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-local-seed-adapter-'));
 		try {
 			const modulePath = join(root, 'seed-service.mjs');
 			writeFileSync(modulePath, `
 let converged = false;
-export async function planLocalSeedFromCli() {
+export async function planLocalSeedFromCli(input) {
+  if (input.accessToken !== 'configured-local-token') throw new Error('missing configured local reconciliation authority');
+  if (input.env.TREESEED_CAPACITY_ACCEPTANCE_ADMIN_TOKEN !== input.accessToken) throw new Error('local seed environment authority diverged');
   return { plan: { summary: converged
     ? { create: 0, update: 0, unchanged: 2, skip: 0, error: 0 }
     : { create: 1, update: 1, unchanged: 0, skip: 0, error: 0 } } };
 }
-export async function applyLocalSeedFromCli() {
+export async function applyLocalSeedFromCli(input) {
+  if (input.accessToken !== 'configured-local-token') throw new Error('missing configured local reconciliation authority');
+  if (input.env.TREESEED_CAPACITY_ACCEPTANCE_ADMIN_TOKEN !== input.accessToken) throw new Error('local seed environment authority diverged');
   converged = true;
   return { result: { actionCount: 2 } };
 }
 `, 'utf8');
 			const adapter = createLocalSeedBootstrapAdapter();
 			const input = adapterInput(root, modulePath);
+			input.context.launchEnv.TREESEED_CAPACITY_ACCEPTANCE_ADMIN_TOKEN = 'configured-local-token';
 			const observed = await adapter.refresh(input);
 			const diff = await adapter.diff({ ...input, observed });
 			expect(diff).toMatchObject({ action: 'update', reasons: ['2 local seed mutations remain'] });

@@ -155,10 +155,17 @@ export function validateGuaranteeRegistry(input: {
 	diagnostics.push(...validateUiFeatureContracts({ guarantees: valid }));
 	const ids = new Map<string, LoadedGuarantee & { manifest: GuaranteeManifest }>();
 	const journeyIndexes = new Map<number, LoadedGuarantee & { manifest: GuaranteeManifest }>();
+	const capabilityIds = new Map<string, LoadedGuarantee & { manifest: GuaranteeManifest }>();
 	for (const entry of valid) {
 		const existing = ids.get(entry.manifest.id);
 		if (existing) diagnostics.push(diagnostic('error', 'guarantee.duplicate_id', `Duplicate guarantee id "${entry.manifest.id}" also appears at ${existing.relativePath}.`, 'id', entry.sourcePath));
 		ids.set(entry.manifest.id, entry);
+		const capabilityId = entry.manifest.catalogContract?.capabilityId;
+		if (capabilityId) {
+			const existingCapability = capabilityIds.get(capabilityId);
+			if (existingCapability) diagnostics.push(diagnostic('error', 'guarantee.duplicate_capability_id', `Duplicate capabilityId "${capabilityId}" also appears at ${existingCapability.relativePath}.`, 'capabilityId', entry.sourcePath));
+			capabilityIds.set(capabilityId, entry);
+		}
 		if (entry.manifest.journeyIndex) {
 			const existingIndex = journeyIndexes.get(entry.manifest.journeyIndex);
 			if (existingIndex) diagnostics.push(diagnostic('error', 'guarantee.duplicate_journey_index', `Duplicate journey index ${entry.manifest.journeyIndex} also appears at ${existingIndex.relativePath}.`, 'journeyIndex', entry.sourcePath));
@@ -172,6 +179,10 @@ export function validateGuaranteeRegistry(input: {
 		for (const dep of arrayOrEmpty(entry.manifest.dependencies.journeys)) {
 			if (!journeyIndexes.has(dep)) diagnostics.push(diagnostic('error', 'guarantee.missing_journey_dependency', `Missing journey dependency "${dep}".`, 'dependencies.journeys', entry.sourcePath));
 		}
+		const replacement = entry.manifest.catalogContract?.supersededBy;
+		if (replacement && !ids.has(replacement)) diagnostics.push(diagnostic('error', 'guarantee.missing_replacement', `Missing superseding guarantee "${replacement}".`, 'supersededBy', entry.sourcePath));
+		if (replacement && entry.manifest.status !== 'deprecated') diagnostics.push(diagnostic('error', 'guarantee.replacement_requires_deprecated', 'Only deprecated guarantees may declare supersededBy.', 'supersededBy', entry.sourcePath));
+		for (const superseded of arrayOrEmpty(entry.manifest.catalogContract?.supersedes)) if (!ids.has(superseded)) diagnostics.push(diagnostic('error', 'guarantee.missing_superseded', `Missing superseded guarantee "${superseded}".`, 'supersedes', entry.sourcePath));
 	}
 	for (const entry of valid) {
 		for (const dep of arrayOrEmpty(entry.manifest.dependsOnGuarantees)) {
@@ -202,6 +213,7 @@ export function validateGuaranteeRegistry(input: {
 	const verifierKinds = new Map(arrayOrEmpty(input.verifierRegistries).flatMap((registry) =>
 		Object.entries(registry.registry?.verifiers ?? {}).map(([id, definition]) => [id, definition.kind] as const)
 	));
+	const verifierDefinitions = new Map(arrayOrEmpty(input.verifierRegistries).flatMap((registry) => Object.entries(registry.registry?.verifiers ?? {})));
 	for (const entry of valid) {
 		for (const ref of allVerifierRefs(entry.manifest)) {
 			if (ref.startsWith('todo.')) {
@@ -215,6 +227,10 @@ export function validateGuaranteeRegistry(input: {
 			if ((entry.manifest.gates.includes('release') || entry.manifest.gates.includes('security')) && verifierKinds.get(ref) === 'manualEvidence') {
 				diagnostics.push(diagnostic('error', 'guarantee.release_manual_evidence', `Release/security guarantee cannot depend on manual evidence verifier "${ref}".`, 'verifierRefs', entry.sourcePath));
 			}
+		}
+		if (entry.manifest.catalogContract && entry.manifest.status === 'active') {
+			const structured = allVerifierRefs(entry.manifest).some((ref) => verifierDefinitions.get(ref)?.resultSchema === 'treeseed.guarantee-verifier-result/v1');
+			if (!structured) diagnostics.push(diagnostic('error', 'guarantee.v2_active_structured_verifier_required', 'Active v2 guarantees require a structured verifier-result producer.', 'verifierRefs', entry.sourcePath));
 		}
 	}
 

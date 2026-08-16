@@ -6,14 +6,24 @@ signCapacityProviderProof,
 } from '../../../capacity/providers/capacity-provider.ts';
 import { createHash } from 'node:crypto';
 import { parse as parseYaml } from 'yaml';
+import { parseFrontmatterDocument } from '../../../content/frontmatter.ts';
 import { validateAgentSignalContract,type AgentSignalContract } from '../../../agent-capacity/validation/agent-signal.ts';
 import { validateProposalTypeContract,type ProposalTypeContract } from '../../../agent-capacity/validation/proposal-type.ts';
 import { MarketClient } from '../../../entrypoints/clients/market-client.ts';
 import { mintTreeDxHs256Token } from '../../../treedx/accounts/auth.ts';
 import { TreeDxClient } from '../../../treedx/support/client.ts';
+import { extractTextPayload } from '../../../treedx-backends/tree-dx-repository-hint.ts';
 import { configuredLiveAcceptanceValue,type LiveAcceptanceEnv } from '../../support/acceptance/live-acceptance-values.ts';
 import type { LiveReconcileEnvironment } from '../../support/acceptance/live-acceptance.ts';
 import type { CapacityGovernanceAcceptanceProof } from './live-acceptance-capacity-governance.ts';
+
+function agentClassProjectionState(value: Record<string, unknown>) {
+	return { id:value.id,slug:value.slug,name:value.name,status:value.status,allowedModes:value.allowedModes,
+		requiredCapabilities:value.requiredCapabilities,handlerRefs:value.handlerRefs,metadata:value.metadata };
+}
+function agentClassProjectionDigest(value: Record<string, unknown>) {
+	return createHash('sha256').update(JSON.stringify(agentClassProjectionState(value))).digest('hex').slice(0,16);
+}
 
 export function capacityAcceptanceConfig(env: LiveAcceptanceEnv, environment: LiveReconcileEnvironment) {
 	const local = environment === 'local';
@@ -191,14 +201,20 @@ export async function syncLocalAcceptanceAgentClasses(adminClient: MarketClient,
 	repositoryId: string;
 	agentPaths: string[];
 	runId: string;
+	ref?: string;
 }) {
 	const response = await adminClient.treeDxReadRepositoryFiles(input.projectId, input.repositoryId, {
-		ref: 'refs/heads/main', paths: input.agentPaths, encoding: 'utf8', parseFrontmatter: true,
+		ref: input.ref || 'refs/heads/main', paths: input.agentPaths, encoding: 'utf8', parseFrontmatter: false,
 	});
 	const payload = response.payload && typeof response.payload === 'object' ? response.payload as Record<string, unknown> : {};
 	const resolvedRef = typeof payload.resolvedRef === 'string' ? payload.resolvedRef.trim() : '';
 	if (!/^[a-f0-9]{40}$/u.test(resolvedRef)) throw new Error('Capacity acceptance did not resolve the starter repository to an immutable TreeDX commit.');
-	const files = Array.isArray(payload.files) ? payload.files as Record<string, unknown>[] : [];
+	const files = (Array.isArray(payload.files) ? payload.files as Record<string, unknown>[] : []).map((file) => {
+		const source = extractTextPayload(file);
+		if (!source) return file;
+		try { return { ...file, frontmatter: parseFrontmatterDocument(source).frontmatter }; }
+		catch { throw new Error(`Capacity acceptance could not parse starter agent definition ${String(file.path ?? 'unknown')}.`); }
+	});
 	if (files.length !== input.agentPaths.length) throw new Error(`Capacity acceptance loaded ${files.length}/${input.agentPaths.length} starter agent definitions through TreeDX.`);
 	const signalContracts = await readSignalContracts(adminClient, { projectId: input.projectId, repositoryId: input.repositoryId, resolvedRef, files });
 	const proposalTypeContracts = await readProposalTypeContracts(adminClient, { projectId: input.projectId, repositoryId: input.repositoryId, resolvedRef, files });
@@ -206,7 +222,17 @@ export async function syncLocalAcceptanceAgentClasses(adminClient: MarketClient,
 	const results = [];
 	for (const entry of files) {
 		const file = entry && typeof entry === 'object' && !Array.isArray(entry) ? entry as Record<string, unknown> : {};
-		const frontmatter = file.frontmatter && typeof file.frontmatter === 'object' && !Array.isArray(file.frontmatter) ? file.frontmatter as Record<string, unknown> : null;
+		const source = extractTextPayload(file);
+		let parsedFrontmatter: Record<string, unknown> | null = null;
+		if (source) {
+			try { parsedFrontmatter = parseFrontmatterDocument(source).frontmatter; }
+			catch { throw new Error(`Capacity acceptance could not parse starter agent definition ${String(file.path ?? 'unknown')}.`); }
+		}
+		// The raw immutable document is authoritative. TreeDX's convenience
+		// frontmatter projection can lag newly introduced portable agent fields;
+		// it must not silently strip groups, queries, or templates from custody.
+		const frontmatter = parsedFrontmatter
+			?? (file.frontmatter && typeof file.frontmatter === 'object' && !Array.isArray(file.frontmatter) ? file.frontmatter as Record<string, unknown> : null);
 		if (!frontmatter) throw new Error(`Capacity acceptance could not parse starter agent definition ${String(file.path ?? 'unknown')}.`);
 		const classId = String(frontmatter.projectAgentClassId ?? frontmatter.agentClass ?? '').trim();
 		const agentSlug = String(frontmatter.slug ?? '').trim();
@@ -220,13 +246,17 @@ export async function syncLocalAcceptanceAgentClasses(adminClient: MarketClient,
 		const body = {
 			id: scopedClassId, slug: classId, name: String(frontmatter.name ?? frontmatter.title ?? classId), status: 'active',
 			allowedModes, requiredCapabilities: activityCapabilities(activities),
-			handlerRefs: { agents: [{ slug: agentSlug, contentPath: file.path, activities }], signalContracts, proposalTypeContracts },
+			handlerRefs: { agents: [{ slug: agentSlug,contentPath:file.path,groupIds:Array.isArray(frontmatter.groupIds)?frontmatter.groupIds:[],
+				topicIds:Array.isArray(frontmatter.topicIds)?frontmatter.topicIds:[],contextQueryRefs:Array.isArray(frontmatter.contextQueryRefs)?frontmatter.contextQueryRefs:[],
+				contextQuerySetRefs:Array.isArray(frontmatter.contextQuerySetRefs)?frontmatter.contextQuerySetRefs:[],instructionTemplateRefs:Array.isArray(frontmatter.instructionTemplateRefs)?frontmatter.instructionTemplateRefs:[],activities }], signalContracts, proposalTypeContracts },
 			metadata: { source: 'treedx_starter_agent_content_sync', contentPath: file.path, template: frontmatter.template ?? null, immutableRef: resolvedRef },
 		};
-		const revision = createHash('sha256').update(JSON.stringify(body)).digest('hex').slice(0, 16);
-		results.push(await (record
-			? adminClient.updateProjectAgentClass(input.projectId, String(record.id), body, `capacity-acceptance:${input.runId}:${input.projectId}:agent-class-update:${classId}:${revision}`)
-			: adminClient.createProjectAgentClass(input.projectId, body, `capacity-acceptance:${input.runId}:${input.projectId}:agent-class-create:${classId}:${revision}`)));
+		const desiredDigest = agentClassProjectionDigest(body);
+		const observedDigest = record ? agentClassProjectionDigest(record as unknown as Record<string,unknown>) : 'missing';
+		if (record && desiredDigest === observedDigest) results.push({payload:record});
+		else results.push(await (record
+			? adminClient.updateProjectAgentClass(input.projectId, String(record.id), body, `capacity-acceptance:${input.runId}:${input.projectId}:agent-class-update:${classId}:${desiredDigest}:${observedDigest}`)
+			: adminClient.createProjectAgentClass(input.projectId, body, `capacity-acceptance:${input.runId}:${input.projectId}:agent-class-create:${classId}:${desiredDigest}`)));
 	}
 	return { agentClasses: results, resolvedRef, signalContracts, proposalTypeContracts };
 }

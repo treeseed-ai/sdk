@@ -2,6 +2,7 @@ import { existsSync,readFileSync } from 'node:fs';
 import { basename,relative,resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { discoverPackageAdapters } from '../reconciliation/package-adapters.ts';
+import { verifiedPlatformWorksetReceipt } from '../repositories/platform-workset.ts';
 import { currentBranch,gitStatusPorcelain,originRemoteUrl,repoRoot } from '../treedx/workspaces/workspace-save.ts';
 import { hasCompletePackageCheckout,sortWorkspacePackages,workspacePackages } from '../treedx/workspaces/workspace-tools.ts';
 
@@ -72,14 +73,8 @@ export function parseGitmodulesPaths(root: string) {
 		.filter(Boolean);
 }
 
-export function parsePortfolioPaths(root: string) {
-	const path = resolve(root, 'treeseed.portfolio.json');
-	if (!existsSync(path)) return [] as string[];
-	const manifest = readJsonFile(path);
-	if (manifest?.schemaVersion !== 1 || manifest.kind !== 'treeseed.portfolio' || !Array.isArray(manifest.repositories)) return [];
-	return manifest.repositories
-		.map((entry) => entry && typeof entry === 'object' && !Array.isArray(entry) ? stringValue((entry as Record<string, unknown>).path) : null)
-		.filter((entry): entry is string => Boolean(entry));
+export function parsePlatformWorksetPaths(root: string) {
+	return verifiedPlatformWorksetReceipt(root)?.completed.map((entry) => entry.path) ?? [];
 }
 
 function isIndependentGitRepo(repoDir: string) {
@@ -207,10 +202,10 @@ export function discoverManagedRepositories(root: string): ManagedRepository[] {
 			repos.set(adapter.relativeDir, adapter.dir);
 		}
 	}
-	for (const portfolioPath of parsePortfolioPaths(root)) {
-		const repoDir = resolve(root, portfolioPath);
+	for (const worksetPath of parsePlatformWorksetPaths(root)) {
+		const repoDir = resolve(root, worksetPath);
 		if (existsSync(repoDir) && isIndependentGitRepo(repoDir)) {
-			repos.set(portfolioPath, repoDir);
+			repos.set(worksetPath, repoDir);
 		}
 	}
 	addRecursiveSubmodules(root, '.', gitRoot, repos);

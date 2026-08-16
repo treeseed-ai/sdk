@@ -2,15 +2,12 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { repositoryIdentityKey } from '../../repositories/repository-identity.ts';
-
-export type DecisionDependency = {
-	projectId: string;
-	decisionId: string;
-};
+import type { DecisionDependencyReference } from '../../governance/policy/decision-dependencies.ts';
+import type { AgentWorkExecutionMode,UpstreamMutationPolicy } from '../../agent-capacity/contracts/support/authority/execution-mode.ts';
 
 export type GovernedExecutionAuthority = {
-	schemaVersion: 1;
-	kind: 'treeseed.governed-execution-authority/v1';
+	schemaVersion: 2;
+	kind: 'treeseed.governed-execution-authority/v2';
 	authorityId: string;
 	createdAt: string;
 	teamId: string | null;
@@ -19,8 +16,10 @@ export type GovernedExecutionAuthority = {
 	proposalVersion: number | null;
 	proposalContentHash: string | null;
 	decisionId: string;
-	decisionDependencies: DecisionDependency[];
+	decisionDependencies: DecisionDependencyReference[];
 	assignmentId: string;
+	executionMode: AgentWorkExecutionMode;
+	upstreamMutationPolicy: UpstreamMutationPolicy;
 	graphId: string;
 	graphNodeId: string;
 	deliverableManifestId: string;
@@ -33,11 +32,16 @@ export type GovernedExecutionAuthority = {
 	changedPaths: string[];
 };
 
-type AuthorityFields = Omit<GovernedExecutionAuthority, 'schemaVersion' | 'kind' | 'authorityId' | 'createdAt'>;
+type AuthorityFields = Omit<GovernedExecutionAuthority, 'schemaVersion' | 'kind' | 'authorityId' | 'createdAt' | 'executionMode' | 'upstreamMutationPolicy'> & {
+	executionMode?: AgentWorkExecutionMode;
+	upstreamMutationPolicy?: UpstreamMutationPolicy;
+};
 
 function canonicalFields(fields: AuthorityFields) {
 	return {
 		...fields,
+		executionMode: fields.executionMode ?? 'production',
+		upstreamMutationPolicy: fields.upstreamMutationPolicy ?? (fields.executionMode === 'simulation' ? 'denied' : 'exact-approved-ref'),
 		decisionDependencies: [...fields.decisionDependencies].sort((left, right) =>
 			`${left.projectId}:${left.decisionId}`.localeCompare(`${right.projectId}:${right.decisionId}`)),
 		changedPaths: [...new Set(fields.changedPaths)].sort(),
@@ -49,7 +53,9 @@ function authorityId(fields: AuthorityFields) {
 }
 
 export function governedExecutionAuthorityValid(receipt: GovernedExecutionAuthority) {
-	if (receipt.kind !== 'treeseed.governed-execution-authority/v1' || receipt.schemaVersion !== 1) return false;
+	if (receipt.kind !== 'treeseed.governed-execution-authority/v2' || receipt.schemaVersion !== 2) return false;
+	if (receipt.executionMode === 'simulation' && receipt.upstreamMutationPolicy !== 'denied') return false;
+	if (receipt.executionMode === 'production' && receipt.upstreamMutationPolicy !== 'exact-approved-ref') return false;
 	const { schemaVersion: _schemaVersion, kind: _kind, authorityId: observedId, createdAt: _createdAt, ...fields } = receipt;
 	return observedId === authorityId(fields);
 }
@@ -61,8 +67,8 @@ function repositoryReceiptPrefix(canonicalKey: string) {
 export function writeGovernedExecutionAuthority(storageRoot: string, fields: AuthorityFields) {
 	const canonical = canonicalFields(fields);
 	const receipt: GovernedExecutionAuthority = {
-		schemaVersion: 1,
-		kind: 'treeseed.governed-execution-authority/v1',
+		schemaVersion: 2,
+		kind: 'treeseed.governed-execution-authority/v2',
 		authorityId: authorityId(canonical),
 		createdAt: new Date().toISOString(),
 		...canonical,

@@ -16,6 +16,8 @@ import { acquireWorkflowLock, createWorkflowRunJournal, releaseWorkflowLock, upd
 import { runWorkspaceSavePreflight } from '../../../../src/operations/services/hosting/deployment/save-deploy-preflight.ts';
 import { inspectDetachedHeadRepair, mergeBranchIntoTarget, reattachDetachedHeadIfSafe } from '../../../../src/operations/services/operations/git-workflow.ts';
 import { inspectWorkspacePackageArtifacts, recordWorkspacePackageArtifacts } from '../../../../src/workflow/operations/recovery/workspace-artifact-state.ts';
+import { writeGovernedExecutionAuthority } from '../../../../src/operations/agents/execution-authority-receipt.ts';
+import { repositoryIdentityKey } from '../../../../src/repositories/repository-identity.ts';
 import { resolveGeneratedDependencyMergeConflict } from '../../../../src/workflow/operations/support/resolve-generated-dependency-conflict.ts';
 import {
 	createDefaultMachineConfig,
@@ -132,10 +134,26 @@ it('does not auto-resume a failed save when the workspace has new edits', async 
 		expect(freshResult.payload.message).toBe('fix: save repair edits');
 	}, 360000);
 
-it('lists interrupted workflow runs and resumes them after the workspace is repaired', async () => {
-		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true, materialization: 'portfolio' });
-		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-updated";\n', 'utf8');
-		writeFileSync(resolve(work, 'packages', 'core', 'index.js'), 'export const name = "core-updated";\n', 'utf8');
+	it('lists interrupted workflow runs and resumes them after the workspace is repaired', async () => {
+		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true, materialization: 'workset' });
+		for (const packageName of ['sdk', 'core'] as const) {
+			const packageRoot = resolve(work, 'packages', packageName);
+			const baseCommit = git(packageRoot, ['rev-parse', 'HEAD']);
+			const remoteUrl = git(packageRoot, ['remote', 'get-url', 'origin']);
+			writeFileSync(resolve(packageRoot, 'index.js'), `export const name = "${packageName}-updated";\n`, 'utf8');
+			git(packageRoot, ['add', 'index.js']);
+			git(packageRoot, ['commit', '-m', `feat: update ${packageName}`, '-m', `Treeseed-Assignment: assignment-${packageName}-recovery`]);
+			const checkpointCommit = git(packageRoot, ['rev-parse', 'HEAD']);
+			if (packageName === 'sdk') git(packageRoot, ['push', 'origin', 'HEAD:refs/heads/feature/demo-task']);
+			writeGovernedExecutionAuthority(work, {
+				teamId: 'team-fixture', projectId: `project-${packageName}`, proposalId: 'proposal-recovery', proposalVersion: 1,
+				proposalContentHash: 'hash-recovery', decisionId: 'decision-recovery', decisionDependencies: [],
+				assignmentId: `assignment-${packageName}-recovery`, graphId: 'graph-recovery', graphNodeId: `node-${packageName}`,
+				deliverableManifestId: `deliverable-${packageName}`, deliverableContractId: `contract-${packageName}`,
+				repository: { canonicalKey: repositoryIdentityKey(remoteUrl)!, remoteUrl }, sourceBranch: 'feature/demo-task',
+				baseCommit, checkpointCommit, integratedCommit: checkpointCommit, changedPaths: ['index.js'],
+			});
+		}
 		git(resolve(work, 'packages', 'core'), ['remote', 'remove', 'origin']);
 		const workflow = workflowFor(work);
 
@@ -152,6 +170,7 @@ it('lists interrupted workflow runs and resumes them after the workspace is repa
 		expect(runId).toMatch(/^save-/);
 
 		git(resolve(work, 'packages', 'core'), ['remote', 'add', 'origin', packages!.core.origin]);
+		git(resolve(work, 'packages', 'core'), ['fetch', 'origin']);
 
 		const resumeResult = await workflow.resume({ runId });
 		expect(resumeResult.runId).toBe(runId);

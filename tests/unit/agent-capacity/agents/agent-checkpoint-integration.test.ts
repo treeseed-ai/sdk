@@ -41,19 +41,21 @@ describe('supervised agent checkpoint integration', () => {
 		const graphId = 'graph-1';
 		const implementationContractId = 'contract-implementation';
 		const nodes = [
-			{ id: 'node-implementation', status: 'completed', metadata: { stage: 'implementation', producesDeliverableContractId: implementationContractId } },
-			{ id: 'node-verification', status: 'completed', metadata: { stage: 'verification', producesDeliverableContractId: 'contract-verification' } },
-			{ id: 'node-review', status: 'completed', metadata: { stage: 'review', producesDeliverableContractId: 'contract-review' } },
-			{ id: 'node-release', status: 'completed', metadata: { stage: 'release', producesDeliverableContractId: 'contract-release' } },
+			{ id: 'node-implementation', activityType: 'acting', status: 'completed', metadata: { stage: 'implementation', producesDeliverableContractId: implementationContractId } },
+			{ id: 'node-verification', activityType: 'acting', status: 'completed', metadata: { stage: 'verification', producesDeliverableContractId: 'contract-verification' } },
+			{ id: 'node-review', activityType: 'reviewing', status: 'completed', metadata: { stage: 'review', producesDeliverableContractId: 'contract-review' } },
+			{ id: 'node-release', activityType: 'reporting', status: 'completed', metadata: { stage: 'release', producesDeliverableContractId: 'contract-release' } },
 		];
 		const graph = {
 			id: graphId, projectId: 'project-sdk', decisionId: 'decision-1', status: 'completed', nodes,
+			executionMode: 'production',
 			deliverableContracts: [implementationContractId, 'contract-verification', 'contract-review', 'contract-release']
 				.map((id) => ({ id, status: 'approved', metadata: id === implementationContractId ? { assignmentId: 'assignment-1', modeRunId: 'mode-run-1', deliverableManifestId: 'deliverable:assignment-1' } : {} })),
 			metadata: { exactBaseRef: baseCommit, proposalId: 'proposal-1', proposalVersion: 3, proposalContentHash: 'sha256:proposal', decisionDependencies: [{ projectId: 'project-api', decisionId: 'decision-api' }] },
 		};
 		const assignment = {
 			id: 'assignment-1', projectId: 'project-sdk', status: 'completed', mode: 'acting',
+			executionMode: 'production',
 			decisionInput: { input: { workGraphId: graphId, workGraphNodeId: 'node-implementation' } },
 			workspaceContext: { project: { repository: { checkoutPath: 'packages/sdk', cloneUrl: 'https://github.com/treeseed-ai/sdk.git' } } },
 			lifecycleOutput: { artifactManifest: {
@@ -83,7 +85,9 @@ describe('supervised agent checkpoint integration', () => {
 		expect(integrated.authorityId).toMatch(/^[a-f0-9]{64}$/u);
 		const authority = JSON.parse(await readFile(integrated.authorityReceiptPath!, 'utf8'));
 		expect(authority).toMatchObject({
-			kind: 'treeseed.governed-execution-authority/v1',
+			kind: 'treeseed.governed-execution-authority/v2',
+			executionMode: 'production',
+			upstreamMutationPolicy: 'exact-approved-ref',
 			projectId: 'project-sdk',
 			proposalId: 'proposal-1',
 			proposalVersion: 3,
@@ -97,6 +101,14 @@ describe('supervised agent checkpoint integration', () => {
 		expect(await git(input.repositoryPath, 'rev-parse', 'HEAD^{tree}')).toBe(await git(input.repositoryPath, 'rev-parse', `${input.checkpointCommit}^{tree}`));
 		const replay = await integrateAgentCheckpoint({ workspaceRoot: input.root, assignment: input.assignment, graph: input.graph, projectRepository: input.projectRepository, deliverableManifest: input.deliverableManifest, mode: 'execute' });
 		expect(replay).toMatchObject({ ok: true, alreadyIntegrated: true, integratedCommit: integrated.integratedCommit, authorityId: integrated.authorityId });
+	});
+
+	it('integrates simulation locally but never offers save authority', async () => {
+		const input = await fixture();input.assignment.executionMode='simulation';input.graph.executionMode='simulation';
+		const result=await integrateAgentCheckpoint({workspaceRoot:input.root,assignment:input.assignment,graph:input.graph,projectRepository:input.projectRepository,deliverableManifest:input.deliverableManifest,mode:'execute'});
+		expect(result).toMatchObject({ok:true,nextOperation:null});
+		const authority=JSON.parse(await readFile(result.authorityReceiptPath!,'utf8'));
+		expect(authority).toMatchObject({executionMode:'simulation',upstreamMutationPolicy:'denied'});
 	});
 
 	it('fails closed when the task branch has diverged from the governed base', async () => {
@@ -113,7 +125,7 @@ describe('supervised agent checkpoint integration', () => {
 	it('rejects a checkpoint superseded by a later implementation revision', async () => {
 		const input = await fixture();
 		input.graph.nodes.push({
-			id: 'node-implementation-revision', status: 'completed',
+			id: 'node-implementation-revision', activityType: 'acting', status: 'completed',
 			metadata: { stage: 'implementation', revisionCycle: 1, producesDeliverableContractId: 'contract-implementation-revision' },
 		});
 		input.graph.deliverableContracts.push({ id: 'contract-implementation-revision', status: 'approved' });

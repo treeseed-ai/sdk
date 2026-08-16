@@ -1,0 +1,40 @@
+schemaVersion: treeseed.guarantee/v2
+id: guarantee.agent.portability.project-fork.920
+journeyIndex: 920
+type: agent
+subtype: portability
+journey: Deploy governed project-local agent forks
+ownerPackage: "@treeseed/sdk"
+surface: cli
+summary: An exact agent or effective group and only its dependency closure can be forked, validated, activated, resumed, and explicitly upgraded in target projects.
+status: planned
+capabilityId: agent.portability.project-fork
+catalog: agent.system
+activation: { minimumConsecutivePasses: 3, requiredVariants: [baseline, clean-repeat, interruption-resume], invalidateOnSourceChange: true }
+proof:
+  requiredCommands: [capacity.agent-deploy, capacity.agent-deployment, capacity.agent-deployment-activate, capacity.agent-deployment-upgrade, capacity.context-query-test]
+  minimumRepositoryPostconditions: 2
+  outcomePredicates:
+    portability.exact-closure: [portability.selected-members, portability.reachable-dependencies, portability.no-unrelated-agents, portability.dormant-forks, portability.exact-provenance]
+    portability.lifecycle: [portability.target-tests, portability.activation, portability.planning-artifact, portability.upgrade, portability.divergence-blocked, portability.interrupted-resume]
+outcomes:
+  - id: portability.exact-closure
+    kind: required
+    description: Exact source-ref selection copies dormant project-local forks and only the selected agents' reachable dependencies.
+    evidenceKinds: [deployment_plan, treedx_read_back, deployment_receipt]
+    authoritativeSubjects: [sourceRef, targetRef, deployment]
+  - id: portability.lifecycle
+    kind: required
+    description: Destination checks gate activation, a cloned agent produces correct work, upgrades are explicit, divergence blocks, and multi-target resume is duplicate-free.
+    evidenceKinds: [query_assertions, execution_trace, upgrade_comparison, cleanup]
+    authoritativeSubjects: [deployment, activatedDefinitionRef, planningArtifact]
+dependencies: { journeys: [], guarantees: [guarantee.capacity.research.verify-autonomous-cited-research-starter.510] }
+actors: { allowed: [capacity_operator, team_owner], forbidden: [anonymous_user, unauthorized_user] }
+devices: { required: [] }
+gates: [core]
+preconditions: { fixtures: [ephemeral_target_project] }
+api: { required: true, verifierRefs: [market.agent-catalog.golden-live-proof] }
+content: { required: true, verifierRefs: [] }
+audit: { required: true, verifierRefs: [] }
+negativeCases: []
+evidence: { required: [verifier_evidence, redacted_cli_transcript] }

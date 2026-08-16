@@ -2,6 +2,7 @@ import type { ExecutionUsageActual } from '../types/agents.ts';
 import type { ResearchCitation } from './contracts/support/research-citation.ts';
 import type { ArtifactRef } from '../treedx/types.ts';
 import { validateResearchCitations } from './validation/research/citation.ts';
+import { validateArtifactMutationReceipt,type ArtifactMutationReceipt } from './artifact-mutation-receipt.ts';
 
 export interface AgentToolEventReference {
 	id: string;
@@ -91,6 +92,7 @@ export interface AgentArtifactManifest {
 	summary: string;
 	toolEvents: AgentToolEventReference[];
 	contentReferences: AgentContentReference[];
+	mutationReceipts?: ArtifactMutationReceipt[];
 	artifactReferences?: ArtifactRef[];
 	sourceWorktree?: AgentSourceWorktreeReference;
 	commit?: AgentCommitReference;
@@ -108,6 +110,12 @@ export function validateAgentArtifactManifest(manifest: AgentArtifactManifest, e
 	artifactContracts?: unknown;
 	signalContracts?: unknown;
 } = {}) {
+	const invalidReceipt = (manifest.mutationReceipts ?? []).find((receipt) => {
+		const validation = validateArtifactMutationReceipt(receipt);
+		return !validation.ok || receipt.assignmentId !== manifest.assignmentId || receipt.modeRunId !== manifest.modeRunId
+			|| receipt.teamId !== manifest.teamId || receipt.projectId !== manifest.projectId;
+	});
+	if (invalidReceipt) return { ok: false as const, reason: 'Artifact mutation receipt is invalid or outside the manifest authority scope.' };
 	if ((manifest.artifactReferences ?? []).some((reference) => reference.contract !== 'treeseed.artifact-ref/v1'
 		|| typeof reference.sha256 === 'string' && !/^[0-9a-f]{64}$/u.test(reference.sha256)
 		|| 'signedUrl' in reference || 'credentials' in reference)) {

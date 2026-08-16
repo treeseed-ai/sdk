@@ -145,6 +145,7 @@ export function buildAgentCapacityPlanDraft(input: {
 			estimateId,
 			projectAgentClassId: entry.projectAgentClassId,
 			mode,
+			...(decisionInput.activityType ? { activityType: decisionInput.activityType } : {}),
 			taskId: decisionInput.taskId ?? null,
 			agentId: decisionInput.agentId ?? null,
 			handlerId: decisionInput.handlerId ?? null,

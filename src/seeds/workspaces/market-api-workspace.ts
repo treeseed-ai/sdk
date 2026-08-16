@@ -10,7 +10,23 @@ import { managedWorkspaceMatches, managedWorkspacePaths, missingApplicationBoots
 type BranchPlan = { branch: 'main' | 'staging'; targetCommit: string | null; action: 'create' | 'update' | 'noop' | 'blocked'; reason: string };
 type Receipt = { branch: string; targetCommit: string; sdkRef: string; adminApiRef: string; workspaceDigest?: string; verified: boolean };
 
+type WorkspaceBranch = BranchPlan['branch'];
 export type MarketApiWorkspacePlan = { repository: string; sdkRef: string; adminApiRef: string; descriptorDigest: string; branches: BranchPlan[] };
+
+function exactRef(value: string, label: string) {
+	if (!/^[a-f0-9]{40}$/u.test(value)) throw new Error(`${label} must be an exact 40-character commit SHA.`);
+	return value;
+}
+
+async function assertLocalGeneratedDescriptor(projectRoot: string, adminApiRef: string) {
+	const apiRoot = resolve(projectRoot, 'packages', 'api');
+	const head = (await git(apiRoot, ['rev-parse', 'HEAD'])).stdout;
+	if (head !== adminApiRef) throw new Error(`Local Admin API checkout is ${head}, not requested ref ${adminApiRef}.`);
+	const dirty = (await git(apiRoot, ['status', '--porcelain'])).stdout;
+	if (dirty) throw new Error('Local Admin API checkout must be clean before its generated descriptor can seed Market API.');
+	const descriptor = resolve(apiRoot, 'dist', 'admin-api-descriptor.json');
+	try { readFileSync(descriptor, 'utf8'); } catch { throw new Error(`Build Admin API ${adminApiRef} before reconciling Market API; ${descriptor} is missing.`); }
+}
 
 function project(manifest: SeedManifest, slug: string) {
 	const value = manifest.resources.projects.find((entry) => entry.slug === slug);
@@ -29,7 +45,9 @@ function journal(projectRoot: string, repository: string) {
 function writeJournal(projectRoot: string, plan: MarketApiWorkspacePlan, receipts: Receipt[]) {
 	const path = journalPath(projectRoot, plan.repository);
 	mkdirSync(dirname(path), { recursive: true });
-	writeFileSync(path, `${JSON.stringify({ schemaVersion: 1, kind: 'treeseed.market-api-workspace', repository: plan.repository, status: receipts.length === plan.branches.length ? 'verified' : 'partial', updatedAt: new Date().toISOString(), receipts }, null, 2)}\n`, 'utf8');
+	const verified = new Set(receipts.filter((receipt) => receipt.verified).map((receipt) => receipt.branch));
+	const status = verified.has('main') && verified.has('staging') ? 'verified' : 'partial';
+	writeFileSync(path, `${JSON.stringify({ schemaVersion: 1, kind: 'treeseed.market-api-workspace', repository: plan.repository, status, updatedAt: new Date().toISOString(), receipts }, null, 2)}\n`, 'utf8');
 }
 
 function mergeReceipts(previous: Receipt[], current: Receipt[]) {
@@ -223,20 +241,23 @@ async function recoverGeneratedReceipt(projectRoot: string, repository: string, 
 	}
 }
 
-export async function planMarketApiWorkspace(input: { projectRoot: string; manifest: SeedManifest; env?: NodeJS.ProcessEnv | Record<string, string | undefined> }) {
+export async function planMarketApiWorkspace(input: { projectRoot: string; manifest: SeedManifest; targetBranch: WorkspaceBranch; sdkRef: string; adminApiRef: string; env?: NodeJS.ProcessEnv | Record<string, string | undefined> }) {
 	const marketApi = project(input.manifest, 'market-api');
 	const repository = `${marketApi.repository.owner}/${marketApi.repository.name}`;
 	const credential = migrationCredential(input.projectRoot, repository, input.env);
 	if (!credential.token) throw new Error(`Central GitHub credential ${credential.envName} is required for ${repository}.`);
 	const gitEnv = credentialEnvironment(credential.token);
-	const sdkRef = await remoteHead(input.projectRoot, 'treeseed-ai/sdk', 'staging', gitEnv);
-	const adminApiRef = await remoteHead(input.projectRoot, 'treeseed-ai/api', 'staging', gitEnv);
-	if (!sdkRef || !adminApiRef) throw new Error('Live SDK and Admin API staging refs are required.');
+	const sdkRef = exactRef(input.sdkRef, 'SDK ref');
+	const adminApiRef = exactRef(input.adminApiRef, 'Admin API ref');
+	const observedSdk = await remoteHead(input.projectRoot, 'treeseed-ai/sdk', input.targetBranch, gitEnv);
+	const observedAdminApi = await remoteHead(input.projectRoot, 'treeseed-ai/api', input.targetBranch, gitEnv);
+	if (observedSdk !== sdkRef || observedAdminApi !== adminApiRef) throw new Error(`Requested dependency refs do not match live ${input.targetBranch}: SDK ${observedSdk ?? 'missing'}, Admin API ${observedAdminApi ?? 'missing'}.`);
+	await assertLocalGeneratedDescriptor(input.projectRoot, adminApiRef);
 	const descriptorDigest = marketApiWorkspaceFiles(input.projectRoot, sdkRef, adminApiRef).descriptorDigest;
 	const desiredWorkspaceDigest = workspaceDigest(input.projectRoot, sdkRef, adminApiRef);
 	const recorded = journal(input.projectRoot, repository);
 	const branches: BranchPlan[] = [];
-	for (const branch of ['main', 'staging'] as const) {
+	for (const branch of [input.targetBranch]) {
 		const targetCommit = await remoteHead(input.projectRoot, repository, branch, gitEnv);
 		const receipt = recorded?.receipts?.find((entry) => entry.branch === branch)
 			?? (targetCommit ? await recoverGeneratedReceipt(input.projectRoot, repository, branch, targetCommit, gitEnv) : null);
@@ -286,7 +307,7 @@ async function buildCommit(projectRoot: string, branch: string, plan: MarketApiW
 	} finally { rmSync(temporary, { recursive: true, force: true }); }
 }
 
-export async function applyMarketApiWorkspace(input: { projectRoot: string; manifest: SeedManifest; env?: NodeJS.ProcessEnv | Record<string, string | undefined> }) {
+export async function applyMarketApiWorkspace(input: { projectRoot: string; manifest: SeedManifest; targetBranch: WorkspaceBranch; sdkRef: string; adminApiRef: string; env?: NodeJS.ProcessEnv | Record<string, string | undefined> }) {
 	const plan = await planMarketApiWorkspace(input);
 	if (plan.branches.some((branch) => branch.action === 'blocked')) throw new Error('Market API target contains unrecognized history.');
 	const credential = migrationCredential(input.projectRoot, plan.repository, input.env);

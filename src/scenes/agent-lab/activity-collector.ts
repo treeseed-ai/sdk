@@ -147,8 +147,10 @@ export function normalizeAgentLabProviderExecutions(items: Row[], assignmentIds:
 }
 
 export async function readAgentLabAccounting(client: MarketClient, workdayRunId: string) {
-	const response = await client.request<Row>(`/v1/workdays/${encodeURIComponent(workdayRunId)}/summary?limit=200`, { requireAuth: true });
-	return payloadOf(response);
+	const kinds = ['reservations','usage-actuals','ledger-entries'] as const;
+	const responses = await Promise.all(kinds.map((evidence) => client.workdaySummary(workdayRunId,{ evidence,limit: 200 })));
+	const payloads = responses.map((response) => record(response.payload));
+	return { ...payloads[0],evidence: Object.assign({},...payloads.map((payload) => record(payload.evidence))) };
 }
 
 export async function readAgentLabActivity(input: {

@@ -72,7 +72,7 @@ export async function provisionLocalCapacityCompetition(input: {
 			executionProviders: [{
 				id: 'codex', adapter: 'codex', status: 'available',
 				capabilities: ['planning', 'repo_read', 'agent_mode_run', 'usage_report'],
-				maxConcurrentRunners: 1, activeRunners: 0, nativeLimits: { availableAgentSeconds: 600 }, lanes: [],
+				maxConcurrentRunners: 1, activeRunners: 0, nativeLimits: { availableAgentSeconds: 600 }, lanes: [{ id:'codex-operation',executionProviderId:'codex',purpose:'operation',status:'active',capabilities:[],maxConcurrentRunners:1,activeRunners:0,nativeLimits:{} }],
 			}],
 		});
 		sessionId = String(availability.payload.id ?? '');
@@ -111,7 +111,7 @@ export async function provisionLocalCapacityCompetition(input: {
 			executionProviders: [{
 				id: 'codex', adapter: 'codex', status: 'available',
 				capabilities: ['planning', 'repo_read', 'agent_mode_run', 'usage_report'],
-				maxConcurrentRunners: 1, activeRunners: 0, nativeLimits: { availableAgentSeconds: 600 }, lanes: [],
+				maxConcurrentRunners: 1, activeRunners: 0, nativeLimits: { availableAgentSeconds: 600 }, lanes: [{ id:'codex-operation',executionProviderId:'codex',purpose:'operation',status:'active',capabilities:[],maxConcurrentRunners:1,activeRunners:0,nativeLimits:{} }],
 			}],
 		});
 		await input.adminClient.createWorkday({

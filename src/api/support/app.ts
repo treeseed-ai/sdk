@@ -139,7 +139,13 @@ export function createApiRouter(options: ApiServerOptions = {}) {
 	app.use('*', async (c, next) => {
 		const token = bearerTokenFromRequest(c.req.raw);
 		if (token) {
-			if (matchesProjectApiKey(token, resolved.config.projectApiKey)) {
+			const override = await options.authenticateBearerOverride?.(token) ?? null;
+			if (override) {
+				c.set('principal', override.principal);
+				c.set('credential', override.credential);
+				c.set('actorType', override.credential.type === 'service_token' ? 'service' : 'user');
+				c.set('permissionGrants', override.principal.permissions);
+			} else if (matchesProjectApiKey(token, resolved.config.projectApiKey)) {
 				const principal = buildProjectApiPrincipal(resolved.config);
 				c.set('principal', principal);
 				c.set('credential', {

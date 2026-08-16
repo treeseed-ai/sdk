@@ -185,12 +185,12 @@ export class ProviderProtocolClient {
 		});
 	}
 
-	issueAccessToken(credential: string, credentialId: string, proof: CapacityProviderSignedProof, idempotencyKey: string) {
+	issueAccessToken(credential: string, credentialId: string, proof: CapacityProviderSignedProof, idempotencyKey: string, requestedValiditySeconds?: number) {
 		const value = credential.trim();
 		if (!value) throw new Error('Provider team credential is required.');
 		return this.requestPayload<ProviderAccessTokenIssue>(CAPACITY_PROVIDER_GOVERNANCE_ENDPOINTS.accessTokens, {
 			method: 'POST', authorization: `Treeseed-Credential ${value}`,
-			headers: { 'idempotency-key': idempotencyKey }, body: { credentialId, proof },
+			headers: { 'idempotency-key': idempotencyKey }, body: { credentialId, requestedValiditySeconds, proof },
 		});
 	}
 
@@ -250,6 +250,18 @@ export class ProviderProtocolClient {
 
 	renewAssignment(assignmentId: string, request: ProviderAssignmentLifecycleRequest = {}) {
 		return this.requestOkJson<ProviderAssignmentLifecycleResult>(CAPACITY_PROVIDER_ENDPOINTS.assignmentRenew(assignmentId), { method: 'POST', body: request });
+	}
+
+	startAssignmentExecution(assignmentId: string, request: Record<string, unknown>) {
+		return this.requestOkJson<{ ok: true; payload: Record<string, unknown> }>(CAPACITY_PROVIDER_ENDPOINTS.assignmentExecutionStart(assignmentId), { method: 'POST', body: request });
+	}
+
+	startAssignmentCloseout(assignmentId: string, request: Record<string, unknown>) {
+		return this.requestOkJson<{ ok: true; payload: Record<string, unknown> }>(CAPACITY_PROVIDER_ENDPOINTS.assignmentCloseoutStart(assignmentId), { method: 'POST', body: request });
+	}
+
+	preflightAssignmentCompletion(assignmentId: string, request: Record<string, unknown>) {
+		return this.requestOkJson<{ ok: true; payload: Record<string, unknown> }>(CAPACITY_PROVIDER_ENDPOINTS.assignmentCompletionPreflight(assignmentId), { method: 'POST', body: request });
 	}
 
 	returnAssignment(assignmentId: string, request: ProviderAssignmentLifecycleRequest = {}) {

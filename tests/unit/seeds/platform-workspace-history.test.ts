@@ -3,7 +3,6 @@ import { parseDeployConfig } from '../../../src/platform/deploy-config/parse-dep
 import {
 	classifyPlatformWorkspaceBranch,
 	platformDeployConfig,
-	platformPortfolio,
 } from '../../../src/seeds/workspaces/platform-workspace-history.ts';
 
 describe('Platform workspace migration recovery', () => {
@@ -18,7 +17,7 @@ describe('Platform workspace migration recovery', () => {
 		expect(classifyPlatformWorkspaceBranch({ sourceDigest: 'next', targetCommit: 'owned', receipt })).toMatchObject({ action: 'update' });
 	});
 
-	it('generates a non-hosted customer Platform bound to the singleton Market', () => {
+	it('generates the canonical local-managed Codex Platform template', () => {
 		const config = parseDeployConfig(platformDeployConfig());
 
 		expect(config.authority).toEqual({ kind: 'customer-platform' });
@@ -28,31 +27,12 @@ describe('Platform workspace migration recovery', () => {
 			baseUrl: 'https://api.treeseed.dev',
 			provisioningAuthority: 'forbidden',
 		});
-		expect(config.controlPlane).toEqual({
-			mode: 'market-passthrough',
-			baseUrl: 'https://api.treeseed.dev',
-		});
+		expect(config.controlPlane).toEqual({ mode: 'managed' });
 		expect(config.runtime).toEqual({ mode: 'none', registration: 'none' });
-		expect(config.processing).toEqual({ mode: 'none' });
-		expect(config.surfaces?.web?.enabled).toBe(false);
-		expect(config.services).toEqual({});
+		expect(config.processing).toEqual({ mode: 'local', providerRef: 'codex-sub' });
+		expect(config.surfaces?.web?.enabled).toBe(true);
+		expect(config.services.api).toMatchObject({ enabled: true, provider: 'local' });
+		expect(config.services.treedx).toMatchObject({ enabled: true, provider: 'local' });
 	});
 
-	it('represents bundled projects as an exact-ref portfolio instead of gitlinks', () => {
-		const portfolio = JSON.parse(platformPortfolio([
-			{ path: 'packages/api', repository: 'treeseed-ai/api', commit: 'a'.repeat(40) },
-			{ path: 'templates/engineering', repository: 'treeseed-ai/template-engineering', commit: 'b'.repeat(40) },
-		]));
-
-		expect(portfolio).toMatchObject({
-			schemaVersion: 1,
-			kind: 'treeseed.portfolio',
-			materialization: 'ephemeral_workset',
-			integrationAuthority: 'treeseed.integration-change-set/v1',
-		});
-		expect(portfolio.repositories).toEqual([
-			{ path: 'packages/api', repository: 'treeseed-ai/api', commit: 'a'.repeat(40) },
-			{ path: 'templates/engineering', repository: 'treeseed-ai/template-engineering', commit: 'b'.repeat(40) },
-		]);
-	});
 });

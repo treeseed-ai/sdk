@@ -39,6 +39,13 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 		TREESEED_TREEDX_URL: 'http://host.docker.internal:4000',
 		...localTreeDxApiEnv,
 	};
+	const providerResources=localProviderResources({ tenantRoot, environment, capacityConfigPath, sourceClosureDigest: capacityProviderSourceClosureDigest,
+		treeDxEnvironment: localCapacityProviderTreeDxEnv, hostCodexAuthFile, seedBootstrapAvailable, seedNames,
+		r2Bucket: deployConfig?.cloudflare.r2?.bucketName ?? 'treeseed-market-content' });
+	const providerManifests=providerResources.filter((resource)=>resource.kind==='capacity-provider').map((resource)=>({
+		baseManifestPath:String(resource.spec.baseManifestPath??''),runtimeManifestPath:String(resource.spec.runtimeManifestPath??''),manifestDigest:String(resource.spec.manifestDigest??''),
+		seedName:String(resource.spec.seedName??''),
+	})).filter((entry)=>entry.baseManifestPath&&entry.runtimeManifestPath&&entry.manifestDigest);
 	const tunnel = deployConfig?.cloudflare.tunnel?.local;
 	const tunnelIdentity = tunnel?.enabled === true
 		? scopedLocalTunnelIdentity(tenantRoot, tunnel.name ?? 'treeseed-local-connectors', tunnel.hostname ?? '')
@@ -136,7 +143,7 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 				},
 				healthEndpoint: 'http://127.0.0.1:4000/api/v1/health',
 				auth: localTreeDxApiEnv,
-				projects: localTreeDxContentProjects(tenantRoot),
+				projects: localTreeDxContentProjects(tenantRoot, seedNames),
 			},
 			source: { type: 'package-adapter', id: 'treedx' },
 		},
@@ -173,12 +180,11 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 			},
 			source: { type: 'package-adapter', id: 'treedx' },
 		},
-		...localProviderResources({ tenantRoot, environment, capacityConfigPath, sourceClosureDigest: capacityProviderSourceClosureDigest,
-			treeDxEnvironment: localCapacityProviderTreeDxEnv, hostCodexAuthFile, seedBootstrapAvailable, seedNames,
-			r2Bucket: deployConfig?.cloudflare.r2?.bucketName ?? 'treeseed-market-content' }),
+		...providerResources,
 		...[
 			['market-web', 'Market web dev process'],
 			['api', 'API dev process'],
+			['operations-runner', 'Operations runner dev process'],
 		].map(([id, label]) => ({
 			id: `local-process:${id}`,
 			kind: 'local-process' as const,
@@ -189,11 +195,14 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 			logicalName: label,
 			dependencies: id === 'market-web'
 				? ['local-process:api', mailpitComposeId]
+				: id === 'operations-runner'
+					? ['local-process:api']
 				: [apiPostgresComposeId, mailpitComposeId],
-			spec: {
-				processId: id,
-				surfaces: id === 'market-web' ? ['web'] : ['api'],
-				supervisor: 'sdk-managed-dev',
+				spec: {
+					processId: id,
+					surfaces: id === 'market-web' ? ['web'] : [id],
+					env: { TREESEED_TENANT_ROOT: tenantRoot },
+					supervisor: 'sdk-managed-dev',
 				action: 'start',
 				options: {
 					apiPort: 3000,
@@ -213,11 +222,13 @@ export function localDevelopmentResources(tenantRoot: string, environment: Desir
 			serviceId: 'seed-bootstrap',
 			logicalName: 'local Treeseed seed bootstrap',
 			dependencies: ['local-process:api', 'local-treedx:team-primary'],
-			spec: {
-				seedName: 'treeseed',
-				environments: 'local',
-				manifestPath: localSeedPath,
+				spec: {
+					seedName: 'treeseed',
+					environments: 'local',
+					apiUrl: 'http://127.0.0.1:3000',
+					manifestPath: localSeedPath,
 				manifestDigest: hashJson(readFileSync(localSeedPath, 'utf8')),
+				providerManifests,
 				applyModulePath: localSeedModulePath,
 				compiledApplyModulePath: resolvePath(tenantRoot, 'packages/api/dist/market/seeds/apply.js'),
 			},

@@ -60,6 +60,7 @@ function localApiEnvironment(apiPort: number, webPort: number) {
 		TREESEED_MAILPIT_UI_URL: 'http://127.0.0.1:8025',
 		TREESEED_PLATFORM_RUNNER_ID: 'treeseed-ops-local-1',
 		TREESEED_PLATFORM_RUNNER_SECRET: 'treeseed-platform-runner-dev-secret',
+		TREESEED_TREEDX_CREDENTIAL_BROKER_ASSERTION: 'treeseed-local-credential-broker-assertion',
 		TREESEED_PLATFORM_RUNNER_ENVIRONMENT: 'local',
 		TREESEED_ENVIRONMENT: 'local',
 		TREESEED_API_ENVIRONMENT: 'local',

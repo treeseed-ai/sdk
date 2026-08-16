@@ -259,6 +259,27 @@ it('validates structured estimates with dependency declarations', () => {
 		expect(validateStructuredAgentEstimate({ ...estimate, minSeconds: -1 }).diagnostics).toEqual(expect.arrayContaining([
 			expect.objectContaining({ code: 'non_negative_number_required', path: 'minSeconds' }),
 		]));
+		const governedEstimate = {
+			...estimate,
+			schemaVersion: 2 as const,
+			workBreakdown: {
+				preparationSeconds: 20, implementationSeconds: 80, verificationSeconds: 30,
+				independentReviewSeconds: 30, revisionSeconds: 20, revisionVerificationSeconds: 15,
+				finalReviewSeconds: 20, reportingSeconds: 15, reserveSeconds: 10,
+				expectedRevisionCycles: 1,
+			},
+		};
+		expect(validateStructuredAgentEstimate(governedEstimate).ok).toBe(true);
+		expect(validateStructuredAgentEstimate({ ...governedEstimate, workBreakdown: undefined }).diagnostics).toEqual(expect.arrayContaining([
+			expect.objectContaining({ code: 'estimate_work_breakdown_required' }),
+		]));
+		expect(validateStructuredAgentEstimate({
+			...governedEstimate,
+			workBreakdown: { ...governedEstimate.workBreakdown, finalReviewSeconds: 0 },
+		}).diagnostics).toEqual(expect.arrayContaining([
+			expect.objectContaining({ code: 'estimate_governed_phases_required' }),
+			expect.objectContaining({ code: 'estimate_work_breakdown_total_invalid' }),
+		]));
 	});
 
 it('validates deliverable contracts and manifests without concrete file paths in the contract', () => {

@@ -88,6 +88,7 @@ export interface AgentCapacityPlanWorkUnit {
 	workGraphNodeId?: string | null;
 	projectAgentClassId: string;
 	mode: AgentExecutionMode;
+	activityType?: import('../../../types/agents.ts').AgentActivityType;
 	taskId?: string | null;
 	agentId?: string | null;
 	handlerId?: string | null;

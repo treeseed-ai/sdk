@@ -8,6 +8,7 @@ import { CONTENT_PUBLICATION_CONTRACT,publicationKeys,type ContentPublicationCha
 import { createR2PublicationClient,type R2PublicationConfig } from './r2-publication-client.ts';
 import { buildRuntimePublication,verifyRuntimePublicationManifest } from './runtime/build-runtime-publication.ts';
 import { PUBLISHED_CONTENT_MANIFEST_SCHEMA_VERSION } from './published-content-manifest-schema-version.ts';
+import { validatePublicationContent } from './validation/model-content.ts';
 
 export interface ReconcileContentPublicationInput {
 	projectRoot: string;
@@ -89,6 +90,7 @@ export async function reconcileContentPublication(input: ReconcileContentPublica
 		const sha256 = digest(bytes);
 		return { path: relative(root, file).replaceAll('\\', '/'), bytes, sha256, byteLength: bytes.byteLength, mediaType: mediaType(file) };
 	}));
+	validatePublicationContent(sourceValues.map((value) => ({ path: value.path, body: value.bytes.toString('utf8') })));
 	const provisional = { teamId: input.teamId, projectId: input.projectId, sourceCommit: input.sourceCommit, ref: input.ref, channel: input.channel };
 	const revision = digest(JSON.stringify({ contract: CONTENT_PUBLICATION_CONTRACT, ...provisional, objects: sourceValues.map(({ path, sha256 }) => ({ path, sha256 })) }));
 	const keys = publicationKeys({ ...provisional, revision });

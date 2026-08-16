@@ -39,6 +39,8 @@ function context(overrides: Partial<any> = {}) {
 	const progressEvents: Array<{ event: string; data: unknown; meta?: unknown }> = [];
 	const page = {
 		goto: vi.fn(async (url: string) => ({ status: () => 200, url: () => url })),
+		goBack: vi.fn(async () => undefined),
+		goForward: vi.fn(async () => undefined),
 		keyboard: { press: vi.fn(async () => undefined) },
 		getByText: vi.fn(() => locator(true)),
 		url: vi.fn(() => 'http://local/app'),
@@ -169,6 +171,11 @@ describe('built-in scene plugin handlers', () => {
 		expect((await registry.actions.get('select')!.run({ action: {}, step, context: ctx } as never)).diagnostics[0]?.code).toBe('scene.invalid_action');
 		expect((await registry.actions.get('keyboard')!.run({ action: { keyboard: 'Tab' }, step, context: ctx } as never)).ok).toBe(true);
 		expect((await registry.actions.get('keyboard')!.run({ action: {}, step, context: ctx } as never)).diagnostics[0]?.code).toBe('scene.invalid_action');
+		expect((await registry.actions.get('browserHistory')!.run({ action: { browserHistory: 'back' }, step, context: ctx } as never)).ok).toBe(true);
+		expect(ctx.session.page.goBack).toHaveBeenCalledOnce();
+		expect((await registry.actions.get('browserHistory')!.run({ action: { browserHistory: 'forward' }, step, context: ctx } as never)).ok).toBe(true);
+		expect(ctx.session.page.goForward).toHaveBeenCalledOnce();
+		expect((await registry.actions.get('browserHistory')!.run({ action: {}, step, context: ctx } as never)).diagnostics[0]?.code).toBe('scene.invalid_action');
 		expect((await registry.actions.get('apiRequest')!.run({ action: {}, step, context: ctx } as never)).ok).toBe(false);
 		expect((await registry.actions.get('goto')!.run({ action: {}, step, context: ctx } as never)).diagnostics[0]?.code).toBe('scene.invalid_action');
 	});

@@ -107,6 +107,16 @@ describe('capacity provider membership protocol', () => {
 		await expect(client.nextAssignment()).rejects.toThrow(/membership access token/u);
 	});
 
+	it('carries the requested assignment-authority lifetime in the signed access-token request', async () => {
+		let requestBody: Record<string, unknown> = {};
+		const client = new ProviderProtocolClient({ marketUrl: 'https://market.test', fetchImpl: async (_input, init) => {
+			requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+			return new Response(JSON.stringify({ ok: true, payload: { id: 'token-a' } }), { status: 201, headers: { 'content-type': 'application/json' } });
+		} });
+		await client.issueAccessToken('credential-secret', 'credential-a', { protected: 'header', payload: 'payload', signature: 'signature' }, 'access-a', 1_861);
+		expect(requestBody).toMatchObject({ credentialId: 'credential-a', requestedValiditySeconds: 1_861 });
+	});
+
 	it('fails closed when a successful HTTP response is not a valid protocol envelope', async () => {
 		const client = new ProviderProtocolClient({
 			marketUrl: 'https://market.test',

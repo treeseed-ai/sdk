@@ -148,17 +148,7 @@ export interface AgentPermissionConfig {
 	operations: AgentPermissionOperation[];
 }
 
-export interface AgentContentPermission {
-	model: string;
-	operations: Array<'read' | 'create' | 'update' | 'link' | 'comment' | string>;
-	filters?: Record<string, unknown>;
-}
-
-export interface AgentModePermissionPolicy {
-	content?: {
-		read?: AgentContentPermission[];
-		write?: AgentContentPermission[];
-	};
+export interface AgentExecutionBoundaryPolicy {
 	repository?: {
 		readPaths?: string[];
 		writePaths?: string[];
@@ -172,13 +162,6 @@ export interface AgentModePermissionPolicy {
 		allowCommands?: boolean;
 		allowedCommands?: string[];
 		deniedCommands?: string[];
-	};
-}
-
-export interface AgentPermissionPolicy {
-	modes?: {
-		planning?: AgentModePermissionPolicy;
-		acting?: AgentModePermissionPolicy;
 	};
 }
 
@@ -222,6 +205,14 @@ export interface AgentContentAccessPolicy {
 	};
 }
 
+export interface AgentActivityPermissions {
+	content?: Record<string,{ operations: import('../../operations/content-operations.ts').ContentAction[]; filters?: Record<string,unknown> }>;
+	commit?: { allowed:boolean };
+	repository?: AgentExecutionBoundaryPolicy['repository'];
+	network?: AgentExecutionBoundaryPolicy['network'];
+	shell?: AgentExecutionBoundaryPolicy['shell'];
+}
+
 export type AgentBranchPolicy =
 	| { kind: 'read-only'; base: 'main' | 'staging' }
 	| { kind: 'main-planning-content'; base: 'main' }
@@ -258,6 +249,7 @@ export interface AgentActivityPromptConfig {
 export interface AgentActivityExecutionConfig {
 	requiredCapabilities?: string[];
 	maxRuntimeSeconds?: number;
+	closeoutWarningSeconds?: number;
 	maxRetries?: number;
 	verificationRequired?: boolean;
 	maxTotalTokens?: number;

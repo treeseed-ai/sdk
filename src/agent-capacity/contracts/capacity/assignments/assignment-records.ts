@@ -1,4 +1,5 @@
 export type AgentExecutionMode = 'planning' | 'acting';
+export type AgentWorkExecutionMode = import('../../support/execution-mode.ts').AgentWorkExecutionMode;
 export type ProviderAssignmentStatus = 'pending' | 'leased' | 'running' | 'completed' | 'failed' | 'returned' | 'expired' | 'cancelled';
 export type ProviderAssignmentLeaseState = 'unleased' | 'leased' | 'released' | 'expired';
 export type AgentModeRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
@@ -27,6 +28,7 @@ export interface WorkdayCapacityEnvelope {
 	projectId: string;
 	workDayId?: string | null;
 	environment?: string | null;
+	executionMode?: AgentWorkExecutionMode;
 	allocationSetId?: string | null;
 	availableSeconds?: number | null;
 	requestedSeconds?: number | null;
@@ -55,6 +57,8 @@ export interface DecisionExecutionInput {
 	projectId: string;
 	projectAgentClassId: string;
 	mode: AgentExecutionMode;
+	executionMode?: AgentWorkExecutionMode;
+	activityType?: import('../../../../types/agents.ts').AgentActivityType;
 	workGraphNodeId?: string | null;
 	estimateId?: string | null;
 	taskId?: string | null;
@@ -71,8 +75,12 @@ export interface TreeDxProxyHandle {
 	teamId: string;
 	projectId: string;
 	assignmentId?: string | null;
+	executionMode?: AgentWorkExecutionMode;
 	repositoryId?: string | null;
 	workspaceId?: string | null;
+	baseCommitSha?: string | null;
+	baseRef?: string | null;
+	branchName?: string | null;
 	status?: 'issued' | 'active' | 'revoked' | 'expired' | string;
 	scopes: string[];
 	expiresAt?: string | null;
@@ -94,6 +102,7 @@ export interface ProviderAssignmentCapabilityHandleBase {
 	teamId: string;
 	projectId: string;
 	assignmentId: string;
+	executionMode?: AgentWorkExecutionMode;
 	status?: 'active' | 'issued' | 'revoked' | 'expired' | 'blocked' | string;
 	workspaceAccessMode?: AgentAssignmentWorkspaceAccessMode | string | null;
 	operations?: AgentAssignmentCapabilityOperation[];
@@ -166,12 +175,24 @@ export interface ProviderAssignment {
 	providerSessionId: string | null;
 	executionProviderId: string | null;
 	laneId: string | null;
+	lanePurpose?: import('../communication/communication-records.ts').ProviderLanePurpose | null;
+	communicationOverflow?: boolean;
+	executionKind?: import('../communication/communication-records.ts').CapacityExecutionKind;
+	triggerKind?: import('../communication/communication-records.ts').CapacityTriggerKind;
+	invocationId?: string | null;
+	parentWorkdayId?: string | null;
+	parentAssignmentId?: string | null;
+	handoffRootId?: string | null;
+	handoffParentId?: string | null;
+	handoffDepth?: number;
+	sourceMessageRefs?: string[];
 	allocationSetId: string | null;
 	projectAgentClassId: string;
 	reservationId: string | null;
 	workDayId: string | null;
 	taskId: string | null;
 	mode: AgentExecutionMode;
+	executionMode?: AgentWorkExecutionMode;
 	status: ProviderAssignmentStatus;
 	leaseState: ProviderAssignmentLeaseState;
 	leaseExpiresAt: string | null;
@@ -228,6 +249,9 @@ export interface ProviderNextAssignmentRequest {
 	runnerId?: string | null;
 	leaseSeconds?: number | null;
 	capabilities?: string[];
+	laneId?: string | null;
+	lanePurpose?: import('../communication/communication-records.ts').ProviderLanePurpose | null;
+	waitSeconds?: number | null;
 	metadata?: Record<string, unknown>;
 }
 
@@ -262,6 +286,7 @@ export interface AgentModeRun {
 	agentId: string | null;
 	handlerId: string | null;
 	mode: AgentExecutionMode;
+	executionMode?: AgentWorkExecutionMode;
 	status: AgentModeRunStatus;
 	selectedInput: Record<string, unknown>;
 	capacityEnvelope: AgentCapacityEnvelope;

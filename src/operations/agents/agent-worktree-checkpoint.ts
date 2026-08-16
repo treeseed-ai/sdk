@@ -68,7 +68,7 @@ export async function checkpointAgentWorktree(
 			};
 		}
 		await executor.exec('git', ['add', '--', ...paths], { cwd: worktreeRoot, env: process.env });
-		await executor.exec('git', ['commit', '-m', message], { cwd: worktreeRoot, env: process.env });
+		await executor.exec('git', ['commit', '-m', message, '-m', `Treeseed-Assignment: ${input.request.taskId}`], { cwd: worktreeRoot, env: process.env });
 		const commitSha = (await executor.exec('git', ['rev-parse', 'HEAD'], { cwd: worktreeRoot, env: process.env })).stdout.trim();
 		return {
 			operation: 'save', status: 'completed', summary: 'Created an assignment-scoped source checkpoint without publishing it.',

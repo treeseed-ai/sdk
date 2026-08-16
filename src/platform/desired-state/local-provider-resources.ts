@@ -5,7 +5,7 @@ import { redactCapacityProviderEnv, validateAndDigestCapacityProviderManifest } 
 import type { DesiredEnvironment, DesiredResource } from './desired-environment.ts';
 
 type ProviderClass = 'agent' | 'platform-operation';
-type ProviderSeed = { key: string; providerClass: ProviderClass; manifest: string };
+type ProviderSeed = { key: string; providerClass: ProviderClass; manifest: string; seedName: string };
 
 function record(value: unknown): Record<string, unknown> {
 	return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -34,7 +34,7 @@ function providerSeeds(tenantRoot: string, selectedSeedNames?: string[]): Provid
 			const value = record(entry);
 			const environments = Array.isArray(value.environments) ? value.environments.map(String) : ['local'];
 			if (!environments.includes('local') || typeof value.key !== 'string' || typeof value.manifest !== 'string') return [];
-			return [{ key: value.key, providerClass: value.providerClass === 'platform-operation' ? 'platform-operation' : 'agent', manifest: value.manifest }];
+			return [{ key: value.key, providerClass: value.providerClass === 'platform-operation' ? 'platform-operation' : 'agent', manifest: value.manifest, seedName }];
 		});
 	});
 	return parsed;
@@ -68,12 +68,13 @@ export function localProviderResources(input: {
 		const manifestDigest = manifestState?.digest ?? null;
 		const composeId = `local-docker-compose:capacity-provider:${identity}`;
 		const providerId = `capacity-provider:${identity}`;
-		const imageBuildIds = ['docker-image-build:treeseed/agent-manager', 'docker-image-build:treeseed/agent-runner'];
+		const imageBuildIds = ['docker-image-build:treeseed/agent-runtime'];
 		const env = {
 			...input.treeDxEnvironment,
 			TREESEED_CAPACITY_PROVIDER_MANIFEST: runtimeManifestPath,
 			TREESEED_PROVIDER_HOST_DATA_DIR: dataDir,
 			TREESEED_PROVIDER_CLASS: provider.providerClass,
+			TREESEED_PROVIDER_SOURCE_CLOSURE_DIGEST: input.sourceClosureDigest,
 			...(provider.providerClass === 'platform-operation' ? { TREESEED_CONTENT_BUCKET_NAME: input.r2Bucket } : {}),
 			...(provider.providerClass === 'agent' ? {
 				TREESEED_CODEX_AUTH_FILE: '/run/treeseed-secrets/codex-auth.json',
@@ -92,6 +93,7 @@ export function localProviderResources(input: {
 				mode: 'local', providerClass: provider.providerClass, roles: ['manager', 'runner'], volumePolicy: 'isolated',
 				manifestDigest, sourceClosureDigest: input.sourceClosureDigest, expectedConnectionCount: input.seedBootstrapAvailable ? 1 : manifestState?.manifest.connections.length ?? 0,
 				runtimeStatus: { path: `${relativeDataDir}/runtime/manager.json`, maxAgeSeconds: 180, attempts: 60, intervalMs: 500 },
+				baseManifestPath: provider.manifest, runtimeManifestPath: `${relativeDataDir}/runtime/provider-manifest.yaml`, seedName: provider.seedName,
 				managedStorage: { custody: 'capacity-provider', hostPath: dataDir, servicePath: '/data', providerClass: provider.providerClass },
 			}, source: { type: 'package-adapter', id: '@treeseed/agent' },
 		}, {
@@ -102,8 +104,10 @@ export function localProviderResources(input: {
 				composeFile: 'packages/agent/compose.capacity-provider.yml', composeFiles: ['packages/agent/compose.capacity-provider.yml'],
 				projectName: `treeseed-${identity}`, cwd: '.', dataDir: relativeDataDir,
 				managedStorage: { custody: 'capacity-provider', hostPath: dataDir, servicePath: '/data', providerClass: provider.providerClass },
-				manifestDigest, buildPolicy: 'never', devMode: 'container-image',
+				manifestDigest, sourceClosureDigest: input.sourceClosureDigest, buildPolicy: 'never', devMode: 'container-image',
+				baseManifestPath: provider.manifest, runtimeManifestPath: `${relativeDataDir}/runtime/provider-manifest.yaml`,
 				requiredHostPaths: [{ path: runtimeManifestPath, kind: 'file', description: `${provider.providerClass} capacity provider manifest` }],
+				serviceImages: { manager: 'treeseed/agent-manager:local', runner: 'treeseed/agent-runner:local' },
 				redactedEnv: redactCapacityProviderEnv(env), envKeys: Object.keys(env).sort(), env,
 				services: ['manager', 'runner'], volumes: [{ name: `${identity}-data`, mountPath: '/data', sharedLocalOnly: false }],
 				healthChecks: [{ id: 'compose-services', kind: 'container', service: 'manager' }],

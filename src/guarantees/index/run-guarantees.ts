@@ -17,6 +17,9 @@ export async function runGuarantees(input: {
 	outputRoot?: string;
 	includeDependencies?: boolean;
 	includePlanned?: boolean;
+	provePlanned?: boolean;
+	variant?: string;
+	proofInput?: string;
 	failOnSkippedReleaseGuarantees?: boolean;
 	record?: boolean;
 	sceneArtifacts?: 'full' | 'screenshots';
@@ -47,7 +50,8 @@ export async function runGuarantees(input: {
 		schemaVersion: 'treeseed.guarantee-run-state/v2',
 		runId,
 		sourceClosure: startedSourceClosure,
-		values: {},
+		...(input.variant ? { variant: input.variant } : {}),
+		values: input.proofInput ? { agentProofInput: input.proofInput } : {},
 	};
 	const graph = buildGuaranteeDependencyGraph({ guarantees: registry.guarantees, filter, includeDependencies: input.includeDependencies !== false });
 	diagnostics.push(...graph.diagnostics);
@@ -104,7 +108,7 @@ export async function runGuarantees(input: {
 				input.onProgress?.(`[guarantees][run] ${entry.manifest.id}: blocked by ${blockedBy.join(', ')}`, 'stderr');
 				continue;
 			}
-			if (entry.manifest.status !== 'active') {
+			if (entry.manifest.status !== 'active' && !(input.provePlanned && entry.manifest.catalogContract)) {
 				if (input.includePlanned) {
 					const now = new Date().toISOString();
 					input.onProgress?.(`[guarantees][run] ${entry.manifest.id}: skipped because status is ${entry.manifest.status}`);

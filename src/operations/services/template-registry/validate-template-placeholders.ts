@@ -238,6 +238,8 @@ export function resolveVariableValue(variable: TemplateVariableDefinition, input
 			return input.repositoryUrl ?? variable.default ?? '';
 		case 'discordUrl':
 			return input.discordUrl ?? variable.default ?? '';
+		case 'controlPlaneBaseUrl':
+			return input.controlPlaneBaseUrl ?? variable.default ?? '';
 		case 'cliVersion':
 			return `^${cliPackageVersion}`;
 		case 'agentVersion':

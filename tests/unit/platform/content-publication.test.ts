@@ -101,6 +101,23 @@ describe('content publication reconciliation', () => {
 		expect(JSON.stringify(receipt)).not.toMatch(/secret|signedUrl|credential/iu);
 	});
 
+	it('blocks publication with exact model, path, and field diagnostics', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'content-publication-invalid-model-'));
+		mkdirSync(join(root, 'src/content/templates'), { recursive: true });
+		writeFileSync(join(root, 'src/content/templates/broken.mdx'), '---\nslug: broken\nstatus: live\n---\nBroken template.\n');
+		const publication = reconcileContentPublication({
+			projectRoot: root, contentPath: 'src/content', teamId: 'team-a', projectId: 'project-a',
+			sourceCommit: '0123456789012345678901234567890123456789',
+			observeSourceCommit: async () => '0123456789012345678901234567890123456789',
+			generatedAt: '2026-08-11T00:00:00.000Z', ref: 'feature/content', channel: 'preview', validateOnly: true,
+		});
+		await expect(publication).rejects.toMatchObject({
+			code: 'content_publication_model_invalid', details: expect.arrayContaining([
+				expect.objectContaining({ path: 'templates/broken.mdx', model: 'template_product', field: 'title' }),
+			]),
+		});
+	});
+
 	it('uses path-qualified IDs and rejects duplicate explicit identities', () => {
 		const source = (path: string, id?: string) => ({
 			path,

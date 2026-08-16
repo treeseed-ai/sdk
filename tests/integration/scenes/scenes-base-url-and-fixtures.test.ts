@@ -11,6 +11,7 @@ import {
 	SceneVisualAuditUserForRole,
 	validateSceneVisualAuditRoles,
 } from '../../../src/scenes/testing/visual-audit-fixtures.ts';
+import { visualAuditRepositoryId } from '../../../src/scenes/testing/visual-audit-tree-dx.ts';
 
 const servers: Server[] = [];
 
@@ -129,6 +130,11 @@ surfaces:
 });
 
 describe('scene visual audit fixture critical coverage', () => {
+	it('recovers the visual repository identity from a noop live observation receipt', () => {
+		expect(visualAuditRepositoryId({
+			repositoryObservations: [{ project: 'visual-audit-project', repositoryId: 'repo-live' }],
+		}, 'visual-audit-project')).toBe('repo-live');
+	});
 	it('validates built-in roles and unknown role diagnostics', () => {
 		expect(SceneVisualAuditUserForRole('owner')).toMatchObject({ email: 'visual.owner@treeseed.io', password: VISUAL_AUDIT_PASSWORD });
 		expect(SceneVisualAuditUserForRole('platform_admin')).toMatchObject({ email: 'visual.platform-admin@treeseed.io', password: VISUAL_AUDIT_PASSWORD });
@@ -257,6 +263,10 @@ describe('scene visual audit fixture critical coverage', () => {
 				response.end(JSON.stringify({ ok: true, payload: { accessToken: 'api-token', expiresInSeconds: 120 } }));
 				return;
 			}
+			if (request.url === '/v1/teams') {
+				response.end(JSON.stringify({ ok: true, payload: [{ id: 'team-visual-audit', slug: 'visual-audit-team' }] }));
+				return;
+			}
 			response.statusCode = 404;
 			response.end(JSON.stringify({ ok: false }));
 		});
@@ -268,7 +278,8 @@ describe('scene visual audit fixture critical coverage', () => {
 			url: () => `${setupBaseUrl}/app/`,
 		};
 		expect(await signInSceneVisualAuditRole({ page: apiPage, baseUrl: setupBaseUrl, apiBaseUrl, role: 'admin' })).toEqual([]);
-		expect(cookies).toHaveLength(1);
+		expect(cookies).toHaveLength(2);
+		expect(cookies).toContainEqual(expect.objectContaining({ name: 'treeseed_active_team', value: 'team-visual-audit', path: '/app' }));
 
 		const locator = {
 			first: () => locator,

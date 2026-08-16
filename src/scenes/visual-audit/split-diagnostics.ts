@@ -131,13 +131,21 @@ export async function collectDomSummary(page: any) {
 			.slice(0, 12)
 			.map(({ entry }) => ({ text: text(entry.textContent).slice(0, 80), href: entry.getAttribute('href'), selectorHint: selectorHint(entry) }));
 		const defaultStyledButtons = buttons
-			.filter((entry) => !hasClass(entry))
+			.filter((entry) => !hasClass(entry) && (entry instanceof HTMLButtonElement || entry instanceof HTMLInputElement))
+			.filter((entry) => {
+				const style = window.getComputedStyle(entry);
+				return (style.appearance === 'auto' || style.appearance === 'button')
+					&& style.borderStyle === 'outset';
+			})
 			.slice(0, 12)
 			.map((entry) => ({ text: text((entry as HTMLInputElement).value || entry.textContent).slice(0, 80), selectorHint: selectorHint(entry) }));
 		const visibleText = text(document.body?.innerText ?? '');
-		const errorTexts = visibleText.split(/(?<=[.!?])\s+|\n+/u)
-			.map((entry) => text(entry))
-			.filter((entry) => /error|exception|stack trace|not found|failed to load|something went wrong|cannot read|undefined|internal server error|vite|astro error|hydration|client error/iu.test(entry))
+		const errorPattern = /error|exception|stack trace|not found|failed to load|something went wrong|cannot read|undefined|internal server error|vite|astro error|hydration|client error/iu;
+		const errorTexts = [...document.querySelectorAll('[role="alert"],[aria-live="assertive"],[data-tone="danger"],[data-tone="error"],[data-severity="error"],.ts-error,.error')]
+			.filter(visible)
+			.map((entry) => text(entry.textContent))
+			.filter((entry) => errorPattern.test(entry))
+			.filter((entry, index, entries) => entries.indexOf(entry) === index)
 			.slice(0, 20);
 		const seededEntityTexts = ['Visual Audit Team', 'visual-audit', 'Visual Audit Project', 'visual-audit-project']
 			.filter((entry) => visibleText.includes(entry));

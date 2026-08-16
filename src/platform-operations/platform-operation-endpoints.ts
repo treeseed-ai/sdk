@@ -195,6 +195,7 @@ export interface PlatformOperationRunnerCoreOptions {
 	executors: PlatformOperationExecutor[];
 	operationId?: string | null;
 	leaseSeconds?: number;
+	leaseRenewalIntervalMs?: number;
 	limit?: number;
 	throwIfCancelled?: (operation: PlatformOperation) => Promise<void>;
 }

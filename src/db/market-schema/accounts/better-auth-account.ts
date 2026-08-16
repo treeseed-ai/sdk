@@ -116,6 +116,7 @@ export const capacityProviderLanes = pgTable('capacity_provider_lanes', {
 	capacityProviderId: text('capacity_provider_id').notNull(),
 	executionProviderId: text('execution_provider_id').notNull(),
 	displayName: text('display_name').notNull(),
+	purpose: text('purpose').notNull().default('operation'),
 	status: text('status').notNull().default('active'),
 	capabilitiesJson: text('capabilities_json').notNull().default('[]'),
 	maxConcurrentRunners: integer('max_concurrent_runners').notNull(),
@@ -130,6 +131,7 @@ export const capacityProviderLanes = pgTable('capacity_provider_lanes', {
 	uniqueIndex('idx_capacity_provider_lanes_provider_execution_name').on(table.capacityProviderId, table.executionProviderId, table.displayName),
 	index('idx_capacity_provider_lanes_provider_status').on(table.capacityProviderId, table.status, table.updatedAt),
 	check('chk_capacity_provider_lanes_status', sql`${table.status} IN ('active', 'paused', 'degraded', 'revoked')`),
+	check('chk_capacity_provider_lanes_purpose', sql`${table.purpose} IN ('communication', 'operation')`),
 	check('chk_capacity_provider_lanes_concurrency', sql`${table.maxConcurrentRunners} >= 1`)
 ]);
 

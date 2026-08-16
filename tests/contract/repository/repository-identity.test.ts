@@ -94,7 +94,11 @@ describe('repository identity and custody', () => {
 		const operations = resources.find((resource) => resource.id === 'local-process:operations-runner');
 		const treeDx = resources.find((resource) => resource.id === 'local-docker-compose:treedx');
 		expect(capacity?.spec.managedStorage).toMatchObject({ custody: 'capacity-provider', servicePath: '/data' });
-		expect(operations).toBeUndefined();
+		expect(operations).toMatchObject({
+			serviceId: 'operations-runner',
+			dependencies: ['local-process:api'],
+			spec: { surfaces: ['operations-runner'] },
+		});
 		expect(treeDx?.spec.managedStorage).toMatchObject({ custody: 'treedx', servicePath: '/var/lib/treedx' });
 		expect(JSON.stringify(capacity?.spec.env)).not.toContain('TREESEED_PROVIDER_WORKSPACE');
 		} finally {

@@ -10,7 +10,7 @@ localTemplateArtifactsRoot
 } from '../runtime/runtime-paths.ts';
 import { validateTemplatePlaceholders } from './validate-template-placeholders.ts';
 
-export const TEMPLATE_CATEGORIES = ['starter', 'example', 'fixture', 'reference-app'] as const;
+export const TEMPLATE_CATEGORIES = ['starter', 'example', 'fixture', 'reference-app', 'platform'] as const;
 
 export type TemplateCategory = (typeof TEMPLATE_CATEGORIES)[number];
 
@@ -41,10 +41,22 @@ export interface TemplateManifest {
 		validatedOnly?: string[];
 		tenantManaged?: string[];
 	};
+	platform?: PlatformTemplateComposition;
 	testing: {
 		smokeCommand?: string;
 		buildCommand?: string;
 	};
+}
+
+export interface PlatformTemplateComposition {
+	controlPlane: { mode: 'managed' | 'market-passthrough' | 'external'; baseUrl?: string };
+	processing: { mode: 'team-owned' | 'project-owned' | 'local' | 'market-assigned' | 'none' };
+	admin: { enabled: boolean };
+	executionProvider: 'codex' | 'treeseed-ai' | 'none';
+	aiAppliance: boolean;
+	services: string[];
+	seeds: string[];
+	scenes: string[];
 }
 
 export interface TemplateProductDefinition extends SdkTemplateCatalogEntry {
@@ -70,6 +82,7 @@ export interface StarterResolutionInput {
 	contactEmail?: string | null;
 	repositoryUrl?: string | null;
 	discordUrl?: string | null;
+	controlPlaneBaseUrl?: string | null;
 }
 
 export interface TemplateState {
@@ -79,6 +92,10 @@ export interface TemplateState {
 	installedAt: string;
 	lastSyncedAt?: string;
 	replacements: Record<string, string>;
+	definitionDigest?: string;
+	managedPaths?: string[];
+	seedPaths?: string[];
+	scenePaths?: string[];
 }
 
 export interface TemplateCatalogCache {
@@ -112,6 +129,35 @@ export const templatePayloadIgnoredRelativePaths = new Set([
 	'.treeseed/test-reports',
 	'public/books',
 ]);
+
+const forbiddenPlatformAsset = /(^|\/)(?:\.treeseed|node_modules|dist|test-results|worktrees?|workspaces?|logs?|traces?|screenshots?|videos?|renders?|cache)(?:\/|$)|\.(?:png|jpe?g|gif|webp|mp4|webm|mov|trace|log|zip)$/iu;
+
+function validatePlatformAssetPath(path: string, kind: 'seed' | 'scene') {
+	const normalized = normalizeTemplateRelativePath(path);
+	if (normalized.startsWith('/') || normalized.includes('../') || forbiddenPlatformAsset.test(normalized)) {
+		throw new Error(`Platform template ${kind} path is not a portable configuration asset: ${path}`);
+	}
+	if (!/\.ya?ml$/iu.test(normalized)) throw new Error(`Platform template ${kind} path must be YAML: ${path}`);
+}
+
+function validatePlatformComposition(manifest: TemplateManifest) {
+	const composition = manifest.platform;
+	if (manifest.category !== 'platform') {
+		if (composition) throw new Error(`Non-Platform template ${manifest.id} cannot declare platform composition.`);
+		return;
+	}
+	if (!composition) throw new Error(`Platform template ${manifest.id} is missing platform composition.`);
+	if (composition.controlPlane.mode === 'external' && !composition.controlPlane.baseUrl) throw new Error(`Platform template ${manifest.id} requires an external control-plane URL.`);
+	if (composition.controlPlane.mode !== 'external' && composition.controlPlane.baseUrl) throw new Error(`Platform template ${manifest.id} cannot set a control-plane URL in ${composition.controlPlane.mode} mode.`);
+	const services = new Set(composition.services);
+	if (composition.controlPlane.mode === 'managed') {
+		for (const required of ['api', 'treeseedDatabase', 'operationsRunner', 'treedx']) if (!services.has(required)) throw new Error(`Managed Platform template ${manifest.id} requires ${required}.`);
+	}
+	if (composition.executionProvider === 'treeseed-ai' && !composition.aiAppliance) throw new Error(`Platform template ${manifest.id} selects TreeSeed AI without the AI appliance.`);
+	if (composition.executionProvider !== 'treeseed-ai' && composition.aiAppliance) throw new Error(`Platform template ${manifest.id} enables the AI appliance without selecting TreeSeed AI.`);
+	for (const path of composition.seeds) validatePlatformAssetPath(path, 'seed');
+	for (const path of composition.scenes) validatePlatformAssetPath(path, 'scene');
+}
 
 export function normalizeTemplateRelativePath(path: string) {
 	return path.split(/[\\/]+/u).join('/');
@@ -221,4 +267,8 @@ export function validateTemplateManifest(definition: ResolvedTemplateDefinition)
 		throw new Error(`Template ${manifest.id} is missing template/ at ${templateRoot}.`);
 	}
 	validateTemplatePlaceholders(definition);
+	validatePlatformComposition(manifest);
+	for (const path of [...(manifest.platform?.seeds ?? []), ...(manifest.platform?.scenes ?? [])]) {
+		if (!existsSync(resolve(templateRoot, path))) throw new Error(`Platform template ${manifest.id} is missing configuration asset ${path}.`);
+	}
 }

@@ -3,9 +3,9 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createLocalTreeDxReconciliationClient } from '../../../../src/reconcile/builtin-adapters/projects/knowledge/verify-local-tree-dx-project-content.ts';
+import { buildLocalTreeDxAdapter, createLocalTreeDxReconciliationClient } from '../../../../src/reconcile/builtin-adapters/projects/knowledge/verify-local-tree-dx-project-content.ts';
 import { refreshLocalTreeDxProjectIndexes, syncLocalTreeDxProjectContent } from '../../../../src/reconcile/builtin-adapters/capacity/providers/build-capacity-provider-adapter.ts';
-import { syncRemoteTreeDxProjectContent } from '../../../../src/reconcile/builtin-adapters/projects/knowledge/reconcile-remote-tree-dx-content.ts';
+import { observeUnpublishedTreeDxAuthoring,syncRemoteTreeDxProjectContent } from '../../../../src/reconcile/builtin-adapters/projects/knowledge/reconcile-remote-tree-dx-content.ts';
 
 function healthResponse() {
 	return new Response(JSON.stringify({
@@ -89,12 +89,53 @@ describe('local TreeDX reconciliation transport', () => {
 	it('fails closed when search resolves a different commit', async () => {
 		const client = {
 			refreshGraph: vi.fn().mockResolvedValue({ resolvedRef: 'commit-1', graphVersion: 'graph-1', stale: false }),
-			refreshSearchIndex: vi.fn().mockResolvedValue({ resolvedRef: 'stale-commit', indexVersion: 'search-1', stale: false }),
+			refreshSearchIndex: vi.fn().mockResolvedValue({ resolvedRef: 'commit-1', sourceCommit: 'stale-commit', indexVersion: 'search-1', stale: false }),
 		};
 		await expect(refreshLocalTreeDxProjectIndexes(client as any, {
 			slug: 'admin', repositoryName: 'treeseed-admin', repositoryId: 'repo-1', localRoot: '/tmp/admin',
 			contentPath: 'docs/src/content', defaultRef: 'refs/heads/main',
 		}, 'repo-1', 'commit-1')).rejects.toThrow('did not resolve the reconciled commit');
+	});
+
+	it('plans recovery for a local repository when its search index is stale', () => {
+		const sha = 'a'.repeat(40);
+		const adapter = buildLocalTreeDxAdapter();
+		const diff = adapter.diff({
+			unit: { spec: { projects: [{ slug: 'market', repositoryName: 'market', repositoryId: 'market',
+				localRoot: '/unused', contentPath: 'src/content' }] } },
+			observed: { status: 'ready', warnings: [], live: { registeredRepositoryNames: ['market'], repositoryObservations: [{
+				project: 'market', remoteHead: sha, localHead: sha, searchReady: true, searchStale: true,
+				searchResolvedHead: sha, searchSourceHead: 'b'.repeat(40),
+			}] } },
+			persistedState: { lastReconciledAt: '2026-08-12T00:00:00.000Z', desiredSpecHash: 'unchanged' },
+		} as any);
+
+		expect(diff).toMatchObject({ action: 'update' });
+		expect(diff.reasons).toContain('TreeDX graph/search indexes differ from content refs: market');
+	});
+
+	it('blocks reconciliation when the exact divergent TreeDX head is journaled as unpublished', () => {
+		const remote = 'a'.repeat(40);
+		const local = 'b'.repeat(40);
+		const adapter = buildLocalTreeDxAdapter();
+		const diff = adapter.diff({
+			unit:{ spec:{ projects:[{ slug:'market',repositoryName:'market',repositoryId:'market',localRoot:'/unused',contentPath:'src/content',remoteUrl:'https://github.com/treeseed-ai/market-content.git' }] } },
+			observed:{ status:'ready',warnings:[],live:{ registeredRepositoryNames:['market'],repositoryObservations:[{
+				project:'market',remoteHead:remote,localHead:local,unpublished:[{ commitSha:local }],
+				searchReady:true,searchStale:false,searchResolvedHead:local,searchSourceHead:local,
+			}] } },persistedState:{ lastReconciledAt:'2026-08-12T00:00:00.000Z',desiredSpecHash:'unchanged' },
+		} as any);
+		expect(diff).toMatchObject({ action:'blocked' });
+		expect(diff.reasons.join('\n')).toContain('journaled unpublished authoring state: market');
+	});
+
+	it('observes unpublished authoring through the authenticated control-plane journal', async () => {
+		const commitSha='c'.repeat(40);
+		const fetchImpl=vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok:true,payload:{ unpublished:[{ commitSha }] } }),{ status:200,headers:{ 'content-type':'application/json' } }));
+		await expect(observeUnpublishedTreeDxAuthoring({
+			teamSlug:'treeseed',slug:'market',repositoryName:'market',repositoryId:'market',localRoot:'/unused',contentPath:'src/content',
+		},{ TREESEED_API_BASE_URL:'http://127.0.0.1:3000',TREESEED_PLATFORM_RUNNER_SECRET:'runner-secret' } as NodeJS.ProcessEnv,fetchImpl)).resolves.toEqual([{ commitSha }]);
+		expect(fetchImpl).toHaveBeenCalledWith(expect.objectContaining({ pathname:'/v1/internal/treedx/authoring-journal/status',search:expect.stringContaining('projectSlug=market') }),expect.objectContaining({ headers:expect.objectContaining({ authorization:'Bearer runner-secret' }) }));
 	});
 
 	it('fetches the exact live GitHub staging ref before indexing remote content', async () => {
@@ -128,6 +169,51 @@ describe('local TreeDX reconciliation transport', () => {
 				refspecs: ['+refs/heads/staging:refs/heads/staging'],
 			});
 			expect(result).toMatchObject({ fetched: true, commitSha: sha, ref: 'refs/heads/staging' });
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	it('brokers a one-use credential id for a private content repository without forwarding the GitHub token', async () => {
+		const sha = 'b'.repeat(40);
+		const client = {
+			listRepositories: vi.fn().mockResolvedValue([{ repoId: 'repo-market-api', repositoryName: 'treeseed-market-api' }]),
+			getPlacement: vi.fn().mockResolvedValue({ primaryNodeId: 'node-local' }),
+			fetchRemote: vi.fn().mockResolvedValue({ fetch: { status: 'synced' } }),
+			listRepositoryRefs: vi.fn().mockResolvedValue([{ name: 'refs/heads/staging', target: sha }]),
+			refreshGraph: vi.fn().mockResolvedValue({ graphVersion: 'graph-1', resolvedRef: sha }),
+			refreshSearchIndex: vi.fn().mockResolvedValue({ indexVersion: 'search-1', resolvedRef: sha, stale: false }),
+		};
+		const requests: Array<{ url: string; init?: RequestInit }> = [];
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+			requests.push({ url, init });
+			if (url.includes('/v1/internal/treedx/credential-deliveries/prepare')) {
+				return new Response(JSON.stringify({ ok: true, payload: { deliveryId: 'opaque-delivery' } }), {
+					status: 200, headers: { 'content-type': 'application/json' },
+				});
+			}
+			return new Response(JSON.stringify({ object: { sha } }), {
+				status: 200, headers: { 'content-type': 'application/json' },
+			});
+		}) as typeof fetch;
+		try {
+			await syncRemoteTreeDxProjectContent({
+				client: client as any,
+				project: {
+					projectKey: 'project:treeseed/market-api', teamSlug: 'treeseed', slug: 'market-api',
+					repositoryName: 'treeseed-market-api', repositoryId: 'treeseed-market-api', localRoot: '/unused',
+					contentPath: 'src/content', defaultRef: 'refs/heads/staging', sourceBranch: 'staging',
+					remoteUrl: 'https://github.com/treeseed-ai/market-api-content.git', remoteOwner: 'treeseed-ai',
+					remoteName: 'market-api-content', remoteVisibility: 'private',
+				},
+				expectedRemoteHead: sha,
+				env: { TREESEED_API_BASE_URL: 'http://127.0.0.1:3000', TREESEED_PLATFORM_RUNNER_SECRET: 'runner-secret', TREESEED_GITHUB_TOKEN: 'never-forward' },
+			});
+			const preparation = requests.find((request) => request.url.includes('/credential-deliveries/prepare'))!;
+			expect(preparation.init?.headers).toMatchObject({ authorization: 'Bearer runner-secret' });
+			expect(preparation.init?.body).not.toContain('never-forward');
+			expect(client.fetchRemote).toHaveBeenCalledWith(expect.objectContaining({ credentialId: 'opaque-delivery' }));
 		} finally {
 			globalThis.fetch = originalFetch;
 		}
@@ -169,6 +255,37 @@ describe('local TreeDX reconciliation transport', () => {
 			}));
 			expect(client.retireRef).toHaveBeenCalledWith(expect.objectContaining({ expectedHead: 'commit-1' }));
 			expect(result).toMatchObject({ changedFiles: 1, removedFiles: 1, commitSha: 'commit-1' });
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it('repairs graph and search indexes when seed content is already exact', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'local-treedx-index-recovery-'));
+		mkdirSync(join(root, 'docs'), { recursive: true });
+		writeFileSync(join(root, 'docs', 'same.md'), 'same');
+		const client = {
+			listRepositories: vi.fn().mockResolvedValue([{ repoId: 'repo-1', repositoryName: 'example' }]),
+			listRepositoryPaths: vi.fn().mockResolvedValue({ resolvedRef: 'current-sha', entries: [{ path: 'docs/same.md' }], page: { hasMore: false } }),
+			readRepositoryFiles: vi.fn().mockResolvedValue({ resolvedRef: 'current-sha', files: [{ path: 'docs/same.md', content: 'same' }] }),
+			refreshGraph: vi.fn().mockResolvedValue({ graphVersion: 'graph-current', resolvedRef: 'current-sha' }),
+			refreshSearchIndex: vi.fn().mockResolvedValue({ indexVersion: 'search-current', resolvedRef: 'current-sha', stale: false }),
+			createWorkspace: vi.fn(),
+		};
+		try {
+			const result = await syncLocalTreeDxProjectContent(client as any, {
+				slug: 'example', repositoryName: 'example', repositoryId: 'repo-1', localRoot: root,
+				contentPath: 'docs', seedPaths: ['docs'], defaultRef: 'refs/heads/main',
+			});
+			expect(client.createWorkspace).not.toHaveBeenCalled();
+			expect(client.refreshGraph).toHaveBeenCalledWith(expect.objectContaining({ ref: 'refs/heads/main', forceFull: true }));
+			expect(client.refreshSearchIndex).toHaveBeenCalledWith(expect.objectContaining({ ref: 'refs/heads/main' }));
+			expect(result).toMatchObject({
+				committed: false,
+				commitSha: 'current-sha',
+				graphRefresh: { graphVersion: 'graph-current' },
+				searchIndex: { indexVersion: 'search-current' },
+			});
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}

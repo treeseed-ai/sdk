@@ -16,6 +16,7 @@ function guaranteeContractDigest(workspaceRoot: string) {
 	const packagesRoot = resolve(workspaceRoot, 'packages');
 	const roots = [
 		resolve(workspaceRoot, 'guarantees'),
+		resolve(workspaceRoot, 'scripts/guarantees'),
 		...(existsSync(packagesRoot) ? readdirSync(packagesRoot, { withFileTypes: true }) : [])
 			.filter((entry) => entry.isDirectory())
 			.map((entry) => resolve(packagesRoot, entry.name, 'guarantees')),
@@ -35,6 +36,17 @@ export function guaranteeSourceClosure(workspaceRoot: string) {
 		schemaVersion: 'treeseed.guarantee-source-closure/v1' as const,
 		web: managedDevSourceClosureDigest({ tenantRoot: workspaceRoot, surface: 'web' }),
 		api: managedDevSourceClosureDigest({ tenantRoot: workspaceRoot, surface: 'api' }),
+		agent: managedDevSourceClosureDigest({ tenantRoot: workspaceRoot, surface: 'agent' }),
+		cli: managedDevSourceClosureDigest({ tenantRoot: workspaceRoot, surface: 'cli' }),
 		contracts: guaranteeContractDigest(workspaceRoot),
 	};
+}
+
+export function guaranteeSourceGeneration(closure: ReturnType<typeof guaranteeSourceClosure>) {
+	const hash = createHash('sha256');
+	for (const value of [closure.schemaVersion, closure.web ?? '', closure.api ?? '', closure.agent ?? '', closure.cli ?? '', closure.contracts]) {
+		hash.update(value);
+		hash.update('\0');
+	}
+	return hash.digest('hex');
 }

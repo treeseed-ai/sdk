@@ -161,13 +161,17 @@ it('recursively saves dirty checked-out workspace packages before saving the mar
 		const sdkPath = resolve(work, 'packages', 'sdk');
 		const sdkBase = git(sdkPath, ['rev-parse', 'HEAD']);
 		const sdkRemote = git(sdkPath, ['remote', 'get-url', 'origin']);
+		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-updated";\n', 'utf8');
+		git(sdkPath, ['add', 'index.js']);
+		git(sdkPath, ['commit', '-m', 'feat: governed SDK checkpoint', '-m', 'Treeseed-Assignment: assignment-a']);
+		const sdkCheckpoint = git(sdkPath, ['rev-parse', 'HEAD']);
 		writeGovernedExecutionAuthority(work, {
 			teamId: 'team-a', projectId: 'project-sdk', proposalId: 'proposal-a', proposalVersion: 2, proposalContentHash: 'sha256:proposal-a', decisionId: 'decision-a',
 			decisionDependencies: [{ projectId: 'project-api', decisionId: 'decision-api' }], assignmentId: 'assignment-a', graphId: 'graph-a', graphNodeId: 'node-a',
 			deliverableManifestId: 'deliverable:assignment-a', deliverableContractId: 'contract-a', repository: { canonicalKey: repositoryIdentityKey(sdkRemote)!, remoteUrl: sdkRemote },
-			sourceBranch: 'feature/demo-task', baseCommit: sdkBase, checkpointCommit: sdkBase, integratedCommit: sdkBase, changedPaths: ['index.js'],
+			sourceBranch: 'feature/demo-task', baseCommit: sdkBase, checkpointCommit: sdkCheckpoint, integratedCommit: sdkCheckpoint, changedPaths: ['index.js'],
 		});
-		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-updated";\n', 'utf8');
+		writeFileSync(resolve(work, 'packages', 'sdk', 'README.md'), '# sdk\nReviewed integration notes.\n', 'utf8');
 		writeFileSync(resolve(work, 'packages', 'core', 'index.js'), 'export const name = "core-updated";\n', 'utf8');
 		writeFileSync(resolve(work, 'feature.txt'), 'demo\nupdated\n', 'utf8');
 		const workflow = workflowFor(work);
@@ -197,7 +201,13 @@ it('recursively saves dirty checked-out workspace packages before saving the mar
 		expect(result.payload.repos[0].tagName).toBeNull();
 		expect(result.payload.repos.find((repo) => repo.name === '@treeseed/cli')?.tagName).toBeNull();
 		expect(result.payload.rootRepo.committed).toBe(true);
-		expect(result.payload.integrationReceipt.kind).toBe('treeseed.integration-change-set/v1');
+		expect(result.payload.integrationReceipt.kind).toBe('treeseed.integration-change-set/v2');
+		expect(result.payload.integrationReceipt.rootAuthority).toMatchObject({
+			kind:'treeseed.platform-root-integration-authority/v1',
+			rootBaseCommit:expect.stringMatching(/^[a-f0-9]{40}$/u),
+			rootCommit:result.payload.rootRepo.commitSha,
+			childRefs:expect.arrayContaining([expect.objectContaining({ workspacePath:'packages/sdk',commit:result.payload.repos[0].commitSha })]),
+		});
 		expect(result.payload.integrationReceipt.repositories).toHaveLength(9);
 		expect(result.payload.integrationReceipt.repositories.every((repo: { remoteVerified?: boolean }) => repo.remoteVerified)).toBe(true);
 		expect(result.payload.integrationReceipt.repositories.find((repo: { name: string }) => repo.name === '@treeseed/sdk').executionAuthorities).toEqual([
@@ -224,8 +234,22 @@ it('resolves status from nested directories against the tenant root', () => {
 });
 
 it('saves and stages a portfolio workset without gitlinks or parent repository dirtiness', async () => {
-		const { work } = createWorkflowRepo({ withWorkspacePackages: true, materialization: 'portfolio' });
-		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-portfolio";\n', 'utf8');
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true, materialization: 'workset' });
+		const sdkPath = resolve(work, 'packages', 'sdk');
+		const sdkBase = git(sdkPath, ['rev-parse', 'HEAD']);
+		const sdkRemote = git(sdkPath, ['remote', 'get-url', 'origin']);
+		writeFileSync(resolve(sdkPath, 'index.js'), 'export const name = "sdk-portfolio";\n', 'utf8');
+		git(sdkPath, ['add', 'index.js']);
+		git(sdkPath, ['commit', '-m', 'feat: governed workset change', '-m', 'Treeseed-Assignment: assignment-workset']);
+		const sdkCheckpoint = git(sdkPath, ['rev-parse', 'HEAD']);
+		git(sdkPath, ['push', 'origin', 'HEAD:refs/heads/feature/demo-task']);
+		writeGovernedExecutionAuthority(work, {
+			teamId: 'team-fixture', projectId: 'project-sdk', proposalId: 'proposal-workset', proposalVersion: 1, proposalContentHash: 'hash-workset',
+			decisionId: 'decision-workset', decisionDependencies: [], assignmentId: 'assignment-workset', graphId: 'graph-workset', graphNodeId: 'node-sdk',
+			deliverableManifestId: 'deliverable-workset', deliverableContractId: 'contract-workset',
+			repository: { canonicalKey: repositoryIdentityKey(sdkRemote)!, remoteUrl: sdkRemote }, sourceBranch: 'feature/demo-task',
+			baseCommit: sdkBase, checkpointCommit: sdkCheckpoint, integratedCommit: sdkCheckpoint, changedPaths: ['index.js'],
+		});
 		writeFileSync(resolve(work, 'feature.txt'), 'demo\nportfolio\n', 'utf8');
 		const workflow = workflowFor(work);
 
@@ -238,7 +262,9 @@ it('saves and stages a portfolio workset without gitlinks or parent repository d
 		expect(git(work, ['ls-files', '--stage', 'packages/sdk'])).toBe('');
 		expect(git(work, ['status', '--porcelain'])).toBe('');
 
-		const staged = await workflow.stage({ message: 'stage: portfolio integration', verifyMode: 'none', async: true, cleanupMode: 'success' });
+		const governedWorkflow = new WorkflowSdk({ cwd: work, write: () => {}, validateExecutionAuthorities: async (authorities) =>
+			authorities.map((authority) => ({ authorityId: authority.authorityId, valid: true, code: null, message: null })) });
+		const staged = await governedWorkflow.stage({ message: 'stage: portfolio integration', verifyMode: 'none', async: true, cleanupMode: 'success' });
 
 		expect(staged.payload.stagingRefs.status).toBe('verified');
 		expect(staged.payload.manifest.integrationReceiptId).toBe(saved.payload.integrationReceipt.receiptId);

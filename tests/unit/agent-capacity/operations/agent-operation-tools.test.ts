@@ -89,6 +89,7 @@ describe('agent operation tool policy', () => {
 			metadata: { branchName: 'agent/task-1', noChanges: false },
 		});
 		expect(exec.mock.calls.map((call) => call[1][0])).toEqual(['status', 'branch', 'add', 'commit', 'rev-parse']);
+		expect(exec).toHaveBeenCalledWith('git', ['commit', '-m', 'test: checkpoint assignment result', '-m', 'Treeseed-Assignment: task-1'], expect.objectContaining({ cwd: request.worktreeRoot }));
 		expect(exec.mock.calls.flatMap((call) => call[1])).not.toContain('push');
 		expect(exec.mock.calls.flatMap((call) => call[1])).not.toContain('merge');
 	});

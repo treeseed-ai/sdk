@@ -26,6 +26,7 @@ import {
 	validateVitestVerifierOutput,
 	validateGuarantee,
 	validateGuaranteeSceneJourneyContract,
+	validateGuaranteeVerifierResult,
 	writeGuaranteesExport,
 	writeGuaranteeRunReport,
 } from '../../../src/guarantees/index.ts';
@@ -313,4 +314,62 @@ it('discovers root guarantees while excluding verifier, dependency, and malforme
 		expect(emptyRegistry.registry).toBeNull();
 		expect(emptyRegistry.diagnostics).toEqual([]);
 	});
+
+it('validates v2 outcome contracts and rejects incomplete or stale verifier results', () => {
+	const root = workspaceFixture('v2-outcomes');
+	const path = writeGuarantee(root, `schemaVersion: treeseed.guarantee/v2
+id: guarantee.project.question.dynamic-context.120
+journeyIndex: 120
+type: project
+subtype: question
+journey: Verify dynamic context
+ownerPackage: "@treeseed/admin"
+summary: Verify current context results.
+status: planned
+capabilityId: agent.context.dynamic-readiness
+catalog: agent.system
+activation:
+  minimumConsecutivePasses: 3
+  requiredVariants: [baseline, clean-repeat, interruption-resume]
+  invalidateOnSourceChange: true
+proof:
+  requiredCommands: [capacity.context-query-checks]
+  minimumRepositoryPostconditions: 0
+  outcomePredicates:
+    query.correct-results: [query.correct-results]
+outcomes:
+  - id: query.correct-results
+    kind: required
+    description: The query returns the exact expected subjects.
+    evidenceKinds: [query_assertions]
+    authoritativeSubjects: [queryRef]
+dependencies: { journeys: [], guarantees: [] }
+actors: { allowed: [operator], forbidden: [] }
+devices: { required: [] }
+gates: [core]
+preconditions: { fixtures: [], notes: [] }
+api: { required: true, verifierRefs: [] }
+content: { required: false, verifierRefs: [] }
+audit: { required: false, verifierRefs: [] }
+negativeCases: []
+evidence: { required: [verifier_evidence] }
+`);
+	const loaded = validateGuarantee({ workspaceRoot: root, path });
+	expect(loaded.diagnostics).toEqual([]);
+	const contract = loaded.manifest!.catalogContract!;
+	const base = {
+		schemaVersion: 'treeseed.guarantee-verifier-result/v1',
+		guaranteeId: loaded.manifest!.id,
+		capabilityId: contract.capabilityId,
+		variant: 'baseline',
+		sourceGeneration: 'generation-1',
+		assertions: [{ id: 'query.correct-results', status: 'passed', evidence: ['query.json'], entityRefs: { queryRef: 'query@1' } }],
+		repositoryPostconditions: [],
+		cleanup: { verified: true, activeAssignments: 0, activeLeases: 0, activeReservations: 0, activeDemands: 0, activeWorkspaces: 0, activeWorktrees: 0, unpublishedBranches: 0, staleAuthorities: 0 },
+		evidence: ['query.json'],
+	};
+	expect(validateGuaranteeVerifierResult({ stdout: JSON.stringify(base), guaranteeId: loaded.manifest!.id, contract, sourceGeneration: 'generation-1' }).ok).toBe(true);
+	expect(validateGuaranteeVerifierResult({ stdout: JSON.stringify({ ...base, sourceGeneration: 'old' }), guaranteeId: loaded.manifest!.id, contract, sourceGeneration: 'generation-1' })).toMatchObject({ ok: false, error: expect.stringContaining('stale') });
+	expect(validateGuaranteeVerifierResult({ stdout: JSON.stringify({ ...base, assertions: [] }), guaranteeId: loaded.manifest!.id, contract, sourceGeneration: 'generation-1' })).toMatchObject({ ok: false, error: expect.stringContaining('did not pass') });
+});
 });

@@ -23,7 +23,7 @@ describe('scene plugin registry', () => {
 
 	it('registers built-in action and assertion handlers', () => {
 		const registry = createBuiltInScenePluginRegistry();
-		expect([...registry.actions.keys()].sort()).toEqual(['apiRequest', 'click', 'clickVisibleSequence', 'fill', 'goto', 'keyboard', 'mailpitConfirmLatest', 'pause', 'select', 'waitForOperation']);
+		expect([...registry.actions.keys()].sort()).toEqual(['apiRequest', 'browserHistory', 'click', 'clickVisibleSequence', 'fill', 'goto', 'keyboard', 'mailpitConfirmLatest', 'pause', 'select', 'waitForOperation']);
 		expect([...registry.assertions.keys()].sort()).toEqual(['focused', 'notText', 'notVisible', 'operation', 'text', 'urlIncludes', 'visible']);
 		expect(registry.actions.get('clickVisibleSequence')?.status).toBe('available');
 		expect(registry.actions.get('waitForOperation')?.status).toBe('available');

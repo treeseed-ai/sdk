@@ -69,9 +69,12 @@ export async function captureRoute(input: {
 		input.page.on('response', responseHandler);
 		const attemptStartIndex = clientErrors.length;
 		const navigate = async () => {
-			const response = await input.page.goto(url, { waitUntil: 'networkidle', timeout: 25000 });
+			const response = await input.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
 			httpStatus = response?.status() ?? null;
 			finalUrl = input.page.url();
+			// Agent Lab uses polling and streaming transports, so network idle is only a
+			// best-effort settling signal and can never be the navigation success condition.
+			await input.page.waitForLoadState?.('networkidle', { timeout: 2000 }).catch(() => undefined);
 			await input.page.waitForTimeout(350);
 			dom = await collectDomSummary(input.page).catch(() => null);
 		};

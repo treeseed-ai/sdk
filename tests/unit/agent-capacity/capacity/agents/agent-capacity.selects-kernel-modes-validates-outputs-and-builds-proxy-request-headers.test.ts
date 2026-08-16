@@ -159,6 +159,13 @@ it('applies distinct TreeDX proxy read and write path scopes', () => {
 		expect(evaluateTreeDxProxyHandleAccess(handle, {
 			projectId: 'project-1', assignmentId: 'assignment-1', operation: 'files:write', path: 'src/content/notes/result.md',
 		})).toMatchObject({ ok: true });
+		expect(evaluateTreeDxProxyHandleAccess({
+			...handle,
+			allowedWritePaths: ['src/content/assignment-statuses/assignment_Aa-1-status-*'],
+		}, {
+			projectId: 'project-1', assignmentId: 'assignment-1', operation: 'files:write',
+			path: 'src/content/assignment-statuses/assignment_Aa-1-status-0.mdx',
+		})).toMatchObject({ ok: true });
 	});
 
 it('validates provider assignment capability handles without exposing secrets', () => {

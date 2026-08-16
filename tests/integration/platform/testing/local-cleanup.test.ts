@@ -79,6 +79,7 @@ describe('project cleanup', () => {
 			join(sceneRun, 'report.json'),
 			join(root, '.treeseed', 'logs', 'platform.log'),
 			join(root, '.treeseed', 'exports', 'snapshot.md'),
+			join(packageRoot, '.treeseed', 'docker', 'runtime', 'node_modules', 'package', 'index.js'),
 			join(root, 'dist', 'index.js'),
 		];
 		const preserved = [

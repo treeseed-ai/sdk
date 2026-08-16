@@ -1,4 +1,5 @@
 import { normalizeAgentCliOptions } from '../../agents/cli-tools.ts';
+import { resolve } from 'node:path';
 import { ContentStore } from '../../content/content-store.ts';
 import { NodeSqliteD1Database } from '../../db/node-sqlite.ts';
 import { CloudflareD1AgentDatabase,MemoryAgentDatabase,type AgentDatabase } from '../../persistence/d1-store.ts';
@@ -242,7 +243,7 @@ export class AgentSdk {
         dispatch?: SdkDispatchConfig;
     } = {}) {
         const repoRoot = resolveSdkRepoRoot(options.repoRoot);
-        const d1 = new NodeSqliteD1Database(options.persistTo ?? options.databaseName ?? '.treeseed/generated/environments/local/site-data.sqlite');
+        const d1 = new NodeSqliteD1Database(options.persistTo ?? options.databaseName ?? resolve(repoRoot, '.treeseed/generated/environments/local/site-data.sqlite'));
         return new AgentSdk({
             repoRoot,
             database: new CloudflareD1AgentDatabase(d1),

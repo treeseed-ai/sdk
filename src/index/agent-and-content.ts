@@ -1,6 +1,10 @@
 export { AgentSdk,ScopedAgentSdk } from '../entrypoints/models/sdk.ts';
 
 export * from '../operations/content-operations.ts';
+export * from '../content/validation/content-model-schemas.ts';
+export * from '../content/validation/auxiliary-content-schemas.ts';
+export * from '../content/validation/agent-operational-content-schemas.ts';
+export * from '../content/validation/portable-content-data.ts';
 
 export type {
 AgentSdkContentRepositoryOptions,
@@ -19,6 +23,7 @@ LocalExecBackend,
 LocalGraphBackend,
 TreeDxApiError,
 TreeDxContentBackend,
+TreeDxContentValidationError,
 TreeDxContentRepositoryConfigError,
 TreeDxExecBackend,
 TreeDxGraphBackend,

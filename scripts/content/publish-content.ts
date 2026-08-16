@@ -55,4 +55,15 @@ async function main() {
 	process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
 }
 
-await main();
+try {
+	await main();
+} catch (error) {
+	const value = error as { code?: unknown; details?: unknown; message?: unknown };
+	process.stderr.write(`${JSON.stringify({
+		ok: false,
+		code: typeof value?.code === 'string' ? value.code : 'content_publication_failed',
+		error: typeof value?.message === 'string' ? value.message : String(error),
+		...(Array.isArray(value?.details) ? { details: value.details } : {}),
+	}, null, 2)}\n`);
+	process.exitCode = 1;
+}

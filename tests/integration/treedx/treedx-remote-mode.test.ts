@@ -4,9 +4,9 @@ import type { SdkModelRegistry } from '../../../src/entrypoints/models/sdk-types
 
 function registry(): SdkModelRegistry {
 	return {
-		knowledge: {
-			name: 'knowledge',
-			aliases: ['knowledge'],
+		article: {
+			name: 'article',
+			aliases: ['article'],
 			storage: 'content',
 			operations: ['get', 'read', 'search', 'follow', 'pick', 'create', 'update'],
 			fields: {
@@ -38,7 +38,7 @@ function remoteSdk(payloads: unknown[]) {
 			baseUrl: 'https://treedx.example.test',
 			token: 'token-123',
 			repoId: 'repo_1',
-			contentPathMap: { knowledge: 'docs/knowledge' },
+			contentPathMap: { article: 'docs/knowledge' },
 			registryRouting: true,
 		},
 	});
@@ -91,9 +91,9 @@ describe('AgentSdk TreeDX remote mode', () => {
 			{ ok: true, query: { type: 'text', results: [], page: { limit: 20, hasMore: false, cursor: null }, diagnostics: { requestedRepoCount: 1, executedRepoCount: 1, rejectedRepoCount: 0, partialFailureCount: 0, routing: [] }, errors: [] } },
 		]);
 
-		expect((await sdk.get({ model: 'knowledge', slug: 'guide' })).payload).toMatchObject({ slug: 'guide' });
-		expect((await sdk.search({ model: 'knowledge', limit: 1 })).payload).toHaveLength(1);
-		expect((await sdk.create({ model: 'knowledge', actor: 'agent', data: { slug: 'new', title: 'New', body: 'Created' } })).payload.item.slug).toBe('new');
+		expect((await sdk.get({ model: 'article', slug: 'guide' })).payload).toMatchObject({ slug: 'guide' });
+		expect((await sdk.search({ model: 'article', limit: 1 })).payload).toHaveLength(1);
+		expect((await sdk.create({ model: 'article', actor: 'agent', data: { slug: 'new', title: 'New', body: 'Created' } })).payload.item.slug).toBe('new');
 		expect((await sdk.treeDx!.graph.queryGraph({ query: 'guide' })).providerId).toBe('treedx-graph-mvp');
 		expect((await sdk.treeDx!.graph.buildContextPack({ query: 'guide' })).totalTokenEstimate).toBe(0);
 		expect((await sdk.treeDx!.client.buildSnapshot()).snapshotId).toBe('snap_1');

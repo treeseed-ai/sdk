@@ -4,6 +4,7 @@ export * from './capacity/providers/supply-selection.ts';
 export * from './operations/research-workflow.ts';
 export * from './runtime/runtime-diagnostics.ts';
 export * from './support/decision-work.ts';
+export * from './support/revision-cycle.ts';
 export * from './support/execution-capability.ts';
 export * from './support/failure-classification.ts';
 export * from './support/kernel-mode.ts';

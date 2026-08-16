@@ -49,6 +49,7 @@ export async function saveOneRepository(
 	const branch = node.branch || options.branch;
 	emitProgress(options, node, 'start', `Starting ${node.branchMode} on ${branch}.`);
 	syncBranchBeforeSave(node, options, branch);
+	report.baseCommit = headCommit(node.path);
 	node.branch = currentBranch(node.path) || branch;
 	report.branch = node.branch;
 	refreshRepositoryNodePackageMetadata(node);

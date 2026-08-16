@@ -24,7 +24,9 @@ export interface CapacitySupplyCandidate {
 	reliability: number;
 	pressure: 'idle' | 'normal' | 'busy' | 'throttled' | 'exhausted';
 	availableConcurrency: number;
+	preferred?: boolean;
 	estimatedCost?: number | null;
+	minimumAssignmentDuration?: import('../../../../capacity-provider/contracts/governance.ts').MinimumAssignmentDuration;
 }
 
 export interface CapacitySupplySelection {

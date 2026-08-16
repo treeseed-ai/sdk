@@ -142,7 +142,12 @@ export async function runSceneVisualAudit(input: SceneVisualAuditOptions): Promi
 	}
 	const apiBaseUrl = resolveVisualAuditApiBaseUrl({ projectRoot: input.projectRoot, environment, webBaseUrl: baseUrlReport.baseUrl });
 	if (environment === 'local' && roles.some((role) => role !== 'anonymous')) {
-		diagnostics.push(...await ensureSceneVisualAuditRoleFixtures({ baseUrl: apiBaseUrl, roles }));
+		diagnostics.push(...await ensureSceneVisualAuditRoleFixtures({
+			baseUrl: apiBaseUrl,
+			roles,
+			projectRoot: input.projectRoot,
+			environment,
+		}));
 	}
 	const timestamp = compactTimestamp(input.timestamp);
 	const id = auditId(timestamp);

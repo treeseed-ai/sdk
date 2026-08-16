@@ -1,17 +1,18 @@
 import { AGENT_ACTIVITY_TYPES,AGENT_HANDLER_KINDS,type AgentActivityProfile,type AgentActivityType } from '../../types/agents.ts';
+import { compileAgentAuthoritySnapshot } from '../authority/agent-authority-presets.ts';
 
 export interface AgentActivityProfileDiagnostic { code: string; path: string; message: string }
 export interface AgentActivityProfileValidation { ok: boolean; diagnostics: AgentActivityProfileDiagnostic[] }
 
-const PROFILE_KEYS = new Set(['activityType', 'enabled', 'handler', 'prompt', 'branchPolicy', 'contentAccess', 'tools', 'signals', 'outputs', 'planningIntent', 'questionPolicy', 'execution']);
+const PROFILE_KEYS = new Set(['activityType','enabled','handler','prompt','branchPolicy','contextQueryRefs','contextQuerySetRefs','instructionTemplateRefs','permissions','authorityPresets','artifactTriggers','closeoutPolicy','providerOverrides','tools','signals','outputs','planningIntent','questionPolicy','execution']);
 const PROMPT_KEYS = new Set(['system', 'task', 'templates']);
 const TOOL_KEYS = new Set(['allowed', 'denied']);
 const SIGNAL_KEYS = new Set(['subscribesTo', 'publishes']);
 const SUBSCRIPTION_KEYS = new Set(['contract', 'groupScope', 'filters', 'cardinality', 'producerPolicy', 'quorum']);
 const OUTPUT_KEYS = new Set(['messageTypes', 'modelMutations']);
-const EXECUTION_KEYS = new Set(['requiredCapabilities', 'maxRuntimeSeconds', 'maxRetries', 'verificationRequired', 'maxTotalTokens', 'warningTokens', 'maxCostAmount', 'costCurrency', 'nativeLimits', 'pricingGeneration', 'enforcementConfidence', 'allowedPaths', 'forbiddenPaths']);
-const CONTENT_ACCESS_KEYS = new Set(['read', 'write', 'commit']);
-const CONTENT_SCOPE_KEYS = new Set(['models', 'actions', 'books', 'paths', 'relations']);
+const EXECUTION_KEYS = new Set(['requiredCapabilities', 'maxRuntimeSeconds', 'preparationSeconds', 'closeoutSeconds', 'closeoutWarningSeconds', 'maxRetries', 'verificationRequired', 'maxTotalTokens', 'warningTokens', 'maxCostAmount', 'costCurrency', 'nativeLimits', 'pricingGeneration', 'enforcementConfidence', 'allowedPaths', 'forbiddenPaths']);
+const CONTENT_ACCESS_KEYS = new Set(['content','commit','repository','network','shell']);
+const MODEL_PERMISSION_KEYS = new Set(['operations','filters']);
 const QUESTION_KEYS = new Set(['defaultAnswerPolicy', 'blockExecutionWhenCreated']);
 const PLANNING_INTENT_KEYS = new Set(['objective', 'proposalTypes', 'artifactKind', 'subjectModel', 'subjectId', 'includeWorkdayArtifacts', 'stage', 'stages', 'requiresArtifactKinds']);
 const PLANNING_STAGE_KEYS = new Set(['stage', 'promptTask', 'signals']);
@@ -26,6 +27,7 @@ const BRANCH_KEYS: Record<string, Set<string>> = {
 
 function record(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === 'object' && !Array.isArray(value); }
 function strings(value: unknown): value is string[] { return Array.isArray(value) && value.every((entry) => typeof entry === 'string' && entry.trim().length > 0) && new Set(value).size === value.length; }
+function exactRefs(value:unknown) { return Array.isArray(value)&&value.every((entry)=>record(entry)&&typeof entry.id==='string'&&entry.id.trim()&&Number.isInteger(entry.revision)&&Number(entry.revision)>0)&&new Set(value.map((entry)=>`${(entry as Record<string,unknown>).id}@${(entry as Record<string,unknown>).revision}`)).size===value.length; }
 function unknownKeys(value: Record<string, unknown>, allowed: Set<string>, path: string, add: Add) {
 	for (const key of Object.keys(value)) if (!allowed.has(key)) add('agent_activity_unknown_field', `${path}.${key}`, `Unknown activity-profile field ${path}.${key}.`);
 }
@@ -57,9 +59,19 @@ export function validateAgentActivityProfilesConfiguration(value: unknown): Agen
 		validateSignals(raw.signals, `${path}.signals`, add);
 		validateStringLists(raw.outputs, OUTPUT_KEYS, ['messageTypes', 'modelMutations'], `${path}.outputs`, add);
 		validatePlanningIntent(raw.planningIntent, `${path}.planningIntent`, add);
-		validateContentAccess(raw.contentAccess, `${path}.contentAccess`, add);
+		validateContentAccess(raw.permissions,`${path}.permissions`,add);
+		if (raw.authorityPresets !== undefined && (!strings(raw.authorityPresets) || raw.authorityPresets.some((preset) => !['messaging','direction','influence','estimation','plan-contribution','source-execution','review-authority','reporting'].includes(preset)))) add('agent_activity_authority_presets_invalid',`${path}.authorityPresets`,'authorityPresets must contain supported unique preset ids.');
+		for (const key of ['contextQueryRefs','contextQuerySetRefs','instructionTemplateRefs']) if (raw[key] !== undefined && !exactRefs(raw[key])) add('agent_activity_revision_refs_invalid',`${path}.${key}`,`${path}.${key} must contain unique exact id and revision references.`);
+		validateArtifactTriggers(raw.artifactTriggers,`${path}.artifactTriggers`,add);
+		validateCloseoutPolicy(raw.closeoutPolicy,`${path}.closeoutPolicy`,add);
+		validateProviderOverrides(raw.providerOverrides,`${path}.providerOverrides`,add);
 		validateQuestionPolicy(raw.questionPolicy, `${path}.questionPolicy`, add);
 		validateExecution(raw.execution, `${path}.execution`, add);
+		if (typeof raw.enabled === 'boolean' && typeof raw.handler === 'string' && record(raw.tools) && record(raw.outputs) && record(raw.branchPolicy)) {
+			for (const message of compileAgentAuthoritySnapshot(activity as AgentActivityType,raw as unknown as AgentActivityProfile).diagnostics) {
+				add('agent_activity_authority_widening_forbidden',path,message);
+			}
+		}
 	}
 	if (enabled === 0) add('agent_activity_profile_enabled_required', 'activityProfiles', 'At least one activity profile must be enabled.');
 	return { ok: diagnostics.length === 0, diagnostics };
@@ -133,19 +145,50 @@ function validateBranch(value: unknown, path: string, add: Add) {
 	if (value.kind === 'staging-release' && value.target !== 'main') add('agent_activity_branch_target_invalid', `${path}.target`, 'staging-release target must be main.');
 }
 
-function validateContentAccess(value: unknown, path: string, add: Add) {
+function validateContentAccess(value: unknown,path: string,add: Add) {
 	if (value === undefined) return;
-	if (!record(value)) { add('agent_activity_content_access_invalid', path, 'contentAccess must be an object.'); return; }
+	if (!record(value)) { add('agent_activity_permissions_invalid',path,'permissions must be an object.'); return; }
 	unknownKeys(value, CONTENT_ACCESS_KEYS, path, add);
-	for (const key of ['read', 'write']) {
-		const scope = value[key];
-		if (scope === undefined) continue;
-		if (!record(scope)) { add('agent_activity_content_scope_invalid', `${path}.${key}`, 'Content scope must be an object.'); continue; }
-		unknownKeys(scope, CONTENT_SCOPE_KEYS, `${path}.${key}`, add);
-		if (!strings(scope.models)) add('agent_activity_content_models_invalid', `${path}.${key}.models`, 'Content scope models must contain unique non-empty strings.');
-		for (const optional of ['actions', 'books', 'paths', 'relations']) if (scope[optional] !== undefined && !strings(scope[optional])) add('agent_activity_string_list_invalid', `${path}.${key}.${optional}`, 'Content scope lists must contain unique non-empty strings.');
+	if (value.content !== undefined) {
+		if (!record(value.content)) add('agent_activity_content_matrix_invalid',`${path}.content`,'content permissions must map model names to operation/filter policies.');
+		else for (const [model,permission] of Object.entries(value.content)) {
+			const modelPath = `${path}.content.${model}`;
+			if (!model.trim() || !record(permission)) { add('agent_activity_model_permission_invalid',modelPath,'Each model permission must be an object.'); continue; }
+			unknownKeys(permission,MODEL_PERMISSION_KEYS,modelPath,add);
+			if (!strings(permission.operations) || permission.operations.length === 0) add('agent_activity_model_operations_invalid',`${modelPath}.operations`,'Model operations must contain unique non-empty values.');
+			if (permission.filters !== undefined && !record(permission.filters)) add('agent_activity_model_filters_invalid',`${modelPath}.filters`,'Model filters must be an object.');
+		}
 	}
 	if (value.commit !== undefined && (!record(value.commit) || typeof value.commit.allowed !== 'boolean' || Object.keys(value.commit).some((key) => key !== 'allowed'))) add('agent_activity_commit_policy_invalid', `${path}.commit`, 'commit must contain only a boolean allowed field.');
+	for (const key of ['repository','network','shell']) if (value[key] !== undefined && !record(value[key])) add('agent_activity_permissions_invalid',`${path}.${key}`,`${key} permissions must be an object.`);
+}
+
+function validateArtifactTriggers(value: unknown,path: string,add: Add) {
+	if (value === undefined) return;
+	if (!Array.isArray(value)) { add('agent_activity_artifact_triggers_invalid',path,'artifactTriggers must be an array.'); return; }
+	value.forEach((candidate,index) => {
+		const itemPath = `${path}[${index}]`;
+		if (!record(candidate)) { add('agent_activity_artifact_trigger_invalid',itemPath,'Artifact trigger must be an object.'); return; }
+		unknownKeys(candidate,new Set(['event','artifactKind','model','required']),itemPath,add);
+		for (const key of ['event','artifactKind']) if (typeof candidate[key] !== 'string' || !candidate[key].trim()) add('agent_activity_artifact_trigger_invalid',`${itemPath}.${key}`,`${key} is required.`);
+	});
+}
+
+function validateCloseoutPolicy(value: unknown,path: string,add: Add) {
+	if (value === undefined) return;
+	if (!record(value)) { add('agent_activity_closeout_policy_invalid',path,'closeoutPolicy must be an object.'); return; }
+	unknownKeys(value,new Set(['warningSeconds','summaryRequired','requiredArtifactKinds','blockOnOpenQuestions']),path,add);
+	if (value.warningSeconds !== undefined && (!Number.isInteger(value.warningSeconds) || Number(value.warningSeconds) < 1)) add('agent_activity_closeout_warning_invalid',`${path}.warningSeconds`,'warningSeconds must be positive.');
+	if (value.requiredArtifactKinds !== undefined && !strings(value.requiredArtifactKinds)) add('agent_activity_string_list_invalid',`${path}.requiredArtifactKinds`,'requiredArtifactKinds must contain unique non-empty strings.');
+}
+
+function validateProviderOverrides(value: unknown,path: string,add: Add) {
+	if (value === undefined) return;
+	if (!record(value)) { add('agent_activity_provider_overrides_invalid',path,'providerOverrides must be an object.'); return; }
+	unknownKeys(value,new Set(['requiredCapabilities','disallowedProviderIds','promptRef','instructionTemplateRefs','maxRuntimeSeconds','maxTotalTokens','maxCostAmount']),path,add);
+	for (const key of ['requiredCapabilities','disallowedProviderIds']) if (value[key] !== undefined && !strings(value[key])) add('agent_activity_string_list_invalid',`${path}.${key}`,`${key} must contain unique non-empty strings.`);
+	if(value.instructionTemplateRefs!==undefined&&!exactRefs(value.instructionTemplateRefs)) add('agent_activity_revision_refs_invalid',`${path}.instructionTemplateRefs`,'instructionTemplateRefs must contain unique exact id and revision references.');
+	if (value.promptRef !== undefined && (typeof value.promptRef !== 'string' || !value.promptRef.trim())) add('agent_activity_provider_prompt_invalid',`${path}.promptRef`,'promptRef must be non-empty.');
 }
 
 function validateQuestionPolicy(value: unknown, path: string, add: Add) {
@@ -168,6 +211,9 @@ function validateExecution(value: unknown, path: string, add: Add) {
 	unknownKeys(value, EXECUTION_KEYS, path, add);
 	for (const key of ['requiredCapabilities', 'allowedPaths', 'forbiddenPaths']) if (value[key] !== undefined && !strings(value[key])) add('agent_activity_string_list_invalid', `${path}.${key}`, `${path}.${key} must contain unique non-empty strings.`);
 	if (value.maxRuntimeSeconds !== undefined && (!Number.isInteger(value.maxRuntimeSeconds) || Number(value.maxRuntimeSeconds) < 1)) add('agent_activity_runtime_invalid', `${path}.maxRuntimeSeconds`, 'maxRuntimeSeconds must be a positive integer.');
+	if (value.closeoutWarningSeconds !== undefined && (!Number.isInteger(value.closeoutWarningSeconds) || Number(value.closeoutWarningSeconds) < 1)) add('agent_activity_closeout_warning_invalid', `${path}.closeoutWarningSeconds`, 'closeoutWarningSeconds must be a positive integer.');
+	if (value.preparationSeconds !== undefined && (!Number.isInteger(value.preparationSeconds) || Number(value.preparationSeconds) < 1)) add('agent_activity_preparation_duration_invalid', `${path}.preparationSeconds`, 'preparationSeconds must be a positive integer.');
+	if (value.closeoutSeconds !== undefined && (!Number.isInteger(value.closeoutSeconds) || Number(value.closeoutSeconds) < 1)) add('agent_activity_closeout_duration_invalid', `${path}.closeoutSeconds`, 'closeoutSeconds must be a positive integer.');
 	if (value.maxRetries !== undefined && (!Number.isInteger(value.maxRetries) || Number(value.maxRetries) < 0)) add('agent_activity_retries_invalid', `${path}.maxRetries`, 'maxRetries must be a non-negative integer.');
 	if (value.verificationRequired !== undefined && typeof value.verificationRequired !== 'boolean') add('agent_activity_verification_invalid', `${path}.verificationRequired`, 'verificationRequired must be boolean.');
 }

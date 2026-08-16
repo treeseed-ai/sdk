@@ -6,6 +6,26 @@ import {
 } from '../../../src/graph/context-query-contracts.ts';
 
 describe('declarative context query contracts', () => {
+	it('compiles declared target models, paths, and supported filters instead of dropping constraints', () => {
+		const result = compileDeclarativeContextQuery({
+			id:'editorial',revision:1,purpose:'research',query:'governed assignments',
+			target:{kind:'graph',models:['objective','decision'],paths:['/src/content/objectives']},
+			filters:{status:['live','in progress'],domain:'work'},resultLimit:5,contextBudget:{maxItems:4},
+		});
+		expect(result).toMatchObject({ok:true,compiled:{request:{
+			scopePaths:['/src/content/objectives'],
+			seeds:[{id:'target-path-1',kind:'path',value:'/src/content/objectives',scope:'files'}],
+			scope:'files',where:[{field:'model',op:'in',value:['objective','decision']},{field:'status',op:'in',value:['live','in progress']},{field:'domain',op:'eq',value:'work'}],
+			options:{limit:5,maxNodes:4},budget:{maxNodes:4},
+		}}});
+	});
+
+	it('rejects filters and target paths that TreeDX cannot enforce', () => {
+		const result = compileDeclarativeContextQuery({id:'unsafe',purpose:'review',query:'evidence',target:{kind:'graph',paths:['src/content']},filters:{unknown:'value'}});
+		expect(result).toMatchObject({ok:false,errors:expect.arrayContaining([
+			expect.stringContaining('target paths must start'),expect.stringContaining('filter "unknown" is not supported'),
+		])});
+	});
 	it('compiles frontmatter-shaped context metadata into a context pack request', () => {
 		const result = compileDeclarativeContextQuery({
 			id: 'runtime-architecture',

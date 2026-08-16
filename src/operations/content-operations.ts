@@ -1,8 +1,10 @@
 import { parseFrontmatterDocument,serializeFrontmatterDocument } from '../content/frontmatter.ts';
 import { buildBuiltinModelRegistry,resolveModelDefinition } from '../entrypoints/models/model-registry.ts';
-import { canonicalizeFrontmatter,normalizeMutationData } from '../entrypoints/models/sdk-fields.ts';
+import { canonicalizeFrontmatter,normalizeMutationData,normalizeRecordToCanonicalShape } from '../entrypoints/models/sdk-fields.ts';
 import type { SdkModelDefinition,SdkModelRegistry } from '../entrypoints/models/sdk-types.ts';
 import { evaluateGovernanceProposalReadiness } from '../governance/policy/proposal-readiness.ts';
+import { validatePortableContentData } from '../content/validation/portable-content-data.ts';
+import { PROPOSAL_TYPE_ID_PATTERN } from '../agent-capacity/validation/proposal-type.ts';
 
 export type ContentAction =
 	| 'describe'
@@ -27,7 +29,17 @@ export type ContentModel =
 	| 'agent'
 	| 'discussion'
 	| 'discussion_message'
-	| 'discussion_event';
+	| 'discussion_event'
+	| 'group'
+	| 'group_edge'
+	| 'agent_context_query'
+	| 'agent_context_query_set'
+	| 'agent_instruction_template'
+	| 'discussion_topic'
+	| 'assignment_plan'
+	| 'assignment_status'
+	| 'assignment_summary'
+	| 'agent_evaluation';
 
 export interface ContentRelationInput {
 	field: string;
@@ -136,6 +148,16 @@ const CONTENT_MODELS = new Set<ContentModel>([
 	'discussion',
 	'discussion_message',
 	'discussion_event',
+	'group',
+	'group_edge',
+	'agent_context_query',
+	'agent_context_query_set',
+	'agent_instruction_template',
+	'discussion_topic',
+	'assignment_plan',
+	'assignment_status',
+	'assignment_summary',
+	'agent_evaluation',
 ]);
 
 export const CONTENT_ACTIONS: ContentAction[] = [
@@ -225,6 +247,7 @@ function normalizeContentModel(model: string, registry: SdkModelRegistry = build
 function defaultTitleField(definition: SdkModelDefinition) {
 	if (definition.fields.title) return 'title';
 	if (definition.fields.name) return 'name';
+	if (definition.fields.id) return 'id';
 	return 'title';
 }
 
@@ -324,11 +347,7 @@ export function validateContentRecord(model: string, source: string, registry: S
 	if (!parsed.frontmatter || typeof parsed.frontmatter !== 'object' || Array.isArray(parsed.frontmatter)) {
 		diagnostics.push({ severity: 'error', code: 'frontmatter_missing', message: 'Content frontmatter must be an object.' });
 	}
-	const titleField = defaultTitleField(definition);
-	const titleKeys = [titleField, ...(definition.fields[titleField]?.contentKeys ?? [])];
-	if (!titleKeys.some((key) => typeof parsed.frontmatter[key] === 'string' && String(parsed.frontmatter[key]).trim())) {
-		diagnostics.push({ severity: 'error', code: 'title_missing', field: titleField, message: `${titleCase(titleField)} is required.` });
-	}
+	diagnostics.push(...validatePortableContentData(definition.name, parsed.frontmatter, registry).diagnostics);
 	return {
 		ok: diagnostics.every((entry) => entry.severity !== 'error'),
 		frontmatter: parsed.frontmatter,
@@ -343,12 +362,13 @@ export function validateProposalContentForSubmission(source: string) {
 	const readiness = evaluateGovernanceProposalReadiness({
 		title: String(frontmatter.title ?? ''), summary: String(frontmatter.summary ?? frontmatter.description ?? ''), body: parsed.body,
 		relatedObjectives: (frontmatter.relatedObjectives ?? frontmatter.related_objectives) as string[],
+		proposalTypes: [frontmatter.proposalType ?? frontmatter.proposal_type].filter((value): value is string => typeof value === 'string' && Boolean(value.trim())),
 		evidenceRefs: (frontmatter.evidenceRefs ?? frontmatter.evidence_refs) as string[], plan: frontmatter.plan,
 		contentProvenance: { contentPath: 'pending-commit', commitSha: 'pending-commit', digest: 'pending-commit' },
 	});
 	const diagnostics: ContentDiagnostic[] = readiness.missingContent.map((field) => ({ severity: 'error', code: 'proposal_plan_incomplete', field, message: `Agent proposal requires ${field}.` }));
 	if (typeof frontmatter.primaryContributor !== 'string' && typeof frontmatter.primary_contributor !== 'string') diagnostics.push({ severity: 'error', code: 'proposal_plan_incomplete', field: 'primary contributor', message: 'Agent proposal requires its author identity.' });
-	if (!['editorial','structural','implementation','strategy','policy','research'].includes(String(frontmatter.proposalType ?? frontmatter.proposal_type ?? ''))) diagnostics.push({ severity: 'error', code: 'proposal_plan_incomplete', field: 'proposal type', message: 'Agent proposal requires a supported proposal classification.' });
+	if (!PROPOSAL_TYPE_ID_PATTERN.test(String(frontmatter.proposalType ?? frontmatter.proposal_type ?? ''))) diagnostics.push({ severity: 'error', code: 'proposal_plan_incomplete', field: 'proposal type', message: 'Agent proposal requires a lowercase kebab-case proposal type.' });
 	return { ok: diagnostics.length === 0, readiness, diagnostics };
 }
 

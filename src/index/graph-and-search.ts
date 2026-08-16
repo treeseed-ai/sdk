@@ -15,3 +15,5 @@ type ResolvedHandlerContextPack
 } from '../graph/context-query-contracts.ts';
 
 export { DEFAULT_GRAPH_RANKING_PROVIDER,createDefaultGraphRankingProvider } from '../graph/ranking.ts';
+export { contextQueryResultFacts,executeContextQueryTest,executeContextQuerySetTest,type ContextQuerySetDefinition,type ContextQueryTestDefinition } from '../graph/context-query-test.ts';
+export { contextQueryReadiness,type ContextQueryCheck,type ContextQueryCheckStatus,type ExactContextDefinitionRef } from '../graph/context-query-readiness.ts';

@@ -1,5 +1,8 @@
 
-import { AgentActivityExecutionConfig,AgentActivityPlanningIntent,AgentActivityPromptConfig,AgentActivityType,AgentBranchPolicy,AgentContentAccessPolicy,AgentOutputContract,AgentQuestionPolicy,AgentSignalPolicy,AgentToolPolicy,EngineeringHandlerKind,ExecutionProviderKind,ExecutionProviderPressure,ExecutionProviderQuotaVisibility,ExecutionResourceNeedKind } from './agent-trigger-kinds.ts';
+import { AgentActivityExecutionConfig,AgentActivityPermissions,AgentActivityPlanningIntent,AgentActivityPromptConfig,AgentActivityType,AgentBranchPolicy,AgentOutputContract,AgentQuestionPolicy,AgentSignalPolicy,AgentToolPolicy,EngineeringHandlerKind,ExecutionProviderKind,ExecutionProviderPressure,ExecutionProviderQuotaVisibility,ExecutionResourceNeedKind } from './agent-trigger-kinds.ts';
+import type { AgentAuthorityPresetId } from '../../agent-capacity/authority/agent-authority-presets.ts';
+
+export interface AgentContentRevisionRef { id:string; revision:number }
 
 export interface AgentActivityProfile {
 	activityType?: AgentActivityType;
@@ -7,7 +10,14 @@ export interface AgentActivityProfile {
 	handler: EngineeringHandlerKind;
 	prompt: AgentActivityPromptConfig;
 	branchPolicy: AgentBranchPolicy;
-	contentAccess?: AgentContentAccessPolicy;
+	permissions?: AgentActivityPermissions;
+	authorityPresets?: AgentAuthorityPresetId[];
+	contextQueryRefs?: AgentContentRevisionRef[];
+	contextQuerySetRefs?: AgentContentRevisionRef[];
+	instructionTemplateRefs?: AgentContentRevisionRef[];
+	artifactTriggers?: Array<{ event: string; artifactKind: string; model?: string; required?: boolean }>;
+	closeoutPolicy?: { warningSeconds?: number; summaryRequired?: boolean; requiredArtifactKinds?: string[]; blockOnOpenQuestions?: boolean };
+	providerOverrides?: { requiredCapabilities?: string[]; disallowedProviderIds?: string[]; promptRef?: string; instructionTemplateRefs?: AgentContentRevisionRef[]; maxRuntimeSeconds?: number; maxTotalTokens?: number; maxCostAmount?: number };
 	tools: AgentToolPolicy;
 	signals?: AgentSignalPolicy;
 	outputs: AgentOutputContract;

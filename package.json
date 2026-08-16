@@ -99,7 +99,8 @@
     "typescript": "^5.9.3",
     "unified": "^11.0.5",
     "wrangler": "4.86.0",
-    "yaml": "^2.8.1"
+    "yaml": "^2.8.1",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^24.6.0",
@@ -132,6 +133,10 @@
     "./content-operations": {
       "types": "./dist/operations/content-operations.d.ts",
       "default": "./dist/operations/content-operations.js"
+    },
+    "./content-validation": {
+      "types": "./dist/content/validation/index.d.ts",
+      "default": "./dist/content/validation/index.js"
     },
     "./api": {
       "types": "./dist/api/index.d.ts",

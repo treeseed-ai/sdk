@@ -6,6 +6,7 @@ declare module '../support/market-client.ts' {
 		agentLabMetricSeries: OmitThisParameter<typeof import('./capacity/observability/contracts/agent-lab.ts').agentLabMetricSeriesMethod>;
 		agentLabEntities: OmitThisParameter<typeof import('./capacity/observability/contracts/agent-lab.ts').agentLabEntitiesMethod>;
 		updateAgentLabTargets: OmitThisParameter<typeof import('./capacity/observability/contracts/agent-lab.ts').updateAgentLabTargetsMethod>;
+		launchProjectAgentSimulation: OmitThisParameter<typeof import('./projects/agents/creation/launch-project-agent-simulation.ts').launchProjectAgentSimulationMethod>;
 	}
 }
 

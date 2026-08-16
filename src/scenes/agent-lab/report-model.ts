@@ -1,6 +1,70 @@
+import { createHash } from 'node:crypto';
 import type { AgentLabSnapshot } from '../types.ts';
 
 const SENSITIVE = /(?:api.?key|authorization|credential|membershipcredential|password|private.?key|secret|token)/iu;
+const MAX_COLLECTION_ITEMS = 40;
+const MAX_OBJECT_FIELDS = 40;
+const MAX_TEXT_BYTES = 1_024;
+const MAX_VALUE_BYTES = 8_192;
+const MAX_TRANSCRIPT_ITEMS = 120;
+const MAX_EVIDENCE_ITEMS = 80;
+
+function digest(value: string) {
+	return createHash('sha256').update(value).digest('hex');
+}
+
+function boundedText(value: string) {
+	const bytes = Buffer.byteLength(value, 'utf8');
+	if (bytes <= MAX_TEXT_BYTES) return value;
+	const preview = value.slice(0, MAX_TEXT_BYTES / 2);
+	return `${preview}\n\n[Agent Lab presentation truncated ${bytes - Buffer.byteLength(preview, 'utf8')} bytes; sha256:${digest(value)}. Query durable forensic evidence for the complete value.]`;
+}
+
+function boundedContainer(original: object, projected: unknown, kind: 'array' | 'object') {
+	const serialized = JSON.stringify(projected);
+	if (Buffer.byteLength(serialized, 'utf8') <= MAX_VALUE_BYTES) return projected;
+	return {
+		presentationTruncated: true,
+		byteLength: Buffer.byteLength(JSON.stringify(original), 'utf8'),
+		sha256: digest(JSON.stringify(original)),
+		reason: 'maximum-value-bytes',
+		kind,
+		...(Array.isArray(original) ? { itemCount: original.length } : { fields: Object.keys(original).slice(0, MAX_OBJECT_FIELDS) }),
+		preview: boundedText(serialized),
+	};
+}
+
+function boundedValue(value: unknown, depth = 0): unknown {
+	if (typeof value === 'string') return boundedText(value);
+	if (!value || typeof value !== 'object') return value;
+	if (depth >= 8) {
+		const serialized = JSON.stringify(value);
+		return { presentationTruncated: true, byteLength: Buffer.byteLength(serialized, 'utf8'), sha256: digest(serialized), reason: 'maximum-depth' };
+	}
+	if (Array.isArray(value)) {
+		const selected = value.length > MAX_COLLECTION_ITEMS
+			? [...value.slice(0, MAX_COLLECTION_ITEMS / 2), ...value.slice(-MAX_COLLECTION_ITEMS / 2)]
+			: value;
+		const result = selected.map((entry) => boundedValue(entry, depth + 1));
+		if (selected.length !== value.length) result.splice(MAX_COLLECTION_ITEMS / 2, 0, {
+			presentationTruncated: true, omittedItems: value.length - selected.length,
+			sha256: digest(JSON.stringify(value)), reason: 'maximum-items',
+		});
+		return boundedContainer(value, result, 'array');
+	}
+	const entries = Object.entries(value as Record<string, unknown>);
+	const selected = entries.slice(0, MAX_OBJECT_FIELDS);
+	const result = Object.fromEntries(selected.map(([key, entry]) => [key, boundedValue(entry, depth + 1)]));
+	if (selected.length !== entries.length) result.presentationTruncation = {
+		omittedFields: entries.length - selected.length, sha256: digest(JSON.stringify(value)), reason: 'maximum-fields',
+	};
+	return boundedContainer(value, result, 'object');
+}
+
+function boundedTimeline<T>(items: T[], limit: number) {
+	if (items.length <= limit) return items;
+	return [...items.slice(0, Math.floor(limit / 4)), ...items.slice(-(limit - Math.floor(limit / 4)))];
+}
 
 export function sanitizeAgentLabValue(value: unknown, key = ''): unknown {
 	const normalizedKey = key.replaceAll('_', '').toLowerCase();
@@ -13,7 +77,31 @@ export function sanitizeAgentLabValue(value: unknown, key = ''): unknown {
 }
 
 export function sanitizeAgentLabSnapshot(snapshot: AgentLabSnapshot) {
-	return sanitizeAgentLabValue(snapshot) as AgentLabSnapshot;
+	const sanitized = sanitizeAgentLabValue(snapshot) as AgentLabSnapshot;
+	return {
+		...sanitized,
+		workdays: sanitized.workdays.map((day) => ({
+			...day,
+			activity: boundedTimeline(day.activity, 1_000).map((entry) => boundedValue(entry) as typeof entry),
+			assignments: day.assignments.map((entry) => boundedValue(entry) as Record<string, unknown>),
+			providerExecutions: day.providerExecutions.map((entry) => boundedValue(entry) as Record<string, unknown>),
+			governance: day.governance.map((entry) => boundedValue(entry) as Record<string, unknown>),
+			accounting: boundedValue(day.accounting) as Record<string, unknown>,
+			executions: day.executions.map((execution) => ({
+				...execution,
+				transcript: boundedTimeline(execution.transcript, MAX_TRANSCRIPT_ITEMS).map((entry) => ({
+					...entry, text: entry.text === null ? null : boundedText(entry.text), payload: boundedValue(entry.payload) as Record<string, unknown>,
+				})),
+				evidence: boundedTimeline(execution.evidence, MAX_EVIDENCE_ITEMS).map((entry) => ({ ...entry, detail: boundedValue(entry.detail) })),
+				signals: execution.signals.map((entry) => boundedValue(entry) as Record<string, unknown>),
+				artifacts: execution.artifacts.map((entry) => boundedValue(entry) as Record<string, unknown>),
+				usage: boundedValue(execution.usage) as Record<string, unknown>,
+				error: execution.error ? boundedValue(execution.error) as Record<string, unknown> : null,
+				assignment: boundedValue(execution.assignment) as Record<string, unknown>,
+				capacity: boundedValue(execution.capacity) as typeof execution.capacity,
+			})),
+		})),
+	};
 }
 
 function hash(value: string) {

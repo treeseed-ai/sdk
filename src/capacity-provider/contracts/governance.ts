@@ -272,9 +272,11 @@ export interface CapacityProviderLane {
 	providerId: string;
 	executionProviderId: string;
 	displayName: string;
+	purpose: import('../../agent-capacity/contracts/capacity/communication/communication-records.ts').ProviderLanePurpose;
 	status: CapacityProviderLaneStatus;
 	capabilities: string[];
 	maxConcurrentRunners: number;
+	minimumAssignmentDuration?: MinimumAssignmentDuration;
 	nativeLimits: CapacityExecutionProviderNativeLimit[];
 	metadata?: Record<string, unknown>;
 	createdAt: string;
@@ -284,12 +286,27 @@ export interface CapacityProviderLane {
 export interface ProviderLaneSnapshot {
 	id: string;
 	executionProviderId: string;
+	purpose: import('../../agent-capacity/contracts/capacity/communication/communication-records.ts').ProviderLanePurpose;
 	status: CapacityProviderLaneStatus;
 	capabilities: string[];
 	maxConcurrentRunners: number;
 	activeRunners: number;
+	minimumAssignmentDuration?: MinimumAssignmentDuration;
+	preferred?: boolean;
 	nativeLimits: Record<string, unknown>;
 }
+
+export type MinimumAssignmentDuration =
+	| { amount: number; unit: 'seconds' }
+	| {
+		amount: number;
+		unit: 'business-days';
+		calendar: {
+			timeZone: string;
+			weekdays?: number[];
+			holidayDates?: string[];
+		};
+	};
 
 export interface ProviderExecutionProviderSnapshot {
 	id: string;
@@ -298,6 +315,7 @@ export interface ProviderExecutionProviderSnapshot {
 	capabilities: string[];
 	maxConcurrentRunners: number;
 	activeRunners: number;
+	minimumAssignmentDuration?: MinimumAssignmentDuration;
 	nativeLimits: Record<string, unknown>;
 	observations?: Record<string, unknown>;
 	lanes: ProviderLaneSnapshot[];
@@ -311,6 +329,8 @@ export interface ProviderAvailabilitySnapshot {
 	maxConcurrentAssignments: number;
 	activeAssignmentIds: string[];
 	executionProviders: ProviderExecutionProviderSnapshot[];
+	communicationReady:boolean;
+	communicationBlockers:string[];
 	capabilities: string[];
 	constraints?: Record<string, unknown>;
 }
@@ -362,6 +382,7 @@ export interface CapacityProviderManifestV2 {
 	};
 	configuration: {
 		generation: string;
+		sourceManifestDigest?: string;
 	};
 	identity: {
 		privateKeyRef: string;
@@ -382,6 +403,7 @@ export interface CapacityProviderManifestV2 {
 		reference: string;
 		required: boolean;
 	}>;
+	defaultExecutionProviderId?: string;
 	executionProviders: Array<{
 		id: string;
 		adapter: string;
@@ -397,12 +419,15 @@ export interface CapacityProviderManifestV2 {
 		healthProbe?: string;
 		versionConstraint?: string;
 		configurationDigest?: string;
+		minimumAssignmentDuration?: MinimumAssignmentDuration;
 		nativeLimits: Record<string, unknown>;
 		researchSourcePolicy?: ResearchSourcePolicy;
 		capabilities?: string[];
 		lanes?: Array<{
 			id: string;
+			purpose: import('../../agent-capacity/contracts/capacity/communication/communication-records.ts').ProviderLanePurpose;
 			maxConcurrentRunners: number;
+			minimumAssignmentDuration?: MinimumAssignmentDuration;
 			capabilities?: string[];
 			nativeLimits?: Record<string, unknown>;
 		}>;

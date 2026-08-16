@@ -1,4 +1,5 @@
 export * from './capacity/assignments/assignment-records.ts';
+export * from './capacity/communication/communication-records.ts';
 export * from './capacity/providers/supply-policy.ts';
 export * from './capacity/workdays/workday-records.ts';
 export * from './configuration/configuration.ts';
@@ -12,6 +13,7 @@ export * from './support/agent-atlas.ts';
 export * from './support/failure-records.ts';
 export * from './support/financial-records.ts';
 export * from './support/time-capacity.ts';
+export * from './support/authority/execution-mode.ts';
 export * from './support/operator-surface.ts';
 export * from './support/planning-records.ts';
 export * from './support/research-citation.ts';

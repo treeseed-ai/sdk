@@ -23,7 +23,7 @@ export function parseAction(value: unknown, path: string, diagnostics: SceneDiag
 	const keys = Object.keys(value).filter((key) => value[key] !== undefined);
 	const supported = keys.filter((key) => findBuiltInSceneAction(key));
 	if (keys.length !== 1 || supported.length !== 1) {
-		diagnostics.push(sceneErrorDiagnostic('scene.invalid_action', `Expected exactly one supported action key. Supported actions: goto, click, clickVisibleSequence, fill, select, keyboard, pause, mailpitConfirmLatest, apiRequest, waitForOperation.`, path));
+		diagnostics.push(sceneErrorDiagnostic('scene.invalid_action', `Expected exactly one supported action key. Supported actions: goto, click, clickVisibleSequence, fill, select, keyboard, browserHistory, pause, mailpitConfirmLatest, apiRequest, waitForOperation.`, path));
 		return null;
 	}
 	const key = supported[0]!;
@@ -37,6 +37,11 @@ export function parseAction(value: unknown, path: string, diagnostics: SceneDiag
 		return { goto: { path: route, expectedStatus } };
 	}
 	if (key === 'keyboard') return { keyboard: asString(value.keyboard) || '' };
+	if (key === 'browserHistory') {
+		const direction = asString(value.browserHistory);
+		if (direction !== 'back' && direction !== 'forward') diagnostics.push(sceneErrorDiagnostic('scene.invalid_browser_history', 'browserHistory must be back or forward.', `${path}.browserHistory`));
+		return { browserHistory: direction === 'forward' ? 'forward' : 'back' };
+	}
 	if (key === 'apiRequest') return { apiRequest: isRecord(value.apiRequest) ? value.apiRequest : {} };
 	if (key === 'waitForOperation') {
 		const operation = isRecord(value.waitForOperation) ? value.waitForOperation : {};

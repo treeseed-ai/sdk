@@ -1,4 +1,5 @@
 import { resolveGitHubCredentialForRepository } from '../../operations/services/configuration/github-credentials.ts';
+import { encryptGitHubSecret } from '../../operations/services/github-api/paginate-git-hub-environment-names.ts';
 import {
 PROVIDER_CAPABILITIES,
 blocking,
@@ -53,8 +54,25 @@ export async function runGitHubCleanup(cwd: string, environment: LiveReconcileEn
 				if (!/404|Not Found/iu.test(message)) cleanupDrift.push(blocking('github', 'environment', message));
 			}
 		}
+		const branches = await githubRequest(`/repos/${owner}/${repo}/git/matching-refs/heads/${encodeURIComponent(prefixRoot)}`, credential.token, fetchImpl).catch(() => []) as Array<{ ref?: string }>;
+		for (const candidate of branches) {
+			const ref = candidate.ref ?? '';
+			if (!ref.startsWith(`refs/heads/${prefixRoot}`)) continue;
+			const branchName = ref.replace(/^refs\/heads\//u, '');
+			try {
+				await githubRequest(`/repos/${owner}/${repo}/branches/${encodeURIComponent(branchName)}/protection`, credential.token, fetchImpl, { method: 'DELETE' }).catch((error) => {
+					const message = error instanceof Error ? error.message : String(error);
+					if (!/404|Not Found|Branch not protected/iu.test(message)) throw error;
+				});
+				await githubRequest(`/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(branchName)}`, credential.token, fetchImpl, { method: 'DELETE' });
+				destroyed.push(node('github', environment, 'branch', branchName, { deleted: true }));
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				if (!/404|Not Found/iu.test(message)) cleanupDrift.push(blocking('github', 'branch', message));
+			}
+		}
 	}
-	const results = PROVIDER_CAPABILITIES.github.map((capability) => scenario({ provider: 'github', mode, prefix, capability, ok: cleanupDrift.length === 0, phase: 'cleanup', action: destroyed.length ? 'delete' : 'noop', reason: cleanupDrift.length === 0 ? 'GitHub cleanup completed.' : 'GitHub cleanup left blocking drift.', destroyedResources: destroyed }));
+	const results = PROVIDER_CAPABILITIES.github.map((capability, index) => scenario({ provider: 'github', mode, prefix, capability, ok: cleanupDrift.length === 0, phase: 'cleanup', action: destroyed.length ? 'delete' : 'noop', reason: cleanupDrift.length === 0 ? 'GitHub cleanup completed.' : 'GitHub cleanup left blocking drift.', destroyedResources: index === 0 ? destroyed : [] }));
 	return { results, cleanupDrift };
 }
 
@@ -67,9 +85,60 @@ export async function runGitHubAcceptance(cwd: string, environment: LiveReconcil
 		if (!credential.token) throw new Error(`Missing GitHub credential for ${repository}; expected ${credential.envName}.`);
 		const [owner, repo] = credential.repository.split('/');
 		const environmentName = prefix;
-		const variableName = `TREESEED_LIVE_TEST_${prefix.toUpperCase().replace(/[^A-Z0-9]/gu, '_')}`;
+		const branchName = prefix;
+		const resourceName = `TREESEED_LIVE_TEST_${prefix.toUpperCase().replace(/[^A-Z0-9]/gu, '_')}`;
+		const variableName = `${resourceName}_VARIABLE`;
+		const secretName = `${resourceName}_SECRET`;
 		await runGitHubCleanup(cwd, environment, prefix, mode, env, fetchImpl);
 		const results: LiveReconcileScenarioResult[] = [];
+		const repositoryRecord = await githubRequest(`/repos/${owner}/${repo}`, credential.token, fetchImpl) as { full_name?: string; default_branch?: string; archived?: boolean };
+		const defaultBranch = repositoryRecord.default_branch ?? 'main';
+		results.push(await measuredScenario({
+			provider: 'github', mode, environment, runId, prefix, capability: 'repository-adoption', phase: 'verify', action: 'adopt',
+			successReason: 'GitHub acceptance adopted and read back the existing portfolio repository without creating a duplicate.',
+			locators: { repository: credential.repository }, onProgress,
+		}, async () => {
+			if (repositoryRecord.full_name !== credential.repository || repositoryRecord.archived === true) throw new Error('The selected GitHub repository identity is missing, mismatched, or archived.');
+			return repositoryRecord;
+		}));
+		let bootstrapSha = '';
+		results.push(await measuredScenario({
+			provider: 'github', mode, environment, runId, prefix, capability: 'bootstrap', phase: 'verify', action: 'noop',
+			successReason: 'GitHub acceptance observed the default branch bootstrap commit.',
+			locators: { repository: credential.repository, branch: defaultBranch }, onProgress,
+		}, async () => {
+			const branch = await githubRequest(`/repos/${owner}/${repo}/branches/${encodeURIComponent(defaultBranch)}`, credential.token, fetchImpl) as { commit?: { sha?: string } };
+			bootstrapSha = branch.commit?.sha ?? '';
+			if (!/^[a-f0-9]{40}$/u.test(bootstrapSha)) throw new Error(`Default branch ${defaultBranch} has no observable bootstrap commit.`);
+			return branch;
+		}));
+		results.push(await measuredScenario({
+			provider: 'github', mode, environment, runId, prefix, capability: 'branch', phase: 'create', action: 'create',
+			successReason: 'GitHub acceptance created an isolated branch from the exact default-branch commit and observed it live.',
+			locators: { repository: credential.repository, branch: branchName }, createdResources: [node('github', environment, 'branch', branchName)], onProgress,
+		}, async () => {
+			await githubRequest(`/repos/${owner}/${repo}/git/refs`, credential.token, fetchImpl, { method: 'POST', body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha: bootstrapSha }) });
+			return waitForLiveObservation(`GitHub branch ${branchName}`, () => githubRequest(`/repos/${owner}/${repo}/branches/${encodeURIComponent(branchName)}`, credential.token ?? '', fetchImpl), (value) => (value as { name?: string }).name === branchName);
+		}));
+		results.push(await measuredScenario({
+			provider: 'github', mode, environment, runId, prefix, capability: 'branch-rules', phase: 'create', action: 'create',
+			successReason: 'GitHub acceptance applied and read back the isolated branch safety policy.',
+			locators: { repository: credential.repository, branch: branchName }, onProgress,
+		}, async () => {
+			await githubRequest(`/repos/${owner}/${repo}/branches/${encodeURIComponent(branchName)}/protection`, credential.token, fetchImpl, { method: 'PUT', body: JSON.stringify({ required_status_checks: null, enforce_admins: true, required_pull_request_reviews: null, restrictions: null, allow_force_pushes: false, allow_deletions: false }) });
+			const protection = await githubRequest(`/repos/${owner}/${repo}/branches/${encodeURIComponent(branchName)}/protection`, credential.token, fetchImpl) as { enforce_admins?: { enabled?: boolean }; allow_force_pushes?: { enabled?: boolean }; allow_deletions?: { enabled?: boolean } };
+			if (protection.enforce_admins?.enabled !== true || protection.allow_force_pushes?.enabled === true || protection.allow_deletions?.enabled === true) throw new Error('Isolated GitHub branch protection did not match the required safety policy.');
+			return protection;
+		}));
+		results.push(await measuredScenario({
+			provider: 'github', mode, environment, runId, prefix, capability: 'actions-settings', phase: 'verify', action: 'noop',
+			successReason: 'GitHub acceptance observed enabled Actions settings without changing repository-wide policy.',
+			locators: { repository: credential.repository }, onProgress,
+		}, async () => {
+			const settings = await githubRequest(`/repos/${owner}/${repo}/actions/permissions`, credential.token, fetchImpl) as { enabled?: boolean };
+			if (settings.enabled !== true) throw new Error('GitHub Actions is disabled for the selected repository.');
+			return settings;
+		}));
 		results.push(await measuredScenario({
 			provider: 'github', mode, environment, runId, prefix, capability: 'environment', phase: 'create', action: 'create',
 			startMessage: 'github:environment: create/update started',
@@ -77,12 +146,12 @@ export async function runGitHubAcceptance(cwd: string, environment: LiveReconcil
 			locators: { repository: credential.repository, environment: environmentName },
 			onProgress,
 		}, async () => {
-			await githubRequest(`/repos/${owner}/${repo}/environments/${environmentName}`, credential.token, fetchImpl, { method: 'PUT', body: JSON.stringify({}) });
+			await githubRequest(`/repos/${owner}/${repo}/environments/${environmentName}`, credential.token, fetchImpl, { method: 'PUT', body: JSON.stringify({ deployment_branch_policy: { protected_branches: false, custom_branch_policies: true } }) });
+			await githubRequest(`/repos/${owner}/${repo}/environments/${environmentName}/deployment-branch-policies`, credential.token, fetchImpl, { method: 'POST', body: JSON.stringify({ name: branchName, type: 'branch' }) });
 			return waitForLiveObservation(
 				`GitHub environment ${environmentName}`,
-				() => githubRequest(`/repos/${owner}/${repo}/environments?per_page=100`, credential.token ?? '', fetchImpl),
-				(value) => Array.isArray((value as { environments?: unknown[] }).environments)
-					&& ((value as { environments?: Array<{ name?: string }> }).environments ?? []).some((candidate) => candidate.name === environmentName),
+				async () => ({ environment: await githubRequest(`/repos/${owner}/${repo}/environments/${environmentName}`, credential.token ?? '', fetchImpl), policies: await githubRequest(`/repos/${owner}/${repo}/environments/${environmentName}/deployment-branch-policies?per_page=100`, credential.token ?? '', fetchImpl) }),
+				(value) => ((value as { policies?: { branch_policies?: Array<{ name?: string }> } }).policies?.branch_policies ?? []).some((candidate) => candidate.name === branchName),
 			);
 		}));
 		results.push(await measuredScenario({
@@ -107,16 +176,21 @@ export async function runGitHubAcceptance(cwd: string, environment: LiveReconcil
 			);
 		}));
 		results.push(await measuredScenario({
-			provider: 'github', mode, environment, runId, prefix, capability: 'secret', phase: 'verify', action: 'noop',
-			startMessage: 'github:secret: verifying public-key secret API access',
-			successReason: 'GitHub acceptance observed repository public-key access for Actions secret encryption.',
-			locators: { repository: credential.repository },
+			provider: 'github', mode, environment, runId, prefix, capability: 'secret', phase: 'create', action: 'create',
+			startMessage: 'github:secret: creating isolated environment secret',
+			successReason: 'GitHub acceptance encrypted, created, and observed an isolated environment secret.',
+			locators: { repository: credential.repository, environment: environmentName, secret: secretName },
 			onProgress,
-		}, async () => githubRequest(`/repos/${owner}/${repo}/actions/secrets/public-key`, credential.token, fetchImpl)));
+		}, async () => {
+			const key = await githubRequest(`/repos/${owner}/${repo}/environments/${environmentName}/secrets/public-key`, credential.token, fetchImpl) as { key?: string; key_id?: string };
+			const encryptedValue = await encryptGitHubSecret('isolated-live-acceptance-value', key.key ?? '');
+			await githubRequest(`/repos/${owner}/${repo}/environments/${environmentName}/secrets/${secretName}`, credential.token, fetchImpl, { method: 'PUT', body: JSON.stringify({ encrypted_value: encryptedValue, key_id: key.key_id }) });
+			return waitForLiveObservation(`GitHub secret ${secretName}`, () => githubRequest(`/repos/${owner}/${repo}/environments/${environmentName}/secrets?per_page=100`, credential.token ?? '', fetchImpl), (value) => ((value as { secrets?: Array<{ name?: string }> }).secrets ?? []).some((candidate) => candidate.name === secretName));
+		}));
 		results.push(await measuredScenario({
-			provider: 'github', mode, environment, runId, prefix, capability: 'workflow-dispatch', phase: 'verify', action: 'noop',
-			startMessage: 'github:workflow-dispatch: verifying dispatchable workflow metadata',
-			successReason: 'GitHub acceptance observed workflow metadata for dispatch routing.',
+			provider: 'github', mode, environment, runId, prefix, capability: 'workflow-presence', phase: 'verify', action: 'noop',
+			startMessage: 'github:workflow-presence: verifying workflow metadata',
+			successReason: 'GitHub acceptance observed an active verification workflow without dispatching deployment.',
 			locators: { repository: credential.repository },
 			onProgress,
 		}, async () => {

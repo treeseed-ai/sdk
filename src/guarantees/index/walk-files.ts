@@ -1,8 +1,9 @@
 import { existsSync,readdirSync,readFileSync } from 'node:fs';
 import { dirname,relative,resolve,sep } from 'node:path';
 import { diagnostic,EXCLUDED_DIRS,GUARANTEE_ID_PATTERN,isRecord,KNOWN_DEVICES,KNOWN_GATES,KNOWN_STATUSES,KNOWN_SURFACES,numberArray,numberValue,readYamlFile,stringArray,stringValue,TAXONOMY_PATTERN } from './guarantee-journey-audit-item.ts';
-import { GUARANTEE_SCHEMA_VERSION,GuaranteeDevice,GuaranteeDiagnostic,GuaranteeGate,GuaranteeManifest,GuaranteeRunContract,GuaranteeSceneContract,GuaranteeStatus,GuaranteeSurface,GuaranteeVerifierContract,LoadedGuarantee } from './guarantee-schema-version.ts';
+import { GUARANTEE_SCHEMA_VERSION,GUARANTEE_SCHEMA_VERSIONS,GuaranteeDevice,GuaranteeDiagnostic,GuaranteeGate,GuaranteeManifest,GuaranteeRunContract,GuaranteeSceneContract,GuaranteeStatus,GuaranteeSurface,GuaranteeVerifierContract,LoadedGuarantee } from './guarantee-schema-version.ts';
 import { allVerifierRefs } from './parse-verifier-registry.ts';
+import { parseGuaranteeCatalogContract } from '../contracts/parse-agent-guarantee-contract.ts';
 
 export function walkFiles(root: string, predicate: (path: string) => boolean): string[] {
 	if (!existsSync(root)) return [];
@@ -101,7 +102,7 @@ export function parseGuaranteeManifest(value: unknown, diagnostics: GuaranteeDia
 		return null;
 	}
 	const schemaVersion = stringValue(value.schemaVersion);
-	if (schemaVersion !== GUARANTEE_SCHEMA_VERSION) diagnostics.push(diagnostic('error', 'guarantee.unsupported_schema_version', `Unsupported guarantee schema version "${schemaVersion}".`, 'schemaVersion', sourcePath));
+	if (!GUARANTEE_SCHEMA_VERSIONS.includes(schemaVersion as never)) diagnostics.push(diagnostic('error', 'guarantee.unsupported_schema_version', `Unsupported guarantee schema version "${schemaVersion}".`, 'schemaVersion', sourcePath));
 	const id = stringValue(value.id);
 	const type = stringValue(value.type);
 	const subtype = stringValue(value.subtype);
@@ -146,7 +147,7 @@ export function parseGuaranteeManifest(value: unknown, diagnostics: GuaranteeDia
 	}
 
 	const manifest: GuaranteeManifest = {
-		schemaVersion: GUARANTEE_SCHEMA_VERSION,
+		schemaVersion: GUARANTEE_SCHEMA_VERSIONS.includes(schemaVersion as never) ? schemaVersion as GuaranteeManifest['schemaVersion'] : GUARANTEE_SCHEMA_VERSION,
 		id,
 		...(Number.isInteger(Number(value.journeyIndex)) ? { journeyIndex: Number(value.journeyIndex) } : {}),
 		type,
@@ -197,6 +198,7 @@ export function parseGuaranteeManifest(value: unknown, diagnostics: GuaranteeDia
 		},
 		notes: stringArray(value.notes),
 		dependsOnGuarantees,
+		...(schemaVersion === 'treeseed.guarantee/v2' ? { catalogContract: parseGuaranteeCatalogContract(value, diagnostics, sourcePath) } : {}),
 	};
 
 	if (manifest.status === 'active') {

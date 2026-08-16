@@ -117,7 +117,6 @@ describe("agent atlas contracts", () => {
     );
     expect(compiled.frontmatter).toMatchObject({
       agentClass: "research",
-      primaryGroupId: "group:project",
       groupIds: ["group:project"],
     });
     expect(compiled.generated.groupIds).not.toContain("research");

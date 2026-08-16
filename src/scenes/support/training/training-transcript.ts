@@ -37,6 +37,7 @@ function actionSummary(actionKind: string) {
 	if (actionKind === 'clickVisibleSequence') return 'uses the visible controls for the active responsive layout';
 	if (actionKind === 'fill') return 'fills a browser field';
 	if (actionKind === 'keyboard') return 'sends a keyboard command';
+	if (actionKind === 'browserHistory') return 'moves through browser history';
 	if (actionKind === 'waitForOperation') return 'waits for a Treeseed platform operation to reach an accepted state';
 	if (actionKind === 'pause') return 'pauses the demo workflow at an intentional control point';
 	if (actionKind === 'mailpitConfirmLatest') return 'opens the latest local Mailpit confirmation link in the browser';

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	localComposeDriftReasons,
 	localComposeRuntimeConfigDrift,
+	localComposeRuntimeImageDrift,
 	localComposeReconciledSpecHash,
 	localComposeRequiredPathWarnings,
 	localComposeServiceReady,
@@ -105,6 +106,29 @@ describe('local Docker Compose exact-state helpers', () => {
 			requiredPaths: [],
 		})).toEqual([
 			'running compose service manager uses stale rendered configuration',
+		]);
+	});
+
+	it('detects a running service whose mutable local tag now resolves to a newer image', () => {
+		const services = parseLocalComposeServices(JSON.stringify([
+			{ Service: 'manager', State: 'running', Image: 'sha256:old-manager' },
+			{ Service: 'runner', State: 'running', Labels: { 'com.docker.compose.image': 'sha256:current-runner' } },
+		]));
+		expect(localComposeRuntimeImageDrift({
+			manager: 'sha256:current-manager',
+			runner: 'sha256:current-runner',
+		}, services)).toEqual([
+			'running compose service manager uses stale image sha256:old-manager; expected sha256:current-manager',
+		]);
+		expect(localComposeDriftReasons({
+			persistedState: persisted({ desiredSpecHash: 'new-spec', lastReconciledState: { configHash: null, requiredPaths: [] } }),
+			desiredSpecHash: 'new-spec',
+			configHash: null,
+			services,
+			desiredImageIds: { manager: 'sha256:current-manager', runner: 'sha256:current-runner' },
+			requiredPaths: [],
+		})).toEqual([
+			'running compose service manager uses stale image sha256:old-manager; expected sha256:current-manager',
 		]);
 	});
 

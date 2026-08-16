@@ -11,6 +11,8 @@ import { assertionReport,extractConfirmationUrl,mailpitApiUrl,mailpitMessageBody
 import { assertSceneFocus } from './focus-assertion.ts';
 import { hasHeader,runtimeRecord,runtimeValue } from './request-values.ts';
 import { clickVisibleSequenceAction } from './responsive-actions.ts';
+import { browserHistoryAction } from './browser-history-action.ts';
+import { keyboardAction } from './keyboard-action.ts';
 
 function failureMessage(error: unknown, fallback: string) {
 	if (error instanceof Error) return error.message;
@@ -106,17 +108,8 @@ export function createBuiltInScenePlugins(): ScenePlugin[] {
 						return { ok: true, diagnostics: [] };
 					},
 				},
-				keyboard: {
-					id: 'keyboard',
-					phase: 2,
-					status: 'available',
-					summary: 'Send keyboard input.',
-					async run({ action, context }) {
-						if (!('keyboard' in action)) return { ok: false, diagnostics: [sceneErrorDiagnostic('scene.invalid_action', 'Expected keyboard action.', 'workflow.action.keyboard')] };
-						await context.session.page.keyboard.press(action.keyboard);
-						return { ok: true, diagnostics: [] };
-					},
-				},
+				keyboard: keyboardAction,
+				browserHistory: browserHistoryAction,
 				apiRequest: {
 					id: 'apiRequest',
 					phase: 4,

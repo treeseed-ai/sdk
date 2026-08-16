@@ -20,6 +20,7 @@ import { buildWorkflowResult,normalizeExecutionMode,selectWorkflowApplications }
 import { maybeAutoSaveCurrentTaskBranch } from '../support/sync-current-branch-to-origin.ts';
 import { StageCandidateManifest } from './workflow-close.ts';
 import { workflowSave } from './workflow-save.ts';
+import { integrationGovernanceAuthorityBlockers,validateIntegrationGovernanceAuthorities } from '../coordination/integration-change-set.ts';
 
 export async function workflowStage(helpers: WorkflowOperationHelpers, input: StageInput) {
 	try {
@@ -59,6 +60,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: St
 			const featureBranch = executionMode === 'execute' ? assertFeatureBranch(root) : session.branchName ?? '';
 			let plan = buildStagePromotionPlan(root, featureBranch, { verifyMode, ciMode, cleanupMode, updateFrom });
 			let blockers = stagePreflightBlockers(root, featureBranch, plan);
+			blockers.push(...await integrationGovernanceAuthorityBlockers(root, helpers.context.validateExecutionAuthorities));
 			const basePayload = {
 				mode: 'stage-promotion', 				branchName: featureBranch, 				branchRole: session.branchRole, 				mergeTarget: STAGING_BRANCH, 				mergeStrategy: 'merge-staging-down-then-exact-sha', 				message, 				verifyMode, 				ciMode, 				cleanupMode, 				updateFrom, 				waitForStaging: ciMode === 'hosted', 				sceneArtifacts: normalizeSceneArtifactsMode(effectiveInput.sceneArtifacts), 				localCleanup, 				applicationSelection, 				plan, 				phases: plan.phases, 				blockers,
 				autoResumeCandidate: planAutoResumeRun
@@ -83,6 +85,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: St
 				});
 				plan = buildStagePromotionPlan(root, featureBranch, { verifyMode, ciMode, cleanupMode, updateFrom });
 				blockers = stagePreflightBlockers(root, featureBranch, plan);
+				blockers.push(...await integrationGovernanceAuthorityBlockers(root, helpers.context.validateExecutionAuthorities));
 			}
 			if (blockers.length > 0) {
 				workflowError('stage', 'validation_failed', `stage is blocked:\n${blockers.map((entry) => `- ${entry}`).join('\n')}`, {
@@ -104,9 +107,10 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: St
 				{ id: 'cleanup-source', description: 'Clean up source branches and worktree after successful promotion', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: featureBranch, resumable: true },
 			], helpers.context);
 			try {
-				await executeJournalStep(root, workflowRun.runId, 'preflight', () => {
+				await executeJournalStep(root, workflowRun.runId, 'preflight', async () => {
 					const currentPlan = buildStagePromotionPlan(root, featureBranch, { verifyMode, ciMode, cleanupMode, updateFrom });
 					const currentBlockers = stagePreflightBlockers(root, featureBranch, currentPlan);
+					currentBlockers.push(...await integrationGovernanceAuthorityBlockers(root, helpers.context.validateExecutionAuthorities));
 					if (currentBlockers.length > 0) {
 						workflowError('stage', 'validation_failed', `stage is blocked:\n${currentBlockers.map((entry) => `- ${entry}`).join('\n')}`, {
 							details: { blockers: currentBlockers, plan: currentPlan },
@@ -184,11 +188,13 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: St
 							mode: verifyMode, 							status: 'passed' as const, 							completedAt: new Date().toISOString(), 							proof,
 						};
 					});
+				const governanceAuthority = await validateIntegrationGovernanceAuthorities(root, helpers.context.validateExecutionAuthorities);
+				if (governanceAuthority.status === 'failed') workflowError('stage', 'validation_failed', `stage governance authority is stale:\n${governanceAuthority.blockers.map((entry) => `- ${entry}`).join('\n')}`, { details: { blockers: governanceAuthority.blockers } });
 				const manifest = await executeJournalStep(root, workflowRun.runId, 'write-stage-candidate', () => {
 					const currentPlan = buildStagePromotionPlan(root, featureBranch, { verifyMode, ciMode, cleanupMode, updateFrom });
 					return writeStageCandidateManifest(root, workflowRun.runId, createStageCandidateManifest(root, workflowRun.runId, featureBranch, currentPlan, {
 						mode: verifyMode, 						status: verification.status, 						completedAt: verification.completedAt,
-					}));
+					}, governanceAuthority));
 				});
 				const typedManifest = manifest as unknown as StageCandidateManifest;
 				const promotion = await executeJournalStep(root, workflowRun.runId, 'promote-to-staging', () => {

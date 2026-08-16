@@ -36,6 +36,14 @@ export {
 createProductionAgentLabExecutor
 } from './agent-lab/production-lifecycle.ts';
 export {
+agentLabArtifactChecks,
+agentLabArtifactExpectations,
+selectedAgentLabArtifactExpectations
+} from './agent-lab/semantic-artifact-assertions.ts';
+export type {
+AgentLabArtifactExpectation
+} from './agent-lab/semantic-artifact-assertions.ts';
+export {
 formatScenePublishPlanMarkdownReport,
 writeScenePublishPlanReport
 } from './packages/publish-plan-report.ts';

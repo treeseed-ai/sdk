@@ -98,3 +98,9 @@ type GitHubWorkflowProgressEvent
 } from './services/repositories/github-api.ts';
 export type * from './workflow.ts';
 export { WorkflowSdk } from './workflow.ts';
+export {
+applyPlatformInitialization,
+planPlatformInitialization,
+type PlatformInitializationInput,
+type PlatformInitializationPlan
+} from './services/repositories/platform-initializer.ts';

@@ -9,6 +9,20 @@ export type AgentEstimateRiskLevel = 'low' | 'medium' | 'high';
 export type DecisionDependencyType = 'artifact' | 'capability' | 'decision' | 'external-resource' | 'human-input';
 export type StructuredAgentEstimateStatus = 'submitted' | 'accepted' | 'rejected' | 'superseded';
 
+export interface ExactGovernanceRevision {
+	id: string;
+	version: number;
+	digest: string;
+}
+
+export interface ProviderNativeEstimateRange {
+	unit: string;
+	minimum: number;
+	expected: number;
+	maximum: number;
+	providerClass?: string;
+}
+
 export interface AgentOutputRequirement {
 	id?: string;
 	outputType: string;
@@ -32,6 +46,7 @@ export interface DecisionDependencySpec {
 }
 
 export interface StructuredAgentEstimate {
+	schemaVersion?: 1 | 2 | 3;
 	id: string;
 	teamId: string;
 	projectId: string;
@@ -51,7 +66,25 @@ export interface StructuredAgentEstimate {
 	expectedOutputs: AgentOutputRequirement[];
 	acceptanceCriteria: string[];
 	completionEvidence: string[];
+	workBreakdown?: {
+		preparationSeconds: number;
+		implementationSeconds: number;
+		verificationSeconds: number;
+		independentReviewSeconds: number;
+		revisionSeconds: number;
+		revisionVerificationSeconds: number;
+		finalReviewSeconds: number;
+		reportingSeconds: number;
+		reserveSeconds: number;
+		expectedRevisionCycles: number;
+	};
 	groupSnapshot?: GroupMembershipSnapshot;
+	proposalRevision?: ExactGovernanceRevision;
+	decisionRevision?: ExactGovernanceRevision;
+	providerNativeRanges?: ProviderNativeEstimateRange[];
+	requiredProviderCapabilities?: string[];
+	acceptableProviderClasses?: string[];
+	agentDefinitionRevision?: { id: string; revision: number; digest: string };
 	createdAt?: string | null;
 	metadata?: Record<string, unknown>;
 }
@@ -72,7 +105,7 @@ export interface DeliverableContract {
 	reviewerAgentClasses?: string[];
 	requiredSections?: string[];
 	acceptanceCriteria: string[];
-	status: 'required' | 'draft' | 'submitted' | 'approved' | 'rejected';
+	status: 'required' | 'draft' | 'submitted' | 'approved' | 'rejected' | 'stale';
 	metadata?: Record<string, unknown>;
 }
 
@@ -164,6 +197,7 @@ export interface DecisionAssignmentGraph {
 	edges: DecisionAssignmentGraphEdge[];
 	compiledAt?: string | null;
 	compiledBy: 'api-control-plane';
+	executionMode?: import('./execution-mode.ts').AgentWorkExecutionMode;
 	metadata?: Record<string, unknown>;
 }
 
@@ -212,4 +246,14 @@ export interface EngineeringRevisionCycleResult {
 	graph: DecisionAssignmentGraph;
 	newContracts: DeliverableContract[];
 	revisionCycle: number;
+}
+
+export interface GovernedRevisionCycleInput {
+	rejectedReviewNodeId: string;
+	rejectedCheckpointRef: string;
+	findingsRef: string;
+	reason: string;
+	actorAgentClass: string;
+	reviewerAgentClass: string;
+	availableSeconds: number;
 }

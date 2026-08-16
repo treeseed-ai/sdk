@@ -63,7 +63,6 @@ export interface PlanningGraphEvidenceReference {
 export interface PlanningGraphGroupContext {
 	projectId: string;
 	agentMembershipByNodeId: Record<string, EffectiveGroupMembership>;
-	primaryGroupByNodeId?: Record<string, string>;
 	depthByGroupId?: Record<string, number>;
 }
 
@@ -173,7 +172,7 @@ function matchesGroups(node: PlanningGraphNode, subscription: SignalSubscription
 	const agentMembership = groups.agentMembershipByNodeId[node.id];
 	const subjectMembership = reference.groupMembership;
 	if (!agentMembership || !subjectMembership) return false;
-	return matchSignalGroupScope({ scope: subscription.groupScope, agentMembership, subjectMembership, primaryGroupId: groups.primaryGroupByNodeId?.[node.id], depthByGroupId: groups.depthByGroupId }).matched;
+	return matchSignalGroupScope({ scope: subscription.groupScope, agentMembership, subjectMembership, depthByGroupId: groups.depthByGroupId }).matched;
 }
 
 export function evaluatePlanningGraphNode(graph: AgentPlanningGraph, nodeId: string, evidence: PlanningGraphNodeEvidence[], groups?: PlanningGraphGroupContext) {

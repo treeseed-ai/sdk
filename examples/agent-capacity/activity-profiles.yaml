@@ -5,15 +5,20 @@ planning:
   prompt:
     system: Analyze the assigned subject and create linked planning content.
   branchPolicy:
-    kind: read-only
+    kind: main-planning-content
     base: main
-  contentAccess:
-    read:
-      models: [objective, question, proposal, note]
-    write:
-      models: [question, proposal, note]
+  permissions:
+    content:
+      objective:
+        operations: [describe, query, read]
+      question:
+        operations: [describe, query, read, create, link, validate, commit]
+      proposal:
+        operations: [describe, query, read, create, link, validate, commit]
+      note:
+        operations: [describe, query, read, create, link, validate, commit]
     commit:
-      allowed: false
+      allowed: true
   tools:
     allowed: [treedx.context.build, treedx.content.create]
     denied: []

@@ -5,6 +5,8 @@ import { npmWorkspaceArgs,packageWorkspaceForOwner,validateVitestVerifierOutput,
 import { arrayOrEmpty,diagnostic,GuaranteeVerifierExecutionInput,GuaranteeVerifierExecutionResult,isRecord } from './guarantee-journey-audit-item.ts';
 import { GuaranteeDiagnostic,GuaranteeManifest } from './guarantee-schema-version.ts';
 import { sceneHasAcceptanceAssertions } from './plan-guarantees.ts';
+import { validateGuaranteeVerifierResult } from '../contracts/parse-agent-guarantee-contract.ts';
+import { guaranteeSourceGeneration } from '../features/guarantee-source-closure.ts';
 
 export function runVerifierCommand(input: {
 	command: string;
@@ -143,6 +145,7 @@ export function apiAcceptanceEnvironment(environment: string, runState?: Guarant
 		...(runState ? {
 			TREESEED_GUARANTEE_RUN_ID: runState.runId,
 			TREESEED_GUARANTEE_RUN_STATE: JSON.stringify(runState.values),
+			...(runState.variant ? { TREESEED_GUARANTEE_VARIANT: runState.variant } : {}),
 		} : {}),
 	};
 }
@@ -173,6 +176,28 @@ export async function defaultGuaranteeVerifierExecutor(input: GuaranteeVerifierE
 	const definition = input.definition;
 	const ownerPackage = definition.ownerPackage ?? input.guarantee.manifest.ownerPackage;
 	const workspace = packageWorkspaceForOwner(ownerPackage);
+	const structuredValidation = input.guarantee.manifest.catalogContract && definition.resultSchema === 'treeseed.guarantee-verifier-result/v1'
+		? (result: { stdout: string; stderr: string }) => {
+			const validation = validateGuaranteeVerifierResult({
+				stdout: result.stdout,
+				guaranteeId: input.guarantee.manifest.id,
+				contract: input.guarantee.manifest.catalogContract!,
+				sourceGeneration: input.runState.sourceClosure ? guaranteeSourceGeneration(input.runState.sourceClosure) : '',
+				expectedVariant: input.runState.variant,
+				workspaceRoot: input.workspaceRoot,
+			});
+			return validation.ok ? null : validation.error;
+		}
+		: undefined;
+	const verifierEnvironment = {
+		...apiAcceptanceEnvironment(input.environment, input.runState),
+		...(input.guarantee.manifest.catalogContract ? {
+			TREESEED_GUARANTEE_ID: input.guarantee.manifest.id,
+			TREESEED_GUARANTEE_CAPABILITY_ID: input.guarantee.manifest.catalogContract.capabilityId,
+			TREESEED_GUARANTEE_SOURCE_GENERATION: input.runState.sourceClosure ? guaranteeSourceGeneration(input.runState.sourceClosure) : '',
+			TREESEED_GUARANTEE_OUTPUT_ROOT: input.outputRoot,
+		} : {}),
+	};
 	if (definition.kind === 'todo') {
 		return {
 			status: 'blocked',
@@ -197,8 +222,9 @@ export async function defaultGuaranteeVerifierExecutor(input: GuaranteeVerifierE
 			command: 'npm',
 			args: ['-w', 'packages/api', 'run', 'test:acceptance', '--', '--environment', input.environment, '--base-url', apiAcceptanceBaseUrl(input.environment), '--case', definition.caseId, '--json'],
 			timeoutSeconds: definition.timeoutSeconds,
-			env: apiAcceptanceEnvironment(input.environment, input.runState),
+			env: verifierEnvironment,
 			onProgress: input.onProgress,
+			validateSuccess: structuredValidation,
 		});
 	}
 	if (definition.kind === 'vitestCase') {
@@ -213,7 +239,7 @@ export async function defaultGuaranteeVerifierExecutor(input: GuaranteeVerifierE
 			args: npmWorkspaceArgs(workspace, ['exec', '--', 'vitest', 'run', definition.testFile, ...(definition.testName ? ['-t', definition.testName] : [])]),
 			timeoutSeconds: definition.timeoutSeconds,
 			onProgress: input.onProgress,
-			validateSuccess: validateVitestVerifierOutput,
+			validateSuccess: structuredValidation ?? validateVitestVerifierOutput,
 		});
 	}
 	if (definition.kind === 'packageScript') {
@@ -227,7 +253,9 @@ export async function defaultGuaranteeVerifierExecutor(input: GuaranteeVerifierE
 			command: 'npm',
 			args: npmWorkspaceArgs(workspace, ['run', definition.command, '--', ...arrayOrEmpty(definition.args)]),
 			timeoutSeconds: definition.timeoutSeconds,
+			env: verifierEnvironment,
 			onProgress: input.onProgress,
+			validateSuccess: structuredValidation,
 		});
 	}
 	if (definition.kind === 'nodeScript') {
@@ -242,8 +270,9 @@ export async function defaultGuaranteeVerifierExecutor(input: GuaranteeVerifierE
 			args: ['--import', 'tsx', definition.command, ...arrayOrEmpty(definition.args)],
 			cwd: definition.cwd,
 			timeoutSeconds: definition.timeoutSeconds,
-			env: apiAcceptanceEnvironment(input.environment, input.runState),
+			env: verifierEnvironment,
 			onProgress: input.onProgress,
+			validateSuccess: structuredValidation,
 		});
 	}
 	return {

@@ -14,6 +14,14 @@ describe('capacity operator capability matrix', () => {
 		expect(CAPACITY_OPERATOR_CAPABILITIES.find((entry) => entry.id === 'registration-key.reveal')?.access).toBe('team-manage');
 		expect(CAPACITY_OPERATOR_CAPABILITIES.find((entry) => entry.id === 'allocations.explain')?.access).toBe('team-read');
 		expect(CAPACITY_OPERATOR_CAPABILITIES.find((entry) => entry.id === 'provider.credential-rotate')?.access).toBe('provider-access-token');
+		expect(CAPACITY_OPERATOR_CAPABILITIES.find((entry) => entry.id === 'capacity-plans.create')).toMatchObject({
+			mutationMode: 'plan-execute', confirmation: 'execute', uiAvailable: false, agentVisibility: 'operator',
+		});
+		expect(CAPACITY_OPERATOR_CAPABILITIES.map((entry) => entry.id)).toEqual(expect.arrayContaining([
+			'capacity-plans.create', 'capacity-plans.accept', 'capacity-plans.request-revision', 'capacity-plans.schedule',
+			'capacity-plans.supersede', 'workday-runs.preflight', 'workday-runs.create', 'workday-runs.close-admission',
+			'agents.author', 'agents.definitions-author', 'agents.simulate', 'assignments.checkpoint-integrate',
+		]));
 	});
 
 	it('covers every required declarative backend configuration family', () => {
@@ -47,8 +55,8 @@ describe('capacity operator capability matrix', () => {
 
 	it('renders deterministic descriptor-backed parity documentation', () => {
 		const markdown = renderCapacityOperatorCapabilityMarkdown();
-		expect(markdown).toContain('| `registration-key.rotate` | `trsd capacity registration-key-rotate` | `post.v1.teams.teamId.capacity-registration-key.rotate` | mutation | team-manage |');
-		expect(markdown).toContain('| `provider.runtime.test-local` | `trsd capacity test-local` | local | local-runtime | provider-owner-local |');
+		expect(markdown).toContain('| `registration-key.rotate` | `trsd capacity registration-key-rotate` | `post.v1.teams.teamId.capacity-registration-key.rotate` | mutation | team-manage | plan-execute | yes |');
+		expect(markdown).toContain('| `provider.runtime.test-local` | `trsd capacity test-local` | local | local-runtime | provider-owner-local | local-live | none |');
 		expect(markdown).toContain('| `activity-profile` | `treeseed.agent-activity-profiles/v1` | `validateAgentActivityProfilesConfiguration` |');
 		expect(markdown.split('\n').filter((line) => line.startsWith('| `'))).toHaveLength(CAPACITY_OPERATOR_CAPABILITIES.length + CAPACITY_CONFIGURATION_DESCRIPTORS.length);
 	});

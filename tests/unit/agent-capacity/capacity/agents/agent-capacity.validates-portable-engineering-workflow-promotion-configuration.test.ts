@@ -150,6 +150,11 @@ it('derives kernel mode execution inputs from provider assignments', () => {
 					requestedSeconds: 180,
 					reservedSeconds: 180,
 					availableSeconds: 300,
+					budget: {
+						schemaVersion: 'treeseed.capacity-budget/v2', deadline: '2026-08-14T10:03:00.000Z', maxAttempts: 1,
+						time: { requestedSeconds: 180, reservedSeconds: 180, activeSeconds: 0, elapsedSeconds: 0, releasedSeconds: 0, overrunSeconds: 0, hardDeadlineAt: '2026-08-14T10:03:00.000Z', closeoutWarningSeconds: 120 },
+						tokens: { inputTokens: 0, cachedInputTokens: 0, reasoningTokens: 0, outputTokens: 0, hardLimitEnforceable: true },
+					},
 				limits: { wallMinutes: 20 },
 				metadata: { capacityPlanId: 'plan-1', capacityPlanStatus: 'accepted' },
 			},
@@ -160,6 +165,7 @@ it('derives kernel mode execution inputs from provider assignments', () => {
 			projectId: 'project-1',
 			mode: 'acting',
 			availableSeconds: 300,
+			budget: { time: { hardDeadlineAt: '2026-08-14T10:03:00.000Z', closeoutWarningSeconds: 120 } },
 			limits: { wallMinutes: 20 },
 		});
 		expect(deriveDecisionExecutionInputFromAssignment(assignment)).toMatchObject({

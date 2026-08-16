@@ -8,6 +8,7 @@ import {
 	generateCapacityProviderIdentity,
 	ProviderProtocolClient,
 	signCapacityProviderProof,
+	validateAndDigestCapacityProviderManifest,
 	type CapacityProviderManifestV2,
 	type CapacityProviderPrivateJwk,
 } from '../../capacity/providers/capacity-provider.ts';
@@ -42,11 +43,32 @@ export function seedAllocationRevisionId(providerKey: string, expectedActiveAllo
 	return stableId('seed-allocation-revision', `${providerKey}:${expectedActiveAllocationSetId}`);
 }
 
+export function seedAllocationDesiredId(teamId: string, projectIds: string[]) {
+	return stableId('seed-allocation', `${teamId}:${[...new Set(projectIds)].sort().join(',')}`);
+}
+
+export function seedAllocationMatchesProjects(allocation: Json, projectIds: string[]) {
+	const expected = [...new Set(projectIds)].sort();
+	const slices = (Array.isArray(allocation.slices) ? allocation.slices : []).map(object);
+	const observed = slices.map((slice) => string(slice.targetId)).filter((value): value is string => Boolean(value)).sort();
+	const target = 100 / expected.length;
+	const policiesMatch = slices.every((slice) => {
+		const policy = object(slice.policy);
+		return Number(policy.minPercent) === 0 && Number(policy.targetPercent) === target
+			&& Number(policy.maxPercent) === 100 && Number(policy.hardCapPercent) === 100;
+	});
+	const reserve = object(allocation.reservePolicy);
+	return expected.length > 0 && expected.length === observed.length && expected.every((projectId, index) => projectId === observed[index])
+		&& policiesMatch && Number(reserve.percent) === 0 && reserve.overflow === 'deny';
+}
+
 export function selectSeedExecutionProviders(
 	provider: SeedCapacityProviderPrerequisite,
 	manifest: CapacityProviderManifestV2,
 ) {
-	const selected = manifest.executionProviders.filter((entry) => provider.executionProviderIds.includes(entry.id));
+	const selected = manifest.executionProviders
+		.filter((entry) => provider.executionProviderIds.includes(entry.id))
+		.map((entry) => structuredClone(entry));
 	const selectedIds = new Set(selected.map((entry) => entry.id));
 	const missing = provider.executionProviderIds.filter((id) => !selectedIds.has(id));
 	if (missing.length) {
@@ -77,6 +99,28 @@ function selectedProviders(plan: SeedPlan) {
 
 function selectedServicePrincipals(plan: SeedPlan) {
 	return plan.runtime.agentLabServicePrincipals.filter((principal) => (principal.environments ?? plan.environments).some((environment) => plan.environments.includes(environment)));
+}
+
+export async function listSeedCapacityGrants(client: MarketClient, teamId: string) {
+	const items: Json[] = [];
+	let cursor: string | undefined;
+	do {
+		const response = await client.capacityGrants(teamId, { limit: 200, cursor });
+		items.push(...response.payload.items.map(object));
+		cursor = response.payload.page.hasMore ? response.payload.page.nextCursor ?? undefined : undefined;
+	} while (cursor);
+	return items;
+}
+
+export async function listSeedCapacityAllocationSets(client: MarketClient, teamId: string) {
+	const items: Json[] = [];
+	let cursor: string | undefined;
+	do {
+		const response = await client.capacityAllocationSets(teamId, { limit: 200, cursor });
+		items.push(...response.payload.items.map(object));
+		cursor = response.payload.page.hasMore ? response.payload.page.nextCursor ?? undefined : undefined;
+	} while (cursor);
+	return items;
 }
 
 function providerDataDir(projectRoot: string, provider: SeedCapacityProviderPrerequisite) {
@@ -269,7 +313,8 @@ async function provisionConnection(input: {
 		providerId: String(state.providerId), membershipId: String(state.membershipId), membershipCredentialRef: String(state.generatedCredentialRef),
 		membershipCredentialId: String(state.credentialId), offer: { weight: 1, maxConcurrentRunners, capabilities },
 	};
-	const runtimeManifest = { ...input.baseManifest, executionProviders, connections: [connection] };
+	const sourceManifestDigest=validateAndDigestCapacityProviderManifest(input.baseManifest).digest;
+	const runtimeManifest = { ...input.baseManifest, configuration:{...input.baseManifest.configuration,sourceManifestDigest}, executionProviders, connections: [connection] };
 	await atomicWrite(input.runtimeManifestPath, stringify(runtimeManifest));
 	if (!credential.accessToken) throw new Error(`Seed provider ${input.provider.key} could not issue a provider access token.`);
 	await publishExecutionProviderInventory({ apiUrl: input.apiUrl, accessToken: credential.accessToken, provider: input.provider, executionProviders, capabilities, maxConcurrentRunners });
@@ -277,7 +322,11 @@ async function provisionConnection(input: {
 }
 
 async function reconcilePolicy(input: { client: MarketClient; provider: SeedCapacityProviderPrerequisite; teamId: string; projectIds: string[]; providerId: string; membershipId: string; capabilities: string[]; maxConcurrentRunners: number }) {
-	const existingGrants = (await input.client.capacityGrants(input.teamId, { limit: 200 })).payload.items.map(object);
+	const allocationProjectIds = (await input.client.projects(input.teamId)).payload
+		.filter((project) => object(object(project.metadata).inventory).status !== 'archived')
+		.map((project) => String(project.id)).sort();
+	if (!allocationProjectIds.length) throw new Error(`Team ${input.teamId} has no active projects for capacity allocation.`);
+	const existingGrants = await listSeedCapacityGrants(input.client, input.teamId);
 	const grantIds: string[] = [];
 	for (const projectId of input.projectIds) {
 		const id = stableId('seed-grant', `${input.provider.key}:${projectId}:${input.capabilities.join(',')}:time-v2:${input.maxConcurrentRunners}`);
@@ -308,23 +357,26 @@ async function reconcilePolicy(input: { client: MarketClient; provider: SeedCapa
 			await input.client.transitionCapacityGrant(input.teamId, id, 'activate', `seed-runtime:${id}:activate`);
 		}
 	}
-	const baseAllocationId = stableId('seed-allocation', input.provider.key);
-	const allocations = (await input.client.capacityAllocationSets(input.teamId, { limit: 200 })).payload.items.map(object);
+	const allocations = await listSeedCapacityAllocationSets(input.client, input.teamId);
 	const activeAllocation = allocations.find((entry) => string(entry.status) === 'active');
-	let allocationId = baseAllocationId;
+	if (activeAllocation && seedAllocationMatchesProjects(activeAllocation, allocationProjectIds)) {
+		return { grantIds, allocationId: String(activeAllocation.id) };
+	}
+	const desiredAllocationId = seedAllocationDesiredId(input.teamId, allocationProjectIds);
+	let allocationId = desiredAllocationId;
 	let allocation = allocations.find((entry) => string(entry.id) === allocationId);
 	if (allocation && ['superseded', 'archived'].includes(string(allocation.status) ?? '')) {
 		const expectedActiveAllocationSetId = string(activeAllocation?.id);
 		if (!expectedActiveAllocationSetId) throw new Error('A superseded seed allocation requires an active replacement before a new revision can be reconciled.');
-		allocationId = seedAllocationRevisionId(input.provider.key, expectedActiveAllocationSetId);
+		allocationId = seedAllocationRevisionId(desiredAllocationId, expectedActiveAllocationSetId);
 		allocation = allocations.find((entry) => string(entry.id) === allocationId);
 	}
 	if (!allocation) {
-		const target = 100 / input.projectIds.length;
+		const target = 100 / allocationProjectIds.length;
 		const created = await input.client.createCapacityAllocationSet(input.teamId, {
 			id: allocationId, effectiveFrom: new Date(Date.now() - 1_000).toISOString(), effectiveUntil: '2100-01-01T00:00:00.000Z',
 			reservePolicy: { percent: 0, overflow: 'deny' },
-			slices: input.projectIds.map((projectId) => ({ id: `${allocationId}:${projectId}`, scope: 'project', targetId: projectId, policy: { minPercent: 0, targetPercent: target, maxPercent: 100, hardCapPercent: 100 } })),
+			slices: allocationProjectIds.map((projectId) => ({ id: `${allocationId}:${projectId}`, scope: 'project', targetId: projectId, policy: { minPercent: 0, targetPercent: target, maxPercent: 100, hardCapPercent: 100 } })),
 			borrowingRules: [], metadata: { seedRuntime: true, seedResourceKey: input.provider.key },
 		}, `seed-runtime:${allocationId}:create`);
 		allocation = created.payload;

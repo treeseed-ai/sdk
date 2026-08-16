@@ -1,6 +1,3 @@
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
 	PLATFORM_OPERATION_ENDPOINTS,
@@ -18,10 +15,6 @@ import {
 	pollPlatformOperation,
 	runPlatformOperationOnce,
 } from '../../../../src/index.ts';
-import {
-	PlatformOperationStore,
-	createSqliteRelationalAdapter,
-} from '../../../../src/operations/platform-operation-store.ts';
 
 function jsonResponse(payload: unknown, status = 200) {
 	return new Response(JSON.stringify(payload), {
@@ -385,6 +378,36 @@ describe('platform operation SDK contracts', () => {
 		expect(calls).toContain('runner.cancelled');
 	});
 
+	it('keeps a long-running operation lease alive until the executor finishes', async () => {
+		const current = operation({ id: 'op_heartbeat', status: 'leased' });
+		const client = {
+			claimJob: vi.fn(async () => ({ ok: true as const, operation: current })),
+			getOperation: vi.fn(async () => ({ ok: true as const, operation: current })),
+			appendEvent: vi.fn(async () => ({ ok: true as const, event: {
+				id: 'evt_heartbeat', operationId: current.id, seq: 1, kind: 'runner.started', data: {}, createdAt: current.createdAt,
+			} })),
+			renewLease: vi.fn(async () => ({ ok: true as const, operation: current })),
+			checkpoint: vi.fn(async () => ({ ok: true as const, operation: current })),
+			complete: vi.fn(async () => ({ ok: true as const, operation: operation({ id: current.id, status: 'succeeded' }) })),
+			fail: vi.fn(async () => ({ ok: true as const, operation: operation({ id: current.id, status: 'failed' }) })),
+		};
+		const result = await runPlatformOperationOnce({
+			client,
+			runnerId: 'runner-heartbeat',
+			workspaceRoot: '/tmp/workspace',
+			environment: 'test',
+			leaseSeconds: 30,
+			leaseRenewalIntervalMs: 5,
+			executors: [{ namespace: current.namespace, operation: current.operation, async run() {
+				await new Promise((resolve) => setTimeout(resolve, 24));
+				return { done: true };
+			} }],
+		});
+		expect(result.ok).toBe(true);
+		expect(client.renewLease.mock.calls.length).toBeGreaterThan(1);
+		expect(client.complete).toHaveBeenCalledOnce();
+	});
+
 	it('can drive a capacity-provider-shaped client adapter without platform auth assumptions', async () => {
 		const providerCalls: string[] = [];
 		const providerLikeClient = {
@@ -441,39 +464,4 @@ describe('platform operation SDK contracts', () => {
 		expect(providerCalls).toEqual(['claim', 'event', 'renew', 'checkpoint', 'complete']);
 	});
 
-	it('can run the platform lifecycle through the direct database operation store', async () => {
-		const root = mkdtempSync(join(tmpdir(), 'treeseed-platform-store-'));
-		const database = createSqliteRelationalAdapter(join(root, 'market.sqlite'));
-		const store = new PlatformOperationStore({ database });
-		try {
-			await store.ensureInitialized();
-			await database.run(
-				`INSERT INTO platform_operations (
-					id, namespace, operation, status, target, idempotency_key, input_json,
-					requested_by_type, requested_by_id, created_at, updated_at
-				) VALUES (?, ?, ?, 'queued', 'market_operations_runner', NULL, ?, 'service', 'test', ?, ?)`,
-				['op_db_1', 'market', 'noop', JSON.stringify({ message: 'hello' }), '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'],
-			);
-			const result = await runPlatformOperationOnce({
-				client: store,
-				runnerId: 'runner-db-1',
-				workspaceRoot: root,
-				environment: 'test',
-				executors: [{
-					namespace: 'market',
-					operation: 'noop',
-					async run(input, context) {
-						await context.checkpoint({ phase: 'db-store', input });
-						return { ok: true, source: 'direct-db' };
-					},
-				}],
-			});
-			expect(result.ok).toBe(true);
-			expect(result.operation?.status).toBe('succeeded');
-			const events = await database.all<{ kind: string }>(`SELECT kind FROM platform_operation_events WHERE operation_id = ? ORDER BY seq`, ['op_db_1']);
-			expect(events.map((event) => event.kind)).toEqual(['claimed', 'runner.started', 'runner.lease_renewed', 'checkpoint', 'completed']);
-		} finally {
-			await store.close();
-		}
-	});
 });

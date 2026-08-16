@@ -1,6 +1,34 @@
 import { AgentToolDefinition,EMPTY_OBJECT_SCHEMA,GENERIC_CONTENT_TOOLS,GENERIC_RESULT_SCHEMA,PRESET_CONTENT_TOOLS } from './agent-tool-execution-target.ts';
+import { COMMUNICATION_TOOL_DEFINITIONS } from './communication-tool-definitions.ts';
 
 export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
+	{
+		id: 'treeseed.assignment_plan', title: 'Manage assignment plan',
+		description: 'Read or atomically create/update the assignment operational plan on its isolated TreeDX workspace ref. The initial plan is mandatory before other mutations.',
+		inputSchema: { type: 'object', properties: {
+			action: { type: 'string', enum: ['read', 'write'] }, expectedStateVersion: { type: 'integer', minimum: 1 },
+			objective: { type: 'string', minLength: 1, maxLength: 4000 }, status: { type: 'string', enum: ['draft', 'ready', 'active', 'completed', 'superseded'] },
+			completed: { type: 'array', maxItems: 100, items: { type: 'object', properties: { id: { type: 'string', minLength: 1 }, title: { type: 'string', minLength: 1 }, description: { type: 'string', minLength: 1 } }, required: ['id', 'title', 'description'], additionalProperties: false } },
+			remaining: { type: 'array', maxItems: 100, items: { type: 'object', properties: { id: { type: 'string', minLength: 1 }, title: { type: 'string', minLength: 1 }, description: { type: 'string', minLength: 1 } }, required: ['id', 'title', 'description'], additionalProperties: false } },
+			risks: { type: 'array', maxItems: 100, items: { type: 'object', properties: { id: { type: 'string', minLength: 1 }, title: { type: 'string', minLength: 1 }, description: { type: 'string', minLength: 1 } }, required: ['id', 'title', 'description'], additionalProperties: false } },
+			resumeState: { type: 'object', properties: { checkpoint: { type: 'string', minLength: 1 }, nextAction: { type: 'string', minLength: 1 }, contextRefs: { type: 'array', uniqueItems: true, items: { type: 'string', minLength: 1 } } }, required: ['checkpoint', 'nextAction'], additionalProperties: false },
+			body: { type: 'string', maxLength: 20000 }, idempotencyKey: { type: 'string', minLength: 8, maxLength: 256 },
+		}, required: ['action'], additionalProperties: false, allOf: [{ if: { properties: { action: { const: 'write' } } }, then: { required: ['objective', 'remaining', 'expectedStateVersion', 'idempotencyKey'] } }] },
+		outputSchema: GENERIC_RESULT_SCHEMA, executionTarget: 'provider_runner', mutability: 'content_write', telemetryCategory: 'content', requirements: ['provider_runner_runtime', 'treedx_proxy_handle', 'treedx_writable_workspace'],
+	},
+	{
+		id: 'treeseed.assignment_status_update', title: 'Update assignment operational status',
+		description: 'Atomically record a fresh assignment status on the isolated TreeDX workspace ref after the required initial plan.',
+		inputSchema: { type: 'object', properties: { expectedStateVersion: { type: 'integer', minimum: 1 }, sequence: { type: 'integer', minimum: 0 }, previousStatusRef: { type: 'object', properties: { id: { type: 'string', minLength: 1 }, revision: { type: 'integer', minimum: 1 } }, required: ['id', 'revision'], additionalProperties: false }, phase: { type: 'string', minLength: 1, maxLength: 128 }, status: { type: 'string', enum: ['pending', 'admitted', 'leased', 'running', 'waiting', 'suspended', 'completed', 'failed', 'cancelled'] }, reason: { type: 'string', maxLength: 4000 }, progress: { type: 'number', minimum: 0, maximum: 1 }, body: { type: 'string', maxLength: 20000 }, idempotencyKey: { type: 'string', minLength: 8, maxLength: 256 } }, required: ['expectedStateVersion', 'sequence', 'phase', 'status', 'idempotencyKey'], additionalProperties: false, allOf: [{ if: { properties: { sequence: { minimum: 1 } }, required: ['sequence'] }, then: { required: ['previousStatusRef'] } }] },
+		outputSchema: GENERIC_RESULT_SCHEMA, executionTarget: 'provider_runner', mutability: 'content_write', telemetryCategory: 'content', requirements: ['provider_runner_runtime', 'treedx_proxy_handle', 'treedx_writable_workspace'],
+	},
+	{
+		id: 'treeseed.assignment_summary', title: 'Read or write assignment summary',
+		description: 'Read or atomically write the terminal or suspension closeout summary on the isolated TreeDX workspace ref.',
+		inputSchema: { type: 'object', properties: { action: { type: 'string', enum: ['read', 'write'] }, expectedStateVersion: { type: 'integer', minimum: 1 }, status: { type: 'string', enum: ['completed', 'failed', 'cancelled', 'suspended'] }, summary: { type: 'string', minLength: 1, maxLength: 12000 }, lessons: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1 } }, blockers: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1 } }, performance: { type: 'object', properties: { outcome: { type: 'string', minLength: 1 }, metrics: { type: 'object', additionalProperties: { type: 'number' } } }, required: ['outcome'], additionalProperties: false }, resumeState: { type: 'object', properties: { checkpoint: { type: 'string', minLength: 1 }, nextAction: { type: 'string', minLength: 1 }, contextRefs: { type: 'array', uniqueItems: true, items: { type: 'string', minLength: 1 } } }, required: ['checkpoint', 'nextAction'], additionalProperties: false }, artifactRefs: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1 } }, verificationRefs: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1 } }, body: { type: 'string', maxLength: 20000 }, idempotencyKey: { type: 'string', minLength: 8, maxLength: 256 } }, required: ['action'], additionalProperties: false, allOf: [{ if: { properties: { action: { const: 'write' } } }, then: { required: ['expectedStateVersion', 'status', 'summary', 'performance', 'idempotencyKey'] } }] },
+		outputSchema: GENERIC_RESULT_SCHEMA, executionTarget: 'provider_runner', mutability: 'content_write', telemetryCategory: 'content', requirements: ['provider_runner_runtime', 'treedx_proxy_handle', 'treedx_writable_workspace'],
+	},
+	...COMMUNICATION_TOOL_DEFINITIONS,
 	{
 		id: 'treeseed.publish_signal',
 		title: 'Publish assignment signal',
@@ -232,8 +260,8 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
 	},
 	{
 		id: 'treeseed.status',
-		title: 'TreeSeed status',
-		description: 'Inspect the current assignment and workday runtime status through the provider-authorized API.',
+		title: 'Assignment status and time remaining',
+		description: 'Inspect authoritative assignment status, start and deadline timestamps, wall-clock time remaining, and whether mandatory closeout has begun.',
 		inputSchema: EMPTY_OBJECT_SCHEMA,
 		outputSchema: GENERIC_RESULT_SCHEMA,
 		executionTarget: 'sdk_dispatch',
@@ -246,6 +274,26 @@ export const AGENT_TOOL_DEFINITIONS: AgentToolDefinition[] = [
 			preferredMode: 'prefer_local',
 			assignmentPreferredMode: 'auto',
 		},
+	},
+	{
+		id: 'treeseed.assignment_activity',
+		title: 'Inspect assignment activity',
+		description: 'Read bounded, sanitized forensic events for only the current assignment and workday. Team-wide evidence is never exposed through this tool.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				after: { type: 'integer', minimum: -1 },
+				limit: { type: 'integer', minimum: 1, maximum: 200 },
+				type: { type: 'string', minLength: 1, maxLength: 500 },
+				severity: { type: 'string', minLength: 1, maxLength: 200 },
+			},
+			additionalProperties: false,
+		},
+		outputSchema: GENERIC_RESULT_SCHEMA,
+		executionTarget: 'provider_runner',
+		mutability: 'read',
+		telemetryCategory: 'capacity',
+		requirements: ['provider_runner_runtime'],
 	},
 	{
 		id: 'treeseed.dev_plan',

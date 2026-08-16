@@ -109,15 +109,20 @@ it('compiles deterministic decision assignment graphs from shuffled estimates', 
 		]));
 		expect(first.graph.nodes.filter((node) => ['engineer', 'tester'].includes(node.targetAgentClass))
 			.every((node) => Boolean(node.metadata?.producesDeliverableContractId))).toBe(true);
-		expect(first.graph.edges).toEqual([expect.objectContaining({
+		expect(first.graph.edges).toEqual(expect.arrayContaining([expect.objectContaining({
 			edgeType: 'blocks-start',
 			reason: 'Architecture spec required.',
-		})]);
+		})]));
 		expect(first.graph.nodes.find((node) => node.targetAgentClass === 'tester')?.metadata).toMatchObject({
 			humanInputDependencies: [expect.objectContaining({
 				humanInputPolicy: { requiredFrom: 'team-human', teamId: 'team-1' },
 			})],
 		});
+		const integration=first.graph.nodes.find((node)=>node.metadata?.platformControlled===true);
+		const report=first.graph.nodes.find((node)=>node.activityType==='reporting');
+		expect(integration).toMatchObject({status:'pending',metadata:{stage:'integration',platformControlled:true}});
+		expect(report).toMatchObject({status:'pending',requiredDeliverableContractIds:[integration?.metadata?.producesDeliverableContractId]});
+		expect(first.graph.edges).toContainEqual(expect.objectContaining({fromNodeId:integration?.id,toNodeId:report?.id,reason:'Reporting waits for governed integration.'}));
 	});
 
 it('compiles the canonical engineering graph in test-first dependency order', () => {
@@ -160,6 +165,8 @@ it('compiles the canonical engineering graph in test-first dependency order', ()
 		});
 		expect(compiled.graph.nodes.find((node) => node.metadata?.stage === 'test')?.metadata).toMatchObject({ implementationMutationForbidden: true });
 		expect(compiled.graph.nodes.find((node) => node.metadata?.stage === 'review')?.metadata).toMatchObject({ rejectionCreatesRevision: true });
+		expect(compiled.graph.nodes.find((node) => node.metadata?.stage === 'review')?.activityType).toBe('reviewing');
+		expect(compiled.graph.nodes.filter((node) => node.metadata?.stage !== 'review').every((node) => node.activityType === 'acting')).toBe(true);
 		expect(compiled.graph.nodes.find((node) => node.metadata?.stage === 'release')?.metadata).toMatchObject({ hostedReleaseFailClosed: true });
 	});
 
@@ -189,6 +196,7 @@ it('advances approved engineering deliverables and creates explicit review revis
 		expect(revision!.graph.nodes.slice(-3).map((node) => [node.metadata?.stage, node.status])).toEqual([
 			['implementation', 'ready'], ['verification', 'pending'], ['review', 'pending'],
 		]);
+		expect(revision!.graph.nodes.at(-1)?.activityType).toBe('reviewing');
 		expect(revision!.graph.nodes.find((node) => node.metadata?.stage === 'documentation')?.requiredDeliverableContractIds).toEqual([
 			revision!.newContracts[2]!.id,
 		]);

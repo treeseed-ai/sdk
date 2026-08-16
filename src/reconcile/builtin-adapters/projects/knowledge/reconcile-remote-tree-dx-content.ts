@@ -1,4 +1,5 @@
 import type { TreeDxClient } from '../../../../treedx/support/client.ts';
+import { createHash } from 'node:crypto';
 import type { LocalTreeDxContentProject } from '../../capacity/providers/build-capacity-provider-adapter.ts';
 import {
 	ensureLocalTreeDxProjectRepository,
@@ -48,6 +49,24 @@ export async function localTreeDxRemoteHead(client: TreeDxClient, repositoryId: 
 	return nonEmptyString(candidate?.target) || nonEmptyString(candidate?.sha) || null;
 }
 
+export async function observeUnpublishedTreeDxAuthoring(
+	project: LocalTreeDxContentProject,
+	env: NodeJS.ProcessEnv,
+	fetchImpl: typeof fetch = fetch,
+) {
+	if (!project.teamSlug) throw new Error(`TreeDX authoring journal requires the team identity for ${project.slug}.`);
+	const apiUrl = nonEmptyString(env.TREESEED_API_BASE_URL) || 'http://127.0.0.1:3000';
+	const runnerSecret = nonEmptyString(env.TREESEED_PLATFORM_RUNNER_SECRET) || 'treeseed-platform-runner-dev-secret';
+	const url = new URL('/v1/internal/treedx/authoring-journal/status',apiUrl);
+	url.searchParams.set('teamSlug',project.teamSlug);
+	url.searchParams.set('projectSlug',project.slug);
+	const response = await fetchImpl(url,{ headers:{ authorization:`Bearer ${runnerSecret}`,accept:'application/json' } });
+	const envelope = recordValue(await response.json().catch(() => ({})));
+	const payload = recordValue(envelope.payload);
+	if (!response.ok) throw new Error(`TreeDX authoring journal could not be observed for ${project.slug} (${response.status}).`);
+	return Array.isArray(payload.unpublished) ? payload.unpublished.map(recordValue) : [];
+}
+
 export async function syncRemoteTreeDxProjectContent(input: {
 	client: TreeDxClient;
 	project: LocalTreeDxContentProject;
@@ -59,13 +78,47 @@ export async function syncRemoteTreeDxProjectContent(input: {
 	const before = await observeRemoteContentHead(project, env);
 	if (before !== expectedRemoteHead) throw new Error(`GitHub ${project.slug} content ref changed after planning. Run the plan again.`);
 	const repository = await ensureLocalTreeDxProjectRepository(client, project);
+	const currentLocalHead = await localTreeDxRemoteHead(client,repository.repoId,project);
+	if (currentLocalHead && currentLocalHead !== expectedRemoteHead) {
+		const unpublished = await observeUnpublishedTreeDxAuthoring(project,env);
+		if (unpublished.some((entry) => nonEmptyString(entry.commitSha) === currentLocalHead)) {
+			throw new Error(`TreeDX ${project.slug} contains journaled unpublished authoring commit ${currentLocalHead}; publish or resume it before reconciliation.`);
+		}
+	}
 	const sourceRef = `refs/heads/${project.sourceBranch ?? 'staging'}`;
 	const destinationRef = project.defaultRef ?? sourceRef;
+	const refspec = `+${sourceRef}:${destinationRef}`;
+	let credentialId: string | undefined;
+	if (project.remoteVisibility === 'private') {
+		const placement = await client.getPlacement(repository.repoId);
+		const nodeId = nonEmptyString(placement.primaryNodeId);
+		const apiUrl = nonEmptyString(env.TREESEED_API_BASE_URL) || 'http://127.0.0.1:3000';
+		const runnerSecret = nonEmptyString(env.TREESEED_PLATFORM_RUNNER_SECRET) || 'treeseed-platform-runner-dev-secret';
+		if (!nodeId || !runnerSecret) throw new Error(`Private TreeDX content credential authority is unavailable for ${project.slug}.`);
+		const idempotencyKey = createHash('sha256').update([
+			project.projectKey ?? project.slug, expectedRemoteHead, nodeId, refspec,
+		].join('\n')).digest('hex');
+		const response = await fetch(`${apiUrl.replace(/\/+$/u, '')}/v1/internal/treedx/credential-deliveries/prepare`, {
+			method: 'POST',
+			headers: { authorization: `Bearer ${runnerSecret}`, 'content-type': 'application/json' },
+			body: JSON.stringify({ teamSlug: project.teamSlug, projectSlug: project.slug,
+				owner: project.remoteOwner, name: project.remoteName, nodeId, sourceRef, destinationRef,
+				expectedRemoteHead, refspec, idempotencyKey }),
+		});
+		const envelope = recordValue(await response.json().catch(() => ({})));
+		const payload = recordValue(envelope.payload);
+		credentialId = nonEmptyString(payload.deliveryId);
+		if (!response.ok || !credentialId) {
+			const detail = nonEmptyString(envelope.error) || nonEmptyString(envelope.code) || `HTTP ${response.status}`;
+			throw new Error(`Private TreeDX content credential preparation failed for ${project.slug}: ${detail}.`);
+		}
+	}
 	await client.fetchRemote({
 		repoId: repository.repoId,
 		remoteName: 'origin',
 		remoteUrl: project.remoteUrl,
-		refspecs: [`+${sourceRef}:${destinationRef}`],
+		...(credentialId ? { credentialId } : {}),
+		refspecs: [refspec],
 	});
 	const localHead = await localTreeDxRemoteHead(client, repository.repoId, project);
 	const after = await observeRemoteContentHead(project, env);

@@ -10,7 +10,6 @@ DecisionDependencySpec,
 DeliverableContract,
 DeliverableManifest,
 EngineeringAssignmentGraphInput,
-EngineeringRevisionCycleResult,
 StructuredAgentEstimate,
 } from '../../contracts/support/decision-work.ts';
 
@@ -75,6 +74,7 @@ export function validateDecisionDependencySpec(dependency: DecisionDependencySpe
 
 export function validateStructuredAgentEstimate(estimate: StructuredAgentEstimate): AgentCapacityContractValidationResult {
 	const diagnostics: AgentCapacityContractDiagnostic[] = [];
+	if (estimate.schemaVersion !== undefined && ![1,2,3].includes(estimate.schemaVersion)) diagnostic(diagnostics, 'estimate_schema_version_invalid', 'schemaVersion must be 1, 2, or 3.', 'schemaVersion');
 	validateNonEmptyString(diagnostics, estimate.id, 'id');
 	validateNonEmptyString(diagnostics, estimate.teamId, 'teamId');
 	validateNonEmptyString(diagnostics, estimate.projectId, 'projectId');
@@ -88,6 +88,29 @@ export function validateStructuredAgentEstimate(estimate: StructuredAgentEstimat
 	}
 	if (!['low', 'medium', 'high'].includes(estimate.confidence)) diagnostic(diagnostics, 'estimate_confidence_invalid', 'Estimate confidence must be low, medium, or high.', 'confidence');
 	if (!['low', 'medium', 'high'].includes(estimate.riskLevel)) diagnostic(diagnostics, 'estimate_risk_level_invalid', 'Estimate riskLevel must be low, medium, or high.', 'riskLevel');
+	if (estimate.schemaVersion === 2 || estimate.schemaVersion === 3) {
+		const breakdown=estimate.workBreakdown;
+		if(!breakdown) diagnostic(diagnostics,'estimate_work_breakdown_required','Version 2 estimates require a complete work breakdown.','workBreakdown');
+		else {
+			for(const field of ['preparationSeconds','implementationSeconds','verificationSeconds','independentReviewSeconds','revisionSeconds','revisionVerificationSeconds','finalReviewSeconds','reportingSeconds','reserveSeconds'] as const) validateNonNegativeNumber(diagnostics,breakdown[field],`workBreakdown.${field}`);
+			if(!Number.isInteger(breakdown.expectedRevisionCycles)||breakdown.expectedRevisionCycles<0) diagnostic(diagnostics,'estimate_revision_cycles_invalid','expectedRevisionCycles must be a non-negative integer.','workBreakdown.expectedRevisionCycles');
+			if(breakdown.independentReviewSeconds<=0||breakdown.finalReviewSeconds<=0||breakdown.reportingSeconds<=0) diagnostic(diagnostics,'estimate_governed_phases_required','Independent review, final review, and reporting must receive positive capacity.','workBreakdown');
+			const allocated=breakdown.preparationSeconds+breakdown.implementationSeconds+breakdown.verificationSeconds+breakdown.independentReviewSeconds+breakdown.revisionSeconds+breakdown.revisionVerificationSeconds+breakdown.finalReviewSeconds+breakdown.reportingSeconds+breakdown.reserveSeconds;
+			if(allocated!==estimate.expectedSeconds) diagnostic(diagnostics,'estimate_work_breakdown_total_invalid','Work breakdown seconds must sum to expectedSeconds.','workBreakdown');
+		}
+	}
+	if (estimate.schemaVersion === 3) {
+		for (const [field, revision] of [['proposalRevision', estimate.proposalRevision], ['decisionRevision', estimate.decisionRevision]] as const) {
+			if (!revision || !revision.id || !Number.isInteger(revision.version) || revision.version < 1 || !revision.digest) diagnostic(diagnostics, 'estimate_exact_governance_revision_required', `Version 3 estimates require exact ${field}.`, field);
+		}
+		if (!estimate.groupSnapshot) diagnostic(diagnostics, 'estimate_group_snapshot_required', 'Version 3 estimates require the frozen group membership snapshot.', 'groupSnapshot');
+		if (!estimate.agentDefinitionRevision?.id || !Number.isInteger(estimate.agentDefinitionRevision.revision) || estimate.agentDefinitionRevision.revision < 1 || !estimate.agentDefinitionRevision.digest) diagnostic(diagnostics, 'estimate_agent_definition_revision_required', 'Version 3 estimates require exact agent-definition provenance.', 'agentDefinitionRevision');
+		if (!estimate.requiredProviderCapabilities?.length) diagnostic(diagnostics, 'estimate_provider_capabilities_required', 'Version 3 estimates require provider capabilities.', 'requiredProviderCapabilities');
+		if (!estimate.acceptableProviderClasses?.length) diagnostic(diagnostics, 'estimate_provider_classes_required', 'Version 3 estimates require acceptable provider classes.', 'acceptableProviderClasses');
+		for (const [index, range] of (estimate.providerNativeRanges ?? []).entries()) {
+			if (!range.unit || !Number.isFinite(range.minimum) || !Number.isFinite(range.expected) || !Number.isFinite(range.maximum) || range.minimum < 0 || range.minimum > range.expected || range.expected > range.maximum) diagnostic(diagnostics, 'estimate_provider_native_range_invalid', 'Provider-native ranges require unit and minimum <= expected <= maximum.', `providerNativeRanges.${index}`);
+		}
+	}
 	for (const [index, dependency] of (estimate.dependencies ?? []).entries()) {
 		diagnostics.push(...validateDecisionDependencySpec(dependency, `dependencies.${index}`).diagnostics);
 	}
@@ -102,7 +125,7 @@ export function validateDeliverableContract(contract: DeliverableContract): Agen
 	validateNonEmptyString(diagnostics, contract.decisionId, 'decisionId');
 	validateNonEmptyString(diagnostics, contract.deliverableType, 'deliverableType');
 	if (!Array.isArray(contract.producerAgentClasses) || contract.producerAgentClasses.length === 0) diagnostic(diagnostics, 'deliverable_contract_missing_producer', 'Deliverable contracts must declare at least one producerAgentClass.', 'producerAgentClasses');
-	if (!['required', 'draft', 'submitted', 'approved', 'rejected'].includes(contract.status)) diagnostic(diagnostics, 'deliverable_contract_status_invalid', 'Deliverable contract has an invalid status.', 'status');
+	if (!['required', 'draft', 'submitted', 'approved', 'rejected', 'stale'].includes(contract.status)) diagnostic(diagnostics, 'deliverable_contract_status_invalid', 'Deliverable contract has an invalid status.', 'status');
 	return validationResult(diagnostics);
 }
 
@@ -161,6 +184,11 @@ export function compileDecisionAssignmentGraphFromEstimates(input: {
 	decisionId: string;
 	version?: number;
 	estimates: StructuredAgentEstimate[];
+	executionMode?: 'simulation' | 'production';
+	reviewersByAgentClass?: Record<string,string[]>;
+	reportingAgentClass?: string;
+	maximumRevisionCycles?: number;
+	exactBaseRef?: string;
 	compiledAt?: string | null;
 }): DecisionAssignmentGraphCompileResult {
 	const diagnostics: AgentCapacityContractDiagnostic[] = [];
@@ -248,6 +276,7 @@ export function compileDecisionAssignmentGraphFromEstimates(input: {
 			capacity: { expectedSeconds: estimate.expectedSeconds, maxSeconds: estimate.maxSeconds },
 			status: 'pending',
 			metadata: {
+				stage: 'implementation',
 				estimateId: estimate.id,
 				producesDeliverableContractId: outputContractId,
 				confidence: estimate.confidence,
@@ -255,12 +284,66 @@ export function compileDecisionAssignmentGraphFromEstimates(input: {
 				humanInputDependencies: estimate.dependencies.filter((dependency) => dependency.type === 'human-input'),
 			},
 		});
+		const reviewerClasses = uniqueStrings(input.reviewersByAgentClass?.[estimate.agentClass]
+			?? (Array.isArray(estimate.metadata?.reviewerAgentClasses) ? estimate.metadata.reviewerAgentClasses.map(String) : ['reviewer']));
+		for (const reviewerClass of reviewerClasses) {
+			if (reviewerClass === estimate.agentClass) diagnostic(diagnostics, 'graph_reviewer_not_independent', `Reviewer ${reviewerClass} cannot review its own acting assignment.`, `estimates.${estimate.id}.reviewerAgentClasses`);
+			const reviewContractId = `${outputContractId}:review:${reviewerClass}`;
+			const reviewNodeId = `${nodeId}:review:${reviewerClass}`;
+			contractMap.set(reviewContractId, {
+				id: reviewContractId, teamId: input.teamId, projectId: input.projectId, decisionId: input.decisionId,
+				deliverableType: 'review_disposition', producerAgentClasses: [reviewerClass], reviewerAgentClasses: [reviewerClass],
+				acceptanceCriteria: ['Review must bind the exact actor checkpoint, diff, verification, receipts, and accepted plan revision.'], status: 'required',
+				metadata: { sourceEstimateId: estimate.id, reviewedContractId: outputContractId },
+			});
+			nodes.push({
+				id: reviewNodeId, decisionId: input.decisionId, projectId: input.projectId, targetAgentClass: reviewerClass,
+				activityType: 'reviewing', estimateId: estimate.id, groupSnapshot: estimate.groupSnapshot, handler: null,
+				requiredCapabilities: ['independent-review'], requiredDeliverableContractIds: [outputContractId], inputRefs,
+				outputRequirements: [{ id: reviewContractId, outputType: 'review_disposition', required: true }],
+				capacity: { expectedSeconds: Math.max(1, estimate.workBreakdown?.independentReviewSeconds ?? 300), maxSeconds: Math.max(1, estimate.workBreakdown?.finalReviewSeconds ?? estimate.workBreakdown?.independentReviewSeconds ?? 300) },
+				status: 'pending', metadata: { stage: 'review', reviewedNodeId: nodeId, reviewedContractId: outputContractId,
+					producesDeliverableContractId: reviewContractId, exactCheckpointRequired: true, rejectionCreatesRevision: true,
+					maximumRevisionCycles: input.maximumRevisionCycles ?? estimate.workBreakdown?.expectedRevisionCycles ?? 1 },
+			});
+			edges.push({ fromNodeId: nodeId, toNodeId: reviewNodeId, edgeType: 'blocks-start', reason: 'Independent review requires the exact acting checkpoint.' });
+		}
 		for (const dependency of artifactDependencies) {
 			const contractId = dependencyToContractId(input.projectId, input.decisionId, dependency);
 			const producerNodeId = deliverableProducerNodes.get(contractId);
 			if (producerNodeId) edges.push({ fromNodeId: producerNodeId, toNodeId: nodeId, edgeType: edgeTypeForDependency(dependency), reason: dependency.summary ?? dependency.deliverableType });
 		}
 	}
+	const reviewNodes = nodes.filter((node) => node.activityType === 'reviewing');
+	const integrationContractId = `${input.projectId}:${input.decisionId}:platform-integration`;
+	const integrationNodeId = `${input.projectId}:${input.decisionId}:platform-integration`;
+	contractMap.set(integrationContractId, {
+		id: integrationContractId, teamId: input.teamId, projectId: input.projectId, decisionId: input.decisionId,
+		deliverableType: 'governed_integration_receipt', producerAgentClasses: ['platform-integration'],
+		acceptanceCriteria: ['The platform must bind the exact approved checkpoint to a valid execution-authority receipt before reporting.'],
+		status: 'required', metadata: { platformControlled: true },
+	});
+	nodes.push({
+		id: integrationNodeId, decisionId: input.decisionId, projectId: input.projectId, targetAgentClass: 'platform-integration',
+		activityType: 'acting', handler: 'platform-integration', requiredCapabilities: ['governed-integration'],
+		requiredDeliverableContractIds: reviewNodes.map((node) => String(node.metadata?.producesDeliverableContractId)), inputRefs: [],
+		outputRequirements: [{ id: integrationContractId, outputType: 'governed_integration_receipt', required: true }],
+		capacity: { expectedSeconds: 1, maxSeconds: 1 }, status: 'pending',
+		metadata: { stage: 'integration', platformControlled: true, producesDeliverableContractId: integrationContractId },
+	});
+	for (const reviewNode of reviewNodes) edges.push({ fromNodeId: reviewNode.id, toNodeId: integrationNodeId, edgeType: 'blocks-start', reason: 'Platform integration waits for every exact review approval.' });
+	const reportContractId = `${input.projectId}:${input.decisionId}:workflow-report`;
+	const reportNodeId = `${input.projectId}:${input.decisionId}:report`;
+	contractMap.set(reportContractId, { id: reportContractId, teamId: input.teamId, projectId: input.projectId, decisionId: input.decisionId,
+		deliverableType: 'assignment_workflow_report', producerAgentClasses: [input.reportingAgentClass ?? 'reporter'],
+		acceptanceCriteria: ['Report must preserve terminal repository outcomes, reviews, failures, usage, settlement, remaining work, and cleanup evidence.'], status: 'required', metadata: { terminalOnly: true } });
+	nodes.push({ id: reportNodeId, decisionId: input.decisionId, projectId: input.projectId, targetAgentClass: input.reportingAgentClass ?? 'reporter',
+		activityType: 'reporting', handler: 'reporter', requiredCapabilities: ['terminal-reporting'],
+		requiredDeliverableContractIds: [integrationContractId], inputRefs: [],
+		outputRequirements: [{ id: reportContractId, outputType: 'assignment_workflow_report', required: true }],
+		capacity: { expectedSeconds: Math.max(1, ...estimates.map((estimate) => estimate.workBreakdown?.reportingSeconds ?? 300)), maxSeconds: Math.max(1, ...estimates.map((estimate) => estimate.workBreakdown?.reportingSeconds ?? 300)) },
+		status: 'pending', metadata: { stage: 'reporting', terminalOnly: true, producesDeliverableContractId: reportContractId } });
+	edges.push({ fromNodeId: integrationNodeId, toNodeId: reportNodeId, edgeType: 'blocks-start', reason: 'Reporting waits for governed integration.' });
 	const graph: DecisionAssignmentGraph = {
 		id: input.id ?? `${input.projectId}:${input.decisionId}:graph:v${input.version ?? 1}`,
 		teamId: input.teamId,
@@ -274,7 +357,8 @@ export function compileDecisionAssignmentGraphFromEstimates(input: {
 		edges: edges.sort((left, right) => left.fromNodeId.localeCompare(right.fromNodeId) || left.toNodeId.localeCompare(right.toNodeId) || left.edgeType.localeCompare(right.edgeType)),
 		compiledAt: input.compiledAt ?? null,
 		compiledBy: 'api-control-plane',
-		metadata: { compiler: 'compileDecisionAssignmentGraphFromEstimates' },
+		executionMode: input.executionMode ?? 'simulation',
+		metadata: { compiler: 'compileDecisionAssignmentGraphFromEstimates', maximumRevisionCycles: input.maximumRevisionCycles ?? 1, ...(input.exactBaseRef ? { exactBaseRef: input.exactBaseRef } : {}) },
 	};
 	diagnostics.push(...validateDecisionAssignmentGraph(graph).diagnostics);
 	return { graph, diagnostics };
@@ -313,7 +397,7 @@ export function compileEngineeringAssignmentGraph(input: EngineeringAssignmentGr
 			decisionId: input.decisionId,
 			projectId: input.projectId,
 			targetAgentClass: stage.role,
-			activityType: 'acting',
+			activityType: stage.key === 'review' ? 'reviewing' : 'acting',
 			handler: null,
 			requiredCapabilities: [`engineering:${stage.key}`],
 			requiredDeliverableContractIds: previous ? [previous.id] : [],
@@ -395,72 +479,5 @@ export function activateDecisionAssignmentGraph(graph: DecisionAssignmentGraph):
 				? { ...node, status: 'ready' }
 				: node
 		)),
-	};
-}
-
-export function compileEngineeringRevisionCycle(
-	graph: DecisionAssignmentGraph,
-	rejectedReviewContractId: string,
-	reason: string,
-): EngineeringRevisionCycleResult | null {
-	if (graph.metadata?.workflowKind !== 'engineering-test-first') return null;
-	const reviewNode = graph.nodes.find((node) => node.metadata?.producesDeliverableContractId === rejectedReviewContractId && node.metadata?.stage === 'review');
-	const documentationNode = graph.nodes.find((node) => node.metadata?.stage === 'documentation');
-	const engineerNode = graph.nodes.find((node) => node.metadata?.stage === 'implementation');
-	const testerNode = graph.nodes.find((node) => node.metadata?.stage === 'verification');
-	if (!reviewNode || !documentationNode || !engineerNode || !testerNode) return null;
-	const revisionCycle = Math.max(0, ...graph.nodes.map((node) => Number(node.metadata?.revisionCycle ?? 0)).filter(Number.isFinite)) + 1;
-	const prefix = `${graph.id}:revision:${revisionCycle}`;
-	const stages = [
-		{ key: 'implementation', role: engineerNode.targetAgentClass, output: 'implementation_revision' },
-		{ key: 'verification', role: testerNode.targetAgentClass, output: 'revision_verification' },
-		{ key: 'review', role: reviewNode.targetAgentClass, output: 'revision_review_decision' },
-	] as const;
-	const newContracts = stages.map((stage): DeliverableContract => ({
-		id: `${prefix}:deliverable:${stage.output}`,
-		teamId: graph.teamId, projectId: graph.projectId, decisionId: graph.decisionId,
-		deliverableType: stage.output, producerAgentClasses: [stage.role],
-		reviewerAgentClasses: stage.key === 'review' ? [stage.role] : undefined,
-		acceptanceCriteria: [`Revision cycle ${revisionCycle} must resolve the rejected review with exact source-ref provenance.`],
-		status: 'required', metadata: { workflowKind: 'engineering-test-first', stage: stage.key, revisionCycle, rejectedReviewContractId },
-	}));
-	const revisionNodes = stages.map((stage, index): DecisionAssignmentGraphNode => ({
-		id: `${prefix}:node:${stage.key}`,
-		decisionId: graph.decisionId, projectId: graph.projectId, targetAgentClass: stage.role, activityType: 'acting', handler: null,
-		requiredCapabilities: [`engineering:${stage.key}`],
-		requiredDeliverableContractIds: index === 0 ? [] : [newContracts[index - 1]!.id],
-		inputRefs: [], outputRequirements: [{ id: newContracts[index]!.id, outputType: stage.output, required: true }],
-		capacity: { expectedSeconds: 900, maxSeconds: 900 }, status: index === 0 ? 'ready' : 'pending',
-		metadata: {
-			workflowKind: 'engineering-test-first', stage: stage.key, revisionCycle,
-			exactBaseRef: graph.metadata?.exactBaseRef, producesDeliverableContractId: newContracts[index]!.id,
-			revisionReason: reason, revisionOfNodeId: reviewNode.id,
-			...(stage.key === 'implementation' ? { requiresFailingTestIntegrationRef: true, testMutationForbidden: true } : {}),
-			...(stage.key === 'review' ? { rejectionCreatesRevision: true } : {}),
-		},
-	}));
-	const edges = graph.edges.filter((edge) => !(edge.fromNodeId === reviewNode.id && edge.toNodeId === documentationNode.id));
-	edges.push(
-		{ fromNodeId: reviewNode.id, toNodeId: revisionNodes[0]!.id, edgeType: 'blocks-start', reason: `Review rejected: ${reason}` },
-		{ fromNodeId: revisionNodes[0]!.id, toNodeId: revisionNodes[1]!.id, edgeType: 'blocks-start', reason: 'Revision implementation requires verification.' },
-		{ fromNodeId: revisionNodes[1]!.id, toNodeId: revisionNodes[2]!.id, edgeType: 'blocks-start', reason: 'Revision verification requires review.' },
-		{ fromNodeId: revisionNodes[2]!.id, toNodeId: documentationNode.id, edgeType: 'blocks-start', reason: 'Documentation requires an approved revision review.' },
-	);
-	return {
-		revisionCycle,
-		newContracts,
-		graph: {
-			...graph,
-			deliverableContracts: [
-				...graph.deliverableContracts.map((contract) => contract.id === rejectedReviewContractId ? { ...contract, status: 'rejected' as const } : contract),
-				...newContracts,
-			],
-			nodes: [
-				...graph.nodes.map((node) => node.id === reviewNode.id ? { ...node, status: 'completed' as const } : node.id === documentationNode.id ? { ...node, requiredDeliverableContractIds: [newContracts[2]!.id], status: 'pending' as const } : node),
-				...revisionNodes,
-			],
-			edges,
-			metadata: { ...(graph.metadata ?? {}), revisionCycles: revisionCycle, latestRevisionReason: reason },
-		},
 	};
 }

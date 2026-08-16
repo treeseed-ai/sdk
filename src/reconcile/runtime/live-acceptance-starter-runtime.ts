@@ -175,7 +175,7 @@ export async function provisionLocalStarterCapacity(input: {
 		const executionProvider = {
 			id: 'codex', adapter: 'codex', status: 'available',
 			capabilities: input.config.capabilities, maxConcurrentRunners: 1, activeRunners: 0,
-			nativeLimits: { availableAgentSeconds: input.config.agentSeconds }, lanes: [],
+			nativeLimits: { availableAgentSeconds: input.config.agentSeconds }, lanes: [{ id:'codex-operation',purpose:'operation' as const,maxConcurrentRunners:1,activeRunners:0,capabilities:input.config.capabilities,nativeLimits:{} }],
 		};
 		let availability = await protocol.createAvailabilitySession({
 			environment: 'local', status: 'open', capabilities: input.config.capabilities, grants: [],
@@ -310,7 +310,10 @@ export async function provisionLocalStarterPortfolioCapacity(input: {
 		protocol = new ProviderProtocolClient({ marketUrl: input.apiUrl, accessToken: access.accessToken, fetchImpl: input.fetchImpl });
 		const executionProvider = {
 			id: 'codex', adapter: 'codex', status: 'available', capabilities, maxConcurrentRunners: 2, activeRunners: 0,
-			nativeLimits: { availableAgentSeconds: agentSeconds, maxConcurrentRunners: 2 }, lanes: [],
+			nativeLimits: { availableAgentSeconds: agentSeconds, maxConcurrentRunners: 2 }, lanes: [
+				{ id:'codex-communication',purpose:'communication' as const,maxConcurrentRunners:1,activeRunners:0,capabilities,nativeLimits:{} },
+				{ id:'codex-operation',purpose:'operation' as const,maxConcurrentRunners:1,activeRunners:0,capabilities,nativeLimits:{} },
+			],
 		};
 		let availability = await protocol.createAvailabilitySession({
 			environment: 'local', status: 'open', capabilities, grants: [],

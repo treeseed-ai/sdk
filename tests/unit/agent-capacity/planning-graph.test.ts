@@ -81,6 +81,13 @@ describe('agent planning graph', () => {
 		expect(matchSignalGroupScope({ scope: { mode: 'specific-groups', groupRefs, includeDescendants: true }, agentMembership, subjectMembership }).matched).toBe(true);
 	});
 
+	it('fails closed when member-group evidence is ambiguous instead of preferring a group', () => {
+		const membership = { projectId: 'project-1', directGroupIds: ['group:one', 'group:two'], effectiveGroupIds: ['group:one', 'group:two'], provenance: [] };
+		expect(matchSignalGroupScope({
+			scope: { mode: 'member-groups' }, agentMembership: membership, subjectMembership: membership,
+		})).toMatchObject({ matched: false, coordinationGroupId: null, reason: 'ambiguous' });
+	});
+
 	it('fans evaluation nodes out once for each durable signal subject', () => {
 		const graph = compileAgentPlanningGraph([
 			profile('steward', 'planning', [], ['planning-proposal']),
