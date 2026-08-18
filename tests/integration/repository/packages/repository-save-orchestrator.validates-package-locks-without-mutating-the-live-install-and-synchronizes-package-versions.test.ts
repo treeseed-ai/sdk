@@ -99,6 +99,20 @@ describe('repository save orchestrator helpers', () => {
 		)).toEqual([]);
 	});
 
+	it('accepts an explicit npm workspace link without treating it as a registry package', () => {
+		expect(collectLockfileManifestConsistencyIssues(
+			{ dependencies: { '@treeseed/sdk': '0.12.62' } },
+			{
+				packages: {
+					'': { dependencies: { '@treeseed/sdk': '0.12.62' } },
+					'node_modules/@treeseed/sdk': { resolved: 'packages/sdk', link: true },
+					'packages/sdk': { name: '@treeseed/sdk', version: '0.12.63-dev.task' },
+				},
+			},
+		)).toEqual([]);
+	});
+
+
 	it('allows bounded time for nested Git dependency preparation', () => {
 		expect(STANDALONE_LOCKFILE_RESOLUTION_TIMEOUT_MS).toBe(10 * 60_000);
 	});

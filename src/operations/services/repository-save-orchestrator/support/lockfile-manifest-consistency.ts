@@ -44,6 +44,7 @@ export function collectLockfileManifestConsistencyIssues(packageJson: JsonObject
 			const range = semver.validRange(dependencySpecValue);
 			if (!range) continue;
 			const lockedPackage = object(packages[packageEntryKey(dependencyName)]);
+			if (lockedPackage?.link === true && typeof lockedPackage.resolved === 'string') continue;
 			const lockedVersion = lockedPackage?.version;
 			if (typeof lockedVersion !== 'string') {
 				issues.push(`package-lock is missing ${packageEntryKey(dependencyName)} for ${field}.${dependencyName}`);
