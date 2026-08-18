@@ -5,6 +5,7 @@ import {
 	normalizePlatformBoundaryVerifier,
 	platformConfigurationAssets,
 	platformDeployConfig,
+	platformVerificationFiles,
 } from '../../../src/seeds/workspaces/platform-workspace-history.ts';
 
 describe('Platform workspace migration recovery', () => {
@@ -52,6 +53,17 @@ describe('Platform workspace migration recovery', () => {
 		const normalized = normalizePlatformBoundaryVerifier('/^\\s*kind: customer-platform\\s*$/mu /^\\s*profile: treeseed\\s*$/mu');
 		expect(normalized).toContain('^authority: \\{ kind: customer-platform \\}\\s*$');
 		expect(normalized).toContain('^market: \\{ profile: treeseed \\}\\s*$');
+	});
+
+	it('carries the complete Market-owned agent proof catalog without a Market checkout', () => {
+		expect(platformVerificationFiles).toEqual(expect.arrayContaining([
+			'guarantees/agent/system/source-golden.guarantee.yaml',
+			'guarantees/capacity/research/verify-autonomous-cited-research-starter.guarantee.yaml',
+			'guarantees/agent/system/guide-golden.guarantee.yaml',
+			'guarantees/verifiers/service-workflows.verifiers.yaml',
+			'scripts/guarantees/verify-agent-capability.ts',
+		]));
+		expect(new Set(platformVerificationFiles).size).toBe(platformVerificationFiles.length);
 	});
 
 });

@@ -17,6 +17,18 @@ export type PlatformWorkspacePlan = {
 	branches: Array<{ branch: WorkspaceBranch; sourceDigest: string; targetCommit: string | null; action: 'create' | 'update' | 'noop' | 'blocked'; reason: string; links: SnapshotLink[] }>;
 };
 
+export const platformVerificationFiles = [
+	'guarantees/agent/system/guide-golden.guarantee.yaml',
+	'guarantees/agent/system/source-golden.guarantee.yaml',
+	'guarantees/capacity/research/verify-autonomous-cited-research-starter.guarantee.yaml',
+	'guarantees/verifiers/service-workflows.verifiers.yaml',
+	'scripts/guarantees/verify-agent-capability.ts',
+	'scripts/guarantees/agent-catalog/cli-runtime.ts',
+	'scripts/guarantees/agent-catalog/json-evidence.ts',
+	'scripts/guarantees/agent-catalog/proof-executor.ts',
+	'scripts/guarantees/agent-catalog/proof-input.ts',
+] as const;
+
 const copiedFiles = [
 	'LICENSE',
 	'docs/licensing-provenance.md',
@@ -29,6 +41,7 @@ const copiedFiles = [
 	'seeds/agents.yaml',
 	'seeds/platform.yaml',
 	'seeds/treeseed.yaml',
+	...platformVerificationFiles,
 ];
 
 function migrationJournalPath(projectRoot: string, repository: string) {
@@ -90,7 +103,7 @@ function workflow() {
 }
 
 function boundaryVerifier() {
-	return `import { existsSync, readFileSync } from 'node:fs';\nimport { resolve } from 'node:path';\n\nconst root = resolve(import.meta.dirname, '..');\nconst fail = (message) => { throw new Error(message); };\nif (existsSync(resolve(root, '.gitmodules'))) fail('Platform must not encode team inventory as gitlinks.');\nif (existsSync(resolve(root, 'treeseed.portfolio.json'))) fail('Platform must read live team inventory instead of a repository portfolio file.');\nconst config = readFileSync(resolve(root, 'treeseed.site.yaml'), 'utf8');\nconst requiredConfig = [/^\\s*kind: customer-platform\\s*$/mu, /^\\s*profile: treeseed\\s*$/mu, /^controlPlane: \\{ mode: managed \\}\\s*$/mu, /^processing: \\{ mode: local, providerRef: codex-sub \\}\\s*$/mu, /^\\s*api: \\{ enabled: true, provider: local \\}\\s*$/mu, /^\\s*treedx: \\{ enabled: true, provider: local \\}\\s*$/mu];\nif (requiredConfig.some((pattern) => !pattern.test(config))) fail('Platform configuration does not match the canonical local-managed Codex template.');\nif (/^\\s*market-?api:/imu.test(config)) fail('Platform configuration declares a forbidden Market API service.');\nconst seed = readFileSync(resolve(root, 'seeds/treeseed.yaml'), 'utf8');\nif (/^\\s+slug: market(?:-api)?\\s*$/mu.test(seed)) fail('Platform seed declares a Market project.');\nif (/information-hub/iu.test(seed)) fail('Platform seed contains a retired repository identity.');\nconsole.log(JSON.stringify({ ok: true, inventoryAuthority: 'api', gitlinks: 0, marketCheckouts: 0, authority: 'customer-platform', template: 'platform-local-managed-codex', hostedDeployment: false }));\n`;
+	return `import { existsSync, readFileSync } from 'node:fs';\nimport { resolve } from 'node:path';\n\nconst root = resolve(import.meta.dirname, '..');\nconst fail = (message) => { throw new Error(message); };\nif (existsSync(resolve(root, '.gitmodules'))) fail('Platform must not encode team inventory as gitlinks.');\nif (existsSync(resolve(root, 'treeseed.portfolio.json'))) fail('Platform must read live team inventory instead of a repository portfolio file.');\nconst config = readFileSync(resolve(root, 'treeseed.site.yaml'), 'utf8');\nconst requiredConfig = [/^\\s*kind: customer-platform\\s*$/mu, /^\\s*profile: treeseed\\s*$/mu, /^controlPlane: \\{ mode: managed \\}\\s*$/mu, /^processing: \\{ mode: local, providerRef: codex-sub \\}\\s*$/mu, /^\\s*api: \\{ enabled: true, provider: local \\}\\s*$/mu, /^\\s*treedx: \\{ enabled: true, provider: local \\}\\s*$/mu];\nif (requiredConfig.some((pattern) => !pattern.test(config))) fail('Platform configuration does not match the canonical local-managed Codex template.');\nconst requiredVerificationFiles = ${JSON.stringify(platformVerificationFiles)};\nfor (const path of requiredVerificationFiles) if (!existsSync(resolve(root, path))) fail(\`Platform is missing agent proof catalog input: \${path}\`);\nif (/^\\s*market-?api:/imu.test(config)) fail('Platform configuration declares a forbidden Market API service.');\nconst seed = readFileSync(resolve(root, 'seeds/treeseed.yaml'), 'utf8');\nif (/^\\s+slug: market(?:-api)?\\s*$/mu.test(seed)) fail('Platform seed declares a Market project.');\nif (/information-hub/iu.test(seed)) fail('Platform seed contains a retired repository identity.');\nconsole.log(JSON.stringify({ ok: true, inventoryAuthority: 'api', gitlinks: 0, marketCheckouts: 0, agentGuarantees: 15, authority: 'customer-platform', template: 'platform-local-managed-codex', hostedDeployment: false }));\n`;
 }
 
 export function normalizePlatformBoundaryVerifier(content: string) {
