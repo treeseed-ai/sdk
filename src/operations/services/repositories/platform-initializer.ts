@@ -3,11 +3,13 @@ import { existsSync,mkdtempSync,readdirSync,readFileSync,rmSync,statSync } from 
 import { tmpdir } from 'node:os';
 import { basename,relative,resolve } from 'node:path';
 import { runRepositoryGit } from '../operations/git-runner.ts';
+import { loadMachineConfig,writeMachineConfig } from '../config-runtime/support/rotate-machine-key-passphrase.ts';
 import { buildTemplateReplacements } from '../template-registry/sync-managed-package-json.ts';
 import { loadJsonFile,listFiles,type ResolvedTemplateDefinition,type TemplateManifest,validateTemplateManifest } from '../template-registry/template-categories.ts';
 import { copyTemplateTree,readGitOutput,renderTemplateFile,writeTemplateState } from '../template-registry/validate-template-placeholders.ts';
 
 const CANONICAL_REPOSITORY = 'treeseed-ai/platform';
+const CANONICAL_PROJECT = 'platform';
 const SHA = /^[a-f0-9]{40}$/u;
 
 export type PlatformInitializationInput = {
@@ -29,10 +31,21 @@ export type PlatformInitializationPlan = {
 	templateId: string;
 	templateDigest: string;
 	team: string;
+	project: string;
 	changedPaths: string[];
 	targetState: 'absent'|'initialized'|'blocked';
 	blockers: string[];
 };
+
+export function persistPlatformMachineIdentity(root: string, team: string) {
+	const teamId = team.trim();
+	if (!teamId) throw new Error('Platform initialization requires a team identity.');
+	const config = loadMachineConfig(root);
+	config.shared.values.TREESEED_HOSTING_TEAM_ID = teamId;
+	config.shared.values.TREESEED_PROJECT_ID = CANONICAL_PROJECT;
+	writeMachineConfig(root, config);
+	return { teamId, projectId: CANONICAL_PROJECT };
+}
 
 function git(args: string[], cwd?: string, allowFailure = false) {
 	return runRepositoryGit(args, { cwd: cwd ?? process.cwd(), mode: ['clone','checkout'].includes(args[0] ?? '') ? 'mutate' : 'read', allowFailure });
@@ -119,7 +132,7 @@ export function planPlatformInitialization(input: PlatformInitializationInput): 
 		const inspected = inspectCheckout(repoRoot, input, observedRef);
 		const blockers = state === 'blocked' ? ['Target exists and is neither empty nor the requested Platform checkout.'] : [];
 		return { kind: 'treeseed.platform-initialization-plan/v1', repository, repositoryUrl, targetRoot, requestedRef: input.ref, observedRef,
-			templateId: input.templateId, templateDigest: digestTemplate(inspected.item, inspected.replacements), team: input.team,
+			templateId: input.templateId, templateDigest: digestTemplate(inspected.item, inspected.replacements), team: input.team, project: CANONICAL_PROJECT,
 			changedPaths: inspected.changes, targetState: blockers.length ? 'blocked' : state, blockers };
 	} finally {
 		if (temporary) rmSync(temporary, { recursive: true, force: true });
@@ -136,11 +149,12 @@ export function applyPlatformInitialization(input: PlatformInitializationInput) 
 	}
 	const inspected = inspectCheckout(plan.targetRoot, input, plan.observedRef);
 	copyTemplateTree(inspected.item.templateRoot, plan.targetRoot, inspected.replacements);
+	const machineIdentity = persistPlatformMachineIdentity(plan.targetRoot, input.team);
 	writeTemplateState(plan.targetRoot, { templateId: input.templateId, templateVersion: inspected.item.manifest.templateVersion, sourceRef: plan.observedRef,
 		installedAt: new Date().toISOString(), lastSyncedAt: new Date().toISOString(), replacements: inspected.replacements,
 		definitionDigest: plan.templateDigest, managedPaths: [...(inspected.item.manifest.managedSurface?.coreManaged ?? [])].sort(),
 		seedPaths: [...(inspected.item.manifest.platform?.seeds ?? [])].sort(), scenePaths: [...(inspected.item.manifest.platform?.scenes ?? [])].sort() });
 	const dirty = readGitOutput(['status','--porcelain'],plan.targetRoot) ?? '';
 	if (dirty) throw new Error(`Platform template produced tracked divergence:\n${dirty}`);
-	return { ...plan, kind: 'treeseed.platform-initialization-receipt/v1' as const, applied: true, repositoryClean: true };
+	return { ...plan, kind: 'treeseed.platform-initialization-receipt/v1' as const, applied: true, repositoryClean: true, machineIdentity };
 }

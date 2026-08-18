@@ -4,6 +4,7 @@ import {
 	classifyPlatformWorkspaceBranch,
 	normalizePlatformBoundaryVerifier,
 	platformConfigurationAssets,
+	platformRuntimeFiles,
 	platformDeployConfig,
 	platformVerificationCopies,
 	platformVerificationFiles,
@@ -47,6 +48,7 @@ describe('Platform workspace migration recovery', () => {
 		expect(assets).toContainEqual({ path: 'scenes/team-project-portfolio-demo.yaml', content: scene });
 		expect(assets).toContainEqual({ path: 'templates/platform-local-managed-codex/template/scenes/team-project-portfolio-demo.yaml', content: scene });
 		expect(assets).toContainEqual({ path: 'templates/platform-local-managed-codex/template/seeds/platform.yaml', content: seed });
+		expect(platformRuntimeFiles).toEqual(['treeseed.agents-capacity-provider.yaml', 'treeseed.platform-capacity-provider.yaml']);
 		expect(assets.every((asset) => asset.content.endsWith('\n'))).toBe(true);
 	});
 
