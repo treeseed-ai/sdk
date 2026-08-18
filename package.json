@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.12.63-dev.fix-platform-runtime-bootstrap.20260818T102715Z",
+  "version": "0.12.63-dev.fix-sdk-package-lock-integrity.20260818T124913Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "Apache-2.0",
   "repository": {
@@ -95,6 +95,7 @@
     "remark-parse": "^11.0.0",
     "remotion": "4.0.477",
     "repomix": "^1.13.1",
+    "semver": "^7.7.4",
     "tar": "7.5.13",
     "typescript": "^5.9.3",
     "unified": "^11.0.5",

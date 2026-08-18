@@ -25,6 +25,7 @@ import {
 	type RepositorySaveNode,
 } from '../../../../src/operations/services/repositories/repository-save-orchestrator.ts';
 import { STANDALONE_LOCKFILE_RESOLUTION_TIMEOUT_MS } from '../../../../src/operations/services/repository-save-orchestrator/support/standalone-lockfile.ts';
+import { collectLockfileManifestConsistencyIssues } from '../../../../src/operations/services/repository-save-orchestrator/support/lockfile-manifest-consistency.ts';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 
@@ -72,6 +73,32 @@ function commitInitial(cwd: string) {
 	git(cwd, ['commit', '--allow-empty', '-m', 'chore: initial']);
 }
 describe('repository save orchestrator helpers', () => {
+	it('rejects a lock entry whose installed version does not satisfy the manifest range', () => {
+		expect(collectLockfileManifestConsistencyIssues(
+			{ dependencies: { zod: '^3.25.76' } },
+			{
+				packages: {
+					'': { dependencies: { zod: '^3.25.76' } },
+					'node_modules/zod': { version: '4.4.3' },
+				},
+			},
+		)).toEqual([
+			'package-lock node_modules/zod version 4.4.3 does not satisfy ^3.25.76',
+		]);
+	});
+
+	it('accepts matching direct versions and ignores non-registry dependency refs', () => {
+		expect(collectLockfileManifestConsistencyIssues(
+			{ dependencies: { zod: '^3.25.76', '@treeseed/ui': 'github:treeseed-ai/ui#abc123' } },
+			{
+				packages: {
+					'': { dependencies: { zod: '^3.25.76', '@treeseed/ui': 'github:treeseed-ai/ui#abc123' } },
+					'node_modules/zod': { version: '3.25.76' },
+				},
+			},
+		)).toEqual([]);
+	});
+
 	it('allows bounded time for nested Git dependency preparation', () => {
 		expect(STANDALONE_LOCKFILE_RESOLUTION_TIMEOUT_MS).toBe(10 * 60_000);
 	});

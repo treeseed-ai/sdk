@@ -12,6 +12,7 @@ import { dependencyFields } from '../../support/classify-repo-kind.ts';
 import { hasNpmLockfile,shouldSkipNetworkInstall } from '../../support/has-staged-changes.ts';
 import { RepositoryInstallResult,RepositoryLockfileValidationResult,RepositorySaveError,RepositorySaveNode,RepositorySaveOptions,emitProgress,readJson,sleepMs,writeJson } from '../../support/repo-kind.ts';
 import { validateStandaloneGitDependencyLockfile } from '../../support/standalone-lockfile.ts';
+import { collectLockfileManifestConsistencyIssues } from '../../support/lockfile-manifest-consistency.ts';
 
 export function syncRootWorkspaceLockfileMetadata(node: RepositorySaveNode, options: Pick<RepositorySaveOptions, 'root' | 'onProgress'>) {
 	if (node.path !== options.root || !Array.isArray(node.packageJson?.workspaces)) return false;
@@ -222,8 +223,13 @@ export async function validateRepositoryLockfile(
 		return { status: 'skipped', command: null, issues: [], error: 'no npm lockfile' };
 	}
 	syncRootWorkspaceLockfileMetadata(node, options);
-	const issues = collectDeploymentLockfileWorkspaceIssues(node.path)
-		.map((issue) => `${issue.filePath}: ${issue.packageName} ${issue.reason}`);
+	const packageJson = node.packageJson ?? readJson(resolve(node.path, 'package.json'));
+	const lockfile = readJson(resolve(node.path, 'package-lock.json'));
+	const issues = [
+		...collectDeploymentLockfileWorkspaceIssues(node.path)
+			.map((issue) => `${issue.filePath}: ${issue.packageName} ${issue.reason}`),
+		...collectLockfileManifestConsistencyIssues(packageJson, lockfile),
+	];
 	if (issues.length > 0) {
 		throw new RepositorySaveError([
 			`Lockfile validation failed for ${node.name}.`,
