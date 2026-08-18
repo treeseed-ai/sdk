@@ -1,0 +1,374 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createReconcileRegistry, deriveDesiredUnits, filterDesiredUnitsByBootstrapSystems, resolveBootstrapSelection } from '../../../../src/reconcile/index.ts';
+
+function createTenantFixture(withPlugin = false) {
+	const tenantRoot = mkdtempSync(join(tmpdir(), 'treeseed-reconcile-test-'));
+	mkdirSync(resolve(tenantRoot, 'src'), { recursive: true });
+	writeFileSync(resolve(tenantRoot, 'src', 'manifest.yaml'), 'id: test\nsiteConfigPath: ./src/config.yaml\ncontent:\n  pages: ./src/content/pages\n');
+	if (withPlugin) {
+		const pluginPath = resolve(tenantRoot, 'duplicate-plugin.cjs');
+		writeFileSync(pluginPath, `module.exports = {
+  provides: { reconcile: { providers: ['cloudflare'] } },
+  reconcileAdapters: {
+    duplicateQueue() {
+      return {
+        providerId: 'cloudflare',
+        unitTypes: ['queue'],
+        supports(unitType, providerId) { return unitType === 'queue' && providerId === 'cloudflare'; },
+        refresh() { return { exists: true, status: 'ready', live: {}, locators: {}, warnings: [] }; },
+        diff() { return { action: 'noop', reasons: ['duplicate'], before: {}, after: {} }; },
+        apply(input) { return { unit: input.unit, observed: input.observed, diff: input.diff, action: 'noop', warnings: [], resourceLocators: {}, state: {}, verification: null }; },
+        verify(input) { return { unitId: input.unit.unitId, supported: true, exists: true, configured: true, ready: true, verified: true, checks: [], missing: [], drifted: [], warnings: [] }; }
+      };
+    }
+  }
+};`);
+		writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: Test
+slug: test
+siteUrl: https://example.com
+contactEmail: test@example.com
+hosting:
+  kind: self_hosted_project
+  teamId: acme
+  projectId: docs
+cloudflare:
+  accountId: account-123
+runtime:
+  mode: treeseed_managed
+services:
+  api:
+    enabled: true
+    provider: railway
+plugins:
+  - package: ./duplicate-plugin.cjs
+`);
+		return tenantRoot;
+	}
+	writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: Test
+slug: test
+siteUrl: https://example.com
+contactEmail: test@example.com
+hosting:
+  kind: self_hosted_project
+  teamId: acme
+  projectId: docs
+cloudflare:
+  accountId: account-123
+runtime:
+  mode: treeseed_managed
+services:
+  api:
+    enabled: true
+    provider: railway
+`);
+	return tenantRoot;
+}
+
+describe('reconcile registry and desired units', () => {
+	beforeEach(() => {
+		vi.stubEnv('HOME', mkdtempSync(join(tmpdir(), 'treeseed-reconcile-home-')));
+	});
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it('uses treeseed as the composite provider for runtime and surface units', () => {
+		const tenantRoot = createTenantFixture();
+		const { units } = deriveDesiredUnits({
+			tenantRoot,
+			target: { kind: 'persistent', scope: 'staging' },
+		});
+
+		expect(units.find((unit) => unit.unitType === 'web-ui')?.provider).toBe('treeseed');
+		expect(units.find((unit) => unit.unitType === 'api-runtime')?.provider).toBe('treeseed');
+		expect(units.find((unit) => unit.unitType === 'railway-service:api')?.provider).toBe('railway');
+	});
+
+	it('derives distinct concrete and runtime units for every operations runner instance', () => {
+		const tenantRoot = createTenantFixture();
+		writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: Test
+slug: test
+siteUrl: https://example.com
+contactEmail: test@example.com
+hosting:
+  kind: treeseed_control_plane
+  teamId: acme
+  projectId: docs
+runtime:
+  mode: treeseed_managed
+services:
+  operationsRunner:
+    enabled: true
+    provider: railway
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-ops-01
+      volumeMountPath: /data
+      runnerPool:
+        bootstrapCount: 2
+        maxRunners: 4
+publicTreeDxFederation:
+  railway:
+    nodePool:
+      bootstrapCount: 2
+      maxNodes: 4
+`);
+		const { units } = deriveDesiredUnits({
+			tenantRoot,
+			target: { kind: 'persistent', scope: 'staging' },
+		});
+		const concreteRunners = units.filter((unit) => unit.unitType === 'railway-service:operations-runner');
+		const runtimeRunners = units.filter((unit) => unit.unitType === 'operations-runner-runtime');
+		const treeDx = units.filter((unit) => unit.unitType === 'railway-service:api' && unit.metadata.serviceKey?.toString().startsWith('public-treedx-node-'));
+
+		expect(concreteRunners.map((unit) => unit.logicalName)).toEqual([
+			'treeseed-ops-staging-01',
+			'treeseed-ops-staging-02',
+		]);
+		expect(new Set(runtimeRunners.map((unit) => unit.unitId)).size).toBe(2);
+		expect(runtimeRunners.map((unit) => unit.logicalName)).toEqual(['operationsRunner:1', 'operationsRunner:2']);
+		expect(treeDx.map((unit) => unit.logicalName)).toEqual([
+			'treeseed-treedx-staging-01',
+			'treeseed-treedx-staging-02',
+		]);
+		expect(treeDx.map((unit) => unit.metadata.serviceKey)).toEqual([
+			'public-treedx-node-01',
+			'public-treedx-node-02',
+		]);
+	});
+
+	it('does not derive root Market Railway units for deleted processing roles', () => {
+		const tenantRoot = mkdtempSync(join(tmpdir(), 'treeseed-reconcile-workday-'));
+		mkdirSync(resolve(tenantRoot, 'src'), { recursive: true });
+		writeFileSync(resolve(tenantRoot, 'src', 'manifest.yaml'), 'id: test\nsiteConfigPath: ./src/config.yaml\ncontent:\n  pages: ./src/content/pages\n');
+		writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: Test
+slug: test
+siteUrl: https://example.com
+contactEmail: test@example.com
+hosting:
+  kind: self_hosted_project
+  teamId: acme
+  projectId: docs
+cloudflare:
+  accountId: account-123
+runtime:
+  mode: treeseed_managed
+services:
+  workdayManager:
+    enabled: true
+    provider: railway
+  workerRunner:
+    enabled: true
+    provider: railway
+`);
+		const { units } = deriveDesiredUnits({
+			tenantRoot,
+			target: { kind: 'persistent', scope: 'staging' },
+		});
+		const unitTypes = units.map((unit) => unit.unitType);
+		expect(unitTypes).not.toContain('railway-service:workday-manager');
+		expect(unitTypes).not.toContain('railway-service:worker-runner');
+		expect(unitTypes).not.toContain('railway-service:workdayStart');
+		expect(unitTypes).not.toContain('railway-service:workdayReport');
+	});
+
+	it('rejects duplicate reconcile adapter bindings', () => {
+		const tenantRoot = createTenantFixture(true);
+		const { deployConfig } = deriveDesiredUnits({
+			tenantRoot,
+			target: { kind: 'persistent', scope: 'staging' },
+		});
+
+		expect(() => createReconcileRegistry(deployConfig)).toThrow(/Duplicate Treeseed reconcile adapter binding/);
+	});
+
+	it('derives identity-based shared and scoped resource names', () => {
+		const tenantRoot = createTenantFixture();
+		const { units } = deriveDesiredUnits({
+			tenantRoot,
+			target: { kind: 'persistent', scope: 'staging' },
+		});
+
+			expect(units.find((unit) => unit.unitType === 'pages-project')?.logicalName).toBe('acme-docs');
+			expect(units.find((unit) => unit.unitType === 'content-store')?.logicalName).toBe('acme-docs-content');
+			expect(units.find((unit) => unit.unitType === 'queue')).toBeUndefined();
+			expect(units.find((unit) => unit.unitType === 'database')?.logicalName).toBe('acme-docs-site-data-staging');
+	});
+
+	it('derives deterministic staging preview domains and DNS policies', () => {
+		const tenantRoot = createTenantFixture();
+		const { units } = deriveDesiredUnits({
+			tenantRoot,
+			target: { kind: 'persistent', scope: 'staging' },
+		});
+
+		expect(units.find((unit) => unit.unitType === 'custom-domain:web')?.logicalName)
+			.toBe('acme-docs-staging-57cbdcb5.example.com');
+		expect(units.find((unit) => unit.unitType === 'custom-domain:api')?.logicalName)
+			.toBe('api-acme-docs-staging-15eec347.example.com');
+
+		const webDnsUnit = units.find((unit) => unit.unitType === 'dns-record' && unit.logicalName === 'web:acme-docs-staging-57cbdcb5.example.com');
+		const apiDnsUnit = units.find((unit) => unit.unitType === 'dns-record' && unit.logicalName === 'api:api-acme-docs-staging-15eec347.example.com');
+
+		expect(webDnsUnit?.spec).toMatchObject({
+			recordName: 'acme-docs-staging-57cbdcb5.example.com',
+			proxied: true,
+		});
+		expect(apiDnsUnit?.spec).toMatchObject({
+			domain: 'api-acme-docs-staging-15eec347.example.com',
+		});
+	});
+
+	it('uses configured API connection domains before generated staging fallback domains', () => {
+		const tenantRoot = createTenantFixture();
+		writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: Test
+slug: test
+siteUrl: https://treeseed.dev
+contactEmail: test@example.com
+hosting:
+  kind: self_hosted_project
+  teamId: treeseed
+  projectId: market
+cloudflare:
+  accountId: account-123
+runtime:
+  mode: treeseed_managed
+connections:
+  api:
+    environments:
+      staging:
+        baseUrl: https://api.preview.treeseed.dev
+      prod:
+        baseUrl: https://api.treeseed.dev
+services:
+  api:
+    enabled: true
+    provider: railway
+`);
+		const { units } = deriveDesiredUnits({
+			tenantRoot,
+			target: { kind: 'persistent', scope: 'staging' },
+		});
+
+		expect(units.find((unit) => unit.unitType === 'custom-domain:api')?.logicalName)
+			.toBe('api.preview.treeseed.dev');
+		expect(units.find((unit) => unit.unitType === 'dns-record' && unit.logicalName === 'api:api.preview.treeseed.dev')?.spec)
+			.toMatchObject({ domain: 'api.preview.treeseed.dev' });
+	});
+
+	it('selects web with data dependencies and filters out Railway runtime units', () => {
+		const tenantRoot = createTenantFixture();
+		const { deployConfig, units } = deriveDesiredUnits({
+			tenantRoot,
+			target: { kind: 'persistent', scope: 'staging' },
+		});
+		const selection = resolveBootstrapSelection({
+			deployConfig,
+			env: {
+				TREESEED_GITHUB_TOKEN: 'github-token',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'cloudflare-token',
+			},
+			systems: ['web'],
+		});
+		const selected = filterDesiredUnitsByBootstrapSystems(units, selection.runnable);
+		const unitTypes = selected.map((unit) => unit.unitType);
+
+		expect(selection.runnable).toEqual(['data', 'web']);
+		expect(unitTypes).toEqual(expect.arrayContaining(['database', 'content-store', 'pages-project', 'web-ui']));
+		expect(unitTypes).not.toContain('queue');
+		expect(unitTypes).not.toContain('railway-service:api');
+		expect(unitTypes).not.toContain('api-runtime');
+	});
+
+	it('skips optional Railway runtime systems for all when TREESEED_RAILWAY_API_TOKEN is missing', () => {
+		const tenantRoot = createTenantFixture();
+		const { deployConfig } = deriveDesiredUnits({
+			tenantRoot,
+			target: { kind: 'persistent', scope: 'staging' },
+		});
+		const selection = resolveBootstrapSelection({
+			deployConfig,
+			env: {
+				TREESEED_GITHUB_TOKEN: 'github-token',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'cloudflare-token',
+			},
+			systems: 'all',
+		});
+
+		expect(selection.runnable).toEqual(['github', 'data', 'web']);
+		expect(selection.skipped.map((entry) => entry.system)).toEqual(['api', 'agents']);
+		expect(selection.skipped.find((entry) => entry.system === 'api')?.missing).toEqual(['TREESEED_RAILWAY_API_TOKEN']);
+	});
+
+	it('keeps explicitly selected API strict unless skipUnavailable is requested', () => {
+		const tenantRoot = createTenantFixture();
+		const { deployConfig } = deriveDesiredUnits({
+			tenantRoot,
+			target: { kind: 'persistent', scope: 'staging' },
+		});
+		const strict = resolveBootstrapSelection({
+			deployConfig,
+			env: {
+				TREESEED_CLOUDFLARE_API_TOKEN: 'cloudflare-token',
+			},
+			systems: 'api',
+		});
+		const lenient = resolveBootstrapSelection({
+			deployConfig,
+			env: {
+				TREESEED_CLOUDFLARE_API_TOKEN: 'cloudflare-token',
+			},
+			systems: 'api',
+			skipUnavailable: true,
+		});
+
+		expect(strict.runnable).toEqual(['data']);
+		expect(strict.unavailable.map((entry) => entry.system)).toEqual(['api']);
+		expect(strict.skipped).toEqual([]);
+		expect(lenient.runnable).toEqual(['data']);
+		expect(lenient.skipped.map((entry) => entry.system)).toEqual(['api']);
+	});
+
+	it('honors runtime config disabled systems before availability checks', () => {
+		const deployConfig = {
+			name: 'Test Site',
+			slug: 'test-site',
+			siteUrl: 'https://example.com',
+			contactEmail: 'hello@example.com',
+			hub: { mode: 'customer_hosted' },
+			runtime: { mode: 'none', registration: 'none' },
+			cloudflare: { accountId: 'account-123' },
+			plugins: [],
+			providers: {
+				forms: 'store_only',
+				operations: 'default',
+				agents: {
+					execution: 'copilot',
+					mutation: 'local_branch',
+					repository: 'git',
+					verification: 'local',
+					notification: 'sdk_message',
+					research: 'project_graph',
+				},
+				deploy: 'cloudflare',
+			},
+			services: { api: { enabled: true, provider: 'railway' } },
+		} as any;
+		const selection = resolveBootstrapSelection({
+			deployConfig,
+			env: {
+				TREESEED_GITHUB_TOKEN: 'github-token',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'cloudflare-token',
+				TREESEED_RAILWAY_API_TOKEN: 'railway-token',
+			},
+			systems: 'all',
+		});
+
+		expect(selection.configDisabled.map((entry) => entry.system)).toEqual(['api', 'agents']);
+		expect(selection.runnable).toEqual(['github', 'data', 'web']);
+	});
+});

@@ -5,13 +5,9 @@ export type SeedDiagnosticSeverity = 'error' | 'warning';
 export type SeedPlanActionType = 'create' | 'update' | 'unchanged' | 'skip' | 'delete' | 'error';
 export type SeedResourceKind =
 	| 'team'
-	| 'repositoryHost'
+	| 'teamMembership'
 	| 'project'
 	| 'hubRepository'
-	| 'capacityProvider'
-	| 'capacityLane'
-	| 'capacityGrant'
-	| 'workPolicy'
 	| 'product'
 	| 'catalogArtifact';
 
@@ -47,6 +43,17 @@ export type SeedProjectContentPublishTarget = {
 	metadata?: Record<string, unknown>;
 };
 
+export type SeedRepositoryPolicy = {
+	visibility: 'public' | 'private';
+	lifecycle: 'create-or-adopt' | 'adopt-only';
+	deletionPolicy: 'retain' | 'archive';
+	defaultBranch: 'main';
+	stagingBranch: 'staging';
+	issues: boolean;
+	actions: boolean;
+	workflows?: string[];
+};
+
 export type SeedProjectArchitecture = {
 	topology: SeedProjectTopology;
 	rootPath: string;
@@ -63,23 +70,51 @@ export type SeedManifest = {
 	name: string;
 	version: 1;
 	description?: string;
+	references: string[];
 	defaultEnvironments?: SeedEnvironment[];
 	environments: SeedEnvironment[];
 	resources: SeedManifestResources;
+	runtime: SeedRuntimePrerequisites;
 	operationRecipes: SeedOperationRecipe[];
 };
 
 export type SeedManifestResources = {
 	teams: SeedTeamResource[];
-	repositoryHosts: SeedRepositoryHostResource[];
+	teamMemberships: SeedTeamMembershipResource[];
 	projects: SeedProjectResource[];
 	hubRepositories: SeedHubRepositoryResource[];
+	supportRepositories: SeedSupportRepositoryResource[];
 	products: SeedProductResource[];
 	catalogArtifacts: SeedCatalogArtifactResource[];
-	capacityProviders: SeedCapacityProviderResource[];
-	capacityGrants: SeedCapacityGrantResource[];
-	workPolicies: SeedWorkPolicyResource[];
-	agentPools: Record<string, unknown>[];
+};
+
+export type SeedTeamMembershipResource = SeedResourceBase & {
+	team: string;
+	email: string;
+	roles: string[];
+	missingUser: 'defer';
+};
+
+export type SeedCapacityProviderPrerequisite = SeedResourceBase & {
+	providerClass: 'agent' | 'platform-operation';
+	team: string;
+	manifest: string;
+	connectionId: string;
+	approval: 'trusted-local-owner';
+	projects: string[];
+	allowedModes: Array<'planning' | 'acting'>;
+	executionProviderIds: string[];
+};
+
+export type SeedAgentLabServicePrincipalPrerequisite = SeedResourceBase & {
+	team: string;
+	name: string;
+	roles: ['team_owner'];
+};
+
+export type SeedRuntimePrerequisites = {
+	capacityProviders: SeedCapacityProviderPrerequisite[];
+	agentLabServicePrincipals: SeedAgentLabServicePrincipalPrerequisite[];
 };
 
 export type SeedTeamResource = SeedResourceBase & {
@@ -101,6 +136,7 @@ export type SeedProjectRepository = {
 	checkoutPath?: string;
 	submodulePath?: string;
 	webUrl?: string;
+	repositoryPolicy?: SeedRepositoryPolicy;
 };
 
 export type SeedProjectResource = SeedResourceBase & {
@@ -114,28 +150,9 @@ export type SeedProjectResource = SeedResourceBase & {
 	metadata?: Record<string, unknown>;
 };
 
-export type SeedRepositoryHostResource = SeedResourceBase & {
-	team: string;
-	provider: string;
-	name: string;
-	ownership?: string;
-	accountLabel?: string;
-	organizationOrOwner: string;
-	defaultVisibility?: string;
-	softwareRepositoryNameTemplate?: string;
-	contentRepositoryNameTemplate?: string;
-	branchPolicy?: Record<string, unknown>;
-	workflowPolicy?: Record<string, unknown>;
-	allowedProjectKinds?: string[];
-	status?: string;
-	credentialRef?: string;
-	metadata?: Record<string, unknown>;
-};
-
 export type SeedHubRepositoryResource = SeedResourceBase & {
 	project: string;
 	role: string;
-	repositoryHost?: string;
 	provider: string;
 	owner: string;
 	name: string;
@@ -148,6 +165,18 @@ export type SeedHubRepositoryResource = SeedResourceBase & {
 	releasePolicy?: Record<string, unknown>;
 	publishPolicy?: Record<string, unknown>;
 	metadata?: Record<string, unknown>;
+	repositoryPolicy?: SeedRepositoryPolicy;
+};
+
+export type SeedSupportRepositoryResource = SeedResourceBase & {
+	provider: string;
+	owner: string;
+	name: string;
+	gitUrl: string;
+	defaultBranch?: string;
+	description?: string;
+	metadata?: Record<string, unknown>;
+	repositoryPolicy?: SeedRepositoryPolicy;
 };
 
 export type SeedProductResource = SeedResourceBase & {
@@ -172,116 +201,6 @@ export type SeedCatalogArtifactResource = SeedResourceBase & {
 	contentKey: string;
 	manifestKey?: string;
 	publishedAt?: string;
-	metadata?: Record<string, unknown>;
-};
-
-export type SeedCapacityLaneResource = SeedResourceBase & {
-	name: string;
-	businessModel?: string;
-	modelFamily?: string;
-	modelClass?: string;
-	regionPolicy?: string;
-	unit?: string;
-	scarcityLevel?: string;
-	hardLimits?: Record<string, unknown>;
-	routingPolicy?: Record<string, unknown>;
-	metadata?: Record<string, unknown>;
-};
-
-export type SeedCapacityProviderRegistrationApiKey = {
-	createIfMissing?: boolean;
-	name?: string;
-	plaintextKey?: string;
-	scopes?: string[];
-	expiresAt?: string;
-};
-
-export type SeedCapacityProviderRegistration = {
-	apiKey?: SeedCapacityProviderRegistrationApiKey;
-};
-
-export type SeedExecutionProviderNativeLimitResource = {
-	id?: string;
-	scope?: string;
-	limitScope?: string;
-	nativeUnit?: string;
-	limitAmount: number;
-	reserveBufferPercent?: number;
-	resetCadence?: string;
-	resetAt?: string;
-	confidence?: string;
-	source?: string;
-	metadata?: Record<string, unknown>;
-};
-
-export type SeedExecutionProviderResource = {
-	id?: string;
-	name: string;
-	kind: string;
-	status?: string;
-	nativeUnit: string;
-	quotaVisibility?: string;
-	maxConcurrentWorkers?: number;
-	resetCadence?: string;
-	config?: Record<string, unknown>;
-	metadata?: Record<string, unknown>;
-	nativeLimits?: SeedExecutionProviderNativeLimitResource[];
-};
-
-export type SeedCapacityProviderResource = SeedResourceBase & {
-	team: string;
-	name: string;
-	kind?: string;
-	provider: string;
-	billingScope?: string;
-	creditBudgetMode?: 'static' | 'hybrid' | 'derived' | string;
-	monthlyCreditBudget?: number;
-	dailyCreditBudget?: number;
-	maxConcurrentWorkdays?: number;
-	maxConcurrentWorkers?: number;
-	capacityModel?: Record<string, unknown>;
-	registration?: SeedCapacityProviderRegistration;
-	metadata?: Record<string, unknown>;
-	lanes?: SeedCapacityLaneResource[];
-	executionProviders?: SeedExecutionProviderResource[];
-};
-
-export type SeedCapacityGrantResource = SeedResourceBase & {
-	provider: string;
-	lane?: string;
-	team: string;
-	project?: string;
-	environment?: SeedEnvironment;
-	grantScope?: string;
-	dailyCreditLimit?: number;
-	weeklyCreditLimit?: number;
-	monthlyCreditLimit?: number;
-	dailyUsdLimit?: number;
-	weeklyQuotaMinutes?: number;
-	monthlyProviderUnits?: number;
-	portfolioAllocationPercent?: number;
-	reservePoolPercent?: number;
-	maxDailyProjectCredits?: number;
-	emergencyOverride?: boolean;
-	priorityWeight?: number;
-	overflowPolicy?: string;
-	state?: string;
-	metadata?: Record<string, unknown>;
-};
-
-export type SeedWorkPolicyResource = SeedResourceBase & {
-	project: string;
-	environment: SeedEnvironment;
-	enabled?: boolean;
-	startCron?: string;
-	durationMinutes?: number;
-	maxRunners?: number;
-	maxWorkersPerRunner?: number;
-	dailyCreditBudget?: number;
-	maxQueuedTasks?: number;
-	maxQueuedCredits?: number;
-	autoscale?: Record<string, unknown>;
-	creditWeights?: unknown[];
 	metadata?: Record<string, unknown>;
 };
 
@@ -348,10 +267,12 @@ export type SeedPlan = {
 	ok: boolean;
 	seed: string;
 	version: 1;
+	references: string[];
 	mode: 'plan' | 'validate' | 'apply';
 	environments: SeedEnvironment[];
 	summary: SeedPlanSummary;
 	actions: SeedPlanAction[];
+	runtime: SeedRuntimePrerequisites;
 	recipes: SeedOperationRecipePlan[];
 	diagnostics: SeedDiagnostic[];
 	manifestPath: string;

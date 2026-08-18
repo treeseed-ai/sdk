@@ -1,6 +1,64 @@
 {
   "items": [
     {
+      "id": "platform-local-managed-codex",
+      "displayName": "Local managed Platform with Codex",
+      "description": "A sovereign local TreeSeed control plane with external Codex execution.",
+      "summary": "The default TreeSeed development Platform template.",
+      "status": "live",
+      "featured": true,
+      "category": "platform",
+      "audience": ["operators", "platform-teams"],
+      "tags": ["platform", "local", "managed", "codex"],
+      "publisher": { "id": "treeseed", "name": "TreeSeed", "url": "https://treeseed.dev" },
+      "publisherVerified": true,
+      "templateVersion": "1.0.0",
+      "templateApiVersion": 2,
+      "minCliVersion": "0.12.0",
+      "fulfillment": { "mode": "git", "source": { "kind": "git", "repoUrl": "https://github.com/treeseed-ai/platform.git", "directory": "templates/platform-local-managed-codex", "ref": "staging", "integrity": "resolved-at-install" }, "hooksPolicy": "builtin_only", "supportsReconcile": true },
+      "offer": { "priceModel": "free", "license": "Apache-2.0", "support": "community" },
+      "relatedBooks": [], "relatedKnowledge": [], "relatedObjectives": []
+    },
+    {
+      "id": "platform-market-codex",
+      "displayName": "Market-connected Platform with Codex",
+      "description": "A TreeSeed Platform using the immutable Market gateway and external Codex execution.",
+      "summary": "A lightweight Platform template backed by the central gateway.",
+      "status": "live", "featured": false, "category": "platform",
+      "audience": ["operators", "platform-teams"], "tags": ["platform", "market", "codex"],
+      "publisher": { "id": "treeseed", "name": "TreeSeed", "url": "https://treeseed.dev" }, "publisherVerified": true,
+      "templateVersion": "1.0.0", "templateApiVersion": 2, "minCliVersion": "0.12.0",
+      "fulfillment": { "mode": "git", "source": { "kind": "git", "repoUrl": "https://github.com/treeseed-ai/platform.git", "directory": "templates/platform-market-codex", "ref": "staging", "integrity": "resolved-at-install" }, "hooksPolicy": "builtin_only", "supportsReconcile": true },
+      "offer": { "priceModel": "free", "license": "Apache-2.0", "support": "community" },
+      "relatedBooks": [], "relatedKnowledge": [], "relatedObjectives": []
+    },
+    {
+      "id": "platform-external-codex",
+      "displayName": "External-control-plane Platform with Codex",
+      "description": "A TreeSeed Platform using an explicit Admin API endpoint and external Codex execution.",
+      "summary": "An externally controlled Platform template with local Codex capacity.",
+      "status": "live", "featured": false, "category": "platform",
+      "audience": ["operators", "platform-teams"], "tags": ["platform", "external", "codex"],
+      "publisher": { "id": "treeseed", "name": "TreeSeed", "url": "https://treeseed.dev" }, "publisherVerified": true,
+      "templateVersion": "1.0.0", "templateApiVersion": 2, "minCliVersion": "0.12.0",
+      "fulfillment": { "mode": "git", "source": { "kind": "git", "repoUrl": "https://github.com/treeseed-ai/platform.git", "directory": "templates/platform-external-codex", "ref": "staging", "integrity": "resolved-at-install" }, "hooksPolicy": "builtin_only", "supportsReconcile": true },
+      "offer": { "priceModel": "free", "license": "Apache-2.0", "support": "community" },
+      "relatedBooks": [], "relatedKnowledge": [], "relatedObjectives": []
+    },
+    {
+      "id": "platform-local-managed-ai",
+      "displayName": "Local managed Platform with TreeSeed AI",
+      "description": "A sovereign local TreeSeed control plane with the optional TreeSeed AI appliance.",
+      "summary": "A local Platform template with the TreeSeed inference appliance.",
+      "status": "live", "featured": false, "category": "platform",
+      "audience": ["operators", "platform-teams"], "tags": ["platform", "local", "managed", "ai"],
+      "publisher": { "id": "treeseed", "name": "TreeSeed", "url": "https://treeseed.dev" }, "publisherVerified": true,
+      "templateVersion": "1.0.0", "templateApiVersion": 2, "minCliVersion": "0.12.0",
+      "fulfillment": { "mode": "git", "source": { "kind": "git", "repoUrl": "https://github.com/treeseed-ai/platform.git", "directory": "templates/platform-local-managed-ai", "ref": "staging", "integrity": "resolved-at-install" }, "hooksPolicy": "builtin_only", "supportsReconcile": true },
+      "offer": { "priceModel": "free", "license": "Apache-2.0", "support": "community" },
+      "relatedBooks": [], "relatedKnowledge": [], "relatedObjectives": []
+    },
+    {
       "id": "research",
       "displayName": "TreeSeed Research",
       "description": "First-party TreeSeed starter for freestanding research projects and knowledge-pack publishing.",
@@ -33,7 +91,7 @@
         "mode": "git",
         "source": {
           "kind": "git",
-          "repoUrl": "https://github.com/treeseed-ai/research.git",
+          "repoUrl": "https://github.com/treeseed-ai/template-research.git",
           "directory": ".",
           "ref": "staging",
           "integrity": "pending-external-repo"
@@ -45,140 +103,6 @@
         "priceModel": "free",
         "license": "AGPL-3.0-only",
         "support": "community"
-      },
-      "launchRequirements": {
-        "version": 1,
-        "hosts": [
-          {
-            "kind": "host",
-            "key": "sourceRepository",
-            "type": "repository",
-            "required": true,
-            "compatibleProviders": [
-              "github"
-            ],
-            "displayName": "Source repository",
-            "purpose": "Create and push the generated research project repository.",
-            "defaultSelection": "team-default",
-            "configWrites": [
-              {
-                "target": "treeseed.site.yaml",
-                "path": "hosting.hostBindings.sourceRepository.provider",
-                "valueFrom": "selectedHost.provider"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "hosting.hostBindings.sourceRepository.owner",
-                "valueFrom": "selectedHost.github.owner"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "hosting.hostBindings.sourceRepository.repository",
-                "valueFrom": "derived.repositoryName"
-              }
-            ],
-            "environmentWrites": [
-              {
-                "env": "GITHUB_TOKEN",
-                "valueFrom": "selectedHost.token",
-                "targets": [
-                  "github-secret"
-                ],
-                "scopes": [
-                  "staging",
-                  "prod"
-                ],
-                "sensitivity": "secret"
-              }
-            ]
-          },
-          {
-            "kind": "host",
-            "key": "publicWeb",
-            "type": "web",
-            "required": true,
-            "compatibleProviders": [
-              "cloudflare"
-            ],
-            "displayName": "Public web host",
-            "purpose": "Deploy the research site, previews, content storage, and web runtime resources.",
-            "defaultSelection": "managed",
-            "configWrites": [
-              {
-                "target": "treeseed.site.yaml",
-                "path": "hosting.hostBindings.publicWeb.provider",
-                "valueFrom": "selectedHost.provider"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "surfaces.web.provider",
-                "valueFrom": "selectedHost.provider"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "surfaces.web.environments.prod.domain",
-                "valueFrom": "launchInput.domains.productionDomain",
-                "writeWhen": "host-selected"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "surfaces.web.environments.staging.domain",
-                "valueFrom": "launchInput.domains.stagingDomain",
-                "writeWhen": "host-selected"
-              }
-            ],
-            "environmentWrites": [
-              {
-                "env": "TREESEED_PUBLIC_WEB_PROVIDER",
-                "valueFrom": "selectedHost.provider",
-                "targets": [
-                  "github-variable",
-                  "cloudflare-var"
-                ],
-                "scopes": [
-                  "staging",
-                  "prod"
-                ],
-                "sensitivity": "plain"
-              }
-            ]
-          },
-          {
-            "kind": "host",
-            "key": "transactionalEmail",
-            "type": "email",
-            "required": false,
-            "compatibleProviders": [
-              "smtp"
-            ],
-            "displayName": "Transactional email",
-            "purpose": "Send form, account, and research project notification email.",
-            "defaultSelection": "managed",
-            "configWrites": [
-              {
-                "target": "treeseed.site.yaml",
-                "path": "hosting.hostBindings.transactionalEmail.provider",
-                "valueFrom": "selectedHost.provider",
-                "writeWhen": "host-selected"
-              }
-            ],
-            "environmentWrites": [
-              {
-                "env": "SMTP_HOST",
-                "valueFrom": "selectedHost.smtpHost",
-                "targets": [
-                  "github-secret",
-                  "railway-secret"
-                ],
-                "scopes": [
-                  "staging",
-                  "prod"
-                ],
-                "sensitivity": "secret"
-              }
-            ]
-          }
-        ]
       },
       "relatedBooks": [],
       "relatedKnowledge": [],
@@ -217,7 +141,7 @@
         "mode": "git",
         "source": {
           "kind": "git",
-          "repoUrl": "https://github.com/treeseed-ai/engineering.git",
+          "repoUrl": "https://github.com/treeseed-ai/template-engineering.git",
           "directory": ".",
           "ref": "staging",
           "integrity": "pending-external-repo"
@@ -229,140 +153,6 @@
         "priceModel": "free",
         "license": "AGPL-3.0-only",
         "support": "community"
-      },
-      "launchRequirements": {
-        "version": 1,
-        "hosts": [
-          {
-            "kind": "host",
-            "key": "sourceRepository",
-            "type": "repository",
-            "required": true,
-            "compatibleProviders": [
-              "github"
-            ],
-            "displayName": "Source repository",
-            "purpose": "Create and push the generated engineering project repository.",
-            "defaultSelection": "team-default",
-            "configWrites": [
-              {
-                "target": "treeseed.site.yaml",
-                "path": "hosting.hostBindings.sourceRepository.provider",
-                "valueFrom": "selectedHost.provider"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "hosting.hostBindings.sourceRepository.owner",
-                "valueFrom": "selectedHost.github.owner"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "hosting.hostBindings.sourceRepository.repository",
-                "valueFrom": "derived.repositoryName"
-              }
-            ],
-            "environmentWrites": [
-              {
-                "env": "GITHUB_TOKEN",
-                "valueFrom": "selectedHost.token",
-                "targets": [
-                  "github-secret"
-                ],
-                "scopes": [
-                  "staging",
-                  "prod"
-                ],
-                "sensitivity": "secret"
-              }
-            ]
-          },
-          {
-            "kind": "host",
-            "key": "publicWeb",
-            "type": "web",
-            "required": true,
-            "compatibleProviders": [
-              "cloudflare"
-            ],
-            "displayName": "Public web host",
-            "purpose": "Deploy the engineering site, previews, content storage, and web runtime resources.",
-            "defaultSelection": "managed",
-            "configWrites": [
-              {
-                "target": "treeseed.site.yaml",
-                "path": "hosting.hostBindings.publicWeb.provider",
-                "valueFrom": "selectedHost.provider"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "surfaces.web.provider",
-                "valueFrom": "selectedHost.provider"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "surfaces.web.environments.prod.domain",
-                "valueFrom": "launchInput.domains.productionDomain",
-                "writeWhen": "host-selected"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "surfaces.web.environments.staging.domain",
-                "valueFrom": "launchInput.domains.stagingDomain",
-                "writeWhen": "host-selected"
-              }
-            ],
-            "environmentWrites": [
-              {
-                "env": "TREESEED_PUBLIC_WEB_PROVIDER",
-                "valueFrom": "selectedHost.provider",
-                "targets": [
-                  "github-variable",
-                  "cloudflare-var"
-                ],
-                "scopes": [
-                  "staging",
-                  "prod"
-                ],
-                "sensitivity": "plain"
-              }
-            ]
-          },
-          {
-            "kind": "host",
-            "key": "transactionalEmail",
-            "type": "email",
-            "required": false,
-            "compatibleProviders": [
-              "smtp"
-            ],
-            "displayName": "Transactional email",
-            "purpose": "Send form, account, and engineering project notification email.",
-            "defaultSelection": "managed",
-            "configWrites": [
-              {
-                "target": "treeseed.site.yaml",
-                "path": "hosting.hostBindings.transactionalEmail.provider",
-                "valueFrom": "selectedHost.provider",
-                "writeWhen": "host-selected"
-              }
-            ],
-            "environmentWrites": [
-              {
-                "env": "SMTP_HOST",
-                "valueFrom": "selectedHost.smtpHost",
-                "targets": [
-                  "github-secret",
-                  "railway-secret"
-                ],
-                "scopes": [
-                  "staging",
-                  "prod"
-                ],
-                "sensitivity": "secret"
-              }
-            ]
-          }
-        ]
       },
       "relatedBooks": [],
       "relatedKnowledge": [],
@@ -413,288 +203,6 @@
         "priceModel": "free",
         "license": "AGPL-3.0-only",
         "support": "community"
-      },
-      "launchRequirements": {
-        "version": 1,
-        "hosts": [
-          {
-            "kind": "host",
-            "key": "sourceRepository",
-            "type": "repository",
-            "required": true,
-            "compatibleProviders": [
-              "github"
-            ],
-            "displayName": "Source repository",
-            "purpose": "Create and push the Market control-plane repository.",
-            "defaultSelection": "team-default",
-            "configWrites": [
-              {
-                "target": "treeseed.site.yaml",
-                "path": "hosting.hostBindings.sourceRepository.provider",
-                "valueFrom": "selectedHost.provider"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "hosting.hostBindings.sourceRepository.owner",
-                "valueFrom": "selectedHost.github.owner"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "hosting.hostBindings.sourceRepository.repository",
-                "valueFrom": "derived.repositoryName"
-              }
-            ],
-            "environmentWrites": [
-              {
-                "env": "GITHUB_TOKEN",
-                "valueFrom": "selectedHost.token",
-                "targets": [
-                  "github-secret"
-                ],
-                "scopes": [
-                  "staging",
-                  "prod"
-                ],
-                "sensitivity": "secret"
-              }
-            ]
-          },
-          {
-            "kind": "host",
-            "key": "publicWeb",
-            "type": "web",
-            "required": true,
-            "compatibleProviders": [
-              "cloudflare"
-            ],
-            "displayName": "Public web host",
-            "purpose": "Deploy the Market web surface and public control-plane routes.",
-            "defaultSelection": "managed",
-            "configWrites": [
-              {
-                "target": "treeseed.site.yaml",
-                "path": "hosting.hostBindings.publicWeb.provider",
-                "valueFrom": "selectedHost.provider"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "hosting.kind",
-                "valueFrom": "literal.treeseed_control_plane"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "surfaces.web.provider",
-                "valueFrom": "selectedHost.provider"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "surfaces.web.environments.prod.domain",
-                "valueFrom": "launchInput.domains.productionDomain",
-                "writeWhen": "host-selected"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "surfaces.web.environments.staging.domain",
-                "valueFrom": "launchInput.domains.stagingDomain",
-                "writeWhen": "host-selected"
-              }
-            ],
-            "environmentWrites": [
-              {
-                "env": "TREESEED_PUBLIC_WEB_PROVIDER",
-                "valueFrom": "selectedHost.provider",
-                "targets": [
-                  "github-variable",
-                  "cloudflare-var"
-                ],
-                "scopes": [
-                  "staging",
-                  "prod"
-                ],
-                "sensitivity": "plain"
-              }
-            ]
-          }
-        ],
-        "resources": [
-          {
-            "kind": "resource",
-            "key": "treeseedDatabase",
-            "type": "database",
-            "required": true,
-            "compatibleProviders": [
-              "railway-postgres"
-            ],
-            "displayName": "Treeseed database",
-            "purpose": "Provide the PostgreSQL database used by the API control plane.",
-            "configWrites": [
-              {
-                "target": "treeseed.site.yaml",
-                "path": "services.treeseedDatabase.enabled",
-                "valueFrom": "literal.true"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "services.treeseedDatabase.provider",
-                "valueFrom": "literal.railway"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "services.treeseedDatabase.railway.resourceType",
-                "valueFrom": "literal.postgres"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "services.treeseedDatabase.railway.serviceName",
-                "valueFrom": "selectedResource.configValues.serviceName"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "services.treeseedDatabase.railway.environmentVariable",
-                "valueFrom": "literal.TREESEED_DATABASE_URL"
-              }
-            ],
-            "environmentWrites": [
-              {
-                "env": "TREESEED_DATABASE_URL",
-                "valueFrom": "selectedResource.secretRefs.databaseUrl",
-                "targets": [
-                  "github-secret",
-                  "railway-secret"
-                ],
-                "scopes": [
-                  "staging",
-                  "prod"
-                ],
-                "sensitivity": "secret"
-              }
-            ]
-          },
-          {
-            "kind": "resource",
-            "key": "api",
-            "type": "service",
-            "required": true,
-            "compatibleProviders": [
-              "railway"
-            ],
-            "displayName": "API service",
-            "purpose": "Run the API service that serves the control-plane routes.",
-            "configWrites": [
-              {
-                "target": "treeseed.site.yaml",
-                "path": "services.api.enabled",
-                "valueFrom": "literal.true"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "services.api.provider",
-                "valueFrom": "literal.railway"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "services.api.railway.serviceName",
-                "valueFrom": "selectedResource.configValues.serviceName"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "services.api.railway.rootDirectory",
-                "valueFrom": "literal."
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "services.api.railway.startCommand",
-                "valueFrom": "literal.node dist/api/server.js"
-              }
-            ],
-            "environmentWrites": [
-              {
-                "env": "TREESEED_DATABASE_URL",
-                "valueFrom": "selectedResource.secretRefs.databaseUrl",
-                "targets": [
-                  "railway-secret"
-                ],
-                "scopes": [
-                  "staging",
-                  "prod"
-                ],
-                "sensitivity": "secret"
-              }
-            ]
-          },
-          {
-            "kind": "resource",
-            "key": "operationsRunner",
-            "type": "service",
-            "required": true,
-            "compatibleProviders": [
-              "railway"
-            ],
-            "displayName": "Treeseed operations runner",
-            "purpose": "Run the governed Treeseed operations runner for queued control-plane operations.",
-            "configWrites": [
-              {
-                "target": "treeseed.site.yaml",
-                "path": "services.operationsRunner.enabled",
-                "valueFrom": "literal.true"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "services.operationsRunner.provider",
-                "valueFrom": "literal.railway"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "services.operationsRunner.railway.serviceName",
-                "valueFrom": "selectedResource.configValues.serviceName"
-              },
-              {
-                "target": "treeseed.site.yaml",
-                "path": "services.operationsRunner.railway.startCommand",
-                "valueFrom": "literal.node dist/operations-runner/runner.js"
-              }
-            ],
-            "environmentWrites": [
-              {
-                "env": "TREESEED_DATABASE_URL",
-                "valueFrom": "selectedResource.secretRefs.databaseUrl",
-                "targets": [
-                  "railway-secret"
-                ],
-                "scopes": [
-                  "staging",
-                  "prod"
-                ],
-                "sensitivity": "secret"
-              },
-              {
-                "env": "TREESEED_PLATFORM_RUNNER_TOKEN",
-                "valueFrom": "selectedResource.secretRefs.runnerToken",
-                "targets": [
-                  "railway-secret"
-                ],
-                "scopes": [
-                  "staging",
-                  "prod"
-                ],
-                "sensitivity": "secret"
-              },
-              {
-                "env": "TREESEED_PLATFORM_RUNNER_ID",
-                "valueFrom": "selectedResource.environmentValues.runnerId",
-                "targets": [
-                  "railway-var"
-                ],
-                "scopes": [
-                  "staging",
-                  "prod"
-                ],
-                "sensitivity": "plain"
-              }
-            ]
-          }
-        ]
       },
       "relatedBooks": [],
       "relatedKnowledge": [],

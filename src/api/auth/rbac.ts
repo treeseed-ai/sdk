@@ -9,7 +9,6 @@ export const CONTENT_RESOURCES = [
 	'agents',
 	'books',
 	'templates',
-	'knowledge_packs',
 	'workdays',
 ] as const;
 
@@ -24,12 +23,13 @@ export const PLATFORM_RESOURCES = [
 	'sdk',
 	'agent',
 	'operations',
+	'feedback',
 ] as const;
 
 export const ALL_PERMISSION_RESOURCES = [...CONTENT_RESOURCES, ...PLATFORM_RESOURCES] as const;
 
 export type PermissionResource = (typeof ALL_PERMISSION_RESOURCES)[number];
-export type PermissionAction = 'read' | 'create' | 'update' | 'delete' | 'manage' | 'execute' | 'impersonate';
+export type PermissionAction = 'read' | 'create' | 'update' | 'delete' | 'manage' | 'execute' | 'impersonate' | 'export';
 export type PermissionScope = 'self' | 'global';
 
 export interface PermissionDefinition {
@@ -44,6 +44,20 @@ export interface RoleDefinition {
 	key: string;
 	description: string;
 	permissions: string[];
+}
+
+export interface PermissionPrincipal {
+	roles?: readonly string[] | null;
+	permissions?: readonly string[] | null;
+}
+
+export function principalHasPlatformPermission(principal: PermissionPrincipal | null | undefined, permission: string) {
+	return Boolean(
+		principal
+		&& (principal.roles?.includes('platform_admin')
+			|| principal.permissions?.includes('*:*:*')
+			|| principal.permissions?.includes(permission)),
+	);
 }
 
 export function permissionKey(resource: PermissionDefinition['resource'], action: PermissionDefinition['action'], scope: PermissionDefinition['scope']) {
@@ -82,6 +96,9 @@ const permissionDefinitions: PermissionDefinition[] = [
 	contentPermission('sdk', 'execute', 'global', 'Execute SDK routes.'),
 	contentPermission('agent', 'execute', 'global', 'Execute agent routes.'),
 	contentPermission('operations', 'execute', 'global', 'Execute workflow operation routes.'),
+	contentPermission('feedback', 'read', 'global', 'Read private platform feedback.'),
+	contentPermission('feedback', 'manage', 'global', 'Triage and resolve private platform feedback.'),
+	contentPermission('feedback', 'export', 'global', 'Export privacy-safe platform feedback bundles.'),
 ];
 
 for (const resource of CONTENT_RESOURCES) {

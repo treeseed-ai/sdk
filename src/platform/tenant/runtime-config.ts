@@ -1,14 +1,14 @@
-import type { TreeseedTenantConfig } from '../contracts.ts';
+import type { TenantConfig } from '../support/contracts.ts';
 import { parseSiteConfig } from '../utils/site-config-schema.ts';
 
-declare const __TREESEED_TENANT_CONFIG__: TreeseedTenantConfig | undefined;
-declare const __TREESEED_PROJECT_ROOT__: string | undefined;
+declare const TENANT_CONFIG: TenantConfig | undefined;
+declare const PROJECT_ROOT: string | undefined;
 declare const __TREESEED_SITE_CONFIG__: ReturnType<typeof parseSiteConfig> | undefined;
 
 const injectedTenantConfig =
-	typeof __TREESEED_TENANT_CONFIG__ !== 'undefined' ? __TREESEED_TENANT_CONFIG__ : null;
+	typeof TENANT_CONFIG !== 'undefined' ? TENANT_CONFIG : null;
 const injectedProjectRoot =
-	typeof __TREESEED_PROJECT_ROOT__ !== 'undefined' ? __TREESEED_PROJECT_ROOT__ : null;
+	typeof PROJECT_ROOT !== 'undefined' ? PROJECT_ROOT : null;
 const injectedSiteConfig =
 	typeof __TREESEED_SITE_CONFIG__ !== 'undefined' ? __TREESEED_SITE_CONFIG__ : null;
 
@@ -31,7 +31,7 @@ function resolveRuntimePath(projectRoot: string, path: string) {
 	return pathModule?.resolve(projectRoot, path) ?? `${projectRoot.replace(/\/$/, '')}/${path}`;
 }
 
-function fallbackTenantConfig(projectRoot: string): TreeseedTenantConfig {
+function fallbackTenantConfig(projectRoot: string): TenantConfig {
 	return {
 		id: 'treeseed-runtime',
 		siteConfigPath: resolveRuntimePath(projectRoot, 'treeseed.site.yaml'),
@@ -44,10 +44,14 @@ function fallbackTenantConfig(projectRoot: string): TreeseedTenantConfig {
 			decisions: resolveRuntimePath(projectRoot, 'src/content/decisions'),
 			people: resolveRuntimePath(projectRoot, 'src/content/people'),
 			agents: resolveRuntimePath(projectRoot, 'src/content/agents'),
+			discussions: resolveRuntimePath(projectRoot, 'src/content/discussions'),
+			discussion_messages: resolveRuntimePath(projectRoot, 'src/content/discussion-messages'),
+			discussion_events: resolveRuntimePath(projectRoot, 'src/content/discussion-events'),
+			groups: resolveRuntimePath(projectRoot, 'src/content/groups'),
+			group_edges: resolveRuntimePath(projectRoot, 'src/content/group-edges'),
 			books: resolveRuntimePath(projectRoot, 'src/content/books'),
 			docs: resolveRuntimePath(projectRoot, 'src/content/knowledge'),
 			templates: resolveRuntimePath(projectRoot, 'src/content/templates'),
-			knowledge_packs: resolveRuntimePath(projectRoot, 'src/content/knowledge-packs'),
 			workdays: resolveRuntimePath(projectRoot, 'src/content/workdays'),
 		},
 		features: {

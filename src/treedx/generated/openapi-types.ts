@@ -77,6 +77,9 @@ export interface paths {
 	"/api/v1/repos/{repo_id}/push": { post: operations['pushRepository']; };
 	"/api/v1/repos/{repo_id}/query": { post: operations['queryRepository']; };
 	"/api/v1/repos/{repo_id}/refs": { get: operations['listRepositoryRefs']; };
+	"/api/v1/repos/{repo_id}/refs/discard-orphan": { post: operations['discardOrphanRepositoryRef']; };
+	"/api/v1/repos/{repo_id}/refs/promote": { post: operations['promoteRepositoryRef']; };
+	"/api/v1/repos/{repo_id}/refs/retire": { post: operations['retireRepositoryRef']; };
 	"/api/v1/repos/{repo_id}/remotes": { get: operations['listRepositoryRemotes']; };
 	"/api/v1/repos/{repo_id}/search/index/compact": { post: operations['compactSearchIndex']; };
 	"/api/v1/repos/{repo_id}/search/index/refresh": { post: operations['refreshSearchIndex']; };
@@ -171,6 +174,7 @@ export interface components {
 		TreeDxDeleteWorkspaceBlobResponse: { ok: true; result?: components['schemas']['TreeDxBlobMutationResult']; [key: string]: unknown; };
 		TreeDxDeleteWorkspaceFileResponse: { ok: true; file?: components['schemas']['TreeDxFileMutationResult']; [key: string]: unknown; };
 		TreeDxDiff: { workspaceId?: string; diff?: string; changedPaths?: string[]; [key: string]: unknown; };
+		TreeDxDiscardOrphanRepositoryRefResponse: { ok: true; discard: components['schemas']['TreeDxOrphanRefDiscardResult']; };
 		TreeDxEffectiveScope: { actorId: string; tenantIds?: string[]; repoId?: string | null; capabilities: string[]; refs: string[]; paths: string[]; policyVersion?: string; policyHash?: string; };
 		TreeDxEffectiveScopeRequest: { repoId?: string; };
 		TreeDxError: { code: components['schemas']['TreeDxErrorCode']; message: string; details?: { [key: string]: unknown; }; };
@@ -289,6 +293,8 @@ export interface components {
 		TreeDxMirrorSyncResult: { [key: string]: unknown; };
 		TreeDxNode: { id: string; baseUrl?: string; role?: string; health?: string; };
 		TreeDxOkEnvelope: { ok: true; };
+		TreeDxOrphanRefDiscardRequest: { ref: string; expectedHead: string; reason: string; };
+		TreeDxOrphanRefDiscardResult: { repoId: string; ref: string; head: string; status: string; };
 		TreeDxParseContextQueryResponse: { ok: true; parse?: components['schemas']['TreeDxCtxParseResult']; [key: string]: unknown; };
 		TreeDxPatchFileRequest: { workspaceId?: string; path: string; patch?: string; expectedSha?: string; allowProtected?: boolean; };
 		TreeDxPatchWorkspaceFileResponse: { ok: true; file?: components['schemas']['TreeDxFileMutationResult']; [key: string]: unknown; };
@@ -299,6 +305,7 @@ export interface components {
 		TreeDxPolicyRefreshResult: { [key: string]: unknown; };
 		TreeDxPrincipal: { actorId: string; tenantId: string; authMode?: string; };
 		TreeDxPromoteMirrorResponse: { ok: true; promotion?: components['schemas']['TreeDxMirrorPromotionResult']; [key: string]: unknown; };
+		TreeDxPromoteRepositoryRefResponse: { ok: true; promotion: components['schemas']['TreeDxRefPromotionResult']; };
 		TreeDxPushRepositoryResponse: { ok: true; push?: components['schemas']['TreeDxPushResult']; [key: string]: unknown; };
 		TreeDxPushRequest: { remoteName?: string; remoteUrl?: string; credentialId?: string; refspecs?: string[]; planOnly?: boolean; expectedRemoteHead?: string | null; };
 		TreeDxPushResult: { [key: string]: unknown; };
@@ -316,9 +323,13 @@ export interface components {
 		TreeDxReadWorkspaceFileResponse: { ok: true; file?: components['schemas']['TreeDxFile']; [key: string]: unknown; };
 		TreeDxRecoverAdminStorageResponse: { ok: true; recovery?: components['schemas']['TreeDxStorageRecoverResult']; [key: string]: unknown; };
 		TreeDxRefName: string;
+		TreeDxRefPromotionRequest: { sourceRef: string; destinationRef: string; expectedDestinationHead: string; };
+		TreeDxRefPromotionResult: { repoId: string; sourceRef: string; destinationRef: string; beforeHead: string; afterHead: string; status: string; };
 		TreeDxRefreshPolicyResponse: { ok: true; policy?: components['schemas']['TreeDxPolicyRefreshResult']; [key: string]: unknown; };
 		TreeDxRefreshRepositoryGraphResponse: { ok: true; graph?: components['schemas']['TreeDxGraphRefreshResult']; [key: string]: unknown; };
 		TreeDxRefreshSearchIndexResponse: { ok: true; index?: components['schemas']['TreeDxSearchIndexRefreshResult']; [key: string]: unknown; };
+		TreeDxRefRetirementRequest: { ref: string; mergedIntoRef: string; expectedHead: string; expectedMergedIntoHead: string; };
+		TreeDxRefRetirementResult: { repoId: string; ref: string; mergedIntoRef: string; head: string; mergedIntoHead: string; status: string; };
 		TreeDxRegisterRepositoryRequest: { repositoryName: components['schemas']['TreeDxRepositoryName']; name?: components['schemas']['TreeDxRepositoryName']; defaultRef?: string; createIfMissing?: boolean; [key: string]: unknown; };
 		TreeDxRegisterRepositoryResponse: { ok: true; repo?: components['schemas']['TreeDxRepository']; [key: string]: unknown; };
 		TreeDxRepository: { repoId: string; name: string; defaultRef: string; status: string; remoteUrl?: string | null; repositoryName?: components['schemas']['TreeDxRepositoryName']; storageKind?: "managed" | "legacy_local_path"; };
@@ -336,6 +347,7 @@ export interface components {
 		TreeDxRepositorySource: { type: "empty" | "git_remote" | "bundle"; remoteUrl?: string; credentialId?: string; bundleId?: string; };
 		TreeDxRepositoryStatus: { repo: components['schemas']['TreeDxRepository']; git: { [key: string]: unknown; }; placement?: components['schemas']['TreeDxRepositoryPlacement'] | null; };
 		TreeDxRestoreStorageResponse: { ok: true; restore?: components['schemas']['TreeDxStorageRestoreResult']; [key: string]: unknown; };
+		TreeDxRetireRepositoryRefResponse: { ok: true; retirement: components['schemas']['TreeDxRefRetirementResult']; };
 		TreeDxRollbackStorageMigrationResponse: { ok: true; migration?: components['schemas']['TreeDxStorageMigration']; [key: string]: unknown; };
 		TreeDxSearchGraphEntitiesResponse: { ok: true; results?: components['schemas']['TreeDxGraphSearchResult'][]; [key: string]: unknown; };
 		TreeDxSearchGraphFilesResponse: { ok: true; results?: components['schemas']['TreeDxGraphSearchResult'][]; [key: string]: unknown; };
@@ -406,6 +418,7 @@ export interface operations {
 	deleteArtifact: { parameters: { path: { artifact_id: string; }; query: never; header: never; }; requestBody: never; responses: { "200": components['schemas']['TreeDxDeleteArtifactResponse']; "401": components['schemas']['TreeDxErrorEnvelope']; "403": components['schemas']['TreeDxErrorEnvelope']; "404": components['schemas']['TreeDxErrorEnvelope']; "503": components['schemas']['TreeDxErrorEnvelope']; }; };
 	deleteWorkspaceBlob: { parameters: { path: never; query: never; header: never; }; requestBody: components['schemas']['TreeDxBlobDeleteRequest']; responses: { "200": components['schemas']['TreeDxDeleteWorkspaceBlobResponse']; "401": components['schemas']['TreeDxErrorEnvelope']; "403": components['schemas']['TreeDxErrorEnvelope']; "404": components['schemas']['TreeDxErrorEnvelope']; "409": components['schemas']['TreeDxErrorEnvelope']; "503": components['schemas']['TreeDxErrorEnvelope']; }; };
 	deleteWorkspaceFile: { parameters: { path: never; query: { path: string; }; header: never; }; requestBody: never; responses: { "200": components['schemas']['TreeDxDeleteWorkspaceFileResponse']; "401": components['schemas']['TreeDxErrorEnvelope']; "403": components['schemas']['TreeDxErrorEnvelope']; "404": components['schemas']['TreeDxErrorEnvelope']; "409": components['schemas']['TreeDxErrorEnvelope']; "503": components['schemas']['TreeDxErrorEnvelope']; }; };
+	discardOrphanRepositoryRef: { parameters: { path: never; query: never; header: never; }; requestBody: components['schemas']['TreeDxOrphanRefDiscardRequest']; responses: { "200": components['schemas']['TreeDxDiscardOrphanRepositoryRefResponse']; "401": components['schemas']['TreeDxErrorEnvelope']; "403": components['schemas']['TreeDxErrorEnvelope']; "409": components['schemas']['TreeDxErrorEnvelope']; "422": components['schemas']['TreeDxErrorEnvelope']; }; };
 	downloadWorkspaceBlob: { parameters: { path: never; query: { path: string; }; header: never; }; requestBody: never; responses: { "200": ArrayBuffer; "401": components['schemas']['TreeDxErrorEnvelope']; "403": components['schemas']['TreeDxErrorEnvelope']; "404": components['schemas']['TreeDxErrorEnvelope']; "409": components['schemas']['TreeDxErrorEnvelope']; "503": components['schemas']['TreeDxErrorEnvelope']; }; };
 	execWorkspace: { parameters: { path: never; query: never; header: never; }; requestBody: components['schemas']['TreeDxExecRequest']; responses: { "200": components['schemas']['TreeDxExecWorkspaceResponse']; "401": components['schemas']['TreeDxErrorEnvelope']; "403": components['schemas']['TreeDxErrorEnvelope']; "409": components['schemas']['TreeDxErrorEnvelope']; "422": components['schemas']['TreeDxErrorEnvelope']; "503": components['schemas']['TreeDxErrorEnvelope']; }; };
 	exportArtifact: { parameters: { path: never; query: never; header: never; }; requestBody: components['schemas']['TreeDxArtifactExportRequest']; responses: { "200": components['schemas']['TreeDxExportArtifactResponse']; "401": components['schemas']['TreeDxErrorEnvelope']; "403": components['schemas']['TreeDxErrorEnvelope']; "404": components['schemas']['TreeDxErrorEnvelope']; "503": components['schemas']['TreeDxErrorEnvelope']; }; };
@@ -465,6 +478,7 @@ export interface operations {
 	planFederationQuery: { parameters: { path: never; query: never; header: never; }; requestBody: components['schemas']['TreeDxFederationQueryPlanRequest']; responses: { "200": components['schemas']['TreeDxPlanFederationQueryResponse']; "401": components['schemas']['TreeDxErrorEnvelope']; "403": components['schemas']['TreeDxErrorEnvelope']; "503": components['schemas']['TreeDxErrorEnvelope']; }; };
 	planStorageMigration: { parameters: { path: never; query: never; header: never; }; requestBody: components['schemas']['TreeDxStorageMigrationPlanRequest']; responses: { "200": components['schemas']['TreeDxPlanStorageMigrationResponse']; "401": components['schemas']['TreeDxErrorEnvelope']; "403": components['schemas']['TreeDxErrorEnvelope']; "422": components['schemas']['TreeDxErrorEnvelope']; "503": components['schemas']['TreeDxErrorEnvelope']; }; };
 	promoteMirror: { parameters: { path: { mirror_id: string; }; query: never; header: never; }; requestBody: components['schemas']['TreeDxMirrorPromotionRequest']; responses: { "200": components['schemas']['TreeDxPromoteMirrorResponse']; "401": components['schemas']['TreeDxErrorEnvelope']; "403": components['schemas']['TreeDxErrorEnvelope']; "404": components['schemas']['TreeDxErrorEnvelope']; "409": components['schemas']['TreeDxErrorEnvelope']; "503": components['schemas']['TreeDxErrorEnvelope']; }; };
+	promoteRepositoryRef: { parameters: { path: never; query: never; header: never; }; requestBody: components['schemas']['TreeDxRefPromotionRequest']; responses: { "200": components['schemas']['TreeDxPromoteRepositoryRefResponse']; "401": components['schemas']['TreeDxErrorEnvelope']; "403": components['schemas']['TreeDxErrorEnvelope']; "409": components['schemas']['TreeDxErrorEnvelope']; "422": components['schemas']['TreeDxErrorEnvelope']; }; };
 	proxyInternalFederationRequest: { parameters: { path: never; query: never; header: never; }; requestBody: components['schemas']['TreeDxInternalFederationProxyResponse']; responses: { "200": components['schemas']['TreeDxInternalFederationProxyResponse']; "401": components['schemas']['TreeDxErrorEnvelope']; "403": components['schemas']['TreeDxErrorEnvelope']; "422": components['schemas']['TreeDxErrorEnvelope']; "503": components['schemas']['TreeDxErrorEnvelope']; }; };
 	pushFederationCatalog: { parameters: { path: never; query: never; header: never; }; requestBody: components['schemas']['TreeDxFederationCatalog']; responses: { "200": components['schemas']['TreeDxFederationSyncResponse']; "401": components['schemas']['TreeDxErrorEnvelope']; "403": components['schemas']['TreeDxErrorEnvelope']; "422": components['schemas']['TreeDxErrorEnvelope']; "503": components['schemas']['TreeDxErrorEnvelope']; }; };
 	pushRepository: { parameters: { path: never; query: never; header: never; }; requestBody: components['schemas']['TreeDxPushRequest']; responses: { "200": components['schemas']['TreeDxPushRepositoryResponse']; "401": components['schemas']['TreeDxErrorEnvelope']; "403": components['schemas']['TreeDxErrorEnvelope']; "409": components['schemas']['TreeDxErrorEnvelope']; "422": components['schemas']['TreeDxErrorEnvelope']; "503": components['schemas']['TreeDxErrorEnvelope']; }; };
@@ -483,6 +497,7 @@ export interface operations {
 	registerFederationNode: { parameters: { path: never; query: never; header: never; }; requestBody: components['schemas']['TreeDxFederationPeerRegisterRequest']; responses: { "200": components['schemas']['TreeDxFederationPeerResponse']; "401": components['schemas']['TreeDxErrorEnvelope']; "403": components['schemas']['TreeDxErrorEnvelope']; "422": components['schemas']['TreeDxErrorEnvelope']; "503": components['schemas']['TreeDxErrorEnvelope']; }; };
 	registerRepository: { parameters: { path: never; query: never; header: never; }; requestBody: components['schemas']['TreeDxRegisterRepositoryRequest']; responses: { "200": components['schemas']['TreeDxRegisterRepositoryResponse']; "401": components['schemas']['TreeDxErrorEnvelope']; "403": components['schemas']['TreeDxErrorEnvelope']; "422": components['schemas']['TreeDxErrorEnvelope']; "503": components['schemas']['TreeDxErrorEnvelope']; }; };
 	restoreStorage: { parameters: { path: never; query: never; header: never; }; requestBody: components['schemas']['TreeDxStorageRestoreRequest']; responses: { "200": components['schemas']['TreeDxRestoreStorageResponse']; "401": components['schemas']['TreeDxErrorEnvelope']; "403": components['schemas']['TreeDxErrorEnvelope']; "409": components['schemas']['TreeDxErrorEnvelope']; "503": components['schemas']['TreeDxErrorEnvelope']; }; };
+	retireRepositoryRef: { parameters: { path: never; query: never; header: never; }; requestBody: components['schemas']['TreeDxRefRetirementRequest']; responses: { "200": components['schemas']['TreeDxRetireRepositoryRefResponse']; "401": components['schemas']['TreeDxErrorEnvelope']; "403": components['schemas']['TreeDxErrorEnvelope']; "409": components['schemas']['TreeDxErrorEnvelope']; "422": components['schemas']['TreeDxErrorEnvelope']; }; };
 	revokeFederationPeer: { parameters: { path: { node_id: string; }; query: never; header: never; }; requestBody: never; responses: { "200": components['schemas']['TreeDxFederationPeerResponse']; "401": components['schemas']['TreeDxErrorEnvelope']; "403": components['schemas']['TreeDxErrorEnvelope']; "422": components['schemas']['TreeDxErrorEnvelope']; "503": components['schemas']['TreeDxErrorEnvelope']; }; };
 	rollbackStorageMigration: { parameters: { path: never; query: never; header: never; }; requestBody: components['schemas']['TreeDxStorageMigrationRollbackRequest']; responses: { "200": components['schemas']['TreeDxRollbackStorageMigrationResponse']; "401": components['schemas']['TreeDxErrorEnvelope']; "403": components['schemas']['TreeDxErrorEnvelope']; "404": components['schemas']['TreeDxErrorEnvelope']; "503": components['schemas']['TreeDxErrorEnvelope']; }; };
 	searchGraphEntities: { parameters: { path: never; query: never; header: never; }; requestBody: components['schemas']['TreeDxGraphSearchRequest']; responses: { "200": components['schemas']['TreeDxSearchGraphEntitiesResponse']; "401": components['schemas']['TreeDxErrorEnvelope']; "403": components['schemas']['TreeDxErrorEnvelope']; "503": components['schemas']['TreeDxErrorEnvelope']; }; };
