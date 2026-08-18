@@ -43,11 +43,13 @@ describe('Platform workspace migration recovery', () => {
 	it('materializes byte-identical configuration assets into templates and the Platform root', () => {
 		const seed = 'name: platform\n';
 		const scene = 'kind: scene\n';
-		const assets = platformConfigurationAssets(seed, scene, ['platform-local-managed-codex']);
+		const agents = 'name: agents\n';
+		const assets = platformConfigurationAssets(agents, seed, scene, ['platform-local-managed-codex']);
 
 		expect(assets).toContainEqual({ path: 'scenes/team-project-portfolio-demo.yaml', content: scene });
 		expect(assets).toContainEqual({ path: 'templates/platform-local-managed-codex/template/scenes/team-project-portfolio-demo.yaml', content: scene });
 		expect(assets).toContainEqual({ path: 'templates/platform-local-managed-codex/template/seeds/platform.yaml', content: seed });
+		expect(assets).toContainEqual({ path: 'templates/platform-local-managed-codex/template/seeds/agents.yaml', content: agents });
 		expect(platformRuntimeFiles).toEqual(['treeseed.agents-capacity-provider.yaml', 'treeseed.platform-capacity-provider.yaml']);
 		expect(assets.every((asset) => asset.content.endsWith('\n'))).toBe(true);
 	});

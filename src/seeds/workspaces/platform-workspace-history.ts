@@ -119,10 +119,11 @@ export function normalizePlatformBoundaryVerifier(content: string) {
 		.replace('^\\s*profile: treeseed\\s*$', '^market: \\{ profile: treeseed \\}\\s*$');
 }
 
-export function platformConfigurationAssets(seedContent: string, sceneContent: string, templateIds: string[]): SnapshotFile[] {
+export function platformConfigurationAssets(agentSeedContent: string, platformSeedContent: string, sceneContent: string, templateIds: string[]): SnapshotFile[] {
 	return [
 		...templateIds.flatMap((id) => [
-			{ path: `templates/${id}/template/seeds/platform.yaml`, content: seedContent },
+			{ path: `templates/${id}/template/seeds/agents.yaml`, content: agentSeedContent },
+			{ path: `templates/${id}/template/seeds/platform.yaml`, content: platformSeedContent },
 			{ path: `templates/${id}/template/scenes/team-project-portfolio-demo.yaml`, content: sceneContent },
 		]),
 		{ path: 'scenes/team-project-portfolio-demo.yaml', content: sceneContent },
@@ -142,10 +143,11 @@ async function baseFiles(projectRoot: string, sourceRef: string): Promise<Snapsh
 		const observed = await git(projectRoot, ['show', `${sourceRef}:${sourcePath}`], { preserveOutput: true });
 		return { path: sourcePath.replace(/^platform-templates\//u, 'templates/'), content: observed.stdout };
 	}));
-	const seed = await git(projectRoot, ['show', `${sourceRef}:seeds/platform.yaml`], { preserveOutput: true });
+	const agentSeed = await git(projectRoot, ['show', `${sourceRef}:seeds/agents.yaml`], { preserveOutput: true });
+	const platformSeed = await git(projectRoot, ['show', `${sourceRef}:seeds/platform.yaml`], { preserveOutput: true });
 	const scene = await git(projectRoot, ['show', `${sourceRef}:scenes/team-project-portfolio-demo.yaml`], { preserveOutput: true });
 	const templateIds = templatePaths.filter((path) => path.endsWith('/template.config.json')).map((path) => path.split('/')[1]!).sort();
-	const configurationAssets = platformConfigurationAssets(seed.stdout, scene.stdout, templateIds);
+	const configurationAssets = platformConfigurationAssets(agentSeed.stdout, platformSeed.stdout, scene.stdout, templateIds);
 	return [
 		...copied,
 		...templates,

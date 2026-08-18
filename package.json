@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.12.63-dev.fix-platform-machine-identity.20260818T052054Z",
+  "version": "0.12.63-dev.fix-platform-template-assets.20260818T073936Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "Apache-2.0",
   "repository": {
