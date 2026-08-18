@@ -38,6 +38,39 @@ const CLI_RUNTIME_INPUTS = ['packages/cli/src','packages/cli/package.json'] as c
 
 const WEB_BUILD_ORDER = ['packages/sdk','packages/ui','packages/core','packages/admin'] as const;
 
+function runtimePackagePaths(surfaces: string[]) {
+	const required = new Set<string>();
+	if (surfaces.some((surface) => ['api', 'operations-runner'].includes(surface))) {
+		required.add('packages/sdk');
+		required.add('packages/api');
+	}
+	if (surfaces.includes('web')) WEB_BUILD_ORDER.forEach((entry) => required.add(entry));
+	return [...required];
+}
+
+export function managedDevPackageInstallRequired(packageRoot: string) {
+	return existsSync(resolve(packageRoot, 'package-lock.json'))
+		&& !existsSync(resolve(packageRoot, 'node_modules', '.package-lock.json'));
+}
+
+function ensureManagedDevPackageDependencies(input: { tenantRoot: string; surfaces: string[] }) {
+	const installed: string[] = [];
+	for (const packagePath of runtimePackagePaths(input.surfaces)) {
+		const root = resolve(input.tenantRoot, packagePath);
+		if (!managedDevPackageInstallRequired(root)) continue;
+		try {
+			execFileSync('npm', ['--prefix', root, 'ci', '--workspaces=false', '--no-audit', '--no-fund'], {
+				cwd: input.tenantRoot,
+				stdio: 'inherit',
+			});
+			installed.push(packagePath);
+		} catch (error) {
+			throw new Error(`Managed development could not install the locked dependency closure for ${packagePath}.`, { cause: error });
+		}
+	}
+	return installed;
+}
+
 function newestMtime(path: string): number {
 	if (!existsSync(path)) return 0;
 	const stat = lstatSync(path);
@@ -64,6 +97,7 @@ export function managedDevStaleRuntimePackages(input: { tenantRoot:string; surfa
 }
 
 export function ensureManagedDevRuntimeBuilds(input: { tenantRoot:string; surfaces:string[] }) {
+	ensureManagedDevPackageDependencies(input);
 	const rebuilt: string[] = [];
 	for (const packagePath of managedDevStaleRuntimePackages(input)) {
 		const root = resolve(input.tenantRoot, packagePath);

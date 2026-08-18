@@ -14,7 +14,7 @@ function scriptCommand(tenantRoot: string, script: string, args: string[] = []) 
 function apiCommand(tenantRoot: string, script: 'api' | 'runner') {
 	return {
 		command: 'npm',
-		args: ['-w', 'packages/api', 'run', script === 'api' ? 'dev:api' : 'dev:runner'],
+		args: ['--prefix', resolve(tenantRoot, 'packages/api'), 'run', script === 'api' ? 'dev:api' : 'dev:runner'],
 		cwd: tenantRoot,
 	};
 }

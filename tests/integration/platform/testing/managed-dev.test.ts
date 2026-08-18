@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createIntegratedDevPlan, startManagedDev, stopManagedDev } from '../../../../src/local-dev/managed-dev.ts';
+import { managedDevPackageInstallRequired } from '../../../../src/local-dev/source-closure.ts';
 
 vi.mock('node:child_process', async (importOriginal) => ({
 	...await importOriginal<typeof import('node:child_process')>(),
@@ -49,6 +50,24 @@ describe('managed dev process ownership', () => {
 		expect(result.ok).toBe(true);
 		expect(kill).toHaveBeenCalledWith(-43121, 'SIGTERM');
 		expect(groupAlive).toBe(false);
+	});
+
+	it('requires a locked package-local install for a freshly materialized workset package', () => {
+		const cwd = mkdtempSync(resolve(tmpdir(), 'treeseed-managed-dev-install-'));
+		writeFileSync(resolve(cwd, 'package-lock.json'), '{"lockfileVersion":3}\n', 'utf8');
+
+		expect(managedDevPackageInstallRequired(cwd)).toBe(true);
+		mkdirSync(resolve(cwd, 'node_modules'), { recursive: true });
+		writeFileSync(resolve(cwd, 'node_modules/.package-lock.json'), '{"lockfileVersion":3}\n', 'utf8');
+		expect(managedDevPackageInstallRequired(cwd)).toBe(false);
+	});
+
+	it('runs API entrypoints from the independently installed package closure', () => {
+		const cwd = mkdtempSync(resolve(tmpdir(), 'treeseed-managed-dev-api-command-'));
+		const [api] = createIntegratedDevPlan({ cwd, surfaces: 'api' }).processes;
+
+		expect(api?.command).toBe('npm');
+		expect(api?.args).toEqual(['--prefix', resolve(cwd, 'packages/api'), 'run', 'dev:api']);
 	});
 
 	it('replaces a live managed process when its health check fails', async () => {
