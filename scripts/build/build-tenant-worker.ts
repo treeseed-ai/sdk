@@ -1,0 +1,47 @@
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { build } from 'esbuild';
+import { loadDeployConfig } from '../../src/platform/hosting/deploy-config.ts';
+import { loadManifest } from '../../src/platform/configuration/tenant-config.ts';
+import { parseSiteConfig } from '../../src/platform/utils/site-config-schema.ts';
+import { corePackageRoot } from '../../src/operations/services/agents/runtime-tools.ts';
+
+const tenantRoot = process.cwd();
+const workerEntry = resolve(corePackageRoot, 'dist/worker/forms-worker.js');
+const outFile = resolve(tenantRoot, '.treeseed/generated/worker/index.js');
+
+function ensureDir(filePath) {
+	mkdirSync(dirname(filePath), { recursive: true });
+}
+
+function loadSiteConfig(tenantConfig) {
+	const siteConfigPath = resolve(tenantRoot, tenantConfig.siteConfigPath);
+	return parseSiteConfig(readFileSync(siteConfigPath, 'utf8'));
+}
+
+const tenantConfig = loadManifest();
+const siteConfig = loadSiteConfig(tenantConfig);
+const deployConfig = loadDeployConfig();
+
+ensureDir(outFile);
+
+await build({
+	entryPoints: [workerEntry],
+	outfile: outFile,
+	bundle: true,
+	format: 'esm',
+	platform: 'browser',
+	target: 'es2022',
+	logLevel: 'silent',
+	external: ['cloudflare:sockets'],
+	define: {
+		__TREESEED_SITE_CONFIG__: JSON.stringify(siteConfig),
+		__TREESEED_DEPLOY_CONFIG__: JSON.stringify(deployConfig),
+	},
+});
+
+writeFileSync(
+	resolve(tenantRoot, '.treeseed/generated/worker/package.json'),
+	'{\n  "type": "module"\n}\n',
+	'utf8',
+);

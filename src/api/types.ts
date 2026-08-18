@@ -1,32 +1,28 @@
 import type { Hono } from 'hono';
-import type { AgentSdk } from '../sdk.ts';
 import type {
-	ApiPrincipal,
-	ApiScope,
-	DeviceCodeApproveRequest as SdkDeviceCodeApproveRequest,
-	DeviceCodePollRequest,
-	DeviceCodePollResponse,
-	DeviceCodeStartRequest,
-	DeviceCodeStartResponse,
-	RemoteWorkflowOperationRequest as WorkflowHttpOperationRequest,
-	RemoteWorkflowOperationResponse as ApiWorkflowOperationResponse,
-	RemoteSdkOperationRequest as SdkHttpOperationRequest,
-	TokenRefreshRequest,
-	TokenRefreshResponse,
-} from '../remote.ts';
+ApiPrincipal,
+ApiScope,
+RemoteWorkflowOperationResponse as ApiWorkflowOperationResponse,
+DeviceCodePollRequest,
+DeviceCodePollResponse,
+DeviceCodeStartRequest,
+DeviceCodeStartResponse,
+DeviceCodeApproveRequest as SdkDeviceCodeApproveRequest,
+RemoteSdkOperationRequest as SdkHttpOperationRequest,
+TokenRefreshRequest,
+TokenRefreshResponse,
+RemoteWorkflowOperationRequest as WorkflowHttpOperationRequest,
+} from '../entrypoints/clients/remote.ts';
+import type { AgentSdk } from '../entrypoints/models/sdk.ts';
 
 export type {
-	ApiPrincipal,
-	ApiScope,
-	DeviceCodePollRequest,
-	DeviceCodePollResponse,
-	DeviceCodeStartRequest,
-	DeviceCodeStartResponse,
-	WorkflowHttpOperationRequest,
-	ApiWorkflowOperationResponse,
-	SdkHttpOperationRequest,
-	TokenRefreshRequest,
-	TokenRefreshResponse,
+ApiPrincipal,
+ApiScope,ApiWorkflowOperationResponse,DeviceCodePollRequest,
+DeviceCodePollResponse,
+DeviceCodeStartRequest,
+DeviceCodeStartResponse,SdkHttpOperationRequest,
+TokenRefreshRequest,
+TokenRefreshResponse,WorkflowHttpOperationRequest
 };
 
 export type DeviceCodeApproveRequest = SdkDeviceCodeApproveRequest;
@@ -219,11 +215,11 @@ export interface ApiAppRuntime {
 	internalPrefix: string;
 }
 
-export type TreeseedApiContext = ApiAppRuntime;
+export type PlatformApiContext = ApiAppRuntime;
 
-export interface TreeseedApiExtension {
+export interface ApiExtension {
 	name: string;
-	mount(app: Hono<any>, context: TreeseedApiContext): void | Promise<void>;
+	mount(app: Hono<any>, context: PlatformApiContext): void | Promise<void>;
 }
 
 export interface ApiServerOptions {
@@ -243,7 +239,8 @@ export interface ApiServerOptions {
 		operations: ApiScope;
 	}>;
 	internalPrefix?: string;
-	extensions?: TreeseedApiExtension[];
+	extensions?: ApiExtension[];
 	extendApp?: (app: Hono<any>, runtime: ApiAppRuntime) => void;
 	log?: (message: string, details?: Record<string, unknown>) => void;
+	authenticateBearerOverride?: (token: string) => Promise<{ principal: ApiPrincipal; credential: ApiCredential } | null>;
 }

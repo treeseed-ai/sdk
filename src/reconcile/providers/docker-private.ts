@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { dockerBuildHeadroomBytes, observeLocalDiskCapacity } from './local-disk-capacity.ts';
 
 export type DockerCommandResult = {
 	ok: boolean;
@@ -23,6 +24,13 @@ function runDocker(args: string[], options: { cwd?: string; env?: NodeJS.Process
 		stderr: result.stderr ?? '',
 		args,
 	};
+}
+
+function pruneBuildCache(input: { pressure: boolean; requiredAvailableBytes?: number }) {
+	const args = input.pressure
+		? ['buildx', 'prune', '--force', '--min-free-space', String(input.requiredAvailableBytes ?? 0), '--reserved-space', '1GB', '--max-used-space', '4GB']
+		: ['buildx', 'prune', '--force', '--filter', 'until=24h', '--reserved-space', '2GB', '--max-used-space', '8GB'];
+	return runDocker(args);
 }
 
 export function inspectDockerAvailability() {
@@ -77,6 +85,14 @@ export function buildDockerImage(input: {
 	if (!existsSync(dockerfilePath)) {
 		throw new Error(`Dockerfile does not exist: ${dockerfilePath}`);
 	}
+	const headroomBytes = dockerBuildHeadroomBytes({ contextPath, env: input.env });
+	let diskCapacity = observeLocalDiskCapacity({ path: packageRoot, operationHeadroomBytes: headroomBytes, env: input.env });
+	let pressurePrune: DockerCommandResult | null = null;
+	if (!diskCapacity.ok) {
+		pressurePrune = pruneBuildCache({ pressure: true, requiredAvailableBytes: diskCapacity.requiredAvailableBytes });
+		diskCapacity = observeLocalDiskCapacity({ path: packageRoot, operationHeadroomBytes: headroomBytes, env: input.env });
+	}
+	if (!diskCapacity.ok) throw new Error(diskCapacity.reason ?? 'disk-capacity-insufficient');
 	const args = [
 		'buildx',
 		'build',
@@ -95,25 +111,30 @@ export function buildDockerImage(input: {
 	];
 	const result = runDocker(args, { cwd: packageRoot, env: input.env });
 	if (!result.ok) {
+		pruneBuildCache({ pressure: true, requiredAvailableBytes: diskCapacity.requiredAvailableBytes });
 		throw new Error(result.stderr.trim() || result.stdout.trim() || `docker ${args.join(' ')} failed`);
 	}
+	const cachePrune = pruneBuildCache({ pressure: false });
 	return {
 		...result,
 		contextPath,
 		dockerfilePath,
 		tags: input.tags,
 		platforms: input.platforms,
+		diskCapacity,
+		pressurePrune,
+		cachePrune,
 	};
 }
 
-export function runDockerCompose(input: {
+export function buildDockerComposeArgs(input: {
 	composeFile?: string;
 	composeFiles?: string[];
 	projectName: string;
-	cwd: string;
-	env?: NodeJS.ProcessEnv;
+	services?: string[];
 	profiles?: string[];
 	buildPolicy?: 'never' | 'missing' | 'always';
+	removeVolumes?: boolean;
 	action: 'config' | 'ps' | 'up' | 'down' | 'restart' | 'logs';
 }) {
 	const composeFiles = input.composeFiles?.length ? input.composeFiles : input.composeFile ? [input.composeFile] : [];
@@ -130,16 +151,62 @@ export function runDockerCompose(input: {
 		'-p',
 		input.projectName,
 	];
-	const args = input.action === 'config'
-		? [...base, 'config', '--hash']
+	const services = (input.services ?? []).filter((service) => service.trim().length > 0);
+	return input.action === 'config'
+		? [...base, 'config', '--hash', '*']
 		: input.action === 'ps'
 			? [...base, 'ps', '--format', 'json']
 			: input.action === 'up'
-				? [...base, 'up', '-d', ...buildArgs]
+				? [...base, 'up', '-d', ...buildArgs, ...services]
 				: input.action === 'down'
-					? [...base, 'down']
+					? [...base, 'down', ...(input.removeVolumes ? ['--volumes', '--remove-orphans'] : [])]
 					: input.action === 'restart'
-						? [...base, 'up', '-d', ...buildArgs, '--force-recreate']
+						? [...base, 'up', '-d', ...buildArgs, '--force-recreate', ...services]
 						: [...base, 'logs', '--tail', '200'];
+}
+
+export function runDockerCompose(input: {
+	composeFile?: string;
+	composeFiles?: string[];
+	projectName: string;
+	services?: string[];
+	cwd: string;
+	env?: NodeJS.ProcessEnv;
+	profiles?: string[];
+	buildPolicy?: 'never' | 'missing' | 'always';
+	removeVolumes?: boolean;
+	action: 'config' | 'ps' | 'up' | 'down' | 'restart' | 'logs';
+}) {
+	const args = buildDockerComposeArgs(input);
+	return runDocker(args, { cwd: input.cwd, env: input.env });
+}
+
+export function repairDockerComposeDataOwnership(input: {
+	composeFiles: string[];
+	projectName: string;
+	service: string;
+	cwd: string;
+	env?: NodeJS.ProcessEnv;
+	uid: number;
+	gid: number;
+}) {
+	if (!Number.isSafeInteger(input.uid) || input.uid < 0 || !Number.isSafeInteger(input.gid) || input.gid < 0) {
+		throw new Error('Docker Compose data ownership repair requires numeric host uid and gid values.');
+	}
+	const args = [
+		'compose',
+		...input.composeFiles.flatMap((composeFile) => ['-f', composeFile]),
+		'-p',
+		input.projectName,
+		'run',
+		'--rm',
+		'--no-deps',
+		'--entrypoint',
+		'chown',
+		input.service,
+		'-R',
+		`${input.uid}:${input.gid}`,
+		'/data',
+	];
 	return runDocker(args, { cwd: input.cwd, env: input.env });
 }

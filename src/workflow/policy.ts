@@ -1,21 +1,21 @@
 import { relative } from 'node:path';
-import { findNearestTreeseedRoot } from '../operations/services/workspace-tools.ts';
-import { currentBranch, repoRoot } from '../operations/services/workspace-save.ts';
-import { PRODUCTION_BRANCH, STAGING_BRANCH } from '../operations/services/git-workflow.ts';
-import { runTreeseedGitOk } from '../operations/services/git-runner.ts';
+import { runGitOk } from '../operations/services/operations/git-runner.ts';
+import { PRODUCTION_BRANCH,STAGING_BRANCH } from '../operations/services/operations/git-workflow.ts';
+import { currentBranch,repoRoot } from '../operations/services/treedx/workspaces/workspace-save.ts';
+import { findNearestRoot } from '../operations/services/treedx/workspaces/workspace-tools.ts';
 
-export type TreeseedWorkflowBranchRole = 'feature' | 'staging' | 'main' | 'detached' | 'none';
+export type WorkflowBranchRole = 'feature' | 'staging' | 'main' | 'detached' | 'none';
 
-export type TreeseedResolvedWorkflowPaths = {
+export type ResolvedWorkflowPaths = {
 	requestedCwd: string;
 	tenantRoot: string | null;
 	cwd: string;
 	repoRoot: string | null;
 	branchName: string | null;
-	branchRole: TreeseedWorkflowBranchRole;
+	branchRole: WorkflowBranchRole;
 };
 
-function safeRepoRoot(cwd: string) {
+export function safeRepoRoot(cwd: string) {
 	try {
 		return repoRoot(cwd);
 	} catch {
@@ -23,17 +23,17 @@ function safeRepoRoot(cwd: string) {
 	}
 }
 
-function repoHasHead(repoDir: string) {
-	return runTreeseedGitOk(['rev-parse', '--verify', 'HEAD'], { cwd: repoDir, mode: 'read' });
+export function repoHasHead(repoDir: string) {
+	return runGitOk(['rev-parse', '--verify', 'HEAD'], { cwd: repoDir, mode: 'read' });
 }
 
-function isInsideUnresolvedManagedWorktree(startCwd: string, tenantRoot: string | null) {
+export function isInsideUnresolvedManagedWorktree(startCwd: string, tenantRoot: string | null) {
 	if (!tenantRoot) return false;
 	const relativePath = relative(tenantRoot, startCwd).replaceAll('\\', '/');
 	return relativePath === '.treeseed/worktrees' || relativePath.startsWith('.treeseed/worktrees/');
 }
 
-export function classifyTreeseedBranchRole(branchName: string | null, repoDir: string | null): TreeseedWorkflowBranchRole {
+export function classifyBranchRole(branchName: string | null, repoDir: string | null): WorkflowBranchRole {
 	if (!repoDir) {
 		return 'none';
 	}
@@ -49,8 +49,8 @@ export function classifyTreeseedBranchRole(branchName: string | null, repoDir: s
 	return 'feature';
 }
 
-export function resolveTreeseedWorkflowPaths(startCwd: string): TreeseedResolvedWorkflowPaths {
-	const tenantRoot = findNearestTreeseedRoot(startCwd);
+export function resolveWorkflowPaths(startCwd: string): ResolvedWorkflowPaths {
+	const tenantRoot = findNearestRoot(startCwd);
 	if (isInsideUnresolvedManagedWorktree(startCwd, tenantRoot)) {
 		return {
 			requestedCwd: startCwd,
@@ -70,11 +70,11 @@ export function resolveTreeseedWorkflowPaths(startCwd: string): TreeseedResolved
 		cwd,
 		repoRoot: gitRoot,
 		branchName,
-		branchRole: classifyTreeseedBranchRole(branchName, gitRoot),
+		branchRole: classifyBranchRole(branchName, gitRoot),
 	};
 }
 
-export function workflowEnvironmentForBranchRole(branchRole: TreeseedWorkflowBranchRole) {
+export function workflowEnvironmentForBranchRole(branchRole: WorkflowBranchRole) {
 	if (branchRole === 'staging') return 'staging';
 	if (branchRole === 'main') return 'prod';
 	if (branchRole === 'feature') return 'local';

@@ -1,0 +1,436 @@
+import { describe, expect, it } from 'vitest';
+import { compileDesiredResourceGraph } from '../../../src/platform/reconciliation/desired-state.ts';
+import {
+	derivePackageProjectResources,
+	discoverPackageAdapters,
+	validatePackageManifests,
+} from '../../../src/operations/services/reconciliation/package-adapters.ts';
+import { assertDevelopmentInternalCommitReferences } from '../../../src/operations/services/packages/package-reference-policy.ts';
+import { inspectRepositoryGitLocks } from '../../../src/operations/services/operations/git-runner.ts';
+import { resolveTestPath, resolveTestRoot } from '../../support/workspace-test-root.ts';
+
+const testRoot = resolveTestRoot(import.meta.url);
+const workspaceRoot = testRoot.layout === 'workspace' ? testRoot.root : null;
+
+describe('canonical desired resource graph', () => {
+	it('compiles package, image, and reconcile resources from one manifest-driven graph', () => {
+		if (!workspaceRoot) return;
+		const graph = compileDesiredResourceGraph({
+			tenantRoot: workspaceRoot,
+			target: { kind: 'persistent', scope: 'staging' },
+		});
+
+		expect(graph.environment).toBe('staging');
+		expect(graph.packages.map((entry) => entry.id)).toEqual(expect.arrayContaining([
+			'@treeseed/sdk',
+			'@treeseed/cli',
+			'@treeseed/core',
+			'@treeseed/agent',
+			'@treeseed/api',
+			'treedx',
+		]));
+		expect(graph.resources.some((entry) => entry.kind === 'railway-service')).toBe(true);
+		expect(graph.resources.some((entry) => entry.kind === 'cloudflare-resource')).toBe(true);
+		expect(graph.resources.map((entry) => entry.id)).toEqual(expect.arrayContaining([
+			'package-image:treeseed/agent-manager',
+			'package-image:treeseed/agent-runner',
+			'package-image:treeseed/treedx',
+		]));
+		expect(graph.resources.map((entry) => entry.id)).not.toContain('package-image:treeseed/agent-api');
+		expect(Object.keys(graph.fingerprints).length).toBe(graph.resources.length);
+	});
+
+	it('validates every checked-out Treeseed package manifest', () => {
+		if (!workspaceRoot) return;
+		const results = validatePackageManifests(workspaceRoot);
+		expect(results.length).toBeGreaterThanOrEqual(8);
+		expect(results.every((entry) => entry.ok)).toBe(true);
+		const adapters = discoverPackageAdapters(workspaceRoot);
+		const dockerPackages = adapters.filter((adapter) => adapter.artifacts.some((artifact) => artifact.provider === 'docker'));
+		expect(dockerPackages.map((adapter) => adapter.id).sort()).toEqual(['@treeseed/agent', '@treeseed/api', 'treedx']);
+		for (const adapter of dockerPackages) {
+			expect(adapter.metadata.deploymentSource).toMatchObject({
+				staging: 'git',
+				prod: 'image',
+			});
+		}
+	});
+
+	it('blocks production image publish gates on reconciled DockerHub GitHub bindings', () => {
+		if (!workspaceRoot) return;
+		const graph = compileDesiredResourceGraph({
+			tenantRoot: workspaceRoot,
+			target: { kind: 'persistent', scope: 'prod' },
+		});
+		const resourceIds = graph.resources.map((entry) => entry.id);
+		expect(resourceIds).toEqual(expect.arrayContaining([
+			'github-secret-binding:@treeseed/agent:production:TREESEED_DOCKERHUB_TOKEN',
+			'github-variable-binding:@treeseed/agent:production:TREESEED_DOCKERHUB_USERNAME',
+			'github-secret-binding:@treeseed/api:production:TREESEED_DOCKERHUB_TOKEN',
+			'github-variable-binding:@treeseed/api:production:TREESEED_DOCKERHUB_USERNAME',
+			'github-secret-binding:treedx:production:DOCKERHUB_TOKEN',
+			'github-secret-binding:treedx:production:DOCKERHUB_USERNAME',
+		]));
+
+		const dependenciesFor = (id: string) =>
+			graph.resources.find((entry) => entry.id === id)?.dependencies ?? [];
+		for (const packageId of ['@treeseed/agent', '@treeseed/api']) {
+			expect(dependenciesFor(`release-gate:image-publish:${packageId}`)).toEqual(expect.arrayContaining([
+				`release-gate:verify:${packageId}`,
+				`github-secret-binding:${packageId}:production:TREESEED_DOCKERHUB_TOKEN`,
+				`github-variable-binding:${packageId}:production:TREESEED_DOCKERHUB_USERNAME`,
+			]));
+		}
+		expect(dependenciesFor('release-gate:image-publish:treedx')).toEqual(expect.arrayContaining([
+			'release-gate:verify:treedx',
+			'github-secret-binding:treedx:production:DOCKERHUB_TOKEN',
+			'github-secret-binding:treedx:production:DOCKERHUB_USERNAME',
+		]));
+	});
+
+	it('keeps development package manifests pinned to internal Git commit refs', () => {
+		if (!workspaceRoot) return;
+		expect(() => assertDevelopmentInternalCommitReferences(workspaceRoot)).not.toThrow();
+	});
+
+	it('exposes first-party package project architecture and docs readiness from package manifests', () => {
+		if (!workspaceRoot) return;
+		const adapters = discoverPackageAdapters(workspaceRoot);
+		const packageIds = adapters.map((entry) => entry.id);
+		expect(packageIds).toEqual(expect.arrayContaining([
+			'@treeseed/admin',
+			'@treeseed/agent',
+			'@treeseed/api',
+			'@treeseed/cli',
+			'@treeseed/core',
+			'@treeseed/sdk',
+			'@treeseed/ui',
+			'treedx',
+		]));
+		for (const adapter of adapters.filter((entry) =>
+			entry.id === 'treedx' || entry.id.startsWith('@treeseed/'))) {
+			expect(adapter.metadata.projectArchitecture).toMatchObject({
+				topology: 'split_site_content',
+				rootPath: '.',
+				sitePath: 'docs',
+				contentPath: 'src/content',
+				contentRuntimeSource: 'r2_preview_overlay',
+			});
+			expect(adapter.metadata.projectArchitecture).toHaveProperty('contentPublishTarget');
+			expect(JSON.stringify(adapter.metadata)).not.toContain('TREESEED_GITHUB_TOKEN');
+			expect(JSON.stringify(adapter.metadata)).not.toContain('ghp_');
+		}
+		const readiness = Object.fromEntries(adapters.map((entry) => [entry.id, entry.metadata.docsSiteReadiness]));
+		expect(readiness).toMatchObject({
+			'@treeseed/agent': 'ready',
+			'@treeseed/sdk': 'ready',
+			treedx: 'ready',
+			'@treeseed/admin': 'site_not_prepared',
+			'@treeseed/api': 'site_not_prepared',
+			'@treeseed/cli': 'site_not_prepared',
+			'@treeseed/core': 'site_not_prepared',
+			'@treeseed/ui': 'site_not_prepared',
+		});
+	});
+
+	it('derives safe package project resources for later seed expansion', () => {
+		if (!workspaceRoot) return;
+		const projects = derivePackageProjectResources(workspaceRoot);
+		expect(projects.map((entry) => entry.slug)).toEqual(expect.arrayContaining([
+			'admin',
+			'agent',
+			'api',
+			'cli',
+			'core',
+			'sdk',
+			'ui',
+			'treedx',
+		]));
+		for (const project of projects) {
+			expect(project).toMatchObject({
+				team: 'team:treeseed',
+				kind: 'package',
+				architecture: {
+					topology: 'single_repository_site',
+					rootPath: '.',
+					sitePath: 'docs',
+					contentPath: 'docs',
+				},
+				metadata: {
+					visibility: 'public',
+					releaseOwnership: 'treeseed.package.yaml',
+				},
+			});
+			expect(project.repository.gitUrl).toMatch(/^https:\/\/github\.com\/treeseed-ai\/.+\.git$/u);
+			expect(JSON.stringify(project)).not.toContain('TREESEED_GITHUB_TOKEN');
+			expect(JSON.stringify(project)).not.toContain('ghp_');
+			expect(JSON.stringify(project)).not.toContain('secret-token');
+		}
+	});
+
+	it('includes local TreeDX as the default content repository plane for local dev', () => {
+		if (!workspaceRoot) return;
+		const graph = compileDesiredResourceGraph({
+			tenantRoot: workspaceRoot,
+			target: { kind: 'persistent', scope: 'local' },
+			seedNames: ['treeseed', 'agents', 'platform'],
+		});
+
+		const localTreeDx = graph.resources.find((entry) => entry.id === 'local-treedx:team-primary');
+		expect(localTreeDx).toMatchObject({
+			kind: 'local-treedx',
+			provider: 'local',
+			packageId: 'treedx',
+			spec: expect.objectContaining({
+				contentSyncVersion: 2,
+				contentRepositoryAccessMode: 'treedx',
+				siteRepositoryAccessMode: 'filesystem',
+				projectRepositoryAccessMode: 'filesystem',
+				baseUrl: 'http://127.0.0.1:4000',
+			}),
+		});
+		expect(graph.resources.map((entry) => entry.id)).toEqual(expect.arrayContaining([
+			'local-docker-compose:mailpit',
+			'local-docker-compose:treedx',
+			'capacity-provider:agent-capacity-provider-treeseed-agents',
+			'capacity-provider:platform-operation-capacity-provider-treeseed-platform',
+			'local-seed-bootstrap:treeseed',
+		]));
+		expect(graph.resources.find((entry) => entry.id === 'local-seed-bootstrap:treeseed')).toMatchObject({
+			kind: 'local-seed-bootstrap',
+			provider: 'local',
+			packageId: '@treeseed/api',
+			dependencies: ['local-process:api', 'local-treedx:team-primary'],
+			spec: expect.objectContaining({
+				seedName: 'treeseed',
+				environments: 'local',
+				manifestDigest: expect.stringMatching(/^sha256:/u),
+				providerManifests: expect.arrayContaining([
+					expect.objectContaining({ seedName: 'agents' }),
+					expect.objectContaining({ seedName: 'platform' }),
+				]),
+			}),
+		});
+		const capacityProvider = graph.resources.find((entry) => entry.id === 'capacity-provider:agent-capacity-provider-treeseed-agents');
+		const platformProvider = graph.resources.find((entry) => entry.id === 'capacity-provider:platform-operation-capacity-provider-treeseed-platform');
+		expect(capacityProvider).toMatchObject({
+			kind: 'capacity-provider',
+			provider: 'local',
+			packageId: '@treeseed/agent',
+				spec: expect.objectContaining({
+					providerClass: 'agent',
+				roles: ['manager', 'runner'],
+				manifestDigest: expect.stringMatching(/^sha256:/u),
+				expectedConnectionCount: expect.any(Number),
+			}),
+		});
+		expect(platformProvider).toMatchObject({
+			kind: 'capacity-provider', provider: 'local', packageId: '@treeseed/agent',
+			spec: expect.objectContaining({ providerClass: 'platform-operation', roles: ['manager', 'runner'], expectedConnectionCount: 1 }),
+		});
+		const capacityProviderCompose = graph.resources.find((entry) => entry.id === 'local-docker-compose:capacity-provider:agent-capacity-provider-treeseed-agents');
+		const platformProviderCompose = graph.resources.find((entry) => entry.id === 'local-docker-compose:capacity-provider:platform-operation-capacity-provider-treeseed-platform');
+		expect(capacityProviderCompose?.spec).toEqual(expect.objectContaining({
+			manifestDigest: capacityProvider?.spec.manifestDigest,
+			buildPolicy: 'never',
+			managedStorage: expect.objectContaining({ custody: 'capacity-provider', servicePath: '/data' }),
+		}));
+		expect(capacityProviderCompose?.dependencies).toEqual(expect.arrayContaining([
+			'docker-image-build:treeseed/agent-runtime',
+		]));
+		const runtimeImage = graph.resources.find((entry) => entry.id === 'docker-image-build:treeseed/agent-runtime');
+		expect(runtimeImage?.spec).toEqual(expect.objectContaining({
+			target: 'agent-runtime',
+			tags: ['treeseed/agent-manager:local', 'treeseed/agent-runner:local'],
+			prepareCommand: expect.objectContaining({ args: expect.arrayContaining([expect.stringContaining('--prepare-only')]) }),
+		}));
+		expect(graph.resources.find((entry) => entry.id === 'docker-image-build:treeseed/agent-manager')).toBeUndefined();
+		expect(graph.resources.find((entry) => entry.id === 'docker-image-build:treeseed/agent-runner')).toBeUndefined();
+		expect(platformProviderCompose?.spec).toEqual(expect.objectContaining({
+			manifestDigest: platformProvider?.spec.manifestDigest,
+			projectName: expect.stringContaining('platform-operation'),
+			managedStorage: expect.objectContaining({ custody: 'capacity-provider', providerClass: 'platform-operation' }),
+		}));
+		expect(capacityProviderCompose?.spec.env).toEqual(expect.objectContaining({
+			TREESEED_CODEX_AUTH_FILE: '/run/treeseed-secrets/codex-auth.json',
+		}));
+		expect(platformProviderCompose?.spec.env).not.toHaveProperty('TREESEED_CODEX_AUTH_FILE');
+		expect(platformProviderCompose?.spec.env).not.toHaveProperty('TREESEED_HOST_CODEX_AUTH_FILE');
+		expect(capacityProviderCompose?.spec.dataDir).not.toBe(platformProviderCompose?.spec.dataDir);
+		expect(capacityProviderCompose?.spec.projectName).not.toBe(platformProviderCompose?.spec.projectName);
+		expect(graph.resources.find((entry) => entry.id === 'local-docker-compose:treedx')?.spec).toEqual(expect.objectContaining({
+			managedStorage: expect.objectContaining({ custody: 'treedx', servicePath: '/var/lib/treedx' }),
+		}));
+		expect(graph.resources.find((entry) => entry.id === 'local-process:operations-runner')).toMatchObject({
+			dependencies: ['local-process:api'], spec: { surfaces: ['operations-runner'],
+				env: { TREESEED_TENANT_ROOT: root } },
+		});
+		expect(capacityProvider?.spec).not.toHaveProperty('healthEndpoint');
+		const mailpit = graph.resources.find((entry) => entry.id === 'local-docker-compose:mailpit');
+		expect(mailpit).toMatchObject({
+			kind: 'local-docker-compose',
+			provider: 'local',
+			packageId: '@treeseed/sdk',
+			serviceId: 'mailpit',
+			spec: expect.objectContaining({
+				projectName: 'treeseed-local-mailpit',
+				composeFile: 'packages/sdk/src/treeseed/services/compose.yml',
+			}),
+		});
+	});
+
+	it('selects capacity providers only from the exact requested seed set', () => {
+		if (!workspaceRoot) return;
+		const providerIds = (seedNames: string[]) => compileDesiredResourceGraph({
+			tenantRoot: workspaceRoot,
+			target: { kind: 'persistent', scope: 'local' },
+			seedNames,
+		}).resources.filter((entry) => entry.kind === 'capacity-provider').map((entry) => entry.id).sort();
+
+		expect(providerIds(['treeseed'])).toEqual([]);
+		expect(providerIds(['treeseed', 'agents'])).toEqual([
+			'capacity-provider:agent-capacity-provider-treeseed-agents',
+		]);
+		expect(providerIds(['treeseed', 'platform'])).toEqual([
+			'capacity-provider:platform-operation-capacity-provider-treeseed-platform',
+		]);
+		expect(providerIds(['treeseed', 'agents', 'platform'])).toEqual([
+			'capacity-provider:agent-capacity-provider-treeseed-agents',
+			'capacity-provider:platform-operation-capacity-provider-treeseed-platform',
+		]);
+	});
+
+	it('adds project architecture diagnostics to local dev without cloning content by default', () => {
+		if (!workspaceRoot) return;
+		const graph = compileDesiredResourceGraph({
+			tenantRoot: workspaceRoot,
+			target: { kind: 'persistent', scope: 'local' },
+		});
+		const materialization = graph.resources.filter((entry) => entry.kind === 'local-content-materialization');
+
+		expect(materialization.length).toBeGreaterThanOrEqual(2);
+		expect(materialization.map((entry) => entry.spec.projectSlug)).toEqual(expect.arrayContaining(['market', 'karyon']));
+		expect(materialization.find((entry) => entry.spec.projectSlug === 'market')?.spec).toMatchObject({
+			topology: 'single_repository_site',
+			rootPath: '.',
+			sitePath: '.',
+			contentPath: 'src/content',
+			localContentMaterialization: 'existing_path',
+			requestedLocalContentMode: 'auto',
+			executeRequested: false,
+		});
+		expect(materialization.find((entry) => entry.spec.projectSlug === 'karyon')?.spec).toMatchObject({
+			topology: 'single_repository_site',
+			sitePath: 'docs',
+			contentRuntimeSource: 'treedx_snapshot',
+			localContentMaterialization: 'none',
+			contentSourceMode: 'treedx',
+			requestedLocalContentMode: 'auto',
+			executeRequested: false,
+		});
+	});
+
+	it('plans managed local content materialization only when preview or edit is requested', () => {
+		if (!workspaceRoot) return;
+		const graph = compileDesiredResourceGraph({
+			tenantRoot: workspaceRoot,
+			target: { kind: 'persistent', scope: 'local' },
+			localContent: 'preview',
+		});
+		const karyon = graph.resources.find((entry) =>
+			entry.kind === 'local-content-materialization' && entry.spec.projectSlug === 'karyon');
+
+		expect(karyon?.spec).toMatchObject({
+			localContentMaterialization: 'managed_clone',
+			requestedLocalContentMode: 'preview',
+			executeRequested: true,
+			sourceRepoSlug: 'karyon-life/karyon',
+		});
+		expect(JSON.stringify(karyon)).not.toContain('TREESEED_GITHUB_TOKEN');
+		expect(JSON.stringify(karyon)).not.toContain('secret-token');
+	});
+
+	it('includes first-party starter templates in release gate planning', () => {
+		if (!workspaceRoot) return;
+		const graph = compileDesiredResourceGraph({
+			tenantRoot: workspaceRoot,
+			target: { kind: 'persistent', scope: 'prod' },
+		});
+
+		expect(graph.templates.map((entry) => entry.id)).toEqual(expect.arrayContaining([
+			'engineering',
+			'research',
+		]));
+		expect(graph.resources.map((entry) => entry.id)).toEqual(expect.arrayContaining([
+			'template-manifest:engineering',
+			'template-manifest:research',
+			'release-gate:template-verify:engineering',
+			'release-gate:template-release-record:engineering',
+		]));
+		expect(graph.resources.find((entry) => entry.id === 'release-gate:hosted-reconcile:prod:all')?.dependencies)
+			.toEqual(expect.arrayContaining([
+				'release-gate:template-release-record:engineering',
+				'release-gate:template-release-record:research',
+			]));
+	});
+
+	it('reconciles first-party starter content into isolated local TreeDX repositories', () => {
+		if (!workspaceRoot) return;
+		const graph = compileDesiredResourceGraph({
+			tenantRoot: workspaceRoot,
+			target: { kind: 'persistent', scope: 'local' },
+		});
+		const treeDx = graph.resources.find((entry) => entry.id === 'local-treedx:team-primary');
+		const projects = Array.isArray(treeDx?.spec.projects) ? treeDx.spec.projects : [];
+
+		expect(projects).toEqual(expect.arrayContaining([
+			expect.objectContaining({
+				projectKey: 'template:engineering',
+				slug: 'starter-engineering',
+				repositoryName: 'treeseed-starter-engineering',
+				contentPath: 'template/src/content',
+			}),
+			expect.objectContaining({
+				projectKey: 'template:research',
+				slug: 'starter-research',
+				repositoryName: 'treeseed-starter-research',
+				contentPath: 'template/src/content',
+			}),
+		]));
+	});
+
+	it('orders package release verify gates by declared internal package dependencies', () => {
+		if (!workspaceRoot) return;
+		const graph = compileDesiredResourceGraph({
+			tenantRoot: workspaceRoot,
+			target: { kind: 'persistent', scope: 'staging' },
+		});
+		const dependenciesFor = (id: string) =>
+			graph.resources.find((entry) => entry.id === id)?.dependencies ?? [];
+
+		expect(dependenciesFor('release-gate:verify:@treeseed/core')).toEqual(expect.arrayContaining([
+			'release-gate:verify:@treeseed/sdk',
+			'release-gate:verify:@treeseed/ui',
+		]));
+		expect(dependenciesFor('release-gate:verify:@treeseed/admin')).toEqual(expect.arrayContaining([
+			'release-gate:verify:@treeseed/core',
+			'release-gate:verify:@treeseed/sdk',
+			'release-gate:verify:@treeseed/ui',
+		]));
+		expect(dependenciesFor('release-gate:verify:@treeseed/api')).toEqual(expect.arrayContaining([
+			'release-gate:verify:@treeseed/cli',
+			'release-gate:verify:@treeseed/sdk',
+		]));
+		expect(graph.resources.find((entry) => entry.id === 'release-gate:npm-publish:@treeseed/sdk')?.spec)
+			.toMatchObject({
+				repository: 'treeseed-ai/sdk',
+			});
+		expect(graph.resources.map((entry) => entry.id)).not.toContain('release-gate:npm-publish:@treeseed/reviewer');
+	});
+
+	it('reports Git index lock diagnostics without mutating by default', () => {
+		const diagnostic = inspectRepositoryGitLocks(workspaceRoot ?? resolveTestPath(testRoot, 'packages/sdk') ?? testRoot.root);
+		expect(diagnostic.repoRoot).toBeTruthy();
+		expect(diagnostic.removed).toBe(false);
+	});
+});

@@ -1,5 +1,5 @@
-import type { NormalizedSeedResource, SeedCurrentResource, SeedDiagnostic, SeedEnvironment, SeedManifest, SeedOperationRecipe, SeedOperationRecipePlan, SeedOperationRecipeStep, SeedPlan, SeedPlanAction, SeedPlanActionType, SeedPlanSummary } from './types.js';
 import { normalizeSeedResources } from './normalize.js';
+import type { NormalizedSeedResource,SeedCurrentResource,SeedDiagnostic,SeedEnvironment,SeedManifest,SeedOperationRecipe,SeedOperationRecipePlan,SeedOperationRecipeStep,SeedPlan,SeedPlanAction,SeedPlanActionType,SeedPlanSummary } from './types.js';
 
 const ACTION_TYPES: SeedPlanActionType[] = ['create', 'update', 'unchanged', 'skip', 'delete', 'error'];
 
@@ -102,10 +102,15 @@ export function createSeedPlan(input: {
 		ok: summary.error === 0 && !(input.diagnostics ?? []).some((diagnostic) => diagnostic.severity === 'error'),
 		seed: input.manifest.name,
 		version: input.manifest.version,
+		references: [...(input.manifest.references ?? [])],
 		mode: input.mode,
 		environments: input.environments,
 		summary,
 		actions,
+		runtime: {
+			capacityProviders: input.manifest.runtime.capacityProviders.filter((provider) => (provider.environments?.length ? provider.environments : input.manifest.environments).some((environment) => input.environments.includes(environment))),
+			agentLabServicePrincipals: input.manifest.runtime.agentLabServicePrincipals.filter((principal) => (principal.environments?.length ? principal.environments : input.manifest.environments).some((environment) => input.environments.includes(environment))),
+		},
 		recipes,
 		diagnostics: input.diagnostics ?? [],
 		manifestPath: input.manifestPath,
@@ -114,18 +119,8 @@ export function createSeedPlan(input: {
 
 function actionKindLabel(action: SeedPlanAction) {
 	switch (action.kind) {
-		case 'repositoryHost':
-			return 'repository host';
 		case 'hubRepository':
 			return 'hub repository';
-		case 'capacityProvider':
-			return 'capacity provider';
-		case 'capacityLane':
-			return 'lane';
-		case 'capacityGrant':
-			return 'grant';
-		case 'workPolicy':
-			return 'work policy';
 		case 'catalogArtifact':
 			return 'catalog artifact';
 		default:

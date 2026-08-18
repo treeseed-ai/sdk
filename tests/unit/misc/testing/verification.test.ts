@@ -1,0 +1,292 @@
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { afterEach, describe, expect, it } from 'vitest';
+import { getVerifyDriverStatus, runVerifyDriver } from '../../../../src/entrypoints/runtime/verification.ts';
+
+async function createPackage(
+	root: string,
+	name: string,
+	dependencies?: Record<string, string>,
+) {
+	const dirName = name.split('/').pop() ?? name;
+	const packageRoot = join(root, 'packages', dirName);
+	await mkdir(packageRoot, { recursive: true });
+	await writeFile(
+		join(packageRoot, 'package.json'),
+		JSON.stringify({
+			name,
+			version: '0.0.0',
+			type: 'module',
+			scripts: {
+				'verify:direct': 'echo direct',
+			},
+			...(dependencies ? { dependencies } : {}),
+		}, null, 2),
+	);
+	await mkdir(join(packageRoot, '.github', 'workflows'), { recursive: true });
+	await writeFile(join(packageRoot, '.github', 'workflows', 'verify.yml'), 'name: Verify\n');
+	return packageRoot;
+}
+
+async function createWorkspaceFixture(
+	currentPackageName: string,
+	currentDependencies?: Record<string, string>,
+) {
+	const root = await mkdtemp(join(tmpdir(), 'treeseed-sdk-verification-'));
+	const currentPackageRoot = await createPackage(root, currentPackageName, currentDependencies);
+	return { root, currentPackageRoot };
+}
+
+describe('verify driver', () => {
+	afterEach(() => {
+		delete process.env.GITHUB_ACTIONS;
+		delete process.env.TREESEED_VERIFY_DRIVER;
+		delete process.env.TREESEED_VERIFY_EVENT;
+		delete process.env.TREESEED_VERIFY_ACT_UBUNTU_LATEST_IMAGE;
+		delete process.env.TREESEED_VERIFY_PACKAGE_ISOLATED;
+	});
+
+	it('detects local sibling treeseed dependencies in a packages workspace', async () => {
+		delete process.env.GITHUB_ACTIONS;
+		const fixture = await createWorkspaceFixture('@treeseed/core', {
+			'@treeseed/sdk': '^0.3.1',
+		});
+		await createPackage(fixture.root, '@treeseed/sdk');
+
+		try {
+			const status = getVerifyDriverStatus({ packageRoot: fixture.currentPackageRoot, driver: 'auto' });
+
+			expect(status.workspaceRoot).toBe(fixture.root);
+			expect(status.currentPackageName).toBe('@treeseed/core');
+			expect(status.localPackageNames).toEqual(['@treeseed/core', '@treeseed/sdk']);
+			expect(status.localSiblingDependencies).toEqual(['@treeseed/sdk']);
+			expect(status.prefersDirectForLocalWorkspace).toBe(true);
+		} finally {
+			await rm(fixture.root, { recursive: true, force: true });
+		}
+	}, 20_000);
+
+	it('includes fixture-only extra local sibling dependencies for action verification', async () => {
+		const fixture = await createWorkspaceFixture('@treeseed/core', {
+			'@treeseed/sdk': '^0.3.1',
+		});
+		await createPackage(fixture.root, '@treeseed/sdk');
+		await createPackage(fixture.root, '@treeseed/agent');
+		const calls: Array<{ command: string; args: string[]; cwd: string }> = [];
+
+		try {
+			const status = getVerifyDriverStatus({
+				packageRoot: fixture.currentPackageRoot,
+				driver: 'act',
+				localExtraSiblingDependencies: ['@treeseed/agent'],
+			});
+			expect(status.localSiblingDependencies).toEqual(['@treeseed/sdk', '@treeseed/agent']);
+
+			expect(runVerifyDriver({
+				packageRoot: fixture.currentPackageRoot,
+				driver: 'act',
+				localExtraSiblingDependencies: ['@treeseed/agent'],
+				checkCommand() {
+					return { ok: true, detail: '' };
+				},
+				runCommand(command, args, cwd) {
+					calls.push({ command, args, cwd });
+					return 0;
+				},
+			})).toBe(0);
+
+			const workflow = await readFile(calls[0]?.args[3] ?? '', 'utf8');
+			expect(workflow).toContain('treeseed_npm_retry()');
+			expect(workflow).toContain('treeseed_npm_retry --prefix packages/sdk ci --workspaces=false');
+			expect(workflow).toContain('treeseed_npm_retry --prefix packages/agent ci --workspaces=false');
+			expect(workflow).toContain('ln -s ../../../agent node_modules/@treeseed/agent');
+		} finally {
+			await rm(fixture.root, { recursive: true, force: true });
+		}
+	});
+
+	it('does not prefer direct without local sibling treeseed dependencies', async () => {
+		const fixture = await createWorkspaceFixture('@treeseed/sdk');
+		await createPackage(fixture.root, '@treeseed/core', {
+			'@treeseed/sdk': '^0.3.1',
+		});
+
+		try {
+			const status = getVerifyDriverStatus({ packageRoot: fixture.currentPackageRoot });
+			expect(status.localPackageNames).toEqual(['@treeseed/core', '@treeseed/sdk']);
+			expect(status.localSiblingDependencies).toEqual([]);
+			expect(status.prefersDirectForLocalWorkspace).toBe(false);
+		} finally {
+			await rm(fixture.root, { recursive: true, force: true });
+		}
+	});
+
+	it('prefers verify:direct in auto mode for local sibling treeseed dependencies', async () => {
+		const fixture = await createWorkspaceFixture('@treeseed/core', {
+			'@treeseed/sdk': '^0.3.1',
+		});
+		await createPackage(fixture.root, '@treeseed/sdk');
+		const calls: Array<{ command: string; args: string[]; cwd: string }> = [];
+
+		try {
+			expect(runVerifyDriver({
+				packageRoot: fixture.currentPackageRoot,
+				checkCommand() {
+					return { ok: true, detail: '' };
+				},
+				runCommand(command, args, cwd) {
+					calls.push({ command, args, cwd });
+					return 0;
+				},
+			})).toBe(0);
+			expect(calls).toEqual([
+				{ command: 'npm', args: ['run', 'verify:direct'], cwd: fixture.currentPackageRoot },
+			]);
+		} finally {
+			await rm(fixture.root, { recursive: true, force: true });
+		}
+	});
+
+	it('still honors explicit act mode even when local sibling treeseed dependencies exist', async () => {
+		const fixture = await createWorkspaceFixture('@treeseed/core', {
+			'@treeseed/sdk': '^0.3.1',
+		});
+		await createPackage(fixture.root, '@treeseed/sdk');
+		const calls: Array<{ command: string; args: string[]; cwd: string }> = [];
+		process.env.TREESEED_VERIFY_PACKAGE_ISOLATED = '1';
+
+		try {
+			expect(runVerifyDriver({
+				packageRoot: fixture.currentPackageRoot,
+				driver: 'act',
+				checkCommand() {
+					return { ok: true, detail: '' };
+				},
+				runCommand(command, args, cwd) {
+					calls.push({ command, args, cwd });
+					return 0;
+				},
+			})).toBe(0);
+			expect(calls).toHaveLength(1);
+			const artifactServerPort = calls[0]?.args[7];
+			const cacheServerPort = calls[0]?.args[9];
+			expect(Number(artifactServerPort)).toBeGreaterThan(0);
+			expect(Number(cacheServerPort)).toBeGreaterThan(0);
+			expect(artifactServerPort).not.toBe(cacheServerPort);
+			expect(calls[0]).toMatchObject({
+				command: 'gh',
+				args: [
+					'act',
+					'workflow_dispatch',
+					'-W',
+					expect.stringMatching(/treeseed-verify-act-.*\/verify\.yml$/),
+					'-j',
+					'verify',
+					'--artifact-server-port',
+					artifactServerPort,
+					'--cache-server-port',
+					cacheServerPort,
+					'-P',
+					'ubuntu-latest=catthehacker/ubuntu:act-latest',
+				],
+				cwd: fixture.root,
+			});
+			const workflow = await readFile(calls[0].args[3], 'utf8');
+			expect(workflow).toContain('treeseed_npm_retry --prefix packages/sdk ci --workspaces=false');
+			expect(workflow).toContain('treeseed_npm_retry ci --workspaces=false');
+			expect(workflow).toContain('TREESEED_VERIFY_PACKAGE_ISOLATED: "1"');
+			expect(workflow).toContain('git rev-parse --is-inside-work-tree >/dev/null 2>&1');
+			expect(workflow).not.toContain('git checkout -- package.json || true');
+		} finally {
+			await rm(fixture.root, { recursive: true, force: true });
+		}
+	});
+
+	it('allows the act ubuntu-latest image mapping to be overridden', async () => {
+		const fixture = await createWorkspaceFixture('@treeseed/sdk');
+		const calls: Array<{ command: string; args: string[]; cwd: string }> = [];
+		process.env.TREESEED_VERIFY_ACT_UBUNTU_LATEST_IMAGE = 'example.local/ubuntu:verify';
+
+		try {
+			expect(runVerifyDriver({
+				packageRoot: fixture.currentPackageRoot,
+				driver: 'act',
+				checkCommand() {
+					return { ok: true, detail: '' };
+				},
+				runCommand(command, args, cwd) {
+					calls.push({ command, args, cwd });
+					return 0;
+				},
+			})).toBe(0);
+			const artifactServerPort = calls[0]?.args[7];
+			const cacheServerPort = calls[0]?.args[9];
+			expect(Number(artifactServerPort)).toBeGreaterThan(0);
+			expect(Number(cacheServerPort)).toBeGreaterThan(0);
+			expect(artifactServerPort).not.toBe(cacheServerPort);
+			expect(calls).toEqual([
+				{
+					command: 'gh',
+					args: [
+						'act',
+						'workflow_dispatch',
+						'-W',
+						'.github/workflows/verify.yml',
+						'-j',
+						'verify',
+						'--artifact-server-port',
+						artifactServerPort,
+						'--cache-server-port',
+						cacheServerPort,
+						'-P',
+						'ubuntu-latest=example.local/ubuntu:verify',
+					],
+					cwd: fixture.currentPackageRoot,
+				},
+			]);
+		} finally {
+			await rm(fixture.root, { recursive: true, force: true });
+		}
+	});
+
+	it('still honors direct mode and github actions direct execution', async () => {
+		const fixture = await createWorkspaceFixture('@treeseed/core', {
+			'@treeseed/sdk': '^0.3.1',
+		});
+		await createPackage(fixture.root, '@treeseed/sdk');
+		const calls: Array<{ command: string; args: string[]; cwd: string }> = [];
+
+		try {
+			expect(runVerifyDriver({
+				packageRoot: fixture.currentPackageRoot,
+				driver: 'direct',
+				checkCommand() {
+					return { ok: true, detail: '' };
+				},
+				runCommand(command, args, cwd) {
+					calls.push({ command, args, cwd });
+					return 0;
+				},
+			})).toBe(0);
+
+			process.env.GITHUB_ACTIONS = 'true';
+			expect(runVerifyDriver({
+				packageRoot: fixture.currentPackageRoot,
+				checkCommand() {
+					return { ok: true, detail: '' };
+				},
+				runCommand(command, args, cwd) {
+					calls.push({ command, args, cwd });
+					return 0;
+				},
+			})).toBe(0);
+			expect(calls).toEqual([
+				{ command: 'npm', args: ['run', 'verify:direct'], cwd: fixture.currentPackageRoot },
+				{ command: 'npm', args: ['run', 'verify:direct'], cwd: fixture.currentPackageRoot },
+			]);
+		} finally {
+			await rm(fixture.root, { recursive: true, force: true });
+		}
+	});
+});

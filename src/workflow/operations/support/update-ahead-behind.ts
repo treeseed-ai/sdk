@@ -1,0 +1,213 @@
+import { runGitOk,runRepositoryGit } from "../../../operations/services/operations/git-runner.ts";
+import { repoRoot } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
+import { type WorkflowSession } from "../../session.ts";
+import { workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { WorkflowError } from '../recovery/workflow-write.ts';
+import { UpdateRepoResult,UpdateStrategy,gitOutput,localRemoteRefExists,sourceBranchExists,updateChangedFiles,updateConflictedFiles,updateHead,updateStatusLines } from '../workspace-lifecycle/workflow-switch.ts';
+import { resolveGeneratedDependencyMergeConflict } from './resolve-generated-dependency-conflict.ts';
+
+export function updateAheadBehind(repoDir: string, branch: string, sourceRef: string) {
+	if (!localRemoteRefExists(repoDir, sourceRef.replace(/^origin\//u, ''))) {
+		return { ahead: null, behind: null };
+	}
+	const output = gitOutput(['rev-list', '--left-right', '--count', `${branch}...${sourceRef}`], repoDir, true);
+	const [aheadRaw, behindRaw] = output.split(/\s+/u);
+	const ahead = Number.parseInt(aheadRaw ?? '', 10);
+	const behind = Number.parseInt(behindRaw ?? '', 10);
+	return {
+		ahead: Number.isFinite(ahead) ? ahead : null,
+		behind: Number.isFinite(behind) ? behind : null,
+	};
+}
+
+export function updatePlanChangedFiles(repoDir: string, sourceRef: string) {
+	if (!runGitOk(['show-ref', '--verify', `refs/remotes/${sourceRef}`], { cwd: repoDir, mode: 'read' })) {
+		return [];
+	}
+	const output = gitOutput(['diff', '--name-only', `HEAD...${sourceRef}`], repoDir, true);
+	return output ? output.split(/\r?\n/u).filter(Boolean).slice(0, 50) : [];
+}
+
+export function sourceTopologyIncludesPath(rootRepoDir: string, sourceBranch: string, relativePath: string) {
+	if (!relativePath || relativePath.startsWith('../')) return true;
+	return runRepositoryGit(['ls-tree', '--error-unmatch', `origin/${sourceBranch}`, '--', relativePath], {
+		cwd: rootRepoDir,
+		mode: 'read',
+		allowFailure: true,
+	}).status === 0;
+}
+
+export function planUpdateRepo(name: string, repoDir: string, branch: string, sourceBranch: string, strategy: UpdateStrategy, options: { allowMissingSource?: boolean } = {}): UpdateRepoResult {
+	const sourceRef = `origin/${sourceBranch}`;
+	const blockers: string[] = [];
+	if (!sourceBranchExists(repoDir, sourceBranch) && !options.allowMissingSource) {
+		blockers.push(`origin/${sourceBranch} does not exist`);
+	}
+	const sourceAvailable = sourceBranchExists(repoDir, sourceBranch);
+	const { ahead, behind } = blockers.length === 0 ? updateAheadBehind(repoDir, branch, sourceRef) : { ahead: null, behind: null };
+	const status: UpdateRepoResult['status'] = blockers.length > 0
+		? 'blocked'
+		: !sourceAvailable
+			? 'up-to-date'
+		: behind === 0
+			? 'up-to-date'
+			: strategy === 'ff-only' && ahead === 0
+				? 'fast-forward'
+				: 'merge-needed';
+	return {
+		name,
+		path: repoDir,
+		branch,
+		sourceRef,
+		action: blockers.length > 0 ? 'blocked' : 'planned',
+		beforeHead: updateHead(repoDir),
+		afterHead: null,
+		pushed: false,
+		changedFiles: updatePlanChangedFiles(repoDir, sourceRef),
+		blockers,
+		ahead,
+		behind,
+		status,
+		sourceAvailable,
+	};
+}
+
+export function ensureUpdateRepoReady(operation: 'update', repo: WorkflowSession['rootRepo'] | WorkflowSession['managedRepos'][number], expectedBranch?: string) {
+	if (repo.detached || !repo.branchName) {
+		workflowError(operation, 'validation_failed', `${repo.name} is detached; update requires attached branches.`, {
+			details: { repo },
+		});
+	}
+	if (expectedBranch && repo.branchName !== expectedBranch) {
+		workflowError(operation, 'validation_failed', `${repo.name} is on ${repo.branchName}, expected ${expectedBranch}.`, {
+			details: { repo, expectedBranch },
+		});
+	}
+	if (repo.dirty) {
+		workflowError(operation, 'validation_failed', `${repo.name} has local changes. Run \`npx trsd save --json "checkpoint before update"\` first.`, {
+			details: { repo },
+		});
+	}
+	if (!repo.hasOriginRemote) {
+		workflowError(operation, 'validation_failed', `${repo.name} is missing an origin remote.`, {
+			details: { repo },
+		});
+	}
+}
+
+export function formatUpdateConflict(repoName: string, repoDir: string, sourceBranch: string, targetBranch: string) {
+	const files = updateConflictedFiles(repoDir);
+	const status = updateStatusLines(repoDir);
+	return {
+		message: [
+			`Treeseed update hit a merge conflict in ${repoName}.`,
+			`Repository: ${repoDir}`,
+			`Target branch: ${targetBranch}`,
+			`Source branch: origin/${sourceBranch}`,
+			files.length > 0 ? `Conflicted files:\n${files.map((file) => `- ${file}`).join('\n')}` : 'Conflicted files: inspect git status.',
+			'Resolve the conflicts in that repository, then run `npx trsd save --json "resolve update conflict"` or abort manually and rerun `npx trsd update --from staging --json`.',
+		].join('\n'),
+		files,
+		status,
+	};
+}
+
+export function mergeUpdateRepo(input: {
+	name: string;
+	repoDir: string;
+	branch: string;
+	sourceBranch: string;
+	strategy: UpdateStrategy;
+	push: boolean;
+	allowMissingSource?: boolean;
+}) {
+	const sourceRef = `origin/${input.sourceBranch}`;
+	const beforeHead = updateHead(input.repoDir);
+	runRepositoryGit(['fetch', 'origin'], { cwd: input.repoDir, mode: 'mutate' });
+	if (!sourceBranchExists(input.repoDir, input.sourceBranch)) {
+		if (input.allowMissingSource) {
+			return {
+				name: input.name, path: input.repoDir, branch: input.branch, sourceRef, action: 'up-to-date' as const, beforeHead, afterHead: beforeHead, pushed: false,
+				changedFiles: [], blockers: [], sourceAvailable: false,
+			};
+		}
+		return {
+			name: input.name, 			path: input.repoDir, 			branch: input.branch, 			sourceRef, 			action: 'blocked' as const, 			beforeHead, 			afterHead: beforeHead, 			pushed: false,
+			changedFiles: [],
+			blockers: [`origin/${input.sourceBranch} does not exist`],
+		};
+	}
+	const mergeArgs = input.strategy === 'ff-only'
+		? ['merge', '--ff-only', sourceRef]
+		: ['merge', '--no-edit', sourceRef];
+	const merge = runRepositoryGit(mergeArgs, {
+		cwd: input.repoDir,
+		mode: 'mutate',
+		allowFailure: true,
+	});
+	if (merge.status !== 0) {
+		const conflict = formatUpdateConflict(input.name, input.repoDir, input.sourceBranch, input.branch);
+		const generatedResolution = input.strategy === 'merge'
+			? resolveGeneratedDependencyMergeConflict(input.repoDir, conflict.files)
+			: null;
+		if (!generatedResolution) {
+			throw new WorkflowError('update', 'merge_conflict', conflict.message, {
+				details: {
+					repo: input.name, 					path: input.repoDir, 					files: conflict.files, 					status: conflict.status, 					sourceBranch: input.sourceBranch, 					targetBranch: input.branch,
+				},
+				exitCode: 12,
+			});
+		}
+	}
+	const afterHead = updateHead(input.repoDir);
+	const changed = beforeHead !== afterHead;
+	let pushed = false;
+	if (changed && input.push) {
+		runRepositoryGit(['push', 'origin', input.branch], { cwd: input.repoDir, mode: 'mutate' });
+		pushed = true;
+	}
+	return {
+		name: input.name,
+		path: input.repoDir,
+		branch: input.branch,
+		sourceRef,
+		action: changed ? (input.strategy === 'ff-only' ? 'fast-forwarded' as const : 'merged' as const) : 'up-to-date' as const,
+		beforeHead,
+		afterHead,
+		pushed,
+		changedFiles: [],
+		blockers: [],
+	};
+}
+
+export function commitRootUpdateIfNeeded(root: string, branch: string, push: boolean, ownedPaths: string[]) {
+	const gitRoot = repoRoot(root);
+	const changedFiles = updateChangedFiles(gitRoot);
+	const ownedPathSet = new Set(ownedPaths);
+	const committedFiles = changedFiles.filter((path) => ownedPathSet.has(path));
+	const preservedFiles = changedFiles.filter((path) => !ownedPathSet.has(path));
+	if (committedFiles.length === 0) {
+		let pushed = false;
+		if (push) {
+			runRepositoryGit(['push', 'origin', branch], { cwd: gitRoot, mode: 'mutate' });
+			pushed = true;
+		}
+		return {
+			committed: false, 			pushed, 			commitSha: updateHead(gitRoot), 			changedFiles: committedFiles, 			preservedFiles,
+		};
+	}
+	runRepositoryGit(['commit', '--only', '-m', `chore(workflow): update ${branch} from staging`, '--', ...committedFiles], { cwd: gitRoot, mode: 'mutate' });
+	const commitSha = updateHead(gitRoot);
+	let pushed = false;
+	if (push) {
+		runRepositoryGit(['push', 'origin', branch], { cwd: gitRoot, mode: 'mutate' });
+		pushed = true;
+	}
+	return {
+		committed: true,
+		pushed,
+		commitSha,
+		changedFiles: committedFiles,
+		preservedFiles,
+	};
+}

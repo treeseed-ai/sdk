@@ -1,0 +1,11 @@
+id: engineer
+slug: engineer
+name: Engineer
+status: active
+allowedModes: [planning, acting]
+requiredCapabilities: [engineering]
+kernelProfile: {}
+kernelPolicy: {}
+handlerRefs: {}
+outputContracts: {}
+metadata: {}

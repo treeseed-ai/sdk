@@ -1,0 +1,484 @@
+import { parseFrontmatterDocument,serializeFrontmatterDocument } from '../content/frontmatter.ts';
+import { buildBuiltinModelRegistry,resolveModelDefinition } from '../entrypoints/models/model-registry.ts';
+import { canonicalizeFrontmatter,normalizeMutationData,normalizeRecordToCanonicalShape } from '../entrypoints/models/sdk-fields.ts';
+import type { SdkModelDefinition,SdkModelRegistry } from '../entrypoints/models/sdk-types.ts';
+import { evaluateGovernanceProposalReadiness } from '../governance/policy/proposal-readiness.ts';
+import { validatePortableContentData } from '../content/validation/portable-content-data.ts';
+import { PROPOSAL_TYPE_ID_PATTERN } from '../agent-capacity/validation/proposal-type.ts';
+
+export type ContentAction =
+	| 'describe'
+	| 'query'
+	| 'read'
+	| 'create'
+	| 'update'
+	| 'link'
+	| 'validate'
+	| 'commit';
+
+export type ContentModel =
+	| 'page'
+	| 'note'
+	| 'question'
+	| 'proposal'
+	| 'decision'
+	| 'book'
+	| 'knowledge'
+	| 'objective'
+	| 'person'
+	| 'agent'
+	| 'discussion'
+	| 'discussion_message'
+	| 'discussion_event'
+	| 'group'
+	| 'group_edge'
+	| 'agent_context_query'
+	| 'agent_context_query_set'
+	| 'agent_instruction_template'
+	| 'discussion_topic'
+	| 'assignment_plan'
+	| 'assignment_status'
+	| 'assignment_summary'
+	| 'agent_evaluation';
+
+export interface ContentRelationInput {
+	field: string;
+	targetModel?: ContentModel | string;
+	targetSlug: string;
+}
+
+export interface ContentPlacement {
+	bookSlug?: string;
+	parentPath?: string;
+	path?: string;
+}
+
+export interface ContentOperationInput {
+	action: ContentAction;
+	model?: ContentModel | string;
+	id?: string;
+	slug?: string;
+	title?: string;
+	fields?: Record<string, unknown>;
+	body?: string;
+	query?: string;
+	filters?: unknown[];
+	relations?: ContentRelationInput[];
+	placement?: ContentPlacement;
+	commit?: {
+		enabled: boolean;
+		message?: string;
+	};
+}
+
+export interface ContentReference {
+	model: ContentModel;
+	collection: string;
+	slug: string;
+	id?: string;
+	path?: string;
+	href?: string;
+	subjectId?: string;
+	subjectField?: string;
+}
+
+export interface ContentDiagnostic {
+	severity: 'info' | 'warning' | 'error';
+	code: string;
+	message: string;
+	field?: string;
+}
+
+export interface ContentOperationResult {
+	ok: true;
+	action: ContentAction;
+	refs: ContentReference[];
+	changedPaths?: string[];
+	diagnostics: ContentDiagnostic[];
+	payload?: Record<string, unknown>;
+}
+
+export interface RenderContentInput {
+	model: ContentModel | string;
+	slug?: string;
+	title?: string;
+	fields?: Record<string, unknown>;
+	body?: string;
+	relations?: ContentRelationInput[];
+	placement?: ContentPlacement;
+	contentRoot?: string;
+	existingFrontmatter?: Record<string, unknown>;
+	existingContent?: string;
+	registry?: SdkModelRegistry;
+	now?: string;
+}
+
+export interface RenderedContentRecord {
+	model: ContentModel;
+	collection: string;
+	slug: string;
+	path: string;
+	frontmatter: Record<string, unknown>;
+	body: string;
+	content: string;
+	ref: ContentReference;
+	diagnostics: ContentDiagnostic[];
+}
+
+export interface ContentToolPreset {
+	id: string;
+	action: ContentAction;
+	model?: ContentModel;
+	title: string;
+	description: string;
+	inputSchema: Record<string, unknown>;
+}
+
+const CONTENT_MODELS = new Set<ContentModel>([
+	'page',
+	'note',
+	'question',
+	'proposal',
+	'decision',
+	'book',
+	'knowledge',
+	'objective',
+	'person',
+	'agent',
+	'discussion',
+	'discussion_message',
+	'discussion_event',
+	'group',
+	'group_edge',
+	'agent_context_query',
+	'agent_context_query_set',
+	'agent_instruction_template',
+	'discussion_topic',
+	'assignment_plan',
+	'assignment_status',
+	'assignment_summary',
+	'agent_evaluation',
+]);
+
+export const CONTENT_ACTIONS: ContentAction[] = [
+	'describe',
+	'query',
+	'read',
+	'create',
+	'update',
+	'link',
+	'validate',
+	'commit',
+];
+
+export const CONTENT_READ_ACTIONS = new Set<ContentAction>(['describe', 'query', 'read']);
+export const CONTENT_WRITE_ACTIONS = new Set<ContentAction>(['create', 'update', 'link', 'validate']);
+
+export function slugifyContent(value: unknown) {
+	return String(value ?? '')
+		.toLowerCase()
+		.trim()
+		.replace(/['"]/gu, '')
+		.replace(/[^a-z0-9/_-]+/gu, '-')
+		.replace(/\/+/gu, '/')
+		.replace(/^-+|-+$/gu, '')
+		.slice(0, 160);
+}
+
+function titleCase(value: string) {
+	return value.replace(/_/gu, ' ').replace(/\b\w/gu, (letter) => letter.toUpperCase());
+}
+
+function collectionFor(definition: SdkModelDefinition) {
+	return definition.contentCollection ?? `${definition.name}s`;
+}
+
+function toolNamespaceFor(definition: SdkModelDefinition) {
+	if (definition.name === 'knowledge') return 'knowledge';
+	return collectionFor(definition).replace(/-/gu, '_');
+}
+
+function extensionFor(model: string) {
+	return model === 'knowledge' ? 'md' : 'mdx';
+}
+
+function normalizedContentRoot(value?: string) {
+	const root = String(value ?? 'src/content').replace(/\\/gu, '/').replace(/^\.\//u, '').replace(/\/+$/u, '');
+	if (!root || root.startsWith('/') || root.split('/').includes('..')) {
+		throw new Error('contentRoot must be a safe repository-relative path.');
+	}
+	return root;
+}
+
+function contentPathFor(definition: SdkModelDefinition, slug: string, placement?: ContentPlacement, contentRoot?: string) {
+	const collection = collectionFor(definition);
+	const ext = extensionFor(definition.name);
+	const root = normalizedContentRoot(contentRoot);
+	if (placement?.path) {
+		const repositoryPath = placement.path.replace(/\\/gu, '/').replace(/^\.\//u, '').replace(/\/+$/u, '');
+		if (repositoryPath.startsWith(`${root}/`)) {
+			if (repositoryPath.split('/').includes('..') || !/^[A-Za-z0-9._/-]+$/u.test(repositoryPath)) {
+				throw new Error('placement.path must be a safe repository-relative content path.');
+			}
+			return /\.mdx?$/iu.test(repositoryPath) ? repositoryPath : `${repositoryPath}.${ext}`;
+		}
+		const safePath = slugifyContent(placement.path).replace(/\.(md|mdx)$/iu, '');
+		if (!safePath) throw new Error('placement.path must resolve to a safe content path.');
+		return `${root}/${collection}/${safePath}.${ext}`;
+	}
+	if (definition.name === 'knowledge' && placement?.parentPath) {
+		const parent = slugifyContent(placement.parentPath).replace(/\/$/u, '');
+		return `${root}/${collection}/${parent ? `${parent}/` : ''}${slug}.${ext}`;
+	}
+	return `${root}/${collection}/${slug}.${ext}`;
+}
+
+function normalizeContentModel(model: string, registry: SdkModelRegistry = buildBuiltinModelRegistry()) {
+	const definition = resolveModelDefinition(model, registry);
+	if (definition.storage !== 'content' || !definition.contentCollection) {
+		throw new Error(`Model "${model}" is not a content-backed TreeSeed model.`);
+	}
+	if (!CONTENT_MODELS.has(definition.name as ContentModel)) {
+		throw new Error(`Model "${model}" is not supported by TreeSeed content tools.`);
+	}
+	return definition as SdkModelDefinition & { name: ContentModel };
+}
+
+function defaultTitleField(definition: SdkModelDefinition) {
+	if (definition.fields.title) return 'title';
+	if (definition.fields.name) return 'name';
+	if (definition.fields.id) return 'id';
+	return 'title';
+}
+
+function frontmatterId(definition: SdkModelDefinition, slug: string) {
+	return `${definition.name}:${slug}`;
+}
+
+export function renderContentRecord(input: RenderContentInput): RenderedContentRecord {
+	const definition = normalizeContentModel(String(input.model), input.registry);
+	const existingDocument = typeof input.existingContent === 'string'
+		? parseFrontmatterDocument(input.existingContent)
+		: null;
+	const existingFrontmatter = {
+		...(existingDocument?.frontmatter ?? {}),
+		...(input.existingFrontmatter ?? {}),
+	};
+	const rawTitle = input.title
+		?? input.fields?.title
+		?? input.fields?.name
+		?? existingFrontmatter.title
+		?? existingFrontmatter.name;
+	const slug = slugifyContent(input.slug ?? rawTitle ?? input.id);
+	if (!slug) throw new Error('A title or safe slug is required.');
+	const now = input.now ?? new Date().toISOString();
+	const titleField = defaultTitleField(definition);
+	const rawFields = {
+		...(rawTitle ? { [titleField]: rawTitle } : {}),
+		...(input.fields ?? {}),
+		...(definition.fields.slug ? { slug } : {}),
+		...(definition.fields.updated_at ? { updated_at: input.fields?.updated_at ?? input.fields?.updatedAt ?? now } : {}),
+	};
+	const modelFieldNames = new Set([
+		...Object.keys(definition.fields),
+		...Object.values(definition.fields).flatMap((binding) => [
+			...(binding.aliases ?? []),
+			...(binding.contentKeys ?? []),
+		]),
+	]);
+	const fields = normalizeMutationData(
+		definition,
+		Object.fromEntries(Object.entries(rawFields).filter(([key]) => modelFieldNames.has(key))),
+	);
+	const frontmatter = canonicalizeFrontmatter(definition, existingFrontmatter, fields);
+	frontmatter.id = input.id ?? (typeof frontmatter.id === 'string' && frontmatter.id.trim() ? frontmatter.id : frontmatterId(definition, slug));
+	if (!frontmatter.slug && definition.fields.slug) frontmatter.slug = slug;
+	for (const relation of input.relations ?? []) {
+		if (!relation.field || !relation.targetSlug) continue;
+		const key = relation.field;
+		const current = frontmatter[key];
+		const next = Array.isArray(current) ? current.map(String) : typeof current === 'string' && current ? [current] : [];
+		frontmatter[key] = [...new Set([...next, relation.targetSlug])];
+	}
+	const body = String(input.body ?? existingDocument?.body ?? '').trim();
+	const collection = collectionFor(definition);
+	const recordPath = contentPathFor(definition, slug, input.placement, input.contentRoot);
+	const subjectFields = [
+		'about',
+		'relatedObjectives', 'related_objectives',
+		'relatedQuestions', 'related_questions',
+		'relatedProposals', 'related_proposals',
+		'relatedDecisions', 'related_decisions',
+	];
+	const requestedSubjectFields = (input.relations ?? [])
+		.map((relation) => relation.field)
+		.filter((field) => subjectFields.includes(field));
+	const subjectEntry = [...new Set([...requestedSubjectFields, ...subjectFields])].flatMap((field) => {
+		const value = frontmatter[field];
+		const candidate = Array.isArray(value) ? value[0] : value;
+		return typeof candidate === 'string' && candidate.trim() ? [{ field, id: candidate.trim() }] : [];
+	})[0];
+	const ref: ContentReference = {
+		model: definition.name,
+		collection,
+		slug,
+		id: typeof frontmatter.id === 'string' ? frontmatter.id : undefined,
+		path: recordPath,
+		href: `/app/work/${collection}/${encodeURIComponent(slug)}`,
+		...(subjectEntry ? { subjectId: subjectEntry.id, subjectField: subjectEntry.field } : {}),
+	};
+	return {
+		model: definition.name,
+		collection,
+		slug,
+		path: recordPath,
+		frontmatter,
+		body,
+		content: serializeFrontmatterDocument(frontmatter, body ? `\n${body}\n` : '\n'),
+		ref,
+		diagnostics: [],
+	};
+}
+
+export function validateContentRecord(model: string, source: string, registry: SdkModelRegistry = buildBuiltinModelRegistry()) {
+	const definition = normalizeContentModel(model, registry);
+	const parsed = parseFrontmatterDocument(source);
+	const diagnostics: ContentDiagnostic[] = [];
+	if (!parsed.frontmatter || typeof parsed.frontmatter !== 'object' || Array.isArray(parsed.frontmatter)) {
+		diagnostics.push({ severity: 'error', code: 'frontmatter_missing', message: 'Content frontmatter must be an object.' });
+	}
+	diagnostics.push(...validatePortableContentData(definition.name, parsed.frontmatter, registry).diagnostics);
+	return {
+		ok: diagnostics.every((entry) => entry.severity !== 'error'),
+		frontmatter: parsed.frontmatter,
+		body: parsed.body,
+		diagnostics,
+	};
+}
+
+export function validateProposalContentForSubmission(source: string) {
+	const parsed = parseFrontmatterDocument(source);
+	const frontmatter = parsed.frontmatter ?? {};
+	const readiness = evaluateGovernanceProposalReadiness({
+		title: String(frontmatter.title ?? ''), summary: String(frontmatter.summary ?? frontmatter.description ?? ''), body: parsed.body,
+		relatedObjectives: (frontmatter.relatedObjectives ?? frontmatter.related_objectives) as string[],
+		proposalTypes: [frontmatter.proposalType ?? frontmatter.proposal_type].filter((value): value is string => typeof value === 'string' && Boolean(value.trim())),
+		evidenceRefs: (frontmatter.evidenceRefs ?? frontmatter.evidence_refs) as string[], plan: frontmatter.plan,
+		contentProvenance: { contentPath: 'pending-commit', commitSha: 'pending-commit', digest: 'pending-commit' },
+	});
+	const diagnostics: ContentDiagnostic[] = readiness.missingContent.map((field) => ({ severity: 'error', code: 'proposal_plan_incomplete', field, message: `Agent proposal requires ${field}.` }));
+	if (typeof frontmatter.primaryContributor !== 'string' && typeof frontmatter.primary_contributor !== 'string') diagnostics.push({ severity: 'error', code: 'proposal_plan_incomplete', field: 'primary contributor', message: 'Agent proposal requires its author identity.' });
+	if (!PROPOSAL_TYPE_ID_PATTERN.test(String(frontmatter.proposalType ?? frontmatter.proposal_type ?? ''))) diagnostics.push({ severity: 'error', code: 'proposal_plan_incomplete', field: 'proposal type', message: 'Agent proposal requires a lowercase kebab-case proposal type.' });
+	return { ok: diagnostics.length === 0, readiness, diagnostics };
+}
+
+const GENERIC_MODEL_SCHEMA = { type: 'string' };
+const STRING_ARRAY_SCHEMA = { type: 'array', items: { type: 'string' } };
+
+export function genericContentInputSchema(action: ContentAction): Record<string, unknown> {
+	const properties: Record<string, unknown> = {
+		model: GENERIC_MODEL_SCHEMA,
+		id: { type: 'string' },
+		slug: { type: 'string' },
+		title: { type: 'string' },
+		fields: { type: 'object', additionalProperties: true },
+		body: { type: 'string' },
+		query: {
+			type: 'string',
+			maxLength: 200,
+			description: 'A short targeted search query. Use exact read operations for known IDs or paths instead of concatenating record identifiers.',
+		},
+		...(action === 'read' ? { path: { type: 'string', description: 'Exact repository-relative content path when the record uses hierarchical placement.' } } : {}),
+		filters: { type: 'array', items: { type: 'object', additionalProperties: true } },
+		relations: {
+			type: 'array',
+			minItems: action === 'link' ? 1 : 0,
+			items: {
+				type: 'object',
+				properties: { field: { type: 'string', minLength: 1 }, targetModel: { type: 'string' }, targetSlug: { type: 'string', minLength: 1 } },
+				required: ['field', 'targetSlug'],
+				additionalProperties: false,
+			},
+		},
+		placement: { type: 'object', additionalProperties: true },
+		message: { type: 'string' },
+	};
+	const required = action === 'commit'
+		? ['message']
+		: action === 'query'
+			? ['model']
+			: action === 'describe'
+				? []
+				: action === 'link' ? ['model', 'relations'] : ['model'];
+	return {
+		type: 'object',
+		properties,
+		required,
+		additionalProperties: false,
+	};
+}
+
+function presetSchema(action: ContentAction, model: ContentModel): Record<string, unknown> {
+	const base = genericContentInputSchema(action);
+	const properties = { ...base.properties as Record<string, unknown> };
+	delete properties.model;
+	if (action === 'query') {
+		return { ...base, properties, required: [] };
+	}
+	if (action === 'read') {
+		return { ...base, properties, required: [] };
+	}
+	if (action === 'commit') {
+		return { ...base, properties: { message: { type: 'string' } }, required: ['message'] };
+	}
+	const required = model === 'person' || model === 'agent' ? [] : ['title'];
+	return {
+		...base,
+		properties: {
+			...properties,
+			tags: STRING_ARRAY_SCHEMA,
+		},
+		required,
+	};
+}
+
+export function createContentToolPresets(registry: SdkModelRegistry = buildBuiltinModelRegistry()): ContentToolPreset[] {
+	const presets: ContentToolPreset[] = [];
+	for (const definition of Object.values(registry)) {
+		if (definition.storage !== 'content' || !definition.contentCollection || !CONTENT_MODELS.has(definition.name as ContentModel)) continue;
+		const model = definition.name as ContentModel;
+		const plural = toolNamespaceFor(definition);
+		for (const action of ['query', 'read', 'create', 'update'] as const) {
+			if (!definition.operations.includes(action === 'query' ? 'search' : action)) continue;
+			presets.push({
+				id: `treeseed.${plural}.${action}`,
+				action,
+				model,
+				title: `${titleCase(plural)} ${action}`,
+				description: `${titleCase(action)} ${plural} through the TreeSeed model-aware content runtime.`,
+				inputSchema: presetSchema(action, model),
+			});
+		}
+	}
+	presets.push({
+		id: 'treeseed.books.add_knowledge',
+		action: 'create',
+		model: 'knowledge',
+		title: 'Add knowledge to book',
+		description: 'Create a knowledge page in a book or knowledge directory tree through TreeSeed content validation.',
+		inputSchema: presetSchema('create', 'knowledge'),
+	});
+	presets.push({
+		id: 'treeseed.content.link_note',
+		action: 'link',
+		model: 'note',
+		title: 'Link note',
+		description: 'Attach a note to another TreeSeed content record using validated relation fields.',
+		inputSchema: genericContentInputSchema('link'),
+	});
+	return presets;
+}
+
+export function findContentToolPreset(id: string, registry?: SdkModelRegistry) {
+	return createContentToolPresets(registry).find((preset) => preset.id === id) ?? null;
+}

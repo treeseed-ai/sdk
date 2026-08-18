@@ -1,24 +1,24 @@
 import { randomUUID } from 'node:crypto';
 import type {
-	ApiAuthProvider,
-	ApiConfig,
-	ApiCredential,
-	ApiPrincipal,
-	DeviceCodeApproveRequest,
-	DeviceCodePollRequest,
-	DeviceCodePollResponse,
-	DeviceCodeStartRequest,
-	DeviceCodeStartResponse,
-	TokenRefreshRequest,
-	TokenRefreshResponse,
-	TrustedUserAssertionClaims,
-	UserIdentityProfileInput,
+ApiAuthProvider,
+ApiConfig,
+ApiCredential,
+ApiPrincipal,
+DeviceCodeApproveRequest,
+DeviceCodePollRequest,
+DeviceCodePollResponse,
+DeviceCodeStartRequest,
+DeviceCodeStartResponse,
+TokenRefreshRequest,
+TokenRefreshResponse,
+TrustedUserAssertionClaims,
+UserIdentityProfileInput,
 } from '../types.ts';
 import {
-	createAccessToken,
-	nextOpaqueToken,
-	principalFromAccessTokenPayload,
-	verifyAccessToken,
+createAccessToken,
+nextOpaqueToken,
+principalFromAccessTokenPayload,
+verifyAccessToken,
 } from './tokens.ts';
 
 type DeviceFlowRecord = {

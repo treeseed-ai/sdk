@@ -1,11 +1,11 @@
 import type {
-	SdkRecordRunRequest,
-	SdkRunEntity,
-	SdkSearchRequest,
-	SdkUpdateRequest,
-} from '../sdk-types.ts';
-import { assertExpectedVersion } from '../sdk-version.ts';
-import { SqliteStoreBase, nowIso, toSqlValue } from './helpers.ts';
+SdkRecordRunRequest,
+SdkRunEntity,
+SdkSearchRequest,
+SdkUpdateRequest,
+} from '../entrypoints/models/sdk-types.ts';
+import { assertExpectedVersion } from '../packages/sdk-version.ts';
+import { SqliteStoreBase,nowIso,toSqlValue } from './helpers.ts';
 
 export function runFromRecord(row: Record<string, unknown>): SdkRunEntity {
 	return {

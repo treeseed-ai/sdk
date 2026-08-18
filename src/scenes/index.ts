@@ -1,396 +1,362 @@
 export {
-	TREESEED_SCENE_PLATFORM_NAME,
-	createTreeseedScenePhase0Report,
-	planTreeseedSceneArtifactPaths,
-} from './phase0.ts';
+resolveSceneAuth
+} from './accounts/auth.ts';
 export {
-	formatTreeseedSceneDiagnostics,
-	hasTreeseedSceneErrors,
-	sceneErrorDiagnostic,
-	sceneWarningDiagnostic,
-} from './diagnostics.ts';
+createBuiltInSceneDiagramProvider
+} from './capacity/providers/diagram-providers.ts';
 export {
-	loadTreeseedSceneDocument,
-	resolveTreeseedScenePath,
-} from './loader.ts';
+prepareSceneEnvironment
+} from './configuration/environment.ts';
 export {
-	createBuiltInTreeseedScenePluginRegistry,
-	findBuiltInTreeseedSceneAction,
-	findBuiltInTreeseedSceneAssertion,
-	listBuiltInTreeseedScenePlugins,
-	listBuiltInTreeseedSceneActions,
-	listBuiltInTreeseedSceneAssertions,
-	listBuiltInTreeseedSceneDiagrams,
-	listBuiltInTreeseedSceneRenderers,
-	resolveTreeseedScenePlugins,
-} from './registry.ts';
+extractSceneOperationIds,
+waitForSceneOperation
+} from './operations/operations.ts';
 export {
-	createTreeseedScenePluginRegistry,
-	createTreeseedSceneRuntimePluginContext,
-	pluginResolutionFromRegistry,
-	summarizeTreeseedScenePlugins,
-} from './plugins.ts';
+runScene
+} from './operations/runner.ts';
 export {
-	defaultTreeseedSceneTrainingConfig,
-	parseTreeseedSceneManifest,
-	sceneActionKind,
-	sceneExpectationKinds,
-} from './schema.ts';
+BUILT_IN_AGENT_LAB_PRESENTATIONS,
+resolveAgentLabPresentation
+} from './agent-lab/report-adapters.ts';
 export {
-	planTreeseedScene,
-	validateTreeseedScene,
-} from './planner.ts';
+agentClassPalette,
+agentLabTotals,
+hasFailedAgentLabContentTool,
+initialAgentLabSnapshot,
+sanitizeAgentLabSnapshot,
+sanitizeAgentLabValue
+} from './agent-lab/report-model.ts';
 export {
-	resolveTreeseedSceneBaseUrl,
-} from './base-url.ts';
+	AGENT_SIMULATOR_PORT,
+startAgentLabLiveReport,
+startAgentLabReportViewer,
+writeAgentLabHtml
+} from './agent-lab/report-writer.ts';
 export {
-	prepareTreeseedSceneEnvironment,
-} from './environment.ts';
+createProductionAgentLabExecutor
+} from './agent-lab/production-lifecycle.ts';
 export {
-	resolveTreeseedSceneAuth,
-} from './auth.ts';
-export {
-	planOrApplyTreeseedSceneSeed,
-} from './seed.ts';
-export {
-	extractTreeseedSceneOperationIds,
-	waitForTreeseedSceneOperation,
-} from './operations.ts';
-export {
-	collectTreeseedSceneLogs,
-} from './logs.ts';
-export {
-	writeTreeseedSceneRunArtifacts,
-} from './artifacts.ts';
-export {
-	createPlaywrightTreeseedSceneBrowserAdapter,
-} from './playwright-adapter.ts';
-export {
-	formatTreeseedSceneMarkdownReport,
-	writeTreeseedSceneMarkdownReport,
-} from './reporter.ts';
-export {
-	runTreeseedScene,
-} from './runner.ts';
-export {
-	defaultTreeseedSceneDeviceConfig,
-	listTreeseedSceneDeviceProfiles,
-	resolveTreeseedSceneDeviceProfile,
-} from './devices.ts';
-export {
-	runTreeseedSceneDeviceMatrix,
-} from './device-matrix.ts';
-export {
-	discoverTreeseedSceneVisualAuditRoutes,
-	runTreeseedSceneVisualAudit,
-} from './visual-audit.ts';
-export {
-	formatTreeseedSceneVisualAuditMarkdown,
-	writeTreeseedSceneVisualAuditReport,
-} from './visual-audit-report.ts';
-export {
-	buildTreeseedSceneVisualAuditReview,
-	formatTreeseedSceneVisualAuditAgentBrief,
-	formatTreeseedSceneVisualAuditFindingsMarkdown,
-	writeTreeseedSceneVisualAuditReview,
-} from './visual-audit-review.ts';
-export {
-	inspectTreeseedSceneRun,
-	resolveTreeseedSceneRunRoot,
-} from './inspect.ts';
-export {
-	resumeTreeseedScene,
-} from './resume.ts';
-export {
-	createTreeseedSceneProgress,
-} from './progress.ts';
-export {
-	createTreeseedSceneCheckpoint,
-	writeTreeseedSceneCheckpoint,
-} from './checkpoints.ts';
-export {
-	createTreeseedSceneChapterReports,
-	createTreeseedSceneSegment,
-	deriveTreeseedSceneStepChapters,
-	finishTreeseedSceneSegment,
-	writeTreeseedSceneSegmentArtifacts,
-} from './segments.ts';
-export {
-	withTreeseedSceneTimeout,
-} from './timeouts.ts';
-export {
-	renderTreeseedScene,
-} from './render.ts';
-export {
-	loadTreeseedSceneRenderInput,
-	defaultTreeseedSceneRemotionComposition,
-} from './remotion-input.ts';
-export {
-	createRemotionTreeseedSceneRendererAdapter,
-	resolveTreeseedSceneRemotionEntryPoint,
-} from './remotion-adapter.ts';
-export {
-	listTreeseedSceneRemotionCompositions,
-} from './remotion-composition-registry.ts';
-export {
-	createBuiltInTreeseedSceneDiagramProvider,
-} from './diagram-providers.ts';
-export {
-	buildTreeseedSceneRenderDiagrams,
-	resolveTreeseedSceneDiagramDefinition,
-	treeseedSceneDiagramPluginId,
-	validateTreeseedSceneDiagrams,
-} from './diagram-validation.ts';
-export {
-	appendTreeseedSceneRenderedVideo,
-	writeTreeseedSceneRenderReport,
-} from './render-report.ts';
-export {
-	buildTreeseedSceneTrainingOutputs,
-	formatTreeseedSceneCaptionsSrt,
-	formatTreeseedSceneCaptionsVtt,
-	formatTreeseedSceneNarrationMarkdown,
-	formatTreeseedSceneTranscriptMarkdown,
-	generateTreeseedSceneTrainingOutputs,
-} from './training.ts';
-export {
-	writeTreeseedSceneTrainingOutputs,
-} from './training-report.ts';
-export {
-	buildTreeseedSceneEvidenceManifest,
-	generateTreeseedSceneEvidence,
-	writeTreeseedSceneEvidence,
-} from './evidence.ts';
-export {
-	formatTreeseedSceneEvidenceMarkdownReport,
-	writeTreeseedSceneEvidenceReport,
-} from './evidence-report.ts';
-export {
-	buildTreeseedScenePublishManifest,
-	publishTreeseedSceneEvidence,
-	writeTreeseedScenePublish,
-} from './publish.ts';
-export {
-	buildTreeseedScenePublishPlanManifest,
-	exportTreeseedScenePublication,
-	planTreeseedScenePublication,
-	writeTreeseedScenePublishPlan,
-} from './publish-plan.ts';
-export {
-	createDefaultTreeseedSceneRedactionPolicy,
-	validateTreeseedSceneRedactionPolicy,
-} from './publish-redaction.ts';
-export {
-	formatTreeseedScenePublishMarkdownReport,
-	writeTreeseedScenePublishReport,
-} from './publish-report.ts';
-export {
-	formatTreeseedScenePublishPlanMarkdownReport,
-	writeTreeseedScenePublishPlanReport,
-} from './publish-plan-report.ts';
-export {
-	describeTreeseedSceneSelector,
-	resolveTreeseedSceneLocator,
-} from './selectors.ts';
-export {
-	createTreeseedSceneTimeline,
-} from './timeline.ts';
+agentLabArtifactChecks,
+agentLabArtifactExpectations,
+selectedAgentLabArtifactExpectations
+} from './agent-lab/semantic-artifact-assertions.ts';
 export type {
-	LoadedTreeseedSceneDocument,
-	TreeseedSceneActionDefinition,
-	TreeseedSceneActionHandler,
-	TreeseedSceneActionHandlerInput,
-	TreeseedSceneActionHandlerResult,
-	TreeseedSceneArtifactWriter,
-	TreeseedSceneArtifactPathPlan,
-	TreeseedSceneArtifacts,
-	TreeseedSceneAssertionDefinition,
-	TreeseedSceneAssertionHandler,
-	TreeseedSceneAssertionHandlerInput,
-	TreeseedSceneAssertionRunReport,
-	TreeseedSceneBrowserAdapter,
-	TreeseedSceneBrowser,
-	TreeseedSceneBrowserLaunchInput,
-	TreeseedSceneBrowserSession,
-	TreeseedSceneCapability,
-	TreeseedSceneCapabilityOwner,
-	TreeseedSceneCapabilityStatus,
-	TreeseedSceneCaptionCue,
-	TreeseedSceneChapterClipManifest,
-	TreeseedSceneCaptureProvider,
-	TreeseedSceneCheckpoint,
-	TreeseedSceneCheckpointStatus,
-	TreeseedSceneChapter,
-	TreeseedSceneDiagnostic,
-	TreeseedSceneDiagnosticSeverity,
-	TreeseedSceneDeviceConfig,
-	TreeseedSceneDeviceMatrixOptions,
-	TreeseedSceneDeviceMatrixReport,
-	TreeseedSceneDeviceOrientation,
-	TreeseedSceneDeviceProfile,
-	TreeseedSceneDeviceProfileId,
-	TreeseedSceneDiagram,
-	TreeseedSceneDiagramDefinition,
-	TreeseedSceneDiagramPlacement,
-	TreeseedSceneDiagramProvider,
-	TreeseedSceneDiagramRenderKind,
-	TreeseedSceneEnvironment,
-	TreeseedSceneEvidenceArtifact,
-	TreeseedSceneEvidenceArtifactKind,
-	TreeseedSceneEvidenceBundlePolicy,
-	TreeseedSceneEvidenceManifest,
-	TreeseedSceneEvidenceOptions,
-	TreeseedSceneEvidencePaths,
-	TreeseedSceneEvidencePhase,
-	TreeseedSceneEvidenceRecommendation,
-	TreeseedSceneEvidenceReport,
-	TreeseedSceneEvidenceSummary,
-	TreeseedSceneEvidenceTarget,
-	TreeseedSceneExpectation,
-	TreeseedSceneGlossaryTerm,
-	TreeseedSceneManifest,
-	TreeseedSceneMode,
-	TreeseedSceneNarrationScriptEntry,
-	TreeseedSceneObservedError,
-	TreeseedSceneOverlay,
-	TreeseedSceneOverlayVariant,
-	TreeseedScenePhase,
-	TreeseedScenePhase0Report,
-	TreeseedScenePlanReport,
-	TreeseedScenePlanStep,
-	TreeseedScenePublishedArtifact,
-	TreeseedSceneExternalPublishTarget,
-	TreeseedScenePublishManifest,
-	TreeseedScenePublishOptions,
-	TreeseedScenePublishPaths,
-	TreeseedScenePublishPhase,
-	TreeseedScenePublishDestination,
-	TreeseedScenePublishPlanArtifact,
-	TreeseedScenePublishPlanManifest,
-	TreeseedScenePublishPlanMode,
-	TreeseedScenePublishPlanOptions,
-	TreeseedScenePublishPlanPaths,
-	TreeseedScenePublishPlanPhase,
-	TreeseedScenePublishPlanReport,
-	TreeseedScenePublishReport,
-	TreeseedScenePublishStatus,
-	TreeseedScenePublishTarget,
-	TreeseedScenePage,
-	TreeseedSceneLocator,
-	TreeseedSceneRedactionDecision,
-	TreeseedSceneRedactionPolicy,
-	TreeseedSceneRedactionRule,
-	TreeseedSceneAuthReport,
-	TreeseedSceneAuthResolveOptions,
-	TreeseedSceneEnvironmentAdapter,
-	TreeseedSceneEnvironmentPrepareOptions,
-	TreeseedSceneEnvironmentPrepareReport,
-	TreeseedSceneExecutionMode,
-	TreeseedSceneInspectOptions,
-	TreeseedSceneInspectReport,
-	TreeseedSceneLogCollectOptions,
-	TreeseedSceneLogCollector,
-	TreeseedSceneLogReport,
-	TreeseedSceneOperationWaitOptions,
-	TreeseedSceneOperationWaitReport,
-	TreeseedSceneOperationWaitSpec,
-	TreeseedSceneOperationWaiter,
-	TreeseedScenePlugin,
-	TreeseedScenePluginCategory,
-	TreeseedScenePluginDiagnostic,
-	TreeseedScenePluginRegistry,
-	TreeseedScenePluginResolution,
-	TreeseedScenePluginStatus,
-	TreeseedScenePluginSummary,
-	TreeseedSceneRenderer,
-	TreeseedSceneRendererAdapter,
-	TreeseedSceneRendererAdapterFactory,
-	TreeseedSceneRendererDefinition,
-	TreeseedSceneRenderConfig,
-	TreeseedSceneRenderCaptureConfig,
-	TreeseedSceneRenderEvidenceFit,
-	TreeseedSceneRenderFormat,
-	TreeseedSceneRenderDiagram,
-	TreeseedSceneRenderInput,
-	TreeseedSceneRenderInputLoadReport,
-	TreeseedSceneRenderMode,
-	TreeseedSceneRenderOptions,
-	TreeseedSceneRenderPhase,
-	TreeseedSceneRenderProgressEvent,
-	TreeseedSceneRenderProgressEventType,
-	TreeseedSceneRenderReport,
-	TreeseedSceneRemotionCompositionDefinition,
-	TreeseedSceneResumeOptions,
-	TreeseedSceneRunArtifacts,
-	TreeseedSceneRunChapterReport,
-	TreeseedSceneRunOptions,
-	TreeseedSceneRunPhase,
-	TreeseedSceneRunReport,
-	TreeseedSceneRunSegmentReport,
-	TreeseedSceneRunSetupReport,
-	TreeseedSceneRunStatus,
-	TreeseedSceneRuntimeConfig,
-	TreeseedSceneTrainingConfig,
-	TreeseedSceneTrainingNarrationStyle,
-	TreeseedSceneTrainingOutputFormat,
-	TreeseedSceneTrainingOutputOptions,
-	TreeseedSceneTrainingOutputPaths,
-	TreeseedSceneTrainingOutputReport,
-	TreeseedSceneTrainingOutputs,
-	TreeseedSceneTranscriptEntry,
-	TreeseedScenePauseController,
-	TreeseedSceneProgressEvent,
-	TreeseedSceneProgressEventType,
-	TreeseedSceneSeedOptions,
-	TreeseedSceneSeedReport,
-	TreeseedSceneSeedRunner,
-	TreeseedSceneRuntimePluginContext,
-	TreeseedSceneRuntimePluginContextInput,
-	TreeseedSceneRunStepReport,
-	TreeseedSceneSchemaVersion,
-	TreeseedSceneSelector,
-	TreeseedSceneSetup,
-	TreeseedSceneStepStatus,
-	TreeseedSceneTarget,
-	TreeseedSceneTimelineEvent,
-	TreeseedSceneTimelineWriter,
-	TreeseedSceneValidationReport,
-	TreeseedSceneVisualObject,
-	TreeseedSceneVisualObjectType,
-	TreeseedSceneVisualAuditCapture,
-	TreeseedSceneVisualAuditClientError,
-	TreeseedSceneVisualAuditClientErrorIncident,
-	TreeseedSceneVisualAuditConfig,
-	TreeseedSceneVisualAuditDomSummary,
-	TreeseedSceneVisualAuditFinding,
-	TreeseedSceneVisualAuditFindingOwner,
-	TreeseedSceneVisualAuditFindingSeverity,
-	TreeseedSceneVisualAuditManifest,
-	TreeseedSceneVisualAuditOptions,
-	TreeseedSceneVisualAuditPaths,
-	TreeseedSceneVisualAuditPhase,
-	TreeseedSceneVisualAuditReport,
-	TreeseedSceneVisualAuditReview,
-	TreeseedSceneVisualAuditReviewCategory,
-	TreeseedSceneVisualAuditReviewDetail,
-	TreeseedSceneVisualAuditReviewSummary,
-	TreeseedSceneVisualAuditRootCause,
-	TreeseedSceneVisualAuditRole,
-	TreeseedSceneVisualAuditRoute,
-	TreeseedSceneVisualAuditRouteSource,
-	TreeseedSceneVisualPoint,
-	TreeseedSceneVisualRegion,
-	TreeseedSceneVisualSize,
-	TreeseedSceneVisualStyle,
-	TreeseedSceneVisualTone,
-	TreeseedSceneVisualUnit,
-	TreeseedSceneMotion,
-	TreeseedSceneMotionEasing,
-	TreeseedSceneMotionKeyframe,
-	TreeseedSceneWorkflowStep,
-} from './types.ts';
+AgentLabArtifactExpectation
+} from './agent-lab/semantic-artifact-assertions.ts';
 export {
-	TREESEED_SCENE_BROWSERS,
-	TREESEED_SCENE_ENVIRONMENTS,
-	TREESEED_SCENE_SCHEMA_VERSION,
+formatScenePublishPlanMarkdownReport,
+writeScenePublishPlanReport
+} from './packages/publish-plan-report.ts';
+export {
+buildScenePublishPlanManifest,
+exportScenePublication,
+planScenePublication,
+writeScenePublishPlan
+} from './packages/publish-plan.ts';
+export {
+createDefaultSceneRedactionPolicy,
+validateSceneRedactionPolicy
+} from './packages/publish-redaction.ts';
+export {
+formatScenePublishMarkdownReport,
+writeScenePublishReport
+} from './packages/publish-report.ts';
+export {
+buildScenePublishManifest,
+publishSceneEvidence,
+writeScenePublish
+} from './packages/publish.ts';
+export {
+createPlaywrightSceneBrowserAdapter
+} from './reconciliation/playwright-adapter.ts';
+export {
+createRemotionSceneRendererAdapter,
+resolveSceneRemotionEntryPoint
+} from './reconciliation/remotion-adapter.ts';
+export {
+runSceneDeviceMatrix
+} from './runtime/device-matrix.ts';
+export {
+defaultSceneDeviceConfig,
+listSceneDeviceProfiles,
+resolveSceneDeviceProfile
+} from './runtime/devices.ts';
+export {
+planOrApplySceneSeed
+} from './seeds/seed.ts';
+export {
+writeSceneRunArtifacts
+} from './support/evidence/artifacts.ts';
+export {
+createSceneCheckpoint,
+writeSceneCheckpoint
+} from './support/evidence/checkpoints.ts';
+export {
+formatSceneEvidenceMarkdownReport,
+writeSceneEvidenceReport
+} from './support/evidence/evidence-report.ts';
+export {
+buildSceneEvidenceManifest,
+generateSceneEvidence,
+writeSceneEvidence
+} from './support/evidence/evidence.ts';
+export {
+createSceneChapterReports,
+createSceneSegment,
+deriveSceneStepChapters,
+finishSceneSegment,
+writeSceneSegmentArtifacts
+} from './support/evidence/segments.ts';
+export {
+createSceneTimeline
+} from './support/evidence/timeline.ts';
+export {
+resolveSceneBaseUrl
+} from './support/execution/base-url.ts';
+export {
+loadSceneDocument,
+resolveScenePath
+} from './support/execution/loader.ts';
+export {
+SCENE_PLATFORM_NAME,
+createScenePhase0Report,
+planSceneArtifactPaths
+} from './support/execution/phase0.ts';
+export {
+planScene,
+validateScene
+} from './support/execution/planner.ts';
+export {
+resumeScene
+} from './support/execution/resume.ts';
+export {
+withSceneTimeout
+} from './support/execution/timeouts.ts';
+export {
+createScenePluginRegistry,
+createSceneRuntimePluginContext,
+pluginResolutionFromRegistry,
+summarizeScenePlugins
+} from './support/plugins/plugins.ts';
+export {
+createBuiltInScenePluginRegistry,
+findBuiltInSceneAction,
+findBuiltInSceneAssertion,listBuiltInSceneActions,
+listBuiltInSceneAssertions,
+listBuiltInSceneDiagrams,listBuiltInScenePlugins,listBuiltInSceneRenderers,
+resolveScenePlugins
+} from './support/plugins/registry.ts';
+export {
+SceneDiagramPluginId,buildSceneRenderDiagrams,
+resolveSceneDiagramDefinition,validateSceneDiagrams
+} from './support/rendering/diagram-validation.ts';
+export {
+listSceneRemotionCompositions
+} from './support/rendering/remotion-composition-registry.ts';
+export {
+defaultSceneRemotionComposition,loadSceneRenderInput
+} from './support/rendering/remotion-input.ts';
+export {
+appendSceneRenderedVideo,
+writeSceneRenderReport
+} from './support/rendering/render-report.ts';
+export {
+renderScene
+} from './support/rendering/render.ts';
+export {
+formatSceneDiagnostics,
+hasSceneErrors,
+sceneErrorDiagnostic,
+sceneWarningDiagnostic
+} from './support/reporting/diagnostics.ts';
+export {
+inspectSceneRun,
+resolveSceneRunRoot
+} from './support/reporting/inspect.ts';
+export {
+collectSceneLogs
+} from './support/reporting/logs.ts';
+export {
+createSceneProgress
+} from './support/reporting/progress.ts';
+export {
+formatSceneMarkdownReport,
+writeSceneMarkdownReport
+} from './support/reporting/reporter.ts';
+export {
+writeSceneTrainingOutputs
+} from './support/training/training-report.ts';
+export {
+buildSceneTrainingOutputs,
+formatSceneCaptionsSrt,
+formatSceneCaptionsVtt,
+formatSceneNarrationMarkdown,
+formatSceneTranscriptMarkdown,
+generateSceneTrainingOutputs
+} from './support/training/training.ts';
+export {
+defaultSceneTrainingConfig,
+parseSceneManifest,
+sceneActionKind,
+sceneExpectationKinds
+} from './support/validation/schema.ts';
+export {
+describeSceneSelector,
+resolveSceneLocator
+} from './support/validation/selectors.ts';
+export {
+formatSceneVisualAuditMarkdown,
+writeSceneVisualAuditReport
+} from './support/visual-audit/visual-audit-report.ts';
+export {
+buildSceneVisualAuditReview,
+formatSceneVisualAuditAgentBrief,
+formatSceneVisualAuditFindingsMarkdown,
+writeSceneVisualAuditReview
+} from './support/visual-audit/visual-audit-review.ts';
+export {
+discoverSceneVisualAuditRoutes,
+runSceneVisualAudit
+} from './support/visual-audit/visual-audit.ts';
+export {
+SCENE_BROWSERS,
+SCENE_ENVIRONMENTS,
+SCENE_SCHEMA_VERSION,
+AGENT_LAB_PRESENTATIONS
+} from './types.ts';
+export type {
+AgentLabAssertion,AgentLabExecution,AgentLabExecutionEvidence,AgentLabExecutor,AgentLabExecutorInput,AgentLabPresentation,
+AgentLabPresentationAdapter,AgentLabRunUpdate,AgentLabSceneConfig,AgentLabSnapshot,AgentLabTranscriptItem,
+AgentLabWorkdayConfig,AgentLabWorkdaySnapshot,
+LoadedSceneDocument,
+SceneActionDefinition,
+SceneActionHandler,
+SceneActionHandlerInput,
+SceneActionHandlerResult,SceneArtifactPathPlan,SceneArtifactWriter,SceneArtifacts,
+SceneAssertionDefinition,
+SceneAssertionHandler,
+SceneAssertionHandlerInput,
+SceneAssertionRunReport,SceneAuthReport,
+SceneAuthResolveOptions,SceneBrowser,SceneBrowserAdapter,SceneBrowserLaunchInput,
+SceneBrowserSession,
+SceneCapability,
+SceneCapabilityOwner,
+SceneCapabilityStatus,
+SceneCaptionCue,SceneCaptureProvider,SceneChapter,SceneChapterClipManifest,SceneCheckpoint,
+SceneCheckpointStatus,SceneDeviceConfig,
+SceneDeviceMatrixOptions,
+SceneDeviceMatrixReport,
+SceneDeviceOrientation,
+SceneDeviceProfile,
+SceneDeviceProfileId,SceneDiagnostic,
+SceneDiagnosticSeverity,SceneDiagram,
+SceneDiagramDefinition,
+SceneDiagramPlacement,
+SceneDiagramProvider,
+SceneDiagramRenderKind,
+SceneEnvironment,SceneEnvironmentAdapter,
+SceneEnvironmentPrepareOptions,
+SceneEnvironmentPrepareReport,SceneEvidenceArtifact,
+SceneEvidenceArtifactKind,
+SceneEvidenceBundlePolicy,
+SceneEvidenceManifest,
+SceneEvidenceOptions,
+SceneEvidencePaths,
+SceneEvidencePhase,
+SceneEvidenceRecommendation,
+SceneEvidenceReport,
+SceneEvidenceSummary,
+SceneEvidenceTarget,SceneExecutionMode,SceneExpectation,SceneExternalPublishTarget,SceneGlossaryTerm,SceneInspectOptions,
+SceneInspectReport,SceneLocator,SceneLogCollectOptions,
+SceneLogCollector,
+SceneLogReport,SceneManifest,
+SceneMode,SceneMotion,
+SceneMotionEasing,
+SceneMotionKeyframe,SceneNarrationScriptEntry,
+SceneObservedError,SceneOperationWaitOptions,
+SceneOperationWaitReport,
+SceneOperationWaitSpec,
+SceneOperationWaiter,SceneOverlay,
+SceneOverlayVariant,ScenePage,ScenePauseController,ScenePhase,
+ScenePhase0Report,
+ScenePlanReport,
+ScenePlanStep,ScenePlugin,
+ScenePluginCategory,
+ScenePluginDiagnostic,
+ScenePluginRegistry,
+ScenePluginResolution,
+ScenePluginStatus,
+ScenePluginSummary,SceneProgressEvent,
+SceneProgressEventType,ScenePublishDestination,ScenePublishManifest,
+ScenePublishOptions,
+ScenePublishPaths,
+ScenePublishPhase,ScenePublishPlanArtifact,
+ScenePublishPlanManifest,
+ScenePublishPlanMode,
+ScenePublishPlanOptions,
+ScenePublishPlanPaths,
+ScenePublishPlanPhase,
+ScenePublishPlanReport,
+ScenePublishReport,
+ScenePublishStatus,
+ScenePublishTarget,ScenePublishedArtifact,SceneRedactionDecision,
+SceneRedactionPolicy,
+SceneRedactionRule,SceneRemotionCompositionDefinition,SceneRenderCaptureConfig,SceneRenderConfig,SceneRenderDiagram,SceneRenderEvidenceFit,
+SceneRenderFormat,SceneRenderInput,
+SceneRenderInputLoadReport,
+SceneRenderMode,
+SceneRenderOptions,
+SceneRenderPhase,
+SceneRenderProgressEvent,
+SceneRenderProgressEventType,
+SceneRenderReport,SceneRenderer,
+SceneRendererAdapter,
+SceneRendererAdapterFactory,
+SceneRendererDefinition,SceneResumeOptions,
+SceneRunArtifacts,
+SceneRunChapterReport,
+SceneRunOptions,
+SceneRunPhase,
+SceneRunReport,
+SceneRunSegmentReport,
+SceneRunSetupReport,
+SceneRunStatus,SceneRunStepReport,SceneRuntimeConfig,SceneRuntimePluginContext,
+SceneRuntimePluginContextInput,SceneSchemaVersion,SceneSeedOptions,
+SceneSeedReport,
+SceneSeedRunner,SceneSelector,
+SceneSetup,
+SceneStepStatus,
+SceneTarget,
+SceneTimelineEvent,
+SceneTimelineWriter,SceneTrainingConfig,
+SceneTrainingNarrationStyle,
+SceneTrainingOutputFormat,
+SceneTrainingOutputOptions,
+SceneTrainingOutputPaths,
+SceneTrainingOutputReport,
+SceneTrainingOutputs,
+SceneTranscriptEntry,SceneValidationReport,SceneVisualAuditCapture,
+SceneVisualAuditClientError,
+SceneVisualAuditClientErrorIncident,
+SceneVisualAuditConfig,
+SceneVisualAuditDomSummary,
+SceneVisualAuditFinding,
+SceneVisualAuditFindingOwner,
+SceneVisualAuditFindingSeverity,
+SceneVisualAuditManifest,
+SceneVisualAuditOptions,
+SceneVisualAuditPaths,
+SceneVisualAuditPhase,
+SceneVisualAuditReport,
+SceneVisualAuditReview,
+SceneVisualAuditReviewCategory,
+SceneVisualAuditReviewDetail,
+SceneVisualAuditReviewSummary,SceneVisualAuditRole,SceneVisualAuditRootCause,SceneVisualAuditRoute,
+SceneVisualAuditRouteSource,SceneVisualObject,
+SceneVisualObjectType,SceneVisualPoint,
+SceneVisualRegion,
+SceneVisualSize,
+SceneVisualStyle,
+SceneVisualTone,
+SceneVisualUnit,SceneWorkflowStep
 } from './types.ts';

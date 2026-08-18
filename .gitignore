@@ -10,6 +10,8 @@ dist/
 .env.local
 .local/
 .treeseed/
+.treeseed-build-dist.lock/
+.treeseed-dist-build-*/
 coverage/
 playwright-report/
 test-results/
