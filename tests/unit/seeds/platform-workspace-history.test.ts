@@ -5,6 +5,7 @@ import {
 	normalizePlatformBoundaryVerifier,
 	platformConfigurationAssets,
 	platformDeployConfig,
+	platformVerificationCopies,
 	platformVerificationFiles,
 } from '../../../src/seeds/workspaces/platform-workspace-history.ts';
 
@@ -57,12 +58,16 @@ describe('Platform workspace migration recovery', () => {
 
 	it('carries the complete Market-owned agent proof catalog without a Market checkout', () => {
 		expect(platformVerificationFiles).toEqual(expect.arrayContaining([
-			'guarantees/agent/system/source-golden.guarantee.yaml',
-			'guarantees/capacity/research/verify-autonomous-cited-research-starter.guarantee.yaml',
-			'guarantees/agent/system/guide-golden.guarantee.yaml',
-			'guarantees/verifiers/service-workflows.verifiers.yaml',
+			'packages/market-guarantee-catalog/guarantees/agent/system/source-golden.guarantee.yaml',
+			'packages/market-guarantee-catalog/guarantees/capacity/research/verify-autonomous-cited-research-starter.guarantee.yaml',
+			'packages/market-guarantee-catalog/guarantees/agent/system/guide-golden.guarantee.yaml',
+			'packages/market-guarantee-catalog/guarantees/verifiers/service-workflows.verifiers.yaml',
 			'scripts/guarantees/verify-agent-capability.ts',
 		]));
+		expect(platformVerificationCopies
+			.filter(({ sourcePath }) => sourcePath.startsWith('guarantees/'))
+			.every(({ targetPath }) => targetPath.startsWith('packages/market-guarantee-catalog/guarantees/'))).toBe(true);
+		expect(platformVerificationCopies.some(({ targetPath }) => targetPath === 'packages/market-guarantee-catalog/package.json')).toBe(false);
 		expect(new Set(platformVerificationFiles).size).toBe(platformVerificationFiles.length);
 	});
 

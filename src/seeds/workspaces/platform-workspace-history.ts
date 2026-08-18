@@ -17,17 +17,19 @@ export type PlatformWorkspacePlan = {
 	branches: Array<{ branch: WorkspaceBranch; sourceDigest: string; targetCommit: string | null; action: 'create' | 'update' | 'noop' | 'blocked'; reason: string; links: SnapshotLink[] }>;
 };
 
-export const platformVerificationFiles = [
-	'guarantees/agent/system/guide-golden.guarantee.yaml',
-	'guarantees/agent/system/source-golden.guarantee.yaml',
-	'guarantees/capacity/research/verify-autonomous-cited-research-starter.guarantee.yaml',
-	'guarantees/verifiers/service-workflows.verifiers.yaml',
-	'scripts/guarantees/verify-agent-capability.ts',
-	'scripts/guarantees/agent-catalog/cli-runtime.ts',
-	'scripts/guarantees/agent-catalog/json-evidence.ts',
-	'scripts/guarantees/agent-catalog/proof-executor.ts',
-	'scripts/guarantees/agent-catalog/proof-input.ts',
+export const platformVerificationCopies = [
+	{ sourcePath: 'guarantees/agent/system/guide-golden.guarantee.yaml', targetPath: 'packages/market-guarantee-catalog/guarantees/agent/system/guide-golden.guarantee.yaml' },
+	{ sourcePath: 'guarantees/agent/system/source-golden.guarantee.yaml', targetPath: 'packages/market-guarantee-catalog/guarantees/agent/system/source-golden.guarantee.yaml' },
+	{ sourcePath: 'guarantees/capacity/research/verify-autonomous-cited-research-starter.guarantee.yaml', targetPath: 'packages/market-guarantee-catalog/guarantees/capacity/research/verify-autonomous-cited-research-starter.guarantee.yaml' },
+	{ sourcePath: 'guarantees/verifiers/service-workflows.verifiers.yaml', targetPath: 'packages/market-guarantee-catalog/guarantees/verifiers/service-workflows.verifiers.yaml' },
+	{ sourcePath: 'scripts/guarantees/verify-agent-capability.ts', targetPath: 'scripts/guarantees/verify-agent-capability.ts' },
+	{ sourcePath: 'scripts/guarantees/agent-catalog/cli-runtime.ts', targetPath: 'scripts/guarantees/agent-catalog/cli-runtime.ts' },
+	{ sourcePath: 'scripts/guarantees/agent-catalog/json-evidence.ts', targetPath: 'scripts/guarantees/agent-catalog/json-evidence.ts' },
+	{ sourcePath: 'scripts/guarantees/agent-catalog/proof-executor.ts', targetPath: 'scripts/guarantees/agent-catalog/proof-executor.ts' },
+	{ sourcePath: 'scripts/guarantees/agent-catalog/proof-input.ts', targetPath: 'scripts/guarantees/agent-catalog/proof-input.ts' },
 ] as const;
+
+export const platformVerificationFiles = platformVerificationCopies.map(({ targetPath }) => targetPath);
 
 const copiedFiles = [
 	'LICENSE',
@@ -41,8 +43,7 @@ const copiedFiles = [
 	'seeds/agents.yaml',
 	'seeds/platform.yaml',
 	'seeds/treeseed.yaml',
-	...platformVerificationFiles,
-];
+].map((path) => ({ sourcePath: path, targetPath: path })).concat(platformVerificationCopies);
 
 function migrationJournalPath(projectRoot: string, repository: string) {
 	return resolve(projectRoot, '.treeseed', 'repository-migrations', `${repository.replace('/', '--')}--platform-workspace.json`);
@@ -124,10 +125,10 @@ export function platformConfigurationAssets(seedContent: string, sceneContent: s
 
 async function baseFiles(projectRoot: string, sourceRef: string): Promise<SnapshotFile[]> {
 	if (!/^[a-f0-9]{40}$/u.test(sourceRef)) throw new Error('Platform workspace source ref must be an exact 40-character commit SHA.');
-	const copied = await Promise.all(copiedFiles.map(async (path) => {
-		const observed = await git(projectRoot, ['show', `${sourceRef}:${path}`], { allowFailure: true, preserveOutput: true });
-		if (observed.code !== 0) throw new Error(`Platform workspace source ${sourceRef} is missing ${path}.`);
-		return { path, content: observed.stdout };
+	const copied = await Promise.all(copiedFiles.map(async ({ sourcePath, targetPath }) => {
+		const observed = await git(projectRoot, ['show', `${sourceRef}:${sourcePath}`], { allowFailure: true, preserveOutput: true });
+		if (observed.code !== 0) throw new Error(`Platform workspace source ${sourceRef} is missing ${sourcePath}.`);
+		return { path: targetPath, content: observed.stdout };
 	}));
 	const templatePaths = (await git(projectRoot, ['ls-tree', '-r', '--name-only', sourceRef, 'platform-templates'], { allowFailure: true })).stdout.split('\n').filter(Boolean);
 	if (templatePaths.length === 0) throw new Error(`Platform workspace source ${sourceRef} has no canonical Platform templates.`);
