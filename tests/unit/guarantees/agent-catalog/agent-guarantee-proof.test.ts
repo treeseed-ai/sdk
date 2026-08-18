@@ -41,7 +41,7 @@ describe('agent guarantee proof inputs',()=>{
 	});
 
 	it('accepts an explicit absence assertion without fabricated expected data',()=>{
-		const value=input(); value.outcomes[0].predicates[0]={id:'planning.model',commandId:'assignment',path:'assignment.persistedResult',operator:'absent'} as typeof value.outcomes[0].predicates[0];
+		const value=input(); value.outcomes[0].predicates[0]={id:'planning.model',commandId:'assignment',path:'assignment.persistedResult',operator:'absent'} as (typeof value.outcomes)[number]['predicates'][number];
 		expect(parseAgentGuaranteeProofInput(value,contract,'baseline')).toMatchObject({ok:true});
 	});
 
