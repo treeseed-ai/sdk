@@ -1,5 +1,6 @@
 import { AGENT_ACTIVITY_TYPES,AGENT_HANDLER_KINDS,type AgentActivityProfile,type AgentActivityType } from '../../types/agents.ts';
 import { compileAgentAuthoritySnapshot } from '../authority/agent-authority-presets.ts';
+import { validateAgentActivityProfileCompatibility } from './agent-definition-compatibility.ts';
 
 export interface AgentActivityProfileDiagnostic { code: string; path: string; message: string }
 export interface AgentActivityProfileValidation { ok: boolean; diagnostics: AgentActivityProfileDiagnostic[] }
@@ -71,6 +72,9 @@ export function validateAgentActivityProfilesConfiguration(value: unknown): Agen
 			for (const message of compileAgentAuthoritySnapshot(activity as AgentActivityType,raw as unknown as AgentActivityProfile).diagnostics) {
 				add('agent_activity_authority_widening_forbidden',path,message);
 			}
+			if (raw.enabled) diagnostics.push(...validateAgentActivityProfileCompatibility(
+				activity as AgentActivityType,raw as unknown as AgentActivityProfile,
+			).diagnostics);
 		}
 	}
 	if (enabled === 0) add('agent_activity_profile_enabled_required', 'activityProfiles', 'At least one activity profile must be enabled.');

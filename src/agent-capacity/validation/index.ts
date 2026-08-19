@@ -1,4 +1,5 @@
 export * from './activity-profile.ts';
+export * from './agent-definition-compatibility.ts';
 export * from './agent-definition-schema.ts';
 export * from './agent-lab-forensics-schema.ts';
 export * from './agent-signal.ts';
