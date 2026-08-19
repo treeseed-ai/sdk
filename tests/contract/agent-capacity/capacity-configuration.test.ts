@@ -64,7 +64,10 @@ describe('capacity configuration inventory', () => {
 			planning: {
 				activityType: 'planning', enabled: true, handler: 'writer',
 				prompt: { system: 'Plan.' }, branchPolicy: { kind: 'read-only', base: 'main' },
-				tools: { allowed: [] }, outputs: { messageTypes: [], modelMutations: [] },
+				tools: { allowed: [], denied: [
+					'treeseed.content.create', 'treeseed.content.update',
+					'treeseed.content.link', 'treeseed.content.commit',
+				] }, outputs: { messageTypes: [], modelMutations: [] },
 				questionPolicy: { blockExecutionWhenCreated: true, defaultAnswerPolicy: { kind: 'human-or-agent', allowedAgentClasses: ['architecture'] } },
 				execution: { requiredCapabilities: ['agent-execution'] },
 			},
