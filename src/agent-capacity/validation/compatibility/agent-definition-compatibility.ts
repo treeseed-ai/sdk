@@ -17,6 +17,23 @@ function writableModels(profile: AgentActivityProfile) {
 		.map(([model]) => model);
 }
 
+function normalizePathPattern(value: string) {
+	return value.replace(/\\/gu, '/').replace(/^\.?\//u, '').replace(/\/+/gu, '/');
+}
+
+function patternCovers(coveringPattern: string, candidatePattern: string) {
+	const covering = normalizePathPattern(coveringPattern);
+	const candidate = normalizePathPattern(candidatePattern);
+	if (covering === '**' || covering === '*') return true;
+	if (covering.endsWith('/**')) {
+		const prefix = covering.slice(0, -3);
+		const candidatePrefix = candidate.endsWith('/**') ? candidate.slice(0, -3) : candidate;
+		return candidatePrefix === prefix || candidatePrefix.startsWith(`${prefix}/`);
+	}
+	if (covering.endsWith('/')) return candidate.startsWith(covering);
+	return candidate === covering || candidate.startsWith(`${covering}/`);
+}
+
 export interface AgentDefinitionCompatibilityOptions {
 	availableProviderCapabilities?: Iterable<string>;
 }
@@ -68,12 +85,21 @@ export function validateAgentActivityProfileCompatibility(
 			'agent_activity_source_paths_required', '.execution.forbiddenPaths',
 			'assignment-feature requires explicit forbidden paths.',
 		);
+		const allowedPaths = profile.execution?.allowedPaths ?? [];
+		const forbiddenPaths = profile.execution?.forbiddenPaths ?? [];
+		if (allowedPaths.length > 0 && allowedPaths.every((allowed) => forbiddenPaths.some((forbidden) => patternCovers(forbidden,allowed)))) add(
+			'agent_activity_source_paths_unsatisfiable', '.execution.allowedPaths',
+			'Every allowed source path is covered by a forbidden path.',
+		);
 	}
 
 	if (options.availableProviderCapabilities) {
 		const available = new Set(options.availableProviderCapabilities);
-		for (const capability of profile.execution?.requiredCapabilities ?? []) if (!available.has(capability)) add(
-			'agent_activity_provider_capability_unsatisfied', '.execution.requiredCapabilities',
+		for (const [suffix,required] of [
+			['.execution.requiredCapabilities',profile.execution?.requiredCapabilities ?? []],
+			['.providerOverrides.requiredCapabilities',profile.providerOverrides?.requiredCapabilities ?? []],
+		] as const) for (const capability of required) if (!available.has(capability)) add(
+			'agent_activity_provider_capability_unsatisfied', suffix,
 			`Provider does not advertise required capability ${capability}.`,
 		);
 	}
