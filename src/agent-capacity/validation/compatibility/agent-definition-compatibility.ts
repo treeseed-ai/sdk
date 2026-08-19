@@ -1,6 +1,6 @@
-import type { AgentActivityProfile,AgentActivityType } from '../../types/agents.ts';
-import { compileAgentAuthoritySnapshot } from '../authority/agent-authority-presets.ts';
-import type { AgentActivityProfileDiagnostic } from './activity-profile.ts';
+import type { AgentActivityProfile,AgentActivityType } from '../../../types/agents.ts';
+import { compileAgentAuthoritySnapshot } from '../../authority/agent-authority-presets.ts';
+import type { AgentActivityProfileDiagnostic } from '../activity-profile.ts';
 
 const CONTENT_MUTATIONS = new Set(['create','update','link','commit']);
 const REQUIRED_SOURCE_TOOLS = [

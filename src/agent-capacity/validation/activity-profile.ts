@@ -1,6 +1,6 @@
 import { AGENT_ACTIVITY_TYPES,AGENT_HANDLER_KINDS,type AgentActivityProfile,type AgentActivityType } from '../../types/agents.ts';
 import { compileAgentAuthoritySnapshot } from '../authority/agent-authority-presets.ts';
-import { validateAgentActivityProfileCompatibility } from './agent-definition-compatibility.ts';
+import { validateAgentActivityProfileCompatibility } from './compatibility/agent-definition-compatibility.ts';
 
 export interface AgentActivityProfileDiagnostic { code: string; path: string; message: string }
 export interface AgentActivityProfileValidation { ok: boolean; diagnostics: AgentActivityProfileDiagnostic[] }

@@ -2,6 +2,9 @@ name: Content
 
 on:
   push:
+    branches:
+      - main
+      - staging
     paths:
       - 'docs/src/content/**'
   pull_request:
