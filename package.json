@@ -203,10 +203,6 @@
       "types": "./dist/capacity/agents/agent-capacity.d.ts",
       "default": "./dist/capacity/agents/agent-capacity.js"
     },
-    "./work-providers": {
-      "types": "./dist/work-providers/index.d.ts",
-      "default": "./dist/work-providers/index.js"
-    },
     "./agent-capacity/allocation": {
       "types": "./dist/agent-capacity/allocation.d.ts",
       "default": "./dist/agent-capacity/allocation.js"

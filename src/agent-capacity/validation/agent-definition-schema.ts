@@ -156,12 +156,6 @@ export const agentDefinitionSchema = z.object({
 	instructionTemplateRefs: exactRevisionRefList.optional(),
 	identity: z.object({ purpose: nonEmpty, responsibilities: stringList, durableInstructions: nonEmpty }).passthrough(),
 	capabilities: z.array(z.union([nonEmpty, z.object({ id: nonEmpty }).passthrough()])).optional(),
-	contribution: z.object({
-		mode: z.enum(['disabled','delegated-project-authorization']),
-		mayPopulatePrAttestation: z.boolean(),
-		requiredCapability: z.literal('contribution_attestation'),
-		requireExactHead: z.literal(true),
-	}).strict().optional(),
 	activityProfiles:z.record(activityProfileSchema),
 }).passthrough().superRefine((agent,context) => {
 	const raw = agent as Record<string,unknown>;
