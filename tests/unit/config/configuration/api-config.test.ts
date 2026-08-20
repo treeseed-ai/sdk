@@ -29,6 +29,15 @@ describe('API config', () => {
 		expect(config.webAssertionSecret).toBe('api-assertion');
 	});
 
+	it('keeps contribution receipt signing separate and fail-closed by default', () => {
+		expect(resolveApiConfig({}).contributionSigningSecret).toBeUndefined();
+		expect(resolveApiConfig({
+			TREESEED_API_WEB_ASSERTION_SECRET: 'web-assertion',
+			TREESEED_PLATFORM_RUNNER_SECRET: 'runner-secret',
+			TREESEED_CONTRIBUTION_SIGNING_SECRET: 'dedicated-contribution-secret',
+		}).contributionSigningSecret).toBe('dedicated-contribution-secret');
+	});
+
 	it('derives the local API database URL from managed local Postgres settings', () => {
 		expect(resolveLocalApiDatabaseUrl({})).toBe('postgres://treeseed:treeseed-local-dev@127.0.0.1:54329/treeseed_api');
 		expect(resolveLocalApiDatabaseUrl({

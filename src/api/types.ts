@@ -119,6 +119,7 @@ export interface ApiConfig {
 	webServiceId: string;
 	webServiceSecret: string;
 	webAssertionSecret: string;
+	contributionSigningSecret?: string;
 	webExchangeTtlSeconds: number;
 	bootstrapAdminAllowlist: string[];
 	accessTokenTtlSeconds: number;

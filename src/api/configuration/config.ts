@@ -155,6 +155,7 @@ export function resolveApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfi
 		webServiceId: firstEnvValue(env, 'TREESEED_WEB_SERVICE_ID', 'TREESEED_API_WEB_SERVICE_ID') || 'web',
 		webServiceSecret: firstEnvValue(env, 'TREESEED_WEB_SERVICE_SECRET', 'TREESEED_API_WEB_SERVICE_SECRET') || 'treeseed-web-service-dev-secret',
 		webAssertionSecret: firstEnvValue(env, 'TREESEED_API_WEB_ASSERTION_SECRET', 'TREESEED_WEB_ASSERTION_SECRET', 'TREESEED_API_AUTH_SECRET') || 'treeseed-web-assertion-dev-secret',
+		contributionSigningSecret: env.TREESEED_CONTRIBUTION_SIGNING_SECRET?.trim() || undefined,
 		webExchangeTtlSeconds: parseInteger(env.TREESEED_API_WEB_EXCHANGE_TTL, 300),
 		bootstrapAdminAllowlist: parseCsv(env.TREESEED_API_BOOTSTRAP_ADMIN_ALLOWLIST),
 		accessTokenTtlSeconds: parseInteger(env.TREESEED_API_ACCESS_TOKEN_TTL, defaultAccessTokenTtl),
