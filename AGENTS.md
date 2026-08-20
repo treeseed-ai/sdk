@@ -1,12 +1,5 @@
-# SDK agent contribution policy
+# SDK workspace guidance
 
-Agents may populate or update the managed **Agent contribution attestation** in a pull request only when all of the following are true:
+The SDK is an Apache-2.0 repository. It has no contributor-grant checkbox, approved-committer allowlist, or contribution-attestation requirement. Human and agent changes use the same durable pull-request record and the same exact-head verification, review, staging, and release gates.
 
-- the agent definition enables `delegated-project-authorization` and requires `contribution_attestation`;
-- the active assignment and capacity grant include `contribution_attestation`;
-- TreeSeed supplies an active project contribution authorization matching the exact repository, agent, capacity provider, target branch, assignment, PR base SHA, and PR head SHA; and
-- the trusted API issues a valid exact-head contribution receipt.
-
-Agents must never check, edit, or claim the **Human contribution affirmation**. They may not create, broaden, renew, revoke, or supersede a project contribution authorization. Missing, stale, mismatched, expired, or revoked authorization fails closed and requires human project-level action rather than per-PR approval.
-
-Keep work scoped to this repository. Never add Market or Market API custody or depend on a hosted Market service for local development.
+Agents must act only within their assignment authority, preserve exact repository and commit evidence, and keep GitHub credentials outside execution workspaces. Keep work scoped to this repository. Never add Market or Market API custody or depend on a hosted Market service for local development.

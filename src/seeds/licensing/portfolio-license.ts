@@ -13,7 +13,10 @@ export const apiLicensePolicyPaths = [
 	'COMMERCIAL.md',
 	'CONTRIBUTING.md',
 	'.github/PULL_REQUEST_TEMPLATE.md',
-	'.github/workflows/contributor-license.yml',
+	'.github/approved-committers.json',
+	'.github/COMMITTER_APPROVAL.md',
+	'.github/ISSUE_TEMPLATE/agpl-committer-approval.yml',
+	'.github/workflows/agpl-committer-authorization.yml',
 	'docs/licensing-provenance.md',
 ] as const;
 
