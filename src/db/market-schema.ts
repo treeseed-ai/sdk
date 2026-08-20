@@ -18,5 +18,6 @@ export * from './market-schema/projects/knowledge/tree-dx-project-libraries.ts';
 export * from './market-schema/projects/knowledge/project-knowledge-governance.ts';
 export * from './market-schema/projects/knowledge/knowledge-collaboration.ts';
 export * from './market-schema/projects/integrations/provider-operations.ts';
+export * from './market-schema/projects/integrations/contribution-authorizations.ts';
 export * from './market-schema/support/market-schema.ts';
 export * from './market-schema/support/subscribers.ts';
