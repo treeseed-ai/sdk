@@ -143,6 +143,13 @@ export function resolveAgentLabSelectionRef(explicitRef: string | undefined, exp
 	return expectedBase;
 }
 
+export function resolveAgentLabRepositorySlug(repositories: string[]) {
+	if (repositories.length !== 1 || !text(repositories[0])) {
+		throw new Error('Agent Lab requires exactly one selected repository-backed project per scene.');
+	}
+	return text(repositories[0]);
+}
+
 function replaceDay(snapshot: AgentLabSnapshot, day: AgentLabWorkdaySnapshot): AgentLabSnapshot {
 	return { ...snapshot, generatedAt: new Date().toISOString(), workdays: snapshot.workdays.map((entry) => entry.id === day.id ? day : entry) };
 }
@@ -160,6 +167,7 @@ export function createProductionAgentLabExecutor(options: {
 			accessToken: api.adminToken, fetchImpl, userAgent: `treeseed-agent-lab/${input.runId}`,
 		});
 		const initiatingUser = await resolveAgentLabInitiator(client);
+		const repositorySlug = resolveAgentLabRepositorySlug(input.config.repositories);
 		let snapshot = initialAgentLabSnapshot({
 			sceneId: input.sceneId, runId: input.runId, presentation: input.config.presentation,
 			timeZone: input.config.timeZone, repositories: input.config.repositories, workdays: input.config.workdays,
@@ -179,9 +187,6 @@ export function createProductionAgentLabExecutor(options: {
 			})().finally(() => { publishInFlight = false; });
 			return publishQueue;
 		};
-		if (input.config.repositories.some((slug) => slug !== 'market')) {
-			throw new Error('This production slice supports the reconciled market repository; additional portfolio repositories are not yet provisionable.');
-		}
 		let scope: Awaited<ReturnType<typeof createLocalCapacityAcceptanceScope>> | null = null;
 		let provider: Awaited<ReturnType<typeof provisionLocalCapacityAcceptanceProvider>> | null = null;
 		let protocol: ProviderProtocolClient | null = null;
@@ -274,7 +279,7 @@ export function createProductionAgentLabExecutor(options: {
 			snapshot = {
 				...snapshot, team: { id: scope.teamId, name: teamName || scope.teamId, isolation: persistentTeam ? 'team' : 'ephemeral' },
 				provider: { id: provider.providerId, membershipId: provider.membershipId, executionProviderId: 'codex', status: 'available' },
-				repositories: [{ slug: 'market', projectId: scope.projectId, repositoryId, ref: [...selections.values()][0]?.resolvedRef ?? null }],
+				repositories: [{ slug: repositorySlug, projectId: scope.projectId, repositoryId, ref: [...selections.values()][0]?.resolvedRef ?? null }],
 				agents: [...new Map([...selections.values()].flatMap((entry) => entry.agentDefinitions).map((agent) => [agent.id, agent])).values()],
 			}; await publish();
 			let providerSequence = Number(availability?.payload.sequence ?? 0);

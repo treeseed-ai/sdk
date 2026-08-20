@@ -15,7 +15,7 @@ import {
 	type AgentLabSnapshot,
 } from '../../../../src/scenes/index.ts';
 import { applyAgentLabAccounting,collectAgentLabExecutions,normalizeAgentLabProviderExecutions,readAgentLabAssignments } from '../../../../src/scenes/agent-lab/activity-collector.ts';
-import { agentLabDiagnostic,agentLabSimulationClassification,resolveAgentDefinitionPaths,resolveAgentLabSelectionRef } from '../../../../src/scenes/agent-lab/production-lifecycle.ts';
+import { agentLabDiagnostic,agentLabSimulationClassification,resolveAgentDefinitionPaths,resolveAgentLabRepositorySlug,resolveAgentLabSelectionRef } from '../../../../src/scenes/agent-lab/production-lifecycle.ts';
 import { agentLabTerminalProfileFailure,agentLabTickReadyToComplete,agentLabWorkdayReadyToComplete } from '../../../../src/scenes/agent-lab/workday-snapshot.ts';
 import { agentLabArtifactExpectations,selectedAgentLabArtifactExpectations,semanticArtifactAssertions } from '../../../../src/scenes/agent-lab/semantic-artifact-assertions.ts';
 
@@ -71,6 +71,12 @@ function snapshot(): AgentLabSnapshot {
 }
 
 describe('production Agent Lab scene contract', () => {
+	it('selects any single repository-backed project without a Market special case', () => {
+		expect(resolveAgentLabRepositorySlug(['sdk'])).toBe('sdk');
+		expect(resolveAgentLabRepositorySlug(['api'])).toBe('api');
+		expect(() => resolveAgentLabRepositorySlug([])).toThrow(/exactly one selected repository-backed project/u);
+		expect(() => resolveAgentLabRepositorySlug(['sdk', 'api'])).toThrow(/exactly one selected repository-backed project/u);
+	});
 	it('freezes the current TreeDX authoring base unless an explicit forensic ref is selected', () => {
 		const authoringBase = 'a'.repeat(40);
 		expect(resolveAgentLabSelectionRef(undefined, authoringBase)).toBe(authoringBase);
