@@ -80,17 +80,29 @@ describe('production Agent Lab scene contract', () => {
 	});
 	it('resolves a persistent team provider from API-owned grant facts without provider secret custody', async () => {
 		const client = {
-			teams: async () => ({ payload: [{ id: 'team-1', slug: 'treeseed', name: 'TreeSeed' }] }),
 			projects: async () => ({ payload: [{ id: 'project-sdk', slug: 'sdk', metadata: { resourceKey: 'project:treeseed/sdk' } }] }),
 			capacityGrants: async () => ({ payload: { items: [{ id: 'grant-sdk', projectId: 'project-sdk', providerId: 'provider-1', membershipId: 'membership-1', status: 'active', metadata: { seedResourceKey: 'capacity-provider:treeseed/agents' } }] } }),
 			capacityAllocationSets: async () => ({ payload: { items: [{ id: 'allocation-1', status: 'active', metadata: { seedRuntime: true } }] } }),
 		};
 		const runtime = await resolveTeamAgentLabRuntime({
 			client: client as never, teamKey: 'team:treeseed', providerKey: 'capacity-provider:treeseed/agents', repositories: ['sdk'],
+			authorityScope: { teamId: 'team-1', projectId: 'project-sdk' },
 		});
 		expect(runtime.scope).toMatchObject({ teamId: 'team-1', projectId: 'project-sdk', projectSlug: 'sdk' });
 		expect(runtime.provider).toEqual({ providerId: 'provider-1', membershipId: 'membership-1' });
 		expect(runtime.grantId).toBe('grant-sdk');
+	});
+	it('rejects an authoritative project outside the selected team before reading grants', async () => {
+		let grantReads = 0;
+		const client = {
+			projects: async () => ({ payload: [{ id: 'project-api', slug: 'api', metadata: { resourceKey: 'project:treeseed/api' } }] }),
+			capacityGrants: async () => { grantReads += 1; return { payload: { items: [] } }; },
+		};
+		await expect(resolveTeamAgentLabRuntime({
+			client: client as never, teamKey: 'team:treeseed', providerKey: 'capacity-provider:treeseed/agents', repositories: ['sdk'],
+			authorityScope: { teamId: 'team-1', projectId: 'project-sdk' },
+		})).rejects.toThrow(/not a member of team/u);
+		expect(grantReads).toBe(0);
 	});
 	it('freezes the current TreeDX authoring base unless an explicit forensic ref is selected', () => {
 		const authoringBase = 'a'.repeat(40);

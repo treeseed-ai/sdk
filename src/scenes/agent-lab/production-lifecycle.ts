@@ -204,8 +204,9 @@ export function createProductionAgentLabExecutor(options: {
 		try {
 			snapshot = { ...snapshot, status: 'running' }; await publish();
 			if (input.config.scope.kind === 'team') {
+				if (!input.authorityScope) throw new Error('Persistent Team Agent Lab execution requires an authoritative team and project scope.');
 				const resolved = await resolveTeamAgentLabRuntime({
-					client, teamKey: input.config.scope.team,
+					client, teamKey: input.config.scope.team, authorityScope: input.authorityScope,
 					providerKey: input.config.scope.capacityProvider, repositories: input.config.repositories,
 				});
 				scope = resolved.scope;

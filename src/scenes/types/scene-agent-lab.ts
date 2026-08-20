@@ -172,6 +172,7 @@ export type AgentLabRunUpdate = {
 export type AgentLabExecutorInput = {
 	projectRoot: string;
 	contentRef?: string;
+	authorityScope?: { teamId: string; projectId: string };
 	config: AgentLabSceneConfig;
 	sceneId: string;
 	runId: string;

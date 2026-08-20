@@ -76,7 +76,8 @@ export async function runAgentLabScene(input: {
 	timeline.push('scene.start', { title: scene.title, environment: input.plan.environment, journey: 'agent-lab', reportUrl: live.url });
 	try {
 		snapshot = await input.options.agentLabExecutor({
-			projectRoot: input.options.projectRoot, contentRef: input.options.agentLabContentRef, config, sceneId: scene.id, runId: paths.runId, reportPath: paths.htmlReportPath,
+			projectRoot: input.options.projectRoot, contentRef: input.options.agentLabContentRef, authorityScope: input.options.agentLabAuthorityScope,
+			config, sceneId: scene.id, runId: paths.runId, reportPath: paths.htmlReportPath,
 			onUpdate: async (update) => {
 				snapshot = update.snapshot;
 				writeSnapshot();

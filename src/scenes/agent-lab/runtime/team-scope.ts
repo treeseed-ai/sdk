@@ -11,20 +11,22 @@ function resourceKey(value: Row) {
 
 export async function resolveTeamAgentLabRuntime(input: {
 	client: MarketClient; teamKey: string; providerKey: string; repositories: string[];
+	authorityScope: { teamId: string; projectId: string };
 }) {
 	if (input.repositories.length !== 1) throw new Error('Team Agent Lab currently requires exactly one selected project per scene.');
 	const teamSlug = input.teamKey.replace(/^team:/u, '').split('/').at(-1) ?? '';
-	const teams = (await input.client.teams()).payload.map(row);
-	const team = teams.find((entry) => resourceKey(entry) === input.teamKey)
-		?? teams.find((entry) => text(entry.slug) === teamSlug);
-	const teamId = text(team?.id);
-	if (!teamId) throw new Error(`Agent Lab could not resolve seeded team ${input.teamKey}.`);
+	const teamId = text(input.authorityScope.teamId);
+	const expectedProjectId = text(input.authorityScope.projectId);
+	if (!teamId || !expectedProjectId) throw new Error('Agent Lab received an incomplete authoritative team and project scope.');
 	const projects = (await input.client.projects(teamId)).payload.map(row);
 	const repositorySlug = input.repositories[0]!;
 	const projectKey = repositorySlug.startsWith('project:') ? repositorySlug : `project:treeseed/${repositorySlug}`;
-	const project = projects.find((entry) => resourceKey(entry) === projectKey) ?? projects.find((entry) => text(entry.slug) === repositorySlug);
+	const project = projects.find((entry) => text(entry.id) === expectedProjectId);
 	const projectId = text(project?.id);
-	if (!projectId) throw new Error(`Agent Lab could not resolve seeded project ${projectKey}.`);
+	if (!projectId) throw new Error(`Agent Lab authoritative project ${expectedProjectId} is not a member of team ${teamId}.`);
+	if (resourceKey(project) !== projectKey && text(project.slug) !== repositorySlug) {
+		throw new Error(`Agent Lab authoritative project ${expectedProjectId} does not match selected repository ${repositorySlug}.`);
+	}
 	const grants = (await input.client.capacityGrants(teamId, { limit: 200 })).payload.items.map(row);
 	const grant = grants.find((entry) => resourceKey(entry) === input.providerKey && text(entry.projectId) === projectId && text(entry.status) === 'active');
 	if (!grant) throw new Error(`Agent Lab found no active seeded grant for project ${projectKey}.`);
@@ -37,6 +39,6 @@ export async function resolveTeamAgentLabRuntime(input: {
 		scope: { teamId, projectId, projectSlug: text(project.slug) || repositorySlug, cleanup: async () => undefined },
 		provider: { providerId, membershipId },
 		grantId: text(grant.id), allocation,
-		teamName: text(team?.name) || teamSlug || input.teamKey,
+		teamName: teamSlug || input.teamKey,
 	};
 }
