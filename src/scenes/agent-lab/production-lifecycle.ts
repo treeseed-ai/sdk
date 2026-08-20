@@ -20,6 +20,8 @@ import { resolveAgentLabInitiator } from './runtime/metadata.ts';
 
 type Row = Record<string, unknown>;
 type AssignmentExecutor = (input: CapacityAcceptanceExecutionInput) => Promise<CapacityAcceptanceExecutionResult>;
+type ProvisionedProvider = Awaited<ReturnType<typeof provisionLocalCapacityAcceptanceProvider>>;
+type ProviderIdentity = Pick<ProvisionedProvider, 'providerId' | 'membershipId'>;
 const BASE_CAPABILITIES = ['planning', 'repo_read', 'agent_mode_run', 'usage_report'];
 const TERMINAL = new Set(['completed', 'cancelled', 'failed', 'degraded']);
 
@@ -188,7 +190,8 @@ export function createProductionAgentLabExecutor(options: {
 			return publishQueue;
 		};
 		let scope: Awaited<ReturnType<typeof createLocalCapacityAcceptanceScope>> | null = null;
-		let provider: Awaited<ReturnType<typeof provisionLocalCapacityAcceptanceProvider>> | null = null;
+		let provider: ProviderIdentity | null = null;
+		let provisionedProvider: ProvisionedProvider | null = null;
 		let protocol: ProviderProtocolClient | null = null;
 		let sessionId = '';
 		let grantId = '';
@@ -202,8 +205,7 @@ export function createProductionAgentLabExecutor(options: {
 			snapshot = { ...snapshot, status: 'running' }; await publish();
 			if (input.config.scope.kind === 'team') {
 				const resolved = await resolveTeamAgentLabRuntime({
-					projectRoot: text(options.env.TREESEED_TENANT_ROOT) || input.projectRoot,
-					client, apiUrl: api.apiUrl, teamKey: input.config.scope.team,
+					client, teamKey: input.config.scope.team,
 					providerKey: input.config.scope.capacityProvider, repositories: input.config.repositories,
 				});
 				scope = resolved.scope;
@@ -234,11 +236,13 @@ export function createProductionAgentLabExecutor(options: {
 				selections.set(workday.id, { ...resolved, agentSlugs: filtered });
 			}
 			const capabilities = [...new Set([...BASE_CAPABILITIES, ...[...selections.values()].flatMap((entry) => entry.classCapabilities)])];
-			if (!provider) provider = await provisionLocalCapacityAcceptanceProvider({
-				adminClient: client, apiUrl: api.apiUrl, teamId: scope.teamId, runId: input.runId, fetchImpl,
-				capabilities, maxConcurrentRunners: maxConcurrency, purpose: 'production-agent-lab',
-			});
-			protocol = new ProviderProtocolClient({ marketUrl: api.apiUrl, accessToken: provider.providerAccessToken, fetchImpl });
+			if (!provider) {
+				provisionedProvider = await provisionLocalCapacityAcceptanceProvider({
+					adminClient: client, apiUrl: api.apiUrl, teamId: scope.teamId, runId: input.runId, fetchImpl,
+					capabilities, maxConcurrentRunners: maxConcurrency, purpose: 'production-agent-lab',
+				});
+				provider = provisionedProvider;
+			}
 			const totalAgentSeconds = input.config.workdays.reduce((total, entry) => total + entry.durationSeconds * entry.maxActiveAssignments, 0);
 			const lanes = maxConcurrency >= 2
 				? [{ id:'codex-communication',purpose:'communication' as const,maxConcurrentRunners:1,activeRunners:0,capabilities,nativeLimits:{} },{ id:'codex-operation',purpose:'operation' as const,maxConcurrentRunners:1,activeRunners:0,capabilities,nativeLimits:{} }]
@@ -246,6 +250,8 @@ export function createProductionAgentLabExecutor(options: {
 			const executionProvider = { id: 'codex', adapter: 'codex', status: 'available', capabilities, maxConcurrentRunners: maxConcurrency, activeRunners: 0, nativeLimits: { availableAgentSeconds: totalAgentSeconds }, lanes };
 			let availability: Awaited<ReturnType<ProviderProtocolClient['createAvailabilitySession']>> | null = null;
 			if (!persistentTeam) {
+				if (!provisionedProvider) throw new Error('Ephemeral Agent Lab provider provisioning did not return credential custody.');
+				protocol = new ProviderProtocolClient({ marketUrl: api.apiUrl, accessToken: provisionedProvider.providerAccessToken, fetchImpl });
 				availability = await protocol.createAvailabilitySession({
 					environment: 'local', status: 'open', capabilities, grants: [], executionProviders: [executionProvider],
 					nativeLimits: { availableAgentSeconds: totalAgentSeconds, maxConcurrentRunners: maxConcurrency },
@@ -254,7 +260,7 @@ export function createProductionAgentLabExecutor(options: {
 				sessionId = text(availability.payload.id);
 				grantId = `agent-lab:${input.runId}:grant`;
 				await client.createCapacityGrant(scope.teamId, {
-				schemaVersion: 2, id: grantId, membershipId: provider.membershipId, providerId: provider.providerId,
+					schemaVersion: 2, id: grantId, membershipId: provisionedProvider.membershipId, providerId: provisionedProvider.providerId,
 				projectId: scope.projectId, environment: 'local', status: 'planned', executionProviderIds: ['codex'], laneIds: [],
 				capabilities, allowedModes: input.config.workdays.some((entry) => !entry.planningOnly) ? ['planning', 'acting'] : ['planning'], dailyAgentSecondsLimit: totalAgentSeconds, monthlyAgentSecondsLimit: totalAgentSeconds,
 				maxConcurrentAssignments: maxConcurrency, metadata: { agentLab: true, runId: input.runId },
@@ -379,9 +385,9 @@ export function createProductionAgentLabExecutor(options: {
 						} else {
 						const execution = await options.assignmentExecutor!({
 							runId: `${input.runId}-${config.id}-${iteration}`, apiUrl: api.apiUrl, teamId: scope.teamId, projectId: scope.projectId,
-							providerId: provider.providerId, membershipId: provider.membershipId, credentialId: provider.credentialId,
-							membershipCredential: provider.membershipCredential, providerAccessToken: provider.providerAccessToken,
-							providerSessionId: sessionId, providerSessionSequence: providerSequence, privateJwk: provider.privateJwk,
+							providerId: provisionedProvider!.providerId, membershipId: provisionedProvider!.membershipId, credentialId: provisionedProvider!.credentialId,
+							membershipCredential: provisionedProvider!.membershipCredential, providerAccessToken: provisionedProvider!.providerAccessToken,
+							providerSessionId: sessionId, providerSessionSequence: providerSequence, privateJwk: provisionedProvider!.privateJwk,
 							assignmentId: null, expectedAssignmentCount: Math.min(2, config.maxActiveAssignments),
 							maxConcurrentRunners: Math.min(2, config.maxActiveAssignments), executionProviderId: 'codex', capabilities,
 						});
@@ -468,8 +474,8 @@ export function createProductionAgentLabExecutor(options: {
 					snapshot.cleanup.diagnostics.push(message); cleanupError = cleanupError ?? error;
 				}
 			};
-			await cleanup('close availability session', !persistentTeam && provider && protocol && sessionId ? () => closeCapacityAcceptanceAvailabilitySession({
-				apiUrl: api.apiUrl, runId: input.runId, sessionId, fetchImpl, providerClient: protocol!, provisionedRuntime: provider,
+			await cleanup('close availability session', !persistentTeam && provisionedProvider && protocol && sessionId ? () => closeCapacityAcceptanceAvailabilitySession({
+				apiUrl: api.apiUrl, runId: input.runId, sessionId, fetchImpl, providerClient: protocol!, provisionedRuntime: provisionedProvider,
 			}) : null);
 			await cleanup('revoke project grant', !persistentTeam && grantId && scope ? () => client.transitionCapacityGrant(scope!.teamId, grantId, 'revoke', `agent-lab:${input.runId}:grant-revoke`) : null);
 			await cleanup('revoke provider membership', !persistentTeam && provider ? provider.cleanup : null);

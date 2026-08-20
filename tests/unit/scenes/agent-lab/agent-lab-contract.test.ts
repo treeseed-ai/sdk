@@ -16,6 +16,7 @@ import {
 } from '../../../../src/scenes/index.ts';
 import { applyAgentLabAccounting,collectAgentLabExecutions,normalizeAgentLabProviderExecutions,readAgentLabAssignments } from '../../../../src/scenes/agent-lab/activity-collector.ts';
 import { agentLabDiagnostic,agentLabSimulationClassification,resolveAgentDefinitionPaths,resolveAgentLabRepositorySlug,resolveAgentLabSelectionRef } from '../../../../src/scenes/agent-lab/production-lifecycle.ts';
+import { resolveTeamAgentLabRuntime } from '../../../../src/scenes/agent-lab/runtime/team-scope.ts';
 import { agentLabTerminalProfileFailure,agentLabTickReadyToComplete,agentLabWorkdayReadyToComplete } from '../../../../src/scenes/agent-lab/workday-snapshot.ts';
 import { agentLabArtifactExpectations,selectedAgentLabArtifactExpectations,semanticArtifactAssertions } from '../../../../src/scenes/agent-lab/semantic-artifact-assertions.ts';
 
@@ -76,6 +77,20 @@ describe('production Agent Lab scene contract', () => {
 		expect(resolveAgentLabRepositorySlug(['api'])).toBe('api');
 		expect(() => resolveAgentLabRepositorySlug([])).toThrow(/exactly one selected repository-backed project/u);
 		expect(() => resolveAgentLabRepositorySlug(['sdk', 'api'])).toThrow(/exactly one selected repository-backed project/u);
+	});
+	it('resolves a persistent team provider from API-owned grant facts without provider secret custody', async () => {
+		const client = {
+			teams: async () => ({ payload: [{ id: 'team-1', slug: 'treeseed', name: 'TreeSeed' }] }),
+			projects: async () => ({ payload: [{ id: 'project-sdk', slug: 'sdk', metadata: { resourceKey: 'project:treeseed/sdk' } }] }),
+			capacityGrants: async () => ({ payload: { items: [{ id: 'grant-sdk', projectId: 'project-sdk', providerId: 'provider-1', membershipId: 'membership-1', status: 'active', metadata: { seedResourceKey: 'capacity-provider:treeseed/agents' } }] } }),
+			capacityAllocationSets: async () => ({ payload: { items: [{ id: 'allocation-1', status: 'active', metadata: { seedRuntime: true } }] } }),
+		};
+		const runtime = await resolveTeamAgentLabRuntime({
+			client: client as never, teamKey: 'team:treeseed', providerKey: 'capacity-provider:treeseed/agents', repositories: ['sdk'],
+		});
+		expect(runtime.scope).toMatchObject({ teamId: 'team-1', projectId: 'project-sdk', projectSlug: 'sdk' });
+		expect(runtime.provider).toEqual({ providerId: 'provider-1', membershipId: 'membership-1' });
+		expect(runtime.grantId).toBe('grant-sdk');
 	});
 	it('freezes the current TreeDX authoring base unless an explicit forensic ref is selected', () => {
 		const authoringBase = 'a'.repeat(40);
