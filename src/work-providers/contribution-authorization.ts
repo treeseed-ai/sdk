@@ -28,6 +28,7 @@ export type AgentContributionPermission = {
 	mode: 'disabled' | 'delegated-project-authorization'; mayPopulatePrAttestation: boolean;
 	requiredCapability: typeof TREESEED_AGENT_CONTRIBUTION_CAPABILITY; requireExactHead: true;
 };
+export type AgentContributionAttestationBundle = { authorization: ProjectContributionAuthorization; attestation: AgentContributionAttestation };
 export type ContributionDiagnostic = { code: string; path: string; message: string };
 
 const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -94,14 +95,14 @@ export async function verifyAgentContributionReceipt(attestation:AgentContributi
 	return crypto.subtle.verify('Ed25519',key,decodeBase64url(attestation.receipt.signature),contributionAttestationPayload(attestation));
 }
 
-export function renderAgentContributionAttestationBlock(attestation: AgentContributionAttestation) {
-	return `${TREESEED_CONTRIBUTION_BLOCK_START}\nAgent contribution authorization: \`${attestation.authorization.id}@${attestation.authorization.generation}\`\n\`\`\`json treeseed-contribution-attestation\n${JSON.stringify(attestation, null, 2)}\n\`\`\`\n${TREESEED_CONTRIBUTION_BLOCK_END}`;
+export function renderAgentContributionAttestationBlock(bundle: AgentContributionAttestationBundle) {
+	return `${TREESEED_CONTRIBUTION_BLOCK_START}\nAgent contribution authorization: \`${bundle.attestation.authorization.id}@${bundle.attestation.authorization.generation}\`\n\`\`\`json treeseed-contribution-attestation\n${JSON.stringify(bundle, null, 2)}\n\`\`\`\n${TREESEED_CONTRIBUTION_BLOCK_END}`;
 }
 
-export function parseAgentContributionAttestationBlock(body: string): AgentContributionAttestation | null {
+export function parseAgentContributionAttestationBlock(body: string): AgentContributionAttestationBundle | null {
 	const start = body.indexOf(TREESEED_CONTRIBUTION_BLOCK_START); const end = body.indexOf(TREESEED_CONTRIBUTION_BLOCK_END);
 	if (start < 0 || end <= start) return null;
 	const match = /```json treeseed-contribution-attestation\s+([\s\S]*?)\s+```/u.exec(body.slice(start, end));
 	if (!match) return null;
-	try { return JSON.parse(match[1]!) as AgentContributionAttestation; } catch { return null; }
+	try { return JSON.parse(match[1]!) as AgentContributionAttestationBundle; } catch { return null; }
 }

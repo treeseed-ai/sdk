@@ -43,7 +43,7 @@ describe('project contribution authorization', () => {
 		expect(validateProjectContributionAuthorization(expired,new Date('2026-08-20T14:00:00.000Z')).diagnostics.map((entry)=>entry.code)).toContain('contribution_authorization_expired');
 	});
 	it('round-trips the managed PR body block', () => {
-		const value=attestation(); expect(parseAgentContributionAttestationBlock(renderAgentContributionAttestationBlock(value))).toEqual(value);
+		const value={authorization:authorization(),attestation:attestation()}; expect(parseAgentContributionAttestationBlock(renderAgentContributionAttestationBlock(value))).toEqual(value);
 	});
 	it('verifies a receipt signed by the project authorization key', async () => {
 		const pair=await crypto.subtle.generateKey({name:'Ed25519'},true,['sign','verify']);
