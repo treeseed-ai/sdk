@@ -8,7 +8,8 @@ export type ProjectContributionAuthorization = {
 	schemaVersion: typeof TREESEED_CONTRIBUTION_GRANT_VERSION; id: string; generation: number;
 	status: 'active' | 'revoked' | 'superseded' | 'expired'; projectId: string;
 	repository: { provider: string; owner: string; name: string };
-	grant: { version: string; digest: string }; authorizedBy: { principalId: string; displayName?: string };
+	grant: { version: string; digest: string }; receiptKey: { keyId: string; algorithm: 'Ed25519'; publicKeyJwk: JsonWebKey };
+	authorizedBy: { principalId: string; displayName?: string };
 	agentIds: string[]; capacityProviderIds: string[]; contributionModes: Array<'agent-assisted' | 'agent-authored'>;
 	targetBranches: string[]; allowedActions: Array<'populate_pr_attestation' | 'update_pr_attestation'>;
 	effectiveAt: string; expiresAt?: string | null; revokedAt?: string | null;
@@ -44,6 +45,7 @@ export function validateProjectContributionAuthorization(value: unknown, now = n
 	if (!['active','revoked','superseded','expired'].includes(text(source.status))) add('contribution_authorization_status_invalid', 'status', 'status is invalid.');
 	const repository = record(source.repository); for (const key of ['provider','owner','name']) if (!text(repository[key])) add('contribution_authorization_repository_invalid', `repository.${key}`, `${key} is required.`);
 	const grant = record(source.grant); if (!text(grant.version) || !text(grant.digest)) add('contribution_authorization_grant_invalid', 'grant', 'Versioned grant text and digest are required.');
+	const receiptKey=record(source.receiptKey); if (!text(receiptKey.keyId) || receiptKey.algorithm!=='Ed25519' || !text(record(receiptKey.publicKeyJwk).x)) add('contribution_authorization_receipt_key_invalid','receiptKey','An Ed25519 public receipt key is required.');
 	if (!text(record(source.authorizedBy).principalId)) add('contribution_authorization_human_required', 'authorizedBy.principalId', 'An accountable human principal is required.');
 	for (const key of ['agentIds','capacityProviderIds','contributionModes','targetBranches','allowedActions']) if (!Array.isArray(source[key]) || source[key].length === 0) add('contribution_authorization_scope_empty', key, `${key} must be non-empty.`);
 	if (!timestamp(source.effectiveAt)) add('contribution_authorization_time_invalid', 'effectiveAt', 'effectiveAt must be an ISO timestamp.');
@@ -68,7 +70,28 @@ export function validateAgentContributionAttestation(input: { authorization: Pro
 	if (!sha(a.base.sha) || a.base.sha !== expected.baseSha || !sha(a.head.sha) || a.head.sha !== expected.headSha || a.head.branch !== expected.headBranch) add('contribution_attestation_exact_ref_mismatch', 'head', 'Exact base/head binding is stale or invalid.');
 	if (!grant.allowedActions.includes('populate_pr_attestation')) add('contribution_attestation_action_unauthorized', 'authorization.allowedActions', 'Project grant does not allow PR attestation.');
 	if (!timestamp(a.issuedAt) || !text(a.receipt.keyId) || a.receipt.algorithm !== 'Ed25519' || !text(a.receipt.payloadDigest) || !text(a.receipt.signature)) add('contribution_attestation_receipt_invalid', 'receipt', 'A complete signed receipt is required.');
+	if (a.receipt.keyId!==grant.receiptKey.keyId || a.receipt.algorithm!==grant.receiptKey.algorithm) add('contribution_attestation_receipt_key_mismatch','receipt.keyId','Receipt key does not match the project authorization.');
 	return { ok: diagnostics.length === 0, diagnostics };
+}
+
+function canonical(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(canonical);
+	if (value && typeof value==='object') return Object.fromEntries(Object.entries(value as Record<string,unknown>).sort(([left],[right])=>left.localeCompare(right)).map(([key,item])=>[key,canonical(item)]));
+	return value;
+}
+const base64url=(bytes:Uint8Array)=>btoa(String.fromCharCode(...bytes)).replace(/\+/gu,'-').replace(/\//gu,'_').replace(/=+$/gu,'');
+const decodeBase64url=(value:string)=>Uint8Array.from(atob(value.replace(/-/gu,'+').replace(/_/gu,'/')+'='.repeat((4-value.length%4)%4)),(character)=>character.charCodeAt(0));
+export function contributionAttestationPayload(attestation:AgentContributionAttestation) {
+	const {receipt,...payload}=attestation; return new TextEncoder().encode(JSON.stringify(canonical({...payload,receipt:{keyId:receipt.keyId,algorithm:receipt.algorithm}})));
+}
+export async function contributionAttestationPayloadDigest(attestation:AgentContributionAttestation) {
+	return `sha256:${base64url(new Uint8Array(await crypto.subtle.digest('SHA-256',contributionAttestationPayload(attestation))))}`;
+}
+export async function verifyAgentContributionReceipt(attestation:AgentContributionAttestation,authorization:ProjectContributionAuthorization) {
+	if(attestation.receipt.keyId!==authorization.receiptKey.keyId || attestation.receipt.algorithm!=='Ed25519') return false;
+	if(await contributionAttestationPayloadDigest(attestation)!==attestation.receipt.payloadDigest) return false;
+	const key=await crypto.subtle.importKey('jwk',authorization.receiptKey.publicKeyJwk,{name:'Ed25519'},false,['verify']);
+	return crypto.subtle.verify('Ed25519',key,decodeBase64url(attestation.receipt.signature),contributionAttestationPayload(attestation));
 }
 
 export function renderAgentContributionAttestationBlock(attestation: AgentContributionAttestation) {

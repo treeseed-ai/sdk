@@ -3272,6 +3272,7 @@ CREATE TABLE "project_contribution_authorizations" (
 	"repository_json" text NOT NULL,
 	"grant_version" text NOT NULL,
 	"grant_digest" text NOT NULL,
+	"receipt_key_json" text NOT NULL,
 	"authorized_by_principal_id" text NOT NULL,
 	"authorized_by_display_name" text,
 	"agent_ids_json" text NOT NULL,
