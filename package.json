@@ -115,6 +115,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./standards": {
+      "types": "./dist/standards/index.d.ts",
+      "default": "./dist/standards/index.js"
+    },
     "./sdk": {
       "types": "./dist/entrypoints/models/sdk.d.ts",
       "default": "./dist/entrypoints/models/sdk.js"
