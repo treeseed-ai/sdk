@@ -42,6 +42,13 @@ describe('project contribution authorization', () => {
 		const expired=authorization(); expired.expiresAt='2026-08-20T13:30:00.000Z';
 		expect(validateProjectContributionAuthorization(expired,new Date('2026-08-20T14:00:00.000Z')).diagnostics.map((entry)=>entry.code)).toContain('contribution_authorization_expired');
 	});
+	it('rejects future activation and unsupported delegated scope values', () => {
+		const future=authorization(); future.effectiveAt='2026-08-20T14:01:00.000Z';
+		expect(validateProjectContributionAuthorization(future,new Date('2026-08-20T14:00:00.000Z')).diagnostics.map((entry)=>entry.code)).toContain('contribution_authorization_not_yet_effective');
+		const invalid=authorization() as ProjectContributionAuthorization & { contributionModes:string[]; allowedActions:string[] };
+		invalid.contributionModes=['human-authored']; invalid.allowedActions=['merge_pr'];
+		expect(validateProjectContributionAuthorization(invalid,new Date('2026-08-20T14:00:00.000Z')).diagnostics.map((entry)=>entry.code)).toEqual(expect.arrayContaining(['contribution_authorization_mode_invalid','contribution_authorization_action_invalid']));
+	});
 	it('round-trips the managed PR body block', () => {
 		const value={authorization:authorization(),attestation:attestation()}; expect(parseAgentContributionAttestationBlock(renderAgentContributionAttestationBlock(value))).toEqual(value);
 	});

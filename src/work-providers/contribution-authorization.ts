@@ -49,7 +49,10 @@ export function validateProjectContributionAuthorization(value: unknown, now = n
 	const receiptKey=record(source.receiptKey); if (!text(receiptKey.keyId) || receiptKey.algorithm!=='Ed25519' || !text(record(receiptKey.publicKeyJwk).x)) add('contribution_authorization_receipt_key_invalid','receiptKey','An Ed25519 public receipt key is required.');
 	if (!text(record(source.authorizedBy).principalId)) add('contribution_authorization_human_required', 'authorizedBy.principalId', 'An accountable human principal is required.');
 	for (const key of ['agentIds','capacityProviderIds','contributionModes','targetBranches','allowedActions']) if (!Array.isArray(source[key]) || source[key].length === 0) add('contribution_authorization_scope_empty', key, `${key} must be non-empty.`);
+	if (Array.isArray(source.contributionModes) && source.contributionModes.some((mode) => !['agent-assisted','agent-authored'].includes(text(mode)))) add('contribution_authorization_mode_invalid', 'contributionModes', 'Contribution modes contain an unsupported value.');
+	if (Array.isArray(source.allowedActions) && source.allowedActions.some((action) => !['populate_pr_attestation','update_pr_attestation'].includes(text(action)))) add('contribution_authorization_action_invalid', 'allowedActions', 'Allowed actions contain an unsupported value.');
 	if (!timestamp(source.effectiveAt)) add('contribution_authorization_time_invalid', 'effectiveAt', 'effectiveAt must be an ISO timestamp.');
+	else if (Date.parse(text(source.effectiveAt)) > now.getTime()) add('contribution_authorization_not_yet_effective', 'effectiveAt', 'Authorization is not yet effective.');
 	if (source.expiresAt != null && (!timestamp(source.expiresAt) || Date.parse(text(source.expiresAt)) <= now.getTime())) add('contribution_authorization_expired', 'expiresAt', 'Authorization is expired or has an invalid expiry.');
 	if (source.status !== 'active') add('contribution_authorization_inactive', 'status', 'Authorization is not active.');
 	return { ok: diagnostics.length === 0, diagnostics, authorization: diagnostics.length ? null : value as ProjectContributionAuthorization };
