@@ -166,22 +166,6 @@
       "types": "./dist/content/validation/index.d.ts",
       "default": "./dist/content/validation/index.js"
     },
-    "./api": {
-      "types": "./dist/api/index.d.ts",
-      "default": "./dist/api/index.js"
-    },
-    "./api/auth/d1-provider": {
-      "types": "./dist/api/auth/d1-provider.d.ts",
-      "default": "./dist/api/auth/d1-provider.js"
-    },
-    "./api/auth/rbac": {
-      "types": "./dist/api/auth/rbac.d.ts",
-      "default": "./dist/api/auth/rbac.js"
-    },
-    "./api/trusted-assertion": {
-      "types": "./dist/api/auth/trusted-assertion.d.ts",
-      "default": "./dist/api/auth/trusted-assertion.js"
-    },
     "./workflow": {
       "types": "./dist/operations/workflow.d.ts",
       "default": "./dist/operations/workflow.js"
