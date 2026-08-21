@@ -21,7 +21,7 @@ executionProviders:
     capabilities: [engineering, research]
 connections:
   - id: team-a
-    marketProfile: staging
+    serverProfile: staging
     teamId: team-a
     providerId: provider-example
     membershipId: membership-team-a
