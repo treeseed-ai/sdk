@@ -24,6 +24,8 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm run release:setup
       - run: npm run release:check-tag
+      - name: Install scene browser
+        run: npx playwright install --with-deps chromium
       - run: bash -lc 'npm run verify:local'
       - name: Acquire immutable accepted baseline
         run: npm run standards:baseline
