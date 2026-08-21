@@ -5,6 +5,7 @@ import * as operatorContracts from '../../../src/operator-contracts/index.ts';
 describe('operator contract public boundary', () => {
 	it('publishes human contracts without direct definition authoring or deployment mutations', () => {
 		expect(operatorContracts).toHaveProperty('TREESEED_COMMAND_TREE_V1');
+		expect(publicAgentCapacity.compileDefaultChatActivityProfile('planner').planningIntent).toBeTruthy();
 		expect(publicAgentCapacity).not.toHaveProperty('authorAgentDefinitions');
 		expect(publicAgentCapacity).not.toHaveProperty('planAgentDeployment');
 		expect(publicAgentCapacity).not.toHaveProperty('executeAgentDeployment');
