@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -8,16 +8,6 @@ import {
 } from '../../../../src/scenes/index.ts';
 
 function findWorkspaceRoot() {
-	if (process.env.TREESEED_VERIFY_PACKAGE_ISOLATED === '1') {
-		return resolve(dirname(fileURLToPath(import.meta.url)), '../../../fixtures/scene-project');
-	}
-	let current = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
-	for (let index = 0; index < 8; index += 1) {
-		if (existsSync(resolve(current, 'scenes/team-project-portfolio-demo.yaml'))) return current;
-		const next = dirname(current);
-		if (next === current) break;
-		current = next;
-	}
 	return resolve(dirname(fileURLToPath(import.meta.url)), '../../../fixtures/scene-project');
 }
 

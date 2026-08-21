@@ -26,8 +26,12 @@ try {
 	execFileSync('git', ['checkout', '--quiet', '--detach', sourceCommit], { cwd: worktree, stdio: 'inherit' });
 	const observed = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: worktree, encoding: 'utf8' }).trim();
 	if (observed !== sourceCommit) throw new Error(`API consumer checkout resolved ${observed}, expected ${sourceCommit}.`);
-	execFileSync('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--save-exact', tarball], { cwd: worktree, stdio: 'inherit' });
+	execFileSync('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-save', tarball], { cwd: worktree, stdio: 'inherit' });
 	execFileSync('npm', ['run', 'build'], { cwd: worktree, stdio: 'inherit' });
+	// The complete API release gate imports every runtime module and executes the
+	// local HTTP acceptance campaign. Focused contract tests alone cannot prove
+	// that the packed SDK satisfies the consumer's full runtime boundary.
+	execFileSync('npm', ['run', 'verify:direct'], { cwd: worktree, stdio: 'inherit' });
 	const testResultPath = resolve(worktree, '.treeseed-sdk-consumer-results.json');
 	execFileSync('npx', [
 		'vitest', 'run', '--config', './vitest.config.ts',
@@ -51,7 +55,7 @@ try {
 	const changedPaths = execFileSync('git', ['diff', '--name-only', 'HEAD'], { cwd: worktree, encoding: 'utf8' })
 		.trim().split('\n').filter(Boolean).sort();
 	if (finalHead !== sourceCommit || consumerCommits !== 0) throw new Error('API consumer verification created or adopted a source commit.');
-	if (JSON.stringify(changedPaths) !== JSON.stringify(['package-lock.json', 'package.json'])) {
+	if (changedPaths.length !== 0) {
 		throw new Error(`API consumer verification changed unexpected tracked paths: ${changedPaths.join(', ')}.`);
 	}
 	execFileSync('git', ['diff', '--cached', '--quiet'], { cwd: worktree, stdio: 'ignore' });
