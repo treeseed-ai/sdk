@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.12.63-dev.fix-sdk-package-lock-integrity.20260818T124913Z",
+  "version": "0.13.0-rc.1",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "Apache-2.0",
   "repository": {
@@ -235,10 +235,6 @@
       "types": "./dist/configuration/secrets-capability.d.ts",
       "default": "./dist/configuration/secrets-capability.js"
     },
-    "./project-import": {
-      "types": "./dist/projects/projects-core/project-import.d.ts",
-      "default": "./dist/projects/projects-core/project-import.js"
-    },
     "./reconcile": {
       "types": "./dist/reconcile/index.d.ts",
       "default": "./dist/reconcile/index.js"
@@ -314,14 +310,6 @@
     "./template-catalog": {
       "types": "./dist/commerce/catalog/template-catalog.d.ts",
       "default": "./dist/commerce/catalog/template-catalog.js"
-    },
-    "./template-launch-ui": {
-      "types": "./dist/entrypoints/templates/template-launch-ui.d.ts",
-      "default": "./dist/entrypoints/templates/template-launch-ui.js"
-    },
-    "./template-secret-sync": {
-      "types": "./dist/operations/services/configuration/template-secret-sync.d.ts",
-      "default": "./dist/operations/services/configuration/template-secret-sync.js"
     },
     "./d1-store": {
       "types": "./dist/persistence/d1-store.d.ts",
@@ -412,17 +400,9 @@
       "types": "./dist/operations/platform-operation-store.d.ts",
       "default": "./dist/operations/platform-operation-store.js"
     },
-    "./operations/repository-operations": {
-      "types": "./dist/operations/repository-operations.d.ts",
-      "default": "./dist/operations/repository-operations.js"
-    },
     "./operations/github-credentials": {
       "types": "./dist/operations/services/configuration/github-credentials.d.ts",
       "default": "./dist/operations/services/configuration/github-credentials.js"
-    },
-    "./operations/project-host-operations": {
-      "types": "./dist/operations/services/projects/hosting/project-host-operations.d.ts",
-      "default": "./dist/operations/services/projects/hosting/project-host-operations.js"
     },
     "./types": {
       "types": "./dist/entrypoints/models/sdk-types.d.ts",

@@ -14,4 +14,27 @@ const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8
 for (const specifier of ['./standards', './standards/typescript', './standards/openapi']) {
 	if (!packageJson.exports[specifier]) throw new Error(`Missing package export ${specifier}.`);
 }
-console.log(JSON.stringify({ ok: true, files: required.length, exportMapDigest: await standardsSha256(packageJson.exports) }));
+
+function collectExportTargets(value: unknown): string[] {
+	if (typeof value === 'string') return [value];
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+	return Object.values(value).flatMap(collectExportTargets);
+}
+
+const exportTargets = [...new Set(collectExportTargets(packageJson.exports))];
+const missingExportTargets = exportTargets.filter((target) => {
+	if (!target.startsWith('./')) {
+		throw new Error(`Package export targets must be package-relative: ${target}.`);
+	}
+	return !existsSync(resolve(root, target));
+});
+if (missingExportTargets.length) {
+	throw new Error(`Package exports reference missing build outputs: ${missingExportTargets.join(', ')}.`);
+}
+
+console.log(JSON.stringify({
+	ok: true,
+	files: required.length,
+	exportTargets: exportTargets.length,
+	exportMapDigest: await standardsSha256(packageJson.exports),
+}));
