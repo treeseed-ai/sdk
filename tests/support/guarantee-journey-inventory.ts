@@ -37,7 +37,7 @@ function journeyIndexFromGuaranteeId(guaranteeId: string): number {
   return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
 }
 
-export function loadGuaranteeJourneyInventory(workspaceRoot = resolve(process.cwd(), '../..')): GuaranteeJourneyInventory {
+export function loadGuaranteeJourneyInventory(workspaceRoot = resolve(import.meta.dirname, '../..')): GuaranteeJourneyInventory {
   const audit = auditGuaranteeJourneys({
     workspaceRoot,
     now: new Date('2026-01-01T00:00:00.000Z'),

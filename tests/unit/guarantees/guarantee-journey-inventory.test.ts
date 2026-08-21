@@ -13,8 +13,9 @@ describe('guarantee journey inventory', () => {
 
   it('summarizes the scene-backed guarantee registry deterministically', () => {
     const hasRootGuarantees = existsSync(resolve(inventory.workspaceRoot, 'guarantees'));
+    const hasRootScenes = existsSync(resolve(inventory.workspaceRoot, 'scenes'));
 
-    if (!hasRootGuarantees) {
+    if (!hasRootGuarantees || !hasRootScenes) {
       expect(inventory.totals.sceneBacked).toBe(0);
       expect(inventory.items).toHaveLength(0);
       return;
