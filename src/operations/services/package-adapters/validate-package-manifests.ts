@@ -25,6 +25,11 @@ export function validatePackageManifests(root = workspaceRoot()): PackageManifes
 		if (!adapter.metadata.projectArchitecture) {
 			warnings.push('package does not declare projectArchitecture metadata');
 		}
+		for (const error of stringArray(adapter.metadata.standardsErrors)) errors.push(`invalid standards declaration: ${error}`);
+		const standards = stringRecord(adapter.metadata.standards);
+		if (standards.workflow && stringRecord(standards.workflow).enabled === true && adapter.id !== '@treeseed/sdk') {
+			errors.push('standards workflow migration is currently enabled only for @treeseed/sdk');
+		}
 			if (adapter.releaseChecks.length === 0) {
 			warnings.push('package declares no release checks');
 		}

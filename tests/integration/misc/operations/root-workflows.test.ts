@@ -226,7 +226,6 @@ describe('package publish safeguards', () => {
 			expect(workflowSource).toContain("startsWith(github.ref, 'refs/tags/')");
 			expect(workflowSource).toContain('- "*.*.*"');
 			expect(workflowSource).not.toContain('- "v*"');
-			expect(workflowSource).toContain("!contains(github.ref_name, '-')");
 			expect(workflowSource).toContain('contents: write');
 			expect(workflowSource).not.toMatch(/(?:npm ci|dependency install) failed; retrying/);
 			expect(workflowSource).toContain('Create GitHub release');
@@ -235,9 +234,23 @@ describe('package publish safeguards', () => {
 			expect(workflowSource).toContain('--verify-tag');
 			expect(verifyWorkflowSource).not.toContain('dependency install failed; retrying');
 			expect(verifyWorkflowSource).not.toContain('TREESEED_GITHUB_AUTOMATION_MODE');
-			expect(checkTagSource).toContain('^\\d+\\.\\d+\\.\\d+$');
-			expect(publishSource).toContain('Refusing to publish');
-			expect(publishSource).toContain('^\\d+\\.\\d+\\.\\d+$');
+			if (packageName === 'sdk') {
+				const releaseVersionSource = readFileSync(resolve(packageRoot, 'scripts/packages/release-version.ts'), 'utf8');
+				expect(workflowSource).not.toContain("!contains(github.ref_name, '-')");
+				expect(workflowSource).toContain('npm run release:check-tag');
+				expect(workflowSource).toContain('npm run release:publish');
+				expect(workflowSource).toContain('release_flags+=(--prerelease)');
+				expect(checkTagSource).toContain('assertPackageReleaseTag');
+				expect(releaseVersionSource).toContain('releaseCandidatePattern');
+				expect(releaseVersionSource).toContain("npmDistTag: 'rc'");
+				expect(publishSource).toContain('release:publish owns npm dist-tag selection');
+				expect(publishSource).toContain("'--tag', release.npmDistTag");
+			} else {
+				expect(workflowSource).toContain("!contains(github.ref_name, '-')");
+				expect(checkTagSource).toContain('^\\d+\\.\\d+\\.\\d+$');
+				expect(publishSource).toContain('Refusing to publish');
+				expect(publishSource).toContain('^\\d+\\.\\d+\\.\\d+$');
+			}
 			expect(publishSource).toContain('process.exit(result.status ?? 1)');
 			expect(publishSource).not.toContain('unprovisionedScopedPackage');
 			expect(publishSource).toContain('publish');

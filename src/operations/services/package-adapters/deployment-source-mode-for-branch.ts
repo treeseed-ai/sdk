@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { workspacePackages } from '../treedx/workspaces/workspace-tools.ts';
 import { PackageAdapter,PackageManifestDocument,commandFromScript,docsSiteReadiness,normalizeContentContributions,normalizeGitHubRepositorySlug,normalizePackageProjectArchitecture,readStructuredFile } from './package-kind.ts';
+import { inspectStandardsPackageManifest } from '../../../standards/package-manifest.ts';
 
 export function deploymentSourceModeForBranch(metadata: Record<string, unknown>, branch: string) {
 	const source = stringRecord(metadata.deploymentSource);
@@ -54,6 +55,9 @@ export function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[
 	const capabilityRecord = stringRecord(manifest?.capabilities);
 	const localOnly = capabilityRecord.localOnly === true;
 	const packageType = stringValue(manifest?.type);
+	const standards = manifest?.standards === undefined
+		? { manifest: null, errors: [] }
+		: inspectStandardsPackageManifest(manifest.standards);
 	return {
 		id,
 		name,
@@ -131,6 +135,7 @@ export function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[
 				}
 				: {}),
 			...(hostedVerifyTimeoutSeconds ? { hostedVerifyTimeoutSeconds } : {}),
+			...(manifest?.standards === undefined ? {} : { standards: standards.manifest, standardsErrors: standards.errors }),
 			scripts,
 		},
 	};

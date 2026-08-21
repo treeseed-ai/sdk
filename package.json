@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.12.63-dev.fix-sdk-package-lock-integrity.20260818T124913Z",
+  "version": "0.13.0-rc.1",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "Apache-2.0",
   "repository": {
@@ -68,7 +68,15 @@
     "release:setup": "npm run setup:ci",
     "release:check-tag": "node --import tsx ./scripts/packages/assert-release-tag-version.ts",
     "release:verify": "npm run check:file-lengths && node --import tsx ./scripts/packages/release-verify.ts",
-    "release:publish": "node --import tsx ./scripts/packages/publish-package.ts"
+    "release:publish": "node --import tsx ./scripts/packages/publish-package.ts",
+    "release:readback": "node --import tsx ./scripts/packages/verify-published-package.ts",
+    "standards:baseline": "node --import tsx ./scripts/standards/acquire-accepted-baseline.ts",
+    "standards:build": "node --import tsx ./scripts/standards/build-contract-bundle.ts",
+    "standards:compatibility": "node --import tsx ./scripts/standards/compare-compatibility.ts",
+    "standards:compose": "node --import tsx ./scripts/standards/resolve-composition.ts",
+    "standards:acceptance": "node --import tsx ./scripts/standards/package-acceptance.ts",
+    "standards:consumer": "node --import tsx ./scripts/standards/verify-api-consumer.ts",
+    "standards:release-evidence": "node --import tsx ./scripts/standards/create-release-evidence.ts"
   },
   "dependencies": {
     "@github/copilot": "1.0.39",
@@ -114,6 +122,18 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./standards": {
+      "types": "./dist/standards/index.d.ts",
+      "default": "./dist/standards/index.js"
+    },
+    "./standards/typescript": {
+      "types": "./dist/standards/typescript/index.d.ts",
+      "default": "./dist/standards/typescript/index.js"
+    },
+    "./standards/openapi": {
+      "types": "./dist/standards/openapi/index.d.ts",
+      "default": "./dist/standards/openapi/index.js"
     },
     "./sdk": {
       "types": "./dist/entrypoints/models/sdk.d.ts",
@@ -219,10 +239,6 @@
       "types": "./dist/configuration/secrets-capability.d.ts",
       "default": "./dist/configuration/secrets-capability.js"
     },
-    "./project-import": {
-      "types": "./dist/projects/projects-core/project-import.d.ts",
-      "default": "./dist/projects/projects-core/project-import.js"
-    },
     "./reconcile": {
       "types": "./dist/reconcile/index.d.ts",
       "default": "./dist/reconcile/index.js"
@@ -298,14 +314,6 @@
     "./template-catalog": {
       "types": "./dist/commerce/catalog/template-catalog.d.ts",
       "default": "./dist/commerce/catalog/template-catalog.js"
-    },
-    "./template-launch-ui": {
-      "types": "./dist/entrypoints/templates/template-launch-ui.d.ts",
-      "default": "./dist/entrypoints/templates/template-launch-ui.js"
-    },
-    "./template-secret-sync": {
-      "types": "./dist/operations/services/configuration/template-secret-sync.d.ts",
-      "default": "./dist/operations/services/configuration/template-secret-sync.js"
     },
     "./d1-store": {
       "types": "./dist/persistence/d1-store.d.ts",
@@ -396,17 +404,9 @@
       "types": "./dist/operations/platform-operation-store.d.ts",
       "default": "./dist/operations/platform-operation-store.js"
     },
-    "./operations/repository-operations": {
-      "types": "./dist/operations/repository-operations.d.ts",
-      "default": "./dist/operations/repository-operations.js"
-    },
     "./operations/github-credentials": {
       "types": "./dist/operations/services/configuration/github-credentials.d.ts",
       "default": "./dist/operations/services/configuration/github-credentials.js"
-    },
-    "./operations/project-host-operations": {
-      "types": "./dist/operations/services/projects/hosting/project-host-operations.d.ts",
-      "default": "./dist/operations/services/projects/hosting/project-host-operations.js"
     },
     "./types": {
       "types": "./dist/entrypoints/models/sdk-types.d.ts",
