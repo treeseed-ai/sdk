@@ -139,7 +139,27 @@ function extractEntrypoint(
 		const sourceFile = ts.createSourceFile(normalizedPath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 		const collected = new Map<string, TypeScriptApiSymbol>();
 		const local = new Map<string, TypeScriptApiSymbol>();
+		const imported = new Map<string, { moduleName: string; sourceName: string; localTarget: string | null }>();
 		for (const statement of sourceFile.statements) {
+			if (ts.isImportDeclaration(statement) && statement.importClause && ts.isStringLiteral(statement.moduleSpecifier)) {
+				const moduleName = statement.moduleSpecifier.text;
+				const localTarget = resolveLocalDeclaration(normalizedPath, moduleName);
+				if (statement.importClause.name) {
+					imported.set(statement.importClause.name.text, { moduleName, sourceName: 'default', localTarget });
+				}
+				const bindings = statement.importClause.namedBindings;
+				if (bindings && ts.isNamespaceImport(bindings)) {
+					imported.set(bindings.name.text, { moduleName, sourceName: '*', localTarget });
+				} else if (bindings) {
+					for (const element of bindings.elements) {
+						imported.set(element.name.text, {
+							moduleName,
+							sourceName: element.propertyName?.text ?? element.name.text,
+							localTarget,
+						});
+					}
+				}
+			}
 			const localSymbol = symbol(statement, sourceFile, false);
 			if (localSymbol) local.set(localSymbol.name, localSymbol);
 			const publicSymbol = symbol(statement, sourceFile);
@@ -170,7 +190,15 @@ function extractEntrypoint(
 			for (const element of statement.exportClause.elements) {
 				const sourceName = element.propertyName?.text ?? element.name.text;
 				const exportedName = element.name.text;
-				const target = targetSymbols?.get(sourceName);
+				let target = targetSymbols?.get(sourceName);
+				if (!target && !moduleName) {
+					const importedBinding = imported.get(sourceName);
+					if (importedBinding?.localTarget) {
+						target = extractFile(importedBinding.localTarget).get(importedBinding.sourceName);
+					} else if (importedBinding) {
+						target = externalReexport(importedBinding.moduleName, exportedName);
+					}
+				}
 				if (target) collected.set(exportedName, { ...target, name: exportedName });
 				else if (moduleName && !localTarget) collected.set(exportedName, externalReexport(moduleName, exportedName));
 				else throw new Error(`Unresolved public symbol ${sourceName} in ${normalizedPath}.`);

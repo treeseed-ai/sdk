@@ -57,4 +57,15 @@ describe('TypeScript public API compatibility', () => {
 			specifier: '.', declarationPath: 'dist/index.d.ts', source: "export * from './missing.js';",
 		}])).toThrow('Unresolved local public declaration: dist/missing.d.ts.');
 	});
+
+	it('resolves an imported local binding that is exported by name', () => {
+		const source = "import { ApiError } from './errors.js'; export { ApiError };";
+		const extracted = extractTypeScriptApi([{ specifier: '.', declarationPath: 'dist/index.d.ts', source }], {
+			'dist/index.d.ts': source,
+			'dist/errors.d.ts': 'export class ApiError { readonly code: string; }',
+		});
+		expect(extracted.entrypoints[0]?.symbols).toEqual([
+			expect.objectContaining({ name: 'ApiError', kind: 'class', members: [expect.objectContaining({ name: 'code' })] }),
+		]);
+	});
 });
