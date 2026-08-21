@@ -119,6 +119,14 @@
       "types": "./dist/standards/index.d.ts",
       "default": "./dist/standards/index.js"
     },
+    "./standards/typescript": {
+      "types": "./dist/standards/typescript/index.d.ts",
+      "default": "./dist/standards/typescript/index.js"
+    },
+    "./standards/openapi": {
+      "types": "./dist/standards/openapi/index.d.ts",
+      "default": "./dist/standards/openapi/index.js"
+    },
     "./sdk": {
       "types": "./dist/entrypoints/models/sdk.d.ts",
       "default": "./dist/entrypoints/models/sdk.js"
