@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { COMMERCE_OFFER_MODES } from '../../sdk-types/support/platform-contracts.ts';
+import { PUBLICATION_ACCESS_MODES } from '../../sdk-types/support/platform-contracts.ts';
 
 const nonEmpty = z.string().trim().min(1);
 
@@ -55,7 +55,7 @@ export const templateProductContentSchema = z.object({
 	fulfillment: z.object({ mode: z.enum(['packaged', 'git', 'r2']).default('packaged'), source: templateSourceSchema,
 		hooksPolicy: z.enum(['builtin_only', 'trusted_only', 'disabled']).default('builtin_only'),
 		supportsReconcile: z.boolean().default(true) }),
-	offer: z.object({ priceModel: z.enum(COMMERCE_OFFER_MODES).default('free'), license: nonEmpty.optional(),
+	offer: z.object({ priceModel: z.enum(PUBLICATION_ACCESS_MODES).default('free'), license: nonEmpty.optional(),
 		support: nonEmpty.optional() }).default({ priceModel: 'free' }),
 	relatedBooks: z.array(z.string()).default([]), relatedKnowledge: z.array(z.string()).default([]),
 	relatedObjectives: z.array(z.string()).default([]),

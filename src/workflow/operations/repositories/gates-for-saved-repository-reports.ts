@@ -7,7 +7,7 @@ import { type WorkspaceLinksMode } from "../../../operations/services/treedx/wor
 import { currentBranch,repoRoot } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
 import { archiveWorkflowRun,classifyWorkflowRunJournal,listInterruptedWorkflowRuns,type WorkflowRunJournal } from "../../runs.ts";
 import { checkedOutWorkspacePackageRepos } from "../../session.ts";
-import { WorkflowRepoReport,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { WorkflowRepoReport,workflowError } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { DiscoveredPackageAdapter,hostedWorkflowsForSavedRepository } from '../support/workflow-helpers.ts';
 import { WorkflowOperationHelpers,ensureWorkflowWorkspaceLinks,runGit } from '../recovery/workflow-write.ts';
 

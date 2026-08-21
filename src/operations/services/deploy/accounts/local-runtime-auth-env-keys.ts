@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import {
 normalizeRailwayEnvironmentName
 } from '../../hosting/railway/railway-api.ts';
-import { resolveConfiguredContentBucketBinding,resolveConfiguredContentBucketName,resolveConfiguredContentPublicBaseUrl,resolveConfiguredMarketBaseUrl,resolveConfiguredPagesProjectName } from '../hosting/assert-cloudflare-cache-purge-succeeded.ts';
+import { resolveConfiguredContentBucketBinding,resolveConfiguredContentBucketName,resolveConfiguredContentPublicBaseUrl,resolveConfiguredControlPlaneBaseUrl,resolveConfiguredPagesProjectName } from '../hosting/assert-cloudflare-cache-purge-succeeded.ts';
 import { configuredSurfaceHosts,envValue,environmentScopedIdentityName,resolveContentKeyTemplate,scopeFromTarget,sharedDeploymentName,targetWorkerName,targetWorkersDevUrl } from '../hosting/configured-surface-hosts.ts';
 import { MANAGED_SERVICE_KEYS,TRESEED_ENVELOPE_SCHEMA_GENERATION,TRESEED_MIGRATION_WAVE_ID,TRESEED_SUPPORTED_PAYLOAD_RANGE,envOrNull,resolveConfiguredSurfaceBaseUrl,resolveResourceIdentity,sanitizeSegment } from '../support/default-compatibility-date.ts';
 
@@ -159,7 +159,7 @@ export function defaultStateFromConfig(deployConfig, target) {
 		hosting: {
 			kind: deployConfig.hosting?.kind ?? 'self_hosted_project',
 			registration: deployConfig.hosting?.registration ?? 'none',
-			marketBaseUrl: resolveConfiguredMarketBaseUrl(deployConfig) || null,
+			controlPlaneBaseUrl: resolveConfiguredControlPlaneBaseUrl(deployConfig) || null,
 			teamId: identity.teamId,
 			projectId: identity.projectId,
 		},
@@ -169,7 +169,7 @@ export function defaultStateFromConfig(deployConfig, target) {
 		runtime: {
 			mode: deployConfig.runtime?.mode ?? 'none',
 			registration: deployConfig.runtime?.registration ?? 'none',
-			marketBaseUrl: resolveConfiguredMarketBaseUrl(deployConfig) || null,
+			controlPlaneBaseUrl: resolveConfiguredControlPlaneBaseUrl(deployConfig) || null,
 			teamId: identity.teamId,
 			projectId: identity.projectId,
 		},

@@ -29,7 +29,7 @@ export async function dispatchMethod(this: AgentSdk, request: SdkDispatchRequest
     }
     const token = await this.resolveDispatchToken(dispatchConfig.credentialSource);
     const client = new RemoteDispatchClient(new RemoteClient({
-        hosts: [{ id: 'market', baseUrl: dispatchConfig.marketBaseUrl }],
+        hosts: [{ id: 'server', baseUrl: dispatchConfig.controlPlaneBaseUrl }],
         activeHostId: 'market',
         auth: token ? { accessToken: token } : undefined,
     }, {

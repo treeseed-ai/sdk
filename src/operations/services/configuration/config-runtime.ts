@@ -1,6 +1,6 @@
 export * from '../config-runtime/accounts/ensure-secret-session-for-config.ts';
 export * from '../config-runtime/agents/ensure-act-verification-tooling.ts';
-export * from '../config-runtime/commerce/catalog/resolve-template-catalog-endpoint.ts';
+export * from '../config-runtime/templates/catalog/template-catalog-settings.ts';
 export * from '../config-runtime/configuration/create-default-machine-config.ts';
 export * from '../config-runtime/configuration/create-git-hub-config-sync-units.ts';
 export * from '../config-runtime/configuration/configuration-generation.ts';

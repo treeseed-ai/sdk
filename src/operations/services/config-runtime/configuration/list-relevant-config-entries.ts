@@ -8,7 +8,7 @@ import {
 type RunnableBootstrapSystem
 } from '../../../../reconcile/index.ts';
 import { CollectedConfigContext,ConfigEntrySnapshot,ConfigScope,ConfigValueUpdate } from '../accounts/ensure-secret-session-for-config.ts';
-import { ensureGitignoreEntries,ensureRailwayIgnoreEntries,migrateLegacyScopedSharedEntries } from '../commerce/catalog/resolve-template-catalog-endpoint.ts';
+import { ensureGitignoreEntries,ensureRailwayIgnoreEntries,migrateLegacyScopedSharedEntries } from '../templates/catalog/template-catalog-settings.ts';
 import { getMachineConfigPaths } from '../hosting/load-tenant-deploy-config.ts';
 import { collectConfigSeedValues,collectEnvironmentContext,setMachineEnvironmentValue } from '../support/resolve-entry-value-from-buckets.ts';
 import { loadMachineConfig } from '../support/rotate-machine-key-passphrase.ts';

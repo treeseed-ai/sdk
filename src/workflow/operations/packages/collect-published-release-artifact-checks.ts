@@ -5,7 +5,7 @@ import { compileDesiredResourceGraph,compileDesiredUnitsFromGraph } from "../../
 import { destroyTargetUnits,planReconciliation,reconcileTarget,type ReconcileResult } from "../../../reconcile/index.ts";
 import { type WorkflowRunCommand } from "../../runs.ts";
 import { type WorkflowSession } from "../../session.ts";
-import { workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { workflowError } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { sleep } from '../support/workflow-helpers.ts';
 import { PublishedArtifactCheck,verifyDockerHubArtifact,verifyGitHubTagArtifact,verifyNpmArtifact,verifySimpleRegistryArtifact } from './collect-release-plan-blockers.ts';
 

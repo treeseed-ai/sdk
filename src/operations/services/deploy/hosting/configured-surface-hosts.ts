@@ -2,7 +2,7 @@ import { existsSync,readFileSync } from 'node:fs';
 import { relative,resolve } from 'node:path';
 import { resolveWebCachePolicy } from '../../../../platform/hosting/deploy-config.ts';
 import { envOrNull,GENERATED_ROOT,PERSISTENT_SCOPES,primaryHost,resolveConfiguredSurfaceDomain,resolveResourceIdentity,sanitizeSegment,STATE_ROOT,WORKTREE_METADATA_RELATIVE_PATH } from '../support/default-compatibility-date.ts';
-import { resolveConfiguredControlPlaneBaseUrl,resolveConfiguredContentBucketName,resolveConfiguredContentPublicBaseUrl,resolveConfiguredMarketBaseUrl } from './assert-cloudflare-cache-purge-succeeded.ts';
+import { resolveConfiguredControlPlaneBaseUrl,resolveConfiguredContentBucketName,resolveConfiguredContentPublicBaseUrl } from './assert-cloudflare-cache-purge-succeeded.ts';
 
 export function configuredSurfaceHosts(deployConfig, target, surface) {
 	const hosts = [
@@ -190,9 +190,7 @@ export function buildPublicVars(deployConfig, options = {}) {
 		TREESEED_HUB_MODE: deployConfig.hub?.mode ?? 'treeseed_hosted',
 		TREESEED_RUNTIME_MODE: deployConfig.runtime?.mode ?? 'none',
 		TREESEED_RUNTIME_REGISTRATION: deployConfig.runtime?.registration ?? 'none',
-		TREESEED_MARKET_API_BASE_URL: resolveConfiguredMarketBaseUrl(deployConfig, target),
 		TREESEED_API_BASE_URL: resolveConfiguredControlPlaneBaseUrl(deployConfig, target),
-		TREESEED_CATALOG_MARKET_API_BASE_URLS: resolveConfiguredMarketBaseUrl(deployConfig, target) ?? envOrNull('TREESEED_CATALOG_MARKET_API_BASE_URLS'),
 		TREESEED_HOSTING_TEAM_ID: contentDefaultTeamId,
 		TREESEED_PROJECT_DOMAINS: projectDomain ?? '',
 		TREESEED_PROJECT_ID: identity.projectId,

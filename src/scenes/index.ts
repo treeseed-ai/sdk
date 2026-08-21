@@ -1,7 +1,4 @@
 export {
-resolveSceneAuth
-} from './accounts/auth.ts';
-export {
 createBuiltInSceneDiagramProvider
 } from './capacity/providers/diagram-providers.ts';
 export {
@@ -14,35 +11,6 @@ waitForSceneOperation
 export {
 runScene
 } from './operations/runner.ts';
-export {
-BUILT_IN_AGENT_LAB_PRESENTATIONS,
-resolveAgentLabPresentation
-} from './agent-lab/report-adapters.ts';
-export {
-agentClassPalette,
-agentLabTotals,
-hasFailedAgentLabContentTool,
-initialAgentLabSnapshot,
-sanitizeAgentLabSnapshot,
-sanitizeAgentLabValue
-} from './agent-lab/report-model.ts';
-export {
-	AGENT_SIMULATOR_PORT,
-startAgentLabLiveReport,
-startAgentLabReportViewer,
-writeAgentLabHtml
-} from './agent-lab/report-writer.ts';
-export {
-createProductionAgentLabExecutor
-} from './agent-lab/production-lifecycle.ts';
-export {
-agentLabArtifactChecks,
-agentLabArtifactExpectations,
-selectedAgentLabArtifactExpectations
-} from './agent-lab/semantic-artifact-assertions.ts';
-export type {
-AgentLabArtifactExpectation
-} from './agent-lab/semantic-artifact-assertions.ts';
 export {
 formatScenePublishPlanMarkdownReport,
 writeScenePublishPlanReport
@@ -81,9 +49,6 @@ defaultSceneDeviceConfig,
 listSceneDeviceProfiles,
 resolveSceneDeviceProfile
 } from './runtime/devices.ts';
-export {
-planOrApplySceneSeed
-} from './seeds/seed.ts';
 export {
 writeSceneRunArtifacts
 } from './support/evidence/artifacts.ts';

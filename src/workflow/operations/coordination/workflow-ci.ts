@@ -3,7 +3,7 @@ import { deleteRemoteBranchIfMerged,inspectMergedRemoteTaskBranches,PRODUCTION_B
 import { currentBranch,repoRoot } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
 import type { CiInput,TasksInput } from "../../../operations/workflow.ts";
 import { resolveWorkflowPaths } from "../../policy.ts";
-import { withContextEnv,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { withContextEnv,workflowError } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { createCiResult,createTasksResult } from '../packages/release-admin-message.ts';
 import { WorkflowError,WorkflowOperationHelpers } from '../recovery/workflow-write.ts';
 import { buildWorkflowResult } from '../support/create-repo-report.ts';

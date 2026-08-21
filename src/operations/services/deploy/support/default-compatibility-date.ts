@@ -9,8 +9,6 @@ export const DEFAULT_COMPATIBILITY_DATE = '2026-04-05';
 
 export const DEFAULT_COMPATIBILITY_FLAGS = ['nodejs_compat'];
 
-export const DEFAULT_MARKET_BASE_URL = 'https://api.treeseed.dev';
-
 export const GENERATED_ROOT = '.treeseed/generated';
 
 export const STATE_ROOT = '.treeseed/state';

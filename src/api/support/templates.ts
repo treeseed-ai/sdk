@@ -1,7 +1,7 @@
 import { existsSync,readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname,resolve } from 'node:path';
-import { parseTemplateCatalogResponse } from '../../commerce/catalog/template-catalog.ts';
+import { parseTemplateCatalogResponse } from '../../templates/template-catalog.ts';
 import type { SdkTemplateCatalogResponse } from '../../entrypoints/models/sdk-types.ts';
 import type { ApiConfig } from '../types.ts';
 

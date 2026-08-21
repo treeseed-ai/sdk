@@ -8,7 +8,7 @@ type PublishedContentEntry,
 type PublishedRuntimePointers
 } from '../packages/published-content.ts';
 import type { TenantConfig } from '../support/contracts.ts';
-import { CollectionIndexBuilder,ContentSource,ContentSourceEntry,EntryRenderer,PublishedContentPipelineContext,RenderedContentEntry,RuntimeBundleBuilder,inferStatus,inferSummary,inferTitle,inferVisibility,markdownText,normalizeRelativeMarkdownPath,normalizeSlug,objectInputForJson } from './resolve-commerce-offer-mode.ts';
+import { CollectionIndexBuilder,ContentSource,ContentSourceEntry,EntryRenderer,PublishedContentPipelineContext,RenderedContentEntry,RuntimeBundleBuilder,inferStatus,inferSummary,inferTitle,inferVisibility,markdownText,normalizeRelativeMarkdownPath,normalizeSlug,objectInputForJson } from './resolve-publication-access-mode.ts';
 
 export function listMarkdownFiles(rootPath: string): string[] {
 	if (!existsSync(rootPath)) {

@@ -5,7 +5,7 @@ import { hasMeaningfulChanges } from "../../../operations/services/treedx/worksp
 import type { WorkflowContext } from "../../../operations/workflow.ts";
 import { acquireWorkflowLock,archiveWorkflowRun,classifyWorkflowRunJournal,createWorkflowRunJournal,generateWorkflowRunId,listInterruptedWorkflowRuns,readWorkflowRunJournal,refreshWorkflowLock,releaseWorkflowLock,updateWorkflowRunJournal,type WorkflowRunCommand,type WorkflowRunJournal,type WorkflowRunStep } from "../../runs.ts";
 import { checkedOutWorkspacePackageRepos,type WorkflowSession } from "../../session.ts";
-import { workflowError,WorkflowRepoReport } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { workflowError,WorkflowRepoReport } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { ActiveWorkflowRun,nextPendingJournalStep,workflowSessionSnapshot } from '../support/workflow-helpers.ts';
 import { tagCommitSha } from '../recovery/fail-workflow-run.ts';
 import { releasePlanHead,releasePlanMatchesCurrentHeads,releaseRunHasCompletedMutation,stringRecord } from '../repositories/gates-for-saved-repository-reports.ts';

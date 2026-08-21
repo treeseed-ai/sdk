@@ -10,7 +10,7 @@ export { listPersonalAccessTokensMethod } from './accounts/tokens/list-personal-
 export { refreshAccessTokenMethod } from './accounts/tokens/refresh-access-token.ts';
 export { revokePersonalAccessTokenMethod } from './accounts/tokens/revoke-personal-access-token.ts';
 export { loadIdentityByProviderMethod } from './capacity/providers/load-identity-by-provider.ts';
-export { seedCatalogMethod } from './commerce/catalog/seed-catalog.ts';
+export { seedRbacMethod as seedCatalogMethod } from './bootstrap/seed/seed-rbac.ts';
 export { createServiceCredentialMethod } from './configuration/create-service-credential.ts';
 export { rotateServiceCredentialMethod } from './configuration/rotate-service-credential.ts';
 export { upsertServiceCredentialMethod } from './configuration/upsert-service-credential.ts';

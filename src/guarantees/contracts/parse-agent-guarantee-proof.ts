@@ -48,7 +48,7 @@ function command(value: unknown, index: number, variant: string, issues: string[
 	if (args.some((entry)=>PLACEHOLDER.test(entry))) issues.push(`${path}.args contains unresolved placeholders.`);
 	const action=`${args[0]}.${args[1]??''}`;
 	for(const selector of EXACT_SELECTORS[action]??[]) if(!args.includes(selector)) issues.push(`${path} ${action} requires exact selector ${selector}.`);
-	if(['capacity','governance','projects'].includes(args[0])&&!args.includes('--market')) issues.push(`${path} must name the exact --market.`);
+	if(['capacity','governance','projects'].includes(args[0])&&!args.includes('--server')) issues.push(`${path} must name the exact --server.`);
 	if (!COMMAND_KINDS.has(kind)) issues.push(`${path}.kind is invalid.`);
 	if (!Number.isInteger(expectedExitCode) || expectedExitCode < 0) issues.push(`${path}.expectedExitCode must be a nonnegative integer.`);
 	if (kind === 'read' && args.includes('--execute')) issues.push(`${path} classifies an executing mutation as a read.`);

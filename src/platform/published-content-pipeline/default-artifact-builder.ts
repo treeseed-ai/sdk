@@ -14,7 +14,7 @@ type PublishedRuntimePointers
 } from '../packages/published-content.ts';
 import type { TenantConfig } from '../support/contracts.ts';
 import { DefaultCollectionIndexBuilder,DefaultEntryRenderer,DefaultRuntimeBundleBuilder,FilesystemContentSource,collectGeneratedArtifacts } from './list-markdown-files.ts';
-import { ArtifactBuilder,CollectionIndexBuilder,ContentSource,EntryRenderer,PublishedContentPipeline,PublishedContentPipelineContext,RuntimeBundleBuilder,artifactSignature,canonicalArtifactKey,canonicalEntryPath,entrySignature,objectInputForFile,resolveCommerceOfferMode,stableHash } from './resolve-commerce-offer-mode.ts';
+import { ArtifactBuilder,CollectionIndexBuilder,ContentSource,EntryRenderer,PublishedContentPipeline,PublishedContentPipelineContext,RuntimeBundleBuilder,artifactSignature,canonicalArtifactKey,canonicalEntryPath,entrySignature,objectInputForFile,resolvePublicationAccessMode,stableHash } from './resolve-publication-access-mode.ts';
 
 export class DefaultArtifactBuilder implements ArtifactBuilder {
 	async build(context: PublishedContentPipelineContext, entries: PublishedContentEntry[]) {
@@ -80,7 +80,7 @@ export class DefaultArtifactBuilder implements ArtifactBuilder {
 				summary: entry.summary,
 				visibility: entry.visibility,
 				listingEnabled: entry.metadata?.listingEnabled !== false,
-					offerMode: resolveCommerceOfferMode(entry.metadata?.offer?.priceModel),
+					offerMode: resolvePublicationAccessMode(entry.metadata?.offer?.priceModel),
 				manifestKey: resolveTeamScopedContentLocator(context.siteConfig, context.teamId).manifestKey,
 				artifactKey: undefined,
 				updatedAt: context.generatedAt,

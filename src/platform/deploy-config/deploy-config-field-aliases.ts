@@ -18,7 +18,7 @@ export const deployConfigFieldAliases: FieldAliasRegistry = {
 export const hostingFieldAliases: FieldAliasRegistry = {
 	kind: { key: 'kind', aliases: ['kind'] },
 	registration: { key: 'registration', aliases: ['registration'] },
-	marketBaseUrl: { key: 'marketBaseUrl', aliases: ['market_base_url'] },
+	controlPlaneBaseUrl: { key: 'controlPlaneBaseUrl', aliases: [] },
 	teamId: { key: 'teamId', aliases: ['team_id'] },
 	projectId: { key: 'projectId', aliases: ['project_id'] },
 };
@@ -30,7 +30,7 @@ export const hubFieldAliases: FieldAliasRegistry = {
 export const runtimeFieldAliases: FieldAliasRegistry = {
 	mode: { key: 'mode', aliases: ['mode'] },
 	registration: { key: 'registration', aliases: ['registration'] },
-	marketBaseUrl: { key: 'marketBaseUrl', aliases: ['market_base_url'] },
+	controlPlaneBaseUrl: { key: 'controlPlaneBaseUrl', aliases: [] },
 	teamId: { key: 'teamId', aliases: ['team_id'] },
 	projectId: { key: 'projectId', aliases: ['project_id'] },
 };
@@ -232,7 +232,7 @@ export function parseHostingConfig(value: unknown) {
 			'self_hosted_project',
 		] as const) ?? 'self_hosted_project',
 		registration: optionalEnum(record.registration, 'hosting.registration', ['optional', 'none'] as const) ?? 'none',
-		marketBaseUrl: optionalString(process.env.TREESEED_API_BASE_URL) ?? optionalString(record.marketBaseUrl),
+		controlPlaneBaseUrl: optionalString(process.env.TREESEED_API_BASE_URL) ?? optionalString(record.controlPlaneBaseUrl),
 		teamId: optionalString(process.env.TREESEED_HOSTING_TEAM_ID) ?? optionalString(record.teamId),
 		projectId: optionalString(process.env.TREESEED_PROJECT_ID) ?? optionalString(record.projectId),
 	};

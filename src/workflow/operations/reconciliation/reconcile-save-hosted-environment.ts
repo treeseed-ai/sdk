@@ -10,7 +10,7 @@ import { highestStableGitTagOnLine } from "../../../operations/services/treedx/w
 import type { WorkflowOperationId } from "../../../operations/workflow.ts";
 import { collectReconcileStatus,reconcileTarget } from "../../../reconcile/index.ts";
 import { type WorkflowRunCommand } from "../../runs.ts";
-import { workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { workflowError } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { selectorFromWorkflowHostingGraph } from '../packages/normalize-release-candidate-mode.ts';
 import { WorkflowOperationHelpers } from '../recovery/workflow-write.ts';
 import { stringRecord } from '../repositories/gates-for-saved-repository-reports.ts';

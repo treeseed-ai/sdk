@@ -1,5 +1,8 @@
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { ControlPlaneClient, ControlPlaneClientError } from '../../src/entrypoints/clients/control-plane-client.ts';
+import { CONTROL_PLANE_SERVER_SESSIONS_PATH, ControlPlaneClient, ControlPlaneClientError, resolveControlPlaneServerSession, setControlPlaneServerSession } from '../../src/entrypoints/clients/control-plane-client.ts';
 
 describe('ControlPlaneClient', () => {
 	it('sends authority and concurrency headers and accepts standard envelopes', async () => {
@@ -23,5 +26,22 @@ describe('ControlPlaneClient', () => {
 		}), { status: 403, headers: { 'content-type': 'application/problem+json' } }));
 		const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002' }, fetchImpl });
 		await expect(client.call({ path: '/v1/projects' })).rejects.toMatchObject<Partial<ControlPlaneClientError>>({ status: 403, problem: { code: 'authorization_denied' } });
+	});
+
+	it('stores server sessions encrypted and never writes tokens in plaintext', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-server-session-'));
+		setControlPlaneServerSession(root, { serverId: 'local', accessToken: 'access-secret', refreshToken: 'refresh-secret' });
+		expect(resolveControlPlaneServerSession(root, 'local')).toMatchObject({ serverId: 'local', accessToken: 'access-secret' });
+		const stored = readFileSync(join(root, CONTROL_PLANE_SERVER_SESSIONS_PATH), 'utf8');
+		expect(stored).not.toContain('access-secret');
+		expect(stored).not.toContain('refresh-secret');
+	});
+
+	it('uses RFC 8628 form encoding for device authorization', async () => {
+		const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ device_code: 'device', user_code: 'ABCD', verification_uri: 'http://local/activate', expires_in: 600, interval: 5 }), { status: 200, headers: { 'content-type': 'application/json' } }));
+		const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002' }, fetchImpl });
+		await expect(client.authorizeDevice('trsd', ['treeseed:read'])).resolves.toMatchObject({ deviceCode: 'device', userCode: 'ABCD' });
+		expect(String(fetchImpl.mock.calls[0]![1]!.body)).toContain('client_id=trsd');
+		expect(new Headers(fetchImpl.mock.calls[0]![1]!.headers).get('content-type')).toBe('application/x-www-form-urlencoded');
 	});
 });

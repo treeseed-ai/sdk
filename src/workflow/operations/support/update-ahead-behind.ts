@@ -1,7 +1,7 @@
 import { runGitOk,runRepositoryGit } from "../../../operations/services/operations/git-runner.ts";
 import { repoRoot } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
 import { type WorkflowSession } from "../../session.ts";
-import { workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { workflowError } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { WorkflowError } from '../recovery/workflow-write.ts';
 import { UpdateRepoResult,UpdateStrategy,gitOutput,localRemoteRefExists,sourceBranchExists,updateChangedFiles,updateConflictedFiles,updateHead,updateStatusLines } from '../workspace-lifecycle/workflow-switch.ts';
 import { resolveGeneratedDependencyMergeConflict } from './resolve-generated-dependency-conflict.ts';

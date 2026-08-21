@@ -367,7 +367,6 @@ it('plans existing Pages projects for update when preview environment variables 
 				preview: {
 					env_vars: {
 						EXISTING_VAR: { type: 'plain_text', value: 'keep' },
-						TREESEED_MARKET_API_BASE_URL: { type: 'plain_text', value: 'https://api.treeseed.dev' },
 						TREESEED_API_BASE_URL: { type: 'plain_text', value: 'https://api.preview.example.com' },
 						TREESEED_PROJECT_ID: { type: 'plain_text', value: 'docs' },
 						TREESEED_HOSTING_TEAM_ID: { type: 'plain_text', value: 'acme' },
@@ -375,5 +374,6 @@ it('plans existing Pages projects for update when preview environment variables 
 				},
 			},
 		});
+		expect(JSON.stringify(patchCall?.[1]?.body)).not.toContain('TREESEED_MARKET_API_BASE_URL');
 	});
 });

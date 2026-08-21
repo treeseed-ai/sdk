@@ -35,29 +35,23 @@ function input(config: ReturnType<typeof parseDeployConfig>): ReconcileAdapterIn
 }
 
 describe('capacity provider control-plane variables', () => {
-	it('uses the singleton for both transports in pass-through mode', () => {
+	it('does not invent a remote endpoint for a managed control plane without an API surface', () => {
 		const variables = capacityProviderVariablesForService(input(parseDeployConfig(base)), 'staging', {}, 'capacityProviderManager');
-		expect(variables).toMatchObject({
-			TREESEED_MARKET_API_BASE_URL: 'https://api.treeseed.dev',
-			TREESEED_API_BASE_URL: 'https://api.treeseed.dev',
-		});
+		expect(variables.TREESEED_API_BASE_URL).toBeUndefined();
+		expect('TREESEED_MARKET_API_BASE_URL' in variables).toBe(false);
 	});
 
-	it('keeps Market central while an external control plane remains sovereign', () => {
+	it('uses the configured external control-plane server', () => {
 		const config = parseDeployConfig(`${base}controlPlane:\n  mode: external\n  baseUrl: https://control.example.com/\n`);
 		const variables = capacityProviderVariablesForService(input(config), 'staging', {}, 'capacityProviderManager');
-		expect(variables).toMatchObject({
-			TREESEED_MARKET_API_BASE_URL: 'https://api.treeseed.dev',
-			TREESEED_API_BASE_URL: 'https://control.example.com',
-		});
+		expect(variables.TREESEED_API_BASE_URL).toBe('https://control.example.com');
+		expect('TREESEED_MARKET_API_BASE_URL' in variables).toBe(false);
 	});
 
-	it('uses the managed API surface without changing the singleton Market', () => {
+	it('uses the managed API surface as the sole control-plane endpoint', () => {
 		const config = parseDeployConfig(`${base}controlPlane:\n  mode: managed\nsurfaces:\n  api:\n    environments:\n      staging: { domain: control.managed.example.com }\nservices:\n  api: { enabled: true, provider: railway }\n  treeseedDatabase: { enabled: true, provider: railway }\n  operationsRunner: { enabled: true, provider: railway }\npublicTreeDxFederation:\n  railway:\n    nodePool: { bootstrapCount: 1, maxNodes: 1 }\n`);
 		const variables = capacityProviderVariablesForService(input(config), 'staging', {}, 'capacityProviderManager');
-		expect(variables).toMatchObject({
-			TREESEED_MARKET_API_BASE_URL: 'https://api.treeseed.dev',
-			TREESEED_API_BASE_URL: 'https://control.managed.example.com',
-		});
+		expect(variables.TREESEED_API_BASE_URL).toBe('https://control.managed.example.com');
+		expect('TREESEED_MARKET_API_BASE_URL' in variables).toBe(false);
 	});
 });

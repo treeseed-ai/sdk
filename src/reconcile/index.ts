@@ -1,6 +1,4 @@
-export * from './capacity/capacity-core/live-acceptance-capacity-executor.ts';
 export * from './reconciliation/desired-state.ts';
-export * from './support/acceptance/live-acceptance.ts';
 export * from './support/bootstrap-systems.ts';
 export * from './support/contracts/contracts.ts';
 export * from './support/contracts/errors.ts';

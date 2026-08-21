@@ -3,7 +3,7 @@ import { cleanupDestroyedState,createPersistentDeployTarget,destroyEnvironmentRe
 import { workspaceRoot } from "../../../operations/services/treedx/workspaces/workspace-tools.ts";
 import type { DestroyInput } from "../../../operations/workflow.ts";
 import { resolveWorkflowSession } from "../../session.ts";
-import { resolveProjectRootOrThrow,withContextEnv,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { resolveProjectRootOrThrow,withContextEnv,workflowError } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { resolveDestroyConfirmation } from '../packages/collect-published-release-artifact-checks.ts';
 import { acquireWorkflowRun,completeWorkflowRun,executeJournalStep,skipJournalStep } from '../packages/prepare-fresh-release-run.ts';
 import { createNextSteps } from '../packages/release-admin-message.ts';

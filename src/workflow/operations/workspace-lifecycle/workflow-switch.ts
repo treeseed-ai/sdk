@@ -7,7 +7,7 @@ import { resolveWorkflowState } from "../../../operations/workflow-state.ts";
 import type { SwitchInput,UpdateInput } from "../../../operations/workflow.ts";
 import { resolveWorkflowSession } from "../../session.ts";
 import { effectiveWorkflowWorktreeMode,ensureManagedWorkflowWorktree,plannedManagedWorkflowWorktreePath } from "../../worktrees.ts";
-import { resolveProjectRootOrThrow,withContextEnv,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { resolveProjectRootOrThrow,withContextEnv,workflowError } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { assertSessionBranchSafety,branchPreviewInitialized,reconcileBranchPreview,reconcileWorkflowBranchPreview } from '../packages/collect-published-release-artifact-checks.ts';
 import { helpersForCwd,shouldDispatchSwitchToManagedWorktree,worktreePayload } from '../packages/normalize-release-candidate-mode.ts';
 import { acquireWorkflowRun,completeWorkflowRun,executeJournalStep } from '../packages/prepare-fresh-release-run.ts';

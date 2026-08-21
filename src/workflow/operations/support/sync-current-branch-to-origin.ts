@@ -7,7 +7,7 @@ import type { WorkflowOperationId } from "../../../operations/workflow.ts";
 import { resolveWorkflowPaths } from "../../policy.ts";
 import { type WorkflowRunCommand } from "../../runs.ts";
 import { checkedOutWorkspacePackageRepos } from "../../session.ts";
-import { resolveProjectRootOrThrow,resolveRepoState,withContextEnv,workflowError,WorkflowRepoReport } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { resolveProjectRootOrThrow,resolveRepoState,withContextEnv,workflowError,WorkflowRepoReport } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { createStatusResult } from '../packages/release-admin-message.ts';
 import { runGit,WorkflowError,WorkflowOperationHelpers } from '../recovery/workflow-write.ts';
 import { workflowSave } from '../workspace-lifecycle/workflow-save.ts';

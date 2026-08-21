@@ -7,7 +7,7 @@ import { collectCliPreflight } from "../../../operations/services/treedx/workspa
 import { resolveWorkflowState } from "../../../operations/workflow-state.ts";
 import type { ConfigInput,ExportInput } from "../../../operations/workflow.ts";
 import { createReconcileRegistry,deriveDesiredUnits,filterDesiredUnitsByBootstrapSystems,planReconciliation,resolveBootstrapSelection } from "../../../reconcile/index.ts";
-import { normalizeConfigScopes,resolveProjectRootOrThrow,withContextEnv,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { normalizeConfigScopes,resolveProjectRootOrThrow,withContextEnv,workflowError } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { worktreePayload } from '../packages/normalize-release-candidate-mode.ts';
 import { createNextSteps } from '../packages/release-admin-message.ts';
 import { maybePrint,toError } from '../support/workflow-helpers.ts';

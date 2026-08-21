@@ -7,7 +7,7 @@ import { workspaceRoot } from "../../../operations/services/treedx/workspaces/wo
 import type { UpdateInput,WorkflowDevInput } from "../../../operations/workflow.ts";
 import { resolveWorkflowSession } from "../../session.ts";
 import { readWorkflowRunJournal } from "../../runs.ts";
-import { resolveProjectRootOrThrow,withContextEnv,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { resolveProjectRootOrThrow,withContextEnv,workflowError } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { worktreePayload } from '../packages/normalize-release-candidate-mode.ts';
 import { acquireWorkflowRun,completeWorkflowRun,executeJournalStep } from '../packages/prepare-fresh-release-run.ts';
 import { createNextSteps } from '../packages/release-admin-message.ts';

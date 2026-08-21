@@ -2,9 +2,9 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { MarketClient, resolveMarketProfile, resolveMarketSession } from '../../entrypoints/clients/market-client.ts';
+import { ControlPlaneClient, resolveControlPlaneServer, resolveControlPlaneServerSession } from '../../entrypoints/clients/control-plane-client.ts';
 import { findNearestRoot } from '../../operations/workflow-support.ts';
-import { loadAndPlanSeed, reconcileLocalSeedRuntime } from '../../seeds/index.ts';
+import { loadAndPlanSeed } from '../../seeds/index.ts';
 import type { SeedPlan } from '../../seeds/types.ts';
 import { sceneErrorDiagnostic } from '../support/reporting/diagnostics.ts';
 import type { SceneSeedOptions, SceneSeedReport } from '../types.ts';
@@ -64,9 +64,9 @@ export async function planOrApplySceneSeed(input: SceneSeedOptions): Promise<Sce
 	}
 	const reports: NonNullable<SceneSeedReport['seeds']> = [];
 	const projectRoot = findNearestRoot(input.projectRoot) ?? input.projectRoot;
-	const profile = resolveMarketProfile(input.scene.setup.auth?.profile ?? input.environment);
+	const profile = resolveControlPlaneServer(input.scene.setup.auth?.profile ?? input.environment);
 	const authRoot = resolve(projectRoot, '.treeseed/auth');
-	const session = resolveMarketSession(authRoot, profile.id);
+	const session = resolveControlPlaneServerSession(authRoot, profile.serverId);
 	const localToken = input.env?.TREESEED_CAPACITY_ACCEPTANCE_ADMIN_TOKEN?.trim() || 'tsk_local_treeseed_acceptance_admin';
 	try {
 		for (let index = 0; index < planned.length; index += 1) {
@@ -74,14 +74,13 @@ export async function planOrApplySceneSeed(input: SceneSeedOptions): Promise<Sce
 			const plan = loaded.plan!;
 			let result: unknown = null;
 			if (seed.apply && input.environment !== 'local') {
-				if (!session?.accessToken) throw new Error(`Not logged in to market "${profile.id}".`);
-				result = await new MarketClient({ profile, accessToken: session.accessToken, userAgent: 'treeseed-scene' }).applySeed(seed.name, { environments: seed.environments });
+				if (!session?.accessToken) throw new Error(`Not logged in to server "${profile.serverId}".`);
+				result = await new ControlPlaneClient({ profile, accessToken: session.accessToken, userAgent: 'treeseed-scene' }).call({ method: 'POST', path: `/v1/seeds/${encodeURIComponent(seed.name)}/apply`, input: { environments: seed.environments } });
 			} else if (seed.apply) {
 				const runner = await loadLocalSeedRunner(projectRoot);
 				if (!runner) throw new Error('Local seed apply service is not available in this project.');
 				const applied = await runner({ projectRoot, seedName: seed.name, environments: seed.environments.join(','), plan, env: input.env, accessToken: localToken });
-				const runtime = await reconcileLocalSeedRuntime({ projectRoot, plan: applied.plan ?? plan, accessToken: localToken, env: input.env as NodeJS.ProcessEnv });
-				result = { ...(applied.result && typeof applied.result === 'object' ? applied.result : { apply: applied.result }), runtime };
+				result = applied.result && typeof applied.result === 'object' ? applied.result : { apply: applied.result };
 			}
 			reports.push({ seedName: seed.name, mode: seed.apply ? 'apply' : 'plan', environments: seed.environments, manifestDigest: digest(loaded.manifestPath), plan, result: redacted(result) });
 		}

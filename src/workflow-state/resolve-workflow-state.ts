@@ -341,8 +341,8 @@ export function resolveWorkflowState(cwd: string, options: WorkflowStatusOptions
 			state.auth.copilot = state.auth.copilot || state.auth.gh;
 			state.marketConnection.baseUrl = state.marketConnection.baseUrl
 				?? sharedConfigValues.TREESEED_API_BASE_URL
-				?? deployConfig.runtime?.marketBaseUrl
-				?? deployConfig.hosting?.marketBaseUrl
+				?? deployConfig.runtime?.controlPlaneBaseUrl
+				?? deployConfig.hosting?.controlPlaneBaseUrl
 				?? null;
 			state.marketConnection.teamId = state.marketConnection.teamId
 				?? sharedConfigValues.TREESEED_HOSTING_TEAM_ID

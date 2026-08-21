@@ -1,6 +1,6 @@
 import { resolveWebCachePolicy } from '../../../../platform/hosting/deploy-config.ts';
 import { buildProvisioningSummary,safeUrl } from '../projects/projects-core/ensure-pages-project-compatibility.ts';
-import { DEFAULT_MARKET_BASE_URL,envOrNull,loadTenantDeployConfig,resolveResourceIdentity } from '../support/default-compatibility-date.ts';
+import { envOrNull,loadTenantDeployConfig,resolveResourceIdentity } from '../support/default-compatibility-date.ts';
 import { purgeCloudflareCacheByUrls,purgeCloudflareCacheEverythingByHosts } from './build-managed-cloudflare-cache-rules.ts';
 import { createPersistentDeployTarget,normalizeTarget,sharedDeploymentName } from './configured-surface-hosts.ts';
 import { loadDeployState,writeDeployState } from './load-deploy-state.ts';
@@ -193,14 +193,7 @@ export function resolveConfiguredApiConnectionBaseUrl(deployConfig, target) {
 		?? domainBaseUrl(deployConfig.connections?.api?.environments?.[scope]?.domain);
 }
 
-export function resolveConfiguredMarketBaseUrl(deployConfig, target) {
-	return normalizeConfiguredBaseUrl(deployConfig.market?.baseUrl)
-		?? envOrNull('TREESEED_MARKET_API_BASE_URL')
-		?? DEFAULT_MARKET_BASE_URL;
-}
-
 export function resolveConfiguredControlPlaneBaseUrl(deployConfig, target) {
-	if (deployConfig.controlPlane?.mode === 'market-passthrough') return resolveConfiguredMarketBaseUrl(deployConfig, target);
 	const scope = targetEnvironmentKey(target);
 	return normalizeConfiguredBaseUrl(deployConfig.controlPlane?.baseUrl)
 		?? resolveConfiguredApiConnectionBaseUrl(deployConfig, target)

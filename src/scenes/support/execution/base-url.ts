@@ -91,7 +91,7 @@ export function resolveSceneApiBaseUrl(input: {
 		const instance = readDevInstance({ cwd: input.projectRoot, surface: 'api' });
 		const managedApi = httpHealthBaseUrl(instance);
 		if (managedApi) return managedApi;
-		const envApi = process.env.TREESEED_API_BASE_URL?.trim() || process.env.TREESEED_MARKET_API_BASE_URL?.trim();
+		const envApi = process.env.TREESEED_API_BASE_URL?.trim();
 		if (envApi) return envApi.replace(/\/+$/u, '');
 		return input.webBaseUrl;
 	}

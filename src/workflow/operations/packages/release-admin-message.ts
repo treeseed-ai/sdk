@@ -13,7 +13,7 @@ import type { CiInput,TaskBranchMetadata,WorkflowNextStep,WorkflowResult } from 
 import { loadPlatformConfig } from "../../../platform/configuration/config.ts";
 import { readWorkflowRunJournal } from "../../runs.ts";
 import { checkedOutWorkspacePackageRepos,resolveWorkflowSession,type WorkflowSession } from "../../session.ts";
-import { ageDays,renderWorkflowStep } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { ageDays,renderWorkflowStep } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { stringRecord } from '../repositories/gates-for-saved-repository-reports.ts';
 import { buildWorkflowResult,submodulePointerForRef } from '../support/create-repo-report.ts';
 

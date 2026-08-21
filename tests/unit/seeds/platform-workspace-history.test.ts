@@ -26,13 +26,8 @@ describe('Platform workspace migration recovery', () => {
 		const config = parseDeployConfig(platformDeployConfig());
 
 		expect(config.authority).toEqual({ kind: 'customer-platform' });
-		expect(config.market).toEqual({
-			profile: 'treeseed',
-			kind: 'singleton_external',
-			baseUrl: 'https://api.treeseed.dev',
-			provisioningAuthority: 'forbidden',
-		});
-		expect(config.controlPlane).toEqual({ mode: 'managed' });
+		expect('market' in config).toBe(false);
+		expect(config.controlPlane).toEqual({ mode: 'managed', baseUrl: undefined });
 		expect(config.runtime).toEqual({ mode: 'none', registration: 'none' });
 		expect(config.processing).toEqual({ mode: 'local', providerRef: 'codex-sub' });
 		expect(config.surfaces?.web?.enabled).toBe(true);
@@ -54,10 +49,10 @@ describe('Platform workspace migration recovery', () => {
 		expect(assets.every((asset) => asset.content.endsWith('\n'))).toBe(true);
 	});
 
-	it('verifies the canonical inline Platform authority and Market configuration', () => {
-		const normalized = normalizePlatformBoundaryVerifier('/^\\s*kind: customer-platform\\s*$/mu /^\\s*profile: treeseed\\s*$/mu');
+	it('verifies the canonical inline Platform authority and server configuration', () => {
+		const normalized = normalizePlatformBoundaryVerifier('/^\\s*kind: customer-platform\\s*$/mu');
 		expect(normalized).toContain('^authority: \\{ kind: customer-platform \\}\\s*$');
-		expect(normalized).toContain('^market: \\{ profile: treeseed \\}\\s*$');
+		expect(normalized).not.toContain('market');
 	});
 
 	it('carries the complete Market-owned agent proof catalog without a Market checkout', () => {

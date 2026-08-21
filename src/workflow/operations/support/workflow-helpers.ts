@@ -1,6 +1,5 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { MarketClient } from "../../../entrypoints/clients/market-client.ts";
 import { ensureActVerificationTooling,getMachineConfigPaths,loadMachineConfig,resolveRemoteSession,setRemoteSession,writeMachineConfig } from "../../../operations/services/configuration/config-runtime.ts";
 import { STAGING_BRANCH } from "../../../operations/services/operations/git-workflow.ts";
 import { discoverPackageAdapters } from "../../../operations/services/reconciliation/package-adapters.ts";
@@ -10,7 +9,7 @@ import { hasMeaningfulChanges,repoRoot } from "../../../operations/services/tree
 import type { ConfigInput,WorkflowOperationId } from "../../../operations/workflow.ts";
 import { archiveWorkflowRun,classifyWorkflowRunJournal,listInterruptedWorkflowRuns,type WorkflowRunJournal } from "../../runs.ts";
 import { checkedOutWorkspacePackageRepos,type WorkflowSession } from "../../session.ts";
-import { normalizeConfigScopes,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { normalizeConfigScopes,workflowError } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { createNextSteps,normalizeOptionalString } from '../packages/release-admin-message.ts';
 import { WorkflowError,WorkflowOperationHelpers,WorkflowWrite,runGit } from '../recovery/workflow-write.ts';
 import { packageHostedVerifyWorkflow } from '../repositories/gates-for-saved-repository-reports.ts';

@@ -229,7 +229,7 @@ export type ProcessingMode = 'market-assigned' | 'team-owned' | 'project-owned' 
 export interface HostingConfig {
 	kind: HostingKind;
 	registration?: HostingRegistration;
-	marketBaseUrl?: string;
+	controlPlaneBaseUrl?: string;
 	teamId?: string;
 	projectId?: string;
 }
@@ -241,7 +241,7 @@ export interface HubConfig {
 export interface RuntimeConfig {
 	mode: RuntimeMode;
 	registration?: RuntimeRegistration;
-	marketBaseUrl?: string;
+	controlPlaneBaseUrl?: string;
 	teamId?: string;
 	projectId?: string;
 }
@@ -383,18 +383,11 @@ export interface ApiConnectionConfig {
 	}>>;
 }
 
-export type PlatformAuthorityKind = 'customer-platform' | 'market-singleton';
-export type ControlPlaneMode = 'market-passthrough' | 'external' | 'managed';
+export type PlatformAuthorityKind = 'customer-platform';
+export type ControlPlaneMode = 'external' | 'managed';
 
 export interface PlatformAuthorityConfig {
 	kind: PlatformAuthorityKind;
-}
-
-export interface MarketProfileConfig {
-	profile: 'treeseed';
-	kind: 'singleton_external';
-	baseUrl: 'https://api.treeseed.dev';
-	provisioningAuthority: 'forbidden';
 }
 
 export interface ControlPlaneConfig {
@@ -409,7 +402,6 @@ export interface DeployConfig {
 	contactEmail: string;
 	projectRoot?: string;
 	authority: PlatformAuthorityConfig;
-	market: MarketProfileConfig;
 	controlPlane: ControlPlaneConfig;
 	hosting?: HostingConfig;
 	hub: HubConfig;
