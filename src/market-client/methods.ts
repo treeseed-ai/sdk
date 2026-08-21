@@ -48,14 +48,9 @@ import { capacityAllocationSetMethod } from "./capacity/allocations/contracts/ca
 import { capacityAllocationSetsMethod } from "./capacity/allocations/contracts/capacity-allocation-sets.ts";
 import { capacityGrantMethod } from "./capacity/allocations/contracts/capacity-grant.ts";
 import { capacityGrantsMethod } from "./capacity/allocations/contracts/capacity-grants.ts";
-import { createCapacityAllocationSetMethod } from "./capacity/allocations/creation/create-capacity-allocation-set.ts";
 import { createCapacityGrantMethod } from "./capacity/allocations/creation/create-capacity-grant.ts";
-import { planCapacityAllocationSetMethod } from "./capacity/allocations/creation/plan-capacity-allocation-set.ts";
 import { planCapacityGrantMethod } from "./capacity/allocations/creation/plan-capacity-grant.ts";
-import { activateCapacityAllocationSetMethod } from "./capacity/allocations/lifecycle/activate-capacity-allocation-set.ts";
 import { explainCapacityAllocationSetMethod } from "./capacity/allocations/queries/explain-capacity-allocation-set.ts";
-import { archiveCapacityAllocationSetMethod } from "./capacity/allocations/retirement/archive-capacity-allocation-set.ts";
-import { supersedeCapacityAllocationSetMethod } from "./capacity/allocations/updates/supersede-capacity-allocation-set.ts";
 import { transitionCapacityGrantMethod } from "./capacity/allocations/updates/transition-capacity-grant.ts";
 import { capacityProviderAssignmentMethod } from "./capacity/assignments/contracts/capacity-provider-assignment.ts";
 import { assignmentAuthorityProbeMethod } from "./capacity/assignments/contracts/assignment-authority-probe.ts";
@@ -315,13 +310,7 @@ export function installMarketClientMethods(prototype: MarketClient) {
   prototype.createCapacityGrant = createCapacityGrantMethod;
   prototype.transitionCapacityGrant = transitionCapacityGrantMethod;
   prototype.capacityAllocationSets = capacityAllocationSetsMethod;
-  prototype.createCapacityAllocationSet = createCapacityAllocationSetMethod;
-  prototype.planCapacityAllocationSet = planCapacityAllocationSetMethod;
   prototype.capacityAllocationSet = capacityAllocationSetMethod;
-  prototype.activateCapacityAllocationSet = activateCapacityAllocationSetMethod;
-  prototype.supersedeCapacityAllocationSet =
-    supersedeCapacityAllocationSetMethod;
-  prototype.archiveCapacityAllocationSet = archiveCapacityAllocationSetMethod;
   prototype.explainCapacityAllocationSet = explainCapacityAllocationSetMethod;
   prototype.providerAvailabilitySessions = providerAvailabilitySessionsMethod;
   prototype.capacityProviderAssignments = capacityProviderAssignmentsMethod;

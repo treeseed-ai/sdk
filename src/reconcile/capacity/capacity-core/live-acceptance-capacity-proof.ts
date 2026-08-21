@@ -1,4 +1,5 @@
 import { ProviderProtocolClient } from '../../../capacity/providers/capacity-provider.ts'; import { MarketClient } from '../../../entrypoints/clients/market-client.ts';
+import { activateInternalCapacityAllocationSet,createInternalCapacityAllocationSet } from '../../../market-client/internal-capacity-allocation.ts';
 import { runLocalAutonomousStarterAcceptances } from '../../support/acceptance/live-acceptance-starters.ts';
 import { configuredLiveAcceptanceValue,type LiveAcceptanceEnv } from '../../support/acceptance/live-acceptance-values.ts';
 import type { LiveReconcileEnvironment,LiveReconcileProvider,RunLiveReconcileTestsOptions } from '../../support/acceptance/live-acceptance.ts';
@@ -173,7 +174,7 @@ export async function runCapacityProviderAssignmentProof(input: {
 	let activeAllocation = effectiveActiveAllocation(Array.isArray(allocations.payload.items) ? allocations.payload.items : []);
 	if (!activeAllocation?.id && input.environment === 'local' && cleanupProvisionedProvider) {
 		const allocationId = `${input.prefix}-allocation`;
-		const created = await adminClient.createCapacityAllocationSet(config.teamId, {
+		const created = await createInternalCapacityAllocationSet(adminClient,config.teamId, {
 			id: allocationId,
 			effectiveFrom: new Date(Date.now() - 1_000).toISOString(),
 			effectiveUntil: new Date(Date.now() + 10 * 60_000).toISOString(),
@@ -187,7 +188,7 @@ export async function runCapacityProviderAssignmentProof(input: {
 			borrowingRules: [],
 			metadata,
 		}, `capacity-acceptance:${input.runId}:allocation-create`);
-		activeAllocation = (await adminClient.activateCapacityAllocationSet(
+		activeAllocation = (await activateInternalCapacityAllocationSet(adminClient,
 			config.teamId,
 			String(created.payload.id),
 			`capacity-acceptance:${input.runId}:allocation-activate`,

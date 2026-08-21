@@ -14,6 +14,7 @@ import {
 } from '../../capacity/providers/capacity-provider.ts';
 import { MarketClient } from '../../entrypoints/clients/market-client.ts';
 import { MarketClientError } from '../../entrypoints/clients/market-client.ts';
+import { createInternalCapacityAllocationSet,supersedeInternalCapacityAllocationSet } from '../../market-client/internal-capacity-allocation.ts';
 import type { SeedAgentLabServicePrincipalPrerequisite, SeedCapacityProviderPrerequisite, SeedPlan } from '../types.ts';
 
 type Json = Record<string, unknown>;
@@ -373,7 +374,7 @@ async function reconcilePolicy(input: { client: MarketClient; provider: SeedCapa
 	}
 	if (!allocation) {
 		const target = 100 / allocationProjectIds.length;
-		const created = await input.client.createCapacityAllocationSet(input.teamId, {
+		const created = await createInternalCapacityAllocationSet(input.client,input.teamId, {
 			id: allocationId, effectiveFrom: new Date(Date.now() - 1_000).toISOString(), effectiveUntil: '2100-01-01T00:00:00.000Z',
 			reservePolicy: { percent: 0, overflow: 'deny' },
 			slices: allocationProjectIds.map((projectId) => ({ id: `${allocationId}:${projectId}`, scope: 'project', targetId: projectId, policy: { minPercent: 0, targetPercent: target, maxPercent: 100, hardCapPercent: 100 } })),
@@ -383,7 +384,7 @@ async function reconcilePolicy(input: { client: MarketClient; provider: SeedCapa
 	}
 	if (string(allocation.status) !== 'active') {
 		const expectedActiveAllocationSetId = string(activeAllocation?.id);
-		await input.client.supersedeCapacityAllocationSet(
+		await supersedeInternalCapacityAllocationSet(input.client,
 			input.teamId,
 			allocationId,
 			{ expectedActiveAllocationSetId },

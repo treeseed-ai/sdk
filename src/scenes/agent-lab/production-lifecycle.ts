@@ -1,5 +1,6 @@
 import { ProviderProtocolClient } from '../../capacity/providers/capacity-provider.ts';
 import { MarketClient } from '../../entrypoints/clients/market-client.ts';
+import { createInternalCapacityAllocationSet,supersedeInternalCapacityAllocationSet } from '../../market-client/internal-capacity-allocation.ts';
 import {
 	provisionLocalCapacityAcceptanceProvider,
 	syncLocalAcceptanceAgentClasses,
@@ -261,14 +262,14 @@ export function createProductionAgentLabExecutor(options: {
 				}, `agent-lab:${input.runId}:grant-create`);
 				await client.transitionCapacityGrant(scope.teamId, grantId, 'activate', `agent-lab:${input.runId}:grant-activate`);
 				const allocationId = `agent-lab:${input.runId}:allocation`;
-				allocation = (await client.createCapacityAllocationSet(scope.teamId, {
+				allocation = (await createInternalCapacityAllocationSet(client,scope.teamId, {
 				id: allocationId, effectiveFrom: new Date(Date.now() - 1_000).toISOString(),
 				effectiveUntil: new Date(Date.now() + input.config.workdays.reduce((sum, day) => sum + day.durationSeconds, 0) * 1_000 + 600_000).toISOString(),
 				reservePolicy: { percent: 0, overflow: 'deny' }, borrowingRules: [],
 				slices: [{ id: `${allocationId}:market`, scope: 'project', targetId: scope.projectId, policy: { minPercent: 0, targetPercent: 100, maxPercent: 100, hardCapPercent: 100 } }],
 				metadata: { agentLab: true, runId: input.runId },
 				}, `agent-lab:${input.runId}:allocation-create`)).payload;
-				await client.supersedeCapacityAllocationSet(scope.teamId, text(allocation.id), { expectedActiveAllocationSetId: null }, `agent-lab:${input.runId}:allocation-activate`);
+				await supersedeInternalCapacityAllocationSet(client,scope.teamId, text(allocation.id), { expectedActiveAllocationSetId: null }, `agent-lab:${input.runId}:allocation-activate`);
 				availability = await protocol.refreshAvailabilitySession(sessionId, {
 				expectedSequence: availability.payload.sequence, environment: 'local', status: 'open', capabilities,
 				grants: [{ grantId, projectId: scope.projectId, teamId: scope.teamId, grantScope: 'project' }], executionProviders: [executionProvider],
