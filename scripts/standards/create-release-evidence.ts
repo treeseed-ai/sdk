@@ -23,7 +23,7 @@ const consumer = read<Record<string, unknown>>('.treeseed/standards/api-consumer
 const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
 const trackedStatus = execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: root, encoding: 'utf8' }).trim();
 if (trackedStatus) throw new Error('Release evidence requires a clean tracked source tree.');
-const tarballPath = '.treeseed/standards/package/treeseed-sdk-0.13.0-rc.1.tgz';
+const tarballPath = `.treeseed/standards/package/treeseed-sdk-${packageJson.version}.tgz`;
 const packageDigest = `sha256:${createHash('sha256').update(readFileSync(resolve(root, tarballPath))).digest('hex')}`;
 if (bundle.package.name !== packageJson.name || bundle.package.version !== packageJson.version || bundle.package.sourceCommit !== sourceCommit || bundle.package.artifactDigest !== packageDigest) {
 	throw new Error('Candidate bundle is not bound to the exact source commit, version, and package artifact.');
