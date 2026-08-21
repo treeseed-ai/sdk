@@ -1,6 +1,6 @@
 export const AI_APPLIANCE_SCHEMA_VERSION = 'treeseed.ai-appliance/v1' as const;
 export const EXECUTION_PROVIDER_MODULE_SCHEMA_VERSION = 'treeseed.execution-provider/v1' as const;
-export const DEFAULT_AI_MARKET_URL = 'https://api.treeseed.dev' as const;
+export const DEFAULT_AI_CONTROL_PLANE_URL = 'https://api.treeseed.dev' as const;
 export const DEFAULT_AI_MANAGEMENT_URL = 'http://127.0.0.1:4770' as const;
 export const DEFAULT_AI_GATEWAY_URL = 'http://127.0.0.1:4771' as const;
 export const DEFAULT_AI_MODEL_ALIAS = 'treeseed-qwen3.5-4b' as const;
@@ -17,7 +17,7 @@ export interface AiApplianceManifest {
 		socket: string;
 		loopbackUrl?: string;
 	};
-	marketGateway: {
+	controlPlane: {
 		enabled: boolean;
 		url: string;
 		audience: string;

@@ -351,9 +351,9 @@ export interface ProviderAvailabilitySession {
 
 export interface ProviderConnectionConfig {
 	id: string;
-	marketProfile?: string;
-	marketUrl?: string;
-	marketAudience?: string;
+	serverProfile?: string;
+	controlPlaneUrl?: string;
+	controlPlaneAudience?: string;
 	teamId: string;
 	providerId: string;
 	membershipId: string;
@@ -366,9 +366,9 @@ export interface ProviderConnectionConfig {
 /** One-time onboarding input. It is never valid durable provider runtime configuration. */
 export interface CapacityProviderJoinInput {
 	id: string;
-	marketProfile?: string;
-	marketUrl?: string;
-	marketAudience?: string;
+	serverProfile?: string;
+	controlPlaneUrl?: string;
+	controlPlaneAudience?: string;
 	registrationKeyRef: string;
 	offer: ProviderSupplyOffer;
 }

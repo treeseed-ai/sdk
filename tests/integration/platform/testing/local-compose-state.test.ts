@@ -179,7 +179,7 @@ describe('local Docker Compose exact-state helpers', () => {
 			}],
 			connections: [{
 				id: 'team-a',
-				marketProfile: 'local',
+				serverProfile: 'local',
 				teamId: 'team-a',
 				providerId: 'provider-a',
 				membershipId: 'membership-a',

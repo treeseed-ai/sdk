@@ -159,7 +159,7 @@ export function defaultStateFromConfig(deployConfig, target) {
 		hosting: {
 			kind: deployConfig.hosting?.kind ?? 'self_hosted_project',
 			registration: deployConfig.hosting?.registration ?? 'none',
-			controlPlaneBaseUrl: resolveConfiguredControlPlaneBaseUrl(deployConfig) || null,
+			controlPlaneBaseUrl: resolveConfiguredControlPlaneBaseUrl(deployConfig, target) || null,
 			teamId: identity.teamId,
 			projectId: identity.projectId,
 		},
@@ -169,7 +169,7 @@ export function defaultStateFromConfig(deployConfig, target) {
 		runtime: {
 			mode: deployConfig.runtime?.mode ?? 'none',
 			registration: deployConfig.runtime?.registration ?? 'none',
-			controlPlaneBaseUrl: resolveConfiguredControlPlaneBaseUrl(deployConfig) || null,
+			controlPlaneBaseUrl: resolveConfiguredControlPlaneBaseUrl(deployConfig, target) || null,
 			teamId: identity.teamId,
 			projectId: identity.projectId,
 		},
