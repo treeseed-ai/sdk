@@ -180,15 +180,20 @@ export function validateSelectedDemand(demand: WorkdaySelectedDemand): WorkdayLi
 	if (demand.requestedSeconds <= 0 || !Number.isInteger(demand.requestedSeconds)) diagnostics.push({ code: 'requested_seconds_invalid', path: 'requestedSeconds', message: 'Demand duration must be a positive integer.' });
 	if (demand.mode === 'acting' && !demand.actingAuthority) diagnostics.push({ code: 'acting_authority_required', path: 'actingAuthority', message: 'Acting demand requires approved decision, accepted execution input, estimate, and API-derived capacity plan evidence.' });
 	if (demand.mode === 'acting' && demand.actingAuthority && (demand.actingAuthority.decisionStatus !== 'approved' || demand.actingAuthority.executionInputStatus !== 'accepted')) diagnostics.push({ code: 'acting_authority_invalid', path: 'actingAuthority', message: 'Acting authority must bind an approved decision and accepted execution input.' });
+	if (demand.mode === 'acting' && demand.actingAuthority && [demand.actingAuthority.decisionId, demand.actingAuthority.executionInputId, demand.actingAuthority.estimateId, demand.actingAuthority.capacityPlanId, demand.actingAuthority.capacityPlanDigest].some((value) => !value.trim())) diagnostics.push({ code: 'acting_authority_identity_missing', path: 'actingAuthority', message: 'Acting authority must bind non-empty decision, execution, estimate, capacity-plan, and plan-digest identities.' });
 	return diagnostics;
 }
 
 export function validateWorkdayPreflight(receipt: WorkdayPreflightReceipt, now = new Date()): WorkdayLifecycleDiagnostic[] {
 	const diagnostics = receipt.selectedDemands.flatMap((demand, index) => validateSelectedDemand(demand).map((diagnostic) => ({ ...diagnostic, path: `selectedDemands.${index}.${diagnostic.path}` })));
+	if (receipt.schemaVersion !== 'treeseed.workday-preflight/v1') diagnostics.push({ code: 'schema_version_invalid', path: 'schemaVersion', message: 'Unsupported workday preflight schema.' });
 	for (const field of ['intentDigest', 'profileDigest', 'demandSetDigest', 'providerCapacityDigest', 'authorizationDigest', 'reservationDigest', 'preflightDigest'] as const) {
 		if (!receipt[field].trim()) diagnostics.push({ code: 'digest_required', path: field, message: `${field} is required.` });
 	}
 	if (Date.parse(receipt.expiresAt) <= now.getTime()) diagnostics.push({ code: 'preflight_expired', path: 'expiresAt', message: 'Workday preflight has expired and must be regenerated.' });
+	if (!Number.isFinite(Date.parse(receipt.startsAt)) || !Number.isFinite(Date.parse(receipt.endsAt)) || Date.parse(receipt.endsAt) <= Date.parse(receipt.startsAt)) diagnostics.push({ code: 'preflight_time_range_invalid', path: 'endsAt', message: 'Preflight must bind a valid time range.' });
+	if (!Number.isInteger(receipt.maxConcurrency) || receipt.maxConcurrency <= 0) diagnostics.push({ code: 'preflight_concurrency_invalid', path: 'maxConcurrency', message: 'Preflight concurrency must be a positive integer.' });
+	if (!Number.isFinite(receipt.reserveSeconds) || receipt.reserveSeconds < 0) diagnostics.push({ code: 'preflight_reserve_invalid', path: 'reserveSeconds', message: 'Preflight reserve seconds must be finite and non-negative.' });
 	return diagnostics;
 }
 

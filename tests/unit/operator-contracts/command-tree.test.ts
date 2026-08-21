@@ -46,6 +46,13 @@ describe('human command tree contract', () => {
 		expect(codes).toEqual(expect.arrayContaining(['command_alias_forbidden', 'command_path_duplicate', 'execute_option_forbidden', 'mutation_plan_option_required']));
 	});
 
+	it('rejects nodes that ambiguously combine branches and leaves', () => {
+		const value = tree();
+		const root = value.commands[0] as unknown as Record<string, unknown>;
+		root.kind = 'read';
+		expect(validateCommandTree(value).map((item) => item.code)).toContain('command_node_ambiguous');
+	});
+
 	it('requires trsd and rejects repository mechanics on agent commands', () => {
 		const value = tree();
 		(value as { executable: string }).executable = 'treeseed';

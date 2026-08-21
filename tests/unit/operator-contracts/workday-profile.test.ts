@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateOneClassPerProjectAgent, validateWorkdayAllocationProfile, validateWorkdayBorrowingEvidence, type WorkdayAllocationProfile } from '../../../src/operator-contracts/index.ts';
+import { normalizeWorkdayAllocationProfile, validateOneClassPerProjectAgent, validateWorkdayAllocationProfile, validateWorkdayBorrowingEvidence, type WorkdayAllocationProfile } from '../../../src/operator-contracts/index.ts';
 
 const profile: WorkdayAllocationProfile = {
 	schemaVersion: 'treeseed.workday-allocation-profile/v1',
@@ -24,6 +24,11 @@ describe('workday allocation profiles', () => {
 			{ projectId: 'sdk', classSlugs: ['features', 'stability'] },
 			{ projectId: 'api', classSlugs: ['features', 'stability'] },
 		])).toEqual([]);
+	});
+
+	it('normalizes repository profile sets deterministically', () => {
+		const reversed = { ...profile, projects: ['api', 'sdk', 'api'], classes: [...profile.classes].reverse(), demandSources: [...profile.demandSources].reverse() } satisfies WorkdayAllocationProfile;
+		expect(normalizeWorkdayAllocationProfile(reversed)).toMatchObject({ projects: ['api', 'sdk'], classes: [{ classSlug: 'features' }, { classSlug: 'stability' }], demandSources: ['approved-decisions', 'planning-inputs'] });
 	});
 
 	it('enforces minimum, target, maximum and cross-project class invariants', () => {

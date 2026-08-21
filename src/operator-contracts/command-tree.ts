@@ -124,10 +124,12 @@ export function validateCommandTree(tree: CommandTreeDescriptor): CommandTreeDia
 			const raw = node as unknown as Record<string, unknown>;
 			if ('alias' in raw || 'aliases' in raw) diagnostics.push({ code: 'command_alias_forbidden', path: diagnosticPath, message: 'Public command aliases are forbidden.' });
 			if (node.nodeType === 'branch') {
+				if ('kind' in raw || 'resultSchemaId' in raw || 'options' in raw || 'arguments' in raw) diagnostics.push({ code: 'command_node_ambiguous', path: diagnosticPath, message: 'Intermediate command nodes cannot also declare leaf behavior.' });
 				if (!Array.isArray(node.children) || node.children.length === 0) diagnostics.push({ code: 'command_branch_empty', path: diagnosticPath, message: 'Intermediate command nodes must contain at least one child.' });
 				visit(node.children ?? [], path);
 				continue;
 			}
+			if ('children' in raw) diagnostics.push({ code: 'command_node_ambiguous', path: diagnosticPath, message: 'Leaf command nodes cannot contain child commands.' });
 			if (!node.resultSchemaId.trim()) diagnostics.push({ code: 'result_schema_required', path: `${diagnosticPath}.resultSchemaId`, message: 'Leaf commands require a stable result schema.' });
 			const optionNames = new Set<string>();
 			for (const option of node.options ?? []) {

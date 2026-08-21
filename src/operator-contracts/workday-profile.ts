@@ -75,6 +75,7 @@ export interface WorkdayBorrowingEvidence {
 }
 
 const PERCENT_TOLERANCE = 0.000001;
+const PROFILE_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
 
 export function validateOneClassPerProjectAgent(memberships: ProjectAgentClassMembership[], expectedAgents: ProjectAgentIdentity[] = []): WorkdayProfileDiagnostic[] {
 	const diagnostics: WorkdayProfileDiagnostic[] = [];
@@ -101,7 +102,11 @@ export function validateWorkdayAllocationProfile(
 	const diagnostics: WorkdayProfileDiagnostic[] = [];
 	if (profile.schemaVersion !== 'treeseed.workday-allocation-profile/v1') diagnostics.push({ code: 'schema_version_invalid', path: 'schemaVersion', message: 'Unsupported workday allocation profile schema.' });
 	if (!profile.id.trim()) diagnostics.push({ code: 'profile_id_required', path: 'id', message: 'Profile id is required.' });
-	if (!profile.version.trim()) diagnostics.push({ code: 'profile_version_required', path: 'version', message: 'Profile version is required.' });
+	if (!PROFILE_VERSION.test(profile.version)) diagnostics.push({ code: 'profile_version_invalid', path: 'version', message: 'Profile version must be a semantic version.' });
+	if (profile.actingDecisionRequired !== true) diagnostics.push({ code: 'acting_decision_requirement_invalid', path: 'actingDecisionRequired', message: 'Acting work must require an approved decision.' });
+	if (profile.projects !== 'all' && profile.projects.length === 0) diagnostics.push({ code: 'project_scope_empty', path: 'projects', message: 'Profile project scope must select at least one project or all.' });
+	if (profile.demandSources.length === 0) diagnostics.push({ code: 'demand_sources_empty', path: 'demandSources', message: 'At least one governed demand source is required.' });
+	if (new Set(profile.demandSources).size !== profile.demandSources.length) diagnostics.push({ code: 'demand_source_duplicate', path: 'demandSources', message: 'Demand sources must be unique.' });
 	if (!Number.isInteger(profile.defaultDurationSeconds) || profile.defaultDurationSeconds <= 0) diagnostics.push({ code: 'duration_invalid', path: 'defaultDurationSeconds', message: 'Default duration must be a positive integer number of seconds.' });
 	if (!Number.isInteger(profile.maxConcurrency) || profile.maxConcurrency <= 0) diagnostics.push({ code: 'concurrency_invalid', path: 'maxConcurrency', message: 'Maximum concurrency must be a positive integer.' });
 	if (!Number.isFinite(profile.reservePercent) || profile.reservePercent < 0 || profile.reservePercent > 100) diagnostics.push({ code: 'reserve_invalid', path: 'reservePercent', message: 'Reserve percent must be between 0 and 100.' });
@@ -139,6 +144,18 @@ export function validateWorkdayAllocationProfile(
 		}
 	}
 	return diagnostics;
+}
+
+export function normalizeWorkdayAllocationProfile(profile: WorkdayAllocationProfile): WorkdayAllocationProfile {
+	return {
+		...profile,
+		projects: profile.projects === 'all' ? 'all' : [...new Set(profile.projects)].sort(),
+		excludedClassSlugs: profile.excludedClassSlugs
+			? Object.fromEntries(Object.entries(profile.excludedClassSlugs).sort(([left], [right]) => left.localeCompare(right)).map(([projectId, slugs]) => [projectId, [...new Set(slugs)].sort()]))
+			: undefined,
+		classes: [...profile.classes].sort((left, right) => left.classSlug.localeCompare(right.classSlug)),
+		demandSources: [...new Set(profile.demandSources)].sort(),
+	};
 }
 
 export function validateWorkdayBorrowingEvidence(evidence: WorkdayBorrowingEvidence): WorkdayProfileDiagnostic[] {
