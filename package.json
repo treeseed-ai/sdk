@@ -135,6 +135,10 @@
       "types": "./dist/standards/openapi/index.d.ts",
       "default": "./dist/standards/openapi/index.js"
     },
+    "./operator-contracts": {
+      "types": "./dist/operator-contracts/index.d.ts",
+      "default": "./dist/operator-contracts/index.js"
+    },
     "./sdk": {
       "types": "./dist/entrypoints/models/sdk.d.ts",
       "default": "./dist/entrypoints/models/sdk.js"

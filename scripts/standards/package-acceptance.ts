@@ -7,13 +7,14 @@ const required = [
 	'dist/standards/index.js', 'dist/standards/index.d.ts',
 	'dist/standards/typescript/index.js', 'dist/standards/typescript/index.d.ts',
 	'dist/standards/openapi/index.js', 'dist/standards/openapi/index.d.ts',
+	'dist/operator-contracts/index.js', 'dist/operator-contracts/index.d.ts',
 	'.treeseed/standards/contract-models.json', '.treeseed/standards/contract-bundle.json',
 	'.treeseed/standards/typescript-public-api.json', '.treeseed/standards/openapi.json',
 ];
 const missing = required.filter((path) => !existsSync(resolve(root, path)));
 if (missing.length) throw new Error(`Missing standards package outputs: ${missing.join(', ')}.`);
 const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as { exports: Record<string, unknown> };
-for (const specifier of ['./standards', './standards/typescript', './standards/openapi']) {
+for (const specifier of ['./standards', './standards/typescript', './standards/openapi', './operator-contracts']) {
 	if (!packageJson.exports[specifier]) throw new Error(`Missing package export ${specifier}.`);
 }
 

@@ -1,5 +1,5 @@
 import { MarketClient } from '../../../../entrypoints/clients/market-client.ts';
-import type { AgentDeploymentBindings,AgentDeploymentPlan,AgentDeploymentReceipt } from '../../../../agent-capacity/index.ts';
+import type { AgentDeploymentBindings,AgentDeploymentPlan,AgentDeploymentReceipt } from '../../../../agent-capacity/authoring/agent-deployment.ts';
 
 export type AgentDeploymentRequest={
 	sourceProjectId:string;targetProjectId:string;sourceRef?:string;agentId?:string;groupId?:string;

@@ -14,7 +14,6 @@ export * from './support/failure-records.ts';
 export * from './support/financial-records.ts';
 export * from './support/time-capacity.ts';
 export * from './support/authority/execution-mode.ts';
-export * from './support/operator-surface.ts';
 export * from './support/planning-records.ts';
 export * from './support/research-citation.ts';
 export * from './support/research-source-policy.ts';
