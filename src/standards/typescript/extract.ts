@@ -13,6 +13,10 @@ export interface TypeScriptDeclarationEntrypointInput {
 	source: string;
 }
 
+export interface TypeScriptExtractionOptions {
+	unresolvedLocalSymbols?: 'error' | 'record';
+}
+
 function normalizedText(node: ts.Node, sourceFile: ts.SourceFile) {
 	return node.getText(sourceFile).replace(/\s+/gu, ' ').trim();
 }
@@ -124,6 +128,7 @@ function externalReexport(moduleName: string, exportedName: string): TypeScriptA
 function extractEntrypoint(
 	input: TypeScriptDeclarationEntrypointInput,
 	declarations: Readonly<Record<string, string>>,
+	options: TypeScriptExtractionOptions,
 ): TypeScriptApiEntrypoint {
 	const cache = new Map<string, Map<string, TypeScriptApiSymbol>>();
 	const active = new Set<string>();
@@ -201,6 +206,10 @@ function extractEntrypoint(
 				}
 				if (target) collected.set(exportedName, { ...target, name: exportedName });
 				else if (moduleName && !localTarget) collected.set(exportedName, externalReexport(moduleName, exportedName));
+				else if (options.unresolvedLocalSymbols === 'record') collected.set(exportedName, {
+					...externalReexport(normalizedPath, exportedName),
+					definition: `unresolved-local-reexport:${normalizedPath}:${sourceName}`,
+				});
 				else throw new Error(`Unresolved public symbol ${sourceName} in ${normalizedPath}.`);
 			}
 		}
@@ -216,6 +225,7 @@ function extractEntrypoint(
 export function extractTypeScriptApi(
 	input: TypeScriptDeclarationEntrypointInput[],
 	declarations: Readonly<Record<string, string>> = Object.fromEntries(input.map((entry) => [normalizeDeclarationPath(entry.declarationPath), entry.source])),
+	options: TypeScriptExtractionOptions = {},
 ): TypeScriptApiModel {
-	return { schemaVersion: 1, entrypoints: input.map((entry) => extractEntrypoint(entry, declarations)).sort((left, right) => left.specifier.localeCompare(right.specifier)) };
+	return { schemaVersion: 1, entrypoints: input.map((entry) => extractEntrypoint(entry, declarations, options)).sort((left, right) => left.specifier.localeCompare(right.specifier)) };
 }

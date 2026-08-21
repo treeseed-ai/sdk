@@ -68,4 +68,19 @@ describe('TypeScript public API compatibility', () => {
 			expect.objectContaining({ name: 'ApiError', kind: 'class', members: [expect.objectContaining({ name: 'code' })] }),
 		]);
 	});
+
+	it('records an unresolved legacy baseline symbol only when explicitly requested', () => {
+		const source = "export type { RemovedLegacyType } from './legacy.js';";
+		const declarations = { 'dist/index.d.ts': source, 'dist/legacy.d.ts': 'export type Other = string;' };
+		expect(() => extractTypeScriptApi([{ specifier: '.', declarationPath: 'dist/index.d.ts', source }], declarations))
+			.toThrow('Unresolved public symbol RemovedLegacyType');
+		const baseline = extractTypeScriptApi(
+			[{ specifier: '.', declarationPath: 'dist/index.d.ts', source }],
+			declarations,
+			{ unresolvedLocalSymbols: 'record' },
+		);
+		expect(baseline.entrypoints[0]?.symbols).toEqual([
+			expect.objectContaining({ name: 'RemovedLegacyType', definition: expect.stringContaining('unresolved-local-reexport:') }),
+		]);
+	});
 });
