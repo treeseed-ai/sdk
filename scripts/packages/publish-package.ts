@@ -2,7 +2,8 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { assertPackageReleaseTag, packageReleaseVersion, type PackageReleaseVersion } from './release-version.ts';
 
 const packageRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -47,6 +48,39 @@ try {
 }
 
 const npmArgs = ['publish', packageArtifact, '--access', 'public', '--tag', release.npmDistTag];
+const dryRun = extraArgs.includes('--dry-run');
+
+if (!dryRun) {
+	let existingVersion = false;
+	try {
+		execFileSync('npm', ['view', `${evidence.packageName}@${evidence.packageVersion}`, 'version', '--json', '--prefer-online'], {
+			cwd: packageRoot,
+			stdio: ['ignore', 'pipe', 'pipe'],
+		});
+		existingVersion = true;
+	} catch (error) {
+		const output = `${String((error as { stdout?: unknown }).stdout ?? '')}\n${String((error as { stderr?: unknown }).stderr ?? '')}`;
+		if (!output.includes('E404') && !output.includes('ETARGET')) throw error;
+	}
+	if (existingVersion) {
+		const destination = mkdtempSync(resolve(tmpdir(), 'treeseed-sdk-existing-'));
+		let existingDigest = '';
+		try {
+			const packed = JSON.parse(execFileSync('npm', [
+				'pack', `${evidence.packageName}@${evidence.packageVersion}`, '--json', '--ignore-scripts', '--prefer-online',
+				'--pack-destination', destination,
+			], { cwd: packageRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] })) as Array<{ filename: string }>;
+			existingDigest = `sha256:${createHash('sha256').update(readFileSync(resolve(destination, packed[0]!.filename))).digest('hex')}`;
+			if (existingDigest !== evidence.packageDigest) {
+				throw new Error(`Published SDK digest ${existingDigest} does not match sealed evidence ${evidence.packageDigest}.`);
+			}
+		} finally {
+			rmSync(destination, { recursive: true, force: true });
+		}
+		console.log(JSON.stringify({ ok: true, adoptedExisting: true, packageVersion: evidence.packageVersion, packageDigest: existingDigest }));
+		process.exit(0);
+	}
+}
 
 if (process.env.GITHUB_ACTIONS === 'true') {
 	npmArgs.push('--provenance');
