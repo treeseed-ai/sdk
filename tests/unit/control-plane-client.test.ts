@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -30,11 +31,16 @@ describe('ControlPlaneClient', () => {
 
 	it('stores server sessions encrypted and never writes tokens in plaintext', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-server-session-'));
-		setControlPlaneServerSession(root, { serverId: 'local', accessToken: 'access-secret', refreshToken: 'refresh-secret' });
-		expect(resolveControlPlaneServerSession(root, 'local')).toMatchObject({ serverId: 'local', accessToken: 'access-secret' });
+		const custody = { loadKey: () => randomBytes(32) };
+		const key = randomBytes(32);
+		custody.loadKey = () => key;
+		const profile = { serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002' };
+		setControlPlaneServerSession(root, { serverId: 'local', audience: profile.baseUrl, accessToken: 'access-secret', refreshToken: 'refresh-secret' }, custody);
+		expect(resolveControlPlaneServerSession(root, profile, custody)).toMatchObject({ serverId: 'local', audience: profile.baseUrl, accessToken: 'access-secret' });
 		const stored = readFileSync(join(root, CONTROL_PLANE_SERVER_SESSIONS_PATH), 'utf8');
 		expect(stored).not.toContain('access-secret');
 		expect(stored).not.toContain('refresh-secret');
+		expect(() => resolveControlPlaneServerSession(root, { ...profile, baseUrl: 'https://other.example' }, custody)).toThrow(/audience/u);
 	});
 
 	it('uses RFC 8628 form encoding for device authorization', async () => {

@@ -66,7 +66,7 @@ export async function planOrApplySceneSeed(input: SceneSeedOptions): Promise<Sce
 	const projectRoot = findNearestRoot(input.projectRoot) ?? input.projectRoot;
 	const profile = resolveControlPlaneServer(input.scene.setup.auth?.profile ?? input.environment);
 	const authRoot = resolve(projectRoot, '.treeseed/auth');
-	const session = resolveControlPlaneServerSession(authRoot, profile.serverId);
+	const session = resolveControlPlaneServerSession(authRoot, profile);
 	const localToken = input.env?.TREESEED_CAPACITY_ACCEPTANCE_ADMIN_TOKEN?.trim() || 'tsk_local_treeseed_acceptance_admin';
 	try {
 		for (let index = 0; index < planned.length; index += 1) {

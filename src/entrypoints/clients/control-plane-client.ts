@@ -1,15 +1,21 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import type { ControlPlaneOperationDescriptor, OAuthScope } from '../../operator-contracts/control-plane-operation.ts';
 import type { ApiPrincipal } from './remote.ts';
+import {
+	decryptRemoteAuthSessions,
+	encryptRemoteAuthSessions,
+	loadMachineKey,
+	loadRemoteAuthPayload,
+	writeRemoteAuthPayload,
+} from '../../operations/services/config-runtime/configuration/create-default-machine-config.ts';
+import { getRemoteAuthPaths } from '../../operations/services/config-runtime/accounts/ensure-secret-session-for-config.ts';
 
 export const DEFAULT_CONTROL_PLANE_BASE_URL = 'http://127.0.0.1:3002';
 export const CONTROL_PLANE_BASE_URL_ENV = 'TREESEED_API_BASE_URL';
 export const CONTROL_PLANE_SERVER_REGISTRY_PATH = '.treeseed/config/servers.json';
-export const CONTROL_PLANE_SERVER_SESSIONS_PATH = '.treeseed/auth/server-sessions.enc.json';
-export const CONTROL_PLANE_SERVER_SESSION_KEY_PATH = '.treeseed/auth/server-sessions.key';
+export const CONTROL_PLANE_SERVER_SESSIONS_PATH = '.treeseed/config/remote-auth.json';
 
 export interface ControlPlaneServerProfile {
 	serverId: string;
@@ -19,11 +25,18 @@ export interface ControlPlaneServerProfile {
 
 export interface ControlPlaneServerSession {
 	serverId: string;
+	audience: string;
 	accessToken: string;
 	refreshToken?: string;
 	expiresAt?: string;
 	principal?: ApiPrincipal | null;
 }
+
+export interface ControlPlaneSessionCustody {
+	loadKey(root: string): Buffer;
+}
+
+const machineKeySessionCustody: ControlPlaneSessionCustody = { loadKey: loadMachineKey };
 
 export interface ControlPlaneServerRegistry {
 	version: 1;
@@ -176,69 +189,46 @@ export function resolveControlPlaneServer(selector?: string | null, env: Record<
 	return profile;
 }
 
-export function resolveControlPlaneServerSession(root: string, serverId: string): ControlPlaneServerSession | null {
-	try {
-		return readServerSessions(root)[serverId] ?? null;
-	} catch {
-		return null;
+export function resolveControlPlaneServerSession(
+	root: string,
+	server: string | ControlPlaneServerProfile,
+	custody: ControlPlaneSessionCustody = machineKeySessionCustody,
+): ControlPlaneServerSession | null {
+	const serverId = typeof server === 'string' ? server : server.serverId;
+	const session = readServerSessions(root, custody)[serverId] ?? null;
+	if (session && typeof server !== 'string' && session.audience !== normalizeControlPlaneBaseUrl(server.baseUrl)) {
+		throw new Error(`Stored session audience does not match control-plane server "${server.serverId}".`);
 	}
-}
-
-export function setControlPlaneServerSession(root: string, session: ControlPlaneServerSession) {
-	const sessions = readServerSessions(root);
-	sessions[session.serverId] = session;
-	writeServerSessions(root, sessions);
 	return session;
 }
 
-export function clearControlPlaneServerSession(root: string, serverId?: string | null) {
+export function setControlPlaneServerSession(root: string, session: ControlPlaneServerSession, custody: ControlPlaneSessionCustody = machineKeySessionCustody) {
+	const normalized = { ...session, audience: normalizeControlPlaneBaseUrl(session.audience) };
+	const sessions = readServerSessions(root, custody);
+	sessions[session.serverId] = normalized;
+	writeServerSessions(root, sessions, custody);
+	return normalized;
+}
+
+export function clearControlPlaneServerSession(root: string, serverId?: string | null, custody: ControlPlaneSessionCustody = machineKeySessionCustody) {
 	if (!serverId) {
-		writeServerSessions(root, {});
+		writeServerSessions(root, {}, custody);
 		return;
 	}
-	const sessions = readServerSessions(root);
+	const sessions = readServerSessions(root, custody);
 	delete sessions[serverId];
-	writeServerSessions(root, sessions);
+	writeServerSessions(root, sessions, custody);
 }
 
-function sessionPaths(root: string) {
-	return { sessions: resolve(root, CONTROL_PLANE_SERVER_SESSIONS_PATH), key: resolve(root, CONTROL_PLANE_SERVER_SESSION_KEY_PATH) };
+function readServerSessions(root: string, custody: ControlPlaneSessionCustody): Record<string, ControlPlaneServerSession> {
+	if (!existsSync(getRemoteAuthPaths(root).authPath)) return {};
+	const sessions = decryptRemoteAuthSessions(loadRemoteAuthPayload(root), custody.loadKey(root));
+	return Object.fromEntries(Object.entries(sessions).map(([serverId, session]) => [serverId, { serverId, ...session }])) as Record<string, ControlPlaneServerSession>;
 }
 
-function sessionKey(root: string) {
-	const paths = sessionPaths(root);
-	if (existsSync(paths.key)) {
-		const key = Buffer.from(readFileSync(paths.key, 'utf8').trim(), 'base64url');
-		if (key.length !== 32) throw new Error('Control-plane session key is invalid.');
-		return key;
-	}
-	mkdirSync(dirname(paths.key), { recursive: true });
-	const key = randomBytes(32);
-	writeFileSync(paths.key, `${key.toString('base64url')}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
-	return key;
-}
-
-function readServerSessions(root: string): Record<string, ControlPlaneServerSession> {
-	const paths = sessionPaths(root);
-	if (!existsSync(paths.sessions)) return {};
-	const envelope = JSON.parse(readFileSync(paths.sessions, 'utf8')) as { version: 1; iv: string; tag: string; ciphertext: string };
-	if (envelope.version !== 1) throw new Error('Unsupported control-plane session format.');
-	const decipher = createDecipheriv('aes-256-gcm', sessionKey(root), Buffer.from(envelope.iv, 'base64url'));
-	decipher.setAuthTag(Buffer.from(envelope.tag, 'base64url'));
-	const plaintext = Buffer.concat([decipher.update(Buffer.from(envelope.ciphertext, 'base64url')), decipher.final()]);
-	return JSON.parse(plaintext.toString('utf8')) as Record<string, ControlPlaneServerSession>;
-}
-
-function writeServerSessions(root: string, sessions: Record<string, ControlPlaneServerSession>) {
-	const paths = sessionPaths(root);
-	mkdirSync(dirname(paths.sessions), { recursive: true });
-	const iv = randomBytes(12);
-	const cipher = createCipheriv('aes-256-gcm', sessionKey(root), iv);
-	const ciphertext = Buffer.concat([cipher.update(JSON.stringify(sessions), 'utf8'), cipher.final()]);
-	const envelope = { version: 1 as const, iv: iv.toString('base64url'), tag: cipher.getAuthTag().toString('base64url'), ciphertext: ciphertext.toString('base64url') };
-	const temporary = `${paths.sessions}.tmp-${process.pid}`;
-	writeFileSync(temporary, `${JSON.stringify(envelope)}\n`, { encoding: 'utf8', mode: 0o600 });
-	renameSync(temporary, paths.sessions);
+function writeServerSessions(root: string, sessions: Record<string, ControlPlaneServerSession>, custody: ControlPlaneSessionCustody) {
+	const values = Object.fromEntries(Object.entries(sessions).map(([serverId, session]) => [serverId, session]));
+	writeRemoteAuthPayload(root, { version: 1, sessions: encryptRemoteAuthSessions(values, custody.loadKey(root)) });
 }
 
 async function responsePayload(response: Response): Promise<unknown> {

@@ -11,7 +11,7 @@ export function resolveSceneAuth(input: SceneAuthResolveOptions): SceneAuthRepor
 	const selector = input.scene.setup.auth?.profile ?? (input.environment === 'local' ? 'local' : null);
 	const profile = resolveControlPlaneServer(selector);
 	const authRoot = findNearestRoot(input.projectRoot) ?? resolve(process.env.HOME || homedir());
-	const session = resolveControlPlaneServerSession(authRoot, profile.serverId);
+	const session = resolveControlPlaneServerSession(authRoot, profile);
 	const diagnostics = [];
 	if (required && !session?.accessToken && (!role || role === 'anonymous')) {
 		diagnostics.push(sceneErrorDiagnostic('scene.auth_required', `Not logged in to server "${profile.serverId}". Run trsd auth login --server ${profile.serverId}.`, 'setup.auth'));
