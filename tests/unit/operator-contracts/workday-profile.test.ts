@@ -20,6 +20,7 @@ const profile: WorkdayAllocationProfile = {
 
 describe('workday allocation profiles', () => {
 	it('accepts a portfolio profile when every selected project supplies its classes', () => {
+		expect(validateWorkdayAllocationProfile(profile)).toEqual([]);
 		expect(validateWorkdayAllocationProfile(profile, [
 			{ projectId: 'sdk', classSlugs: ['features', 'stability'] },
 			{ projectId: 'api', classSlugs: ['features', 'stability'] },

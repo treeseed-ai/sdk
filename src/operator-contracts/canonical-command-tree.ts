@@ -2,13 +2,14 @@ import type { CommandLeafDescriptor, CommandNodeDescriptor, CommandTreeDescripto
 
 const planOption = { name: '--plan', description: 'Return the exact proposed outcome without mutation.', type: 'boolean' as const };
 
-function leaf(segment: string, kind: 'read' | 'mutation' = 'read', argument?: string): CommandNodeDescriptor {
+function leaf(segment: string, kind: 'read' | 'mutation' = 'read', argument?: string, confirmation: 'never' | 'destructive' | 'credential' | 'authority' | 'production' | 'irreversible' = 'never'): CommandNodeDescriptor {
 	const value: CommandLeafDescriptor = {
 		segment,
 		description: `${segment[0]!.toUpperCase()}${segment.slice(1)} the selected resource.`,
 		kind,
 		arguments: argument ? [{ name: argument, description: `${argument} identity or path.`, required: true }] : undefined,
 		options: kind === 'mutation' ? [planOption] : undefined,
+		authorization: kind === 'mutation' ? { capability: `command.${segment}`, confirmation } : undefined,
 		resultSchemaId: `treeseed.command.${segment}/v1`,
 	};
 	return { nodeType: 'leaf', ...value };
@@ -22,28 +23,28 @@ export const TREESEED_COMMAND_TREE_V1: CommandTreeDescriptor = {
 	schemaVersion: 'treeseed.command-tree/v1',
 	executable: 'trsd',
 	commands: [
-		branch('auth', [leaf('login', 'mutation'), leaf('logout', 'mutation'), leaf('status')]),
-		branch('secrets', [leaf('list'), leaf('status'), leaf('unlock', 'mutation'), leaf('lock', 'mutation'), leaf('rotate', 'mutation')]),
+		branch('auth', [leaf('login', 'mutation', undefined, 'credential'), leaf('logout', 'mutation'), leaf('status')]),
+		branch('secrets', [leaf('list'), leaf('status'), leaf('unlock', 'mutation', undefined, 'credential'), leaf('lock', 'mutation'), leaf('rotate', 'mutation', undefined, 'credential')]),
 		branch('agents', [
 			leaf('list'), leaf('show', 'read', 'agent'), leaf('validate'), leaf('diff'), leaf('diagnose'),
 			branch('classes', [leaf('list'), leaf('show', 'read', 'class')]),
 			branch('bindings', [leaf('list'), leaf('show', 'read', 'binding'), leaf('explain', 'read', 'binding')]),
 		]),
 		branch('providers', [
-			leaf('list'), leaf('show', 'read', 'provider'), leaf('status', 'read', 'provider'), leaf('diagnose', 'read', 'provider'), leaf('connect', 'mutation'), leaf('disconnect', 'mutation', 'connection'),
-			branch('requests', [leaf('list'), leaf('show', 'read', 'request'), leaf('approve', 'mutation', 'request'), leaf('reject', 'mutation', 'request')]),
-			branch('credentials', [leaf('status', 'read', 'connection'), leaf('rotate', 'mutation', 'connection'), leaf('revoke', 'mutation', 'connection')]),
-			branch('offers', [leaf('show', 'read', 'connection'), leaf('validate', 'read', 'file'), leaf('plan', 'read', 'file'), leaf('apply', 'mutation', 'file')]),
+			leaf('list'), leaf('show', 'read', 'provider'), leaf('status', 'read', 'provider'), leaf('diagnose', 'read', 'provider'), leaf('connect', 'mutation', undefined, 'credential'), leaf('disconnect', 'mutation', 'connection', 'destructive'),
+			branch('requests', [leaf('list'), leaf('show', 'read', 'request'), leaf('approve', 'mutation', 'request', 'authority'), leaf('reject', 'mutation', 'request', 'authority')]),
+			branch('credentials', [leaf('status', 'read', 'connection'), leaf('rotate', 'mutation', 'connection', 'credential'), leaf('revoke', 'mutation', 'connection', 'irreversible')]),
+			branch('offers', [leaf('show', 'read', 'connection'), leaf('validate', 'read', 'file'), leaf('plan', 'read', 'file'), leaf('apply', 'mutation', 'file', 'authority')]),
 		]),
 		branch('capacity', [leaf('status'), leaf('explain'), leaf('usage'), leaf('ledger'), leaf('audit')]),
 		branch('plans', [leaf('list'), leaf('show', 'read', 'plan'), leaf('explain', 'read', 'plan'), { nodeType: 'leaf', segment: 'diff', description: 'Compare two API-derived plans.', kind: 'read', arguments: [{ name: 'left', description: 'Left plan identity.', required: true }, { name: 'right', description: 'Right plan identity.', required: true }], resultSchemaId: 'treeseed.command.plans.diff/v1' }]),
 		branch('workdays', [
 			branch('profiles', [leaf('list'), leaf('show', 'read', 'profile'), leaf('validate', 'read', 'file')]),
-			leaf('plan'), leaf('start', 'mutation'), leaf('list'), leaf('show', 'read', 'workday'), leaf('watch', 'read', 'workday'), leaf('pause', 'mutation', 'workday'), leaf('resume', 'mutation', 'workday'), leaf('stop', 'mutation', 'workday'), leaf('cancel', 'mutation', 'workday'),
-			branch('schedules', [leaf('list'), leaf('show', 'read', 'schedule'), leaf('plan'), leaf('start', 'mutation'), leaf('pause', 'mutation', 'schedule'), leaf('resume', 'mutation', 'schedule'), leaf('retire', 'mutation', 'schedule')]),
+			leaf('plan'), leaf('start', 'mutation', undefined, 'authority'), leaf('list'), leaf('show', 'read', 'workday'), leaf('watch', 'read', 'workday'), leaf('pause', 'mutation', 'workday', 'authority'), leaf('resume', 'mutation', 'workday', 'authority'), leaf('stop', 'mutation', 'workday', 'destructive'), leaf('cancel', 'mutation', 'workday', 'destructive'),
+			branch('schedules', [leaf('list'), leaf('show', 'read', 'schedule'), leaf('plan'), leaf('start', 'mutation', undefined, 'authority'), leaf('pause', 'mutation', 'schedule', 'authority'), leaf('resume', 'mutation', 'schedule', 'authority'), leaf('retire', 'mutation', 'schedule', 'destructive')]),
 		]),
-		branch('assignments', [leaf('list'), leaf('show', 'read', 'assignment'), leaf('explain', 'read', 'assignment'), leaf('watch', 'read', 'assignment'), leaf('retry', 'mutation', 'assignment'), leaf('cancel', 'mutation', 'assignment'), leaf('artifacts', 'read', 'assignment')]),
-		leaf('save', 'mutation'), leaf('stage', 'mutation'), leaf('release', 'mutation'), leaf('status'), leaf('diagnose'),
+		branch('assignments', [leaf('list'), leaf('show', 'read', 'assignment'), leaf('explain', 'read', 'assignment'), leaf('watch', 'read', 'assignment'), leaf('retry', 'mutation', 'assignment', 'authority'), leaf('cancel', 'mutation', 'assignment', 'destructive'), leaf('artifacts', 'read', 'assignment')]),
+		leaf('save', 'mutation'), leaf('stage', 'mutation', undefined, 'authority'), leaf('release', 'mutation', undefined, 'production'), leaf('status'), leaf('diagnose'),
 	],
 };
 

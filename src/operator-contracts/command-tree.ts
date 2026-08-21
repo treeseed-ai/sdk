@@ -37,7 +37,7 @@ export interface CommandAuthorizationDescriptor {
 	confirmation: 'never' | 'destructive' | 'credential' | 'authority' | 'production' | 'irreversible';
 }
 
-export interface CommandLeafDescriptor<TResult = unknown> {
+export interface CommandLeafDescriptor {
 	segment: string;
 	description: string;
 	kind: CommandOperationKind;
@@ -45,7 +45,6 @@ export interface CommandLeafDescriptor<TResult = unknown> {
 	options?: CommandOptionDescriptor[];
 	authorization?: CommandAuthorizationDescriptor;
 	resultSchemaId: string;
-	_result?: TResult;
 }
 
 export interface CommandBranchDescriptor {

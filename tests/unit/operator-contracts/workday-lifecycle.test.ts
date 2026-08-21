@@ -22,6 +22,7 @@ describe('time-based workday lifecycle contracts', () => {
 			schemaVersion: 'treeseed.workday-preflight/v1', id: 'preflight', teamId: 'team', intentDigest: '', profileId: 'profile', profileVersion: '1', profileGeneration: 1, profileDigest: 'sha256:profile', demandSetDigest: 'sha256:demand', providerCapacityDigest: 'sha256:provider', authorizationDigest: 'sha256:auth', reservationDigest: 'sha256:reservation', selectedDemands: [], classAccounting: [], borrowing: [], startsAt: '2026-08-21T12:00:00.000Z', endsAt: '2026-08-21T13:00:00.000Z', maxConcurrency: 2, reserveSeconds: 10, preflightDigest: 'sha256:preflight', expiresAt: '2026-08-21T11:00:00.000Z',
 		};
 		expect(validateWorkdayPreflight(receipt, new Date('2026-08-21T12:00:00.000Z')).map((item) => item.code)).toEqual(expect.arrayContaining(['digest_required', 'preflight_expired']));
+		expect(validateWorkdayPreflight({ ...receipt, expiresAt: 'invalid' }, new Date('2026-08-21T12:00:00.000Z')).map((item) => item.code)).toContain('preflight_expiry_invalid');
 		expect(validateWorkdayPreflightFreshness(receipt, { profileGeneration: 2, profileDigest: receipt.profileDigest, demandSetDigest: receipt.demandSetDigest, providerCapacityDigest: receipt.providerCapacityDigest, authorizationDigest: receipt.authorizationDigest, reservationDigest: receipt.reservationDigest })).toEqual([expect.objectContaining({ code: 'preflight_state_changed', path: 'profileGeneration' })]);
 	});
 

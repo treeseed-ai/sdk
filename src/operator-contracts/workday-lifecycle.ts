@@ -1,4 +1,4 @@
-import type { WorkdayBorrowingEvidence } from './workday-profile.ts';
+import { validateWorkdayBorrowingEvidence, type WorkdayBorrowingEvidence } from './workday-profile.ts';
 
 export type WorkdayDemandMode = 'planning' | 'acting';
 
@@ -187,13 +187,18 @@ export function validateSelectedDemand(demand: WorkdaySelectedDemand): WorkdayLi
 export function validateWorkdayPreflight(receipt: WorkdayPreflightReceipt, now = new Date()): WorkdayLifecycleDiagnostic[] {
 	const diagnostics = receipt.selectedDemands.flatMap((demand, index) => validateSelectedDemand(demand).map((diagnostic) => ({ ...diagnostic, path: `selectedDemands.${index}.${diagnostic.path}` })));
 	if (receipt.schemaVersion !== 'treeseed.workday-preflight/v1') diagnostics.push({ code: 'schema_version_invalid', path: 'schemaVersion', message: 'Unsupported workday preflight schema.' });
+	if (!Number.isInteger(receipt.profileGeneration) || receipt.profileGeneration <= 0) diagnostics.push({ code: 'profile_generation_invalid', path: 'profileGeneration', message: 'Profile generation must be a positive integer.' });
 	for (const field of ['intentDigest', 'profileDigest', 'demandSetDigest', 'providerCapacityDigest', 'authorizationDigest', 'reservationDigest', 'preflightDigest'] as const) {
 		if (!receipt[field].trim()) diagnostics.push({ code: 'digest_required', path: field, message: `${field} is required.` });
 	}
-	if (Date.parse(receipt.expiresAt) <= now.getTime()) diagnostics.push({ code: 'preflight_expired', path: 'expiresAt', message: 'Workday preflight has expired and must be regenerated.' });
+	const expiry = Date.parse(receipt.expiresAt);
+	if (!Number.isFinite(expiry)) diagnostics.push({ code: 'preflight_expiry_invalid', path: 'expiresAt', message: 'Preflight expiry must be a valid timestamp.' });
+	else if (expiry <= now.getTime()) diagnostics.push({ code: 'preflight_expired', path: 'expiresAt', message: 'Workday preflight has expired and must be regenerated.' });
 	if (!Number.isFinite(Date.parse(receipt.startsAt)) || !Number.isFinite(Date.parse(receipt.endsAt)) || Date.parse(receipt.endsAt) <= Date.parse(receipt.startsAt)) diagnostics.push({ code: 'preflight_time_range_invalid', path: 'endsAt', message: 'Preflight must bind a valid time range.' });
 	if (!Number.isInteger(receipt.maxConcurrency) || receipt.maxConcurrency <= 0) diagnostics.push({ code: 'preflight_concurrency_invalid', path: 'maxConcurrency', message: 'Preflight concurrency must be a positive integer.' });
 	if (!Number.isFinite(receipt.reserveSeconds) || receipt.reserveSeconds < 0) diagnostics.push({ code: 'preflight_reserve_invalid', path: 'reserveSeconds', message: 'Preflight reserve seconds must be finite and non-negative.' });
+	for (const [index, evidence] of receipt.borrowing.entries()) diagnostics.push(...validateWorkdayBorrowingEvidence(evidence).map((diagnostic) => ({ ...diagnostic, path: `borrowing.${index}.${diagnostic.path}` })));
+	if (new Set(receipt.selectedDemands.map((demand) => demand.id)).size !== receipt.selectedDemands.length) diagnostics.push({ code: 'preflight_demand_duplicate', path: 'selectedDemands', message: 'Preflight demand identities must be unique.' });
 	return diagnostics;
 }
 
@@ -207,6 +212,7 @@ export function validateWorkdayPreflightFreshness(receipt: WorkdayPreflightRecei
 
 export function validateWorkdaySettlement(settlement: WorkdaySettlement): WorkdayLifecycleDiagnostic[] {
 	const diagnostics: WorkdayLifecycleDiagnostic[] = [];
+	if (settlement.schemaVersion !== 'treeseed.workday-settlement/v1') diagnostics.push({ code: 'schema_version_invalid', path: 'schemaVersion', message: 'Unsupported workday settlement schema.' });
 	for (const [index, accounting] of settlement.classAccounting.entries()) {
 		for (const [field, value] of Object.entries(accounting).filter(([field]) => field !== 'classSlug')) {
 			if (!Number.isFinite(value) || value < 0) diagnostics.push({ code: 'settlement_accounting_invalid', path: `classAccounting.${index}.${field}`, message: 'Settlement seconds must be finite and non-negative.' });
@@ -214,5 +220,6 @@ export function validateWorkdaySettlement(settlement: WorkdaySettlement): Workda
 		if (accounting.lentSeconds > accounting.allocatedSeconds + accounting.borrowedSeconds) diagnostics.push({ code: 'settlement_lending_invalid', path: `classAccounting.${index}.lentSeconds`, message: 'A class cannot lend more capacity than it held.' });
 	}
 	if (!settlement.preflightDigest.trim() || !settlement.settlementDigest.trim()) diagnostics.push({ code: 'settlement_digest_required', path: 'settlementDigest', message: 'Settlement must bind its preflight and final accounting digests.' });
+	if (!Number.isFinite(Date.parse(settlement.startedAt)) || !Number.isFinite(Date.parse(settlement.completedAt)) || Date.parse(settlement.completedAt) < Date.parse(settlement.startedAt)) diagnostics.push({ code: 'settlement_time_range_invalid', path: 'completedAt', message: 'Settlement must bind a valid completion time at or after workday start.' });
 	return diagnostics;
 }

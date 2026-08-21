@@ -75,7 +75,7 @@ export interface WorkdayBorrowingEvidence {
 }
 
 const PERCENT_TOLERANCE = 0.000001;
-const PROFILE_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
+const PROFILE_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 export function validateOneClassPerProjectAgent(memberships: ProjectAgentClassMembership[], expectedAgents: ProjectAgentIdentity[] = []): WorkdayProfileDiagnostic[] {
 	const diagnostics: WorkdayProfileDiagnostic[] = [];
@@ -97,7 +97,7 @@ export function validateOneClassPerProjectAgent(memberships: ProjectAgentClassMe
 
 export function validateWorkdayAllocationProfile(
 	profile: WorkdayAllocationProfile,
-	classCatalogs: ProjectClassCatalog[] = [],
+	classCatalogs?: ProjectClassCatalog[],
 ): WorkdayProfileDiagnostic[] {
 	const diagnostics: WorkdayProfileDiagnostic[] = [];
 	if (profile.schemaVersion !== 'treeseed.workday-allocation-profile/v1') diagnostics.push({ code: 'schema_version_invalid', path: 'schemaVersion', message: 'Unsupported workday allocation profile schema.' });
@@ -131,9 +131,9 @@ export function validateWorkdayAllocationProfile(
 	if (Math.abs(targetTotal - 100) > PERCENT_TOLERANCE) diagnostics.push({ code: 'target_total_invalid', path: 'classes', message: 'Class target percentages must total exactly 100.' });
 	if (maximumTotal < 100 - PERCENT_TOLERANCE) diagnostics.push({ code: 'maximum_total_invalid', path: 'classes', message: 'Class maximum percentages must total at least 100.' });
 
-	const selectedProjects = profile.projects === 'all' ? classCatalogs.map((catalog) => catalog.projectId) : profile.projects;
+	const selectedProjects = classCatalogs === undefined ? [] : profile.projects === 'all' ? classCatalogs.map((catalog) => catalog.projectId) : profile.projects;
 	for (const projectId of selectedProjects) {
-		const catalog = classCatalogs.find((candidate) => candidate.projectId === projectId);
+		const catalog = classCatalogs?.find((candidate) => candidate.projectId === projectId);
 		if (!catalog) {
 			diagnostics.push({ code: 'project_class_catalog_missing', path: `projects.${projectId}`, message: `No class catalog exists for selected project ${projectId}.` });
 			continue;
