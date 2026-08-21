@@ -1,7 +1,21 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, resolve } from 'node:path';
+import type { ControlPlaneOperationDescriptor, OAuthScope } from '../../operator-contracts/control-plane-operation.ts';
 import type { ApiPrincipal } from './remote.ts';
+import {
+	decryptRemoteAuthSessions,
+	encryptRemoteAuthSessions,
+	loadMachineKey,
+	loadRemoteAuthPayload,
+	writeRemoteAuthPayload,
+} from '../../operations/services/config-runtime/configuration/create-default-machine-config.ts';
+import { getRemoteAuthPaths } from '../../operations/services/config-runtime/accounts/ensure-secret-session-for-config.ts';
 
 export const DEFAULT_CONTROL_PLANE_BASE_URL = 'http://127.0.0.1:3002';
 export const CONTROL_PLANE_BASE_URL_ENV = 'TREESEED_API_BASE_URL';
+export const CONTROL_PLANE_SERVER_REGISTRY_PATH = '.treeseed/config/servers.json';
+export const CONTROL_PLANE_SERVER_SESSIONS_PATH = '.treeseed/config/remote-auth.json';
 
 export interface ControlPlaneServerProfile {
 	serverId: string;
@@ -11,10 +25,48 @@ export interface ControlPlaneServerProfile {
 
 export interface ControlPlaneServerSession {
 	serverId: string;
+	audience: string;
 	accessToken: string;
 	refreshToken?: string;
 	expiresAt?: string;
 	principal?: ApiPrincipal | null;
+}
+
+export interface ControlPlaneSessionCustody {
+	loadKey(root: string): Buffer;
+}
+
+const machineKeySessionCustody: ControlPlaneSessionCustody = { loadKey: loadMachineKey };
+
+export interface ControlPlaneServerRegistry {
+	version: 1;
+	activeServerId: string;
+	servers: ControlPlaneServerProfile[];
+}
+
+export interface OAuthDeviceAuthorizationReceipt {
+	deviceCode: string;
+	userCode: string;
+	verificationUri: string;
+	verificationUriComplete?: string;
+	expiresIn: number;
+	interval: number;
+}
+
+export interface OAuthTokenReceipt {
+	tokenType: 'Bearer';
+	accessToken: string;
+	expiresIn: number;
+	refreshToken?: string;
+	scope: OAuthScope[];
+	audience: string;
+	principal?: ApiPrincipal | null;
+}
+
+export interface ControlPlaneOperationBinding<TInput = unknown, TOutput = unknown> {
+	descriptor: ControlPlaneOperationDescriptor;
+	readonly __input?: TInput;
+	readonly __output?: TOutput;
 }
 
 export interface ControlPlaneClientOptions {
@@ -52,6 +104,13 @@ export interface ControlPlaneCallOptions {
 	signal?: AbortSignal;
 }
 
+export interface ControlPlaneOperationCallOptions {
+	headers?: Record<string, string>;
+	idempotencyKey?: string;
+	ifMatch?: string;
+	signal?: AbortSignal;
+}
+
 export class ControlPlaneClientError extends Error {
 	constructor(
 		message: string,
@@ -64,7 +123,7 @@ export class ControlPlaneClientError extends Error {
 	}
 }
 
-function normalizeBaseUrl(value: string) {
+export function normalizeControlPlaneBaseUrl(value: string) {
 	const normalized = value.trim().replace(/\/+$/u, '');
 	if (!/^https?:\/\//u.test(normalized)) throw new Error('Control-plane server URLs must use HTTP or HTTPS.');
 	return normalized;
@@ -76,8 +135,100 @@ export function defaultLocalControlPlaneServer(
 	return {
 		serverId: 'local',
 		label: 'Local TreeSeed control plane',
-		baseUrl: normalizeBaseUrl(env[CONTROL_PLANE_BASE_URL_ENV] ?? DEFAULT_CONTROL_PLANE_BASE_URL),
+		baseUrl: normalizeControlPlaneBaseUrl(env[CONTROL_PLANE_BASE_URL_ENV] ?? DEFAULT_CONTROL_PLANE_BASE_URL),
 	};
+}
+
+function registryPath(env: Record<string, string | undefined> = process.env) {
+	return resolve(env.HOME?.trim() || homedir(), CONTROL_PLANE_SERVER_REGISTRY_PATH);
+}
+
+function normalizeServer(profile: ControlPlaneServerProfile): ControlPlaneServerProfile {
+	const serverId = profile.serverId.trim();
+	if (!serverId) throw new Error('Control-plane server IDs cannot be empty.');
+	return { serverId, label: profile.label.trim() || serverId, baseUrl: normalizeControlPlaneBaseUrl(profile.baseUrl) };
+}
+
+export function loadControlPlaneServerRegistry(env: Record<string, string | undefined> = process.env): ControlPlaneServerRegistry {
+	const local = defaultLocalControlPlaneServer(env);
+	const path = registryPath(env);
+	if (!existsSync(path)) return { version: 1, activeServerId: local.serverId, servers: [local] };
+	const parsed = JSON.parse(readFileSync(path, 'utf8')) as Partial<ControlPlaneServerRegistry>;
+	const byId = new Map<string, ControlPlaneServerProfile>([[local.serverId, local]]);
+	for (const value of Array.isArray(parsed.servers) ? parsed.servers : []) {
+		const normalized = normalizeServer(value);
+		byId.set(normalized.serverId, normalized);
+	}
+	const servers = [...byId.values()].sort((left, right) => left.serverId.localeCompare(right.serverId));
+	const activeServerId = servers.some((entry) => entry.serverId === parsed.activeServerId) ? parsed.activeServerId! : local.serverId;
+	return { version: 1, activeServerId, servers };
+}
+
+export function writeControlPlaneServerRegistry(state: ControlPlaneServerRegistry, env: Record<string, string | undefined> = process.env) {
+	const path = registryPath(env);
+	const servers = [...new Map(state.servers.map((entry) => {
+		const normalized = normalizeServer(entry);
+		return [normalized.serverId, normalized];
+	})).values()].sort((left, right) => left.serverId.localeCompare(right.serverId));
+	const activeServerId = servers.some((entry) => entry.serverId === state.activeServerId) ? state.activeServerId : 'local';
+	const next: ControlPlaneServerRegistry = { version: 1, activeServerId, servers };
+	mkdirSync(dirname(path), { recursive: true });
+	writeFileSync(path, `${JSON.stringify(next, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+	return next;
+}
+
+export function resolveControlPlaneServer(selector?: string | null, env: Record<string, string | undefined> = process.env) {
+	const value = selector?.trim();
+	if (value && /^https?:\/\//iu.test(value)) {
+		return normalizeServer({ serverId: value.replace(/^https?:\/\//iu, '').replace(/[^a-z0-9._-]+/giu, '-'), label: value, baseUrl: value });
+	}
+	const registry = loadControlPlaneServerRegistry(env);
+	const serverId = value || registry.activeServerId;
+	const profile = registry.servers.find((entry) => entry.serverId === serverId);
+	if (!profile) throw new Error(`Unknown control-plane server "${serverId}".`);
+	return profile;
+}
+
+export function resolveControlPlaneServerSession(
+	root: string,
+	server: string | ControlPlaneServerProfile,
+	custody: ControlPlaneSessionCustody = machineKeySessionCustody,
+): ControlPlaneServerSession | null {
+	const serverId = typeof server === 'string' ? server : server.serverId;
+	const session = readServerSessions(root, custody)[serverId] ?? null;
+	if (session && typeof server !== 'string' && session.audience !== normalizeControlPlaneBaseUrl(server.baseUrl)) {
+		throw new Error(`Stored session audience does not match control-plane server "${server.serverId}".`);
+	}
+	return session;
+}
+
+export function setControlPlaneServerSession(root: string, session: ControlPlaneServerSession, custody: ControlPlaneSessionCustody = machineKeySessionCustody) {
+	const normalized = { ...session, audience: normalizeControlPlaneBaseUrl(session.audience) };
+	const sessions = readServerSessions(root, custody);
+	sessions[session.serverId] = normalized;
+	writeServerSessions(root, sessions, custody);
+	return normalized;
+}
+
+export function clearControlPlaneServerSession(root: string, serverId?: string | null, custody: ControlPlaneSessionCustody = machineKeySessionCustody) {
+	if (!serverId) {
+		writeServerSessions(root, {}, custody);
+		return;
+	}
+	const sessions = readServerSessions(root, custody);
+	delete sessions[serverId];
+	writeServerSessions(root, sessions, custody);
+}
+
+function readServerSessions(root: string, custody: ControlPlaneSessionCustody): Record<string, ControlPlaneServerSession> {
+	if (!existsSync(getRemoteAuthPaths(root).authPath)) return {};
+	const sessions = decryptRemoteAuthSessions(loadRemoteAuthPayload(root), custody.loadKey(root));
+	return Object.fromEntries(Object.entries(sessions).map(([serverId, session]) => [serverId, { serverId, ...session }])) as Record<string, ControlPlaneServerSession>;
+}
+
+function writeServerSessions(root: string, sessions: Record<string, ControlPlaneServerSession>, custody: ControlPlaneSessionCustody) {
+	const values = Object.fromEntries(Object.entries(sessions).map(([serverId, session]) => [serverId, session]));
+	writeRemoteAuthPayload(root, { version: 1, sessions: encryptRemoteAuthSessions(values, custody.loadKey(root)) });
 }
 
 async function responsePayload(response: Response): Promise<unknown> {
@@ -109,10 +260,44 @@ export class ControlPlaneClient {
 	readonly userAgent?: string;
 
 	constructor(readonly options: ControlPlaneClientOptions) {
-		this.baseUrl = normalizeBaseUrl(options.profile.baseUrl);
+		this.baseUrl = normalizeControlPlaneBaseUrl(options.profile.baseUrl);
 		this.accessToken = options.accessToken ?? null;
 		this.fetchImpl = options.fetchImpl ?? fetch;
 		this.userAgent = options.userAgent;
+	}
+
+	async callOperation<TInput, TOutput>(binding: ControlPlaneOperationBinding<TInput, TOutput>, input: TInput, options: ControlPlaneOperationCallOptions = {}) {
+		const rest = binding.descriptor.rest;
+		if (!rest) throw new Error(`Operation ${binding.descriptor.operationId} has no REST binding.`);
+		if (/[:*]/u.test(rest.path)) throw new Error(`Operation ${binding.descriptor.operationId} requires generated path parameters.`);
+		return this.call<TOutput>({ method: rest.method, path: rest.path as `/v1/${string}`, input: rest.method === 'GET' ? undefined : input, ...options });
+	}
+
+	async authorizeDevice(clientId: string, scope: OAuthScope[], signal?: AbortSignal): Promise<OAuthDeviceAuthorizationReceipt> {
+		const response = await this.fetchImpl(`${this.baseUrl}/oauth/device_authorization`, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: clientId, scope: scope.join(' ') }), signal });
+		const payload = await responsePayload(response) as Record<string, unknown>;
+		if (!response.ok) throw new ControlPlaneClientError(String(payload.error_description ?? payload.error ?? 'Device authorization failed.'), response.status, problemFrom(payload, response.status), response.headers);
+		return { deviceCode: String(payload.device_code), userCode: String(payload.user_code), verificationUri: String(payload.verification_uri), verificationUriComplete: typeof payload.verification_uri_complete === 'string' ? payload.verification_uri_complete : undefined, expiresIn: Number(payload.expires_in), interval: Number(payload.interval) };
+	}
+
+	async exchangeDeviceCode(clientId: string, deviceCode: string, signal?: AbortSignal) {
+		return this.exchangeOAuthToken({ client_id: clientId, grant_type: 'urn:ietf:params:oauth:grant-type:device_code', device_code: deviceCode }, signal);
+	}
+
+	async refreshAccessToken(clientId: string, refreshToken: string, signal?: AbortSignal) {
+		return this.exchangeOAuthToken({ client_id: clientId, grant_type: 'refresh_token', refresh_token: refreshToken }, signal);
+	}
+
+	async revokeToken(clientId: string, token: string, signal?: AbortSignal) {
+		const response = await this.fetchImpl(`${this.baseUrl}/oauth/revoke`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: clientId, token }), signal });
+		if (!response.ok) throw new ControlPlaneClientError('Token revocation failed.', response.status, problemFrom(await responsePayload(response), response.status), response.headers);
+	}
+
+	private async exchangeOAuthToken(values: Record<string, string>, signal?: AbortSignal): Promise<OAuthTokenReceipt> {
+		const response = await this.fetchImpl(`${this.baseUrl}/oauth/token`, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(values), signal });
+		const payload = await responsePayload(response) as Record<string, unknown>;
+		if (!response.ok) throw new ControlPlaneClientError(String(payload.error_description ?? payload.error ?? 'OAuth token exchange failed.'), response.status, problemFrom(payload, response.status), response.headers);
+		return { tokenType: 'Bearer', accessToken: String(payload.access_token), refreshToken: typeof payload.refresh_token === 'string' ? payload.refresh_token : undefined, expiresIn: Number(payload.expires_in), scope: String(payload.scope ?? '').split(/\s+/u).filter(Boolean) as OAuthScope[], audience: String(payload.audience ?? this.baseUrl), principal: payload.principal && typeof payload.principal === 'object' ? payload.principal as ApiPrincipal : undefined };
 	}
 
 	async call<T>(options: ControlPlaneCallOptions): Promise<ControlPlaneResponseEnvelope<T>> {

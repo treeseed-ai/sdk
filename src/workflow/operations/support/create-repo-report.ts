@@ -7,7 +7,7 @@ import { checkedOutManagedWorkflowRepos } from "../../../operations/services/sup
 import { currentBranch,gitStatusPorcelain,hasMeaningfulChanges,repoRoot } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
 import type { WorkflowExecutionMode,WorkflowFact,WorkflowNextStep,WorkflowOperationId,WorkflowRecovery,WorkflowResult } from "../../../operations/workflow.ts";
 import { checkedOutWorkspacePackageRepos } from "../../session.ts";
-import { WorkflowRepoReport,resolveWorkflowStateSnapshot,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { WorkflowRepoReport,resolveWorkflowStateSnapshot,workflowError } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { WorkflowOperationHelpers,WorkflowStatePayload,runGit } from '../recovery/workflow-write.ts';
 
 export function createRepoReport(name: string, path: string, branch: string | null, dirty: boolean): WorkflowRepoReport {

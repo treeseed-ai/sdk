@@ -7,8 +7,8 @@ import { workspaceRoot } from "../../../operations/services/treedx/workspaces/wo
 import type { ReleaseInput } from "../../../operations/workflow.ts";
 import { readWorkflowRunJournal } from "../../runs.ts";
 import { checkedOutWorkspacePackageRepos,resolveWorkflowSession } from "../../session.ts";
-import { backMergeProductionIntoStaging,backMergeRootProductionIntoStaging,collectReleaseHelperRepoBlockers,releaseHelperRepoToProduction,releasePlanPackageSelection,releasePlanStableDependencyVersionMap,releasePlanVersionMap } from '../commerce/catalog/back-merge-production-into-staging.ts';
-import { resolveProjectRootOrThrow,withContextEnv,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { backMergeProductionIntoStaging,backMergeRootProductionIntoStaging,collectReleaseHelperRepoBlockers,releaseHelperRepoToProduction,releasePlanPackageSelection,releasePlanStableDependencyVersionMap,releasePlanVersionMap } from '../release-support/helpers/back-merge-production-into-staging.ts';
+import { resolveProjectRootOrThrow,withContextEnv,workflowError } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { checkedOutReleaseHelperRepos,readJsonFile,stageCandidateAttestationBlockers,syncAllCheckedOutReleaseHelperRepos } from '../coordination/staging-candidate-workflow-gates.ts';
 import { buildReleasePlanSnapshot } from '../guarantees/workflow-proof.ts';
 import { verifyPublishedReleaseArtifacts } from '../packages/collect-published-release-artifact-checks.ts';

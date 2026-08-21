@@ -96,8 +96,8 @@ describe('capacity provider governance contracts', () => {
 				researchSourcePolicy: { schemaVersion: 1, allowedDomains: ['example.test'], requestTimeoutMs: 10_000, maxResponseBytes: 100_000, maxRedirects: 2, allowedContentTypes: ['text/*'] },
 			}],
 			connections: [
-				{ id: 'team-a', marketProfile: 'staging', teamId: 'team-a', providerId: 'provider', membershipId: 'membership-a', membershipCredentialRef: 'secret://capacity/team-a', membershipCredentialId: 'credential-a', offer: { sharePercent: 60, capabilities: ['engineering'] } },
-				{ id: 'team-b', marketUrl: 'https://example.test', teamId: 'team-b', providerId: 'provider', membershipId: 'membership-b', membershipCredentialRef: 'secret://capacity/team-b', membershipCredentialId: 'credential-b', offer: { sharePercent: 40, capabilities: ['research'] } },
+				{ id: 'team-a', serverProfile: 'staging', teamId: 'team-a', providerId: 'provider', membershipId: 'membership-a', membershipCredentialRef: 'secret://capacity/team-a', membershipCredentialId: 'credential-a', offer: { sharePercent: 60, capabilities: ['engineering'] } },
+				{ id: 'team-b', controlPlaneUrl: 'https://example.test', teamId: 'team-b', providerId: 'provider', membershipId: 'membership-b', membershipCredentialRef: 'secret://capacity/team-b', membershipCredentialId: 'credential-b', offer: { sharePercent: 40, capabilities: ['research'] } },
 			],
 		};
 		expect(validateCapacityProviderManifestV2(manifest)).toEqual({ ok: true, diagnostics: [] });
@@ -134,7 +134,7 @@ describe('capacity provider governance contracts', () => {
 		expect(validateCapacityProviderManifestV2(manifest)).toEqual({ ok: true, diagnostics: [] });
 		const legacy = {
 			...manifest,
-			connections: [{ id: 'team-a', marketProfile: 'local', registrationKeyRef: 'env://TEAM_KEY', offer: { capabilities: ['engineering'] } }],
+			connections: [{ id: 'team-a', serverProfile: 'local', registrationKeyRef: 'env://TEAM_KEY', offer: { capabilities: ['engineering'] } }],
 		};
 		expect(validateCapacityProviderManifestV2(legacy as CapacityProviderManifestV2).diagnostics.map((entry) => entry.code)).toEqual(expect.arrayContaining([
 			'provider_connection_registration_key_forbidden',

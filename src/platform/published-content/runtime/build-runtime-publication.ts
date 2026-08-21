@@ -14,7 +14,7 @@ import {
 	inferVisibility,
 	markdownText,
 	normalizeSlug,
-} from '../../published-content-pipeline/resolve-commerce-offer-mode.ts';
+} from '../../published-content-pipeline/resolve-publication-access-mode.ts';
 import { createHash } from 'node:crypto';
 
 export interface RuntimePublicationSource {

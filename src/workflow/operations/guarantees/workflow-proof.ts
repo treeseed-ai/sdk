@@ -10,8 +10,8 @@ import { incrementVersion,planWorkspaceReleaseBump } from "../../../operations/s
 import { workspaceRoot } from "../../../operations/services/treedx/workspaces/workspace-tools.ts";
 import type { ProofInput,ReleaseCandidateInput,WorkflowReleaseCandidateMode } from "../../../operations/workflow.ts";
 import { type WorkflowMode } from "../../session.ts";
-import { orderReleasePackageNames,parseProofOlderThan,releaseCandidateProofDriver,stableDependencyVersionsForReleaseLine } from '../commerce/catalog/back-merge-production-into-staging.ts';
-import { WorkflowRepoReport,resolveProjectRootOrThrow,withContextEnv,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { orderReleasePackageNames,parseProofOlderThan,releaseCandidateProofDriver,stableDependencyVersionsForReleaseLine } from '../release-support/helpers/back-merge-production-into-staging.ts';
+import { WorkflowRepoReport,resolveProjectRootOrThrow,withContextEnv,workflowError } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { planRootPackageVersion,releaseTagExists } from '../packages/plan-root-package-version.ts';
 import { createNextSteps } from '../packages/release-admin-message.ts';
 import { toError } from '../support/workflow-helpers.ts';

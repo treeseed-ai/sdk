@@ -29,7 +29,7 @@ buildCapacityProviderAuthHeaders,
 } from './security/http.ts';
 
 export interface ProviderProtocolClientOptions {
-	marketUrl: string;
+	controlPlaneUrl: string;
 	accessToken?: string;
 	accessTokenProvider?: () => Promise<string>;
 	fetchImpl?: typeof fetch;
@@ -53,7 +53,7 @@ export class CapacityProviderApiError extends Error {
 
 export function normalizeBaseUrl(value: string) {
 	const trimmed = value.trim().replace(/\/+$/u, '');
-	if (!trimmed) throw new Error('Capacity provider Market URL is required.');
+	if (!trimmed) throw new Error('Capacity provider control-plane URL is required.');
 	return trimmed;
 }
 
@@ -86,7 +86,7 @@ export function assertAvailabilitySessionEnvelope(value: unknown): asserts value
 }
 
 export class ProviderProtocolClient {
-	private readonly marketUrl: string;
+	private readonly controlPlaneUrl: string;
 	private accessToken?: string;
 	private readonly accessTokenProvider?: () => Promise<string>;
 	private readonly fetchImpl: typeof fetch;
@@ -94,7 +94,7 @@ export class ProviderProtocolClient {
 	private readonly requestTimeoutMs: number;
 
 	constructor(options: ProviderProtocolClientOptions) {
-		this.marketUrl = normalizeBaseUrl(options.marketUrl);
+		this.controlPlaneUrl = normalizeBaseUrl(options.controlPlaneUrl);
 		this.accessToken = options.accessToken?.trim() || undefined;
 		this.accessTokenProvider = options.accessTokenProvider;
 		this.fetchImpl = options.fetchImpl ?? fetch;
@@ -123,7 +123,7 @@ export class ProviderProtocolClient {
 		let response: Response;
 		let payload: unknown;
 		try {
-			response = await this.fetchImpl(`${this.marketUrl}${path}`, {
+			response = await this.fetchImpl(`${this.controlPlaneUrl}${path}`, {
 				method: options.method ?? 'GET',
 				headers,
 				body: options.body === undefined ? undefined : JSON.stringify(options.body),

@@ -164,8 +164,8 @@ export function validateCapacityProviderManifestV2(manifest: CapacityProviderMan
 		if ('registrationKeyRef' in (connection as unknown as Record<string, unknown>)) add(diagnostics, 'provider_connection_registration_key_forbidden', `${path}.registrationKeyRef`, 'Broadcast registration keys are one-time join input and may not be persisted in a runtime connection.');
 		if (!nonEmpty(connection.id) || ids.has(connection.id)) add(diagnostics, 'provider_connection_id_invalid', `${path}.id`, 'Connection id must be non-empty and unique.');
 		ids.add(connection.id);
-		if (!nonEmpty(connection.marketProfile) && !nonEmpty(connection.marketUrl)) add(diagnostics, 'provider_connection_market_required', path, 'Connection requires marketProfile or marketUrl.');
-		if (connection.marketAudience !== undefined && !nonEmpty(connection.marketAudience)) add(diagnostics, 'provider_connection_market_audience_invalid', `${path}.marketAudience`, 'Connection marketAudience must be a non-empty canonical control-plane URL when provided.');
+		if (!nonEmpty(connection.serverProfile) && !nonEmpty(connection.controlPlaneUrl)) add(diagnostics, 'provider_connection_server_required', path, 'Connection requires serverProfile or controlPlaneUrl.');
+		if (connection.controlPlaneAudience !== undefined && !nonEmpty(connection.controlPlaneAudience)) add(diagnostics, 'provider_connection_control_plane_audience_invalid', `${path}.controlPlaneAudience`, 'Connection controlPlaneAudience must be a non-empty canonical control-plane URL when provided.');
 		const credentialRef = connection.membershipCredentialRef;
 		if (!nonEmpty(credentialRef) || !credentialRef.includes('://')) add(diagnostics, 'provider_connection_credential_ref_invalid', `${path}.membershipCredentialRef`, 'Approved connection requires a membership credential secret reference.');
 		if (!nonEmpty(connection.teamId)) add(diagnostics, 'provider_connection_team_required', `${path}.teamId`, 'Approved connection requires teamId.');

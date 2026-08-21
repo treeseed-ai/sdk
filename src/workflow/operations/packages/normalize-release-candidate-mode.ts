@@ -9,7 +9,7 @@ import type { SaveInput,SwitchInput,WorkflowCiMode,WorkflowOperationId,WorkflowW
 import { type ReconcileSelector } from "../../../reconcile/index.ts";
 import { cacheWorkflowGateResult,getCachedSuccessfulWorkflowGate } from "../../runs.ts";
 import { effectiveWorkflowWorktreeMode,isManagedWorkflowWorktree,managedWorkflowWorktreeMetadata } from "../../worktrees.ts";
-import { workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { workflowError } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { ReleaseCandidateMode,WorkflowOperationHelpers,normalizeSaveLane } from '../recovery/workflow-write.ts';
 import { githubRepositoryForRepo } from './release-admin-message.ts';
 

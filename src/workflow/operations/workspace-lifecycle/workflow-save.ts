@@ -9,8 +9,8 @@ import { workspaceRoot } from "../../../operations/services/treedx/workspaces/wo
 import { resolveWorkflowState } from "../../../operations/workflow-state.ts";
 import type { SaveInput } from "../../../operations/workflow.ts";
 import { resolveRepositoryWorkflowSession,resolveWorkflowSession } from "../../session.ts";
-import { runReleaseCandidateProofForPlan } from '../commerce/catalog/back-merge-production-into-staging.ts';
-import { WorkflowRepoReport,ensureCommandReadiness,ensureLocalStateExcluded,resolveProjectRootOrThrow,withContextEnv,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { runReleaseCandidateProofForPlan } from '../release-support/helpers/back-merge-production-into-staging.ts';
+import { WorkflowRepoReport,ensureCommandReadiness,ensureLocalStateExcluded,resolveProjectRootOrThrow,withContextEnv,workflowError } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { writeIntegrationChangeSet } from '../coordination/integration-change-set.ts';
 import { buildReleasePlanSnapshot } from '../guarantees/workflow-proof.ts';
 import { assertSessionBranchSafety,branchPreviewInitialized,reconcileWorkflowBranchPreview } from '../packages/collect-published-release-artifact-checks.ts';

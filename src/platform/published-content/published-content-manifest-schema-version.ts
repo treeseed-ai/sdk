@@ -1,4 +1,4 @@
-import type { CommerceOfferMode } from '../../entrypoints/models/sdk-types.ts';
+import type { PublicationAccessMode } from '../../entrypoints/models/sdk-types.ts';
 
 
 export const PUBLISHED_CONTENT_MANIFEST_SCHEMA_VERSION = 2;
@@ -78,7 +78,7 @@ export interface CatalogIndexEntry {
 	summary?: string;
 	visibility?: PublishedContentVisibility;
 	listingEnabled?: boolean;
-	offerMode?: CommerceOfferMode;
+	offerMode?: PublicationAccessMode;
 	manifestKey?: string;
 	artifactKey?: string;
 	updatedAt: string;

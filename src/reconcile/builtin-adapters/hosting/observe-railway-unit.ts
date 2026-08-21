@@ -235,19 +235,11 @@ export function sanitizeRemoteRailwayServiceUrls(
 ) {
 	const configuredApiDomain = resolveConfiguredSurfaceDomain(input.context.deployConfig, { kind: 'persistent', scope }, 'api');
 	const configuredApiBaseUrl = configuredApiDomain ? `https://${configuredApiDomain}` : '';
-	const apiBaseUrl = [
-		values.TREESEED_MARKET_API_BASE_URL,
-		values.TREESEED_STAGING_MARKET_API_BASE_URL,
-		configuredApiBaseUrl,
-	].find((value) => typeof value === 'string' && value.trim() && !isLoopbackServiceUrl(value))?.trim();
+	const apiBaseUrl = [values.TREESEED_API_BASE_URL, configuredApiBaseUrl]
+		.find((value) => typeof value === 'string' && value.trim() && !isLoopbackServiceUrl(value))?.trim();
 	if (!apiBaseUrl) return;
 	if (isLoopbackServiceUrl(values.TREESEED_API_BASE_URL)) {
 		values.TREESEED_API_BASE_URL = apiBaseUrl;
-	}
-	for (const key of ['TREESEED_MARKET_API_BASE_URL', 'TREESEED_CATALOG_MARKET_API_BASE_URLS'] as const) {
-		if (isLoopbackServiceUrl(values[key])) {
-			values[key] = apiBaseUrl;
-		}
 	}
 }
 

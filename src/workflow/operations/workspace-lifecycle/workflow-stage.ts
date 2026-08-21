@@ -6,7 +6,7 @@ import { workspaceRoot } from "../../../operations/services/treedx/workspaces/wo
 import type { StageInput } from "../../../operations/workflow.ts";
 import { resolveWorkflowSession } from "../../session.ts";
 import { managedWorkflowWorktreeMetadata } from "../../worktrees.ts";
-import { ensureLocalStateExcluded,resolveProjectRootOrThrow,withContextEnv,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { ensureLocalStateExcluded,resolveProjectRootOrThrow,withContextEnv,workflowError } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { buildStagePromotionPlan,checkedOutStagePromotionRepos,createStageCandidateManifest,normalizeStageCiMode,normalizeStageCleanupMode,normalizeStageVerifyMode,stageConflictError,stagePreflightBlockers,stagingCandidateWorkflowGates,writeStageCandidateManifest } from '../coordination/staging-candidate-workflow-gates.ts';
 import { helpersForCwd,waitForWorkflowGates,worktreePayload } from '../packages/normalize-release-candidate-mode.ts';
 import { acquireWorkflowRun,completeWorkflowRun,executeJournalStep,skipJournalStep } from '../packages/prepare-fresh-release-run.ts';

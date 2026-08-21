@@ -49,7 +49,7 @@ export interface TemplateManifest {
 }
 
 export interface PlatformTemplateComposition {
-	controlPlane: { mode: 'managed' | 'market-passthrough' | 'external'; baseUrl?: string };
+	controlPlane: { mode: 'managed' | 'external'; baseUrl?: string };
 	processing: { mode: 'team-owned' | 'project-owned' | 'local' | 'market-assigned' | 'none' };
 	admin: { enabled: boolean };
 	executionProvider: 'codex' | 'treeseed-ai' | 'none';

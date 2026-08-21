@@ -27,7 +27,7 @@ export function normalizePlanesFromLegacyHosting(
 			runtime: {
 				mode: 'treeseed_managed',
 				registration: hosting.kind === 'treeseed_control_plane' ? 'none' : (hosting.registration ?? 'none'),
-				marketBaseUrl: hosting.marketBaseUrl,
+				controlPlaneBaseUrl: hosting.controlPlaneBaseUrl,
 				teamId: hosting.teamId,
 				projectId: hosting.projectId,
 			},
@@ -39,7 +39,7 @@ export function normalizePlanesFromLegacyHosting(
 		runtime: {
 			mode: 'byo_attached',
 			registration: hosting.registration ?? 'none',
-			marketBaseUrl: hosting.marketBaseUrl,
+			controlPlaneBaseUrl: hosting.controlPlaneBaseUrl,
 			teamId: hosting.teamId,
 			projectId: hosting.projectId,
 		},
@@ -51,7 +51,7 @@ export function normalizeLegacyHostingFromPlanes(hub: HubConfig, runtime: Runtim
 		return {
 			kind: 'hosted_project' as const,
 			registration: runtime.registration === 'required' ? 'optional' : (runtime.registration ?? 'none'),
-			marketBaseUrl: runtime.marketBaseUrl,
+			controlPlaneBaseUrl: runtime.controlPlaneBaseUrl,
 			teamId: runtime.teamId,
 			projectId: runtime.projectId,
 		};
@@ -60,7 +60,7 @@ export function normalizeLegacyHostingFromPlanes(hub: HubConfig, runtime: Runtim
 	return {
 		kind: 'self_hosted_project' as const,
 		registration: runtime.registration === 'required' ? 'optional' : (runtime.registration ?? 'none'),
-		marketBaseUrl: runtime.marketBaseUrl,
+		controlPlaneBaseUrl: runtime.controlPlaneBaseUrl,
 		teamId: runtime.teamId,
 		projectId: runtime.projectId,
 	};
@@ -94,7 +94,7 @@ export function parseRuntimeConfig(value: unknown, fallback: RuntimeConfig): Run
 		registration: optionalEnum(record.registration, 'runtime.registration', ['optional', 'required', 'none'] as const)
 			?? fallback.registration
 			?? 'none',
-		marketBaseUrl: optionalString(process.env.TREESEED_API_BASE_URL) ?? fallback.marketBaseUrl,
+		controlPlaneBaseUrl: optionalString(process.env.TREESEED_API_BASE_URL) ?? fallback.controlPlaneBaseUrl,
 		teamId: optionalString(process.env.TREESEED_HOSTING_TEAM_ID) ?? fallback.teamId,
 		projectId: optionalString(process.env.TREESEED_PROJECT_ID) ?? fallback.projectId,
 	};

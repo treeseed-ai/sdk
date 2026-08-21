@@ -129,7 +129,7 @@ surfaces:
 		vi.mocked(readDevInstance).mockReturnValue(null);
 		process.env.TREESEED_API_BASE_URL = '   ';
 		process.env.TREESEED_MARKET_API_BASE_URL = ' http://127.0.0.1:3999/api/ ';
-		expect(resolveSceneApiBaseUrl({ projectRoot: apiRoot, environment: 'local', webBaseUrl: 'http://web.test' })).toBe('http://127.0.0.1:3999/api');
+		expect(resolveSceneApiBaseUrl({ projectRoot: apiRoot, environment: 'local', webBaseUrl: 'http://web.test' })).toBe('http://web.test');
 		delete process.env.TREESEED_API_BASE_URL;
 		delete process.env.TREESEED_MARKET_API_BASE_URL;
 	});

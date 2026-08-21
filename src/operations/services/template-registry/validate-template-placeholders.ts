@@ -1,6 +1,6 @@
 import { cpSync,existsSync,mkdirSync,readFileSync,rmSync,writeFileSync } from 'node:fs';
 import { dirname,relative,resolve } from 'node:path';
-import { RemoteTemplateCatalogClient } from '../../../commerce/catalog/template-catalog.ts';
+import { RemoteTemplateCatalogClient } from '../../../templates/template-catalog.ts';
 import {
 normalizeTemplateId,
 type SdkTemplateCatalogEntry,

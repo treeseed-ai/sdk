@@ -5,7 +5,7 @@ import { resolveGitHubRepositorySlug } from "../../../operations/services/reposi
 import { collectPublicPackageReleaseLineState } from "../../../operations/services/treedx/workspaces/workspace-save.ts";
 import type { WorkflowCiMode } from "../../../operations/workflow.ts";
 import { checkedOutWorkspacePackageRepos,type WorkflowMode,type WorkflowSession } from "../../session.ts";
-import { workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { workflowError } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { validatePackageReleaseWorkflows } from '../recovery/fail-workflow-run.ts';
 import { stringRecord } from '../repositories/gates-for-saved-repository-reports.ts';
 

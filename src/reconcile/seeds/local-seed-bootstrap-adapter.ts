@@ -10,8 +10,6 @@ ReconcileResult,
 UnitDiff,
 UnitVerificationResult,
 } from '../support/contracts/contracts.ts';
-import { reconcileLocalSeedRuntime,type LocalSeedRuntimeResult } from '../../seeds/runtime/local-capacity.ts';
-import type { SeedPlan } from '../../seeds/types.ts';
 
 type LocalSeedModule = {
 	planLocalSeedFromCli(input: Record<string, unknown>): Promise<Record<string, unknown>>;
@@ -107,22 +105,7 @@ async function applySeed(input: ReconcileAdapterInput, module: LocalSeedModule, 
 	} catch (error) {
 		throw new Error(`Local seed content reconciliation failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
 	}
-	const plan = applied.plan as SeedPlan | undefined;
-	let runtime: LocalSeedRuntimeResult = { providers: [], servicePrincipals: [] };
-	if (plan) {
-		try {
-			runtime = await reconcileLocalSeedRuntime({
-			projectRoot: input.context.tenantRoot,
-			plan,
-			accessToken: localSeedAccessToken(input),
-			apiUrl: localSeedHostApiUrl(input),
-			env: seedInput(input).env,
-			});
-		} catch (error) {
-			throw new Error(`Local seed capacity runtime reconciliation failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
-		}
-	}
-	return { seedName, result: record(applied.result), runtime };
+	return { seedName, result: record(applied.result) };
 }
 
 export function localSeedHostApiUrl(input:ReconcileAdapterInput){
@@ -208,7 +191,7 @@ export function createLocalSeedBootstrapAdapter(): ReconcileAdapter {
 				throw new Error(`Local seed apply did not converge: ${Number(converged.live.pendingMutations ?? 0)} mutation(s) remain.`);
 			}
 			const primary = applications.find((entry) => entry.seedName === primarySeedName);
-			return result(input, { ...converged.live, applied: primary?.result ?? {}, runtime: primary?.runtime ?? { providers: [] }, applications });
+			return result(input, { ...converged.live, applied: primary?.result ?? {}, applications });
 		},
 		async verify(input): Promise<UnitVerificationResult> {
 			const pending = Number(input.observed.live.pendingMutations ?? 0);

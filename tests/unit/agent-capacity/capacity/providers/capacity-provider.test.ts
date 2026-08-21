@@ -21,14 +21,14 @@ describe('capacity provider membership protocol', () => {
 	it('refreshes an availability session with the canonical PUT operation', async () => {
 		const calls: Array<{ url: string; init?: RequestInit }> = [];
 		const client = new ProviderProtocolClient({
-			marketUrl: 'https://market.test', accessToken: 'short-lived-token',
+			controlPlaneUrl: 'https://server.test', accessToken: 'short-lived-token',
 			fetchImpl: async (input, init) => {
 				calls.push({ url: String(input), init });
 				return new Response(JSON.stringify({ ok: true, payload: { id: 'session-a', membershipId: 'membership-a', teamId: 'team-a', providerId: 'provider-a', status: 'open', sequence: 2 } }), { status: 200, headers: { 'content-type': 'application/json' } });
 			},
 		});
 		await client.refreshAvailabilitySession('session-a', { expectedSequence: 1 });
-		expect(calls[0]).toMatchObject({ url: 'https://market.test/v1/provider/availability-sessions/session-a', init: { method: 'PUT' } });
+		expect(calls[0]).toMatchObject({ url: 'https://server.test/v1/provider/availability-sessions/session-a', init: { method: 'PUT' } });
 	});
 
 	it('requires short-lived membership access authority and redacts secret-shaped values', () => {
@@ -47,7 +47,7 @@ describe('capacity provider membership protocol', () => {
 	it('sends access-token auth and settlement idempotency through the canonical client', async () => {
 		const calls: Array<{ url: string; init?: RequestInit }> = [];
 		const client = new ProviderProtocolClient({
-			marketUrl: 'https://market.test/',
+			controlPlaneUrl: 'https://server.test/',
 			accessToken: 'short-lived-token',
 			fetchImpl: async (input, init) => {
 				calls.push({ url: String(input), init });
@@ -56,9 +56,9 @@ describe('capacity provider membership protocol', () => {
 		});
 		await client.reportAssignmentUsage('assignment-a', { usageDimension: 'tokens' }, 'usage-a');
 		await client.settleAssignment('assignment-a', { activeSeconds: 2 }, 'settlement-a');
-		expect(calls[0]?.url).toBe('https://market.test/v1/provider/assignments/assignment-a/usage');
+		expect(calls[0]?.url).toBe('https://server.test/v1/provider/assignments/assignment-a/usage');
 		expect(calls[0]?.init?.headers).toMatchObject({ authorization: 'Bearer short-lived-token', 'idempotency-key': 'usage-a' });
-		expect(calls[1]?.url).toBe('https://market.test/v1/provider/assignments/assignment-a/settle');
+		expect(calls[1]?.url).toBe('https://server.test/v1/provider/assignments/assignment-a/settle');
 		expect(calls[1]?.init?.headers).toMatchObject({ authorization: 'Bearer short-lived-token', 'idempotency-key': 'settlement-a' });
 	});
 
@@ -66,7 +66,7 @@ describe('capacity provider membership protocol', () => {
 		const authorizations: string[] = [];
 		let generation = 0;
 		const client = new ProviderProtocolClient({
-			marketUrl: 'https://market.test',
+			controlPlaneUrl: 'https://server.test',
 			accessTokenProvider: async () => `refreshed-token-${++generation}`,
 			fetchImpl: async (_input, init) => {
 				authorizations.push(String((init?.headers as Record<string, string>).authorization));
@@ -81,7 +81,7 @@ describe('capacity provider membership protocol', () => {
 	it('uses the same canonical transport for unauthenticated onboarding and membership credential auth', async () => {
 		const calls: Array<{ url: string; init?: RequestInit }> = [];
 		const client = new ProviderProtocolClient({
-			marketUrl: 'https://market.test',
+			controlPlaneUrl: 'https://server.test',
 			fetchImpl: async (input, init) => {
 				calls.push({ url: String(input), init });
 				return new Response(JSON.stringify({ payload: { id: 'registration-a' } }), { status: 200, headers: { 'content-type': 'application/json' } });
@@ -95,7 +95,7 @@ describe('capacity provider membership protocol', () => {
 			capabilitySummary: ['research'],
 			supplyOffer: { capabilities: ['research'] },
 		}, 'registration-a');
-		expect(calls[0]?.url).toBe('https://market.test/v1/provider-registrations');
+		expect(calls[0]?.url).toBe('https://server.test/v1/provider-registrations');
 		expect(calls[0]?.init?.headers).toMatchObject({
 			authorization: 'Treeseed-Registration broadcast-key',
 			'idempotency-key': 'registration-a',
@@ -103,13 +103,13 @@ describe('capacity provider membership protocol', () => {
 	});
 
 	it('requires access authority when an approved runtime method is called', async () => {
-		const client = new ProviderProtocolClient({ marketUrl: 'https://market.test' });
+		const client = new ProviderProtocolClient({ controlPlaneUrl: 'https://server.test' });
 		await expect(client.nextAssignment()).rejects.toThrow(/membership access token/u);
 	});
 
 	it('carries the requested assignment-authority lifetime in the signed access-token request', async () => {
 		let requestBody: Record<string, unknown> = {};
-		const client = new ProviderProtocolClient({ marketUrl: 'https://market.test', fetchImpl: async (_input, init) => {
+		const client = new ProviderProtocolClient({ controlPlaneUrl: 'https://server.test', fetchImpl: async (_input, init) => {
 			requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
 			return new Response(JSON.stringify({ ok: true, payload: { id: 'token-a' } }), { status: 201, headers: { 'content-type': 'application/json' } });
 		} });
@@ -119,7 +119,7 @@ describe('capacity provider membership protocol', () => {
 
 	it('fails closed when a successful HTTP response is not a valid protocol envelope', async () => {
 		const client = new ProviderProtocolClient({
-			marketUrl: 'https://market.test',
+			controlPlaneUrl: 'https://server.test',
 			accessToken: 'short-lived-token',
 			fetchImpl: async () => new Response(JSON.stringify({ payload: {} }), { status: 200, headers: { 'content-type': 'application/json' } }),
 		});
@@ -128,7 +128,7 @@ describe('capacity provider membership protocol', () => {
 
 	it('keeps the request timeout active while the response body is being consumed', async () => {
 		const client = new ProviderProtocolClient({
-			marketUrl: 'https://market.test',
+			controlPlaneUrl: 'https://server.test',
 			accessToken: 'short-lived-token',
 			requestTimeoutMs: 1_000,
 			fetchImpl: async (_input, init) => {

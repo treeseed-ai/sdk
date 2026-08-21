@@ -3,40 +3,10 @@ import { resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { runRepositoryGit } from '../../operations/services/operations/git-runner.ts';
 import { apiSurfaceEnabled,codexExecutionSelected,contactEmailDefault,copilotExecutionSelected,formsEnabled,generatedSecret,hostedProjectEnabled,localApiDatabaseUrlDefault,localSmtpHostDefault,localSmtpPortDefault,marketControlPlaneEnabled,processingPlaneEnabled,projectDomainsDefault,projectRegistrationEnabled,railwayManagedEnabled,resolveApiWebServiceId,resolveConfiguredApiBaseUrl,resolveContentBucketName,resolveHostingKind,resolveHostingRegistration,resolveHubMode,resolvePagesPreviewProjectName,resolvePagesProjectName,resolveRuntimeMode,resolveRuntimeRegistration,resolveWebServiceId,selfHostedProjectEnabled } from './api-surface-enabled.ts';
-import { DEFAULT_MARKET_BASE_URL,EnvironmentContext,EnvironmentRegistryOverlay,EnvironmentScope,NamedPredicateMap,NamedResolverMap,smtpEnabled,turnstileEnabled,webSurfaceEnabled } from './environment-scopes.ts';
+import { EnvironmentContext,EnvironmentRegistryOverlay,EnvironmentScope,NamedPredicateMap,NamedResolverMap,smtpEnabled,turnstileEnabled,webSurfaceEnabled } from './environment-scopes.ts';
 
 export function resolveContentBucketBinding(context: EnvironmentContext) {
 	return context.deployConfig.cloudflare.r2?.binding?.trim() || 'TREESEED_CONTENT_BUCKET';
-}
-
-export function resolveMarketBaseUrl(
-	context: EnvironmentContext,
-	_scope: EnvironmentScope,
-	values: Record<string, string | undefined> = {},
-) {
-	return values.TREESEED_MARKET_API_BASE_URL?.trim()
-		|| process.env.TREESEED_MARKET_API_BASE_URL?.trim()
-		|| context.deployConfig.market?.baseUrl?.trim()
-		|| DEFAULT_MARKET_BASE_URL;
-}
-
-export function resolveCentralMarketBaseUrl(
-	context: EnvironmentContext,
-	scope: EnvironmentScope,
-	values: Record<string, string | undefined> = {},
-) {
-	return resolveMarketBaseUrl(context, scope, values);
-}
-
-export function resolveCatalogMarketBaseUrls(
-	context: EnvironmentContext,
-	scope: EnvironmentScope,
-	values: Record<string, string | undefined> = {},
-) {
-	return values.TREESEED_CATALOG_MARKET_API_BASE_URLS?.trim()
-		|| values.TREESEED_MARKET_API_BASE_URL?.trim()
-		|| process.env.TREESEED_CATALOG_MARKET_API_BASE_URLS?.trim()
-		|| resolveMarketBaseUrl(context, scope, values);
 }
 
 export function resolveHostedTeamId(context: EnvironmentContext) {
@@ -122,9 +92,6 @@ export const VALUE_RESOLVERS: NamedResolverMap = {
 	hubModeDefault: (context) => resolveHubMode(context),
 	runtimeModeDefault: (context) => resolveRuntimeMode(context),
 	runtimeRegistrationDefault: (context) => resolveRuntimeRegistration(context),
-	marketBaseUrlDefault: (context, scope, values) => resolveMarketBaseUrl(context, scope, values),
-	centralMarketBaseUrlDefault: (context, scope, values) => resolveCentralMarketBaseUrl(context, scope, values),
-	catalogMarketBaseUrlsDefault: (context, scope, values) => resolveCatalogMarketBaseUrls(context, scope, values),
 	hostingTeamIdDefault: (context) => resolveHostedTeamId(context),
 	hostingProjectIdDefault: (context) => resolveHostedProjectId(context),
 	railwayWorkspaceDefault: () => resolveRailwayWorkspaceDefault(),

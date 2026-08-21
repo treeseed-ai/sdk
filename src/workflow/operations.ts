@@ -1,5 +1,5 @@
-export * from './operations/commerce/catalog/back-merge-production-into-staging.ts';
-export * from './operations/commerce/catalog/run-release-production-guarantees.ts';
+export * from './operations/release-support/helpers/back-merge-production-into-staging.ts';
+export * from './operations/release-support/helpers/run-release-production-guarantees.ts';
 export * from './operations/configuration/workflow-config.ts';
 export * from './operations/coordination/staging-candidate-workflow-gates.ts';
 export * from './operations/coordination/integration-change-set.ts';

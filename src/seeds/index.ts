@@ -9,7 +9,6 @@ import { compileSeedRepositoryUnits } from './reconciliation/repository-units.js
 
 export { formatSeedDiagnostics,hasSeedErrors } from './errors.js';
 export { formatSeedPlan } from './planner.js';
-export { reconcileLocalSeedRuntime } from './runtime/local-capacity.js';
 export { compileSeedRepositoryUnits };
 export { applySeedContentRepositoryHistory, planSeedContentRepositoryHistory } from './repositories/repository-history.js';
 export { classifyContentCutover, planContentCutover, recordContentCutover, removeVerifiedSoftwareContent, type ContentCutoverEvidence, type ContentCutoverPlan } from './repositories/content-cutover.js';
@@ -23,12 +22,8 @@ export { applyPlatformWorkspace, planPlatformWorkspace } from './workspaces/plat
 export type { PlatformWorkspacePlan } from './workspaces/platform-workspace-history.js';
 export { applyAdminDescriptorMigration, planAdminDescriptorMigration } from './workspaces/admin-descriptor-migration.js';
 export type { AdminDescriptorMigrationPlan } from './workspaces/admin-descriptor-migration.js';
-export { applyGatewayContractMigration, planGatewayContractMigration } from './workspaces/gateway-contract-migration.js';
-export { applyMarketApiWorkspace, planMarketApiWorkspace } from './workspaces/market-api-workspace.js';
-export type { MarketApiWorkspacePlan } from './workspaces/market-api-workspace.js';
 export { applyPortfolioLicense, planPortfolioLicense } from './licensing/portfolio-license.js';
 export type { PortfolioLicensePlan } from './licensing/portfolio-license.js';
-export type { LocalSeedRuntimeResult } from './runtime/local-capacity.js';
 export type * from './types.js';
 
 export function validateSeedSource(source: string) {

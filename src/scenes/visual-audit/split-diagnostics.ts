@@ -61,7 +61,7 @@ export function resolveVisualAuditApiBaseUrl(input: { projectRoot: string; envir
 	const apiInstance = readDevInstance({ cwd: input.projectRoot, surface: 'api' });
 	const managedApi = httpHealthBaseUrl(apiInstance);
 	if (managedApi) return managedApi;
-	const envApi = process.env.TREESEED_API_BASE_URL?.trim() || process.env.TREESEED_MARKET_API_BASE_URL?.trim();
+	const envApi = process.env.TREESEED_API_BASE_URL?.trim();
 	if (envApi) return envApi.replace(/\/+$/u, '');
 	return input.webBaseUrl;
 }

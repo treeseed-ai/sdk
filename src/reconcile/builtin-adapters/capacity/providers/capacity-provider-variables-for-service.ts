@@ -21,11 +21,7 @@ export function capacityProviderVariablesForService(
 		TREESEED_PROVIDER_ENVIRONMENT: scope === 'prod' ? 'production' : scope,
 		TREESEED_PROVIDER_ROLE: role,
 	};
-	const marketUrl = resolveCapacityProviderMarketUrl(input, values);
-	if (marketUrl) {
-		variables.TREESEED_MARKET_API_BASE_URL = marketUrl;
-	}
-	const controlPlaneUrl = resolveCapacityProviderControlPlaneUrl(input, scope, values, marketUrl);
+	const controlPlaneUrl = resolveCapacityProviderControlPlaneUrl(input, scope, values);
 	if (controlPlaneUrl) {
 		variables.TREESEED_API_BASE_URL = controlPlaneUrl;
 	}
@@ -36,27 +32,12 @@ export function capacityProviderVariablesForService(
 	return variables;
 }
 
-export function resolveCapacityProviderMarketUrl(
-	input: ReconcileAdapterInput,
-	values: Record<string, string | undefined>,
-) {
-	const configured = input.context.deployConfig.market?.baseUrl?.trim();
-	if (configured) return configured.replace(/\/+$/u, '');
-	for (const key of ['TREESEED_MARKET_API_BASE_URL', 'TREESEED_STAGING_MARKET_API_BASE_URL']) {
-		const value = String(values[key] ?? '').trim();
-		if (value) return value.replace(/\/+$/u, '');
-	}
-	return '';
-}
-
 export function resolveCapacityProviderControlPlaneUrl(
 	input: ReconcileAdapterInput,
 	scope: string,
 	values: Record<string, string | undefined>,
-	marketUrl = resolveCapacityProviderMarketUrl(input, values),
 ) {
-	const mode = input.context.deployConfig.controlPlane?.mode ?? 'market-passthrough';
-	if (mode === 'market-passthrough') return marketUrl;
+	const mode = input.context.deployConfig.controlPlane?.mode ?? 'managed';
 	if (mode === 'external') {
 		return String(input.context.deployConfig.controlPlane?.baseUrl ?? '').trim().replace(/\/+$/u, '');
 	}

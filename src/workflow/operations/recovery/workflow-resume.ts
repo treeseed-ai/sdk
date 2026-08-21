@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import type { CloseInput,DestroyInput,RecoverInput,ReleaseInput,ResumeInput,SaveInput,StageInput,SwitchInput,UpdateInput } from "../../../operations/workflow.ts";
 import { archiveWorkflowRun,classifyWorkflowRunJournal,countWorkflowRunJournals,inspectWorkflowLock,listRecentWorkflowRunJournals,listWorkflowRunJournals,readWorkflowRunJournal,releaseWorkflowLock,updateWorkflowRunJournal } from "../../runs.ts";
 import { resolveWorkflowSession } from "../../session.ts";
-import { resolveProjectRootOrThrow,withContextEnv,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { resolveProjectRootOrThrow,withContextEnv,workflowError } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { workflowDestroy } from '../coordination/workflow-destroy.ts';
 import { helpersForCwd } from '../packages/normalize-release-candidate-mode.ts';
 import { acceptedPublishedReleaseHeads } from '../packages/prepare-fresh-release-run.ts';

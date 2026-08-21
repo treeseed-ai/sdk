@@ -8,7 +8,7 @@ import { run } from "../../../operations/services/treedx/workspaces/workspace-to
 import type { WorkflowRecovery } from "../../../operations/workflow.ts";
 import { releaseWorkflowLock,updateWorkflowRunJournal } from "../../runs.ts";
 import { checkedOutWorkspacePackageRepos } from "../../session.ts";
-import { workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { workflowError } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { hostedDeployGate } from '../packages/normalize-release-candidate-mode.ts';
 import { workflowFileExists } from '../support/workflow-helpers.ts';
 import { WorkflowError,runGit } from './workflow-write.ts';

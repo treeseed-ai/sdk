@@ -41,9 +41,6 @@ resolveRailwayWorkspaceContext,
 upsertRailwayVariables
 } from '../operations/services/hosting/railway/railway-api.ts';
 
-export {
-buildTemplateMarketPackage
-} from '../operations/services/support/market-packaging.ts';
 
 export {
 collectDependencyStatus,
@@ -59,20 +56,15 @@ type ToolStatusResult
 export * from '../configuration/service-credentials.ts';
 
 export {
-API_BASE_URL_ENV,CATALOG_MARKET_API_BASE_URLS_ENV,
-MARKET_API_BASE_URL_ENV,DEFAULT_MARKET_BASE_URL,MarketClient,
-MarketClientError,addMarketProfile,
-clearMarketSession,
-listIntegratedMarketCatalog,
-loadMarketRegistryState,
-removeMarketProfile,
-resolveCatalogMarketProfiles,
-resolveDefaultCentralMarketBaseUrl,
-resolveIntegratedCatalogArtifactDownload,
-resolveMarketProfile,
-resolveMarketSession,
-setActiveMarketProfile,
-setMarketSession,
-verifyArtifactBytes,
-writeMarketRegistryState
-} from '../entrypoints/clients/market-client.ts';
+	CONTROL_PLANE_BASE_URL_ENV,
+	CONTROL_PLANE_SERVER_REGISTRY_PATH,
+	ControlPlaneClient,
+	ControlPlaneClientError,
+	clearControlPlaneServerSession,
+	defaultLocalControlPlaneServer,
+	loadControlPlaneServerRegistry,
+	resolveControlPlaneServer,
+	resolveControlPlaneServerSession,
+	setControlPlaneServerSession,
+	writeControlPlaneServerRegistry,
+} from '../entrypoints/clients/control-plane-client.ts';

@@ -7,7 +7,7 @@ resolveEnvironmentRegistry
 import {
 KeyAgentError
 } from '../../configuration/key-agent.ts';
-import { decryptMachineEnvironmentBucket } from '../commerce/catalog/resolve-template-catalog-endpoint.ts';
+import { decryptMachineEnvironmentBucket } from '../templates/catalog/template-catalog-settings.ts';
 import { encryptValue,loadMachineKey } from '../configuration/create-default-machine-config.ts';
 import { PROVIDER_CONTROL_ENV_KEYS,filterEnvironmentValuesByRegistry,warnDeprecatedLocalEnvFiles } from '../configuration/machine-config-relative-path.ts';
 import { loadOptionalTenantManifest,loadTenantDeployConfig } from '../hosting/load-tenant-deploy-config.ts';

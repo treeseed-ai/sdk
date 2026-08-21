@@ -1,6 +1,6 @@
 import { compileDesiredResourceGraph,compileDesiredUnitsFromGraph } from "../../../platform/reconciliation/desired-state.ts";
 import { planReconciliation,reconcileTarget,type DesiredUnit,type ReconcileSelector,type ReconcileTarget } from "../../../reconcile/index.ts";
-import { withContextEnv,workflowError } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { withContextEnv,workflowError } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { createNextSteps } from '../packages/release-admin-message.ts';
 import { WorkflowOperationHelpers } from '../recovery/workflow-write.ts';
 import { buildWorkflowResult,normalizeExecutionMode } from '../support/create-repo-report.ts';

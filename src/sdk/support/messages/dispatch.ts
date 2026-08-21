@@ -11,7 +11,7 @@ export async function dispatchMethod(this: AgentSdk, request: SdkDispatchRequest
     const preferredMode = request.preferredMode ?? this.dispatchConfig?.policy ?? capability.defaultDispatchMode;
     const dispatchConfig = this.dispatchConfig;
     if (!dispatchConfig && preferredMode === 'remote_only') {
-        throw new Error(`Dispatch for "${namespace}:${request.operation}" requires a remote market configuration.`);
+        throw new Error(`Dispatch for "${namespace}:${request.operation}" requires a remote control-plane configuration.`);
     }
     const shouldStayLocal = capability.executionClass === 'local_only'
         || !dispatchConfig
@@ -29,8 +29,8 @@ export async function dispatchMethod(this: AgentSdk, request: SdkDispatchRequest
     }
     const token = await this.resolveDispatchToken(dispatchConfig.credentialSource);
     const client = new RemoteDispatchClient(new RemoteClient({
-        hosts: [{ id: 'market', baseUrl: dispatchConfig.marketBaseUrl }],
-        activeHostId: 'market',
+        hosts: [{ id: 'server', baseUrl: dispatchConfig.controlPlaneBaseUrl }],
+        activeHostId: 'server',
         auth: token ? { accessToken: token } : undefined,
     }, {
         fetchImpl: dispatchConfig.fetchImpl,

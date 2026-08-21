@@ -210,7 +210,6 @@ export function resolveSiblingPackageEnvironmentPath(packageDir: string) {
 
 export const TENANT_ENVIRONMENT_OVERLAY_PATH = 'src/env.yaml';
 
-export const DEFAULT_MARKET_BASE_URL = 'https://api.treeseed.dev';
 
 export function loadOptionalTenantConfig() {
 	try {

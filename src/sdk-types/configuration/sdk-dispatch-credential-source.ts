@@ -12,7 +12,7 @@ export type SdkDispatchCredentialSource =
 
 export interface SdkDispatchConfig {
 	projectId: string;
-	marketBaseUrl: string;
+	controlPlaneBaseUrl: string;
 	policy?: SdkDispatchPolicy;
 	credentialSource?: SdkDispatchCredentialSource;
 	fetchImpl?: typeof fetch;

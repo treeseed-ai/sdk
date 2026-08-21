@@ -22,7 +22,7 @@
     {
       "id": "platform-market-codex",
       "displayName": "Market-connected Platform with Codex",
-      "description": "A TreeSeed Platform using the immutable Market gateway and external Codex execution.",
+      "description": "A TreeSeed Platform using the immutable control-plane interface and external Codex execution.",
       "summary": "A lightweight Platform template backed by the central gateway.",
       "status": "live", "featured": false, "category": "platform",
       "audience": ["operators", "platform-teams"], "tags": ["platform", "market", "codex"],

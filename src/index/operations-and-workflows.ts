@@ -1,29 +1,4 @@
 export {
-PLATFORM_OPERATION_ENDPOINTS,
-PLATFORM_OPERATION_NAMESPACES,
-PLATFORM_OPERATION_SCOPES,
-PLATFORM_OPERATION_STATUSES,
-PLATFORM_OPERATION_TARGETS,
-PlatformOperationApiError,
-PlatformRunnerClient,
-assertPlatformOperation,
-assertPlatformOperationEvent,
-assertPlatformOperationOkEnvelope,
-buildPlatformRunnerAuthHeaders,
-createPlatformOperationExecutorRegistry,
-derivePlatformOperationNavigation,
-isPlatformOperationSuccessful,
-isPlatformOperationTerminal,
-pollPlatformOperation,
-runPlatformOperationOnce,
-type PlatformOperation,
-type PlatformOperationEvent,
-type PlatformOperationNavigationResult,
-type PlatformOperationPollOptions,
-type PlatformOperationPollResult
-} from '../operations/platform-operations.ts';
-
-export {
 cancelGitHubWorkflowRun,
 formatGitHubWorkflowFailure,
 getGitHubWorkflowFileStatus,

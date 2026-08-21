@@ -9,7 +9,7 @@ import { createSceneRunArtifacts,ensureSceneRunDirectories,writeSceneRunArtifact
 import { createSceneCheckpoint,writeSceneCheckpoint } from "../support/evidence/checkpoints.ts";
 import { createSceneChapterReports,createSceneSegment,deriveSceneStepChapters,finishSceneSegment,writeSceneSegmentArtifacts } from "../support/evidence/segments.ts";
 import { createSceneTimeline } from "../support/evidence/timeline.ts";
-import { resolveSceneApiBaseUrl,resolveSceneBaseUrl } from "../support/execution/base-url.ts";
+import { resolveSceneBaseUrl } from "../support/execution/base-url.ts";
 import { resolveSceneStepTimeoutSeconds,withSceneTimeout } from "../support/execution/timeouts.ts";
 import { createSceneRuntimePluginContext } from "../support/plugins/plugins.ts";
 import { resolveScenePlugins } from "../support/plugins/registry.ts";
@@ -18,11 +18,9 @@ import { collectSceneLogs } from "../support/reporting/logs.ts";
 import { createSceneProgress } from "../support/reporting/progress.ts";
 import { writeSceneMarkdownReport } from "../support/reporting/reporter.ts";
 import { sceneActionKind,sceneExpectationKinds } from "../support/validation/schema.ts";
-import { ensureSceneVisualAuditRoleFixtures,signInSceneVisualAuditRole } from "../testing/visual-audit-fixtures.ts";
 import type { SceneAssertionRunReport,SceneBrowserSession,SceneDiagnostic,SceneObservedError,SceneOperationWaitReport,SceneRunOptions,SceneRunReport,SceneRunSetupReport,SceneRunStepReport } from "../types.ts";
 import { appendBlockedSceneLogs,canContinueAfterFailure,duration,now,planForInput,playwrightDiagnostic,registerScenePageObservers,reportFromBlock,resolveCapture,sceneWithRunOverrides,splitDiagnostics,validationForInput } from './now.ts';
 import { createSceneTraceEvidence } from './trace-evidence.ts';
-import { runAgentLabScene } from '../agent-lab/run-agent-lab-scene.ts';
 export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> {
 	const startedAt = now(), validation = validationForInput(input);
 	if (!validation.ok || !validation.scene) {
@@ -48,7 +46,6 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 			diagnostics: plan.diagnostics,
 		});
 	}
-	if (validation.scene.journey?.kind === 'agent-lab' && validation.scene.agentLab) return runAgentLabScene({ options: input, validation, plan });
 	const paths = plan.artifactPaths, scene = sceneWithRunOverrides(validation.scene, { ...input, runId: plan.artifactPaths.runId });
 	const browser = input.browser ?? scene.target.browser;
 	const deviceResolution = resolveSceneDeviceProfile({ scene, device: input.device });
@@ -146,16 +143,6 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 		writeSceneRunArtifacts({ scene, plan, report, timeline: timeline.events });
 		return report;
 	}
-	if (scene.setup.auth?.role && scene.setup.auth.role !== 'anonymous') {
-		const apiBaseUrl = resolveSceneApiBaseUrl({ projectRoot: input.projectRoot, environment: plan.environment, webBaseUrl: baseUrl.baseUrl });
-		const roleFixtureDiagnostics = await ensureSceneVisualAuditRoleFixtures({
-			baseUrl: apiBaseUrl,
-			roles: [scene.setup.auth.role, ...(scene.setup.auth.fixtureRoles ?? [])],
-			projectRoot: input.projectRoot,
-			environment: plan.environment,
-		});
-		setupDiagnostics.push(...roleFixtureDiagnostics);
-	}
 	const adapter = input.browserAdapter ?? createPlaywrightSceneBrowserAdapter();
 	let session: SceneBrowserSession | null = null;
 	const steps: SceneRunStepReport[] = [];
@@ -192,19 +179,6 @@ export async function runScene(input: SceneRunOptions): Promise<SceneRunReport> 
 		if (tracePath) {
 			await session.startTracing?.();
 			traceEvidence.started();
-		}
-		if (scene.setup.auth?.role && scene.setup.auth.role !== 'anonymous' && scene.setup.auth.seedOnly !== true && !input.inputStorageStatePath) {
-			const signInDiagnostics = await signInSceneVisualAuditRole({
-				page: session.page,
-				baseUrl: baseUrl.baseUrl,
-				apiBaseUrl: resolveSceneApiBaseUrl({ projectRoot: input.projectRoot, environment: plan.environment, webBaseUrl: baseUrl.baseUrl }),
-				role: scene.setup.auth.role,
-			});
-			diagnostics.push(...signInDiagnostics);
-			if (signInDiagnostics.some((entry) => entry.severity === 'error')) {
-				throw signInDiagnostics.find((entry) => entry.severity === 'error')
-					?? sceneErrorDiagnostic('scene.auth_required', `Could not sign in scene role ${scene.setup.auth.role}.`, 'setup.auth.role');
-			}
 		}
 		for (const step of scene.workflow) {
 			const chapter = stepChapters.get(step.id);

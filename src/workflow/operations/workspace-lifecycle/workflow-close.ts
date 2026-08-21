@@ -5,7 +5,7 @@ import { workspaceRoot } from "../../../operations/services/treedx/workspaces/wo
 import type { CloseInput } from "../../../operations/workflow.ts";
 import { resolveWorkflowSession } from "../../session.ts";
 import { isManagedWorkflowWorktree,managedWorkflowWorktreeMetadata,removeManagedWorkflowWorktree } from "../../worktrees.ts";
-import { resolveProjectRootOrThrow,withContextEnv } from '../commerce/catalog/run-release-production-guarantees.ts';
+import { resolveProjectRootOrThrow,withContextEnv } from '../release-support/helpers/run-release-production-guarantees.ts';
 import { assertSessionBranchSafety,destroyWorkflowBranchPreviewIfPresent } from '../packages/collect-published-release-artifact-checks.ts';
 import { worktreePayload } from '../packages/normalize-release-candidate-mode.ts';
 import { acquireWorkflowRun,completeWorkflowRun,executeJournalStep,skipJournalStep } from '../packages/prepare-fresh-release-run.ts';

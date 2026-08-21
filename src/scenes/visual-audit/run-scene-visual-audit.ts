@@ -12,11 +12,6 @@ writeSceneVisualAuditReview
 import {
 discoverSceneVisualAuditRoutes
 } from '../support/visual-audit/visual-audit-routes.ts';
-import {
-ensureSceneVisualAuditRoleFixtures,
-signInSceneVisualAuditRole,
-validateSceneVisualAuditRoles,
-} from '../testing/visual-audit-fixtures.ts';
 import type {
 SceneDeviceProfile,
 SceneDiagnostic,
@@ -26,7 +21,7 @@ SceneVisualAuditOptions,
 SceneVisualAuditReport
 } from '../types.ts';
 import { browserContextOptions,captureRoute,runVisualAuditPreflight,skipCapture } from './capture-route.ts';
-import { auditId,compactTimestamp,loadPlaywright,pathsFor,resolveVisualAuditApiBaseUrl,splitDiagnostics } from './split-diagnostics.ts';
+import { auditId,compactTimestamp,loadPlaywright,pathsFor,splitDiagnostics } from './split-diagnostics.ts';
 
 export async function runSceneVisualAudit(input: SceneVisualAuditOptions): Promise<SceneVisualAuditReport> {
 	const validation = validateScene({ projectRoot: input.projectRoot, scene: input.scene });
@@ -61,7 +56,9 @@ export async function runSceneVisualAudit(input: SceneVisualAuditOptions): Promi
 	const scene = validation.scene;
 	const roles = input.roles?.length ? input.roles : scene.visualAudit.roles;
 	const requestedDevices = input.devices?.length ? input.devices : scene.devices.profiles.map((profile) => profile.id);
-	const diagnostics: SceneDiagnostic[] = [...validateSceneVisualAuditRoles(roles)];
+	const diagnostics: SceneDiagnostic[] = roles.some((role) => role !== 'anonymous')
+		? [sceneErrorDiagnostic('scene.visual_audit_auth_unavailable', 'Authenticated visual audits require the future site BFF integration.', 'roles')]
+		: [];
 	const profiles: SceneDeviceProfile[] = [];
 	for (const device of requestedDevices) {
 		const resolved = resolveSceneDeviceProfile({ scene, device });
@@ -140,15 +137,6 @@ export async function runSceneVisualAudit(input: SceneVisualAuditOptions): Promi
 			};
 		}
 	}
-	const apiBaseUrl = resolveVisualAuditApiBaseUrl({ projectRoot: input.projectRoot, environment, webBaseUrl: baseUrlReport.baseUrl });
-	if (environment === 'local' && roles.some((role) => role !== 'anonymous')) {
-		diagnostics.push(...await ensureSceneVisualAuditRoleFixtures({
-			baseUrl: apiBaseUrl,
-			roles,
-			projectRoot: input.projectRoot,
-			environment,
-		}));
-	}
 	const timestamp = compactTimestamp(input.timestamp);
 	const id = auditId(timestamp);
 	const paths = pathsFor({ projectRoot: input.projectRoot, sceneId: scene.id, timestamp, auditId: id });
@@ -164,11 +152,7 @@ export async function runSceneVisualAudit(input: SceneVisualAuditOptions): Promi
 				const page = await context.newPage();
 				let roleDiagnostics: SceneDiagnostic[] = [];
 				if (roleRequiresLogin) {
-					if (environment !== 'local') {
-						roleDiagnostics = [sceneErrorDiagnostic('scene.visual_audit_fixture_unavailable', 'Authenticated visual audit fixture sessions are local-only in this implementation.', 'roles')];
-					} else {
-						roleDiagnostics = await signInSceneVisualAuditRole({ page, baseUrl: baseUrlReport.baseUrl, apiBaseUrl, role });
-					}
+					roleDiagnostics = [sceneErrorDiagnostic('scene.visual_audit_auth_unavailable', 'Authenticated visual audits require the future site BFF integration.', 'roles')];
 					diagnostics.push(...roleDiagnostics);
 				}
 				for (const route of discovered.routes) {
