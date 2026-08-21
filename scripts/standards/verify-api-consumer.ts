@@ -28,12 +28,32 @@ try {
 	if (observed !== sourceCommit) throw new Error(`API consumer checkout resolved ${observed}, expected ${sourceCommit}.`);
 	execFileSync('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--save-exact', tarball], { cwd: worktree, stdio: 'inherit' });
 	execFileSync('npm', ['run', 'build'], { cwd: worktree, stdio: 'inherit' });
+	const testResultPath = resolve(worktree, '.treeseed-sdk-consumer-results.json');
 	execFileSync('npx', [
 		'vitest', 'run', '--config', './vitest.config.ts',
+		'--reporter=json', `--outputFile=${testResultPath}`,
 		'tests/contract/api/provider-assignment-capability-handles.test.ts',
 		'tests/contract/api/api-route-descriptors.test.ts',
 		'tests/unit/governance/content-validation.test.ts',
 	], { cwd: worktree, stdio: 'inherit' });
+	const testResult = JSON.parse(readFileSync(testResultPath, 'utf8')) as {
+		numTotalTestSuites: number;
+		numPassedTestSuites: number;
+		numTotalTests: number;
+		numPassedTests: number;
+		success: boolean;
+	};
+	if (!testResult.success || testResult.numPassedTestSuites !== testResult.numTotalTestSuites
+		|| testResult.numPassedTests !== testResult.numTotalTests) throw new Error('API consumer result is not completely passing.');
+	const finalHead = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: worktree, encoding: 'utf8' }).trim();
+	const consumerCommits = Number(execFileSync('git', ['rev-list', '--count', `${sourceCommit}..HEAD`], { cwd: worktree, encoding: 'utf8' }).trim());
+	const changedPaths = execFileSync('git', ['diff', '--name-only', 'HEAD'], { cwd: worktree, encoding: 'utf8' })
+		.trim().split('\n').filter(Boolean).sort();
+	if (finalHead !== sourceCommit || consumerCommits !== 0) throw new Error('API consumer verification created or adopted a source commit.');
+	if (JSON.stringify(changedPaths) !== JSON.stringify(['package-lock.json', 'package.json'])) {
+		throw new Error(`API consumer verification changed unexpected tracked paths: ${changedPaths.join(', ')}.`);
+	}
+	execFileSync('git', ['diff', '--cached', '--quiet'], { cwd: worktree, stdio: 'ignore' });
 	const receipt = {
 		schemaVersion: 1,
 		consumerRepository: 'treeseed-ai/api',
@@ -42,9 +62,11 @@ try {
 		candidateVersion: packageJson.version,
 		candidateArtifactDigest: packageDigest,
 		build: 'passed',
-		testFiles: 3,
-		tests: 20,
-		consumerCommits: 0,
+		testFiles: testResult.numTotalTestSuites,
+		tests: testResult.numTotalTests,
+		consumerCommits,
+		finalSourceCommit: finalHead,
+		changedPaths,
 	};
 	const outputPath = resolve(root, '.treeseed/standards/api-consumer-receipt.json');
 	writeFileSync(outputPath, `${canonicalStandardsJson(receipt)}\n`);
