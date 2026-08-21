@@ -1,4 +1,4 @@
-import type { TreeSeedOAuthScope } from './control-plane-operation.ts';
+import type { OAuthScope } from './control-plane-operation.ts';
 
 export interface OAuthAuthorizationServerMetadata {
 	issuer: string;
@@ -9,19 +9,19 @@ export interface OAuthAuthorizationServerMetadata {
 	response_types_supported: ['code'];
 	grant_types_supported: ['authorization_code', 'refresh_token', 'urn:ietf:params:oauth:grant-type:device_code'];
 	code_challenge_methods_supported: ['S256'];
-	scopes_supported: TreeSeedOAuthScope[];
+	scopes_supported: OAuthScope[];
 }
 
 export interface OAuthProtectedResourceMetadata {
 	resource: string;
 	authorization_servers: string[];
-	scopes_supported: TreeSeedOAuthScope[];
+	scopes_supported: OAuthScope[];
 	bearer_methods_supported: ['header'];
 }
 
 export interface OAuthDeviceAuthorizationRequest {
 	clientId: string;
-	scope: TreeSeedOAuthScope[];
+	scope: OAuthScope[];
 }
 
 export interface OAuthDeviceAuthorizationResponse {
@@ -38,6 +38,6 @@ export interface OAuthTokenReceipt {
 	accessToken: string;
 	expiresIn: number;
 	refreshToken?: string;
-	scope: TreeSeedOAuthScope[];
+	scope: OAuthScope[];
 	audience: string;
 }

@@ -1,10 +1,10 @@
 import type { CompatibilityClassification } from '../contracts.ts';
-import type { TreeSeedOAuthScope } from '../../operator-contracts/control-plane-operation.ts';
+import type { OAuthScope } from '../../operator-contracts/control-plane-operation.ts';
 
 export interface McpNormalizedTool {
 	inputSchema: unknown;
 	outputSchema: unknown;
-	requiredScopes: TreeSeedOAuthScope[];
+	requiredScopes: OAuthScope[];
 	riskClass: string;
 }
 
@@ -16,7 +16,7 @@ export interface McpNormalizedResource {
 
 export interface McpNormalizedPrompt {
 	argumentSchema: unknown;
-	requiredScopes: TreeSeedOAuthScope[];
+	requiredScopes: OAuthScope[];
 }
 
 export interface McpContractModel {

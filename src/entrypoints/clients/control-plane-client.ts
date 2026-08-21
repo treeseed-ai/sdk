@@ -30,7 +30,7 @@ export interface ControlPlaneResponseEnvelope<T> {
 	links?: Record<string, string>;
 }
 
-export interface TreeSeedProblemDetails {
+export interface ProblemDetails {
 	type: string;
 	title: string;
 	status: number;
@@ -56,7 +56,7 @@ export class ControlPlaneClientError extends Error {
 	constructor(
 		message: string,
 		readonly status: number,
-		readonly problem: TreeSeedProblemDetails,
+		readonly problem: ProblemDetails,
 		readonly responseHeaders: Headers,
 	) {
 		super(message);
@@ -87,7 +87,7 @@ async function responsePayload(response: Response): Promise<unknown> {
 	return text.length > 0 ? text : null;
 }
 
-function problemFrom(payload: unknown, status: number): TreeSeedProblemDetails {
+function problemFrom(payload: unknown, status: number): ProblemDetails {
 	const source = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {};
 	return {
 		type: typeof source.type === 'string' ? source.type : 'about:blank',

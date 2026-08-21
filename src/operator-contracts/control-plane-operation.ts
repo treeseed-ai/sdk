@@ -44,7 +44,7 @@ export interface ControlPlaneOperationDescriptor {
 	rest?: ControlPlaneRestBinding;
 	schemas: ControlPlaneSchemaBinding;
 	capability: string;
-	oauthScopes: TreeSeedOAuthScope[];
+	oauthScopes: OAuthScope[];
 	kind: ControlPlaneOperationKind;
 	riskClass: ControlPlaneRiskClass;
 	confirmation: ControlPlaneConfirmationPolicy;
@@ -67,7 +67,7 @@ export const TREESEED_OAUTH_SCOPES = [
 	'treeseed:admin',
 ] as const;
 
-export type TreeSeedOAuthScope = typeof TREESEED_OAUTH_SCOPES[number];
+export type OAuthScope = typeof TREESEED_OAUTH_SCOPES[number];
 
 export interface ControlPlaneCatalog {
 	schemaVersion: 'treeseed.control-plane-catalog/v1';

@@ -1,10 +1,10 @@
 import { canonicalizeStandardsValue } from '../canonicalize.ts';
-import type { TreeSeedMcpCatalog } from '../../operator-contracts/mcp.ts';
+import type { McpCatalog } from '../../operator-contracts/mcp.ts';
 import type { ControlPlaneOperationDescriptor } from '../../operator-contracts/control-plane-operation.ts';
 import type { McpContractModel } from './contracts.ts';
 
 export function normalizeMcpCatalog(
-	catalog: TreeSeedMcpCatalog,
+	catalog: McpCatalog,
 	operations: readonly ControlPlaneOperationDescriptor[],
 	schemas: Readonly<Record<string, unknown>>,
 ): McpContractModel {

@@ -1,8 +1,8 @@
-import type { ControlPlaneOperationDescriptor, TreeSeedOAuthScope } from './control-plane-operation.ts';
+import type { ControlPlaneOperationDescriptor, OAuthScope } from './control-plane-operation.ts';
 
 export const MCP_PROTOCOL_VERSION = '2026-07-28' as const;
 
-export interface TreeSeedResourceLink {
+export interface ResourceLink {
 	type: 'resource_link';
 	uri: `treeseed://${string}`;
 	name: string;
@@ -11,7 +11,7 @@ export interface TreeSeedResourceLink {
 	mimeType?: string;
 }
 
-export interface TreeSeedActorChain {
+export interface ActorChain {
 	principalId: string;
 	delegatedAgentId?: string;
 	oauthClientId: string;
@@ -22,7 +22,7 @@ export interface TreeSeedActorChain {
 	traceId: string;
 }
 
-export interface TreeSeedConfirmationState {
+export interface ConfirmationState {
 	schemaVersion: 'treeseed.confirmation-state/v1';
 	principalId: string;
 	clientId: string;
@@ -33,11 +33,11 @@ export interface TreeSeedConfirmationState {
 	signature: string;
 }
 
-export interface TreeSeedInputRequired {
+export interface InputRequired {
 	type: 'input_required';
 	requestId: string;
 	prompt: string;
-	confirmation: TreeSeedConfirmationState;
+	confirmation: ConfirmationState;
 }
 
 export interface McpToolDescriptor {
@@ -66,10 +66,10 @@ export interface McpPromptDescriptor {
 	name: string;
 	description: string;
 	argumentSchemaId: string;
-	requiredScopes: TreeSeedOAuthScope[];
+	requiredScopes: OAuthScope[];
 }
 
-export interface TreeSeedMcpCatalog {
+export interface McpCatalog {
 	schemaVersion: 'treeseed.mcp-catalog/v1';
 	protocolVersion: typeof MCP_PROTOCOL_VERSION;
 	tools: McpToolDescriptor[];
