@@ -35,4 +35,26 @@ describe('TypeScript public API compatibility', () => {
 		expect(extracted.entrypoints.map((entry) => entry.specifier)).toEqual(['./public']);
 		expect(extracted.entrypoints[0]?.symbols.map((entry) => entry.name)).toEqual(['Public']);
 	});
+
+	it('follows local declaration barrels and detects changes behind the public entrypoint', () => {
+		const entrypoint = [{ specifier: '.', declarationPath: 'dist/index.d.ts', source: "export * from './public.js';" }];
+		const baseline = extractTypeScriptApi(entrypoint, {
+			'dist/index.d.ts': entrypoint[0]!.source,
+			'dist/public.d.ts': 'export interface Client { id: string; label?: string; }',
+		});
+		const candidate = extractTypeScriptApi(entrypoint, {
+			'dist/index.d.ts': entrypoint[0]!.source,
+			'dist/public.d.ts': 'export interface Client { id: string; }',
+		});
+		expect(baseline.entrypoints[0]?.symbols.map((entry) => entry.name)).toEqual(['Client']);
+		expect(compareTypeScriptApi(baseline, candidate).findings).toEqual(expect.arrayContaining([
+			expect.objectContaining({ code: 'typescript_member_removed', path: '.Client.label' }),
+		]));
+	});
+
+	it('fails closed when a public local declaration barrel cannot be resolved', () => {
+		expect(() => extractTypeScriptApi([{
+			specifier: '.', declarationPath: 'dist/index.d.ts', source: "export * from './missing.js';",
+		}])).toThrow('Unresolved local public declaration: dist/missing.d.ts.');
+	});
 });

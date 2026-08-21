@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { relative, resolve } from 'node:path';
 import {
 	canonicalStandardsJson,
 	createStandardsContractBundle,
@@ -33,7 +33,18 @@ const entrypoints: TypeScriptDeclarationEntrypointInput[] = Object.entries(packa
 	return { specifier, declarationPath, source: readFileSync(absolutePath, 'utf8') };
 });
 
-const typescript = extractTypeScriptApi(entrypoints);
+function declarationFiles(directory: string): string[] {
+	return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+		const path = resolve(directory, entry.name);
+		return entry.isDirectory() ? declarationFiles(path) : path.endsWith('.d.ts') ? [path] : [];
+	});
+}
+
+const declarations = Object.fromEntries(declarationFiles(resolve(root, 'dist')).map((path) => [
+	relative(root, path).replaceAll('\\', '/'),
+	readFileSync(path, 'utf8'),
+]));
+const typescript = extractTypeScriptApi(entrypoints, declarations);
 const openapi = normalizeOpenApi(JSON.parse(readFileSync(resolve(root, 'docs/api/openapi.json'), 'utf8')));
 const models = { schemaVersion: 1, typescript, openapi };
 const modelsPath = resolve(outputRoot, 'contract-models.json');

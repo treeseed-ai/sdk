@@ -25,6 +25,25 @@ function exported(node: ts.Node) {
 	return ts.canHaveModifiers(node) && ts.getModifiers(node)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) === true;
 }
 
+function normalizeDeclarationPath(value: string) {
+	const normalized: string[] = [];
+	for (const segment of value.replaceAll('\\', '/').split('/')) {
+		if (!segment || segment === '.') continue;
+		if (segment === '..') normalized.pop();
+		else normalized.push(segment);
+	}
+	return normalized.join('/');
+}
+
+function resolveLocalDeclaration(fromPath: string, specifier: string) {
+	if (!specifier.startsWith('.')) return null;
+	const directory = fromPath.includes('/') ? fromPath.slice(0, fromPath.lastIndexOf('/')) : '';
+	const resolved = normalizeDeclarationPath(`${directory}/${specifier}`);
+	if (/\.d\.(?:mts|cts|ts)$/u.test(resolved)) return resolved;
+	if (/\.(?:mjs|cjs|js)$/u.test(resolved)) return resolved.replace(/\.(?:mjs|cjs|js)$/u, '.d.ts');
+	return `${resolved}.d.ts`;
+}
+
 function memberName(node: ts.NamedDeclaration, sourceFile: ts.SourceFile) {
 	return node.name ? normalizedText(node.name, sourceFile).replace(/^['"]|['"]$/gu, '') : null;
 }
@@ -54,8 +73,8 @@ function parameter(node: ts.ParameterDeclaration, sourceFile: ts.SourceFile): Ty
 	};
 }
 
-function symbol(node: ts.Statement, sourceFile: ts.SourceFile): TypeScriptApiSymbol | null {
-	if (!exported(node)) return null;
+function symbol(node: ts.Statement, sourceFile: ts.SourceFile, requireExport = true): TypeScriptApiSymbol | null {
+	if (requireExport && !exported(node)) return null;
 	if (ts.isFunctionDeclaration(node) && node.name) return {
 		name: node.name.text, kind: 'function', deprecated: deprecated(node), members: [],
 		parameters: node.parameters.map((entry) => parameter(entry, sourceFile)),
@@ -90,13 +109,85 @@ function symbol(node: ts.Statement, sourceFile: ts.SourceFile): TypeScriptApiSym
 	return null;
 }
 
-function extractEntrypoint(input: TypeScriptDeclarationEntrypointInput): TypeScriptApiEntrypoint {
-	const sourceFile = ts.createSourceFile(input.declarationPath, input.source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-	const symbols = sourceFile.statements.map((entry) => symbol(entry, sourceFile)).filter((entry): entry is TypeScriptApiSymbol => Boolean(entry))
-		.sort((left, right) => left.name.localeCompare(right.name));
-	return { specifier: input.specifier, declarationPath: input.declarationPath, symbols };
+function externalReexport(moduleName: string, exportedName: string): TypeScriptApiSymbol {
+	return {
+		name: exportedName,
+		kind: 'variable',
+		deprecated: false,
+		members: [],
+		parameters: [],
+		returnType: null,
+		definition: `external-reexport:${moduleName}`,
+	};
 }
 
-export function extractTypeScriptApi(input: TypeScriptDeclarationEntrypointInput[]): TypeScriptApiModel {
-	return { schemaVersion: 1, entrypoints: input.map(extractEntrypoint).sort((left, right) => left.specifier.localeCompare(right.specifier)) };
+function extractEntrypoint(
+	input: TypeScriptDeclarationEntrypointInput,
+	declarations: Readonly<Record<string, string>>,
+): TypeScriptApiEntrypoint {
+	const cache = new Map<string, Map<string, TypeScriptApiSymbol>>();
+	const active = new Set<string>();
+
+	function extractFile(declarationPath: string) {
+		const normalizedPath = normalizeDeclarationPath(declarationPath);
+		const cached = cache.get(normalizedPath);
+		if (cached) return cached;
+		if (active.has(normalizedPath)) return new Map<string, TypeScriptApiSymbol>();
+		const source = declarations[normalizedPath];
+		if (source === undefined) throw new Error(`Unresolved local public declaration: ${normalizedPath}.`);
+		active.add(normalizedPath);
+		const sourceFile = ts.createSourceFile(normalizedPath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+		const collected = new Map<string, TypeScriptApiSymbol>();
+		const local = new Map<string, TypeScriptApiSymbol>();
+		for (const statement of sourceFile.statements) {
+			const localSymbol = symbol(statement, sourceFile, false);
+			if (localSymbol) local.set(localSymbol.name, localSymbol);
+			const publicSymbol = symbol(statement, sourceFile);
+			if (publicSymbol) collected.set(publicSymbol.name, publicSymbol);
+		}
+		for (const statement of sourceFile.statements) {
+			if (!ts.isExportDeclaration(statement)) continue;
+			const moduleName = statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier)
+				? statement.moduleSpecifier.text
+				: null;
+			const localTarget = moduleName ? resolveLocalDeclaration(normalizedPath, moduleName) : null;
+			const targetSymbols = localTarget
+				? extractFile(localTarget)
+				: moduleName ? null : local;
+			if (!statement.exportClause) {
+				if (targetSymbols) {
+					for (const [name, exportedSymbol] of targetSymbols) if (name !== 'default') collected.set(name, exportedSymbol);
+				} else if (moduleName) {
+					collected.set(`* from ${moduleName}`, externalReexport(moduleName, `* from ${moduleName}`));
+				}
+				continue;
+			}
+			if (ts.isNamespaceExport(statement.exportClause)) {
+				const name = statement.exportClause.name.text;
+				collected.set(name, externalReexport(moduleName ?? normalizedPath, name));
+				continue;
+			}
+			for (const element of statement.exportClause.elements) {
+				const sourceName = element.propertyName?.text ?? element.name.text;
+				const exportedName = element.name.text;
+				const target = targetSymbols?.get(sourceName);
+				if (target) collected.set(exportedName, { ...target, name: exportedName });
+				else if (moduleName && !localTarget) collected.set(exportedName, externalReexport(moduleName, exportedName));
+				else throw new Error(`Unresolved public symbol ${sourceName} in ${normalizedPath}.`);
+			}
+		}
+		active.delete(normalizedPath);
+		cache.set(normalizedPath, collected);
+		return collected;
+	}
+
+	const symbols = [...extractFile(input.declarationPath).values()].sort((left, right) => left.name.localeCompare(right.name));
+	return { specifier: input.specifier, declarationPath: normalizeDeclarationPath(input.declarationPath), symbols };
+}
+
+export function extractTypeScriptApi(
+	input: TypeScriptDeclarationEntrypointInput[],
+	declarations: Readonly<Record<string, string>> = Object.fromEntries(input.map((entry) => [normalizeDeclarationPath(entry.declarationPath), entry.source])),
+): TypeScriptApiModel {
+	return { schemaVersion: 1, entrypoints: input.map((entry) => extractEntrypoint(entry, declarations)).sort((left, right) => left.specifier.localeCompare(right.specifier)) };
 }

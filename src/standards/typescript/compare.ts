@@ -3,6 +3,10 @@ import type { TypeScriptApiComparison, TypeScriptApiFinding, TypeScriptApiModel,
 
 const rank: Record<CompatibilityClassification, number> = { unchanged: 0, compatible_addition: 1, breaking: 2 };
 
+function publicSymbolPath(specifier: string, symbolName: string) {
+	return specifier === '.' ? `.${symbolName}` : `${specifier}.${symbolName}`;
+}
+
 function finding(findings: TypeScriptApiFinding[], value: Omit<TypeScriptApiFinding, 'classification'>, classification: CompatibilityClassification) {
 	findings.push({ ...value, classification });
 }
@@ -57,12 +61,12 @@ export function compareTypeScriptApi(baseline: TypeScriptApiModel, candidate: Ty
 		const nextSymbols = new Map(nextEntrypoint.symbols.map((entry) => [entry.name, entry]));
 		for (const previous of entrypoint.symbols) {
 			const next = nextSymbols.get(previous.name);
-			if (!next) finding(findings, { code: 'typescript_symbol_removed', path: `${entrypoint.specifier}.${previous.name}`, message: 'A public symbol was removed.' }, 'breaking');
-			else compareSymbol(`${entrypoint.specifier}.${previous.name}`, previous, next, findings);
+			if (!next) finding(findings, { code: 'typescript_symbol_removed', path: publicSymbolPath(entrypoint.specifier, previous.name), message: 'A public symbol was removed.' }, 'breaking');
+			else compareSymbol(publicSymbolPath(entrypoint.specifier, previous.name), previous, next, findings);
 		}
 		const previousNames = new Set(entrypoint.symbols.map((entry) => entry.name));
 		for (const next of nextEntrypoint.symbols.filter((entry) => !previousNames.has(entry.name))) {
-			finding(findings, { code: 'typescript_symbol_added', path: `${entrypoint.specifier}.${next.name}`, message: 'A public symbol was added.' }, 'compatible_addition');
+			finding(findings, { code: 'typescript_symbol_added', path: publicSymbolPath(entrypoint.specifier, next.name), message: 'A public symbol was added.' }, 'compatible_addition');
 		}
 	}
 	const baselineEntrypoints = new Set(baseline.entrypoints.map((entry) => entry.specifier));
