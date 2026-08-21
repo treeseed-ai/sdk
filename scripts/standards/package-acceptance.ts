@@ -7,6 +7,8 @@ const required = [
 	'dist/standards/index.js', 'dist/standards/index.d.ts',
 	'dist/standards/typescript/index.js', 'dist/standards/typescript/index.d.ts',
 	'dist/standards/openapi/index.js', 'dist/standards/openapi/index.d.ts',
+	'.treeseed/standards/contract-models.json', '.treeseed/standards/contract-bundle.json',
+	'.treeseed/standards/typescript-public-api.json', '.treeseed/standards/openapi.json',
 ];
 const missing = required.filter((path) => !existsSync(resolve(root, path)));
 if (missing.length) throw new Error(`Missing standards package outputs: ${missing.join(', ')}.`);

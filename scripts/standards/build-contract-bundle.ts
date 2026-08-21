@@ -49,6 +49,10 @@ const openapi = normalizeOpenApi(JSON.parse(readFileSync(resolve(root, 'docs/api
 const models = { schemaVersion: 1, packageVersion: packageJson.version, typescript, openapi };
 const modelsPath = resolve(outputRoot, 'contract-models.json');
 writeFileSync(modelsPath, `${canonicalStandardsJson(models)}\n`);
+const typeScriptArtifactPath = resolve(outputRoot, 'typescript-public-api.json');
+const openApiArtifactPath = resolve(outputRoot, 'openapi.json');
+writeFileSync(typeScriptArtifactPath, `${canonicalStandardsJson(typescript)}\n`);
+writeFileSync(openApiArtifactPath, `${canonicalStandardsJson(openapi)}\n`);
 
 const packRoot = resolve(outputRoot, 'package');
 mkdirSync(packRoot, { recursive: true });
@@ -64,16 +68,19 @@ const bundle = createStandardsContractBundle({
 	contracts: [
 		{
 			id: '@treeseed/sdk/openapi', family: 'openapi', version: '1.0.0',
-			artifact: { path: '.treeseed/standards/contract-models.json', mediaType: 'application/json', digest: await standardsSha256(openapi) },
+			artifact: { path: '.treeseed/standards/openapi.json', mediaType: 'application/json', digest: await standardsSha256(openapi) },
 			entrypoints: ['docs/api/openapi.json'], guarantees: ['deterministic-normalization', 'local-ref-resolution'], deprecations: [],
 		},
 		{
 			id: '@treeseed/sdk/typescript-public-api', family: 'typescript', version: '1.0.0',
-			artifact: { path: '.treeseed/standards/contract-models.json', mediaType: 'application/json', digest: await standardsSha256(typescript) },
+			artifact: { path: '.treeseed/standards/typescript-public-api.json', mediaType: 'application/json', digest: await standardsSha256(typescript) },
 			entrypoints: Object.keys(packageJson.exports), guarantees: ['declared-export-closure', 'packed-declaration-source'], deprecations: [],
 		},
 	],
-	evidence: [{ kind: 'source', uri: `git:${sourceCommit}` }, { kind: 'artifact', uri: tarball, digest: packageDigest }],
+	evidence: [
+		{ kind: 'source', uri: `git:${sourceCommit}` },
+		{ kind: 'artifact', uri: `.treeseed/standards/package/${packed[0]!.filename}`, digest: packageDigest },
+	],
 });
 const bundlePath = resolve(outputRoot, 'contract-bundle.json');
 writeFileSync(bundlePath, `${canonicalStandardsJson(bundle)}\n`);

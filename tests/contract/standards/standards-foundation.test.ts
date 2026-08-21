@@ -1,4 +1,7 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 import {
 	canonicalStandardsJson,
 	createCompatibilityAttestation,
@@ -13,6 +16,7 @@ import {
 
 const digest = `sha256:${'a'.repeat(64)}` as const;
 const candidateDigest = `sha256:${'b'.repeat(64)}` as const;
+const packageRoot = resolve(import.meta.dirname, '../../..');
 
 function bundle() {
 	return createStandardsContractBundle({
@@ -92,5 +96,21 @@ describe('portable standards foundation', () => {
 			...declaration,
 			produced: [{ ...declaration.produced[0], artifact: '../outside.json' }],
 		})).toThrow(/safe repository-relative path/u);
+	});
+
+	it('binds every produced manifest contract to its generated artifact and bundle descriptor', async () => {
+		const packageManifest = parseYaml(readFileSync(resolve(packageRoot, 'treeseed.package.yaml'), 'utf8')) as {
+			standards: { produced: Array<{ id: string; artifact: string }> };
+		};
+		const contractBundle = JSON.parse(readFileSync(resolve(packageRoot, '.treeseed/standards/contract-bundle.json'), 'utf8')) as {
+			contracts: Array<{ id: string; artifact: { path: string; digest: string } }>;
+		};
+		for (const produced of packageManifest.standards.produced) {
+			const artifactPath = resolve(packageRoot, produced.artifact);
+			expect(existsSync(artifactPath), produced.artifact).toBe(true);
+			const descriptor = contractBundle.contracts.find((contract) => contract.id === produced.id);
+			expect(descriptor?.artifact.path).toBe(produced.artifact);
+			expect(descriptor?.artifact.digest).toBe(await standardsSha256(JSON.parse(readFileSync(artifactPath, 'utf8'))));
+		}
 	});
 });

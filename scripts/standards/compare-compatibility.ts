@@ -39,7 +39,10 @@ const attestation = createCompatibilityAttestation({
 	contractId: '@treeseed/sdk/public-contracts',
 	baselineBundle: await standardsSha256(baseline), candidateBundle: await standardsSha256(candidate), result,
 	findings: [...typescript.findings, ...openapi.findings],
-	evidence: [{ kind: 'artifact', uri: baselinePath }, { kind: 'artifact', uri: candidatePath }],
+	evidence: [
+		{ kind: 'artifact', uri: `npm:@treeseed/sdk@${baseline.packageVersion}`, digest: await standardsSha256(baseline) },
+		{ kind: 'artifact', uri: `npm:@treeseed/sdk@${candidate.packageVersion}`, digest: await standardsSha256(candidate) },
+	],
 });
 writeFileSync(outputPath, `${canonicalStandardsJson(attestation)}\n`);
 console.log(JSON.stringify({ ok: result.sufficient, classification, result, outputPath, digest: await standardsSha256(attestation) }));
