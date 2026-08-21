@@ -1,5 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { normalizeWorkdayAllocationProfile, validateOneClassPerProjectAgent, validateWorkdayAllocationProfile, validateWorkdayBorrowingEvidence, type WorkdayAllocationProfile } from '../../../src/operator-contracts/index.ts';
+import { normalizeRepositoryWorkdayProfileBundle, normalizeWorkdayAllocationProfile, validateOneClassPerProjectAgent, validateRepositoryWorkdayProfileBundle, validateWorkdayAllocationProfile, validateWorkdayBorrowingEvidence, type RepositoryWorkdayProfileBundle, type WorkdayAllocationProfile } from '../../../src/operator-contracts/index.ts';
 
 const profile: WorkdayAllocationProfile = {
 	schemaVersion: 'treeseed.workday-allocation-profile/v1',
@@ -30,6 +31,22 @@ describe('workday allocation profiles', () => {
 	it('normalizes repository profile sets deterministically', () => {
 		const reversed = { ...profile, projects: ['api', 'sdk', 'api'], classes: [...profile.classes].reverse(), demandSources: [...profile.demandSources].reverse() } satisfies WorkdayAllocationProfile;
 		expect(normalizeWorkdayAllocationProfile(reversed)).toMatchObject({ projects: ['api', 'sdk'], classes: [{ classSlug: 'features' }, { classSlug: 'stability' }], demandSources: ['approved-decisions', 'planning-inputs'] });
+	});
+
+	it('normalizes and validates multi-profile repository bundles',()=>{
+		const second={...profile,id:'stability-heavy',version:'1.1.0'};
+		const bundle={schemaVersion:'treeseed.workday-allocation-profile-bundle/v1' as const,profiles:[second,profile]};
+		expect(validateRepositoryWorkdayProfileBundle(bundle)).toEqual([]);
+		expect(normalizeRepositoryWorkdayProfileBundle(bundle).profiles.map((entry)=>entry.id)).toEqual(['feature-heavy','stability-heavy']);
+		expect(validateRepositoryWorkdayProfileBundle({...bundle,profiles:[profile,profile]}).map((entry)=>entry.code)).toContain('bundle_profile_identity_duplicate');
+		expect(validateRepositoryWorkdayProfileBundle({...bundle,profiles:[]}).map((entry)=>entry.code)).toContain('bundle_profiles_empty');
+	});
+
+	it('ships four valid SDK campaign profiles against the accepted class catalog',()=>{
+		const bundle=JSON.parse(readFileSync('.treeseed/workdays/allocation-profile.json','utf8')) as RepositoryWorkdayProfileBundle;
+		const catalog=[{projectId:'sdk',classSlugs:['architecture','engineering','release','reporting','research','review','technical-writing','testing']}];
+		expect(validateRepositoryWorkdayProfileBundle(bundle,catalog)).toEqual([]);
+		expect(new Set(bundle.profiles.map((entry)=>entry.id))).toEqual(new Set(['sdk-feature-heavy','sdk-stability-heavy','sdk-documentation-heavy','sdk-testing-heavy']));
 	});
 
 	it('enforces minimum, target, maximum and cross-project class invariants', () => {

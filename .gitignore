@@ -9,7 +9,10 @@ dist/
 .dev.vars
 .env.local
 .local/
-.treeseed/
+.treeseed/*
+!.treeseed/workdays/
+.treeseed/workdays/*
+!.treeseed/workdays/allocation-profile.json
 .treeseed-build-dist.lock/
 .treeseed-dist-build-*/
 coverage/

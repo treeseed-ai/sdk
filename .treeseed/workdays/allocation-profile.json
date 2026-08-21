@@ -1,0 +1,93 @@
+{
+  "schemaVersion": "treeseed.workday-allocation-profile-bundle/v1",
+  "profiles": [
+    {
+      "schemaVersion": "treeseed.workday-allocation-profile/v1",
+      "id": "sdk-feature-heavy",
+      "version": "1.0.0",
+      "projects": ["sdk"],
+      "classes": [
+        { "classSlug": "architecture", "minimumPercent": 5, "targetPercent": 20, "maximumPercent": 40, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "engineering", "minimumPercent": 15, "targetPercent": 35, "maximumPercent": 60, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "release", "minimumPercent": 2, "targetPercent": 5, "maximumPercent": 20, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "reporting", "minimumPercent": 2, "targetPercent": 5, "maximumPercent": 20, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "research", "minimumPercent": 3, "targetPercent": 10, "maximumPercent": 30, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "review", "minimumPercent": 5, "targetPercent": 10, "maximumPercent": 30, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "technical-writing", "minimumPercent": 2, "targetPercent": 5, "maximumPercent": 20, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "testing", "minimumPercent": 5, "targetPercent": 10, "maximumPercent": 30, "mayLend": true, "mayBorrow": true }
+      ],
+      "demandSources": ["approved-decisions", "planning-inputs", "questions", "proposals"],
+      "actingDecisionRequired": true,
+      "defaultDurationSeconds": 14400,
+      "maxConcurrency": 4,
+      "reservePercent": 10,
+      "prioritization": { "strategy": "priority-then-age", "starvationLimitSeconds": 3600 }
+    },
+    {
+      "schemaVersion": "treeseed.workday-allocation-profile/v1",
+      "id": "sdk-stability-heavy",
+      "version": "1.0.0",
+      "projects": ["sdk"],
+      "classes": [
+        { "classSlug": "architecture", "minimumPercent": 5, "targetPercent": 10, "maximumPercent": 30, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "engineering", "minimumPercent": 5, "targetPercent": 15, "maximumPercent": 35, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "release", "minimumPercent": 2, "targetPercent": 5, "maximumPercent": 20, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "reporting", "minimumPercent": 2, "targetPercent": 5, "maximumPercent": 20, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "research", "minimumPercent": 2, "targetPercent": 5, "maximumPercent": 20, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "review", "minimumPercent": 10, "targetPercent": 25, "maximumPercent": 50, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "technical-writing", "minimumPercent": 2, "targetPercent": 5, "maximumPercent": 20, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "testing", "minimumPercent": 15, "targetPercent": 30, "maximumPercent": 60, "mayLend": true, "mayBorrow": true }
+      ],
+      "demandSources": ["approved-decisions", "planning-inputs", "knowledge-gaps", "reliability-campaigns"],
+      "actingDecisionRequired": true,
+      "defaultDurationSeconds": 14400,
+      "maxConcurrency": 4,
+      "reservePercent": 15,
+      "prioritization": { "strategy": "weighted-fair", "starvationLimitSeconds": 2700 }
+    },
+    {
+      "schemaVersion": "treeseed.workday-allocation-profile/v1",
+      "id": "sdk-documentation-heavy",
+      "version": "1.0.0",
+      "projects": ["sdk"],
+      "classes": [
+        { "classSlug": "architecture", "minimumPercent": 3, "targetPercent": 10, "maximumPercent": 30, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "engineering", "minimumPercent": 3, "targetPercent": 10, "maximumPercent": 30, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "release", "minimumPercent": 2, "targetPercent": 5, "maximumPercent": 20, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "reporting", "minimumPercent": 5, "targetPercent": 10, "maximumPercent": 30, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "research", "minimumPercent": 10, "targetPercent": 20, "maximumPercent": 45, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "review", "minimumPercent": 2, "targetPercent": 5, "maximumPercent": 20, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "technical-writing", "minimumPercent": 15, "targetPercent": 35, "maximumPercent": 65, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "testing", "minimumPercent": 2, "targetPercent": 5, "maximumPercent": 20, "mayLend": true, "mayBorrow": true }
+      ],
+      "demandSources": ["approved-decisions", "planning-inputs", "questions", "knowledge-gaps"],
+      "actingDecisionRequired": true,
+      "defaultDurationSeconds": 10800,
+      "maxConcurrency": 3,
+      "reservePercent": 10,
+      "prioritization": { "strategy": "age-then-priority", "starvationLimitSeconds": 2400 }
+    },
+    {
+      "schemaVersion": "treeseed.workday-allocation-profile/v1",
+      "id": "sdk-testing-heavy",
+      "version": "1.0.0",
+      "projects": ["sdk"],
+      "classes": [
+        { "classSlug": "architecture", "minimumPercent": 2, "targetPercent": 5, "maximumPercent": 20, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "engineering", "minimumPercent": 5, "targetPercent": 15, "maximumPercent": 35, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "release", "minimumPercent": 2, "targetPercent": 5, "maximumPercent": 20, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "reporting", "minimumPercent": 2, "targetPercent": 5, "maximumPercent": 20, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "research", "minimumPercent": 2, "targetPercent": 5, "maximumPercent": 20, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "review", "minimumPercent": 10, "targetPercent": 20, "maximumPercent": 45, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "technical-writing", "minimumPercent": 2, "targetPercent": 5, "maximumPercent": 20, "mayLend": true, "mayBorrow": true },
+        { "classSlug": "testing", "minimumPercent": 20, "targetPercent": 40, "maximumPercent": 70, "mayLend": true, "mayBorrow": true }
+      ],
+      "demandSources": ["approved-decisions", "planning-inputs", "knowledge-gaps", "reliability-campaigns"],
+      "actingDecisionRequired": true,
+      "defaultDurationSeconds": 10800,
+      "maxConcurrency": 4,
+      "reservePercent": 15,
+      "prioritization": { "strategy": "weighted-fair", "starvationLimitSeconds": 1800 }
+    }
+  ]
+}

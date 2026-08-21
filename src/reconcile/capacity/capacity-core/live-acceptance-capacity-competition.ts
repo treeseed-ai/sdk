@@ -1,5 +1,6 @@
 import { ProviderProtocolClient } from '../../../capacity/providers/capacity-provider.ts';
 import { MarketClient } from '../../../entrypoints/clients/market-client.ts';
+import { activateInternalCapacityAllocationSet,createInternalCapacityAllocationSet } from '../../../market-client/internal-capacity-allocation.ts';
 import type { CapacityGovernanceRuntimeConnection } from './live-acceptance-capacity-governance.ts';
 
 export interface CapacityCompetitionRuntimeConnection extends CapacityGovernanceRuntimeConnection {
@@ -92,7 +93,7 @@ export async function provisionLocalCapacityCompetition(input: {
 		}, `${prefix}:grant-create`);
 		grantCreated = true;
 		await input.adminClient.transitionCapacityGrant(input.runtime.teamId, grantId, 'activate', `${prefix}:grant-activate`);
-		const allocation = await input.adminClient.createCapacityAllocationSet(input.runtime.teamId, {
+		const allocation = await createInternalCapacityAllocationSet(input.adminClient,input.runtime.teamId, {
 			id: allocationId,
 			effectiveFrom: new Date(Date.now() - 1_000).toISOString(),
 			effectiveUntil: new Date(Date.now() + 10 * 60_000).toISOString(),
@@ -100,7 +101,7 @@ export async function provisionLocalCapacityCompetition(input: {
 			slices: [{ id: `${allocationId}:project`, scope: 'project', targetId: project.id, policy: { minPercent: 0, targetPercent: 100, maxPercent: 100, hardCapPercent: 100 } }],
 			borrowingRules: [], metadata: { liveAcceptance: true, runId: input.runId },
 		}, `${prefix}:allocation-create`);
-		const activeAllocation = await input.adminClient.activateCapacityAllocationSet(input.runtime.teamId, String(allocation.payload.id), `${prefix}:allocation-activate`);
+		const activeAllocation = await activateInternalCapacityAllocationSet(input.adminClient,input.runtime.teamId, String(allocation.payload.id), `${prefix}:allocation-activate`);
 		availability = await providerClient.refreshAvailabilitySession(sessionId, {
 			expectedSequence: availability.payload.sequence,
 			environment: 'local', status: 'open', capabilities: ['planning', 'repo_read', 'agent_mode_run', 'usage_report'],

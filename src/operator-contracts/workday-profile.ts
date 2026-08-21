@@ -33,6 +33,11 @@ export interface WorkdayAllocationProfile {
 	};
 }
 
+export interface RepositoryWorkdayProfileBundle {
+	schemaVersion: 'treeseed.workday-allocation-profile-bundle/v1';
+	profiles: WorkdayAllocationProfile[];
+}
+
 export interface ProjectAgentClassMembership {
 	projectId: string;
 	agentId: string;
@@ -156,6 +161,24 @@ export function normalizeWorkdayAllocationProfile(profile: WorkdayAllocationProf
 		classes: [...profile.classes].sort((left, right) => left.classSlug.localeCompare(right.classSlug)),
 		demandSources: [...new Set(profile.demandSources)].sort(),
 	};
+}
+
+export function validateRepositoryWorkdayProfileBundle(bundle: RepositoryWorkdayProfileBundle,classCatalogs?: ProjectClassCatalog[]): WorkdayProfileDiagnostic[] {
+	const diagnostics: WorkdayProfileDiagnostic[] = [];
+	if (bundle.schemaVersion !== 'treeseed.workday-allocation-profile-bundle/v1') diagnostics.push({ code: 'bundle_schema_version_invalid', path: 'schemaVersion', message: 'Unsupported repository workday profile bundle schema.' });
+	if (!Array.isArray(bundle.profiles) || bundle.profiles.length === 0) diagnostics.push({ code: 'bundle_profiles_empty', path: 'profiles', message: 'A repository workday profile bundle must contain at least one profile.' });
+	const identities = new Set<string>();
+	for (const [index, profile] of (Array.isArray(bundle.profiles) ? bundle.profiles : []).entries()) {
+		const identity = `${profile.id}@${profile.version}`;
+		if (identities.has(identity)) diagnostics.push({ code: 'bundle_profile_identity_duplicate', path: `profiles.${index}`, message: `Profile generation ${identity} is declared more than once.` });
+		identities.add(identity);
+		diagnostics.push(...validateWorkdayAllocationProfile(profile,classCatalogs).map((diagnostic) => ({ ...diagnostic, path: `profiles.${index}.${diagnostic.path}` })));
+	}
+	return diagnostics;
+}
+
+export function normalizeRepositoryWorkdayProfileBundle(bundle: RepositoryWorkdayProfileBundle): RepositoryWorkdayProfileBundle {
+	return { schemaVersion:'treeseed.workday-allocation-profile-bundle/v1',profiles:[...bundle.profiles].map(normalizeWorkdayAllocationProfile).sort((left,right)=>left.id.localeCompare(right.id)||left.version.localeCompare(right.version)) };
 }
 
 export function validateWorkdayBorrowingEvidence(evidence: WorkdayBorrowingEvidence): WorkdayProfileDiagnostic[] {

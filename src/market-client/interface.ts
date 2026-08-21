@@ -282,23 +282,8 @@ declare module "../support/market-client.ts" {
     capacityAllocationSets: OmitThisParameter<
       typeof import("./capacity/allocations/contracts/capacity-allocation-sets.ts").capacityAllocationSetsMethod
     >;
-    createCapacityAllocationSet: OmitThisParameter<
-      typeof import("./capacity/allocations/creation/create-capacity-allocation-set.ts").createCapacityAllocationSetMethod
-    >;
-    planCapacityAllocationSet: OmitThisParameter<
-      typeof import("./capacity/allocations/creation/plan-capacity-allocation-set.ts").planCapacityAllocationSetMethod
-    >;
     capacityAllocationSet: OmitThisParameter<
       typeof import("./capacity/allocations/contracts/capacity-allocation-set.ts").capacityAllocationSetMethod
-    >;
-    activateCapacityAllocationSet: OmitThisParameter<
-      typeof import("./capacity/allocations/lifecycle/activate-capacity-allocation-set.ts").activateCapacityAllocationSetMethod
-    >;
-    supersedeCapacityAllocationSet: OmitThisParameter<
-      typeof import("./capacity/allocations/updates/supersede-capacity-allocation-set.ts").supersedeCapacityAllocationSetMethod
-    >;
-    archiveCapacityAllocationSet: OmitThisParameter<
-      typeof import("./capacity/allocations/retirement/archive-capacity-allocation-set.ts").archiveCapacityAllocationSetMethod
     >;
     explainCapacityAllocationSet: OmitThisParameter<
       typeof import("./capacity/allocations/queries/explain-capacity-allocation-set.ts").explainCapacityAllocationSetMethod

@@ -5,6 +5,7 @@ signCapacityProviderProof,
 type CapacityProviderPrivateJwk,
 } from '../../capacity/providers/capacity-provider.ts';
 import { MarketClient } from '../../entrypoints/clients/market-client.ts';
+import { createInternalCapacityAllocationSet,supersedeInternalCapacityAllocationSet } from '../../market-client/internal-capacity-allocation.ts';
 import { bindLocalCapacityTreeDxRepository,syncLocalAcceptanceAgentClasses } from '../capacity/capacity-core/live-acceptance-capacity-context.ts';
 import type { CapacityGovernanceRuntimeConnection } from '../capacity/capacity-core/live-acceptance-capacity-governance.ts';
 
@@ -195,7 +196,7 @@ export async function provisionLocalStarterCapacity(input: {
 		}, `${key}:grant-create`);
 		grantCreated = true;
 		await input.adminClient.transitionCapacityGrant(input.runtime.teamId, grantId, 'activate', `${key}:grant-activate`);
-		const allocation = await input.adminClient.createCapacityAllocationSet(input.runtime.teamId, {
+		const allocation = await createInternalCapacityAllocationSet(input.adminClient,input.runtime.teamId, {
 			id: allocationId,
 			effectiveFrom: new Date(Date.now() - 1_000).toISOString(),
 			effectiveUntil: new Date(Date.now() + (durationSeconds + 300) * 1_000).toISOString(),
@@ -205,7 +206,7 @@ export async function provisionLocalStarterCapacity(input: {
 		}, `${key}:allocation-create`);
 		const active = (await input.adminClient.capacityAllocationSets(input.runtime.teamId, { limit: 200 })).payload.items
 			.find((entry) => entry && typeof entry === 'object' && (entry as Record<string, unknown>).status === 'active') as Record<string, unknown> | undefined;
-		await input.adminClient.supersedeCapacityAllocationSet(input.runtime.teamId, String(allocation.payload.id), { expectedActiveAllocationSetId: active?.id ?? null }, `${key}:allocation-supersede`);
+		await supersedeInternalCapacityAllocationSet(input.adminClient,input.runtime.teamId, String(allocation.payload.id), { expectedActiveAllocationSetId: active?.id ?? null }, `${key}:allocation-supersede`);
 		availability = await protocol.refreshAvailabilitySession(sessionId, {
 			expectedSequence: availability.payload.sequence, environment: 'local', status: 'open', capabilities: input.config.capabilities,
 			grants: [{ grantId, projectId: project.id, teamId: input.runtime.teamId, grantScope: 'project' }],
@@ -340,7 +341,7 @@ export async function provisionLocalStarterPortfolioCapacity(input: {
 		}
 		const durationSeconds = Math.max(...input.configs.map(localStarterDurationSeconds));
 		const allocationId = `${key}:allocation`;
-		const allocation = await input.adminClient.createCapacityAllocationSet(input.runtime.teamId, {
+		const allocation = await createInternalCapacityAllocationSet(input.adminClient,input.runtime.teamId, {
 			id: allocationId, effectiveFrom: new Date(Date.now() - 1_000).toISOString(),
 			effectiveUntil: new Date(Date.now() + (durationSeconds + 300) * 1_000).toISOString(),
 			reservePolicy: { percent: 0, overflow: 'deny' }, borrowingRules: [],
@@ -349,7 +350,7 @@ export async function provisionLocalStarterPortfolioCapacity(input: {
 		}, `${key}:allocation-create`);
 		const active = (await input.adminClient.capacityAllocationSets(input.runtime.teamId, { limit: 200 })).payload.items
 			.find((entry) => entry && typeof entry === 'object' && (entry as Record<string, unknown>).status === 'active') as Record<string, unknown> | undefined;
-		await input.adminClient.supersedeCapacityAllocationSet(input.runtime.teamId, String(allocation.payload.id), { expectedActiveAllocationSetId: active?.id ?? null }, `${key}:allocation-supersede`);
+		await supersedeInternalCapacityAllocationSet(input.adminClient,input.runtime.teamId, String(allocation.payload.id), { expectedActiveAllocationSetId: active?.id ?? null }, `${key}:allocation-supersede`);
 		availability = await protocol.refreshAvailabilitySession(sessionId, {
 			expectedSequence: availability.payload.sequence, environment: 'local', status: 'open', capabilities, grants,
 			nativeLimits: { availableAgentSeconds: agentSeconds, maxConcurrentRunners: 2 }, runnerPressure: { activeRunners: 0, maxConcurrentRunners: 2 },
