@@ -39,11 +39,11 @@ function compareSchema(
 	findings: OpenApiCompatibilityFinding[],
 ) {
 	if (baseline === undefined && candidate !== undefined) {
-		add(findings, 'openapi_schema_added', path, 'A schema was added.', 'compatible_addition');
+		add(findings, 'openapi_schema_added', path, 'A schema was added.', direction === 'input' ? 'breaking' : 'compatible_addition');
 		return;
 	}
 	if (baseline !== undefined && candidate === undefined) {
-		add(findings, 'openapi_schema_removed', path, 'A schema was removed.', 'breaking');
+		add(findings, 'openapi_schema_removed', path, 'A schema was removed.', direction === 'output' ? 'breaking' : 'compatible_addition');
 		return;
 	}
 	if (!isRecord(baseline) || !isRecord(candidate)) {
@@ -61,15 +61,30 @@ function compareSchema(
 	const previousProperties = isRecord(baseline.properties) ? baseline.properties : {};
 	const nextProperties = isRecord(candidate.properties) ? candidate.properties : {};
 	const nextRequired = new Set(Array.isArray(candidate.required) ? candidate.required.filter((entry): entry is string => typeof entry === 'string') : []);
+	const previousRequired = new Set(Array.isArray(baseline.required) ? baseline.required.filter((entry): entry is string => typeof entry === 'string') : []);
 	for (const name of Object.keys(previousProperties)) {
 		if (!(name in nextProperties)) add(findings, 'openapi_property_removed', `${path}.properties.${name}`, 'A schema property was removed.', 'breaking');
 		else compareSchema(previousProperties[name], nextProperties[name], `${path}.properties.${name}`, direction, findings);
 	}
 	for (const name of Object.keys(nextProperties).filter((entry) => !(entry in previousProperties))) {
-		add(findings, 'openapi_property_added', `${path}.properties.${name}`, 'A schema property was added.', nextRequired.has(name) ? 'breaking' : 'compatible_addition');
+		add(findings, 'openapi_property_added', `${path}.properties.${name}`, 'A schema property was added.',
+			direction === 'input' && nextRequired.has(name) ? 'breaking' : 'compatible_addition');
 	}
-	const previousRequired = new Set(Array.isArray(baseline.required) ? baseline.required.filter((entry): entry is string => typeof entry === 'string') : []);
-	for (const name of nextRequired) if (!previousRequired.has(name)) add(findings, 'openapi_required_input_added', `${path}.required.${name}`, 'A required property was added.', 'breaking');
+	for (const name of nextRequired) if (!previousRequired.has(name)) {
+		add(findings, direction === 'input' ? 'openapi_required_input_added' : 'openapi_required_output_added', `${path}.required.${name}`,
+			'A required property was added.', direction === 'input' ? 'breaking' : 'compatible_addition');
+	}
+	for (const name of previousRequired) if (!nextRequired.has(name)) {
+		add(findings, direction === 'input' ? 'openapi_required_input_removed' : 'openapi_required_output_removed', `${path}.required.${name}`,
+			'A required property was removed.', direction === 'output' ? 'breaking' : 'compatible_addition');
+	}
+	compareSchema(baseline.items, candidate.items, `${path}.items`, direction, findings);
+	const structuralKeys = new Set(['enum', 'items', 'properties', 'required']);
+	const previousConstraints = Object.fromEntries(Object.entries(baseline).filter(([key]) => !structuralKeys.has(key)));
+	const nextConstraints = Object.fromEntries(Object.entries(candidate).filter(([key]) => !structuralKeys.has(key)));
+	if (!same(previousConstraints, nextConstraints)) {
+		add(findings, 'openapi_schema_constraint_changed', path, 'A schema type, format, composition, or constraint changed.', 'breaking');
+	}
 }
 
 function compareOperation(path: string, baseline: OpenApiOperationModel, candidate: OpenApiOperationModel, findings: OpenApiCompatibilityFinding[]) {

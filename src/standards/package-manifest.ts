@@ -14,12 +14,22 @@ export interface StandardsManifestContract {
 export interface StandardsPackageManifest {
 	schemaVersion: 1;
 	workflow: { enabled: boolean };
+	acceptedBaseline: StandardsAcceptedBaseline | null;
 	produced: StandardsManifestContract[];
 	consumed: StandardsManifestContract[];
 	guarantees: string[];
 	deprecations: string[];
 	runtimes: string[];
 	rollbackOperations: string[];
+}
+
+export interface StandardsAcceptedBaseline {
+	packageName: string;
+	packageVersion: string;
+	sourceCommit: string;
+	npmIntegrity: string;
+	artifactDigest: string;
+	openApiSourceDigest: string;
 }
 
 export interface StandardsManifestInspection {
@@ -31,6 +41,7 @@ const families = new Set<StandardsContractFamily>(['typescript', 'openapi', 'jso
 const safePath = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))(?!.*\\)[\w@./-]+$/u;
 const semanticVersion = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 const semanticRange = /^(?:[~^]|>=?|<=?)?\d+\.\d+\.\d+(?:-[0-9A-Za-z.*-]+)?(?:\s+(?:[~^]|>=?|<=?)?\d+\.\d+\.\d+(?:-[0-9A-Za-z.*-]+)?)?$|^\*$/u;
+const sha256 = /^sha256:[a-f0-9]{64}$/u;
 
 function record(value: unknown, path: string) {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) throw new StandardsError('standards_invalid_contract', 'Expected an object.', path);
@@ -79,9 +90,28 @@ export function parseStandardsPackageManifest(value: unknown): StandardsPackageM
 	if (input.schemaVersion !== 1) throw new StandardsError('standards_invalid_contract', 'standards.schemaVersion must be 1.', 'standards.schemaVersion');
 	const workflow = record(input.workflow, 'standards.workflow');
 	if (typeof workflow.enabled !== 'boolean') throw new StandardsError('standards_invalid_contract', 'workflow.enabled must be boolean.', 'standards.workflow.enabled');
+	const baselineInput = input.acceptedBaseline === undefined ? null : record(input.acceptedBaseline, 'standards.acceptedBaseline');
+	const acceptedBaseline = baselineInput ? {
+		packageName: string(baselineInput.packageName, 'standards.acceptedBaseline.packageName'),
+		packageVersion: string(baselineInput.packageVersion, 'standards.acceptedBaseline.packageVersion'),
+		sourceCommit: string(baselineInput.sourceCommit, 'standards.acceptedBaseline.sourceCommit'),
+		npmIntegrity: string(baselineInput.npmIntegrity, 'standards.acceptedBaseline.npmIntegrity'),
+		artifactDigest: string(baselineInput.artifactDigest, 'standards.acceptedBaseline.artifactDigest'),
+		openApiSourceDigest: string(baselineInput.openApiSourceDigest, 'standards.acceptedBaseline.openApiSourceDigest'),
+	} : null;
+	if (acceptedBaseline) {
+		if (!semanticVersion.test(acceptedBaseline.packageVersion)) throw new StandardsError('standards_invalid_semantic_version', 'Accepted baseline version must be semantic.', 'standards.acceptedBaseline.packageVersion');
+		if (!/^[a-f0-9]{40}$/u.test(acceptedBaseline.sourceCommit)) throw new StandardsError('standards_invalid_contract', 'Accepted baseline source commit must be a full Git SHA.', 'standards.acceptedBaseline.sourceCommit');
+		if (!acceptedBaseline.npmIntegrity.startsWith('sha512-')) throw new StandardsError('standards_invalid_contract', 'Accepted baseline npm integrity must be SHA-512 SRI.', 'standards.acceptedBaseline.npmIntegrity');
+		if (!sha256.test(acceptedBaseline.artifactDigest) || !sha256.test(acceptedBaseline.openApiSourceDigest)) {
+			throw new StandardsError('standards_invalid_contract', 'Accepted baseline artifact digests must be SHA-256.', 'standards.acceptedBaseline');
+		}
+	}
+	if (workflow.enabled === true && !acceptedBaseline) throw new StandardsError('standards_invalid_contract', 'Enabled standards workflow requires an accepted baseline.', 'standards.acceptedBaseline');
 	return {
 		schemaVersion: 1,
 		workflow: { enabled: workflow.enabled },
+		acceptedBaseline,
 		produced: contracts(input.produced ?? [], 'standards.produced'),
 		consumed: contracts(input.consumed ?? [], 'standards.consumed'),
 		guarantees: strings(input.guarantees ?? [], 'standards.guarantees'),

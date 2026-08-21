@@ -85,6 +85,11 @@ describe('portable standards foundation', () => {
 	it('normalizes versioned package standards declarations and rejects unsafe paths', () => {
 		const declaration = {
 			schemaVersion: 1, workflow: { enabled: true },
+			acceptedBaseline: {
+				packageName: '@treeseed/sdk', packageVersion: '0.12.62', sourceCommit: 'c'.repeat(40),
+				npmIntegrity: `sha512-${'a'.repeat(86)}`, artifactDigest: digest,
+				openApiSourceDigest: candidateDigest,
+			},
 			produced: [{
 				id: '@treeseed/sdk/typescript-public-api', family: 'typescript', version: '1.0.0', semanticRange: '^1.0.0',
 				source: 'dist', artifact: '.treeseed/standards/typescript.json', verifier: 'scripts/standards/compare.ts',
@@ -96,6 +101,8 @@ describe('portable standards foundation', () => {
 			...declaration,
 			produced: [{ ...declaration.produced[0], artifact: '../outside.json' }],
 		})).toThrow(/safe repository-relative path/u);
+		expect(() => parseStandardsPackageManifest({ ...declaration, acceptedBaseline: undefined }))
+			.toThrow(/requires an accepted baseline/u);
 	});
 
 	it('binds every produced manifest contract to its generated artifact and bundle descriptor', async () => {
@@ -104,7 +111,12 @@ describe('portable standards foundation', () => {
 		};
 		const contractBundle = JSON.parse(readFileSync(resolve(packageRoot, '.treeseed/standards/contract-bundle.json'), 'utf8')) as {
 			contracts: Array<{ id: string; artifact: { path: string; digest: string } }>;
+			evidence: Array<{ uri: string }>;
 		};
+		for (const evidence of contractBundle.evidence) {
+			expect(evidence.uri.startsWith('/')).toBe(false);
+			expect(evidence.uri).not.toContain(packageRoot);
+		}
 		for (const produced of packageManifest.standards.produced) {
 			const artifactPath = resolve(packageRoot, produced.artifact);
 			expect(existsSync(artifactPath), produced.artifact).toBe(true);

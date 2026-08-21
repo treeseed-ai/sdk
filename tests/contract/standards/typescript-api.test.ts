@@ -30,6 +30,17 @@ describe('TypeScript public API compatibility', () => {
 		]));
 	});
 
+	it('classifies removed heritage and callable overloads as breaking', () => {
+		const baseline = model('export interface Parent { id: string }\nexport interface Child extends Parent { label?: string }\nexport function load(value: string): string;\nexport function load(value: number): string;');
+		const candidate = model('export interface Parent { id: string }\nexport interface Child { label?: string }\nexport function load(value: string): string;');
+		const comparison = compareTypeScriptApi(baseline, candidate);
+		expect(comparison.classification).toBe('breaking');
+		expect(comparison.findings).toEqual(expect.arrayContaining([
+			expect.objectContaining({ code: 'typescript_heritage_changed', path: '.Child' }),
+			expect.objectContaining({ code: 'typescript_overload_removed', path: '.load.overloads' }),
+		]));
+	});
+
 	it('observes only declarations supplied by declared package entrypoints', () => {
 		const extracted = extractTypeScriptApi([{ specifier: './public', declarationPath: 'public.d.ts', source: 'export type Public = string;' }]);
 		expect(extracted.entrypoints.map((entry) => entry.specifier)).toEqual(['./public']);

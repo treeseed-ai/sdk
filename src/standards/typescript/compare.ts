@@ -19,8 +19,21 @@ function compareSymbol(path: string, baseline: TypeScriptApiSymbol, candidate: T
 	if (!baseline.deprecated && candidate.deprecated) {
 		finding(findings, { code: 'typescript_symbol_deprecated', path, message: 'A deprecation marker was added.' }, 'compatible_addition');
 	}
+	if (JSON.stringify(baseline.heritage) !== JSON.stringify(candidate.heritage)) {
+		finding(findings, { code: 'typescript_heritage_changed', path, message: 'A public extends or implements contract changed.' }, 'breaking');
+	}
 	if (baseline.definition !== candidate.definition || baseline.returnType !== candidate.returnType) {
 		finding(findings, { code: 'typescript_symbol_type_changed', path, message: 'The public type or return type changed.' }, 'breaking');
+	}
+	if (baseline.kind === 'function') {
+		const previous = new Set(baseline.signatures);
+		const next = new Set(candidate.signatures);
+		for (const signature of previous) if (!next.has(signature)) {
+			finding(findings, { code: 'typescript_overload_removed', path: `${path}.overloads`, message: `A callable overload was removed: ${signature}.` }, 'breaking');
+		}
+		for (const signature of next) if (!previous.has(signature)) {
+			finding(findings, { code: 'typescript_overload_added', path: `${path}.overloads`, message: `A callable overload was added: ${signature}.` }, 'compatible_addition');
+		}
 	}
 	const candidateMembers = new Map(candidate.members.map((entry) => [entry.name, entry]));
 	for (const member of baseline.members) {

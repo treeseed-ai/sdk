@@ -1,52 +1,22 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { relative, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
 	canonicalStandardsJson,
 	createStandardsContractBundle,
 	standardsSha256,
 } from '../../src/standards/index.ts';
-import { normalizeOpenApi } from '../../src/standards/openapi/index.ts';
-import { extractTypeScriptApi, type TypeScriptDeclarationEntrypointInput } from '../../src/standards/typescript/index.ts';
+import { buildContractModels } from './contract-models.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 const outputRoot = resolve(root, '.treeseed/standards');
 mkdirSync(outputRoot, { recursive: true });
-const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {
-	name: string; version: string; exports: Record<string, unknown>;
-};
-
-function typesTarget(value: unknown): string | null {
-	if (typeof value === 'string') return value.endsWith('.d.ts') ? value : null;
-	if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-	const record = value as Record<string, unknown>;
-	return typesTarget(record.types) ?? Object.values(record).map(typesTarget).find(Boolean) ?? null;
-}
-
-const entrypoints: TypeScriptDeclarationEntrypointInput[] = Object.entries(packageJson.exports).map(([specifier, value]) => {
-	const target = typesTarget(value);
-	if (!target) throw new Error(`Public export ${specifier} has no declaration target.`);
-	const declarationPath = target.replace(/^\.\//u, '');
-	const absolutePath = resolve(root, declarationPath);
-	if (!existsSync(absolutePath)) throw new Error(`Public export ${specifier} declaration is missing: ${declarationPath}.`);
-	return { specifier, declarationPath, source: readFileSync(absolutePath, 'utf8') };
+const { packageJson, models } = buildContractModels({
+	packageRoot: root,
+	openApiDocument: JSON.parse(readFileSync(resolve(root, 'docs/api/openapi.json'), 'utf8')),
 });
-
-function declarationFiles(directory: string): string[] {
-	return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-		const path = resolve(directory, entry.name);
-		return entry.isDirectory() ? declarationFiles(path) : path.endsWith('.d.ts') ? [path] : [];
-	});
-}
-
-const declarations = Object.fromEntries(declarationFiles(resolve(root, 'dist')).map((path) => [
-	relative(root, path).replaceAll('\\', '/'),
-	readFileSync(path, 'utf8'),
-]));
-const typescript = extractTypeScriptApi(entrypoints, declarations);
-const openapi = normalizeOpenApi(JSON.parse(readFileSync(resolve(root, 'docs/api/openapi.json'), 'utf8')));
-const models = { schemaVersion: 1, packageVersion: packageJson.version, typescript, openapi };
+const { typescript, openapi } = models;
 const modelsPath = resolve(outputRoot, 'contract-models.json');
 writeFileSync(modelsPath, `${canonicalStandardsJson(models)}\n`);
 const typeScriptArtifactPath = resolve(outputRoot, 'typescript-public-api.json');

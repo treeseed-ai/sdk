@@ -19,9 +19,11 @@ export interface TypeScriptApiSymbol {
 	name: string;
 	kind: 'class' | 'enum' | 'function' | 'interface' | 'type' | 'variable';
 	deprecated: boolean;
+	heritage: string[];
 	members: TypeScriptApiMember[];
 	parameters: TypeScriptApiParameter[];
 	returnType: string | null;
+	signatures: string[];
 	definition: string | null;
 }
 

@@ -14,19 +14,43 @@ jobs:
       contents: write
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           submodules: recursive
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
       - run: npm run release:setup
       - run: npm run release:check-tag
       - run: bash -lc 'npm run verify:local'
+      - name: Acquire immutable accepted baseline
+        run: npm run standards:baseline
+      - name: Build exact compatibility attestation and composition
+        run: |
+          npm run standards:compatibility -- \
+            --baseline .treeseed/standards/baseline/contract-models.json \
+            --candidate .treeseed/standards/contract-models.json \
+            --baseline-bundle .treeseed/standards/baseline/contract-bundle.json \
+            --candidate-bundle .treeseed/standards/contract-bundle.json \
+            --output .treeseed/standards/compatibility-attestation.json
+          npm run standards:compose
+      - name: Verify API consumer without a consumer commit
+        run: npm run standards:consumer -- --repository https://github.com/treeseed-ai/api.git --source-commit 9a9e1b8443b3f8d65b8bf75b2f03bd7e1724cfaa
+      - name: Seal exact release evidence
+        run: npm run standards:release-evidence
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: sdk-release-evidence-${{ github.sha }}
+          path: |
+            .treeseed/standards/*.json
+            .treeseed/standards/baseline/*.json
+            .treeseed/standards/package/*.tgz
+          if-no-files-found: error
       - run: npm run release:publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: npm run release:readback
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

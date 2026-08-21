@@ -53,4 +53,23 @@ describe('OpenAPI compatibility', () => {
 		const widenedOutput = document({ type: 'string', enum: ['a', 'b', 'c'] });
 		expect(compareOpenApi(normalizeOpenApi(baseline), normalizeOpenApi(widenedOutput)).classification).toBe('breaking');
 	});
+
+	it('treats a required output becoming optional as breaking and the reverse as additive', () => {
+		const required = document({ type: 'object', properties: { id: { type: 'string' } }, required: ['id'] });
+		const optional = document({ type: 'object', properties: { id: { type: 'string' } } });
+		expect(compareOpenApi(normalizeOpenApi(required), normalizeOpenApi(optional)).findings).toEqual(expect.arrayContaining([
+			expect.objectContaining({ code: 'openapi_required_output_removed', classification: 'breaking' }),
+		]));
+		expect(compareOpenApi(normalizeOpenApi(optional), normalizeOpenApi(required)).findings).toEqual(expect.arrayContaining([
+			expect.objectContaining({ code: 'openapi_required_output_added', classification: 'compatible_addition' }),
+		]));
+	});
+
+	it('fails closed when a primitive schema type or constraint changes', () => {
+		const baseline = document({ type: 'string', minLength: 1 });
+		const candidate = document({ type: 'number', minimum: 0 });
+		expect(compareOpenApi(normalizeOpenApi(baseline), normalizeOpenApi(candidate)).findings).toEqual(expect.arrayContaining([
+			expect.objectContaining({ code: 'openapi_schema_constraint_changed', classification: 'breaking' }),
+		]));
+	});
 });

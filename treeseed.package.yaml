@@ -23,6 +23,13 @@ standards:
   schemaVersion: 1
   workflow:
     enabled: true
+  acceptedBaseline:
+    packageName: "@treeseed/sdk"
+    packageVersion: "0.12.62"
+    sourceCommit: "d12a97fdd3fdca1358895a7a64fa2012197b2942"
+    npmIntegrity: "sha512-wR5ukK2pqw0fUE9gJMYgJmIUlMTy4NoYKJrHEo6NAN/QFNrpru+9vilaS4kCPrcZQl/YAleuv962Z8c/pwwrBQ=="
+    artifactDigest: "sha256:9ccef82ccd452905e5a1733a5ced81d6d629b0c0f0d893cf19ea1a3ed53bc9f5"
+    openApiSourceDigest: "sha256:53b87f22ad3b3e4a24f4050f764e9f27081c3968130431909a366b16baa9bebd"
   produced:
     - id: "@treeseed/sdk/typescript-public-api"
       family: typescript

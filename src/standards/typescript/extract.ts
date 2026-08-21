@@ -77,36 +77,53 @@ function parameter(node: ts.ParameterDeclaration, sourceFile: ts.SourceFile): Ty
 	};
 }
 
+function functionSignature(node: ts.FunctionDeclaration, sourceFile: ts.SourceFile) {
+	const typeParameters = node.typeParameters?.length
+		? `<${node.typeParameters.map((entry) => normalizedText(entry, sourceFile)).join(',')}>`
+		: '';
+	const parameters = node.parameters.map((entry) => {
+		const value = parameter(entry, sourceFile);
+		return `${value.rest ? '...' : ''}${value.type}${value.optional ? '?' : ''}`;
+	}).join(',');
+	return `${typeParameters}(${parameters}):${node.type ? normalizedText(node.type, sourceFile) : 'unknown'}`;
+}
+
+function heritage(node: ts.InterfaceDeclaration | ts.ClassDeclaration, sourceFile: ts.SourceFile) {
+	return (node.heritageClauses ?? []).flatMap((clause) => clause.types.map((entry) =>
+		`${clause.token === ts.SyntaxKind.ExtendsKeyword ? 'extends' : 'implements'}:${normalizedText(entry, sourceFile)}`,
+	)).sort();
+}
+
 function symbol(node: ts.Statement, sourceFile: ts.SourceFile, requireExport = true): TypeScriptApiSymbol | null {
 	if (requireExport && !exported(node)) return null;
 	if (ts.isFunctionDeclaration(node) && node.name) return {
-		name: node.name.text, kind: 'function', deprecated: deprecated(node), members: [],
+		name: node.name.text, kind: 'function', deprecated: deprecated(node), heritage: [], members: [],
 		parameters: node.parameters.map((entry) => parameter(entry, sourceFile)),
-		returnType: node.type ? normalizedText(node.type, sourceFile) : 'unknown', definition: null,
+		returnType: node.type ? normalizedText(node.type, sourceFile) : 'unknown', signatures: [functionSignature(node, sourceFile)], definition: null,
 	};
 	if (ts.isInterfaceDeclaration(node) || ts.isClassDeclaration(node)) {
 		const declarationName = node.name?.text;
 		if (!declarationName) return null;
 		return {
-			name: declarationName, kind: ts.isInterfaceDeclaration(node) ? 'interface' : 'class', deprecated: deprecated(node),
+			name: declarationName, kind: ts.isInterfaceDeclaration(node) ? 'interface' : 'class', deprecated: deprecated(node), heritage: heritage(node, sourceFile),
 			members: node.members.map((entry) => member(entry, sourceFile)).filter((entry): entry is TypeScriptApiMember => Boolean(entry))
-				.sort((left, right) => left.name.localeCompare(right.name)),
-			parameters: [], returnType: null, definition: null,
+				.sort((left, right) => `${left.name}:${left.type}`.localeCompare(`${right.name}:${right.type}`)),
+			parameters: [], returnType: null, signatures: [], definition: null,
 		};
 	}
 	if (ts.isTypeAliasDeclaration(node)) return {
-		name: node.name.text, kind: 'type', deprecated: deprecated(node), members: [], parameters: [], returnType: null,
+		name: node.name.text, kind: 'type', deprecated: deprecated(node), heritage: [], members: [], parameters: [], returnType: null, signatures: [],
 		definition: normalizedText(node.type, sourceFile),
 	};
 	if (ts.isEnumDeclaration(node)) return {
-		name: node.name.text, kind: 'enum', deprecated: deprecated(node), members: [], parameters: [], returnType: null,
+		name: node.name.text, kind: 'enum', deprecated: deprecated(node), heritage: [], members: [], parameters: [], returnType: null, signatures: [],
 		definition: node.members.map((entry) => normalizedText(entry, sourceFile)).join('|'),
 	};
 	if (ts.isVariableStatement(node)) {
 		const declaration = node.declarationList.declarations[0];
 		if (!declaration || !ts.isIdentifier(declaration.name)) return null;
 		return {
-			name: declaration.name.text, kind: 'variable', deprecated: deprecated(node), members: [], parameters: [], returnType: null,
+			name: declaration.name.text, kind: 'variable', deprecated: deprecated(node), heritage: [], members: [], parameters: [], returnType: null, signatures: [],
 			definition: declaration.type ? normalizedText(declaration.type, sourceFile) : 'unknown',
 		};
 	}
@@ -118,9 +135,11 @@ function externalReexport(moduleName: string, exportedName: string): TypeScriptA
 		name: exportedName,
 		kind: 'variable',
 		deprecated: false,
+		heritage: [],
 		members: [],
 		parameters: [],
 		returnType: null,
+		signatures: [],
 		definition: `external-reexport:${moduleName}`,
 	};
 }
@@ -144,6 +163,14 @@ function extractEntrypoint(
 		const sourceFile = ts.createSourceFile(normalizedPath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 		const collected = new Map<string, TypeScriptApiSymbol>();
 		const local = new Map<string, TypeScriptApiSymbol>();
+		function collect(target: Map<string, TypeScriptApiSymbol>, value: TypeScriptApiSymbol) {
+			const previous = target.get(value.name);
+			if (previous?.kind === 'function' && value.kind === 'function') {
+				target.set(value.name, { ...previous, signatures: [...new Set([...previous.signatures, ...value.signatures])].sort() });
+				return;
+			}
+			target.set(value.name, value);
+		}
 		const imported = new Map<string, { moduleName: string; sourceName: string; localTarget: string | null }>();
 		for (const statement of sourceFile.statements) {
 			if (ts.isImportDeclaration(statement) && statement.importClause && ts.isStringLiteral(statement.moduleSpecifier)) {
@@ -166,9 +193,9 @@ function extractEntrypoint(
 				}
 			}
 			const localSymbol = symbol(statement, sourceFile, false);
-			if (localSymbol) local.set(localSymbol.name, localSymbol);
+			if (localSymbol) collect(local, localSymbol);
 			const publicSymbol = symbol(statement, sourceFile);
-			if (publicSymbol) collected.set(publicSymbol.name, publicSymbol);
+			if (publicSymbol) collect(collected, publicSymbol);
 		}
 		for (const statement of sourceFile.statements) {
 			if (!ts.isExportDeclaration(statement)) continue;
