@@ -35,6 +35,7 @@ try {
 		'tests/contract/api/provider-assignment-capability-handles.test.ts',
 		'tests/contract/api/api-route-descriptors.test.ts',
 		'tests/unit/governance/content-validation.test.ts',
+		'tests/unit/services/capacity/workdays/planning-profile-input-source.test.ts',
 	], { cwd: worktree, stdio: 'inherit' });
 	const testResult = JSON.parse(readFileSync(testResultPath, 'utf8')) as {
 		numTotalTestSuites: number;
