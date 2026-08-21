@@ -13,3 +13,4 @@ export * from '../../sdk-types/support/platform-contracts.ts';
 export * from '../../sdk-types/support/sdk-model-names.ts';
 export * from '../../sdk-types/support/sdk-search-request.ts';
 export * from '../../sdk-types/treedx/graph/sdk-graph-query-request.ts';
+export * from '../../projects/projects-core/project-workflow.ts';
