@@ -39,7 +39,7 @@ jobs:
             --output .treeseed/standards/compatibility-attestation.json
           npm run standards:compose
       - name: Verify API consumer without a consumer commit
-        run: npm run standards:consumer -- --repository https://github.com/treeseed-ai/api.git --source-commit 859904cb482e15db27a65a9357cc9a04dccea5b1
+        run: npm run standards:consumer -- --repository https://github.com/treeseed-ai/api.git --source-commit 18996f3f890376c89f255011b36253a4f868fb64
       - name: Seal exact release evidence
         run: npm run standards:release-evidence
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
