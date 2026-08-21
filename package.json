@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-	"version": "0.13.0-rc.5",
+	"version": "0.13.0-rc.6",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "Apache-2.0",
   "repository": {
@@ -135,6 +135,10 @@
       "types": "./dist/standards/openapi/index.d.ts",
       "default": "./dist/standards/openapi/index.js"
     },
+    "./standards/mcp": {
+      "types": "./dist/standards/mcp/index.d.ts",
+      "default": "./dist/standards/mcp/index.js"
+    },
     "./operator-contracts": {
       "types": "./dist/operator-contracts/index.d.ts",
       "default": "./dist/operator-contracts/index.js"
@@ -214,6 +218,10 @@
     "./market-client": {
       "types": "./dist/entrypoints/clients/market-client.d.ts",
       "default": "./dist/entrypoints/clients/market-client.js"
+    },
+    "./control-plane-client": {
+      "types": "./dist/entrypoints/clients/control-plane-client.d.ts",
+      "default": "./dist/entrypoints/clients/control-plane-client.js"
     },
     "./market-gateway": {
       "types": "./dist/gateway/index.d.ts",
