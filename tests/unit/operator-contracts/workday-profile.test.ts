@@ -38,7 +38,7 @@ describe('workday allocation profiles', () => {
 		const bundle={schemaVersion:'treeseed.workday-allocation-profile-bundle/v1' as const,profiles:[second,profile]};
 		expect(validateRepositoryWorkdayProfileBundle(bundle)).toEqual([]);
 		expect(normalizeRepositoryWorkdayProfileBundle(bundle).profiles.map((entry)=>entry.id)).toEqual(['feature-heavy','stability-heavy']);
-		expect(validateRepositoryWorkdayProfileBundle({...bundle,profiles:[profile,profile]}).map((entry)=>entry.code)).toContain('bundle_profile_identity_duplicate');
+		expect(validateRepositoryWorkdayProfileBundle({...bundle,profiles:[profile,{...profile,version:'2.0.0'}]}).map((entry)=>entry.code)).toContain('bundle_profile_id_duplicate');
 		expect(validateRepositoryWorkdayProfileBundle({...bundle,profiles:[]}).map((entry)=>entry.code)).toContain('bundle_profiles_empty');
 	});
 

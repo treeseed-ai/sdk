@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.13.0-rc.4",
+	"version": "0.13.0-rc.5",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "Apache-2.0",
   "repository": {

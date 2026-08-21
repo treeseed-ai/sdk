@@ -167,11 +167,10 @@ export function validateRepositoryWorkdayProfileBundle(bundle: RepositoryWorkday
 	const diagnostics: WorkdayProfileDiagnostic[] = [];
 	if (bundle.schemaVersion !== 'treeseed.workday-allocation-profile-bundle/v1') diagnostics.push({ code: 'bundle_schema_version_invalid', path: 'schemaVersion', message: 'Unsupported repository workday profile bundle schema.' });
 	if (!Array.isArray(bundle.profiles) || bundle.profiles.length === 0) diagnostics.push({ code: 'bundle_profiles_empty', path: 'profiles', message: 'A repository workday profile bundle must contain at least one profile.' });
-	const identities = new Set<string>();
+	const profileIds = new Set<string>();
 	for (const [index, profile] of (Array.isArray(bundle.profiles) ? bundle.profiles : []).entries()) {
-		const identity = `${profile.id}@${profile.version}`;
-		if (identities.has(identity)) diagnostics.push({ code: 'bundle_profile_identity_duplicate', path: `profiles.${index}`, message: `Profile generation ${identity} is declared more than once.` });
-		identities.add(identity);
+		if (profileIds.has(profile.id)) diagnostics.push({ code: 'bundle_profile_id_duplicate', path: `profiles.${index}.id`, message: `Stable profile id ${profile.id} is declared more than once; a repository bundle contains exactly one current generation per profile.` });
+		profileIds.add(profile.id);
 		diagnostics.push(...validateWorkdayAllocationProfile(profile,classCatalogs).map((diagnostic) => ({ ...diagnostic, path: `profiles.${index}.${diagnostic.path}` })));
 	}
 	return diagnostics;
