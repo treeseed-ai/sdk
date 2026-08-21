@@ -1,6 +1,7 @@
 export type { AgentKernelPolicy,AgentKernelProfile,ProjectAgentClass,ProjectAgentClassStatus } from '../../agent-capacity/contracts/projects/agents/project-agent-class.ts';
 export * from '../../agent-capacity/allocation.ts';
 export * from '../../agent-capacity/artifacts.ts';
+export { compileDefaultChatActivityProfile } from '../../agent-capacity/authoring/chat-activity-profile.ts';
 export * from '../../agent-capacity/authority/agent-authority-presets.ts';
 export * from '../../agent-capacity/authority/assignment-authority-probe.ts';
 export * from '../../agent-capacity/artifact-mutation-receipt.ts';
