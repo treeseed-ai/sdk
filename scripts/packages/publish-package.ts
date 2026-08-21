@@ -1,17 +1,30 @@
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { assertPackageReleaseTag, packageReleaseVersion, type PackageReleaseVersion } from './release-version.ts';
 
 const packageRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const extraArgs = process.argv.slice(2);
 const tagName = process.env.GITHUB_REF_NAME;
+const packageVersion = JSON.parse(readFileSync(resolve(packageRoot, 'package.json'), 'utf8')) as { version: string };
 
-if (tagName && !/^\d+\.\d+\.\d+$/.test(tagName)) {
-	console.error(`Refusing to publish @treeseed/sdk from non-stable tag "${tagName}".`);
+if (extraArgs.some((argument) => argument === '--tag' || argument.startsWith('--tag='))) {
+	console.error('release:publish owns npm dist-tag selection; a caller cannot override --tag.');
 	process.exit(1);
 }
 
-const npmArgs = ['publish', '.', '--access', 'public'];
+let release: PackageReleaseVersion;
+try {
+	release = tagName
+		? assertPackageReleaseTag(tagName, packageVersion.version)
+		: packageReleaseVersion(packageVersion.version);
+} catch (error) {
+	console.error(error instanceof Error ? error.message : String(error));
+	process.exit(1);
+}
+
+const npmArgs = ['publish', '.', '--access', 'public', '--tag', release.npmDistTag];
 
 if (process.env.GITHUB_ACTIONS === 'true') {
 	npmArgs.push('--provenance');
