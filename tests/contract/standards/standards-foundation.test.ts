@@ -5,6 +5,7 @@ import {
 	createStandardsComposition,
 	createStandardsContractBundle,
 	createStandardsPortfolioEntry,
+	declaredSemanticBump,
 	parseStandardsPackageManifest,
 	semanticBumpResult,
 	standardsSha256,
@@ -70,6 +71,11 @@ describe('portable standards foundation', () => {
 		expect(semanticBumpResult('compatible_addition', 'patch').sufficient).toBe(false);
 		expect(semanticBumpResult('breaking', 'minor').sufficient).toBe(false);
 		expect(semanticBumpResult('breaking', 'major').sufficient).toBe(true);
+		expect(semanticBumpResult('breaking', 'minor', '0.12.62')).toMatchObject({ required: 'minor', sufficient: true });
+		expect(semanticBumpResult('breaking', 'minor', '1.2.3')).toMatchObject({ required: 'major', sufficient: false });
+		expect(declaredSemanticBump('0.12.62', '0.13.0-rc.1')).toBe('minor');
+		expect(declaredSemanticBump('1.2.3', '2.0.0')).toBe('major');
+		expect(() => declaredSemanticBump('0.13.0', '0.12.99')).toThrow('cannot precede');
 	});
 
 	it('normalizes versioned package standards declarations and rejects unsafe paths', () => {

@@ -46,7 +46,7 @@ const declarations = Object.fromEntries(declarationFiles(resolve(root, 'dist')).
 ]));
 const typescript = extractTypeScriptApi(entrypoints, declarations);
 const openapi = normalizeOpenApi(JSON.parse(readFileSync(resolve(root, 'docs/api/openapi.json'), 'utf8')));
-const models = { schemaVersion: 1, typescript, openapi };
+const models = { schemaVersion: 1, packageVersion: packageJson.version, typescript, openapi };
 const modelsPath = resolve(outputRoot, 'contract-models.json');
 writeFileSync(modelsPath, `${canonicalStandardsJson(models)}\n`);
 

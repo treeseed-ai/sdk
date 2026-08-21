@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import {
 	canonicalStandardsJson,
 	createCompatibilityAttestation,
+	declaredSemanticBump,
 	semanticBumpResult,
 	standardsSha256,
 } from '../../src/standards/index.ts';
@@ -20,16 +21,20 @@ function argument(name: string) {
 const baselinePath = argument('--baseline');
 const candidatePath = argument('--candidate');
 const outputPath = argument('--output');
-const declared = (process.argv[process.argv.indexOf('--declared') + 1] ?? 'none') as SemanticVersionRequirement;
-if (!['none', 'patch', 'minor', 'major'].includes(declared)) throw new Error('--declared must be none, patch, minor, or major.');
-const baseline = JSON.parse(readFileSync(baselinePath, 'utf8')) as { typescript: TypeScriptApiModel; openapi: OpenApiContractModel };
-const candidate = JSON.parse(readFileSync(candidatePath, 'utf8')) as { typescript: TypeScriptApiModel; openapi: OpenApiContractModel };
+const baseline = JSON.parse(readFileSync(baselinePath, 'utf8')) as { packageVersion: string; typescript: TypeScriptApiModel; openapi: OpenApiContractModel };
+const candidate = JSON.parse(readFileSync(candidatePath, 'utf8')) as { packageVersion: string; typescript: TypeScriptApiModel; openapi: OpenApiContractModel };
+const declared = declaredSemanticBump(baseline.packageVersion, candidate.packageVersion);
+const declaredArgumentIndex = process.argv.indexOf('--declared');
+const declaredArgument = declaredArgumentIndex >= 0 ? process.argv[declaredArgumentIndex + 1] as SemanticVersionRequirement | undefined : undefined;
+if (declaredArgument && declaredArgument !== declared) {
+	throw new Error(`Declared bump ${declaredArgument} does not match version-derived bump ${declared}.`);
+}
 const typescript = compareTypeScriptApi(baseline.typescript, candidate.typescript);
 const openapi = compareOpenApi(baseline.openapi, candidate.openapi);
 const classification = [typescript.classification, openapi.classification].includes('breaking')
 	? 'breaking'
 	: [typescript.classification, openapi.classification].includes('compatible_addition') ? 'compatible_addition' : 'unchanged';
-const result = semanticBumpResult(classification, declared);
+const result = semanticBumpResult(classification, declared, baseline.packageVersion);
 const attestation = createCompatibilityAttestation({
 	contractId: '@treeseed/sdk/public-contracts',
 	baselineBundle: await standardsSha256(baseline), candidateBundle: await standardsSha256(candidate), result,
