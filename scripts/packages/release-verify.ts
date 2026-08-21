@@ -111,6 +111,7 @@ function assertCleanDistArtifacts() {
 assertNoLocalDependencyLinks();
 run('npm', ['run', 'lint']);
 run('npm', ['run', 'standards:acceptance']);
+run('npm', ['run', 'standards:build']);
 scanDirectory(resolve(packageRoot, 'dist'));
 assertCleanDistArtifacts();
 run('npm', ['run', 'test:release']);
