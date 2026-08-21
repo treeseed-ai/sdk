@@ -5,6 +5,7 @@ import {
 	createStandardsComposition,
 	createStandardsContractBundle,
 	createStandardsPortfolioEntry,
+	parseStandardsPackageManifest,
 	semanticBumpResult,
 	standardsSha256,
 } from '../../../src/standards/index.ts';
@@ -69,5 +70,21 @@ describe('portable standards foundation', () => {
 		expect(semanticBumpResult('compatible_addition', 'patch').sufficient).toBe(false);
 		expect(semanticBumpResult('breaking', 'minor').sufficient).toBe(false);
 		expect(semanticBumpResult('breaking', 'major').sufficient).toBe(true);
+	});
+
+	it('normalizes versioned package standards declarations and rejects unsafe paths', () => {
+		const declaration = {
+			schemaVersion: 1, workflow: { enabled: true },
+			produced: [{
+				id: '@treeseed/sdk/typescript-public-api', family: 'typescript', version: '1.0.0', semanticRange: '^1.0.0',
+				source: 'dist', artifact: '.treeseed/standards/typescript.json', verifier: 'scripts/standards/compare.ts',
+			}],
+			consumed: [], guarantees: ['deterministic'], deprecations: [], runtimes: ['node>=22'], rollbackOperations: ['remove-prerelease'],
+		};
+		expect(parseStandardsPackageManifest(declaration)).toMatchObject({ schemaVersion: 1, workflow: { enabled: true } });
+		expect(() => parseStandardsPackageManifest({
+			...declaration,
+			produced: [{ ...declaration.produced[0], artifact: '../outside.json' }],
+		})).toThrow(/safe repository-relative path/u);
 	});
 });

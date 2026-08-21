@@ -68,7 +68,11 @@
     "release:setup": "npm run setup:ci",
     "release:check-tag": "node --import tsx ./scripts/packages/assert-release-tag-version.ts",
     "release:verify": "npm run check:file-lengths && node --import tsx ./scripts/packages/release-verify.ts",
-    "release:publish": "node --import tsx ./scripts/packages/publish-package.ts"
+    "release:publish": "node --import tsx ./scripts/packages/publish-package.ts",
+    "standards:build": "node --import tsx ./scripts/standards/build-contract-bundle.ts",
+    "standards:compatibility": "node --import tsx ./scripts/standards/compare-compatibility.ts",
+    "standards:compose": "node --import tsx ./scripts/standards/resolve-composition.ts",
+    "standards:acceptance": "node --import tsx ./scripts/standards/package-acceptance.ts"
   },
   "dependencies": {
     "@github/copilot": "1.0.39",

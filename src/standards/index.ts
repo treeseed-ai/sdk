@@ -5,3 +5,4 @@ export * from './contract-bundle.ts';
 export * from './contracts.ts';
 export * from './errors.ts';
 export * from './portfolio-entry.ts';
+export * from './package-manifest.ts';

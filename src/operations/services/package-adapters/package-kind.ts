@@ -99,6 +99,7 @@ export type PackageManifestDocument = {
 	projectArchitecture?: unknown;
 	contentContributions?: unknown;
 	capabilities?: unknown;
+	standards?: unknown;
 };
 
 export type PackageContentContribution = {

@@ -19,6 +19,36 @@ artifacts:
     name: "@treeseed/sdk"
 releaseGate:
   workflow: verify.yml
+standards:
+  schemaVersion: 1
+  workflow:
+    enabled: true
+  produced:
+    - id: "@treeseed/sdk/typescript-public-api"
+      family: typescript
+      version: "1.0.0"
+      semanticRange: "^1.0.0"
+      source: dist
+      artifact: .treeseed/standards/typescript-public-api.json
+      verifier: scripts/standards/compare-compatibility.ts
+    - id: "@treeseed/sdk/openapi"
+      family: openapi
+      version: "1.0.0"
+      semanticRange: "^1.0.0"
+      source: docs/api/openapi.json
+      artifact: .treeseed/standards/openapi.json
+      verifier: scripts/standards/compare-compatibility.ts
+  consumed: []
+  guarantees:
+    - deterministic-contract-bundle
+    - exact-artifact-and-source-binding
+    - semantic-version-sufficiency
+  deprecations: []
+  runtimes:
+    - node>=22
+  rollbackOperations:
+    - remove-prerelease-dist-tag
+    - restore-accepted-composition
 projectArchitecture:
   topology: split_site_content
   rootPath: .
