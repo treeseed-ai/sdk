@@ -314,8 +314,8 @@ export const CONTROL_PLANE_OPERATIONS = {
 		actionResult: resource('realtime.actions.result', 'POST', '/v1/client-sessions/{sessionId}/actions/{actionId}/result', { sessionId: z.string().min(1), actionId: z.string().min(1) }, { capability: 'realtime.write' }),
 	},
 	treedx: {
-		library: resource('treedx.library.show', 'GET', '/v1/projects/{projectId}/treedx-library', { projectId: z.string().min(1) }, { capability: 'treedx.read', authentication: 'oauth_or_provider' }),
-		bindLibrary: resource('treedx.library.bind', 'POST', '/v1/projects/{projectId}/treedx-library', { projectId: z.string().min(1) }, { capability: 'treedx.write', authentication: 'oauth_or_provider' }),
+		library: resource('treedx.library.show', 'GET', '/v1/projects/{projectId}/treedx-library', { projectId: z.string().min(1) }, { capability: 'treedx.read' }),
+		bindLibrary: resource('treedx.library.bind', 'POST', '/v1/projects/{projectId}/treedx-library', { projectId: z.string().min(1) }, { capability: 'treedx.write' }),
 		createRepository: resource('treedx.repositories.create', 'POST', '/v1/dx/projects/{projectId}/repos', { projectId: z.string().min(1) }, { capability: 'treedx.write', authentication: 'oauth_or_provider' }),
 		createWorkspace: resource('treedx.workspaces.create', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/workspaces', { projectId: z.string().min(1), repoId: z.string().min(1) }, { capability: 'treedx.write', authentication: 'oauth_or_provider' }),
 		readWorkspaceFile: resource('treedx.workspaces.files.read', 'GET', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/files', { projectId: z.string().min(1), workspaceId: z.string().min(1) }, { capability: 'treedx.read', authentication: 'oauth_or_provider' }),
