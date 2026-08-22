@@ -57,4 +57,10 @@ describe('ControlPlaneClient', () => {
 		expect(String(fetchImpl.mock.calls[0]![1]!.body)).toContain('client_id=trsd');
 		expect(new Headers(fetchImpl.mock.calls[0]![1]!.headers).get('content-type')).toBe('application/x-www-form-urlencoded');
 	});
+
+	it('preserves OAuth protocol error codes for device polling', async () => {
+		const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ error: 'authorization_pending', error_description: 'Authorization is pending.' }), { status: 400, headers: { 'content-type': 'application/json' } }));
+		const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002' }, fetchImpl });
+		await expect(client.exchangeDeviceCode('trsd', 'device')).rejects.toMatchObject<Partial<ControlPlaneClientError>>({ status: 400, problem: { code: 'authorization_pending', detail: 'Authorization is pending.' } });
+	});
 });

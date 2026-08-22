@@ -251,7 +251,12 @@ export class ControlPlaneClient {
 	private async exchangeOAuthToken(values: Record<string, string>, signal?: AbortSignal): Promise<OAuthTokenReceipt> {
 		const response = await this.fetchImpl(`${this.baseUrl}/oauth/token`, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(values), signal });
 		const payload = await responsePayload(response) as Record<string, unknown>;
-		if (!response.ok) throw new ControlPlaneClientError(String(payload.error_description ?? payload.error ?? 'OAuth token exchange failed.'), response.status, problemFrom(payload, response.status), response.headers);
+		if (!response.ok) {
+			const problem = problemFrom(payload, response.status);
+			problem.code = typeof payload.error === 'string' ? payload.error : problem.code;
+			problem.detail = typeof payload.error_description === 'string' ? payload.error_description : problem.detail;
+			throw new ControlPlaneClientError(problem.detail ?? problem.code, response.status, problem, response.headers);
+		}
 		return { tokenType: 'Bearer', accessToken: String(payload.access_token), refreshToken: typeof payload.refresh_token === 'string' ? payload.refresh_token : undefined, expiresIn: Number(payload.expires_in), scope: String(payload.scope ?? '').split(/\s+/u).filter(Boolean) as OAuthScope[], audience: String(payload.audience ?? this.baseUrl), principal: payload.principal && typeof payload.principal === 'object' ? payload.principal as ApiPrincipal : undefined };
 	}
 
