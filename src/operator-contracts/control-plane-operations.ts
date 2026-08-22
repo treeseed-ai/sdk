@@ -10,11 +10,12 @@ const none = z.undefined();
 const record = z.record(z.unknown());
 const payload = record;
 
-type Definition = Omit<ControlPlaneOperationDescriptor, 'schemaVersion' | 'schemas' | 'idempotency' | 'concurrency' | 'audited' | 'receipt' | 'redactedPaths'> & {
+type Definition = Omit<ControlPlaneOperationDescriptor, 'schemaVersion' | 'schemas' | 'idempotency' | 'concurrency' | 'audited' | 'receipt' | 'redactedPaths' | 'authentication'> & {
 	parameters?: string;
 	redactedPaths?: string[];
 	idempotencyRequired?: boolean;
 	concurrencyRequired?: boolean;
+	authentication?: ControlPlaneOperationDescriptor['authentication'];
 };
 
 function define<TPath, TQuery, TBody, TOutput>(
@@ -26,6 +27,7 @@ function define<TPath, TQuery, TBody, TOutput>(
 	return {
 		descriptor: {
 			...descriptor,
+			authentication: definition.authentication ?? (definition.oauthScopes.length ? 'oauth' : 'anonymous'),
 			schemaVersion: CONTROL_PLANE_OPERATION_SCHEMA_VERSION,
 			schemas: {
 				input: `treeseed.${definition.operationId}.input/v1`,
@@ -46,7 +48,7 @@ function define<TPath, TQuery, TBody, TOutput>(
 function read(operationId: `${string}.${string}`, path: `/v1/${string}`, capability: string, surfaces: ControlPlaneOperationDescriptor['surfaces'] = ['rest']) {
 	return define({
 		operationId, description: `Read ${operationId}.`, rest: { method: 'GET', path }, capability,
-		oauthScopes: ['treeseed:read'], kind: 'read', riskClass: 'ordinary', confirmation: 'never',
+		authentication: 'oauth', oauthScopes: ['treeseed:read'], kind: 'read', riskClass: 'ordinary', confirmation: 'never',
 		surfaces, cacheScope: 'principal', pagination: 'none',
 	}, { path: empty, query: empty, body: none, output: payload });
 }
@@ -61,7 +63,7 @@ function providerPath<T extends z.ZodRawShape>(
 	const kind = options.read ? 'read' : 'mutation';
 	return define({
 		operationId, description: `${kind === 'read' ? 'Read' : 'Apply'} ${operationId}.`, rest: { method, path },
-		parameters: `treeseed.${operationId}.parameters/v1`, capability: 'providers.execute', oauthScopes: ['treeseed:execution'],
+		parameters: `treeseed.${operationId}.parameters/v1`, capability: 'providers.execute', authentication: 'provider', oauthScopes: [],
 		kind, riskClass: 'ordinary', confirmation: 'never', surfaces: ['rest'], cacheScope: 'none', pagination: 'none',
 		redactedPaths: options.redactedPaths,
 	}, { path: z.object(pathShape).strict(), query: empty, body: method === 'GET' ? none : record, output: payload });
@@ -70,7 +72,7 @@ function providerPath<T extends z.ZodRawShape>(
 const noPathProvider = (operationId: `${string}.${string}`, method: 'GET' | 'POST' | 'PUT', path: `/v1/${string}`, options: { read?: boolean; redactedPaths?: string[] } = {}) =>
 	define({
 		operationId, description: `${options.read ? 'Read' : 'Apply'} ${operationId}.`, rest: { method, path },
-		capability: 'providers.execute', oauthScopes: ['treeseed:execution'], kind: options.read ? 'read' : 'mutation',
+		capability: 'providers.execute', authentication: 'provider', oauthScopes: [], kind: options.read ? 'read' : 'mutation',
 		riskClass: 'ordinary', confirmation: 'never', surfaces: ['rest'], cacheScope: 'none', pagination: 'none',
 		redactedPaths: options.redactedPaths,
 	}, { path: empty, query: empty, body: method === 'GET' ? none : record, output: payload });
@@ -88,6 +90,7 @@ function resource<T extends z.ZodRawShape>(
 		concurrency?: boolean;
 		pagination?: ControlPlaneOperationDescriptor['pagination'];
 		redactedPaths?: string[];
+		authentication?: ControlPlaneOperationDescriptor['authentication'];
 	} = { capability: 'control-plane.use' },
 ) {
 	const kind = method === 'GET' ? 'read' : 'mutation';
@@ -95,7 +98,9 @@ function resource<T extends z.ZodRawShape>(
 	return define({
 		operationId, description: `${kind === 'read' ? 'Read' : 'Apply'} ${operationId}.`, rest: { method, path },
 		...(Object.keys(pathShape).length ? { parameters: `treeseed.${operationId}.parameters/v1` } : {}),
-		capability: options.capability, oauthScopes: options.scopes ?? (kind === 'read' ? ['treeseed:read'] : ['treeseed:projects:write']),
+		capability: options.capability,
+		authentication: options.authentication ?? ((options.scopes ?? (kind === 'read' ? ['treeseed:read'] : ['treeseed:projects:write'])).length ? 'oauth' : 'anonymous'),
+		oauthScopes: options.scopes ?? (kind === 'read' ? ['treeseed:read'] : ['treeseed:projects:write']),
 		kind, riskClass, confirmation: riskClass === 'ordinary' ? 'never' : 'input_required',
 		surfaces: options.surfaces ?? ['rest'], cacheScope: kind === 'read' ? 'principal' : 'none',
 		pagination: options.pagination ?? 'none', concurrencyRequired: options.concurrency, redactedPaths: options.redactedPaths,
@@ -161,7 +166,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 		members: resource('teams.members.list', 'GET', '/v1/teams/{teamId}/members', { teamId: z.string().min(1) }, { capability: 'teams.read', pagination: 'cursor' }),
 		invite: resource('teams.invites.create', 'POST', '/v1/teams/{teamId}/invites', { teamId: z.string().min(1) }, { capability: 'teams.write' }),
 		invites: resource('teams.invites.list', 'GET', '/v1/teams/{teamId}/invites', { teamId: z.string().min(1) }, { capability: 'teams.read', pagination: 'cursor' }),
-		inviteShow: resource('teams.invites.show', 'GET', '/v1/team-invites/{token}', { token: z.string().min(1) }, { capability: 'teams.join', scopes: [], redactedPaths: ['path.token'] }),
+		inviteShow: resource('teams.invites.show', 'GET', '/v1/team-invites/{token}', { token: z.string().min(1) }, { capability: 'teams.join', scopes: [], authentication: 'signed_request', redactedPaths: ['path.token'] }),
 		inviteAccept: resource('teams.invites.accept', 'POST', '/v1/team-invites/{token}/accept', { token: z.string().min(1) }, { capability: 'teams.join', redactedPaths: ['path.token'] }),
 		updateMember: resource('teams.members.update', 'PATCH', '/v1/teams/{teamId}/members/{membershipId}', { teamId: z.string().min(1), membershipId: z.string().min(1) }, { capability: 'teams.write', concurrency: true }),
 		removeMember: resource('teams.members.delete', 'DELETE', '/v1/teams/{teamId}/members/{membershipId}', { teamId: z.string().min(1), membershipId: z.string().min(1) }, { capability: 'teams.write', risk: 'destructive', concurrency: true }),
@@ -217,8 +222,8 @@ export const CONTROL_PLANE_OPERATIONS = {
 	},
 	repositories: {
 		githubSetup: resource('repositories.github.setup', 'POST', '/v1/provider-connectors/github/{kind}/setup', { kind: z.string().min(1) }, { capability: 'repositories.connect', scopes: ['treeseed:projects:write'], risk: 'authority' }),
-		githubCallback: resource('repositories.github.callback', 'GET', '/v1/provider-connectors/github/{kind}/callback', { kind: z.string().min(1) }, { capability: 'repositories.connect', scopes: [] }),
-		githubWebhook: resource('repositories.github.webhook', 'POST', '/v1/provider-webhooks/github/{kind}', { kind: z.string().min(1) }, { capability: 'repositories.webhook', scopes: [], redactedPaths: ['body'] }),
+		githubCallback: resource('repositories.github.callback', 'GET', '/v1/provider-connectors/github/{kind}/callback', { kind: z.string().min(1) }, { capability: 'repositories.connect', scopes: [], authentication: 'signed_request' }),
+		githubWebhook: resource('repositories.github.webhook', 'POST', '/v1/provider-webhooks/github/{kind}', { kind: z.string().min(1) }, { capability: 'repositories.webhook', scopes: [], authentication: 'signed_request', redactedPaths: ['body'] }),
 		workflowOperations: resource('repositories.workflows.list', 'GET', '/v1/projects/{projectId}/workflow-operations', { projectId: z.string().min(1) }, { capability: 'workflows.read', pagination: 'cursor' }),
 		workflowRuns: resource('repositories.workflow.runs.list', 'GET', '/v1/projects/{projectId}/workflow-operation-runs', { projectId: z.string().min(1) }, { capability: 'workflows.read', pagination: 'cursor' }),
 		updateWorkflow: resource('repositories.workflows.update', 'PUT', '/v1/projects/{projectId}/workflow-operations/{operationId}', { projectId: z.string().min(1), operationId: z.string().min(1) }, { capability: 'workflows.write', concurrency: true }),
