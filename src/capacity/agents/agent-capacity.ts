@@ -1,4 +1,5 @@
 export type { AgentKernelPolicy,AgentKernelProfile,ProjectAgentClass,ProjectAgentClassStatus } from '../../agent-capacity/contracts/projects/agents/project-agent-class.ts';
+export * from '../../agent-capacity/allocation.ts';
 export * from '../../agent-capacity/validation/index.ts';
 export * from '../../agent-capacity/contracts/capacity/assignments/assignment-records.ts';
 export * from '../../agent-capacity/contracts/capacity/communication/communication-records.ts';
