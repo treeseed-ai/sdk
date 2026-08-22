@@ -15,7 +15,7 @@ export type ControlPlaneConfirmationPolicy = 'never' | 'input_required';
 export type ControlPlaneOperationSurface = 'rest' | 'cli' | 'mcp_tool' | 'mcp_resource' | 'internal';
 export type ControlPlaneCacheScope = 'none' | 'principal' | 'team' | 'project' | 'public';
 export type ControlPlanePaginationKind = 'none' | 'cursor';
-export type ControlPlaneAuthenticationKind = 'anonymous' | 'oauth' | 'provider' | 'signed_request';
+export type ControlPlaneAuthenticationKind = 'anonymous' | 'oauth' | 'oauth_or_provider' | 'provider' | 'signed_request';
 
 export interface ControlPlaneRestBinding {
 	method: ControlPlaneHttpMethod;
@@ -149,10 +149,10 @@ export function validateControlPlaneCatalog(catalog: ControlPlaneCatalog): Contr
 		for (const scope of operation.oauthScopes) {
 			if (!TREESEED_OAUTH_SCOPES.includes(scope)) diagnostics.push({ code: 'oauth_scope_invalid', path: `${path}.oauthScopes`, message: `Unknown OAuth scope ${scope}.` });
 		}
-		if (operation.authentication === 'oauth' && operation.oauthScopes.length === 0) {
+		if (['oauth', 'oauth_or_provider'].includes(operation.authentication) && operation.oauthScopes.length === 0) {
 			diagnostics.push({ code: 'oauth_scope_required', path: `${path}.oauthScopes`, message: 'OAuth-authenticated operations require at least one OAuth scope.' });
 		}
-		if (operation.authentication !== 'oauth' && operation.oauthScopes.length > 0) {
+		if (!['oauth', 'oauth_or_provider'].includes(operation.authentication) && operation.oauthScopes.length > 0) {
 			diagnostics.push({ code: 'oauth_scope_forbidden', path: `${path}.oauthScopes`, message: 'Only OAuth-authenticated operations may declare OAuth scopes.' });
 		}
 		if (operation.authentication === 'provider' && operation.capability !== 'providers.execute') {
