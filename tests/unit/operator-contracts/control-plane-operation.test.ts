@@ -51,7 +51,7 @@ describe('control-plane operation catalog', () => {
 
 	it('publishes one valid catalog with unique REST bindings', () => {
 		expect(validateControlPlaneCatalog(CONTROL_PLANE_CATALOG)).toEqual([]);
-		expect(CONTROL_PLANE_OPERATION_LIST).toHaveLength(202);
+		expect(CONTROL_PLANE_OPERATION_LIST).toHaveLength(230);
 		expect(new Set(CONTROL_PLANE_OPERATION_LIST.map((entry) => entry.descriptor.operationId)).size).toBe(CONTROL_PLANE_OPERATION_LIST.length);
 		const paths = CONTROL_PLANE_OPERATION_LIST.flatMap((entry) => entry.descriptor.rest?.path ?? []);
 		expect(paths.some((path) => path.startsWith('/v1/operator/commands'))).toBe(false);
@@ -65,6 +65,11 @@ describe('control-plane operation catalog', () => {
 		expect(CONTROL_PLANE_OPERATIONS.treedx.createWorkspace.descriptor).toMatchObject({ authentication: 'oauth_or_provider', oauthScopes: ['treeseed:projects:write'] });
 		expect(CONTROL_PLANE_OPERATIONS.services.putAuthority.descriptor.redactedPaths).toContain('body');
 		expect(CONTROL_PLANE_OPERATIONS.services.disconnect.descriptor.confirmation).toBe('input_required');
+		expect(CONTROL_PLANE_OPERATIONS.planning.acceptExecutionInput.descriptor.rest?.path).toBe('/v1/decision-execution-inputs/{inputId}/accept');
+		expect(CONTROL_PLANE_OPERATIONS.estimates.list.descriptor.pagination).toBe('cursor');
+		expect(CONTROL_PLANE_OPERATIONS.assignmentGraphs.compile.descriptor.oauthScopes).toEqual(['treeseed:execution']);
+		expect(CONTROL_PLANE_OPERATIONS.research.completeStage.descriptor.oauthScopes).toEqual(['treeseed:knowledge:write']);
+		expect(CONTROL_PLANE_OPERATIONS.communications.cancelInvocation.descriptor).toMatchObject({ riskClass: 'destructive', confirmation: 'input_required' });
 	});
 
 	it('rejects mixed authentication authority metadata', () => {
