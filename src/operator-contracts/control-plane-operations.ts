@@ -234,6 +234,16 @@ export const CONTROL_PLANE_OPERATIONS = {
 		putWorkflowVariable: resource('repositories.workflow.variables.put', 'PUT', '/v1/projects/{projectId}/workflow-configuration/variables/{name}', { projectId: z.string().min(1), name: z.string().min(1) }, { capability: 'workflows.write', concurrency: true }),
 		deleteWorkflowVariable: resource('repositories.workflow.variables.delete', 'DELETE', '/v1/projects/{projectId}/workflow-configuration/variables/{name}', { projectId: z.string().min(1), name: z.string().min(1) }, { capability: 'workflows.write', risk: 'destructive', concurrency: true }),
 	},
+	services: {
+		providers: resource('services.providers.list', 'GET', '/v1/service-providers', {}, { capability: 'services.read', surfaces: ['rest', 'cli', 'mcp_tool'] }),
+		connections: resource('services.connections.list', 'GET', '/v1/teams/{teamId}/services', { teamId: z.string().min(1) }, { capability: 'services.read', surfaces: ['rest', 'cli', 'mcp_tool'], pagination: 'cursor' }),
+		connection: resource('services.connections.show', 'GET', '/v1/teams/{teamId}/services/{connectionId}', { teamId: z.string().min(1), connectionId: z.string().min(1) }, { capability: 'services.read', surfaces: ['rest', 'cli', 'mcp_resource'] }),
+		createConnection: resource('services.connections.create', 'POST', '/v1/teams/{teamId}/services', { teamId: z.string().min(1) }, { capability: 'services.write', surfaces: ['rest', 'cli', 'mcp_tool'] }),
+		updateConnection: resource('services.connections.update', 'PUT', '/v1/teams/{teamId}/services/{connectionId}', { teamId: z.string().min(1), connectionId: z.string().min(1) }, { capability: 'services.write', surfaces: ['rest', 'cli', 'mcp_tool'], concurrency: true }),
+		disconnect: resource('services.connections.disconnect', 'DELETE', '/v1/teams/{teamId}/services/{connectionId}', { teamId: z.string().min(1), connectionId: z.string().min(1) }, { capability: 'services.write', surfaces: ['rest', 'cli', 'mcp_tool'], risk: 'destructive', concurrency: true }),
+		authorities: resource('services.credential.authorities.list', 'GET', '/v1/teams/{teamId}/services/{connectionId}/credential-authorities', { teamId: z.string().min(1), connectionId: z.string().min(1) }, { capability: 'secrets.read', surfaces: ['rest', 'cli'], pagination: 'cursor' }),
+		putAuthority: resource('services.credential.authorities.put', 'PUT', '/v1/teams/{teamId}/services/{connectionId}/credential-authorities/{profileId}', { teamId: z.string().min(1), connectionId: z.string().min(1), profileId: z.string().min(1) }, { capability: 'secrets.write', surfaces: ['rest', 'cli'], risk: 'credential', concurrency: true, redactedPaths: ['body'] }),
+	},
 	agents: {
 		list: resource('agents.list', 'GET', '/v1/projects/{projectId}/agents', { projectId: z.string().min(1) }, { capability: 'agents.read', surfaces: ['rest', 'cli', 'mcp_tool'], pagination: 'cursor' }),
 		show: resource('agents.show', 'GET', '/v1/projects/{projectId}/agents/{agentSlug}', { projectId: z.string().min(1), agentSlug: z.string().min(1) }, { capability: 'agents.read', surfaces: ['rest', 'cli', 'mcp_resource'] }),
