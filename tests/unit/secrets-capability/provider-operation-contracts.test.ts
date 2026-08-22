@@ -3,8 +3,7 @@ import {
 	CREDENTIAL_AUTHORITY_SCHEMES,
 	SERVICE_CAPABILITY_TYPES,
 	SERVICE_PROVIDER_CATALOG,
-	normalizeProjectRepositoryTopology,
-} from '../../../src/index.ts';
+} from '../../../src/configuration/secrets-capability.ts';
 
 describe('provider operation contracts', () => {
 	it('keeps repository and workflow GitHub authority least-privilege and independently selectable', () => {
@@ -31,24 +30,4 @@ describe('provider operation contracts', () => {
 		expect(SERVICE_CAPABILITY_TYPES).toContain('workflow-configuration');
 	});
 
-	it('normalizes a complete remote repository binding and fails incomplete input closed', () => {
-		const base = {
-			contentRepository: {
-				accessMode: 'treedx', contentPath: 'docs/src/content',
-				treeDx: { instanceId: 'node-1', libraryId: 'team/project' },
-				remote: {
-					bindingId: 'binding-1', serviceConnectionId: 'connection-1', capabilityBindingId: 'capability-1',
-					providerId: 'github', providerRepositoryId: '123', owner: 'treeseed-ai', name: 'admin',
-					cloneUrl: 'https://github.com/treeseed-ai/admin.git', defaultRef: 'main', publicationRef: 'staging',
-					authorityId: 'authority-1', grantStatus: 'ready', drift: 'none', version: 1,
-				},
-			},
-			siteRepository: { accessMode: 'filesystem', name: 'docs' },
-		};
-		expect(normalizeProjectRepositoryTopology(base).contentRepository.remote?.providerRepositoryId).toBe('123');
-		expect(() => normalizeProjectRepositoryTopology({
-			...base,
-			contentRepository: { ...base.contentRepository, remote: { bindingId: 'partial' } },
-		})).toThrow(/missing/i);
-	});
 });

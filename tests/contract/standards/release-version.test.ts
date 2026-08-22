@@ -21,12 +21,13 @@ describe('SDK release version policy', () => {
 		expect(() => assertPackageReleaseTag('0.13.0-rc.2', '0.13.0-rc.1')).toThrow('does not match');
 	});
 
-	it('gates production publication on exact evidence, consumer proof, and registry read-back', () => {
+	it('gates publication on exact SDK evidence and registry read-back without coupling to a consumer repository', () => {
 		const root = resolve(import.meta.dirname, '../../..');
 		const workflow = readFileSync(resolve(root, '.github/workflows/publish.yml'), 'utf8');
 		const publisher = readFileSync(resolve(root, 'scripts/packages/publish-package.ts'), 'utf8');
 		expect(workflow).toContain('npm run standards:baseline');
-		expect(workflow).toContain('npm run standards:consumer');
+		expect(workflow).not.toContain('standards:consumer');
+		expect(workflow).not.toContain('treeseed-ai/api');
 		expect(workflow).toContain('npm run standards:release-evidence');
 		expect(workflow).toContain('npm run release:readback');
 		expect(workflow).not.toMatch(/actions\/(?:checkout|setup-node|upload-artifact)@v4/u);

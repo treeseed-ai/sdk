@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	CAPACITY_PROVIDER_ENDPOINTS,
-	CAPACITY_PROVIDER_ENV_KEYS,
 	ProviderProtocolClient,
-	buildCapacityProviderAuthHeaders,
-	redactCapacityProviderEnv,
 } from '../../../../../src/capacity/providers/capacity-provider.ts';
 
 describe('capacity provider membership protocol', () => {
@@ -14,8 +11,6 @@ describe('capacity provider membership protocol', () => {
 		expect(CAPACITY_PROVIDER_ENDPOINTS.assignmentSettle('assignment 1')).toBe('/v1/provider/assignments/assignment%201/settle');
 		expect(CAPACITY_PROVIDER_ENDPOINTS.assignmentUsage('assignment 1')).toBe('/v1/provider/assignments/assignment%201/usage');
 		expect(JSON.stringify(CAPACITY_PROVIDER_ENDPOINTS)).not.toContain('heartbeat');
-		expect(CAPACITY_PROVIDER_ENV_KEYS).toContain('TREESEED_CAPACITY_PROVIDER_MANIFEST');
-		expect(CAPACITY_PROVIDER_ENV_KEYS).not.toContain('TREESEED_CAPACITY_PROVIDER_API_KEY');
 	});
 
 	it('refreshes an availability session with the canonical PUT operation', async () => {
@@ -29,19 +24,6 @@ describe('capacity provider membership protocol', () => {
 		});
 		await client.refreshAvailabilitySession('session-a', { expectedSequence: 1 });
 		expect(calls[0]).toMatchObject({ url: 'https://server.test/v1/provider/availability-sessions/session-a', init: { method: 'PUT' } });
-	});
-
-	it('requires short-lived membership access authority and redacts secret-shaped values', () => {
-		expect(buildCapacityProviderAuthHeaders('access-token')).toEqual({ authorization: 'Bearer access-token' });
-		expect(() => buildCapacityProviderAuthHeaders('')).toThrow(/membership access token/u);
-		const redacted = redactCapacityProviderEnv({
-			TREESEED_CAPACITY_PROVIDER_MANIFEST: '/config/treeseed.capacity-provider.yaml',
-			TREESEED_TREEDX_TOKEN: 'secret-token-value',
-			TREESEED_CODEX_AUTH_JSON_B64: 'encoded-secret-value',
-		});
-		expect(redacted.TREESEED_CAPACITY_PROVIDER_MANIFEST).toBe('/config/treeseed.capacity-provider.yaml');
-		expect(redacted.TREESEED_TREEDX_TOKEN).not.toContain('secret-token-value');
-		expect(redacted.TREESEED_CODEX_AUTH_JSON_B64).not.toContain('encoded-secret-value');
 	});
 
 	it('sends access-token auth and settlement idempotency through the canonical client', async () => {

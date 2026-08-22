@@ -1,16 +1,9 @@
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import type { ControlPlaneOperationDescriptor, OAuthScope } from '../../operator-contracts/control-plane-operation.ts';
 import type { ApiPrincipal } from './remote.ts';
-import {
-	decryptRemoteAuthSessions,
-	encryptRemoteAuthSessions,
-	loadMachineKey,
-	loadRemoteAuthPayload,
-	writeRemoteAuthPayload,
-} from '../../operations/services/config-runtime/configuration/create-default-machine-config.ts';
-import { getRemoteAuthPaths } from '../../operations/services/config-runtime/accounts/ensure-secret-session-for-config.ts';
 
 export const DEFAULT_CONTROL_PLANE_BASE_URL = 'http://127.0.0.1:3002';
 export const CONTROL_PLANE_BASE_URL_ENV = 'TREESEED_API_BASE_URL';
@@ -221,14 +214,52 @@ export function clearControlPlaneServerSession(root: string, serverId?: string |
 }
 
 function readServerSessions(root: string, custody: ControlPlaneSessionCustody): Record<string, ControlPlaneServerSession> {
-	if (!existsSync(getRemoteAuthPaths(root).authPath)) return {};
-	const sessions = decryptRemoteAuthSessions(loadRemoteAuthPayload(root), custody.loadKey(root));
-	return Object.fromEntries(Object.entries(sessions).map(([serverId, session]) => [serverId, { serverId, ...session }])) as Record<string, ControlPlaneServerSession>;
+	const path = resolve(root, CONTROL_PLANE_SERVER_SESSIONS_PATH);
+	if (!existsSync(path)) return {};
+	const payload = JSON.parse(readFileSync(path, 'utf8')) as { sessions?: Record<string, string> };
+	return Object.fromEntries(Object.entries(payload.sessions ?? {}).map(([serverId, value]) => [
+		serverId,
+		{ serverId, ...JSON.parse(decryptSession(value, custody.loadKey(root))) as Omit<ControlPlaneServerSession, 'serverId'> },
+	]));
 }
 
 function writeServerSessions(root: string, sessions: Record<string, ControlPlaneServerSession>, custody: ControlPlaneSessionCustody) {
-	const values = Object.fromEntries(Object.entries(sessions).map(([serverId, session]) => [serverId, session]));
-	writeRemoteAuthPayload(root, { version: 1, sessions: encryptRemoteAuthSessions(values, custody.loadKey(root)) });
+	const path = resolve(root, CONTROL_PLANE_SERVER_SESSIONS_PATH);
+	mkdirSync(dirname(path), { recursive: true });
+	const key = custody.loadKey(root);
+	const values = Object.fromEntries(Object.entries(sessions).map(([serverId, { serverId: _serverId, ...session }]) => [
+		serverId,
+		encryptSession(JSON.stringify(session), key),
+	]));
+	writeFileSync(path, `${JSON.stringify({ version: 1, sessions: values }, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+}
+
+function loadMachineKey(root: string) {
+	const path = resolve(root, '.treeseed/config/session.key');
+	if (existsSync(path)) {
+		const key = Buffer.from(readFileSync(path, 'utf8').trim(), 'base64url');
+		if (key.length !== 32) throw new Error('Control-plane session key must contain 32 bytes.');
+		return key;
+	}
+	mkdirSync(dirname(path), { recursive: true });
+	const key = randomBytes(32);
+	writeFileSync(path, `${key.toString('base64url')}\n`, { encoding: 'utf8', mode: 0o600 });
+	return key;
+}
+
+function encryptSession(value: string, key: Buffer) {
+	const iv = randomBytes(12);
+	const cipher = createCipheriv('aes-256-gcm', key, iv);
+	const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+	return [iv, cipher.getAuthTag(), encrypted].map((part) => part.toString('base64url')).join('.');
+}
+
+function decryptSession(value: string, key: Buffer) {
+	const [ivValue, tagValue, encryptedValue] = value.split('.');
+	if (!ivValue || !tagValue || !encryptedValue) throw new Error('Stored control-plane session is malformed.');
+	const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(ivValue, 'base64url'));
+	decipher.setAuthTag(Buffer.from(tagValue, 'base64url'));
+	return Buffer.concat([decipher.update(Buffer.from(encryptedValue, 'base64url')), decipher.final()]).toString('utf8');
 }
 
 async function responsePayload(response: Response): Promise<unknown> {

@@ -1,7 +1,7 @@
 {
   "name": "@treeseed/sdk",
   "version": "0.13.0-rc.9",
-  "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
+  "description": "Portable TreeSeed contracts, standards, and typed remote control-plane clients.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -16,24 +16,12 @@
   "engines": {
     "node": ">=22"
   },
-  "overrides": {
-    "libsodium": "0.7.15",
-    "libsodium-sumo": "0.7.15"
-  },
-  "types": "./dist/index.d.ts",
   "files": [
     "README.md",
-    "dist",
-    "drizzle",
-    "scripts/verification/verify-driver.ts",
-    "templates"
+    "dist"
   ],
   "publishConfig": {
     "access": "public"
-  },
-  "bin": {
-    "treeseed-sdk-verify": "./dist/scripts/verification/verify-driver.js",
-    "treeseed-content-publish": "./dist/scripts/content/publish-content.js"
   },
   "scripts": {
     "setup": "npm install",
@@ -42,28 +30,12 @@
     "build:dist": "node --import tsx ./scripts/build/build-dist.ts",
     "check:file-lengths": "node --import tsx ./scripts/verification/check-file-lengths.ts && npm run check:file-architecture",
     "check:file-architecture": "node --import tsx ./scripts/verification/check-file-architecture.ts",
-    "db:generate:d1": "drizzle-kit export --config drizzle.config.ts > drizzle/d1/0000_treeseed_d1.sql",
-    "db:generate:market": "drizzle-kit export --config drizzle.market.config.ts > drizzle/market/0000_market_control_plane.sql",
-    "prepare": "node --import tsx ./scripts/maintenance/prepare.ts",
     "prepack": "npm run build:dist",
-    "test": "npm run test:unit",
-    "test:unit": "vitest run --config ./vitest.config.ts && npm run test:workflow:lifecycle",
-    "test:unit:fast": "vitest run --config ./vitest.fast.config.ts",
-    "test:guarantees": "vitest run --config ./vitest.guarantees.config.ts",
-    "test:guarantees:coverage": "vitest run --config ./vitest.guarantees.config.ts --coverage",
-    "test:workflow:lifecycle": "vitest run --config ./vitest.workflow.config.ts",
-    "test:release": "npm run test:unit",
-    "test:smoke": "node --import tsx ./scripts/testing/test-smoke.ts",
-    "treedx:generate-types": "node --import tsx ./scripts/treedx/repositories/generate-treedx-openapi-types.ts",
-    "treedx:check-types": "node --import tsx ./scripts/treedx/repositories/generate-treedx-openapi-types.ts --check",
-    "treedx:contract": "vitest run --config ./vitest.config.ts tests/contract/treedx/treedx-openapi-contract.test.ts tests/contract/treedx/treedx-sdk-request-contract.test.ts tests/contract/treedx/treedx-generated-types.test.ts",
-    "fixtures:resolve": "node --import tsx ./scripts/agents/fixture-tools.ts resolve",
-    "fixtures:check": "node --import tsx ./scripts/agents/fixture-tools.ts check",
-    "lint": "npm run fixtures:check && npm run build:dist",
+    "test": "npm run test:contracts",
+    "test:contracts": "vitest run --config ./vitest.contracts.config.ts",
+    "test:release": "npm run test:contracts",
+    "lint": "npm run build:dist",
     "verify:direct": "npm run release:verify",
-    "verify:local": "TREESEED_VERIFY_DRIVER=direct TMPDIR=/tmp node --import tsx ./scripts/verification/verify-driver.ts",
-    "verify:action": "TREESEED_VERIFY_DRIVER=act TMPDIR=/tmp node --import tsx ./scripts/verification/verify-driver.ts",
-    "verify": "TMPDIR=/tmp node --import tsx ./scripts/verification/verify-driver.ts",
     "release:setup": "npm run setup:ci",
     "release:check-tag": "node --import tsx ./scripts/packages/assert-release-tag-version.ts",
     "release:verify": "npm run check:file-lengths && node --import tsx ./scripts/packages/release-verify.ts",
@@ -74,54 +46,20 @@
     "standards:compatibility": "node --import tsx ./scripts/standards/compare-compatibility.ts",
     "standards:compose": "node --import tsx ./scripts/standards/resolve-composition.ts",
     "standards:acceptance": "node --import tsx ./scripts/standards/package-acceptance.ts",
-    "standards:consumer": "node --import tsx ./scripts/standards/verify-api-consumer.ts",
     "standards:release-evidence": "node --import tsx ./scripts/standards/create-release-evidence.ts"
   },
   "dependencies": {
-    "@github/copilot": "1.0.39",
-    "@github/copilot-language-server": "1.480.0",
-    "@github/copilot-sdk": "0.3.0",
-    "@remotion/bundler": "4.0.477",
-    "@remotion/renderer": "4.0.477",
-    "drizzle-orm": "^0.45.2",
     "esbuild": "^0.28.0",
-    "extract-zip": "2.0.1",
-    "github-slugger": "^2.0.0",
-    "hono": "^4.8.2",
-    "ink": "^7.0.0",
-    "libsodium-wrappers": "0.7.15",
-    "libsodium-wrappers-sumo": "0.7.15",
-    "mdast-util-to-string": "^4.0.0",
-    "minisearch": "^7.2.0",
-    "octokit": "^5.0.3",
-    "pg": "^8.21.0",
-    "playwright": "^1.60.0",
-    "railway": "3.4.1",
-    "react": "^19.2.5",
-    "remark-mdx": "^3.1.1",
-    "remark-parse": "^11.0.0",
-    "remotion": "4.0.477",
-    "repomix": "^1.13.1",
-    "semver": "^7.7.4",
-    "tar": "7.5.13",
     "typescript": "^5.9.3",
-    "unified": "^11.0.5",
-    "wrangler": "4.86.0",
     "yaml": "^2.8.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^24.6.0",
-    "@vitest/coverage-v8": "^4.1.2",
-    "drizzle-kit": "^0.31.10",
     "tsx": "^4.21.0",
     "vitest": "^4.1.2"
   },
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    },
     "./standards": {
       "types": "./dist/standards/index.d.ts",
       "default": "./dist/standards/index.js"
@@ -142,62 +80,6 @@
       "types": "./dist/operator-contracts/index.d.ts",
       "default": "./dist/operator-contracts/index.js"
     },
-    "./sdk": {
-      "types": "./dist/entrypoints/models/sdk.d.ts",
-      "default": "./dist/entrypoints/models/sdk.js"
-    },
-    "./operations": {
-      "types": "./dist/operations/operations.d.ts",
-      "default": "./dist/operations/operations.js"
-    },
-    "./operations/agent-tools": {
-      "types": "./dist/operations/agents/agent-tools.d.ts",
-      "default": "./dist/operations/agents/agent-tools.js"
-    },
-    "./agent-tools": {
-      "types": "./dist/agents/agent-tools.d.ts",
-      "default": "./dist/agents/agent-tools.js"
-    },
-    "./content-operations": {
-      "types": "./dist/operations/content-operations.d.ts",
-      "default": "./dist/operations/content-operations.js"
-    },
-    "./content-validation": {
-      "types": "./dist/content/validation/index.d.ts",
-      "default": "./dist/content/validation/index.js"
-    },
-    "./workflow": {
-      "types": "./dist/operations/workflow.d.ts",
-      "default": "./dist/operations/workflow.js"
-    },
-    "./verification": {
-      "types": "./dist/entrypoints/runtime/verification.d.ts",
-      "default": "./dist/entrypoints/runtime/verification.js"
-    },
-    "./fixture-support": {
-      "types": "./dist/testing/fixture-support.d.ts",
-      "default": "./dist/testing/fixture-support.js"
-    },
-    "./seeds": {
-      "types": "./dist/seeds/index.d.ts",
-      "default": "./dist/seeds/index.js"
-    },
-    "./scenes": {
-      "types": "./dist/scenes/index.d.ts",
-      "default": "./dist/scenes/index.js"
-    },
-    "./guarantees": {
-      "types": "./dist/guarantees/index.d.ts",
-      "default": "./dist/guarantees/index.js"
-    },
-    "./scripts/support/verify-driver": {
-      "types": "./dist/entrypoints/runtime/verification.d.ts",
-      "default": "./dist/entrypoints/runtime/verification.js"
-    },
-    "./workflow-support": {
-      "types": "./dist/operations/workflow-support.d.ts",
-      "default": "./dist/operations/workflow-support.js"
-    },
     "./control-plane-client": {
       "types": "./dist/entrypoints/clients/control-plane-client.d.ts",
       "default": "./dist/entrypoints/clients/control-plane-client.js"
@@ -210,69 +92,13 @@
       "types": "./dist/capacity/agents/agent-capacity.d.ts",
       "default": "./dist/capacity/agents/agent-capacity.js"
     },
-    "./agent-capacity/allocation": {
-      "types": "./dist/agent-capacity/allocation.d.ts",
-      "default": "./dist/agent-capacity/allocation.js"
-    },
     "./capacity-pagination": {
       "types": "./dist/capacity/capacity-core/capacity-pagination.d.ts",
       "default": "./dist/capacity/capacity-core/capacity-pagination.js"
     },
-    "./ai-appliance": {
-      "types": "./dist/ai-appliance/index.d.ts",
-      "default": "./dist/ai-appliance/index.js"
-    },
     "./secrets-capability": {
       "types": "./dist/configuration/secrets-capability.d.ts",
       "default": "./dist/configuration/secrets-capability.js"
-    },
-    "./reconcile": {
-      "types": "./dist/reconcile/index.d.ts",
-      "default": "./dist/reconcile/index.js"
-    },
-    "./hosting": {
-      "types": "./dist/hosting/index.d.ts",
-      "default": "./dist/hosting/index.js"
-    },
-    "./platform/contracts": {
-      "types": "./dist/platform/support/contracts.d.ts",
-      "default": "./dist/platform/support/contracts.js"
-    },
-    "./platform/tenant-config": {
-      "types": "./dist/platform/configuration/tenant-config.d.ts",
-      "default": "./dist/platform/configuration/tenant-config.js"
-    },
-    "./platform/deploy-config": {
-      "types": "./dist/platform/hosting/deploy-config.d.ts",
-      "default": "./dist/platform/hosting/deploy-config.js"
-    },
-    "./platform/deploy-runtime": {
-      "types": "./dist/platform/hosting/deploy-runtime.d.ts",
-      "default": "./dist/platform/hosting/deploy-runtime.js"
-    },
-    "./platform/desired-state": {
-      "types": "./dist/platform/reconciliation/desired-state.d.ts",
-      "default": "./dist/platform/reconciliation/desired-state.js"
-    },
-    "./platform/environment": {
-      "types": "./dist/platform/configuration/environment.d.ts",
-      "default": "./dist/platform/configuration/environment.js"
-    },
-    "./platform/plugins": {
-      "types": "./dist/platform/support/plugins.d.ts",
-      "default": "./dist/platform/support/plugins.js"
-    },
-    "./platform/plugin": {
-      "types": "./dist/platform/support/plugin.d.ts",
-      "default": "./dist/platform/support/plugin.js"
-    },
-    "./plugin-default": {
-      "types": "./dist/entrypoints/models/plugin-default.d.ts",
-      "default": "./dist/entrypoints/models/plugin-default.js"
-    },
-    "./platform/published-content": {
-      "types": "./dist/platform/packages/published-content.d.ts",
-      "default": "./dist/platform/packages/published-content.js"
     },
     "./knowledge": {
       "types": "./dist/knowledge/index.d.ts",
@@ -282,50 +108,9 @@
       "types": "./dist/feedback/index.d.ts",
       "default": "./dist/feedback/index.js"
     },
-    "./platform/site-config-schema": {
-      "types": "./dist/platform/configuration/site-config-schema.d.ts",
-      "default": "./dist/platform/configuration/site-config-schema.js"
-    },
-    "./content-store": {
-      "types": "./dist/content/content-store.d.ts",
-      "default": "./dist/content/content-store.js"
-    },
-    "./treedx-backends": {
-      "types": "./dist/treedx/repositories/treedx-backends.d.ts",
-      "default": "./dist/treedx/repositories/treedx-backends.js"
-    },
-    "./template-catalog": {
-      "types": "./dist/templates/template-catalog.d.ts",
-      "default": "./dist/templates/template-catalog.js"
-    },
-    "./d1-store": {
-      "types": "./dist/persistence/d1-store.d.ts",
-      "default": "./dist/persistence/d1-store.js"
-    },
-    "./frontmatter": {
-      "types": "./dist/content/frontmatter.d.ts",
-      "default": "./dist/content/frontmatter.js"
-    },
-    "./git-runtime": {
-      "types": "./dist/repositories/git-runtime.d.ts",
-      "default": "./dist/repositories/git-runtime.js"
-    },
-    "./models": {
-      "types": "./dist/entrypoints/models/model-registry.d.ts",
-      "default": "./dist/entrypoints/models/model-registry.js"
-    },
-    "./graph": {
-      "types": "./dist/treedx/graph/graph.d.ts",
-      "default": "./dist/treedx/graph/graph.js"
-    },
-    "./graph/context-query-contracts": {
-      "types": "./dist/graph/context-query-contracts.d.ts",
-      "default": "./dist/graph/context-query-contracts.js"
-    },
-    "./treedx": {
-      "types": "./dist/treedx/index.d.ts",
-      "import": "./dist/treedx/index.js",
-      "default": "./dist/treedx/index.js"
+    "./content-validation": {
+      "types": "./dist/content/validation/index.d.ts",
+      "default": "./dist/content/validation/index.js"
     },
     "./treedx/client": {
       "types": "./dist/treedx/support/client.d.ts",
@@ -342,35 +127,6 @@
       "import": "./dist/treedx/types.js",
       "default": "./dist/treedx/types.js"
     },
-    "./treedx/adapters": {
-      "types": "./dist/treedx/reconciliation/adapters.d.ts",
-      "import": "./dist/treedx/reconciliation/adapters.js",
-      "default": "./dist/treedx/reconciliation/adapters.js"
-    },
-    "./sdk-filters": {
-      "types": "./dist/entrypoints/models/sdk-filters.d.ts",
-      "default": "./dist/entrypoints/models/sdk-filters.js"
-    },
-    "./cli-tools": {
-      "types": "./dist/agents/cli-tools.d.ts",
-      "default": "./dist/agents/cli-tools.js"
-    },
-    "./managed-dependencies": {
-      "types": "./dist/entrypoints/runtime/managed-dependencies.d.ts",
-      "default": "./dist/entrypoints/runtime/managed-dependencies.js"
-    },
-    "./service-credentials": {
-      "types": "./dist/configuration/service-credentials.d.ts",
-      "default": "./dist/configuration/service-credentials.js"
-    },
-    "./copilot": {
-      "types": "./dist/agents/copilot.d.ts",
-      "default": "./dist/agents/copilot.js"
-    },
-    "./native-capacity": {
-      "types": "./dist/capacity/accounting/native-capacity.d.ts",
-      "default": "./dist/capacity/accounting/native-capacity.js"
-    },
     "./capacity-provider": {
       "types": "./dist/capacity/providers/capacity-provider.d.ts",
       "default": "./dist/capacity/providers/capacity-provider.js"
@@ -379,73 +135,13 @@
       "types": "./dist/capacity-provider/contracts/index.d.ts",
       "default": "./dist/capacity-provider/contracts/index.js"
     },
-    "./operations/github-credentials": {
-      "types": "./dist/operations/services/configuration/github-credentials.d.ts",
-      "default": "./dist/operations/services/configuration/github-credentials.js"
-    },
-    "./types": {
-      "types": "./dist/entrypoints/models/sdk-types.d.ts",
-      "default": "./dist/entrypoints/models/sdk-types.js"
-    },
-    "./field-aliases": {
-      "types": "./dist/entrypoints/models/field-aliases.d.ts",
-      "default": "./dist/entrypoints/models/field-aliases.js"
-    },
-    "./remote": {
-      "types": "./dist/entrypoints/clients/remote.d.ts",
-      "default": "./dist/entrypoints/clients/remote.js"
-    },
     "./types/agents": {
       "types": "./dist/types/agents.d.ts",
       "default": "./dist/types/agents.js"
     },
-    "./types/cloudflare": {
-      "types": "./dist/types/cloudflare.d.ts",
-      "default": "./dist/types/cloudflare.js"
-    },
-    "./d1-http": {
-      "types": "./dist/persistence/d1-http.d.ts",
-      "default": "./dist/persistence/d1-http.js"
-    },
-    "./db": {
-      "types": "./dist/db/index.d.ts",
-      "default": "./dist/db/index.js"
-    },
-    "./db/schema": {
-      "types": "./dist/db/schema.d.ts",
-      "default": "./dist/db/schema.js"
-    },
-    "./db/d1": {
-      "types": "./dist/db/d1.d.ts",
-      "default": "./dist/db/d1.js"
-    },
-    "./db/node-sqlite": {
-      "types": "./dist/db/node-sqlite.d.ts",
-      "default": "./dist/db/node-sqlite.js"
-    },
-    "./stores/cursor-store": {
-      "types": "./dist/stores/cursor-store.d.ts",
-      "default": "./dist/stores/cursor-store.js"
-    },
-    "./stores/helpers": {
-      "types": "./dist/stores/helpers.d.ts",
-      "default": "./dist/stores/helpers.js"
-    },
-    "./stores/lease-store": {
-      "types": "./dist/stores/lease-store.d.ts",
-      "default": "./dist/stores/lease-store.js"
-    },
-    "./stores/message-store": {
-      "types": "./dist/stores/message-store.d.ts",
-      "default": "./dist/stores/message-store.js"
-    },
-    "./stores/run-store": {
-      "types": "./dist/stores/run-store.d.ts",
-      "default": "./dist/stores/run-store.js"
-    },
-    "./stores/subscription-store": {
-      "types": "./dist/stores/subscription-store.d.ts",
-      "default": "./dist/stores/subscription-store.js"
+    "./graph/context-query-contracts": {
+      "types": "./dist/graph/context-query-contracts.d.ts",
+      "default": "./dist/graph/context-query-contracts.js"
     }
   }
 }
