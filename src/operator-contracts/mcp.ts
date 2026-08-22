@@ -93,8 +93,9 @@ export const TREESEED_MCP_PROMPTS: readonly McpPromptDescriptor[] = [
 ];
 
 function resourcePath(restPath: string) {
-	if (!restPath.startsWith('/v1/')) throw new Error(`MCP resource REST path must be rooted at /v1: ${restPath}`);
-	const path = restPath.replace(/^\/v1\//u, '');
+	const [root, version, ...segments] = restPath.split('/');
+	if (root !== '' || version !== 'v1' || segments.length === 0) throw new Error(`MCP resource requires a versioned control-plane REST path: ${restPath}`);
+	const path = segments.join('/');
 	if (path === 'me') return 'accounts/current';
 	return path
 		.replace(/^platform\/operations(?=\/|$)/u, 'operations')
