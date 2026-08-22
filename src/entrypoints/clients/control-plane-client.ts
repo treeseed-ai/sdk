@@ -7,6 +7,7 @@ import type {
 	OAuthScope,
 } from '../../operator-contracts/control-plane-operation.ts';
 import type { ApiPrincipal } from '../../operator-contracts/oauth.ts';
+import type { InputRequired } from '../../operator-contracts/mcp.ts';
 import { controlPlaneOperation } from '../../operator-contracts/control-plane-operations.ts';
 
 export const DEFAULT_CONTROL_PLANE_BASE_URL = 'http://127.0.0.1:3002';
@@ -75,6 +76,7 @@ export interface ProblemDetails {
 	requestId?: string;
 	traceId?: string;
 	fields?: Record<string, string[]>;
+	inputRequired?: InputRequired;
 }
 
 export interface ControlPlaneCallOptions {
@@ -177,6 +179,7 @@ function problemFrom(payload: unknown, status: number): ProblemDetails {
 		requestId: typeof source.requestId === 'string' ? source.requestId : undefined,
 		traceId: typeof source.traceId === 'string' ? source.traceId : undefined,
 		fields: source.fields && typeof source.fields === 'object' ? source.fields as Record<string, string[]> : undefined,
+		inputRequired: source.inputRequired && typeof source.inputRequired === 'object' ? source.inputRequired as InputRequired : undefined,
 	};
 }
 

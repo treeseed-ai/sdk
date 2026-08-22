@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ControlPlaneClient, ControlPlaneClientError, normalizeControlPlaneServerRegistry, resolveControlPlaneServer } from '../../src/entrypoints/clients/control-plane-client.ts';
-import { CONTROL_PLANE_OPERATIONS } from '../../src/operator-contracts/index.ts';
+import { CONTROL_PLANE_OPERATIONS, encodeConfirmationState } from '../../src/operator-contracts/index.ts';
 
 describe('ControlPlaneClient', () => {
 	it('sends authority and concurrency headers and accepts standard envelopes', async () => {
@@ -62,5 +62,14 @@ describe('ControlPlaneClient', () => {
 		const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ error: 'authorization_pending', error_description: 'Authorization is pending.' }), { status: 400, headers: { 'content-type': 'application/json' } }));
 		const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002' }, fetchImpl });
 		await expect(client.exchangeDeviceCode('trsd', 'device')).rejects.toMatchObject<Partial<ControlPlaneClientError>>({ status: 400, problem: { code: 'authorization_pending', detail: 'Authorization is pending.' } });
+	});
+
+	it('preserves signed input-required state for an exact confirmation retry', async () => {
+		const confirmation = { schemaVersion: 'treeseed.confirmation-state/v1' as const, principalId: 'user_1', clientId: 'trsd', operationId: 'workdays.start', argumentsDigest: `sha256:${'a'.repeat(64)}` as const, expiresAt: '2030-01-01T00:00:00.000Z', nonce: 'nonce', signature: 'signature' };
+		const inputRequired = { type: 'input_required', requestId: 'request_1', prompt: 'Confirm exact input.', confirmation };
+		const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ type: 'about:blank', title: 'Confirmation required', status: 409, code: 'confirmation_required', inputRequired }), { status: 409, headers: { 'content-type': 'application/problem+json' } }));
+		const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002' }, fetchImpl });
+		await expect(client.invoke(CONTROL_PLANE_OPERATIONS.workdays.start, { path: { teamId: 'team_1' }, query: {}, body: {} }, { idempotencyKey: 'idempotency_1' })).rejects.toMatchObject<Partial<ControlPlaneClientError>>({ problem: { code: 'confirmation_required', inputRequired } });
+		expect(JSON.parse(Buffer.from(encodeConfirmationState(confirmation), 'base64url').toString('utf8'))).toEqual(confirmation);
 	});
 });
