@@ -25,8 +25,6 @@ const operationBindings: Record<string, Execution> = {
 	'secrets rotate': local('local.secrets.rotate'),
 	'agents list': operation('agents.list', [field('path', 'projectId', 'context', 'project', true), ...page()]),
 	'agents show': operation('agents.show', [field('path', 'projectId', 'context', 'project', true), field('path', 'agentSlug', 'argument', 'agent', true)]),
-	'agents validate': local('local.agents.validate'),
-	'agents diff': local('local.agents.diff'),
 	'agents classes list': operation('agents.classes.list', [field('path', 'projectId', 'context', 'project', true)]),
 	'agents classes show': operation('agents.classes.show', [field('path', 'projectId', 'context', 'project', true), field('path', 'classId', 'argument', 'class', true)]),
 	'providers list': operation('services.providers.list', page()),
