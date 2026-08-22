@@ -28,7 +28,7 @@ const client = new ControlPlaneClient({
 const health = await client.call({ method: 'GET', path: '/v1/health' });
 ```
 
-The client provides typed operation dispatch, RFC 9457 problem handling, OAuth device and refresh flows, server profiles, encrypted local session custody, idempotency keys, optimistic-concurrency headers, and request cancellation. Generated operation bindings come from the versioned operation catalog; the generic `call` method accepts only the public REST path shape.
+The client provides typed operation dispatch, RFC 9457 problem handling, OAuth device and refresh flows, server-profile normalization, idempotency keys, optimistic-concurrency headers, and request cancellation. Generated operation bindings come from the versioned operation catalog; the generic `call` method accepts only the public REST path shape. Token and profile persistence belong to the consuming CLI, application, or host credential store.
 
 ## TreeDX API
 

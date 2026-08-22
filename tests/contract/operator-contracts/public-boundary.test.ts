@@ -21,7 +21,8 @@ describe('operator contract public boundary', () => {
 	it('publishes only the catalog-bound control-plane client',()=>{
 		expect(controlPlaneClient).toHaveProperty('ControlPlaneClient');
 		expect(controlPlaneClient).toHaveProperty('resolveControlPlaneServer');
-		expect(controlPlaneClient).toHaveProperty('resolveControlPlaneServerSession');
+		expect(controlPlaneClient).toHaveProperty('normalizeControlPlaneServerRegistry');
+		expect(controlPlaneClient).not.toHaveProperty('resolveControlPlaneServerSession');
 		expect(controlPlaneClient).not.toHaveProperty('MarketClient');
 		expect(controlPlaneClient.ControlPlaneClient.prototype).toHaveProperty('callOperation');
 	});

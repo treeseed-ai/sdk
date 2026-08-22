@@ -1,14 +1,8 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, resolve } from 'node:path';
 import type { ControlPlaneOperationDescriptor, OAuthScope } from '../../operator-contracts/control-plane-operation.ts';
 import type { ApiPrincipal } from './remote.ts';
 
 export const DEFAULT_CONTROL_PLANE_BASE_URL = 'http://127.0.0.1:3002';
 export const CONTROL_PLANE_BASE_URL_ENV = 'TREESEED_API_BASE_URL';
-export const CONTROL_PLANE_SERVER_REGISTRY_PATH = '.treeseed/config/servers.json';
-export const CONTROL_PLANE_SERVER_SESSIONS_PATH = '.treeseed/config/remote-auth.json';
 
 export interface ControlPlaneServerProfile {
 	serverId: string;
@@ -24,12 +18,6 @@ export interface ControlPlaneServerSession {
 	expiresAt?: string;
 	principal?: ApiPrincipal | null;
 }
-
-export interface ControlPlaneSessionCustody {
-	loadKey(root: string): Buffer;
-}
-
-const machineKeySessionCustody: ControlPlaneSessionCustody = { loadKey: loadMachineKey };
 
 export interface ControlPlaneServerRegistry {
 	version: 1;
@@ -132,134 +120,32 @@ export function defaultLocalControlPlaneServer(
 	};
 }
 
-function registryPath(env: Record<string, string | undefined> = process.env) {
-	return resolve(env.HOME?.trim() || homedir(), CONTROL_PLANE_SERVER_REGISTRY_PATH);
-}
-
 function normalizeServer(profile: ControlPlaneServerProfile): ControlPlaneServerProfile {
 	const serverId = profile.serverId.trim();
 	if (!serverId) throw new Error('Control-plane server IDs cannot be empty.');
 	return { serverId, label: profile.label.trim() || serverId, baseUrl: normalizeControlPlaneBaseUrl(profile.baseUrl) };
 }
 
-export function loadControlPlaneServerRegistry(env: Record<string, string | undefined> = process.env): ControlPlaneServerRegistry {
-	const local = defaultLocalControlPlaneServer(env);
-	const path = registryPath(env);
-	if (!existsSync(path)) return { version: 1, activeServerId: local.serverId, servers: [local] };
-	const parsed = JSON.parse(readFileSync(path, 'utf8')) as Partial<ControlPlaneServerRegistry>;
-	const byId = new Map<string, ControlPlaneServerProfile>([[local.serverId, local]]);
-	for (const value of Array.isArray(parsed.servers) ? parsed.servers : []) {
-		const normalized = normalizeServer(value);
-		byId.set(normalized.serverId, normalized);
-	}
-	const servers = [...byId.values()].sort((left, right) => left.serverId.localeCompare(right.serverId));
-	const activeServerId = servers.some((entry) => entry.serverId === parsed.activeServerId) ? parsed.activeServerId! : local.serverId;
-	return { version: 1, activeServerId, servers };
-}
-
-export function writeControlPlaneServerRegistry(state: ControlPlaneServerRegistry, env: Record<string, string | undefined> = process.env) {
-	const path = registryPath(env);
+export function normalizeControlPlaneServerRegistry(state: ControlPlaneServerRegistry) {
 	const servers = [...new Map(state.servers.map((entry) => {
 		const normalized = normalizeServer(entry);
 		return [normalized.serverId, normalized];
 	})).values()].sort((left, right) => left.serverId.localeCompare(right.serverId));
-	const activeServerId = servers.some((entry) => entry.serverId === state.activeServerId) ? state.activeServerId : 'local';
-	const next: ControlPlaneServerRegistry = { version: 1, activeServerId, servers };
-	mkdirSync(dirname(path), { recursive: true });
-	writeFileSync(path, `${JSON.stringify(next, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
-	return next;
+	if (servers.length === 0) throw new Error('A control-plane server registry requires at least one server.');
+	const activeServerId = servers.some((entry) => entry.serverId === state.activeServerId) ? state.activeServerId : servers[0]!.serverId;
+	return { version: 1, activeServerId, servers } satisfies ControlPlaneServerRegistry;
 }
 
-export function resolveControlPlaneServer(selector?: string | null, env: Record<string, string | undefined> = process.env) {
+export function resolveControlPlaneServer(selector: string | null | undefined, registry: ControlPlaneServerRegistry) {
 	const value = selector?.trim();
 	if (value && /^https?:\/\//iu.test(value)) {
 		return normalizeServer({ serverId: value.replace(/^https?:\/\//iu, '').replace(/[^a-z0-9._-]+/giu, '-'), label: value, baseUrl: value });
 	}
-	const registry = loadControlPlaneServerRegistry(env);
-	const serverId = value || registry.activeServerId;
-	const profile = registry.servers.find((entry) => entry.serverId === serverId);
+	const normalized = normalizeControlPlaneServerRegistry(registry);
+	const serverId = value || normalized.activeServerId;
+	const profile = normalized.servers.find((entry) => entry.serverId === serverId);
 	if (!profile) throw new Error(`Unknown control-plane server "${serverId}".`);
 	return profile;
-}
-
-export function resolveControlPlaneServerSession(
-	root: string,
-	server: string | ControlPlaneServerProfile,
-	custody: ControlPlaneSessionCustody = machineKeySessionCustody,
-): ControlPlaneServerSession | null {
-	const serverId = typeof server === 'string' ? server : server.serverId;
-	const session = readServerSessions(root, custody)[serverId] ?? null;
-	if (session && typeof server !== 'string' && session.audience !== normalizeControlPlaneBaseUrl(server.baseUrl)) {
-		throw new Error(`Stored session audience does not match control-plane server "${server.serverId}".`);
-	}
-	return session;
-}
-
-export function setControlPlaneServerSession(root: string, session: ControlPlaneServerSession, custody: ControlPlaneSessionCustody = machineKeySessionCustody) {
-	const normalized = { ...session, audience: normalizeControlPlaneBaseUrl(session.audience) };
-	const sessions = readServerSessions(root, custody);
-	sessions[session.serverId] = normalized;
-	writeServerSessions(root, sessions, custody);
-	return normalized;
-}
-
-export function clearControlPlaneServerSession(root: string, serverId?: string | null, custody: ControlPlaneSessionCustody = machineKeySessionCustody) {
-	if (!serverId) {
-		writeServerSessions(root, {}, custody);
-		return;
-	}
-	const sessions = readServerSessions(root, custody);
-	delete sessions[serverId];
-	writeServerSessions(root, sessions, custody);
-}
-
-function readServerSessions(root: string, custody: ControlPlaneSessionCustody): Record<string, ControlPlaneServerSession> {
-	const path = resolve(root, CONTROL_PLANE_SERVER_SESSIONS_PATH);
-	if (!existsSync(path)) return {};
-	const payload = JSON.parse(readFileSync(path, 'utf8')) as { sessions?: Record<string, string> };
-	return Object.fromEntries(Object.entries(payload.sessions ?? {}).map(([serverId, value]) => [
-		serverId,
-		{ serverId, ...JSON.parse(decryptSession(value, custody.loadKey(root))) as Omit<ControlPlaneServerSession, 'serverId'> },
-	]));
-}
-
-function writeServerSessions(root: string, sessions: Record<string, ControlPlaneServerSession>, custody: ControlPlaneSessionCustody) {
-	const path = resolve(root, CONTROL_PLANE_SERVER_SESSIONS_PATH);
-	mkdirSync(dirname(path), { recursive: true });
-	const key = custody.loadKey(root);
-	const values = Object.fromEntries(Object.entries(sessions).map(([serverId, { serverId: _serverId, ...session }]) => [
-		serverId,
-		encryptSession(JSON.stringify(session), key),
-	]));
-	writeFileSync(path, `${JSON.stringify({ version: 1, sessions: values }, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
-}
-
-function loadMachineKey(root: string) {
-	const path = resolve(root, '.treeseed/config/session.key');
-	if (existsSync(path)) {
-		const key = Buffer.from(readFileSync(path, 'utf8').trim(), 'base64url');
-		if (key.length !== 32) throw new Error('Control-plane session key must contain 32 bytes.');
-		return key;
-	}
-	mkdirSync(dirname(path), { recursive: true });
-	const key = randomBytes(32);
-	writeFileSync(path, `${key.toString('base64url')}\n`, { encoding: 'utf8', mode: 0o600 });
-	return key;
-}
-
-function encryptSession(value: string, key: Buffer) {
-	const iv = randomBytes(12);
-	const cipher = createCipheriv('aes-256-gcm', key, iv);
-	const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
-	return [iv, cipher.getAuthTag(), encrypted].map((part) => part.toString('base64url')).join('.');
-}
-
-function decryptSession(value: string, key: Buffer) {
-	const [ivValue, tagValue, encryptedValue] = value.split('.');
-	if (!ivValue || !tagValue || !encryptedValue) throw new Error('Stored control-plane session is malformed.');
-	const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(ivValue, 'base64url'));
-	decipher.setAuthTag(Buffer.from(tagValue, 'base64url'));
-	return Buffer.concat([decipher.update(Buffer.from(encryptedValue, 'base64url')), decipher.final()]).toString('utf8');
 }
 
 async function responsePayload(response: Response): Promise<unknown> {
