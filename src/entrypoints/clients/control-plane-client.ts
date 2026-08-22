@@ -1,5 +1,12 @@
-import type { ControlPlaneOperationDescriptor, OAuthScope } from '../../operator-contracts/control-plane-operation.ts';
-import type { ApiPrincipal } from './remote.ts';
+import type {
+	ControlPlaneOperationBinding,
+	ControlPlaneOperationBody,
+	ControlPlaneOperationOutput,
+	ControlPlaneOperationPath,
+	ControlPlaneOperationQuery,
+	OAuthScope,
+} from '../../operator-contracts/control-plane-operation.ts';
+import type { ApiPrincipal } from '../../operator-contracts/oauth.ts';
 
 export const DEFAULT_CONTROL_PLANE_BASE_URL = 'http://127.0.0.1:3002';
 export const CONTROL_PLANE_BASE_URL_ENV = 'TREESEED_API_BASE_URL';
@@ -44,12 +51,6 @@ export interface OAuthTokenReceipt {
 	principal?: ApiPrincipal | null;
 }
 
-export interface ControlPlaneOperationBinding<TInput = unknown, TOutput = unknown> {
-	descriptor: ControlPlaneOperationDescriptor;
-	readonly __input?: TInput;
-	readonly __output?: TOutput;
-}
-
 export interface ControlPlaneClientOptions {
 	profile: ControlPlaneServerProfile;
 	accessToken?: string | null;
@@ -82,6 +83,7 @@ export interface ControlPlaneCallOptions {
 	headers?: Record<string, string>;
 	idempotencyKey?: string;
 	ifMatch?: string;
+	authorization?: string | null;
 	signal?: AbortSignal;
 }
 
@@ -89,7 +91,14 @@ export interface ControlPlaneOperationCallOptions {
 	headers?: Record<string, string>;
 	idempotencyKey?: string;
 	ifMatch?: string;
+	authorization?: string | null;
 	signal?: AbortSignal;
+}
+
+export interface ControlPlaneInvocation<TPath, TQuery, TBody> {
+	path: TPath;
+	query: TQuery;
+	body: TBody;
 }
 
 export class ControlPlaneClientError extends Error {
@@ -183,11 +192,36 @@ export class ControlPlaneClient {
 		this.userAgent = options.userAgent;
 	}
 
-	async callOperation<TInput, TOutput>(binding: ControlPlaneOperationBinding<TInput, TOutput>, input: TInput, options: ControlPlaneOperationCallOptions = {}) {
+	async invoke<TOperation extends ControlPlaneOperationBinding<any, any, any, any>>(
+		binding: TOperation,
+		input: ControlPlaneInvocation<ControlPlaneOperationPath<TOperation>, ControlPlaneOperationQuery<TOperation>, ControlPlaneOperationBody<TOperation>>,
+		options: ControlPlaneOperationCallOptions = {},
+	): Promise<ControlPlaneResponseEnvelope<ControlPlaneOperationOutput<TOperation>>> {
 		const rest = binding.descriptor.rest;
 		if (!rest) throw new Error(`Operation ${binding.descriptor.operationId} has no REST binding.`);
-		if (/[:*]/u.test(rest.path)) throw new Error(`Operation ${binding.descriptor.operationId} requires generated path parameters.`);
-		return this.call<TOutput>({ method: rest.method, path: rest.path as `/v1/${string}`, input: rest.method === 'GET' ? undefined : input, ...options });
+		const pathInput = binding.schema.path.parse(input.path) as Record<string, unknown>;
+		const queryInput = binding.schema.query.parse(input.query) as Record<string, unknown>;
+		const bodyInput = binding.schema.body.parse(input.body);
+		let path = rest.path as string;
+		path = path.replace(/\{([A-Za-z][A-Za-z0-9]*)\}/gu, (_match, name: string) => {
+			const value = pathInput[name];
+			if (typeof value !== 'string' && typeof value !== 'number') throw new Error(`Operation ${binding.descriptor.operationId} requires path parameter ${name}.`);
+			return encodeURIComponent(String(value));
+		});
+		if (path.includes('{')) throw new Error(`Operation ${binding.descriptor.operationId} has unresolved path parameters.`);
+		const query = new URLSearchParams();
+		for (const [name, value] of Object.entries(queryInput)) {
+			if (value === undefined || value === null) continue;
+			for (const item of Array.isArray(value) ? value : [value]) query.append(name, String(item));
+		}
+		const queryString = query.toString();
+		const response = await this.request<ControlPlaneOperationOutput<TOperation>>({
+			method: rest.method,
+			path: `${path}${queryString ? `?${queryString}` : ''}` as `/v1/${string}`,
+			input: rest.method === 'GET' ? undefined : bodyInput,
+			...options,
+		});
+		return { ...response, data: binding.schema.output.parse(response.data) };
 	}
 
 	async authorizeDevice(clientId: string, scope: OAuthScope[], signal?: AbortSignal): Promise<OAuthDeviceAuthorizationReceipt> {
@@ -217,10 +251,13 @@ export class ControlPlaneClient {
 		return { tokenType: 'Bearer', accessToken: String(payload.access_token), refreshToken: typeof payload.refresh_token === 'string' ? payload.refresh_token : undefined, expiresIn: Number(payload.expires_in), scope: String(payload.scope ?? '').split(/\s+/u).filter(Boolean) as OAuthScope[], audience: String(payload.audience ?? this.baseUrl), principal: payload.principal && typeof payload.principal === 'object' ? payload.principal as ApiPrincipal : undefined };
 	}
 
-	async call<T>(options: ControlPlaneCallOptions): Promise<ControlPlaneResponseEnvelope<T>> {
+	private async request<T>(options: ControlPlaneCallOptions): Promise<ControlPlaneResponseEnvelope<T>> {
 		const headers = new Headers(options.headers);
 		headers.set('accept', 'application/json, application/problem+json');
-		if (this.accessToken) headers.set('authorization', `Bearer ${this.accessToken}`);
+		if (options.authorization !== null) {
+			const authorization = options.authorization ?? (this.accessToken ? `Bearer ${this.accessToken}` : null);
+			if (authorization) headers.set('authorization', authorization);
+		}
 		if (this.userAgent) headers.set('user-agent', this.userAgent);
 		if (options.idempotencyKey) headers.set('idempotency-key', options.idempotencyKey);
 		if (options.ifMatch) headers.set('if-match', options.ifMatch);

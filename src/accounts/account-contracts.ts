@@ -223,4 +223,4 @@ export function isValidPersonalThemeDraft(input: unknown): input is PersonalThem
 		&& Boolean(draft.palette?.light && draft.palette?.dark)
 		&& ['canvas', 'surface', 'text', 'accent'].every((key) => color(draft.palette.light[key as keyof PersonalThemePaletteMode]) && color(draft.palette.dark[key as keyof PersonalThemePaletteMode]));
 }
-import type { ApiPrincipal } from '../entrypoints/clients/remote.ts';
+import type { ApiPrincipal } from '../operator-contracts/oauth.ts';

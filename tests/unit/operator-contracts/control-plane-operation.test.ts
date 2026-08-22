@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
 	CONTROL_PLANE_OPERATION_SCHEMA_VERSION,
+	CONTROL_PLANE_CATALOG,
+	CONTROL_PLANE_OPERATION_LIST,
 	buildMcpTools,
 	validateControlPlaneCatalog,
 	type ControlPlaneCatalog,
@@ -43,6 +45,12 @@ describe('control-plane operation catalog', () => {
 			readOnlyHint: true,
 			destructiveHint: false,
 		})]);
+	});
+
+	it('publishes one valid catalog with unique REST bindings', () => {
+		expect(validateControlPlaneCatalog(CONTROL_PLANE_CATALOG)).toEqual([]);
+		expect(CONTROL_PLANE_OPERATION_LIST.length).toBeGreaterThan(20);
+		expect(new Set(CONTROL_PLANE_OPERATION_LIST.map((entry) => entry.descriptor.operationId)).size).toBe(CONTROL_PLANE_OPERATION_LIST.length);
 	});
 
 	it('rejects duplicate routes and parallel unsafe mutation metadata', () => {

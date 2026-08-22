@@ -1,5 +1,14 @@
 import type { OAuthScope } from './control-plane-operation.ts';
 
+export interface ApiPrincipal {
+	id: string;
+	displayName?: string;
+	scopes: string[];
+	roles: string[];
+	permissions: string[];
+	metadata?: Record<string, unknown>;
+}
+
 export interface OAuthAuthorizationServerMetadata {
 	issuer: string;
 	authorization_endpoint: string;

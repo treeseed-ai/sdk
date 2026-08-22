@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ControlPlaneClient, ControlPlaneClientError, normalizeControlPlaneServerRegistry, resolveControlPlaneServer } from '../../src/entrypoints/clients/control-plane-client.ts';
+import { CONTROL_PLANE_OPERATIONS } from '../../src/operator-contracts/index.ts';
 
 describe('ControlPlaneClient', () => {
 	it('sends authority and concurrency headers and accepts standard envelopes', async () => {
@@ -8,8 +9,11 @@ describe('ControlPlaneClient', () => {
 			headers: { 'content-type': 'application/json' },
 		}));
 		const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002/' }, accessToken: 'test-token', fetchImpl });
-		await expect(client.call<{ id: string }>({ path: '/v1/projects/project_1', method: 'PATCH', input: { name: 'Example' }, idempotencyKey: 'request_1', ifMatch: '"generation_1"' }))
+		await expect(client.invoke(CONTROL_PLANE_OPERATIONS.providers.reportUsage, {
+			path: { assignmentId: 'assignment 1' }, query: {}, body: { name: 'Example' },
+		}, { idempotencyKey: 'request_1', ifMatch: '"generation_1"' }))
 			.resolves.toEqual({ data: { id: 'project_1' } });
+		expect(String(fetchImpl.mock.calls[0]![0])).toBe('http://127.0.0.1:3002/v1/provider/assignments/assignment%201/usage');
 		const request = fetchImpl.mock.calls[0]![1]!;
 		const headers = new Headers(request.headers);
 		expect(headers.get('authorization')).toBe('Bearer test-token');
@@ -22,7 +26,10 @@ describe('ControlPlaneClient', () => {
 			type: 'https://treeseed.dev/problems/denied', title: 'Denied', status: 403, code: 'authorization_denied',
 		}), { status: 403, headers: { 'content-type': 'application/problem+json' } }));
 		const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002' }, fetchImpl });
-		await expect(client.call({ path: '/v1/projects' })).rejects.toMatchObject<Partial<ControlPlaneClientError>>({ status: 403, problem: { code: 'authorization_denied' } });
+		await expect(client.invoke(CONTROL_PLANE_OPERATIONS.projects.list, {
+			path: {}, query: { teamId: 'team 1', limit: 20 }, body: undefined,
+		})).rejects.toMatchObject<Partial<ControlPlaneClientError>>({ status: 403, problem: { code: 'authorization_denied' } });
+		expect(String(fetchImpl.mock.calls[0]![0])).toBe('http://127.0.0.1:3002/v1/projects?teamId=team+1&limit=20');
 	});
 
 	it('normalizes caller-owned server profiles without performing local persistence', () => {

@@ -24,6 +24,7 @@ describe('operator contract public boundary', () => {
 		expect(controlPlaneClient).toHaveProperty('normalizeControlPlaneServerRegistry');
 		expect(controlPlaneClient).not.toHaveProperty('resolveControlPlaneServerSession');
 		expect(controlPlaneClient).not.toHaveProperty('MarketClient');
-		expect(controlPlaneClient.ControlPlaneClient.prototype).toHaveProperty('callOperation');
+		expect(controlPlaneClient.ControlPlaneClient.prototype).toHaveProperty('invoke');
+		expect(controlPlaneClient.ControlPlaneClient.prototype).not.toHaveProperty('call');
 	});
 });

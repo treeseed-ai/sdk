@@ -7,6 +7,7 @@ import {
 	createStandardsContractBundle,
 	standardsSha256,
 } from '../../src/standards/index.ts';
+import { buildMcpTools, CONTROL_PLANE_CATALOG } from '../../src/operator-contracts/index.ts';
 import { buildContractModels } from './contract-models.ts';
 
 const root = resolve(import.meta.dirname, '../..');
@@ -21,8 +22,13 @@ const modelsPath = resolve(outputRoot, 'contract-models.json');
 writeFileSync(modelsPath, `${canonicalStandardsJson(models)}\n`);
 const typeScriptArtifactPath = resolve(outputRoot, 'typescript-public-api.json');
 const openApiArtifactPath = resolve(outputRoot, 'openapi.json');
+const controlPlaneCatalogPath = resolve(outputRoot, 'control-plane-catalog.json');
+const mcpCatalogInput = { protocolVersion: '2026-07-28', tools: buildMcpTools(CONTROL_PLANE_CATALOG.operations) };
+const mcpCatalogInputPath = resolve(outputRoot, 'mcp-catalog-input.json');
 writeFileSync(typeScriptArtifactPath, `${canonicalStandardsJson(typescript)}\n`);
 writeFileSync(openApiArtifactPath, `${canonicalStandardsJson(openapi)}\n`);
+writeFileSync(controlPlaneCatalogPath, `${canonicalStandardsJson(CONTROL_PLANE_CATALOG)}\n`);
+writeFileSync(mcpCatalogInputPath, `${canonicalStandardsJson(mcpCatalogInput)}\n`);
 
 const packRoot = resolve(outputRoot, 'package');
 mkdirSync(packRoot, { recursive: true });
@@ -46,6 +52,16 @@ const bundle = createStandardsContractBundle({
 			artifact: { path: '.treeseed/standards/typescript-public-api.json', mediaType: 'application/json', digest: await standardsSha256(typescript) },
 			entrypoints: Object.keys(packageJson.exports), guarantees: ['declared-export-closure', 'packed-declaration-source'], deprecations: [],
 		},
+		{
+			id: '@treeseed/sdk/control-plane-catalog', family: 'json-schema', version: '1.0.0',
+			artifact: { path: '.treeseed/standards/control-plane-catalog.json', mediaType: 'application/json', digest: await standardsSha256(CONTROL_PLANE_CATALOG) },
+			entrypoints: ['@treeseed/sdk/operator-contracts'], guarantees: ['unique-operation-ids', 'unique-rest-bindings', 'catalog-only-client'], deprecations: [],
+		},
+		{
+			id: '@treeseed/sdk/mcp-catalog-input', family: 'behavioral', version: '1.0.0',
+			artifact: { path: '.treeseed/standards/mcp-catalog-input.json', mediaType: 'application/json', digest: await standardsSha256(mcpCatalogInput) },
+			entrypoints: ['@treeseed/sdk/operator-contracts'], guarantees: ['catalog-derived-mcp-tools'], deprecations: [],
+		},
 	],
 	evidence: [
 		{ kind: 'source', uri: `git:${sourceCommit}` },
@@ -54,4 +70,9 @@ const bundle = createStandardsContractBundle({
 });
 const bundlePath = resolve(outputRoot, 'contract-bundle.json');
 writeFileSync(bundlePath, `${canonicalStandardsJson(bundle)}\n`);
-console.log(JSON.stringify({ ok: true, sourceCommit, packageDigest, modelsDigest: await standardsSha256(models), bundleDigest: await standardsSha256(bundle), bundlePath, tarball }));
+console.log(JSON.stringify({
+	ok: true, sourceCommit, packageDigest, modelsDigest: await standardsSha256(models),
+	controlPlaneCatalogDigest: await standardsSha256(CONTROL_PLANE_CATALOG),
+	mcpCatalogInputDigest: await standardsSha256(mcpCatalogInput),
+	bundleDigest: await standardsSha256(bundle), bundlePath, tarball,
+}));
