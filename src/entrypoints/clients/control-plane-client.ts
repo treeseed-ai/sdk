@@ -7,6 +7,7 @@ import type {
 	OAuthScope,
 } from '../../operator-contracts/control-plane-operation.ts';
 import type { ApiPrincipal } from '../../operator-contracts/oauth.ts';
+import { controlPlaneOperation } from '../../operator-contracts/control-plane-operations.ts';
 
 export const DEFAULT_CONTROL_PLANE_BASE_URL = 'http://127.0.0.1:3002';
 export const CONTROL_PLANE_BASE_URL_ENV = 'TREESEED_API_BASE_URL';
@@ -197,6 +198,9 @@ export class ControlPlaneClient {
 		input: ControlPlaneInvocation<ControlPlaneOperationPath<TOperation>, ControlPlaneOperationQuery<TOperation>, ControlPlaneOperationBody<TOperation>>,
 		options: ControlPlaneOperationCallOptions = {},
 	): Promise<ControlPlaneResponseEnvelope<ControlPlaneOperationOutput<TOperation>>> {
+		if (controlPlaneOperation(binding.descriptor.operationId) !== binding) {
+			throw new Error(`Operation ${binding.descriptor.operationId} is not the authoritative catalog binding.`);
+		}
 		const rest = binding.descriptor.rest;
 		if (!rest) throw new Error(`Operation ${binding.descriptor.operationId} has no REST binding.`);
 		const pathInput = binding.schema.path.parse(input.path) as Record<string, unknown>;

@@ -32,6 +32,14 @@ describe('ControlPlaneClient', () => {
 		expect(String(fetchImpl.mock.calls[0]![0])).toBe('http://127.0.0.1:3002/v1/projects?teamId=team+1&limit=20');
 	});
 
+	it('rejects caller-constructed endpoint bindings before network access', async () => {
+		const fetchImpl = vi.fn<typeof fetch>();
+		const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002' }, fetchImpl });
+		const forged = { ...CONTROL_PLANE_OPERATIONS.projects.list };
+		await expect(client.invoke(forged, { path: {}, query: {}, body: undefined })).rejects.toThrow(/authoritative catalog binding/u);
+		expect(fetchImpl).not.toHaveBeenCalled();
+	});
+
 	it('normalizes caller-owned server profiles without performing local persistence', () => {
 		const registry = normalizeControlPlaneServerRegistry({
 			version: 1,
