@@ -1,3 +1,4 @@
+import { ZodUndefined } from 'zod';
 import type { ControlPlaneOperationBinding } from './control-plane-operation.ts';
 
 export type CommandOperationKind = 'read' | 'mutation';
@@ -205,7 +206,7 @@ export function validateCommandOperationBindings(
 			};
 			for (const input of node.execution.input) {
 				const keys = shapes[input.target];
-				const undefinedSchema = (binding.schema[input.target] as unknown as { _def?: { typeName?: string } })._def?.typeName === 'ZodUndefined';
+				const undefinedSchema = binding.schema[input.target] instanceof ZodUndefined;
 				if ((keys !== null && !keys.includes(input.field)) || undefinedSchema) diagnostics.push({ code: 'command_operation_input_unknown', path: `${diagnosticPath}.input.${input.target}.${input.field}`, message: `Operation ${node.execution.operationId} does not accept ${input.target} field ${input.field}.` });
 			}
 		}
