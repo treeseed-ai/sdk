@@ -301,7 +301,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 		resolveResources: resource('seeds.resources.resolve', 'POST', '/v1/seeds/resources/resolve', {}, { capability: 'seeds.read', scopes: ['treeseed:admin'] }),
 	},
 	feedback: {
-		create: resource('feedback.create', 'POST', '/v1/feedback', {}, { capability: 'feedback.write', scopes: [], surfaces: ['rest', 'mcp_tool'] }),
+		create: resource('feedback.create', 'POST', '/v1/feedback', {}, { capability: 'feedback.write', authentication: 'oauth', scopes: [], surfaces: ['rest', 'mcp_tool'] }),
 		list: resource('feedback.list', 'GET', '/v1/admin/feedback', {}, { capability: 'feedback.admin', scopes: ['treeseed:admin'], pagination: 'cursor' }),
 		show: resource('feedback.show', 'GET', '/v1/admin/feedback/{feedbackId}', { feedbackId: z.string().min(1) }, { capability: 'feedback.admin', scopes: ['treeseed:admin'] }),
 		updateStatus: resource('feedback.status.update', 'PATCH', '/v1/admin/feedback/{feedbackId}/status', { feedbackId: z.string().min(1) }, { capability: 'feedback.admin', scopes: ['treeseed:admin'], concurrency: true }),

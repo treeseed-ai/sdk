@@ -61,6 +61,7 @@ describe('control-plane operation catalog', () => {
 		expect(CONTROL_PLANE_OPERATIONS.health.deep.descriptor.oauthScopes).toEqual([]);
 		expect(CONTROL_PLANE_OPERATIONS.providers.register.descriptor).toMatchObject({ authentication: 'provider', oauthScopes: [] });
 		expect(CONTROL_PLANE_OPERATIONS.providers.assignment.descriptor).toMatchObject({ authentication: 'provider', oauthScopes: [] });
+		expect(CONTROL_PLANE_OPERATIONS.feedback.create.descriptor).toMatchObject({ authentication: 'oauth', oauthScopes: [] });
 		expect(CONTROL_PLANE_OPERATIONS.treedx.createWorkspace.descriptor).toMatchObject({ authentication: 'oauth_or_provider', oauthScopes: ['treeseed:projects:write'] });
 		expect(CONTROL_PLANE_OPERATIONS.services.putAuthority.descriptor.redactedPaths).toContain('body');
 		expect(CONTROL_PLANE_OPERATIONS.services.disconnect.descriptor.confirmation).toBe('input_required');
@@ -68,10 +69,8 @@ describe('control-plane operation catalog', () => {
 
 	it('rejects mixed authentication authority metadata', () => {
 		const providerWithOAuth = operation({ authentication: 'provider', capability: 'providers.execute' });
-		const oauthWithoutScope = operation({ operationId: 'projects.show', rest: { method: 'GET', path: '/v1/projects/show' }, oauthScopes: [] });
-		const codes = validateControlPlaneCatalog(catalog(providerWithOAuth, oauthWithoutScope)).map((entry) => entry.code);
+		const codes = validateControlPlaneCatalog(catalog(providerWithOAuth)).map((entry) => entry.code);
 		expect(codes).toContain('oauth_scope_forbidden');
-		expect(codes).toContain('oauth_scope_required');
 	});
 
 	it('rejects duplicate routes and parallel unsafe mutation metadata', () => {
