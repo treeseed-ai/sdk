@@ -18,6 +18,7 @@ function operation(overrides: Partial<ControlPlaneOperationDescriptor> = {}): Co
 		rest: { method: 'GET', path: '/v1/projects' },
 		schemas: { input: 'treeseed.projects.list.input/v1', output: 'treeseed.projects.list.output/v1', errors: 'treeseed.problem/v1' },
 		capability: 'projects.read',
+		authentication: 'oauth',
 		oauthScopes: ['treeseed:read'],
 		kind: 'read',
 		riskClass: 'ordinary',
@@ -58,8 +59,18 @@ describe('control-plane operation catalog', () => {
 		expect(paths.some((path) => path.startsWith('/v1/jobs'))).toBe(false);
 		expect(CONTROL_PLANE_OPERATIONS.health.ready.descriptor.oauthScopes).toEqual([]);
 		expect(CONTROL_PLANE_OPERATIONS.health.deep.descriptor.oauthScopes).toEqual([]);
+		expect(CONTROL_PLANE_OPERATIONS.providers.register.descriptor).toMatchObject({ authentication: 'provider', oauthScopes: [] });
+		expect(CONTROL_PLANE_OPERATIONS.providers.assignment.descriptor).toMatchObject({ authentication: 'provider', oauthScopes: [] });
 		expect(CONTROL_PLANE_OPERATIONS.services.putAuthority.descriptor.redactedPaths).toContain('body');
 		expect(CONTROL_PLANE_OPERATIONS.services.disconnect.descriptor.confirmation).toBe('input_required');
+	});
+
+	it('rejects mixed authentication authority metadata', () => {
+		const providerWithOAuth = operation({ authentication: 'provider', capability: 'providers.execute' });
+		const oauthWithoutScope = operation({ operationId: 'projects.show', rest: { method: 'GET', path: '/v1/projects/show' }, oauthScopes: [] });
+		const codes = validateControlPlaneCatalog(catalog(providerWithOAuth, oauthWithoutScope)).map((entry) => entry.code);
+		expect(codes).toContain('oauth_scope_forbidden');
+		expect(codes).toContain('oauth_scope_required');
 	});
 
 	it('rejects duplicate routes and parallel unsafe mutation metadata', () => {
