@@ -11,8 +11,8 @@ githubEnvironments:
 requiredSecrets:
   - NPM_TOKEN
 verify:
-  fast: npm run verify
-  local: npm run verify:local
+  fast: npm run test:contracts
+  local: npm run verify:direct
   release: npm run release:verify
 artifacts:
   - provider: npm
@@ -57,12 +57,5 @@ standards:
     - remove-prerelease-dist-tag
     - restore-accepted-composition
 projectArchitecture:
-  topology: split_site_content
+  topology: package_only
   rootPath: .
-  sitePath: docs
-  contentPath: src/content
-  contentRuntimeSource: r2_preview_overlay
-  localContentMaterialization: none
-  contentPublishTarget:
-    kind: cloudflare_r2
-    prefix: packages/sdk

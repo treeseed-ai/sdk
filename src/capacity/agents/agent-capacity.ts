@@ -1,17 +1,5 @@
 export type { AgentKernelPolicy,AgentKernelProfile,ProjectAgentClass,ProjectAgentClassStatus } from '../../agent-capacity/contracts/projects/agents/project-agent-class.ts';
-export * from '../../agent-capacity/allocation.ts';
-export * from '../../agent-capacity/artifacts.ts';
-export { deriveAgentRuntimeStatus } from '../../agent-capacity/authoring/agent-definition-authoring.ts';
-export { compileDefaultChatActivityProfile } from '../../agent-capacity/authoring/chat-activity-profile.ts';
-export { validateGroupDefinition, validateGroupEdgeDefinition } from '../../agent-capacity/authoring/group-definition-authoring.ts';
-export * from '../../agent-capacity/authority/agent-authority-presets.ts';
-export * from '../../agent-capacity/authority/assignment-authority-probe.ts';
-export * from '../../agent-capacity/artifact-mutation-receipt.ts';
-export * from '../../agent-capacity/cooperative-planning.ts';
-export * from '../../agent-capacity/planning-graph.ts';
-export * from '../../agent-capacity/policy/index.ts';
 export * from '../../agent-capacity/validation/index.ts';
-export * from '../../agent-capacity/workday.ts';
 export * from '../../agent-capacity/contracts/capacity/assignments/assignment-records.ts';
 export * from '../../agent-capacity/contracts/capacity/communication/communication-records.ts';
 export * from '../../agent-capacity/contracts/capacity/providers/supply-policy.ts';
@@ -31,6 +19,3 @@ export * from '../../agent-capacity/contracts/support/authority/execution-mode.t
 export * from '../../agent-capacity/contracts/support/planning-records.ts';
 export * from '../../agent-capacity/contracts/support/research-citation.ts';
 export * from '../../agent-capacity/contracts/support/research-source-policy.ts';
-export * from '../../governance/groups/contracts.ts';
-export * from '../../governance/groups/membership.ts';
-export * from '../../governance/groups/signal-scope.ts';

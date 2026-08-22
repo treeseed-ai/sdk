@@ -6,10 +6,11 @@ import * as controlPlaneClient from '../../../src/entrypoints/clients/control-pl
 describe('operator contract public boundary', () => {
 	it('publishes human contracts without direct definition authoring or deployment mutations', () => {
 		expect(operatorContracts).toHaveProperty('TREESEED_COMMAND_TREE_V1');
-		expect(publicAgentCapacity.compileDefaultChatActivityProfile('planner').planningIntent).toBeTruthy();
-		expect(publicAgentCapacity).toHaveProperty('deriveAgentRuntimeStatus');
-		expect(publicAgentCapacity).toHaveProperty('validateGroupDefinition');
-		expect(publicAgentCapacity).toHaveProperty('validateGroupEdgeDefinition');
+		expect(publicAgentCapacity).toHaveProperty('validateAgentDefinitionModel');
+		expect(publicAgentCapacity).not.toHaveProperty('compileDefaultChatActivityProfile');
+		expect(publicAgentCapacity).not.toHaveProperty('deriveAgentRuntimeStatus');
+		expect(publicAgentCapacity).not.toHaveProperty('validateGroupDefinition');
+		expect(publicAgentCapacity).not.toHaveProperty('validateGroupEdgeDefinition');
 		expect(publicAgentCapacity).not.toHaveProperty('compileGroupDefinition');
 		expect(publicAgentCapacity).not.toHaveProperty('authorAgentDefinitions');
 		expect(publicAgentCapacity).not.toHaveProperty('planAgentDeployment');
@@ -20,7 +21,8 @@ describe('operator contract public boundary', () => {
 	it('publishes only the catalog-bound control-plane client',()=>{
 		expect(controlPlaneClient).toHaveProperty('ControlPlaneClient');
 		expect(controlPlaneClient).toHaveProperty('resolveControlPlaneServer');
-		expect(controlPlaneClient).toHaveProperty('resolveControlPlaneServerSession');
+		expect(controlPlaneClient).toHaveProperty('normalizeControlPlaneServerRegistry');
+		expect(controlPlaneClient).not.toHaveProperty('resolveControlPlaneServerSession');
 		expect(controlPlaneClient).not.toHaveProperty('MarketClient');
 		expect(controlPlaneClient.ControlPlaneClient.prototype).toHaveProperty('callOperation');
 	});

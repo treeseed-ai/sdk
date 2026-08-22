@@ -1,4 +1,4 @@
-import type { ContentReference } from '../../../operations/content-operations.ts';
+import type { ContentReference } from '../../../content/contracts.ts';
 import type { AgentArtifactManifest } from '../../artifacts.ts';
 import type { GroupMembershipSnapshot } from '../../../governance/groups/contracts.ts';
 

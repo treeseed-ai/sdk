@@ -1,21 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, resolve } from 'node:path';
 import type { ControlPlaneOperationDescriptor, OAuthScope } from '../../operator-contracts/control-plane-operation.ts';
 import type { ApiPrincipal } from './remote.ts';
-import {
-	decryptRemoteAuthSessions,
-	encryptRemoteAuthSessions,
-	loadMachineKey,
-	loadRemoteAuthPayload,
-	writeRemoteAuthPayload,
-} from '../../operations/services/config-runtime/configuration/create-default-machine-config.ts';
-import { getRemoteAuthPaths } from '../../operations/services/config-runtime/accounts/ensure-secret-session-for-config.ts';
 
 export const DEFAULT_CONTROL_PLANE_BASE_URL = 'http://127.0.0.1:3002';
 export const CONTROL_PLANE_BASE_URL_ENV = 'TREESEED_API_BASE_URL';
-export const CONTROL_PLANE_SERVER_REGISTRY_PATH = '.treeseed/config/servers.json';
-export const CONTROL_PLANE_SERVER_SESSIONS_PATH = '.treeseed/config/remote-auth.json';
 
 export interface ControlPlaneServerProfile {
 	serverId: string;
@@ -31,12 +18,6 @@ export interface ControlPlaneServerSession {
 	expiresAt?: string;
 	principal?: ApiPrincipal | null;
 }
-
-export interface ControlPlaneSessionCustody {
-	loadKey(root: string): Buffer;
-}
-
-const machineKeySessionCustody: ControlPlaneSessionCustody = { loadKey: loadMachineKey };
 
 export interface ControlPlaneServerRegistry {
 	version: 1;
@@ -139,96 +120,32 @@ export function defaultLocalControlPlaneServer(
 	};
 }
 
-function registryPath(env: Record<string, string | undefined> = process.env) {
-	return resolve(env.HOME?.trim() || homedir(), CONTROL_PLANE_SERVER_REGISTRY_PATH);
-}
-
 function normalizeServer(profile: ControlPlaneServerProfile): ControlPlaneServerProfile {
 	const serverId = profile.serverId.trim();
 	if (!serverId) throw new Error('Control-plane server IDs cannot be empty.');
 	return { serverId, label: profile.label.trim() || serverId, baseUrl: normalizeControlPlaneBaseUrl(profile.baseUrl) };
 }
 
-export function loadControlPlaneServerRegistry(env: Record<string, string | undefined> = process.env): ControlPlaneServerRegistry {
-	const local = defaultLocalControlPlaneServer(env);
-	const path = registryPath(env);
-	if (!existsSync(path)) return { version: 1, activeServerId: local.serverId, servers: [local] };
-	const parsed = JSON.parse(readFileSync(path, 'utf8')) as Partial<ControlPlaneServerRegistry>;
-	const byId = new Map<string, ControlPlaneServerProfile>([[local.serverId, local]]);
-	for (const value of Array.isArray(parsed.servers) ? parsed.servers : []) {
-		const normalized = normalizeServer(value);
-		byId.set(normalized.serverId, normalized);
-	}
-	const servers = [...byId.values()].sort((left, right) => left.serverId.localeCompare(right.serverId));
-	const activeServerId = servers.some((entry) => entry.serverId === parsed.activeServerId) ? parsed.activeServerId! : local.serverId;
-	return { version: 1, activeServerId, servers };
-}
-
-export function writeControlPlaneServerRegistry(state: ControlPlaneServerRegistry, env: Record<string, string | undefined> = process.env) {
-	const path = registryPath(env);
+export function normalizeControlPlaneServerRegistry(state: ControlPlaneServerRegistry) {
 	const servers = [...new Map(state.servers.map((entry) => {
 		const normalized = normalizeServer(entry);
 		return [normalized.serverId, normalized];
 	})).values()].sort((left, right) => left.serverId.localeCompare(right.serverId));
-	const activeServerId = servers.some((entry) => entry.serverId === state.activeServerId) ? state.activeServerId : 'local';
-	const next: ControlPlaneServerRegistry = { version: 1, activeServerId, servers };
-	mkdirSync(dirname(path), { recursive: true });
-	writeFileSync(path, `${JSON.stringify(next, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
-	return next;
+	if (servers.length === 0) throw new Error('A control-plane server registry requires at least one server.');
+	const activeServerId = servers.some((entry) => entry.serverId === state.activeServerId) ? state.activeServerId : servers[0]!.serverId;
+	return { version: 1, activeServerId, servers } satisfies ControlPlaneServerRegistry;
 }
 
-export function resolveControlPlaneServer(selector?: string | null, env: Record<string, string | undefined> = process.env) {
+export function resolveControlPlaneServer(selector: string | null | undefined, registry: ControlPlaneServerRegistry) {
 	const value = selector?.trim();
 	if (value && /^https?:\/\//iu.test(value)) {
 		return normalizeServer({ serverId: value.replace(/^https?:\/\//iu, '').replace(/[^a-z0-9._-]+/giu, '-'), label: value, baseUrl: value });
 	}
-	const registry = loadControlPlaneServerRegistry(env);
-	const serverId = value || registry.activeServerId;
-	const profile = registry.servers.find((entry) => entry.serverId === serverId);
+	const normalized = normalizeControlPlaneServerRegistry(registry);
+	const serverId = value || normalized.activeServerId;
+	const profile = normalized.servers.find((entry) => entry.serverId === serverId);
 	if (!profile) throw new Error(`Unknown control-plane server "${serverId}".`);
 	return profile;
-}
-
-export function resolveControlPlaneServerSession(
-	root: string,
-	server: string | ControlPlaneServerProfile,
-	custody: ControlPlaneSessionCustody = machineKeySessionCustody,
-): ControlPlaneServerSession | null {
-	const serverId = typeof server === 'string' ? server : server.serverId;
-	const session = readServerSessions(root, custody)[serverId] ?? null;
-	if (session && typeof server !== 'string' && session.audience !== normalizeControlPlaneBaseUrl(server.baseUrl)) {
-		throw new Error(`Stored session audience does not match control-plane server "${server.serverId}".`);
-	}
-	return session;
-}
-
-export function setControlPlaneServerSession(root: string, session: ControlPlaneServerSession, custody: ControlPlaneSessionCustody = machineKeySessionCustody) {
-	const normalized = { ...session, audience: normalizeControlPlaneBaseUrl(session.audience) };
-	const sessions = readServerSessions(root, custody);
-	sessions[session.serverId] = normalized;
-	writeServerSessions(root, sessions, custody);
-	return normalized;
-}
-
-export function clearControlPlaneServerSession(root: string, serverId?: string | null, custody: ControlPlaneSessionCustody = machineKeySessionCustody) {
-	if (!serverId) {
-		writeServerSessions(root, {}, custody);
-		return;
-	}
-	const sessions = readServerSessions(root, custody);
-	delete sessions[serverId];
-	writeServerSessions(root, sessions, custody);
-}
-
-function readServerSessions(root: string, custody: ControlPlaneSessionCustody): Record<string, ControlPlaneServerSession> {
-	if (!existsSync(getRemoteAuthPaths(root).authPath)) return {};
-	const sessions = decryptRemoteAuthSessions(loadRemoteAuthPayload(root), custody.loadKey(root));
-	return Object.fromEntries(Object.entries(sessions).map(([serverId, session]) => [serverId, { serverId, ...session }])) as Record<string, ControlPlaneServerSession>;
-}
-
-function writeServerSessions(root: string, sessions: Record<string, ControlPlaneServerSession>, custody: ControlPlaneSessionCustody) {
-	const values = Object.fromEntries(Object.entries(sessions).map(([serverId, session]) => [serverId, session]));
-	writeRemoteAuthPayload(root, { version: 1, sessions: encryptRemoteAuthSessions(values, custody.loadKey(root)) });
 }
 
 async function responsePayload(response: Response): Promise<unknown> {

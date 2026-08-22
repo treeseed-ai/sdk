@@ -1,9 +1,5 @@
-import { randomBytes } from 'node:crypto';
-import { mkdtempSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { CONTROL_PLANE_SERVER_SESSIONS_PATH, ControlPlaneClient, ControlPlaneClientError, resolveControlPlaneServerSession, setControlPlaneServerSession } from '../../src/entrypoints/clients/control-plane-client.ts';
+import { ControlPlaneClient, ControlPlaneClientError, normalizeControlPlaneServerRegistry, resolveControlPlaneServer } from '../../src/entrypoints/clients/control-plane-client.ts';
 
 describe('ControlPlaneClient', () => {
 	it('sends authority and concurrency headers and accepts standard envelopes', async () => {
@@ -29,18 +25,14 @@ describe('ControlPlaneClient', () => {
 		await expect(client.call({ path: '/v1/projects' })).rejects.toMatchObject<Partial<ControlPlaneClientError>>({ status: 403, problem: { code: 'authorization_denied' } });
 	});
 
-	it('stores server sessions encrypted and never writes tokens in plaintext', () => {
-		const root = mkdtempSync(join(tmpdir(), 'treeseed-server-session-'));
-		const custody = { loadKey: () => randomBytes(32) };
-		const key = randomBytes(32);
-		custody.loadKey = () => key;
-		const profile = { serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002' };
-		setControlPlaneServerSession(root, { serverId: 'local', audience: profile.baseUrl, accessToken: 'access-secret', refreshToken: 'refresh-secret' }, custody);
-		expect(resolveControlPlaneServerSession(root, profile, custody)).toMatchObject({ serverId: 'local', audience: profile.baseUrl, accessToken: 'access-secret' });
-		const stored = readFileSync(join(root, CONTROL_PLANE_SERVER_SESSIONS_PATH), 'utf8');
-		expect(stored).not.toContain('access-secret');
-		expect(stored).not.toContain('refresh-secret');
-		expect(() => resolveControlPlaneServerSession(root, { ...profile, baseUrl: 'https://other.example' }, custody)).toThrow(/audience/u);
+	it('normalizes caller-owned server profiles without performing local persistence', () => {
+		const registry = normalizeControlPlaneServerRegistry({
+			version: 1,
+			activeServerId: 'missing',
+			servers: [{ serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002/' }],
+		});
+		expect(registry.activeServerId).toBe('local');
+		expect(resolveControlPlaneServer(undefined, registry)).toEqual({ serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002' });
 	});
 
 	it('uses RFC 8628 form encoding for device authorization', async () => {

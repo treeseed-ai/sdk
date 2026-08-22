@@ -191,7 +191,7 @@ export interface AgentToolPolicy {
 
 export interface AgentContentScope {
 	models: string[];
-	actions?: import('../../operations/content-operations.ts').ContentAction[];
+	actions?: import('../../content/contracts.ts').ContentAction[];
 	books?: string[];
 	paths?: string[];
 	relations?: string[];
@@ -206,7 +206,7 @@ export interface AgentContentAccessPolicy {
 }
 
 export interface AgentActivityPermissions {
-	content?: Record<string,{ operations: import('../../operations/content-operations.ts').ContentAction[]; filters?: Record<string,unknown> }>;
+	content?: Record<string,{ operations: import('../../content/contracts.ts').ContentAction[]; filters?: Record<string,unknown> }>;
 	commit?: { allowed:boolean };
 	repository?: AgentExecutionBoundaryPolicy['repository'];
 	network?: AgentExecutionBoundaryPolicy['network'];

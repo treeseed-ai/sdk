@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { parse as parseYaml } from 'yaml';
 import { describe, expect, it } from 'vitest';
 import { validateCapacityAllocationSetV2, validateCapacityGrantV2 } from '../../../src/agent-capacity/validation/allocation.ts';
 import { validateAgentActivityProfilesConfiguration } from '../../../src/agent-capacity/validation/activity-profile.ts';
@@ -8,7 +5,6 @@ import { validateProjectAgentClassConfiguration } from '../../../src/agent-capac
 import { CAPACITY_CONFIGURATION_DESCRIPTORS, CAPACITY_CONFIGURATION_FAMILIES } from '../../../src/agent-capacity/contracts/configuration/configuration.ts';
 import { validateCapacityProviderManifestV2, validateProviderSupplyOffer } from '../../../src/capacity-provider/validation.ts';
 
-const packageRoot = process.cwd();
 const validators = {
 	'provider-manifest': validateCapacityProviderManifestV2,
 	'provider-offer': validateProviderSupplyOffer,
@@ -19,14 +15,11 @@ const validators = {
 } as const;
 
 describe('capacity configuration inventory', () => {
-	it('has one SDK-owned descriptor and valid round-trip example for every declarative family', () => {
+	it('has one SDK-owned descriptor and validator for every declarative family', () => {
 		expect(CAPACITY_CONFIGURATION_DESCRIPTORS.map((entry) => entry.id)).toEqual(CAPACITY_CONFIGURATION_FAMILIES);
 		for (const descriptor of CAPACITY_CONFIGURATION_DESCRIPTORS) {
-			const source = readFileSync(resolve(packageRoot, descriptor.examplePath), 'utf8');
-			const parsed = parseYaml(source);
-			const roundTripped = JSON.parse(JSON.stringify(parsed));
-			expect(validators[descriptor.id](roundTripped as never), descriptor.id).toEqual({ ok: true, diagnostics: [] });
 			expect(descriptor.ownerPackage).toBe('@treeseed/sdk');
+			expect(validators[descriptor.id]).toBeTypeOf('function');
 		}
 	});
 

@@ -1,17 +1,14 @@
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, rmdirSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, extname, join, relative, resolve } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, rmdirSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 import { build } from 'esbuild';
 import ts from 'typescript';
 import { packageRoot } from '../packages/package-tools.ts';
 
 const srcRoot = resolve(packageRoot, 'src');
-const scriptsRoot = resolve(packageRoot, 'scripts');
 const distRoot = resolve(packageRoot, 'dist');
 const distBuildRoot = resolve(packageRoot, `.treeseed-dist-build-${process.pid}`);
 const buildLockRoot = resolve(packageRoot, '.treeseed-build-dist.lock');
-const TemplateCatalogSourceRoot = resolve(srcRoot, 'treeseed', 'template-catalog');
-const ServicesSourceRoot = resolve(srcRoot, 'treeseed', 'services');
-const BIN_ENTRYPOINTS = new Set(['verification.ts', 'content/publish-content.ts']);
+const packageJsonPath = resolve(packageRoot, 'package.json');
 const BUILD_LOCK_TIMEOUT_MS = 15 * 60 * 1000;
 const BUILD_LOCK_STALE_MS = 20 * 60 * 1000;
 
@@ -85,8 +82,6 @@ async function acquireBuildLock() {
 	}
 }
 
-const COPY_EXTENSIONS = new Set(['.json', '.md', '.js', '.d.ts', '.yaml', '.yml']);
-
 function walkFiles(root) {
 	const files = [];
 	for (const entry of readdirSync(root, { withFileTypes: true })) {
@@ -108,29 +103,8 @@ function rewriteRuntimeSpecifiers(contents) {
 	return contents.replace(/(['"`])(\.[^'"`\n]+?)(?<!\.d)\.(mjs|ts)\1/g, '$1$2.js$1');
 }
 
-function rewriteScriptRuntimeSpecifiers(contents: string, sourceFile: string, outputFile: string, outputRoot: string) {
-	return rewriteRuntimeSpecifiers(contents).replace(
-		/(['"`])(\.{1,2}\/[^'"`\n]+\.js)\1/g,
-		(match, quote: string, specifier: string) => {
-			const sourceTarget = resolve(dirname(sourceFile), specifier.replace(/\.js$/u, '.ts'));
-			const relativeSourceTarget = relative(srcRoot, sourceTarget);
-			if (relativeSourceTarget.startsWith('..') || relativeSourceTarget === '') {
-				return match;
-			}
-			const outputTarget = resolve(outputRoot, relativeSourceTarget.replace(/\.ts$/u, '.js'));
-			let outputSpecifier = relative(dirname(outputFile), outputTarget).replaceAll('\\', '/');
-			if (!outputSpecifier.startsWith('.')) outputSpecifier = `./${outputSpecifier}`;
-			return `${quote}${outputSpecifier}${quote}`;
-		},
-	);
-}
-
 function isTypeScriptSource(filePath) {
 	return filePath.endsWith('.ts') && !filePath.endsWith('.d.ts');
-}
-
-function isDeclarationAsset(filePath) {
-	return filePath.endsWith('.d.ts');
 }
 
 async function compileModule(filePath, sourceRoot, outputRoot) {
@@ -148,31 +122,7 @@ async function compileModule(filePath, sourceRoot, outputRoot) {
 	});
 
 	const builtSource = readFileSync(outputFile, 'utf8');
-	const rewritten = rewriteRuntimeSpecifiers(builtSource);
-	const executableSource = BIN_ENTRYPOINTS.has(relativePath)
-		? `${rewritten.startsWith('#!') ? '' : '#!/usr/bin/env node\n'}${rewritten}`
-		: rewritten;
-	writeFileSync(outputFile, executableSource, 'utf8');
-	if (BIN_ENTRYPOINTS.has(relativePath)) {
-		chmodSync(outputFile, 0o755);
-	}
-}
-
-function copyAsset(filePath, sourceRoot, outputRoot) {
-	const outputFile = resolve(outputRoot, relative(sourceRoot, filePath));
-	ensureDir(outputFile);
-	copyFileSync(filePath, outputFile);
-
-	if (outputFile.endsWith('.d.ts') || outputFile.endsWith('.js')) {
-		const contents = readFileSync(outputFile, 'utf8');
-		writeFileSync(outputFile, rewriteRuntimeSpecifiers(contents), 'utf8');
-	}
-}
-
-function copyAssetTree(sourceRoot, outputRoot) {
-	for (const filePath of walkFiles(sourceRoot)) {
-		copyAsset(filePath, sourceRoot, outputRoot);
-	}
+	writeFileSync(outputFile, rewriteRuntimeSpecifiers(builtSource), 'utf8');
 }
 
 function listRelativeFiles(root) {
@@ -224,31 +174,44 @@ function publishDistBuild() {
 	removeEmptyDirectories(distRoot);
 }
 
-function transpileScript(filePath, outputRoot) {
-	const source = readFileSync(filePath, 'utf8');
-	const relativePath = relative(scriptsRoot, filePath);
-	if (relativePath === 'fixture-tools.ts') {
-		return;
-	}
-	const outputFile = resolve(outputRoot, 'scripts', relativePath.replace(/\.ts$/u, '.js'));
-	const transformed = extname(filePath) === '.ts'
-		? ts.transpileModule(source, {
-				compilerOptions: {
-					module: ts.ModuleKind.ESNext,
-					target: ts.ScriptTarget.ES2022,
-				},
-			}).outputText
-		: source;
-
-	ensureDir(outputFile);
-	writeFileSync(outputFile, rewriteScriptRuntimeSpecifiers(transformed, filePath, outputFile, outputRoot), 'utf8');
-	if ((statSync(filePath).mode & 0o111) !== 0) {
-		chmodSync(outputFile, 0o755);
-	}
+function exportedSourceRoots() {
+	const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as { exports?: Record<string, unknown> };
+	const targets: string[] = [];
+	const collect = (value: unknown) => {
+		if (typeof value === 'string') {
+			targets.push(value);
+			return;
+		}
+		if (value && typeof value === 'object' && !Array.isArray(value)) Object.values(value).forEach(collect);
+	};
+	collect(packageJson.exports ?? {});
+	return [...new Set(targets.filter((target) => target.startsWith('./dist/') && target.endsWith('.js'))
+		.map((target) => resolve(srcRoot, target.slice('./dist/'.length).replace(/\.js$/u, '.ts'))))]
+		.filter((target) => existsSync(target));
 }
 
-function emitDeclarations(outputRoot) {
-	const rootNames = walkFiles(srcRoot).filter(isTypeScriptSource);
+function sourceProgram(rootNames: string[]) {
+	return ts.createProgram({
+		rootNames,
+		options: {
+			allowImportingTsExtensions: true,
+			module: ts.ModuleKind.ESNext,
+			moduleResolution: ts.ModuleResolutionKind.Bundler,
+			target: ts.ScriptTarget.ES2022,
+			strict: true,
+			skipLibCheck: true,
+			types: ['node'],
+		},
+	});
+}
+
+function reachableSourceFiles(rootNames: string[]) {
+	return sourceProgram(rootNames).getSourceFiles()
+		.map((sourceFile) => sourceFile.fileName)
+		.filter((filePath) => filePath.startsWith(`${srcRoot}/`) && isTypeScriptSource(filePath));
+}
+
+function emitDeclarations(outputRoot, rootNames: string[]) {
 	const program = ts.createProgram({
 		rootNames,
 		options: {
@@ -289,52 +252,19 @@ function rewriteDeclarations(outputRoot) {
 const releaseBuildLock = await acquireBuildLock();
 try {
 	rmSync(distBuildRoot, { recursive: true, force: true });
+	const rootNames = exportedSourceRoots();
+	if (!rootNames.length) throw new Error('SDK package exports do not resolve to any TypeScript source roots.');
+	const reachableSources = reachableSourceFiles(rootNames);
 
-	for (const filePath of walkFiles(srcRoot)) {
-		if (filePath.startsWith(`${TemplateCatalogSourceRoot}/`)) {
-			continue;
-		}
-		const extension = extname(filePath);
-		if (isDeclarationAsset(filePath)) {
-			copyAsset(filePath, srcRoot, distBuildRoot);
-			continue;
-		}
-		if (isTypeScriptSource(filePath)) {
-			await compileModule(filePath, srcRoot, distBuildRoot);
-			continue;
-		}
+	for (const filePath of reachableSources) await compileModule(filePath, srcRoot, distBuildRoot);
 
-		if (COPY_EXTENSIONS.has(extension)) {
-			copyAsset(filePath, srcRoot, distBuildRoot);
-		}
-	}
-
-	if (existsSync(TemplateCatalogSourceRoot)) {
-		copyAssetTree(TemplateCatalogSourceRoot, resolve(distBuildRoot, 'treeseed', 'template-catalog'));
-	}
-
-	if (existsSync(ServicesSourceRoot)) {
-		copyAssetTree(ServicesSourceRoot, resolve(distBuildRoot, 'treeseed', 'services'));
-	}
-
-	for (const filePath of walkFiles(scriptsRoot)) {
-		const extension = extname(filePath);
-		if (extension === '.ts') {
-			transpileScript(filePath, distBuildRoot);
-		}
-	}
-
-	emitDeclarations(distBuildRoot);
+	emitDeclarations(distBuildRoot, rootNames);
 	rewriteDeclarations(distBuildRoot);
 
 	for (const filePath of walkFiles(distBuildRoot)) {
 		if (filePath.endsWith('.d.js')) {
 			rmSync(filePath, { force: true });
 		}
-	}
-
-	if (existsSync(resolve(packageRoot, 'README.md'))) {
-		copyFileSync(resolve(packageRoot, 'README.md'), resolve(distBuildRoot, '..', 'README.md'));
 	}
 
 	publishDistBuild();
