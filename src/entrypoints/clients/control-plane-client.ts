@@ -7,6 +7,7 @@ import type {
 	OAuthScope,
 } from '../../operator-contracts/control-plane-operation.ts';
 import type { ApiPrincipal } from '../../operator-contracts/oauth.ts';
+import type { InputRequired } from '../../operator-contracts/mcp.ts';
 import { controlPlaneOperation } from '../../operator-contracts/control-plane-operations.ts';
 
 export const DEFAULT_CONTROL_PLANE_BASE_URL = 'http://127.0.0.1:3002';
@@ -75,6 +76,7 @@ export interface ProblemDetails {
 	requestId?: string;
 	traceId?: string;
 	fields?: Record<string, string[]>;
+	inputRequired?: InputRequired;
 }
 
 export interface ControlPlaneCallOptions {
@@ -177,6 +179,7 @@ function problemFrom(payload: unknown, status: number): ProblemDetails {
 		requestId: typeof source.requestId === 'string' ? source.requestId : undefined,
 		traceId: typeof source.traceId === 'string' ? source.traceId : undefined,
 		fields: source.fields && typeof source.fields === 'object' ? source.fields as Record<string, string[]> : undefined,
+		inputRequired: source.inputRequired && typeof source.inputRequired === 'object' ? source.inputRequired as InputRequired : undefined,
 	};
 }
 
@@ -251,7 +254,12 @@ export class ControlPlaneClient {
 	private async exchangeOAuthToken(values: Record<string, string>, signal?: AbortSignal): Promise<OAuthTokenReceipt> {
 		const response = await this.fetchImpl(`${this.baseUrl}/oauth/token`, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(values), signal });
 		const payload = await responsePayload(response) as Record<string, unknown>;
-		if (!response.ok) throw new ControlPlaneClientError(String(payload.error_description ?? payload.error ?? 'OAuth token exchange failed.'), response.status, problemFrom(payload, response.status), response.headers);
+		if (!response.ok) {
+			const problem = problemFrom(payload, response.status);
+			problem.code = typeof payload.error === 'string' ? payload.error : problem.code;
+			problem.detail = typeof payload.error_description === 'string' ? payload.error_description : problem.detail;
+			throw new ControlPlaneClientError(problem.detail ?? problem.code, response.status, problem, response.headers);
+		}
 		return { tokenType: 'Bearer', accessToken: String(payload.access_token), refreshToken: typeof payload.refresh_token === 'string' ? payload.refresh_token : undefined, expiresIn: Number(payload.expires_in), scope: String(payload.scope ?? '').split(/\s+/u).filter(Boolean) as OAuthScope[], audience: String(payload.audience ?? this.baseUrl), principal: payload.principal && typeof payload.principal === 'object' ? payload.principal as ApiPrincipal : undefined };
 	}
 

@@ -40,6 +40,13 @@ export interface InputRequired {
 	confirmation: ConfirmationState;
 }
 
+export function encodeConfirmationState(state: ConfirmationState) {
+	const bytes = new TextEncoder().encode(JSON.stringify(state));
+	let binary = '';
+	for (const byte of bytes) binary += String.fromCharCode(byte);
+	return btoa(binary).replace(/\+/gu, '-').replace(/\//gu, '_').replace(/=+$/gu, '');
+}
+
 export interface McpToolDescriptor {
 	name: string;
 	description: string;

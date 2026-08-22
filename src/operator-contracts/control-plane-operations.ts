@@ -273,7 +273,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 		providers: resource('services.providers.list', 'GET', '/v1/service-providers', {}, { capability: 'services.read', surfaces: ['rest', 'cli', 'mcp_tool'] }),
 		connections: resource('services.connections.list', 'GET', '/v1/teams/{teamId}/services', { teamId: z.string().min(1) }, { capability: 'services.read', surfaces: ['rest', 'cli', 'mcp_tool'], pagination: 'cursor' }),
 		connection: resource('services.connections.show', 'GET', '/v1/teams/{teamId}/services/{connectionId}', { teamId: z.string().min(1), connectionId: z.string().min(1) }, { capability: 'services.read', surfaces: ['rest', 'cli', 'mcp_resource'] }),
-		createConnection: resource('services.connections.create', 'POST', '/v1/teams/{teamId}/services', { teamId: z.string().min(1) }, { capability: 'services.write', surfaces: ['rest', 'cli', 'mcp_tool'] }),
+		createConnection: resource('services.connections.create', 'POST', '/v1/teams/{teamId}/services', { teamId: z.string().min(1) }, { capability: 'services.write', surfaces: ['rest', 'cli', 'mcp_tool'], risk: 'credential' }),
 		updateConnection: resource('services.connections.update', 'PUT', '/v1/teams/{teamId}/services/{connectionId}', { teamId: z.string().min(1), connectionId: z.string().min(1) }, { capability: 'services.write', surfaces: ['rest', 'cli', 'mcp_tool'], concurrency: true }),
 		disconnect: resource('services.connections.disconnect', 'DELETE', '/v1/teams/{teamId}/services/{connectionId}', { teamId: z.string().min(1), connectionId: z.string().min(1) }, { capability: 'services.write', surfaces: ['rest', 'cli', 'mcp_tool'], risk: 'destructive', concurrency: true }),
 		authorities: resource('services.credential.authorities.list', 'GET', '/v1/teams/{teamId}/services/{connectionId}/credential-authorities', { teamId: z.string().min(1), connectionId: z.string().min(1) }, { capability: 'secrets.read', surfaces: ['rest', 'cli'], pagination: 'cursor' }),
@@ -309,11 +309,11 @@ export const CONTROL_PLANE_OPERATIONS = {
 	workdays: {
 		list: resource('workdays.list', 'GET', '/v1/teams/{teamId}/workday-runs', { teamId: z.string().min(1) }, { capability: 'workdays.read', surfaces: ['rest', 'cli', 'mcp_tool'], pagination: 'cursor' }),
 		preflight: resource('workdays.plan', 'POST', '/v1/teams/{teamId}/workday-runs/preflight', { teamId: z.string().min(1) }, { capability: 'workdays.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli', 'mcp_tool'] }),
-		start: resource('workdays.start', 'POST', '/v1/teams/{teamId}/workday-runs', { teamId: z.string().min(1) }, { capability: 'workdays.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli', 'mcp_tool'] }),
+		start: resource('workdays.start', 'POST', '/v1/teams/{teamId}/workday-runs', { teamId: z.string().min(1) }, { capability: 'workdays.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli', 'mcp_tool'], risk: 'authority' }),
 		show: resource('workdays.show', 'GET', '/v1/teams/{teamId}/workday-runs/{runId}', { teamId: z.string().min(1), runId: z.string().min(1) }, { capability: 'workdays.read', surfaces: ['rest', 'cli', 'mcp_resource'] }),
 		events: resource('workdays.events.list', 'GET', '/v1/teams/{teamId}/workday-runs/{runId}/events', { teamId: z.string().min(1), runId: z.string().min(1) }, { capability: 'workdays.read', pagination: 'cursor' }),
 		schedules: resource('workdays.schedules.list', 'GET', '/v1/teams/{teamId}/workday-schedules', { teamId: z.string().min(1) }, { capability: 'workdays.read', surfaces: ['rest', 'cli'], pagination: 'cursor' }),
-		createSchedule: resource('workdays.schedules.create', 'POST', '/v1/teams/{teamId}/workday-schedules', { teamId: z.string().min(1) }, { capability: 'workdays.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli'] }),
+		createSchedule: resource('workdays.schedules.create', 'POST', '/v1/teams/{teamId}/workday-schedules', { teamId: z.string().min(1) }, { capability: 'workdays.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli'], risk: 'authority' }),
 		updateSchedule: resource('workdays.schedules.update', 'PATCH', '/v1/teams/{teamId}/workday-schedules/{scheduleId}', { teamId: z.string().min(1), scheduleId: z.string().min(1) }, { capability: 'workdays.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli'], concurrency: true }),
 	},
 	assignments: {
@@ -321,7 +321,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 		show: resource('assignments.show', 'GET', '/v1/teams/{teamId}/capacity/assignments/{assignmentId}', { teamId: z.string().min(1), assignmentId: z.string().min(1) }, { capability: 'assignments.read', surfaces: ['rest', 'cli', 'mcp_resource'] }),
 		explain: resource('assignments.explain', 'GET', '/v1/teams/{teamId}/capacity/assignments/{assignmentId}/explanation', { teamId: z.string().min(1), assignmentId: z.string().min(1) }, { capability: 'assignments.read', surfaces: ['rest', 'cli', 'mcp_tool'] }),
 		cancel: resource('assignments.cancel', 'POST', '/v1/teams/{teamId}/capacity/assignments/{assignmentId}/cancel', { teamId: z.string().min(1), assignmentId: z.string().min(1) }, { capability: 'assignments.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli', 'mcp_tool'], risk: 'destructive' }),
-		retry: resource('assignments.retry', 'POST', '/v1/teams/{teamId}/capacity/assignments/{assignmentId}/requeue', { teamId: z.string().min(1), assignmentId: z.string().min(1) }, { capability: 'assignments.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli', 'mcp_tool'] }),
+		retry: resource('assignments.retry', 'POST', '/v1/teams/{teamId}/capacity/assignments/{assignmentId}/requeue', { teamId: z.string().min(1), assignmentId: z.string().min(1) }, { capability: 'assignments.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli', 'mcp_tool'], risk: 'authority' }),
 	},
 	operations: {
 		list: resource('operations.list', 'GET', '/v1/platform/operations', {}, { capability: 'operations.read', surfaces: ['rest', 'mcp_tool'], pagination: 'cursor' }),

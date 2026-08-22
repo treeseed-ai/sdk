@@ -1,3 +1,6 @@
+import { ZodUndefined } from 'zod';
+import type { ControlPlaneOperationBinding } from './control-plane-operation.ts';
+
 export type CommandOperationKind = 'read' | 'mutation';
 export type CommandExecutionMode = 'execute' | 'plan';
 
@@ -37,6 +40,24 @@ export interface CommandAuthorizationDescriptor {
 	confirmation: 'never' | 'destructive' | 'credential' | 'authority' | 'production' | 'irreversible';
 }
 
+export type CommandInputSource = 'argument' | 'context' | 'option';
+export type CommandInputTarget = 'path' | 'query' | 'body';
+
+export interface CommandInputBinding {
+	field: string;
+	source: CommandInputSource;
+	name: string;
+	target: CommandInputTarget;
+	required?: boolean;
+	transform?: 'identity' | 'integer' | 'csv';
+}
+
+export type CommandExecutionBinding =
+	| { kind: 'operation'; operationId: `${string}.${string}`; input: CommandInputBinding[] }
+	| { kind: 'protocol'; handlerId: `protocol.${string}` }
+	| { kind: 'local'; handlerId: `local.${string}` }
+	| { kind: 'unavailable'; code: string; reason: string };
+
 export interface CommandLeafDescriptor {
 	segment: string;
 	description: string;
@@ -45,6 +66,7 @@ export interface CommandLeafDescriptor {
 	options?: CommandOptionDescriptor[];
 	authorization?: CommandAuthorizationDescriptor;
 	resultSchemaId: string;
+	execution: CommandExecutionBinding;
 }
 
 export interface CommandBranchDescriptor {
@@ -130,6 +152,17 @@ export function validateCommandTree(tree: CommandTreeDescriptor): CommandTreeDia
 			}
 			if ('children' in raw) diagnostics.push({ code: 'command_node_ambiguous', path: diagnosticPath, message: 'Leaf command nodes cannot contain child commands.' });
 			if (!node.resultSchemaId.trim()) diagnostics.push({ code: 'result_schema_required', path: `${diagnosticPath}.resultSchemaId`, message: 'Leaf commands require a stable result schema.' });
+			if (!node.execution) diagnostics.push({ code: 'command_execution_required', path: `${diagnosticPath}.execution`, message: 'Every leaf must declare one authoritative execution binding.' });
+			if (node.execution?.kind === 'operation') {
+				const targets = new Set<string>();
+				for (const binding of node.execution.input) {
+					const key = `${binding.target}.${binding.field}`;
+					if (targets.has(key)) diagnostics.push({ code: 'command_input_target_duplicate', path: `${diagnosticPath}.execution.input`, message: `Duplicate command input target ${key}.` });
+					targets.add(key);
+					if (!binding.field.trim() || !binding.name.trim()) diagnostics.push({ code: 'command_input_binding_invalid', path: `${diagnosticPath}.execution.input`, message: 'Command input bindings require field and source names.' });
+				}
+			}
+			if (node.execution?.kind === 'unavailable' && (!node.execution.code.trim() || !node.execution.reason.trim())) diagnostics.push({ code: 'command_unavailable_reason_required', path: `${diagnosticPath}.execution`, message: 'Unavailable commands require a stable code and explanation.' });
 			const optionNames = new Set<string>();
 			for (const option of node.options ?? []) {
 				if (optionNames.has(option.name)) diagnostics.push({ code: 'command_option_duplicate', path: `${diagnosticPath}.options.${index}`, message: `Duplicate option ${option.name}.` });
@@ -143,6 +176,43 @@ export function validateCommandTree(tree: CommandTreeDescriptor): CommandTreeDia
 
 	visit(tree.commands, []);
 	return diagnostics;
+}
+
+export function validateCommandOperationBindings(
+	tree: CommandTreeDescriptor,
+	operations: readonly ControlPlaneOperationBinding<any, any, any, any>[],
+): CommandTreeDiagnostic[] {
+	const diagnostics: CommandTreeDiagnostic[] = [];
+	const catalog = new Map(operations.map((operation) => [operation.descriptor.operationId, operation]));
+	const visit = (nodes: CommandNodeDescriptor[], parent: string[]): void => {
+		for (const node of nodes) {
+			const path = [...parent, node.segment];
+			if (node.nodeType === 'branch') { visit(node.children, path); continue; }
+			if (node.execution.kind !== 'operation') continue;
+			const binding = catalog.get(node.execution.operationId);
+			const diagnosticPath = `commands.${path.join('.')}.execution`;
+			if (!binding) {
+				diagnostics.push({ code: 'command_operation_unknown', path: diagnosticPath, message: `Unknown control-plane operation ${node.execution.operationId}.` });
+				continue;
+			}
+			if (!binding.descriptor.surfaces.includes('cli')) diagnostics.push({ code: 'command_operation_surface_missing', path: diagnosticPath, message: `Operation ${node.execution.operationId} does not declare the CLI surface.` });
+			if (binding.descriptor.kind !== node.kind) diagnostics.push({ code: 'command_operation_kind_mismatch', path: diagnosticPath, message: `Command and operation ${node.execution.operationId} disagree about mutation behavior.` });
+			const expectedConfirmation = binding.descriptor.confirmation === 'input_required' ? binding.descriptor.riskClass : 'never';
+			if ((node.authorization?.confirmation ?? 'never') !== expectedConfirmation) diagnostics.push({ code: 'command_operation_confirmation_mismatch', path: diagnosticPath, message: `Command and operation ${node.execution.operationId} disagree about confirmation.` });
+			const shapes: Record<CommandInputTarget, string[] | null> = {
+				path: 'shape' in binding.schema.path ? Object.keys(binding.schema.path.shape as object) : null,
+				query: 'shape' in binding.schema.query ? Object.keys(binding.schema.query.shape as object) : null,
+				body: 'shape' in binding.schema.body ? Object.keys(binding.schema.body.shape as object) : null,
+			};
+			for (const input of node.execution.input) {
+				const keys = shapes[input.target];
+				const undefinedSchema = binding.schema[input.target] instanceof ZodUndefined;
+				if ((keys !== null && !keys.includes(input.field)) || undefinedSchema) diagnostics.push({ code: 'command_operation_input_unknown', path: `${diagnosticPath}.input.${input.target}.${input.field}`, message: `Operation ${node.execution.operationId} does not accept ${input.target} field ${input.field}.` });
+			}
+		}
+	};
+	visit(tree.commands, []);
+	return diagnostics.sort((left, right) => `${left.path}:${left.code}`.localeCompare(`${right.path}:${right.code}`));
 }
 
 export function createCommandResult<TResult>(input: Omit<CommandResultEnvelope<TResult>, 'schemaVersion'>): CommandResultEnvelope<TResult> {
