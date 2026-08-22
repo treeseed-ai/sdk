@@ -198,14 +198,15 @@ export function validateCommandOperationBindings(
 			if (binding.descriptor.kind !== node.kind) diagnostics.push({ code: 'command_operation_kind_mismatch', path: diagnosticPath, message: `Command and operation ${node.execution.operationId} disagree about mutation behavior.` });
 			const expectedConfirmation = binding.descriptor.confirmation === 'input_required' ? binding.descriptor.riskClass : 'never';
 			if ((node.authorization?.confirmation ?? 'never') !== expectedConfirmation) diagnostics.push({ code: 'command_operation_confirmation_mismatch', path: diagnosticPath, message: `Command and operation ${node.execution.operationId} disagree about confirmation.` });
-			const shapes = {
-				path: 'shape' in binding.schema.path ? Object.keys(binding.schema.path.shape as object) : [],
-				query: 'shape' in binding.schema.query ? Object.keys(binding.schema.query.shape as object) : [],
-				body: 'shape' in binding.schema.body ? Object.keys(binding.schema.body.shape as object) : [],
+			const shapes: Record<CommandInputTarget, string[] | null> = {
+				path: 'shape' in binding.schema.path ? Object.keys(binding.schema.path.shape as object) : null,
+				query: 'shape' in binding.schema.query ? Object.keys(binding.schema.query.shape as object) : null,
+				body: 'shape' in binding.schema.body ? Object.keys(binding.schema.body.shape as object) : null,
 			};
 			for (const input of node.execution.input) {
 				const keys = shapes[input.target];
-				if (keys.length > 0 && !keys.includes(input.field)) diagnostics.push({ code: 'command_operation_input_unknown', path: `${diagnosticPath}.input.${input.target}.${input.field}`, message: `Operation ${node.execution.operationId} does not accept ${input.target} field ${input.field}.` });
+				const undefinedSchema = (binding.schema[input.target] as unknown as { _def?: { typeName?: string } })._def?.typeName === 'ZodUndefined';
+				if ((keys !== null && !keys.includes(input.field)) || undefinedSchema) diagnostics.push({ code: 'command_operation_input_unknown', path: `${diagnosticPath}.input.${input.target}.${input.field}`, message: `Operation ${node.execution.operationId} does not accept ${input.target} field ${input.field}.` });
 			}
 		}
 	};

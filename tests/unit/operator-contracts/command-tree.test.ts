@@ -42,6 +42,17 @@ describe('human command tree contract', () => {
 		expect(JSON.stringify(TREESEED_COMMAND_TREE_V1)).not.toContain('/v1/');
 	});
 
+	it('rejects mapped fields on strict empty and undefined operation inputs', () => {
+		const value = structuredClone(TREESEED_COMMAND_TREE_V1);
+		const status = value.commands.find((node) => node.nodeType === 'leaf' && node.segment === 'status');
+		if (!status || status.nodeType !== 'leaf') throw new Error('Missing status command fixture.');
+		status.execution = { kind: 'operation', operationId: 'status.show', input: [
+			{ target: 'query', field: 'invented', source: 'option', name: 'invented' },
+			{ target: 'body', field: 'invented', source: 'option', name: 'invented' },
+		] };
+		expect(validateCommandOperationBindings(value, CONTROL_PLANE_OPERATION_LIST).map((entry) => entry.code)).toEqual(['command_operation_input_unknown', 'command_operation_input_unknown']);
+	});
+
 	it('accepts arbitrary-depth canonical trees', () => {
 		const value = tree();
 		(value.commands[0] as Extract<(typeof value.commands)[number], { nodeType: 'branch' }>).children = [{ nodeType: 'branch', segment: 'schedules', description: 'Schedules.', children: [{ nodeType: 'leaf', segment: 'start', description: 'Start schedule.', kind: 'mutation', options: [{ name: '--plan', description: 'Plan only.', type: 'boolean' }], resultSchemaId: 'schedule-start/v1', execution: unavailable }] }];
