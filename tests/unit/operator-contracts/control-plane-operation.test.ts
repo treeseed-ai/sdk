@@ -4,6 +4,8 @@ import {
 	CONTROL_PLANE_CATALOG,
 	CONTROL_PLANE_OPERATION_LIST,
 	CONTROL_PLANE_OPERATIONS,
+	buildMcpCatalog,
+	buildMcpResources,
 	buildMcpTools,
 	validateControlPlaneCatalog,
 	type ControlPlaneCatalog,
@@ -70,6 +72,23 @@ describe('control-plane operation catalog', () => {
 		expect(CONTROL_PLANE_OPERATIONS.assignmentGraphs.compile.descriptor.oauthScopes).toEqual(['treeseed:execution']);
 		expect(CONTROL_PLANE_OPERATIONS.research.completeStage.descriptor.oauthScopes).toEqual(['treeseed:knowledge:write']);
 		expect(CONTROL_PLANE_OPERATIONS.communications.cancelInvocation.descriptor).toMatchObject({ riskClass: 'destructive', confirmation: 'input_required' });
+	});
+
+	it('derives the complete stable MCP catalog from resource-declared operations', () => {
+		const resources = buildMcpResources(CONTROL_PLANE_CATALOG.operations);
+		expect(resources).toHaveLength(32);
+		expect(new Set(resources.map(({ uriTemplate }) => uriTemplate)).size).toBe(resources.length);
+		expect(resources).toEqual(expect.arrayContaining([
+			expect.objectContaining({ operationId: 'status.show', uriTemplate: 'treeseed://status' }),
+			expect.objectContaining({ operationId: 'accounts.current.show', uriTemplate: 'treeseed://accounts/current' }),
+			expect.objectContaining({ operationId: 'projects.show', uriTemplate: 'treeseed://projects/{projectId}' }),
+			expect.objectContaining({ operationId: 'plans.show', uriTemplate: 'treeseed://plans/{capacityPlanId}' }),
+			expect.objectContaining({ operationId: 'operations.show', uriTemplate: 'treeseed://operations/{operationId}' }),
+		]));
+		const catalog = buildMcpCatalog(CONTROL_PLANE_CATALOG.operations);
+		expect(catalog.tools).toHaveLength(56);
+		expect(catalog.resources).toEqual(resources);
+		expect(catalog.prompts.map(({ name }) => name)).toEqual(['operate', 'research', 'governance-review', 'workday-planning', 'project-agent-chat']);
 	});
 
 	it('rejects mixed authentication authority metadata', () => {
