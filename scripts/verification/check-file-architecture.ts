@@ -99,6 +99,14 @@ for (const path of repositoryFiles()) {
 	}
 	if (/\.(?:astro|js|jsx|ts|tsx)$/u.test(path)) {
 		const source = readFileSync(path, 'utf8');
+		if (path.startsWith('src/')
+			&& !path.startsWith('src/treedx/')
+			&& path !== 'src/operator-contracts/control-plane-operation.ts'
+			&& path !== 'src/operator-contracts/control-plane-operations.ts'
+			&& path !== 'src/entrypoints/clients/control-plane-client.ts'
+			&& /(?:['"`])\/v1\//u.test(source)) {
+			violations.push(`${path}: raw control-plane route belongs in the authoritative operation catalog`);
+		}
 		if (/\b(?:CLI_COMMAND_OVERLAYS|CLI_ONLY_OPERATION_SPECS|MODULE|PART)_\d+\b/u.test(source)) {
 			violations.push(`${path}: ordinal partition symbol`);
 		}

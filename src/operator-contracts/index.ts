@@ -3,5 +3,6 @@ export * from './canonical-command-tree.ts';
 export * from './workday-profile.ts';
 export * from './workday-lifecycle.ts';
 export * from './control-plane-operation.ts';
+export * from './control-plane-operations.ts';
 export * from './mcp.ts';
 export * from './oauth.ts';

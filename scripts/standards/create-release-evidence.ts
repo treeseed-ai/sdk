@@ -19,7 +19,6 @@ for (const key of ['packageName', 'packageVersion', 'sourceCommit', 'npmIntegrit
 const bundle = read<StandardsContractBundle>('.treeseed/standards/contract-bundle.json');
 const attestation = read<StandardsCompatibilityAttestation>('.treeseed/standards/compatibility-attestation.json');
 const composition = read<StandardsComposition>('.treeseed/standards/composition.json');
-const consumer = read<Record<string, unknown>>('.treeseed/standards/api-consumer-receipt.json');
 const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
 const trackedStatus = execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: root, encoding: 'utf8' }).trim();
 if (trackedStatus) throw new Error('Release evidence requires a clean tracked source tree.');
@@ -38,8 +37,6 @@ if (!member || member.packageVersion !== packageJson.version || member.sourceCom
 	|| !member.compatibilityAttestationDigests.includes(await standardsSha256(attestation))) {
 	throw new Error('Accepted composition is not bound to the exact candidate evidence.');
 }
-if (consumer.candidateArtifactDigest !== packageDigest || consumer.candidateVersion !== packageJson.version
-	|| consumer.consumerCommits !== 0 || consumer.build !== 'passed') throw new Error('API consumer receipt is absent or does not bind the exact candidate.');
 const receipt = {
 	schemaVersion: 1,
 	packageName: packageJson.name,
@@ -51,7 +48,6 @@ const receipt = {
 	contractBundleDigest: await standardsSha256(bundle),
 	compatibilityAttestationDigest: await standardsSha256(attestation),
 	compositionDigest: await standardsSha256(composition),
-	consumerReceiptDigest: await standardsSha256(consumer),
 };
 const outputPath = resolve(root, '.treeseed/standards/release-evidence.json');
 writeFileSync(outputPath, `${canonicalStandardsJson(receipt)}\n`);

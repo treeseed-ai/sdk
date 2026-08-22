@@ -1,3 +1,5 @@
+import type { z } from 'zod';
+
 export const CONTROL_PLANE_OPERATION_SCHEMA_VERSION = 'treeseed.control-plane-operation/v1' as const;
 
 export type ControlPlaneHttpMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT';
@@ -57,6 +59,29 @@ export interface ControlPlaneOperationDescriptor {
 	receipt: boolean;
 	redactedPaths: string[];
 }
+
+export interface ControlPlaneOperationInput<TPath = Record<string, never>, TQuery = Record<string, never>, TBody = undefined> {
+	path: TPath;
+	query: TQuery;
+	body: TBody;
+}
+
+export interface ControlPlaneOperationSchemas<TPath, TQuery, TBody, TOutput> {
+	path: z.ZodType<TPath>;
+	query: z.ZodType<TQuery>;
+	body: z.ZodType<TBody>;
+	output: z.ZodType<TOutput>;
+}
+
+export interface ControlPlaneOperationBinding<TPath = Record<string, never>, TQuery = Record<string, never>, TBody = undefined, TOutput = unknown> {
+	descriptor: ControlPlaneOperationDescriptor;
+	schema: ControlPlaneOperationSchemas<TPath, TQuery, TBody, TOutput>;
+}
+
+export type ControlPlaneOperationPath<T> = T extends ControlPlaneOperationBinding<infer TPath, any, any, any> ? TPath : never;
+export type ControlPlaneOperationQuery<T> = T extends ControlPlaneOperationBinding<any, infer TQuery, any, any> ? TQuery : never;
+export type ControlPlaneOperationBody<T> = T extends ControlPlaneOperationBinding<any, any, infer TBody, any> ? TBody : never;
+export type ControlPlaneOperationOutput<T> = T extends ControlPlaneOperationBinding<any, any, any, infer TOutput> ? TOutput : never;
 
 export const TREESEED_OAUTH_SCOPES = [
 	'treeseed:read',
