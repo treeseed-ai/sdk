@@ -107,8 +107,8 @@ export const CONTROL_PLANE_OPERATIONS = {
 		show: read('status.show', '/v1/status', 'status.read', ['rest', 'cli', 'mcp_tool', 'mcp_resource']),
 	},
 	health: {
-		ready: read('health.ready', '/v1/health/ready', 'health.read'),
-		deep: read('health.deep', '/v1/health/deep', 'health.read'),
+		ready: resource('health.ready', 'GET', '/v1/health/ready', {}, { capability: 'health.read', scopes: [] }),
+		deep: resource('health.deep', 'GET', '/v1/health/deep', {}, { capability: 'health.read', scopes: [] }),
 	},
 	projects: {
 		list: define({

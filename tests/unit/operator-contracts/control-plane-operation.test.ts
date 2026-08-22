@@ -3,6 +3,7 @@ import {
 	CONTROL_PLANE_OPERATION_SCHEMA_VERSION,
 	CONTROL_PLANE_CATALOG,
 	CONTROL_PLANE_OPERATION_LIST,
+	CONTROL_PLANE_OPERATIONS,
 	buildMcpTools,
 	validateControlPlaneCatalog,
 	type ControlPlaneCatalog,
@@ -55,6 +56,8 @@ describe('control-plane operation catalog', () => {
 		expect(paths.some((path) => path.startsWith('/v1/operator/commands'))).toBe(false);
 		expect(paths.some((path) => path.startsWith('/v1/ui/'))).toBe(false);
 		expect(paths.some((path) => path.startsWith('/v1/jobs'))).toBe(false);
+		expect(CONTROL_PLANE_OPERATIONS.health.ready.descriptor.oauthScopes).toEqual([]);
+		expect(CONTROL_PLANE_OPERATIONS.health.deep.descriptor.oauthScopes).toEqual([]);
 	});
 
 	it('rejects duplicate routes and parallel unsafe mutation metadata', () => {
