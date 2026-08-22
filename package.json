@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.13.0-rc.8",
+  "version": "0.13.0-rc.9",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "Apache-2.0",
   "repository": {
@@ -281,10 +281,6 @@
     "./feedback": {
       "types": "./dist/feedback/index.d.ts",
       "default": "./dist/feedback/index.js"
-    },
-    "./knowledge-packs": {
-      "types": "./dist/knowledge-packs/index.d.ts",
-      "default": "./dist/knowledge-packs/index.js"
     },
     "./platform/site-config-schema": {
       "types": "./dist/platform/configuration/site-config-schema.d.ts",
