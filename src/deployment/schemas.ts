@@ -91,7 +91,7 @@ export const componentReleaseSchema = z.object({
 	release: packageVersion,
 	track: deploymentTrackSchema,
 	source: z.object({ repository: z.string().regex(/^treeseed-ai\/[a-z0-9-]+$/u), commit: gitCommit }).strict(),
-	stableBase: z.object({ releaseRange: z.string().min(1), compatibilityId: identifier, catalogDigest: digest }).strict().nullable(),
+	stableBase: z.object({ releaseRange: z.string().min(1), compatibilityId: identifier, catalogDigest: digest.nullable() }).strict().nullable(),
 	packages: z.array(catalogPackageSchema).min(1),
 	images: z.array(catalogImageSchema),
 	runtime: packageRuntimeSchema,
@@ -114,7 +114,13 @@ export const releaseCatalogSchema = z.object({
 	stableBase: z.object({ release: packageVersion, catalogDigest: digest }).strict().nullable(),
 	components: z.array(componentReleaseSchema).min(1),
 	createdAt: z.string().datetime(),
-}).strict();
+}).strict().superRefine((catalog, context) => {
+	if (catalog.track === 'development' && !catalog.stableBase) context.addIssue({ code: z.ZodIssueCode.custom, path: ['stableBase'], message: 'Development catalogs require an exact stable base.' });
+	if (catalog.track === 'stable' && catalog.stableBase) context.addIssue({ code: z.ZodIssueCode.custom, path: ['stableBase'], message: 'Stable catalogs cannot bind another stable base.' });
+	if (catalog.track === 'development' && catalog.stableBase) for (const [index, component] of catalog.components.entries()) {
+		if (component.track !== 'development' || component.stableBase?.catalogDigest !== catalog.stableBase.catalogDigest) context.addIssue({ code: z.ZodIssueCode.custom, path: ['components', index, 'stableBase', 'catalogDigest'], message: 'Catalog ingestion must bind every development component to the exact selected stable base.' });
+	}
+});
 
 export const hostPlanSchema = z.object({ schemaVersion: z.literal('treeseed.host-plan/v1'), planId: identifier, configurationDigest: digest, catalogDigest: digest, changes: z.array(z.object({ componentId: identifier, action: z.enum(['install', 'upgrade', 'reconfigure', 'remove', 'noop']), from: packageVersion.nullable(), to: packageVersion.nullable() }).strict()), blockers: z.array(z.object({ code: identifier, message: z.string().min(1) }).strict()) }).strict();
 export const hostBootstrapSchema = z.object({
