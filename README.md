@@ -19,32 +19,42 @@ import {
   ControlPlaneClient,
   defaultLocalControlPlaneServer,
 } from '@treeseed/sdk/control-plane-client';
+import { CONTROL_PLANE_OPERATIONS } from '@treeseed/sdk/operator-contracts';
 
 const client = new ControlPlaneClient({
   profile: defaultLocalControlPlaneServer(),
   accessToken: process.env.TREESEED_ACCESS_TOKEN,
 });
 
-const health = await client.call({ method: 'GET', path: '/v1/health' });
+const health = await client.invoke(CONTROL_PLANE_OPERATIONS.health.readiness, {
+  path: {},
+  query: {},
+  body: undefined,
+});
 ```
 
-The client provides typed operation dispatch, RFC 9457 problem handling, OAuth device and refresh flows, server-profile normalization, idempotency keys, optimistic-concurrency headers, and request cancellation. Generated operation bindings come from the versioned operation catalog; the generic `call` method accepts only the public REST path shape. Token and profile persistence belong to the consuming CLI, application, or host credential store.
+The client provides typed operation dispatch, RFC 9457 problem handling, OAuth device and refresh flows, server-profile normalization, idempotency keys, optimistic-concurrency headers, and request cancellation. Operation bindings come from the versioned operation catalog; callers do not construct control-plane paths. Token and profile persistence belong to the consuming CLI, application, or host credential store.
 
 ## TreeDX API
 
 ```ts
-import { TreeDxClient } from '@treeseed/sdk/treedx/client';
+import { ControlPlaneClient } from '@treeseed/sdk/control-plane-client';
+import { TreeSeedTreeDxClient } from '@treeseed/sdk/treedx';
 
-const treeDx = new TreeDxClient({
-  baseUrl: 'http://127.0.0.1:4000',
-  token: process.env.TREEDX_TOKEN,
-  repoId: 'repo_123',
+const controlPlane = new ControlPlaneClient({
+  profile: defaultLocalControlPlaneServer(),
+  accessToken: process.env.TREESEED_ACCESS_TOKEN,
 });
+const treeDx = new TreeSeedTreeDxClient(controlPlane);
 
-const result = await treeDx.searchRepositoryFiles({ query: 'release' });
+const result = await treeDx.proxy.repositories.searchFiles({
+  path: { projectId: 'project_123', repositoryId: 'repository_123' },
+  query: { query: 'release' },
+  body: undefined,
+});
 ```
 
-TreeDX remains a remote service. Its client and transport types are retained here so consumers do not duplicate protocol code.
+TreeDX remains an independently released remote service. This package imports its authoritative payload types but exposes only the project-scoped TreeSeed proxy facade. Direct TreeDX transport, endpoints, topology, and credentials remain confined to trusted control-plane infrastructure.
 
 ## Public boundaries
 

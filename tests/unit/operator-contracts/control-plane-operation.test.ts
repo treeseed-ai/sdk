@@ -53,7 +53,7 @@ describe('control-plane operation catalog', () => {
 
 	it('publishes one valid catalog with unique REST bindings', () => {
 		expect(validateControlPlaneCatalog(CONTROL_PLANE_CATALOG)).toEqual([]);
-		expect(CONTROL_PLANE_OPERATION_LIST).toHaveLength(230);
+		expect(CONTROL_PLANE_OPERATION_LIST).toHaveLength(286);
 		expect(new Set(CONTROL_PLANE_OPERATION_LIST.map((entry) => entry.descriptor.operationId)).size).toBe(CONTROL_PLANE_OPERATION_LIST.length);
 		const paths = CONTROL_PLANE_OPERATION_LIST.flatMap((entry) => entry.descriptor.rest?.path ?? []);
 		expect(paths.some((path) => path.startsWith('/v1/operator/commands'))).toBe(false);
@@ -64,7 +64,7 @@ describe('control-plane operation catalog', () => {
 		expect(CONTROL_PLANE_OPERATIONS.providers.register.descriptor).toMatchObject({ authentication: 'provider', oauthScopes: [] });
 		expect(CONTROL_PLANE_OPERATIONS.providers.assignment.descriptor).toMatchObject({ authentication: 'provider', oauthScopes: [] });
 		expect(CONTROL_PLANE_OPERATIONS.feedback.create.descriptor).toMatchObject({ authentication: 'oauth', oauthScopes: [] });
-		expect(CONTROL_PLANE_OPERATIONS.treedx.createWorkspace.descriptor).toMatchObject({ authentication: 'oauth_or_provider', oauthScopes: ['treeseed:projects:write'] });
+		expect(CONTROL_PLANE_OPERATIONS.treedx.workspaces.create.descriptor).toMatchObject({ authentication: 'oauth_or_provider', oauthScopes: ['treeseed:projects:write'], upstream: { operationId: 'createWorkspace' } });
 		expect(CONTROL_PLANE_OPERATIONS.services.putAuthority.descriptor.redactedPaths).toContain('body');
 		expect(CONTROL_PLANE_OPERATIONS.services.disconnect.descriptor.confirmation).toBe('input_required');
 		expect(CONTROL_PLANE_OPERATIONS.planning.acceptExecutionInput.descriptor.rest?.path).toBe('/v1/decision-execution-inputs/{inputId}/accept');
@@ -76,7 +76,7 @@ describe('control-plane operation catalog', () => {
 
 	it('derives the complete stable MCP catalog from resource-declared operations', () => {
 		const resources = buildMcpResources(CONTROL_PLANE_CATALOG.operations);
-		expect(resources).toHaveLength(32);
+		expect(resources).toHaveLength(55);
 		expect(new Set(resources.map(({ uriTemplate }) => uriTemplate)).size).toBe(resources.length);
 		expect(resources).toEqual(expect.arrayContaining([
 			expect.objectContaining({ operationId: 'status.show', uriTemplate: 'treeseed://status' }),
@@ -84,9 +84,10 @@ describe('control-plane operation catalog', () => {
 			expect.objectContaining({ operationId: 'projects.show', uriTemplate: 'treeseed://projects/{projectId}' }),
 			expect.objectContaining({ operationId: 'plans.show', uriTemplate: 'treeseed://plans/{capacityPlanId}' }),
 			expect.objectContaining({ operationId: 'operations.show', uriTemplate: 'treeseed://operations/{operationId}' }),
+			expect.objectContaining({ operationId: 'treedx.service.contract', uriTemplate: 'treeseed://dx/projects/{projectId}/service-contract' }),
 		]));
 		const catalog = buildMcpCatalog(CONTROL_PLANE_CATALOG.operations);
-		expect(catalog.tools).toHaveLength(56);
+		expect(catalog.tools).toHaveLength(118);
 		expect(catalog.resources).toEqual(resources);
 		expect(catalog.prompts.map(({ name }) => name)).toEqual(['operate', 'research', 'governance-review', 'workday-planning', 'project-agent-chat']);
 	});

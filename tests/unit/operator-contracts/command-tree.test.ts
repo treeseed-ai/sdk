@@ -40,6 +40,16 @@ describe('human command tree contract', () => {
 		expect(leaves.get('secrets status')?.execution).toEqual({ kind: 'local', handlerId: 'local.secrets.status' });
 		expect(leaves.get('release')?.execution).toMatchObject({ kind: 'unavailable', code: 'standards_migration_not_enabled' });
 		expect(JSON.stringify(TREESEED_COMMAND_TREE_V1)).not.toContain('/v1/');
+		expect(listCommandPaths()).toEqual(expect.arrayContaining([
+			'projects treedx show',
+			'projects treedx bind',
+			'projects treedx status',
+			'projects treedx diagnose',
+			'projects treedx capabilities',
+			'projects treedx workspaces list',
+			'projects treedx workspaces show',
+			'projects treedx workspaces abandon',
+		]));
 	});
 
 	it('rejects mapped fields on strict empty and undefined operation inputs', () => {

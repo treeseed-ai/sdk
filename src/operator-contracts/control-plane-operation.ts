@@ -40,6 +40,13 @@ export interface ControlPlaneConcurrencyContract {
 	writeHeader: 'If-Match';
 }
 
+export interface ControlPlaneUpstreamBinding {
+	service: 'treedx';
+	operationId: string;
+	contractVersion: string;
+	contractDigest: `sha256:${string}`;
+}
+
 export interface ControlPlaneOperationDescriptor {
 	schemaVersion: typeof CONTROL_PLANE_OPERATION_SCHEMA_VERSION;
 	operationId: `${string}.${string}`;
@@ -60,6 +67,7 @@ export interface ControlPlaneOperationDescriptor {
 	audited: boolean;
 	receipt: boolean;
 	redactedPaths: string[];
+	upstream?: ControlPlaneUpstreamBinding;
 }
 
 export interface ControlPlaneOperationInput<TPath = Record<string, never>, TQuery = Record<string, never>, TBody = undefined> {
@@ -157,6 +165,9 @@ export function validateControlPlaneCatalog(catalog: ControlPlaneCatalog): Contr
 		}
 		for (const duplicate of duplicates(operation.surfaces)) diagnostics.push({ code: 'surface_duplicate', path: `${path}.surfaces`, message: `Duplicate operation surface ${duplicate}.` });
 		for (const duplicate of duplicates(operation.oauthScopes)) diagnostics.push({ code: 'oauth_scope_duplicate', path: `${path}.oauthScopes`, message: `Duplicate OAuth scope ${duplicate}.` });
+		if (operation.upstream && (!operation.upstream.operationId || !/^sha256:[0-9a-f]{64}$/u.test(operation.upstream.contractDigest))) {
+			diagnostics.push({ code: 'upstream_binding_invalid', path: `${path}.upstream`, message: 'Upstream bindings require an operation ID and exact SHA-256 contract digest.' });
+		}
 
 		const elevatedRisk = operation.riskClass !== 'ordinary';
 		if (elevatedRisk !== (operation.confirmation === 'input_required')) {

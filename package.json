@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.13.0-rc.18",
+  "version": "0.13.0-rc.19",
   "description": "Portable TreeSeed contracts, standards, and typed remote control-plane clients.",
   "license": "Apache-2.0",
   "repository": {
@@ -49,6 +49,7 @@
     "standards:release-evidence": "node --import tsx ./scripts/standards/create-release-evidence.ts"
   },
   "dependencies": {
+    "@treeseed/treedx": "0.3.0-rc.3",
     "esbuild": "^0.28.0",
     "typescript": "^5.9.3",
     "yaml": "^2.8.1",
@@ -112,19 +113,16 @@
       "types": "./dist/content/validation/index.d.ts",
       "default": "./dist/content/validation/index.js"
     },
-    "./treedx/client": {
-      "types": "./dist/treedx/support/client.d.ts",
-      "import": "./dist/treedx/support/client.js",
-      "default": "./dist/treedx/support/client.js"
+    "./treedx": {
+      "types": "./dist/treedx/index.d.ts",
+      "default": "./dist/treedx/index.js"
     },
-    "./treedx/auth": {
-      "types": "./dist/treedx/accounts/auth.d.ts",
-      "import": "./dist/treedx/accounts/auth.js",
-      "default": "./dist/treedx/accounts/auth.js"
+    "./treedx/client": {
+      "types": "./dist/treedx/client.d.ts",
+      "default": "./dist/treedx/client.js"
     },
     "./treedx/types": {
       "types": "./dist/treedx/types.d.ts",
-      "import": "./dist/treedx/types.js",
       "default": "./dist/treedx/types.js"
     },
     "./capacity-provider": {
