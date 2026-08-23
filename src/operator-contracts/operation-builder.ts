@@ -60,10 +60,11 @@ export function defineTreeDxProxyOperation<T extends z.ZodRawShape>(
 ) {
 	const kind = (options.read ?? method === 'GET') ? 'read' : 'mutation';
 	const riskClass = options.risk ?? 'ordinary';
+	const surfaces = options.surfaces ?? ['rest', 'mcp_tool', ...(method === 'GET' ? ['mcp_resource' as const] : [])];
 	return defineOperation({
 		operationId,
 		description: `${kind === 'read' ? 'Read' : 'Apply'} ${operationId} through the project-scoped TreeDX proxy.`,
-		rest: { method, path },
+		...(surfaces.includes('rest') ? { rest: { method, path } } : {}),
 		...(Object.keys(pathShape).length ? { parameters: `treeseed.${operationId}.parameters/v1` } : {}),
 		capability: kind === 'read' ? 'treedx.read' : 'treedx.write',
 		authentication: 'oauth_or_provider',
@@ -71,7 +72,7 @@ export function defineTreeDxProxyOperation<T extends z.ZodRawShape>(
 		kind,
 		riskClass,
 		confirmation: riskClass === 'ordinary' ? 'never' : 'input_required',
-		surfaces: options.surfaces ?? ['rest', 'mcp_tool', ...(method === 'GET' ? ['mcp_resource' as const] : [])],
+		surfaces,
 		cacheScope: kind === 'read' ? 'project' : 'none',
 		pagination: options.pagination ?? 'none',
 		...(upstreamOperationId ? { upstream: { service: 'treedx' as const, operationId: upstreamOperationId, contractVersion: TREEDX_OPENAPI_CONTRACT.openapiVersion, contractDigest: TREEDX_OPENAPI_CONTRACT.openapiSha256 } } : {}),
