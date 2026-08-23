@@ -35,4 +35,26 @@ describe('portable seed bundle', () => {
 			'seed_bundle_service_principal_interactive_forbidden', 'seed_bundle_provider_lane_required',
 		]));
 	});
+
+	it('allows a content-only project without a Git primary repository', async () => {
+		const input = bundle();
+		input.resources.projects.push({ key: 'project:treeseed/knowledge', team: 'team:treeseed', slug: 'knowledge', name: 'Knowledge', description: 'Content-only knowledge.', kind: 'content' });
+		const value = { ...input, digest: await digestSeedBundle(input) };
+		expect(validateSeedBundle(value)).toEqual([]);
+	});
+
+	it('requires source repositories for non-content projects and rejects legacy content Git repositories', async () => {
+		const input = bundle();
+		delete input.resources.projects[0]!.primaryRepository;
+		(input.resources.repositories as Array<Record<string, unknown>>).push({
+			...input.resources.repositories[0],
+			key: 'repository:treeseed/sdk-content',
+			role: 'content',
+		});
+		const value = { ...input, digest: await digestSeedBundle(input) } as SeedBundleV2;
+		expect(validateSeedBundle(value).map((entry) => entry.code)).toEqual(expect.arrayContaining([
+			'seed_bundle_primary_repository_required',
+			'seed_bundle_content_repository_forbidden',
+		]));
+	});
 });
