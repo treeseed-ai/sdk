@@ -64,6 +64,20 @@ describe('deployment contracts', () => {
 		expect(() => collectHostAliases([left, right])).toThrow(/Duplicate host alias/u);
 	});
 
+	it('rejects unknown, private, and forbidden alias override identities', () => {
+		const api = release('api', 'stable', 'a');
+		expect(() => collectHostAliases([api], { 'api.http': 'api-canary.treeseed.localhost' })).toThrow(/does not identify an accepted host endpoint/u);
+		api.runtime.services[0]!.endpoints.push({ id: 'internal', protocol: 'tcp', port: 4000, visibility: 'private', aliasOverride: false, tls: 'none', authentication: 'none' });
+		expect(() => collectHostAliases([api], { 'api.service.internal': 'internal.treeseed.localhost' })).toThrow(/does not identify an accepted host endpoint/u);
+		api.runtime.services[0]!.endpoints[0]!.aliasOverride = false;
+		expect(() => collectHostAliases([api], { 'api.service.http': 'api-canary.treeseed.localhost' })).toThrow(/does not permit alias overrides/u);
+	});
+
+	it('applies a fully qualified host endpoint override', () => {
+		const aliases = collectHostAliases([release('api', 'stable', 'a')], { 'api.service.http': 'api-canary.treeseed.localhost' });
+		expect([...aliases.keys()]).toEqual(['api-canary.treeseed.localhost']);
+	});
+
 	it('allows project release candidates to defer catalog binding but requires it at catalog ingestion', () => {
 		const candidate = release('agent', 'development', 'c');
 		candidate.stableBase!.catalogDigest = null;

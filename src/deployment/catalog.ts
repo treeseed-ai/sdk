@@ -28,6 +28,16 @@ export function resolveMixedTrackCatalog(input: { host: HostConfiguration; stabl
 }
 
 export function collectHostAliases(components: readonly ComponentRelease[], overrides: Record<string, string> = {}) {
+	const endpoints = new Map<string, ComponentRelease['runtime']['services'][number]['endpoints'][number]>();
+	for (const component of components) for (const service of component.runtime.services) for (const endpoint of service.endpoints) {
+		if (endpoint.visibility === 'host') endpoints.set(`${component.componentId}.${service.id}.${endpoint.id}`, endpoint);
+	}
+	for (const [key, alias] of Object.entries(overrides)) {
+		const endpoint = endpoints.get(key);
+		if (!endpoint) throw new Error(`Alias override ${key} does not identify an accepted host endpoint.`);
+		if (!endpoint.aliasOverride) throw new Error(`Host endpoint ${key} does not permit alias overrides.`);
+		if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.localhost$/u.test(alias)) throw new Error(`Alias override ${key} must use the .localhost namespace.`);
+	}
 	const aliases = new Map<string, { componentId: string; serviceId: string; endpointId: string; port: number }>();
 	for (const component of components) for (const service of component.runtime.services) for (const endpoint of service.endpoints) {
 		if (endpoint.visibility !== 'host') continue;
