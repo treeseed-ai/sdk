@@ -61,7 +61,10 @@ describe('control-plane operation catalog', () => {
 		expect(paths.some((path) => path.startsWith('/v1/jobs'))).toBe(false);
 		expect(CONTROL_PLANE_OPERATIONS.health.ready.descriptor.oauthScopes).toEqual([]);
 		expect(CONTROL_PLANE_OPERATIONS.health.deep.descriptor.oauthScopes).toEqual([]);
-		expect(CONTROL_PLANE_OPERATIONS.providers.register.descriptor).toMatchObject({ authentication: 'provider', oauthScopes: [] });
+		for (const operation of [CONTROL_PLANE_OPERATIONS.providers.register, CONTROL_PLANE_OPERATIONS.providers.registration,
+			CONTROL_PLANE_OPERATIONS.providers.exchangeCredential, CONTROL_PLANE_OPERATIONS.providers.issueAccessToken]) {
+			expect(operation.descriptor).toMatchObject({ authentication: 'signed_request', oauthScopes: [] });
+		}
 		expect(CONTROL_PLANE_OPERATIONS.providers.assignment.descriptor).toMatchObject({ authentication: 'provider', oauthScopes: [] });
 		expect(CONTROL_PLANE_OPERATIONS.feedback.create.descriptor).toMatchObject({ authentication: 'oauth', oauthScopes: [] });
 		expect(CONTROL_PLANE_OPERATIONS.treedx.workspaces.create.descriptor).toMatchObject({ authentication: 'oauth_or_provider', oauthScopes: ['treeseed:projects:write'], upstream: { operationId: 'createWorkspace' } });

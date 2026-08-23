@@ -23,21 +23,21 @@ function providerPath<T extends z.ZodRawShape>(
 	method: 'GET' | 'POST' | 'PUT',
 	path: `/v1/${string}`,
 	pathShape: T,
-	options: { read?: boolean; redactedPaths?: string[] } = {},
+	options: { read?: boolean; redactedPaths?: string[]; authentication?: ControlPlaneOperationDescriptor['authentication'] } = {},
 ) {
 	const kind = options.read ? 'read' : 'mutation';
 	return define({
 		operationId, description: `${kind === 'read' ? 'Read' : 'Apply'} ${operationId}.`, rest: { method, path },
-		parameters: `treeseed.${operationId}.parameters/v1`, capability: 'providers.execute', authentication: 'provider', oauthScopes: [],
+		parameters: `treeseed.${operationId}.parameters/v1`, capability: 'providers.execute', authentication: options.authentication ?? 'provider', oauthScopes: [],
 		kind, riskClass: 'ordinary', confirmation: 'never', surfaces: ['rest'], cacheScope: 'none', pagination: 'none',
 		redactedPaths: options.redactedPaths,
 	}, { path: z.object(pathShape).strict(), query: empty, body: method === 'GET' ? none : record, output: payload });
 }
 
-const noPathProvider = (operationId: `${string}.${string}`, method: 'GET' | 'POST' | 'PUT', path: `/v1/${string}`, options: { read?: boolean; redactedPaths?: string[] } = {}) =>
+const noPathProvider = (operationId: `${string}.${string}`, method: 'GET' | 'POST' | 'PUT', path: `/v1/${string}`, options: { read?: boolean; redactedPaths?: string[]; authentication?: ControlPlaneOperationDescriptor['authentication'] } = {}) =>
 	define({
 		operationId, description: `${options.read ? 'Read' : 'Apply'} ${operationId}.`, rest: { method, path },
-		capability: 'providers.execute', authentication: 'provider', oauthScopes: [], kind: options.read ? 'read' : 'mutation',
+		capability: 'providers.execute', authentication: options.authentication ?? 'provider', oauthScopes: [], kind: options.read ? 'read' : 'mutation',
 		riskClass: 'ordinary', confirmation: 'never', surfaces: ['rest'], cacheScope: 'none', pagination: 'none',
 		redactedPaths: options.redactedPaths,
 	}, { path: empty, query: empty, body: method === 'GET' ? none : record, output: payload });
@@ -448,10 +448,10 @@ export const CONTROL_PLANE_OPERATIONS = {
 			rotate: resource('providers.credentials.rotate', 'POST', '/v1/teams/{teamId}/capacity-provider-connections/{connectionId}/credentials/rotate', { teamId: z.string().min(1), connectionId: z.string().min(1) }, { capability: 'providers.write', scopes: ['treeseed:admin'], surfaces: ['rest', 'cli'], risk: 'credential' }),
 			revoke: resource('providers.credentials.revoke', 'POST', '/v1/teams/{teamId}/capacity-provider-connections/{connectionId}/credentials/revoke', { teamId: z.string().min(1), connectionId: z.string().min(1) }, { capability: 'providers.write', scopes: ['treeseed:admin'], surfaces: ['rest', 'cli'], risk: 'irreversible' }),
 		},
-		register: noPathProvider('providers.register', 'POST', '/v1/provider-registrations', { redactedPaths: ['body.registrationKey'] }),
-		registration: providerPath('providers.registration.show', 'GET', '/v1/provider-registrations/{requestId}', { requestId: z.string().min(1) }, { read: true }),
-		exchangeCredential: providerPath('providers.registration.credential', 'POST', '/v1/provider-registrations/{requestId}/credential', { requestId: z.string().min(1) }, { redactedPaths: ['body.proof'] }),
-		issueAccessToken: noPathProvider('providers.token.issue', 'POST', '/v1/provider/access-tokens', { redactedPaths: ['body.credential', 'body.proof'] }),
+		register: noPathProvider('providers.register', 'POST', '/v1/provider-registrations', { authentication: 'signed_request', redactedPaths: ['body.registrationKey'] }),
+		registration: providerPath('providers.registration.show', 'GET', '/v1/provider-registrations/{requestId}', { requestId: z.string().min(1) }, { authentication: 'signed_request', read: true }),
+		exchangeCredential: providerPath('providers.registration.credential', 'POST', '/v1/provider-registrations/{requestId}/credential', { requestId: z.string().min(1) }, { authentication: 'signed_request', redactedPaths: ['body.proof'] }),
+		issueAccessToken: noPathProvider('providers.token.issue', 'POST', '/v1/provider/access-tokens', { authentication: 'signed_request', redactedPaths: ['body.credential', 'body.proof'] }),
 		leaveMembership: noPathProvider('providers.membership.leave', 'POST', '/v1/provider/membership/leave'),
 		rotateIdentity: noPathProvider('providers.identity.rotate', 'POST', '/v1/provider/identity/rotate', { redactedPaths: ['body.oldProof', 'body.newProof'] }),
 		rotateCredential: noPathProvider('providers.credential.rotate', 'POST', '/v1/provider/credential-rotation'),
