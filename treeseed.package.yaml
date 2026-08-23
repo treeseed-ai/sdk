@@ -45,11 +45,40 @@ standards:
       source: docs/api/openapi.json
       artifact: .treeseed/standards/openapi.json
       verifier: scripts/standards/compare-compatibility.ts
-  consumed: []
+    - id: "@treeseed/sdk/control-plane-catalog"
+      family: json-schema
+      version: "1.0.0"
+      semanticRange: "^1.0.0"
+      source: src/operator-contracts/control-plane-operations.ts
+      artifact: .treeseed/standards/control-plane-catalog.json
+      verifier: scripts/standards/compare-compatibility.ts
+    - id: "@treeseed/sdk/mcp-catalog-input"
+      family: behavioral
+      version: "1.0.0"
+      semanticRange: "^1.0.0"
+      source: src/operator-contracts/mcp.ts
+      artifact: .treeseed/standards/mcp-catalog-input.json
+      verifier: scripts/standards/compare-compatibility.ts
+    - id: "@treeseed/sdk/treedx-service-contract"
+      family: behavioral
+      version: "1.0.0"
+      semanticRange: "^1.0.0"
+      source: src/treedx/contract.ts
+      artifact: .treeseed/standards/treedx-service-contract.json
+      verifier: scripts/standards/compare-compatibility.ts
+  consumed:
+    - id: "@treeseed/treedx/openapi"
+      family: openapi
+      version: "0.11.0"
+      semanticRange: "0.11.0"
+      source: node_modules/@treeseed/treedx/openapi.yaml
+      artifact: contracts/services/treedx-adoption.json
+      verifier: scripts/standards/build-contract-bundle.ts
   guarantees:
     - deterministic-contract-bundle
     - exact-artifact-and-source-binding
     - semantic-version-sufficiency
+    - authoritative-treedx-service-adoption
   deprecations: []
   runtimes:
     - node>=22

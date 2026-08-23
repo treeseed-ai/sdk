@@ -1,6 +1,5 @@
 import type { ExecutionUsageActual } from '../types/agents.ts';
 import type { ResearchCitation } from './contracts/support/research-citation.ts';
-import type { ArtifactRef } from '../treedx/types.ts';
 import { validateResearchCitations } from './validation/research/citation.ts';
 import { validateArtifactMutationReceipt,type ArtifactMutationReceipt } from './artifact-mutation-receipt.ts';
 
@@ -70,6 +69,24 @@ export interface AgentDiagnosticReference {
 	message?: string | null;
 	retryable?: boolean | null;
 	evidenceRef?: string | null;
+}
+
+export interface ArtifactRef {
+	contract: 'treeseed.artifact-ref/v1';
+	kind: 'treedx-content' | 'repository-file' | 'r2-object' | 'verification-evidence' | 'provider-input' | 'provider-output' | 'citation' | 'source-commit';
+	repositoryId?: string;
+	workspaceId?: string;
+	path?: string;
+	commitSha?: string | null;
+	objectKey?: string;
+	sha256: string | null;
+	byteLength?: number;
+	mediaType?: string;
+	visibility: 'private' | 'assignment' | 'project' | 'team' | 'public';
+	assignmentId?: string;
+	toolCallId?: string;
+	eventId?: string;
+	provenance?: Record<string, string>;
 }
 
 /** Portable, secret-free terminal evidence emitted by AgentKernel. */

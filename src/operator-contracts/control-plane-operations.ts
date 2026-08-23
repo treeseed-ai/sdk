@@ -1,49 +1,14 @@
 import { z } from 'zod';
 import {
-	CONTROL_PLANE_OPERATION_SCHEMA_VERSION,
 	type ControlPlaneOperationBinding,
 	type ControlPlaneOperationDescriptor,
 } from './control-plane-operation.ts';
+import { defineOperation as define, defineTreeDxProxyOperation as treedxProxy } from './operation-builder.ts';
 
 const empty = z.object({}).strict();
 const none = z.undefined();
 const record = z.record(z.unknown());
 const payload = record;
-
-type Definition = Omit<ControlPlaneOperationDescriptor, 'schemaVersion' | 'schemas' | 'idempotency' | 'concurrency' | 'audited' | 'receipt' | 'redactedPaths' | 'authentication'> & {
-	parameters?: string;
-	redactedPaths?: string[];
-	idempotencyRequired?: boolean;
-	concurrencyRequired?: boolean;
-	authentication?: ControlPlaneOperationDescriptor['authentication'];
-};
-
-function define<TPath, TQuery, TBody, TOutput>(
-	definition: Definition,
-	schema: ControlPlaneOperationBinding<TPath, TQuery, TBody, TOutput>['schema'],
-): ControlPlaneOperationBinding<TPath, TQuery, TBody, TOutput> {
-	const { parameters, redactedPaths = [], idempotencyRequired, concurrencyRequired, ...descriptor } = definition;
-	const mutation = definition.kind === 'mutation';
-	return {
-		descriptor: {
-			...descriptor,
-			authentication: definition.authentication ?? (definition.oauthScopes.length ? 'oauth' : 'anonymous'),
-			schemaVersion: CONTROL_PLANE_OPERATION_SCHEMA_VERSION,
-			schemas: {
-				input: `treeseed.${definition.operationId}.input/v1`,
-				output: `treeseed.${definition.operationId}.output/v1`,
-				errors: 'treeseed.problem/v1',
-				...(parameters ? { parameters } : {}),
-			},
-			idempotency: { required: idempotencyRequired ?? mutation, header: 'Idempotency-Key' },
-			concurrency: { required: concurrencyRequired ?? false, readHeader: 'ETag', writeHeader: 'If-Match' },
-			audited: definition.surfaces.some((surface) => surface !== 'internal'),
-			receipt: mutation,
-			redactedPaths,
-		},
-		schema,
-	};
-}
 
 function read(operationId: `${string}.${string}`, path: `/v1/${string}`, capability: string, surfaces: ControlPlaneOperationDescriptor['surfaces'] = ['rest']) {
 	return define({
@@ -352,18 +317,94 @@ export const CONTROL_PLANE_OPERATIONS = {
 		actionResult: resource('realtime.actions.result', 'POST', '/v1/client-sessions/{sessionId}/actions/{actionId}/result', { sessionId: z.string().min(1), actionId: z.string().min(1) }, { capability: 'realtime.write' }),
 	},
 	treedx: {
-		library: resource('treedx.library.show', 'GET', '/v1/projects/{projectId}/treedx-library', { projectId: z.string().min(1) }, { capability: 'treedx.read' }),
-		bindLibrary: resource('treedx.library.bind', 'POST', '/v1/projects/{projectId}/treedx-library', { projectId: z.string().min(1) }, { capability: 'treedx.write' }),
-		createRepository: resource('treedx.repositories.create', 'POST', '/v1/dx/projects/{projectId}/repos', { projectId: z.string().min(1) }, { capability: 'treedx.write', authentication: 'oauth_or_provider' }),
-		createWorkspace: resource('treedx.workspaces.create', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/workspaces', { projectId: z.string().min(1), repoId: z.string().min(1) }, { capability: 'treedx.write', authentication: 'oauth_or_provider' }),
-		readWorkspaceFile: resource('treedx.workspaces.files.read', 'GET', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/files', { projectId: z.string().min(1), workspaceId: z.string().min(1) }, { capability: 'treedx.read', authentication: 'oauth_or_provider' }),
-		applyChangeset: resource('treedx.workspaces.changesets.apply', 'POST', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/changesets', { projectId: z.string().min(1), workspaceId: z.string().min(1) }, { capability: 'treedx.write', authentication: 'oauth_or_provider' }),
-		searchWorkspace: resource('treedx.workspaces.search', 'POST', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/search', { projectId: z.string().min(1), workspaceId: z.string().min(1) }, { capability: 'treedx.read', authentication: 'oauth_or_provider', scopes: ['treeseed:read'] }),
-		commitWorkspace: resource('treedx.workspaces.commit', 'POST', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/commit', { projectId: z.string().min(1), workspaceId: z.string().min(1) }, { capability: 'treedx.write', authentication: 'oauth_or_provider' }),
-		closeWorkspace: resource('treedx.workspaces.close', 'POST', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/close', { projectId: z.string().min(1), workspaceId: z.string().min(1) }, { capability: 'treedx.write', authentication: 'oauth_or_provider' }),
-		readRepositoryFiles: resource('treedx.repositories.files.read', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/files/read', { projectId: z.string().min(1), repoId: z.string().min(1) }, { capability: 'treedx.read', authentication: 'oauth_or_provider', scopes: ['treeseed:read'] }),
-		listRepositoryPaths: resource('treedx.repositories.paths.list', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/paths/list', { projectId: z.string().min(1), repoId: z.string().min(1) }, { capability: 'treedx.read', authentication: 'oauth_or_provider', scopes: ['treeseed:read'] }),
-		buildRepositoryContext: resource('treedx.repositories.context.build', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/context/build', { projectId: z.string().min(1), repoId: z.string().min(1) }, { capability: 'treedx.read', authentication: 'oauth_or_provider', scopes: ['treeseed:read'] }),
+		library: resource('treedx.library.show', 'GET', '/v1/projects/{projectId}/treedx-library', { projectId: z.string().min(1) }, { capability: 'treedx.read', surfaces: ['rest', 'cli', 'mcp_resource'] }),
+		bindLibrary: resource('treedx.library.bind', 'POST', '/v1/projects/{projectId}/treedx-library', { projectId: z.string().min(1) }, { capability: 'treedx.write', surfaces: ['rest', 'cli'] }),
+		serviceContract: treedxProxy('treedx.service.contract', null, 'GET', '/v1/dx/projects/{projectId}/service-contract', { projectId: z.string().min(1) }, { surfaces: ['rest', 'cli', 'mcp_resource'] }),
+		health: treedxProxy('treedx.health.show', 'getHealth', 'GET', '/v1/dx/projects/{projectId}/health', { projectId: z.string().min(1) }, { surfaces: ['rest', 'cli', 'mcp_tool', 'mcp_resource'] }),
+		readiness: treedxProxy('treedx.readiness.show', 'getReadiness', 'GET', '/v1/dx/projects/{projectId}/readiness', { projectId: z.string().min(1) }, { surfaces: ['rest', 'cli', 'mcp_resource'] }),
+		version: treedxProxy('treedx.version.show', 'getVersion', 'GET', '/v1/dx/projects/{projectId}/version', { projectId: z.string().min(1) }, { surfaces: ['rest', 'cli', 'mcp_resource'] }),
+		capabilities: treedxProxy('treedx.capabilities.list', 'listCapabilities', 'GET', '/v1/dx/projects/{projectId}/capabilities', { projectId: z.string().min(1) }, { surfaces: ['rest', 'cli', 'mcp_tool', 'mcp_resource'] }),
+		effectiveScope: treedxProxy('treedx.scope.show', 'getEffectiveScope', 'GET', '/v1/dx/projects/{projectId}/effective-scope', { projectId: z.string().min(1) }, { surfaces: ['rest', 'mcp_resource'] }),
+		repositories: {
+			list: treedxProxy('treedx.repositories.list', 'listRepositories', 'GET', '/v1/dx/projects/{projectId}/repos', { projectId: z.string().min(1) }, { pagination: 'cursor' }),
+			create: treedxProxy('treedx.repositories.create', 'createRepository', 'POST', '/v1/dx/projects/{projectId}/repos', { projectId: z.string().min(1) }),
+			show: treedxProxy('treedx.repositories.show', 'getRepository', 'GET', '/v1/dx/projects/{projectId}/repos/{repoId}', { projectId: z.string().min(1), repoId: z.string().min(1) }),
+			status: treedxProxy('treedx.repositories.status', 'getRepositoryStatus', 'GET', '/v1/dx/projects/{projectId}/repos/{repoId}/status', { projectId: z.string().min(1), repoId: z.string().min(1) }),
+			refs: treedxProxy('treedx.repositories.refs', 'listRepositoryRefs', 'GET', '/v1/dx/projects/{projectId}/repos/{repoId}/refs', { projectId: z.string().min(1), repoId: z.string().min(1) }),
+			sync: treedxProxy('treedx.repositories.sync', 'syncRepository', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/sync', { projectId: z.string().min(1), repoId: z.string().min(1) }),
+			push: treedxProxy('treedx.repositories.push', 'pushRepository', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/push', { projectId: z.string().min(1), repoId: z.string().min(1) }, { risk: 'authority' }),
+			promoteRef: treedxProxy('treedx.repositories.refs.promote', 'promoteRepositoryRef', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/refs/promote', { projectId: z.string().min(1), repoId: z.string().min(1) }, { risk: 'authority' }),
+			retireRef: treedxProxy('treedx.repositories.refs.retire', 'retireRepositoryRef', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/refs/retire', { projectId: z.string().min(1), repoId: z.string().min(1) }, { risk: 'destructive' }),
+			readFiles: treedxProxy('treedx.repositories.files.read', 'readRepositoryFile', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/files/read', { projectId: z.string().min(1), repoId: z.string().min(1) }, { read: true }),
+			listPaths: treedxProxy('treedx.repositories.paths.list', 'listRepositoryPaths', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/paths/list', { projectId: z.string().min(1), repoId: z.string().min(1) }, { read: true, pagination: 'cursor' }),
+			searchFiles: treedxProxy('treedx.repositories.files.search', 'searchRepositoryFiles', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/files/search', { projectId: z.string().min(1), repoId: z.string().min(1) }, { read: true, pagination: 'cursor' }),
+			query: treedxProxy('treedx.repositories.query', 'queryRepository', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/query', { projectId: z.string().min(1), repoId: z.string().min(1) }, { read: true }),
+		},
+		workspaces: {
+			list: treedxProxy('treedx.workspaces.list', null, 'GET', '/v1/dx/projects/{projectId}/workspaces', { projectId: z.string().min(1) }, { surfaces: ['rest', 'cli', 'mcp_tool', 'mcp_resource'], pagination: 'cursor' }),
+			create: treedxProxy('treedx.workspaces.create', 'createWorkspace', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/workspaces', { projectId: z.string().min(1), repoId: z.string().min(1) }),
+			show: treedxProxy('treedx.workspaces.show', 'getWorkspace', 'GET', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}', { projectId: z.string().min(1), workspaceId: z.string().min(1) }, { surfaces: ['rest', 'cli', 'mcp_tool', 'mcp_resource'] }),
+			status: treedxProxy('treedx.workspaces.status', 'getWorkspaceStatus', 'GET', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/status', { projectId: z.string().min(1), workspaceId: z.string().min(1) }),
+			diff: treedxProxy('treedx.workspaces.diff', 'getWorkspaceDiff', 'GET', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/diff', { projectId: z.string().min(1), workspaceId: z.string().min(1) }),
+			tree: treedxProxy('treedx.workspaces.tree', 'listWorkspaceTree', 'GET', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/tree', { projectId: z.string().min(1), workspaceId: z.string().min(1) }),
+			close: treedxProxy('treedx.workspaces.close', 'closeWorkspace', 'POST', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/close', { projectId: z.string().min(1), workspaceId: z.string().min(1) }),
+			abandon: treedxProxy('treedx.workspaces.abandon', 'abandonWorkspace', 'POST', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/abandon', { projectId: z.string().min(1), workspaceId: z.string().min(1) }, { risk: 'destructive', surfaces: ['rest', 'cli', 'mcp_tool'] }),
+		},
+		files: {
+			read: treedxProxy('treedx.workspaces.files.read', 'readWorkspaceFile', 'GET', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/files', { projectId: z.string().min(1), workspaceId: z.string().min(1) }),
+			write: treedxProxy('treedx.workspaces.files.write', 'writeWorkspaceFile', 'PUT', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/files', { projectId: z.string().min(1), workspaceId: z.string().min(1) }),
+			writeBatch: treedxProxy('treedx.workspaces.files.batch', 'writeWorkspaceFiles', 'PUT', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/files/batch', { projectId: z.string().min(1), workspaceId: z.string().min(1) }),
+			patch: treedxProxy('treedx.workspaces.files.patch', 'patchWorkspaceFile', 'PATCH', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/files', { projectId: z.string().min(1), workspaceId: z.string().min(1) }),
+			remove: treedxProxy('treedx.workspaces.files.delete', 'deleteWorkspaceFile', 'DELETE', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/files', { projectId: z.string().min(1), workspaceId: z.string().min(1) }, { risk: 'destructive' }),
+			search: treedxProxy('treedx.workspaces.files.search', 'searchWorkspace', 'POST', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/search', { projectId: z.string().min(1), workspaceId: z.string().min(1) }, { read: true, pagination: 'cursor' }),
+			applyChangeset: treedxProxy('treedx.workspaces.changesets.apply', 'applyWorkspaceChangeset', 'POST', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/changesets', { projectId: z.string().min(1), workspaceId: z.string().min(1) }),
+			commit: treedxProxy('treedx.workspaces.commit', 'commitWorkspace', 'POST', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/commit', { projectId: z.string().min(1), workspaceId: z.string().min(1) }),
+		},
+		blobs: {
+			read: treedxProxy('treedx.repositories.blobs.read', 'readRepositoryBlob', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/blobs/read', { projectId: z.string().min(1), repoId: z.string().min(1) }, { read: true }),
+			write: treedxProxy('treedx.workspaces.blobs.write', 'writeWorkspaceBlob', 'POST', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/blobs/write', { projectId: z.string().min(1), workspaceId: z.string().min(1) }),
+			remove: treedxProxy('treedx.workspaces.blobs.delete', 'deleteWorkspaceBlob', 'POST', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/blobs/delete', { projectId: z.string().min(1), workspaceId: z.string().min(1) }, { risk: 'destructive' }),
+			download: treedxProxy('treedx.workspaces.blobs.download', 'downloadWorkspaceBlob', 'GET', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/blobs/download', { projectId: z.string().min(1), workspaceId: z.string().min(1) }, { surfaces: ['rest', 'mcp_tool'] }),
+			upload: treedxProxy('treedx.workspaces.blobs.upload', 'uploadWorkspaceBlob', 'PUT', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/blobs/upload', { projectId: z.string().min(1), workspaceId: z.string().min(1) }),
+			createUpload: treedxProxy('treedx.workspaces.blobs.uploads.create', 'createWorkspaceBlobUpload', 'POST', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/blobs/uploads', { projectId: z.string().min(1), workspaceId: z.string().min(1) }),
+			uploadPart: treedxProxy('treedx.workspaces.blobs.uploads.parts.write', 'uploadWorkspaceBlobPart', 'PUT', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/blobs/uploads/{uploadId}/parts/{partNumber}', { projectId: z.string().min(1), workspaceId: z.string().min(1), uploadId: z.string().min(1), partNumber: z.string().min(1) }),
+			completeUpload: treedxProxy('treedx.workspaces.blobs.uploads.complete', 'completeWorkspaceBlobUpload', 'POST', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/blobs/uploads/{uploadId}/complete', { projectId: z.string().min(1), workspaceId: z.string().min(1), uploadId: z.string().min(1) }),
+			abortUpload: treedxProxy('treedx.workspaces.blobs.uploads.abort', 'abortWorkspaceBlobUpload', 'DELETE', '/v1/dx/projects/{projectId}/workspaces/{workspaceId}/blobs/uploads/{uploadId}', { projectId: z.string().min(1), workspaceId: z.string().min(1), uploadId: z.string().min(1) }, { risk: 'destructive' }),
+		},
+		graph: {
+			refresh: treedxProxy('treedx.repositories.graph.refresh', 'refreshRepositoryGraph', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/graph/refresh', { projectId: z.string().min(1), repoId: z.string().min(1) }),
+			refreshJob: treedxProxy('treedx.repositories.graph.jobs.show', 'getGraphRefreshJob', 'GET', '/v1/dx/projects/{projectId}/repos/{repoId}/graph/jobs/{jobId}', { projectId: z.string().min(1), repoId: z.string().min(1), jobId: z.string().min(1) }),
+			query: treedxProxy('treedx.repositories.graph.query', 'queryRepositoryGraph', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/graph/query', { projectId: z.string().min(1), repoId: z.string().min(1) }, { read: true }),
+			node: treedxProxy('treedx.repositories.graph.nodes.show', 'getGraphNode', 'GET', '/v1/dx/projects/{projectId}/repos/{repoId}/graph/nodes/{nodeId}', { projectId: z.string().min(1), repoId: z.string().min(1), nodeId: z.string().min(1) }),
+			related: treedxProxy('treedx.repositories.graph.related', 'getRelatedGraphNodes', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/graph/related', { projectId: z.string().min(1), repoId: z.string().min(1) }, { read: true }),
+			subgraph: treedxProxy('treedx.repositories.graph.subgraph', 'getGraphSubgraph', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/graph/subgraph', { projectId: z.string().min(1), repoId: z.string().min(1) }, { read: true }),
+			searchFiles: treedxProxy('treedx.repositories.graph.files.search', 'searchGraphFiles', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/graph/search/files', { projectId: z.string().min(1), repoId: z.string().min(1) }, { read: true }),
+			searchSections: treedxProxy('treedx.repositories.graph.sections.search', 'searchGraphSections', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/graph/search/sections', { projectId: z.string().min(1), repoId: z.string().min(1) }, { read: true }),
+			searchEntities: treedxProxy('treedx.repositories.graph.entities.search', 'searchGraphEntities', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/graph/search/entities', { projectId: z.string().min(1), repoId: z.string().min(1) }, { read: true }),
+		},
+		context: {
+			build: treedxProxy('treedx.repositories.context.build', 'buildContext', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/context/build', { projectId: z.string().min(1), repoId: z.string().min(1) }, { read: true }),
+			parse: treedxProxy('treedx.repositories.context.parse', 'parseContextQuery', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/context/parse', { projectId: z.string().min(1), repoId: z.string().min(1) }, { read: true }),
+		},
+		federated: {
+			search: treedxProxy('treedx.federated.search', 'federatedSearch', 'POST', '/v1/dx/projects/{projectId}/search', { projectId: z.string().min(1) }, { read: true, pagination: 'cursor' }),
+			query: treedxProxy('treedx.federated.query', 'federatedQuery', 'POST', '/v1/dx/projects/{projectId}/query', { projectId: z.string().min(1) }, { read: true }),
+			context: treedxProxy('treedx.federated.context', 'federatedContextBuild', 'POST', '/v1/dx/projects/{projectId}/context', { projectId: z.string().min(1) }, { read: true }),
+			graph: treedxProxy('treedx.federated.graph', 'federatedGraphQuery', 'POST', '/v1/dx/projects/{projectId}/graph', { projectId: z.string().min(1) }, { read: true }),
+		},
+		snapshots: {
+			build: treedxProxy('treedx.repositories.snapshots.build', 'buildSnapshot', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/snapshots', { projectId: z.string().min(1), repoId: z.string().min(1) }),
+			show: treedxProxy('treedx.repositories.snapshots.show', 'getSnapshot', 'GET', '/v1/dx/projects/{projectId}/repos/{repoId}/snapshots/{snapshotId}', { projectId: z.string().min(1), repoId: z.string().min(1), snapshotId: z.string().min(1) }),
+		},
+		artifacts: {
+			export: treedxProxy('treedx.repositories.artifacts.export', 'exportArtifact', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/artifacts', { projectId: z.string().min(1), repoId: z.string().min(1) }),
+			list: treedxProxy('treedx.repositories.artifacts.list', 'listArtifacts', 'GET', '/v1/dx/projects/{projectId}/repos/{repoId}/artifacts', { projectId: z.string().min(1), repoId: z.string().min(1) }, { pagination: 'cursor' }),
+			show: treedxProxy('treedx.repositories.artifacts.show', 'getArtifact', 'GET', '/v1/dx/projects/{projectId}/repos/{repoId}/artifacts/{artifactId}', { projectId: z.string().min(1), repoId: z.string().min(1), artifactId: z.string().min(1) }),
+			remove: treedxProxy('treedx.repositories.artifacts.delete', 'deleteArtifact', 'DELETE', '/v1/dx/projects/{projectId}/repos/{repoId}/artifacts/{artifactId}', { projectId: z.string().min(1), repoId: z.string().min(1), artifactId: z.string().min(1) }, { risk: 'destructive' }),
+		},
+		searchIndex: {
+			status: treedxProxy('treedx.repositories.search.index.status', 'getSearchIndexStatus', 'GET', '/v1/dx/projects/{projectId}/repos/{repoId}/search-index', { projectId: z.string().min(1), repoId: z.string().min(1) }),
+		},
 	},
 	providers: {
 		register: noPathProvider('providers.register', 'POST', '/v1/provider-registrations', { redactedPaths: ['body.registrationKey'] }),
