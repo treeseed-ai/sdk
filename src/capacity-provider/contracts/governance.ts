@@ -267,17 +267,22 @@ export interface CapacityExecutionProvider {
 
 /** Optional provider-global lane that narrows an execution provider's limits. */
 export interface CapacityProviderLane {
-	schemaVersion: 1;
+	schemaVersion: 2;
 	id: string;
 	providerId: string;
-	executionProviderId: string;
 	displayName: string;
 	purpose: import('../../agent-capacity/contracts/capacity/communication/communication-records.ts').ProviderLanePurpose;
 	status: CapacityProviderLaneStatus;
+	priority: number;
+	reservedConcurrentWorkers: number;
+	borrowWhenIdle: boolean;
+	lendWhenIdle: boolean;
+	reclaimPolicy: 'admission';
+	queueLimit: number;
+	timeoutSeconds: number;
 	capabilities: string[];
-	maxConcurrentRunners: number;
+	maxConcurrentWorkers: number;
 	minimumAssignmentDuration?: MinimumAssignmentDuration;
-	nativeLimits: CapacityExecutionProviderNativeLimit[];
 	metadata?: Record<string, unknown>;
 	createdAt: string;
 	updatedAt: string;
@@ -285,15 +290,17 @@ export interface CapacityProviderLane {
 
 export interface ProviderLaneSnapshot {
 	id: string;
-	executionProviderId: string;
 	purpose: import('../../agent-capacity/contracts/capacity/communication/communication-records.ts').ProviderLanePurpose;
 	status: CapacityProviderLaneStatus;
+	priority: number;
+	reservedConcurrentWorkers: number;
+	borrowedWorkers: number;
+	lentWorkers: number;
+	queuedAssignments: number;
 	capabilities: string[];
-	maxConcurrentRunners: number;
-	activeRunners: number;
+	maxConcurrentWorkers: number;
+	activeWorkers: number;
 	minimumAssignmentDuration?: MinimumAssignmentDuration;
-	preferred?: boolean;
-	nativeLimits: Record<string, unknown>;
 }
 
 export type MinimumAssignmentDuration =
@@ -308,17 +315,18 @@ export type MinimumAssignmentDuration =
 		};
 	};
 
-export interface ProviderExecutionProviderSnapshot {
+export interface ProviderExecutionAdapterSnapshot {
 	id: string;
 	adapter: string;
+	isolation: 'process' | 'worker';
 	status: 'available' | 'degraded' | 'unavailable';
 	capabilities: string[];
-	maxConcurrentRunners: number;
-	activeRunners: number;
+	laneIds: string[];
+	maxConcurrentWorkers: number;
+	activeWorkers: number;
 	minimumAssignmentDuration?: MinimumAssignmentDuration;
 	nativeLimits: Record<string, unknown>;
 	observations?: Record<string, unknown>;
-	lanes: ProviderLaneSnapshot[];
 }
 
 export interface ProviderAvailabilitySnapshot {
@@ -326,11 +334,13 @@ export interface ProviderAvailabilitySnapshot {
 	availableFrom: string;
 	availableUntil?: string | null;
 	pressure: 'idle' | 'normal' | 'busy' | 'throttled' | 'exhausted';
-	maxConcurrentAssignments: number;
+	maxConcurrentWorkers: number;
 	activeAssignmentIds: string[];
-	executionProviders: ProviderExecutionProviderSnapshot[];
-	communicationReady:boolean;
-	communicationBlockers:string[];
+	reservedWorkers: number;
+	borrowedWorkers: number;
+	availableWorkers: number;
+	adapters: ProviderExecutionAdapterSnapshot[];
+	lanes: ProviderLaneSnapshot[];
 	capabilities: string[];
 	constraints?: Record<string, unknown>;
 }
@@ -373,9 +383,8 @@ export interface CapacityProviderJoinInput {
 	offer: ProviderSupplyOffer;
 }
 
-export interface CapacityProviderManifestV2 {
-	schemaVersion: 2;
-	providerClass: 'agent' | 'platform-operation';
+export interface CapacityProviderManifestV3 {
+	schemaVersion: 3;
 	ownership: {
 		type: 'team' | 'external';
 		teamId?: string;
@@ -388,8 +397,11 @@ export interface CapacityProviderManifestV2 {
 		privateKeyRef: string;
 		displayName: string;
 	};
-	supplyCeilings: {
-		maxConcurrentAssignments: number;
+	capacity: {
+		maxConcurrentWorkers: number;
+		cpuCores?: number;
+		memoryBytes?: number;
+		accelerators?: Array<{ kind: string; count: number; memoryBytes?: number }>;
 		maxActiveSeconds?: number;
 		maxInputTokens?: number;
 		maxOutputTokens?: number;
@@ -397,16 +409,30 @@ export interface CapacityProviderManifestV2 {
 		currency?: string;
 		maxAttempts?: number;
 	};
-	credentialBindings?: Array<{
+	credentialProfiles?: Array<{
 		id: string;
 		source: 'service-vault' | 'process-environment';
 		reference: string;
 		required: boolean;
 	}>;
-	defaultExecutionProviderId?: string;
-	executionProviders: Array<{
+	lanes: Array<{
+		id: string;
+		purpose: import('../../agent-capacity/contracts/capacity/communication/communication-records.ts').ProviderLanePurpose;
+		priority: number;
+		reservedConcurrentWorkers: number;
+		maxConcurrentWorkers: number;
+		borrowWhenIdle: boolean;
+		lendWhenIdle: boolean;
+		reclaimPolicy: 'admission';
+		queueLimit: number;
+		timeoutSeconds: number;
+		minimumAssignmentDuration?: MinimumAssignmentDuration;
+		capabilities?: string[];
+	}>;
+	adapters: Array<{
 		id: string;
 		adapter: string;
+		isolation: 'process' | 'worker';
 		profile?: string;
 		module?: string;
 		protocol?: 'responses' | 'chat-completions';
@@ -415,7 +441,9 @@ export interface CapacityProviderManifestV2 {
 			baseUrl?: string;
 			model?: string;
 		};
-		credentialBindings?: string[];
+		credentialProfiles?: string[];
+		laneIds: string[];
+		maxConcurrentWorkers: number;
 		healthProbe?: string;
 		versionConstraint?: string;
 		configurationDigest?: string;
@@ -423,14 +451,6 @@ export interface CapacityProviderManifestV2 {
 		nativeLimits: Record<string, unknown>;
 		researchSourcePolicy?: ResearchSourcePolicy;
 		capabilities?: string[];
-		lanes?: Array<{
-			id: string;
-			purpose: import('../../agent-capacity/contracts/capacity/communication/communication-records.ts').ProviderLanePurpose;
-			maxConcurrentRunners: number;
-			minimumAssignmentDuration?: MinimumAssignmentDuration;
-			capabilities?: string[];
-			nativeLimits?: Record<string, unknown>;
-		}>;
 	}>;
 	connections: ProviderConnectionConfig[];
 	metadata?: Record<string, unknown>;

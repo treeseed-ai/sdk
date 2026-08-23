@@ -20,7 +20,7 @@ export interface ProviderNativeEstimateRange {
 	minimum: number;
 	expected: number;
 	maximum: number;
-	providerClass?: string;
+	providerCapabilities?: string[];
 }
 
 export interface AgentOutputRequirement {
