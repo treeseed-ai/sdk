@@ -3,10 +3,10 @@ import { validateCapacityAllocationSetV2, validateCapacityGrantV2 } from '../../
 import { validateAgentActivityProfilesConfiguration } from '../../../src/agent-capacity/validation/activity-profile.ts';
 import { validateProjectAgentClassConfiguration } from '../../../src/agent-capacity/validation/configuration.ts';
 import { CAPACITY_CONFIGURATION_DESCRIPTORS, CAPACITY_CONFIGURATION_FAMILIES } from '../../../src/agent-capacity/contracts/configuration/configuration.ts';
-import { validateCapacityProviderManifestV2, validateProviderSupplyOffer } from '../../../src/capacity-provider/validation.ts';
+import { validateCapacityProviderManifestV3, validateProviderSupplyOffer } from '../../../src/capacity-provider/validation.ts';
 
 const validators = {
-	'provider-manifest': validateCapacityProviderManifestV2,
+	'provider-manifest': validateCapacityProviderManifestV3,
 	'provider-offer': validateProviderSupplyOffer,
 	'capacity-grant': validateCapacityGrantV2,
 	'allocation-set': validateCapacityAllocationSetV2,

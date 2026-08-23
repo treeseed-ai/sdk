@@ -42,6 +42,22 @@ const noPathProvider = (operationId: `${string}.${string}`, method: 'GET' | 'POS
 		redactedPaths: options.redactedPaths,
 	}, { path: empty, query: empty, body: method === 'GET' ? none : record, output: payload });
 
+function postRead<T extends z.ZodRawShape>(
+	operationId: `${string}.${string}`,
+	path: `/v1/${string}`,
+	pathShape: T,
+	capability: string,
+	scopes: ControlPlaneOperationDescriptor['oauthScopes'],
+	surfaces: ControlPlaneOperationDescriptor['surfaces'],
+) {
+	return define({
+		operationId, description: `Read ${operationId}.`, rest: { method: 'POST', path },
+		...(Object.keys(pathShape).length ? { parameters: `treeseed.${operationId}.parameters/v1` } : {}),
+		capability, authentication: 'oauth', oauthScopes: scopes, kind: 'read', riskClass: 'ordinary', confirmation: 'never',
+		surfaces, cacheScope: 'none', pagination: 'none', idempotencyRequired: false,
+	}, { path: z.object(pathShape).strict(), query: empty, body: record, output: payload });
+}
+
 function resource<T extends z.ZodRawShape>(
 	operationId: `${string}.${string}`,
 	method: 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT',
@@ -262,8 +278,11 @@ export const CONTROL_PLANE_OPERATIONS = {
 	},
 	capacity: {
 		availability: resource('capacity.status', 'GET', '/v1/teams/{teamId}/capacity/availability-sessions', { teamId: z.string().min(1) }, { capability: 'capacity.read', surfaces: ['rest', 'cli', 'mcp_tool'], pagination: 'cursor' }),
+		explain: resource('capacity.explain', 'GET', '/v1/teams/{teamId}/capacity/explanation', { teamId: z.string().min(1) }, { capability: 'capacity.read', surfaces: ['rest', 'cli', 'mcp_tool'] }),
 		usage: resource('capacity.usage', 'GET', '/v1/teams/{teamId}/capacity/usage', { teamId: z.string().min(1) }, { capability: 'capacity.read', surfaces: ['rest', 'cli', 'mcp_tool'] }),
 		ledger: resource('capacity.ledger', 'GET', '/v1/teams/{teamId}/capacity/ledger', { teamId: z.string().min(1) }, { capability: 'capacity.read', surfaces: ['rest', 'cli'], pagination: 'cursor' }),
+		audit: resource('capacity.audit', 'GET', '/v1/teams/{teamId}/capacity/audit', { teamId: z.string().min(1) }, { capability: 'capacity.read', surfaces: ['rest', 'cli'], pagination: 'cursor' }),
+		lanes: resource('capacity.lanes.list', 'GET', '/v1/teams/{teamId}/capacity/lanes', { teamId: z.string().min(1) }, { capability: 'capacity.read', surfaces: ['rest', 'mcp_tool'], pagination: 'cursor' }),
 		grants: resource('capacity.grants.list', 'GET', '/v1/teams/{teamId}/capacity-grants', { teamId: z.string().min(1) }, { capability: 'capacity.read', pagination: 'cursor' }),
 		grant: resource('capacity.grants.show', 'GET', '/v1/teams/{teamId}/capacity-grants/{grantId}', { teamId: z.string().min(1), grantId: z.string().min(1) }, { capability: 'capacity.read' }),
 	},
@@ -299,8 +318,12 @@ export const CONTROL_PLANE_OPERATIONS = {
 	seeds: {
 		runs: resource('seeds.runs.list', 'GET', '/v1/seeds/runs', {}, { capability: 'seeds.read', pagination: 'cursor' }),
 		run: resource('seeds.runs.show', 'GET', '/v1/seeds/runs/{runId}', { runId: z.string().min(1) }, { capability: 'seeds.read' }),
-		plan: resource('seeds.plan', 'POST', '/v1/seeds/{name}/plan', { name: z.string().min(1) }, { capability: 'seeds.write', scopes: ['treeseed:admin'] }),
-		apply: resource('seeds.apply', 'POST', '/v1/seeds/{name}/apply', { name: z.string().min(1) }, { capability: 'seeds.write', scopes: ['treeseed:admin'], risk: 'authority' }),
+		validate: postRead('seeds.validate', '/v1/seeds/validate', {}, 'seeds.read', ['treeseed:admin'], ['rest', 'cli']),
+		plan: postRead('seeds.plan', '/v1/seeds/{name}/plan', { name: z.string().min(1) }, 'seeds.write', ['treeseed:admin'], ['rest', 'cli']),
+		apply: resource('seeds.apply', 'POST', '/v1/seeds/{name}/apply', { name: z.string().min(1) }, { capability: 'seeds.write', scopes: ['treeseed:admin'], surfaces: ['rest', 'cli'], risk: 'authority' }),
+		show: resource('seeds.show', 'GET', '/v1/seeds/{name}', { name: z.string().min(1) }, { capability: 'seeds.read', scopes: ['treeseed:admin'], surfaces: ['rest', 'cli'] }),
+		verify: postRead('seeds.verify', '/v1/seeds/{name}/verify', { name: z.string().min(1) }, 'seeds.read', ['treeseed:admin'], ['rest', 'cli']),
+		reconcile: resource('seeds.reconcile', 'POST', '/v1/seeds/{name}/reconcile', { name: z.string().min(1) }, { capability: 'seeds.write', scopes: ['treeseed:admin'], risk: 'authority' }),
 		resolveResources: resource('seeds.resources.resolve', 'POST', '/v1/seeds/resources/resolve', {}, { capability: 'seeds.read', scopes: ['treeseed:admin'] }),
 	},
 	feedback: {
@@ -407,6 +430,23 @@ export const CONTROL_PLANE_OPERATIONS = {
 		},
 	},
 	providers: {
+		list: resource('providers.list', 'GET', '/v1/teams/{teamId}/capacity-providers', { teamId: z.string().min(1) }, { capability: 'providers.read', surfaces: ['rest', 'cli', 'mcp_tool'], pagination: 'cursor' }),
+		show: resource('providers.show', 'GET', '/v1/teams/{teamId}/capacity-providers/{providerId}', { teamId: z.string().min(1), providerId: z.string().min(1) }, { capability: 'providers.read', surfaces: ['rest', 'cli', 'mcp_resource'] }),
+		status: resource('providers.status', 'GET', '/v1/teams/{teamId}/capacity-providers/{providerId}/status', { teamId: z.string().min(1), providerId: z.string().min(1) }, { capability: 'providers.read', surfaces: ['rest', 'cli', 'mcp_tool'] }),
+		diagnose: resource('providers.diagnose', 'GET', '/v1/teams/{teamId}/capacity-providers/{providerId}/diagnosis', { teamId: z.string().min(1), providerId: z.string().min(1) }, { capability: 'providers.read', surfaces: ['rest', 'cli', 'mcp_tool'] }),
+		connect: resource('providers.connect', 'POST', '/v1/teams/{teamId}/capacity-provider-connections', { teamId: z.string().min(1) }, { capability: 'providers.write', scopes: ['treeseed:admin'], surfaces: ['rest', 'cli'], risk: 'credential', redactedPaths: ['body.enrollmentToken'] }),
+		disconnect: resource('providers.disconnect', 'POST', '/v1/teams/{teamId}/capacity-provider-connections/{connectionId}/disconnect', { teamId: z.string().min(1), connectionId: z.string().min(1) }, { capability: 'providers.write', scopes: ['treeseed:admin'], surfaces: ['rest', 'cli'], risk: 'destructive' }),
+		requests: {
+			list: resource('providers.requests.list', 'GET', '/v1/teams/{teamId}/capacity-provider-requests', { teamId: z.string().min(1) }, { capability: 'providers.read', surfaces: ['rest', 'cli'], pagination: 'cursor' }),
+			show: resource('providers.requests.show', 'GET', '/v1/teams/{teamId}/capacity-provider-requests/{requestId}', { teamId: z.string().min(1), requestId: z.string().min(1) }, { capability: 'providers.read', surfaces: ['rest', 'cli'] }),
+			approve: resource('providers.requests.approve', 'POST', '/v1/teams/{teamId}/capacity-provider-requests/{requestId}/approve', { teamId: z.string().min(1), requestId: z.string().min(1) }, { capability: 'providers.write', scopes: ['treeseed:admin'], surfaces: ['rest', 'cli'], risk: 'authority' }),
+			reject: resource('providers.requests.reject', 'POST', '/v1/teams/{teamId}/capacity-provider-requests/{requestId}/reject', { teamId: z.string().min(1), requestId: z.string().min(1) }, { capability: 'providers.write', scopes: ['treeseed:admin'], surfaces: ['rest', 'cli'], risk: 'authority' }),
+		},
+		credentials: {
+			status: resource('providers.credentials.status', 'GET', '/v1/teams/{teamId}/capacity-provider-connections/{connectionId}/credentials', { teamId: z.string().min(1), connectionId: z.string().min(1) }, { capability: 'providers.read', surfaces: ['rest', 'cli'] }),
+			rotate: resource('providers.credentials.rotate', 'POST', '/v1/teams/{teamId}/capacity-provider-connections/{connectionId}/credentials/rotate', { teamId: z.string().min(1), connectionId: z.string().min(1) }, { capability: 'providers.write', scopes: ['treeseed:admin'], surfaces: ['rest', 'cli'], risk: 'credential' }),
+			revoke: resource('providers.credentials.revoke', 'POST', '/v1/teams/{teamId}/capacity-provider-connections/{connectionId}/credentials/revoke', { teamId: z.string().min(1), connectionId: z.string().min(1) }, { capability: 'providers.write', scopes: ['treeseed:admin'], surfaces: ['rest', 'cli'], risk: 'irreversible' }),
+		},
 		register: noPathProvider('providers.register', 'POST', '/v1/provider-registrations', { redactedPaths: ['body.registrationKey'] }),
 		registration: providerPath('providers.registration.show', 'GET', '/v1/provider-registrations/{requestId}', { requestId: z.string().min(1) }, { read: true }),
 		exchangeCredential: providerPath('providers.registration.credential', 'POST', '/v1/provider-registrations/{requestId}/credential', { requestId: z.string().min(1) }, { redactedPaths: ['body.proof'] }),
