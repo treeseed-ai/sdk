@@ -78,9 +78,11 @@ export class ProviderProtocolClient {
 				profile: { serverId: 'provider-control-plane', label: 'Provider control plane', baseUrl: this.controlPlaneUrl },
 				fetchImpl: this.fetchImpl, userAgent: this.userAgent,
 			});
+			const idempotencyKey = options.idempotencyKey
+				?? (operation.descriptor.idempotency.required ? globalThis.crypto.randomUUID() : undefined);
 			const response = await client.invoke(operation, {
 				path: input.path ?? {}, query: input.query ?? {}, body: input.body,
-			}, { authorization, headers: options.headers, idempotencyKey: options.idempotencyKey, signal: controller.signal });
+			}, { authorization, headers: options.headers, idempotencyKey, signal: controller.signal });
 			return response.data as T;
 		} catch (error) {
 			if (error instanceof CapacityProviderApiError) throw error;

@@ -55,6 +55,7 @@ describe('capacity provider membership protocol', () => {
 		});
 		await client.refreshAvailabilitySession('session-a', { expectedSequence: 1 });
 		expect(calls[0]).toMatchObject({ url: 'https://server.test/v1/provider/availability-sessions/session-a', init: { method: 'PUT' } });
+		expect(new Headers(calls[0]?.init?.headers).get('idempotency-key')).toMatch(/^[0-9a-f-]{36}$/u);
 	});
 
 	it('sends access-token auth and settlement idempotency through the canonical client', async () => {
