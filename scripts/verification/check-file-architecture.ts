@@ -104,6 +104,7 @@ for (const path of repositoryFiles()) {
 			&& path !== 'src/operator-contracts/control-plane-operation.ts'
 			&& path !== 'src/operator-contracts/control-plane-operations.ts'
 			&& path !== 'src/operator-contracts/operation-builder.ts'
+			&& !path.startsWith('src/operator-contracts/catalog/')
 			&& path !== 'src/entrypoints/clients/control-plane-client.ts'
 			&& /(?:['"`])\/v1\//u.test(source)) {
 			violations.push(`${path}: raw control-plane route belongs in the authoritative operation catalog`);

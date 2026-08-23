@@ -1,9 +1,7 @@
 import { z } from 'zod';
-import {
-	type ControlPlaneOperationBinding,
-	type ControlPlaneOperationDescriptor,
-} from './control-plane-operation.ts';
+import { type ControlPlaneOperationBinding, type ControlPlaneOperationDescriptor } from './control-plane-operation.ts';
 import { defineOperation as define, defineTreeDxProxyOperation as treedxProxy } from './operation-builder.ts';
+import { communicationOperations, providerDiscussionResponseOperation } from './catalog/communication-operations.ts';
 
 const empty = z.object({}).strict();
 const none = z.undefined();
@@ -269,6 +267,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 		artifact: resource('agents.artifacts.show', 'GET', '/v1/projects/{projectId}/agent-artifacts/{artifactId}', { projectId: z.string().min(1), artifactId: z.string().min(1) }, { capability: 'agents.read' }),
 	},
 	communications: {
+		...communicationOperations(),
 		invocations: resource('communications.invocations.list', 'GET', '/v1/teams/{teamId}/agent-invocations', { teamId: z.string().min(1) }, { capability: 'agents.read', surfaces: ['rest', 'mcp_tool', 'mcp_resource'], pagination: 'cursor' }),
 		invocation: resource('communications.invocations.show', 'GET', '/v1/teams/{teamId}/agent-invocations/{invocationId}', { teamId: z.string().min(1), invocationId: z.string().min(1) }, { capability: 'agents.read', surfaces: ['rest', 'mcp_resource'] }),
 		status: resource('communications.status.show', 'GET', '/v1/teams/{teamId}/communication-status', { teamId: z.string().min(1) }, { capability: 'agents.read', surfaces: ['rest', 'mcp_tool', 'mcp_resource'] }),
@@ -465,6 +464,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 		startExecution: providerPath('providers.assignments.execution.start', 'POST', '/v1/provider/assignments/{assignmentId}/execution-start', { assignmentId: z.string().min(1) }),
 		startCloseout: providerPath('providers.assignments.closeout.start', 'POST', '/v1/provider/assignments/{assignmentId}/closeout-start', { assignmentId: z.string().min(1) }),
 		completionPreflight: providerPath('providers.assignments.completion.preflight', 'POST', '/v1/provider/assignments/{assignmentId}/completion-preflight', { assignmentId: z.string().min(1) }),
+		discussionResponse: providerDiscussionResponseOperation(),
 		returnAssignment: providerPath('providers.assignments.return', 'POST', '/v1/provider/assignments/{assignmentId}/return', { assignmentId: z.string().min(1) }),
 		completeAssignment: providerPath('providers.assignments.complete', 'POST', '/v1/provider/assignments/{assignmentId}/complete', { assignmentId: z.string().min(1) }),
 		failAssignment: providerPath('providers.assignments.fail', 'POST', '/v1/provider/assignments/{assignmentId}/fail', { assignmentId: z.string().min(1) }),
