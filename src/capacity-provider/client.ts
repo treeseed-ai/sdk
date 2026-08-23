@@ -13,6 +13,7 @@ import type {
 	ProviderRegistrationSubmission,
 	ProviderTeamCredentialIssue,
 } from './contracts/index.ts';
+import type { ProviderDiscussionResponseReceipt, ProviderDiscussionResponseRequest } from '../operator-contracts/communication/contracts.ts';
 
 export interface ProviderProtocolClientOptions {
 	controlPlaneUrl: string;
@@ -169,6 +170,10 @@ export class ProviderProtocolClient {
 
 	preflightAssignmentCompletion(assignmentId: string, request: Record<string, unknown>) {
 		return this.invoke<Record<string, unknown>>(CONTROL_PLANE_OPERATIONS.providers.completionPreflight, { path: { assignmentId }, body: request });
+	}
+
+	respondToAssignmentDiscussion(assignmentId: string, request: ProviderDiscussionResponseRequest, idempotencyKey: string) {
+		return this.invoke<ProviderDiscussionResponseReceipt>(CONTROL_PLANE_OPERATIONS.providers.discussionResponse, { path: { assignmentId }, body: request }, { idempotencyKey });
 	}
 
 	returnAssignment(assignmentId: string, request: ProviderAssignmentLifecycleRequest = {}) {
