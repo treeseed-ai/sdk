@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalDeploymentJson, collectHostAliases, componentReleaseSchema, deploymentDigest, hostBackupSchema, hostBootstrapSchema, hostConfigurationSchema, hostMigrationSchema, hostRecoverySchema, hostUpdateSchema, packageRuntimeSchema, resolveMixedTrackCatalog, type ComponentRelease, type HostConfiguration, type ReleaseCatalog } from '../../../src/deployment/index.ts';
+import { canonicalDeploymentJson, collectHostAliases, componentReleaseSchema, deploymentDigest, hostBackupSchema, hostBootstrapSchema, hostConfigurationSchema, hostMigrationSchema, hostRecoverySchema, hostUpdateSchema, packageRuntimeSchema, releaseCatalogSchema, resolveMixedTrackCatalog, type ComponentRelease, type HostConfiguration, type ReleaseCatalog } from '../../../src/deployment/index.ts';
 
 const hash = (value: string) => `sha256:${value.repeat(64)}`;
 
@@ -62,6 +62,14 @@ describe('deployment contracts', () => {
 		const left = release('api', 'stable', 'b'), right = release('agent', 'stable', 'c');
 		right.runtime.services[0]!.endpoints[0]!.defaultAlias = 'api.treeseed.localhost';
 		expect(() => collectHostAliases([left, right])).toThrow(/Duplicate host alias/u);
+	});
+
+	it('allows project release candidates to defer catalog binding but requires it at catalog ingestion', () => {
+		const candidate = release('agent', 'development', 'c');
+		candidate.stableBase!.catalogDigest = null;
+		expect(componentReleaseSchema.parse(candidate).stableBase?.catalogDigest).toBeNull();
+		const unbound = { schemaVersion: 'treeseed.release-catalog/v1', release: '1.1.0~rc1', generation: 2, track: 'development', compatibilityId: 'linux-amd64-v1', catalogDigest: hash('d'), stableBase: { release: '1.0.0', catalogDigest: hash('a') }, components: [candidate], createdAt: '2026-08-23T00:00:00.000Z' };
+		expect(() => releaseCatalogSchema.parse(unbound)).toThrow(/exact selected stable base/u);
 	});
 
 	it('publishes bootstrap, update, backup, migration, and recovery receipt contracts', () => {
