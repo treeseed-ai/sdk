@@ -14,6 +14,12 @@ import {
 describe('TreeSeed TreeDX proxy facade', () => {
 	it('maps every public proxy operation to the accepted TreeDX contract', async () => {
 		expect(validateTreeDxProxyOperationMapping()).toEqual([]);
+		expect(CONTROL_PLANE_OPERATIONS.treedx.repositories.retire.descriptor).toMatchObject({
+			operationId: 'treedx.repositories.retire',
+			upstream: { operationId: 'retireRepository' },
+			riskClass: 'destructive',
+			surfaces: ['internal'],
+		});
 		const treedxSourceCommit = '52cde66008195c329a9231cf5c58506645fe6eb7';
 		const receipt = await createTreeDxServiceContractReceipt(`sha256:${'a'.repeat(64)}`, {
 			treedxSourceCommit,
@@ -51,6 +57,9 @@ describe('TreeSeed TreeDX proxy facade', () => {
 	});
 
 	it('exports TreeDX resource links with the MCP dx URI prefix', () => {
+		expect(buildMcpResources(CONTROL_PLANE_CATALOG.operations).some(
+			(resource) => resource.operationId === 'treedx.repositories.retire',
+		)).toBe(false);
 		const serviceContractResource = buildMcpResources(CONTROL_PLANE_CATALOG.operations).find(
 			(resource) => resource.operationId === 'treedx.service.contract',
 		);

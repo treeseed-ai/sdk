@@ -352,6 +352,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 			list: treedxProxy('treedx.repositories.list', 'listRepositories', 'GET', '/v1/dx/projects/{projectId}/repos', { projectId: z.string().min(1) }, { pagination: 'cursor' }),
 			create: treedxProxy('treedx.repositories.create', 'createRepository', 'POST', '/v1/dx/projects/{projectId}/repos', { projectId: z.string().min(1) }),
 			show: treedxProxy('treedx.repositories.show', 'getRepository', 'GET', '/v1/dx/projects/{projectId}/repos/{repoId}', { projectId: z.string().min(1), repoId: z.string().min(1) }),
+			retire: treedxProxy('treedx.repositories.retire', 'retireRepository', 'DELETE', '/v1/dx/projects/{projectId}/repos/{repoId}', { projectId: z.string().min(1), repoId: z.string().min(1) }, { risk: 'destructive', surfaces: ['internal'] }),
 			status: treedxProxy('treedx.repositories.status', 'getRepositoryStatus', 'GET', '/v1/dx/projects/{projectId}/repos/{repoId}/status', { projectId: z.string().min(1), repoId: z.string().min(1) }),
 			refs: treedxProxy('treedx.repositories.refs', 'listRepositoryRefs', 'GET', '/v1/dx/projects/{projectId}/repos/{repoId}/refs', { projectId: z.string().min(1), repoId: z.string().min(1) }),
 			sync: treedxProxy('treedx.repositories.sync', 'syncRepository', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/sync', { projectId: z.string().min(1), repoId: z.string().min(1) }),
