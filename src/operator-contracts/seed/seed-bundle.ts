@@ -43,7 +43,7 @@ export interface SeedRepositoryPolicy {
 export interface SeedRepositoryResource {
 	key: string;
 	project: string;
-	role: 'primary' | 'content' | 'fixture' | 'support' | 'template';
+	role: 'primary' | 'fixture' | 'support' | 'template';
 	provider: 'github';
 	owner: string;
 	name: string;
@@ -62,7 +62,7 @@ export interface SeedProjectResource {
 	name: string;
 	description: string;
 	kind: string;
-	primaryRepository: string;
+	primaryRepository?: string;
 	metadata?: Record<string, unknown>;
 }
 
@@ -166,7 +166,11 @@ export function validateSeedBundle(bundle: SeedBundleV2): SeedBundleDiagnostic[]
 	}
 	for (const [index, project] of (bundle?.resources?.projects ?? []).entries()) {
 		if (!teams.has(project.team)) add('seed_bundle_project_team_unknown', `resources.projects[${index}].team`, 'Project references an unknown team.');
-		if (!repositories.has(project.primaryRepository)) add('seed_bundle_primary_repository_unknown', `resources.projects[${index}].primaryRepository`, 'Project primary repository is missing.');
+		if (!project.primaryRepository && project.kind !== 'content') add('seed_bundle_primary_repository_required', `resources.projects[${index}].primaryRepository`, 'Non-content projects require a primary source repository.');
+		if (project.primaryRepository && !repositories.has(project.primaryRepository)) add('seed_bundle_primary_repository_unknown', `resources.projects[${index}].primaryRepository`, 'Project primary repository is missing.');
+	}
+	for (const [index, repository] of (bundle?.resources?.repositories ?? []).entries()) {
+		if ((repository as { role?: string }).role === 'content') add('seed_bundle_content_repository_forbidden', `resources.repositories[${index}].role`, 'Virtual knowledge repositories are derived by TreeDX and must not be declared as Git repositories.');
 	}
 	for (const [index, provider] of (bundle?.runtime?.capacityProviders ?? []).entries()) {
 		if (!teams.has(provider.team)) add('seed_bundle_provider_team_unknown', `runtime.capacityProviders[${index}].team`, 'Provider references an unknown team.');
