@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { TREEDX_OPENAPI_CONTRACT } from '@treeseed/treedx/openapi';
 import { ControlPlaneClient } from '../../src/entrypoints/clients/control-plane-client.ts';
-import { CONTROL_PLANE_OPERATIONS } from '../../src/operator-contracts/control-plane-operations.ts';
+import { CONTROL_PLANE_CATALOG, CONTROL_PLANE_OPERATIONS } from '../../src/operator-contracts/control-plane-operations.ts';
+import { buildMcpResources } from '../../src/operator-contracts/mcp.ts';
+import type { TreeSeedTreeDxResourceLink } from '../../src/treedx/types.ts';
 import {
 	createTreeDxServiceContractReceipt,
 	TreeSeedTreeDxClient,
@@ -46,5 +48,18 @@ describe('TreeSeed TreeDX proxy facade', () => {
 		await expect(client.invoke(CONTROL_PLANE_OPERATIONS.projects.list, {
 			path: {}, query: {}, body: undefined,
 		})).rejects.toThrow(/not part of the TreeSeed TreeDX proxy catalog/u);
+	});
+
+	it('exports TreeDX resource links with the MCP dx URI prefix', () => {
+		const serviceContractResource = buildMcpResources(CONTROL_PLANE_CATALOG.operations).find(
+			(resource) => resource.operationId === 'treedx.service.contract',
+		);
+		expect(serviceContractResource?.uriTemplate).toBe('treeseed://dx/projects/{projectId}/service-contract');
+		const link: TreeSeedTreeDxResourceLink = {
+			type: 'resource_link',
+			uri: serviceContractResource!.uriTemplate.replace('{projectId}', 'project-123'),
+			name: 'TreeDX service contract',
+		};
+		expect(link.uri).toBe('treeseed://dx/projects/project-123/service-contract');
 	});
 });

@@ -8,7 +8,7 @@ export type {
 
 export interface TreeSeedTreeDxResourceLink {
 	type: 'resource_link';
-	uri: `treeseed://projects/${string}/treedx/${string}`;
+	uri: `treeseed://dx/projects/${string}/${string}`;
 	name: string;
 	mimeType?: string;
 	expiresAt?: string;
