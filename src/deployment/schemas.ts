@@ -9,8 +9,48 @@ const localAlias = z.string().regex(
 	'Host aliases must use the .localhost namespace.',
 );
 const binding = z.string().regex(/^(?:\[[0-9a-f:]+\]|[^:]+):[1-9][0-9]{0,4}$/iu);
+const httpsUrl = z.string().url().refine((value) => new URL(value).protocol === 'https:', 'Remote TreeSeed connections require HTTPS.');
 
 export const deploymentTrackSchema = z.enum(['stable', 'development']);
+export const hostRoleSchema = z.union([
+	z.enum(['integrated', 'capacity-provider', 'control-plane', 'knowledge', 'ai-gpu', 'edge']),
+	identifier,
+]);
+
+const connectionHealthGateSchema = z.object({
+	protocol: z.enum(['http', 'https', 'tcp']),
+	path: z.string().startsWith('/').optional(),
+	timeoutSeconds: z.number().int().positive().max(600),
+}).strict();
+
+const remoteTlsSchema = z.object({
+	trust: z.enum(['system', 'secret', 'spki']),
+	serverName: z.string().min(1).optional(),
+	caSecretRef: identifier.optional(),
+	spkiSha256: digest.optional(),
+}).strict().superRefine((tls, context) => {
+	if (tls.trust === 'secret' && !tls.caSecretRef) context.addIssue({ code: z.ZodIssueCode.custom, path: ['caSecretRef'], message: 'Secret TLS trust requires a CA secret reference.' });
+	if (tls.trust === 'spki' && !tls.spkiSha256) context.addIssue({ code: z.ZodIssueCode.custom, path: ['spkiSha256'], message: 'SPKI TLS trust requires an exact SHA-256 pin.' });
+});
+
+export const hostConnectionBindingSchema = z.union([
+	z.object({
+		kind: z.literal('local'),
+		componentId: identifier,
+		serviceId: identifier,
+		endpointId: identifier,
+	}).strict(),
+	z.object({
+		kind: z.literal('remote'),
+		url: httpsUrl,
+		audience: z.string().min(1),
+		tls: remoteTlsSchema,
+		authentication: z.object({ mode: z.enum(['none', 'application', 'bearer', 'mtls']), secretRef: identifier.optional() }).strict(),
+		healthGate: connectionHealthGateSchema,
+	}).strict(),
+]).superRefine((connection, context) => {
+	if (connection.kind === 'remote' && connection.authentication.mode !== 'none' && !connection.authentication.secretRef) context.addIssue({ code: z.ZodIssueCode.custom, path: ['authentication', 'secretRef'], message: 'Authenticated remote connections require a secret reference.' });
+});
 
 export const hostComponentSchema = z.object({
 	enabled: z.boolean(),
@@ -18,6 +58,13 @@ export const hostComponentSchema = z.object({
 	profile: identifier.optional(),
 	aliases: z.record(z.string().min(1), localAlias).default({}),
 	configuration: z.record(z.unknown()).default({}),
+	resources: z.object({
+		cpuCores: z.number().positive().optional(),
+		memoryBytes: z.number().int().positive().optional(),
+		storageBytes: z.number().int().positive().optional(),
+		gpuDevices: z.array(z.string().min(1)).default([]),
+	}).strict().default({ gpuDevices: [] }),
+	connections: z.record(identifier, hostConnectionBindingSchema).default({}),
 }).strict();
 
 export const hostConfigurationSchema = z.object({
@@ -26,7 +73,7 @@ export const hostConfigurationSchema = z.object({
 	generation: z.number().int().positive(),
 	host: z.object({
 		id: identifier,
-		role: identifier,
+		role: hostRoleSchema,
 		architecture: z.literal('amd64'),
 	}).strict(),
 	runtime: z.object({ management: z.enum(['managed', 'external']) }).strict(),
@@ -46,6 +93,16 @@ export const hostConfigurationSchema = z.object({
 	network: z.object({
 		manager: z.object({ binding, aliases: z.array(localAlias).min(1), sans: z.array(z.string().min(1)), trustedLanCidrs: z.array(z.string().min(1)) }).strict(),
 	}).strict(),
+	fleet: z.object({
+		rolloutGroup: identifier,
+		receiptReporting: z.object({
+			enabled: z.boolean(),
+			connection: hostConnectionBindingSchema.optional(),
+			intervalSeconds: z.number().int().min(60).max(86_400),
+		}).strict(),
+	}).strict().superRefine((fleet, context) => {
+		if (fleet.receiptReporting.enabled && fleet.receiptReporting.connection?.kind !== 'remote') context.addIssue({ code: z.ZodIssueCode.custom, path: ['receiptReporting', 'connection'], message: 'Enabled fleet receipt reporting requires an explicit remote connection.' });
+	}),
 	secrets: z.record(identifier, z.object({
 		provider: z.enum(['file', 'systemd-credential', 'vault', 'aws-secrets-manager']),
 		reference: z.string().min(1),
@@ -72,11 +129,20 @@ export const packageRuntimeSchema = z.object({
 	schemaVersion: z.literal('treeseed.package-runtime/v1'),
 	componentId: identifier,
 	version: packageVersion,
-	compose: z.object({ projectName: identifier, files: z.array(z.string().min(1)).min(1) }).strict(),
+	compose: z.object({
+		projectName: identifier,
+		files: z.array(z.object({ path: z.string().min(1), digest }).strict()).min(1),
+	}).strict(),
 	services: z.array(z.object({ id: identifier, composeService: identifier, endpoints: z.array(packageEndpointSchema) }).strict()).min(1),
 	stateVolumes: z.array(z.object({ id: identifier, volume: z.string().min(1), backup: z.enum(['required', 'optional', 'none']) }).strict()),
 	migrations: z.array(z.object({ id: identifier, order: z.number().int().nonnegative(), backupRequired: z.boolean() }).strict()),
 	requiredCapabilities: z.array(identifier),
+	dependencies: z.array(z.object({
+		id: identifier,
+		capability: identifier,
+		locality: z.enum(['local', 'remote', 'either']),
+		optional: z.boolean().default(false),
+	}).strict()).default([]),
 }).strict().superRefine((runtime, context) => {
 	const endpointIds = runtime.services.flatMap((service) => service.endpoints.map((endpoint) => `${service.id}.${endpoint.id}`));
 	if (new Set(endpointIds).size !== endpointIds.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['services'], message: 'Endpoint identities must be unique within a component.' });
@@ -89,6 +155,8 @@ export const componentReleaseSchema = z.object({
 	schemaVersion: z.literal('treeseed.component-release/v1'),
 	componentId: identifier,
 	release: packageVersion,
+	applicationVersion: packageVersion,
+	revision: z.number().int().positive(),
 	track: deploymentTrackSchema,
 	source: z.object({ repository: z.string().regex(/^treeseed-ai\/[a-z0-9-]+$/u), commit: gitCommit }).strict(),
 	stableBase: z.object({ releaseRange: z.string().min(1), compatibilityId: identifier, catalogDigest: digest.nullable() }).strict().nullable(),
@@ -102,6 +170,27 @@ export const componentReleaseSchema = z.object({
 	if (release.runtime.componentId !== release.componentId || release.runtime.version !== release.release) context.addIssue({ code: z.ZodIssueCode.custom, path: ['runtime'], message: 'Runtime identity must match its component release.' });
 	if (release.track === 'development' && !release.stableBase) context.addIssue({ code: z.ZodIssueCode.custom, path: ['stableBase'], message: 'Development releases require an exact stable-base binding.' });
 	if (release.track === 'stable' && release.stableBase) context.addIssue({ code: z.ZodIssueCode.custom, path: ['stableBase'], message: 'Stable releases cannot be overlays.' });
+});
+
+const lockedArtifactSchema = z.object({ url: z.string().url(), sha256: z.string().regex(/^[a-f0-9]{64}$/u) }).strict();
+export const integrationReleaseSchema = z.object({
+	schemaVersion: z.literal('treeseed.integration-release/v1'),
+	release: packageVersion,
+	track: deploymentTrackSchema,
+	compatibilityId: identifier,
+	platform: z.object({ repository: z.literal('treeseed-ai/platform'), commit: gitCommit }).strict(),
+	deployment: z.object({ repository: z.literal('treeseed-ai/deployment'), commit: gitCommit, tag: z.string().min(1) }).strict(),
+	hostPayloads: z.array(z.object({ id: identifier, packageName: z.string().min(1), version: packageVersion, artifact: lockedArtifactSchema }).strict()),
+	components: z.array(z.object({
+		componentId: identifier,
+		release: packageVersion,
+		manifest: lockedArtifactSchema,
+		files: z.array(z.object({ path: z.string().min(1), artifact: lockedArtifactSchema }).strict()).min(1),
+	}).strict()).min(1),
+	createdAt: z.string().datetime(),
+}).strict().superRefine((release, context) => {
+	const components = release.components.map((component) => component.componentId);
+	if (new Set(components).size !== components.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['components'], message: 'Integration releases cannot select a component more than once.' });
 });
 
 export const releaseCatalogSchema = z.object({
@@ -142,7 +231,7 @@ export const hostUpdateSchema = z.object({
 	activation: z.object({ policy: z.enum(['maintenance-window', 'continuous']), eligibleAt: z.string().datetime(), jitterSeconds: z.number().int().nonnegative() }).strict(),
 	state: z.enum(['planned', 'draining', 'applying', 'healthy', 'failed', 'rolled-back']),
 }).strict();
-export const hostReceiptSchema = z.object({ schemaVersion: z.literal('treeseed.host-receipt/v1'), receiptId: identifier, planId: identifier, state: z.enum(['known-good', 'degraded', 'rolled-back']), configurationDigest: digest, catalogDigest: digest, packages: z.array(catalogPackageSchema), images: z.array(catalogImageSchema), completedAt: z.string().datetime() }).strict();
+export const hostReceiptSchema = z.object({ schemaVersion: z.literal('treeseed.host-receipt/v1'), receiptId: identifier, planId: identifier, state: z.enum(['known-good', 'degraded', 'rolled-back']), hostId: identifier, role: hostRoleSchema, rolloutGroup: identifier, configurationDigest: digest, catalogDigest: digest, packages: z.array(catalogPackageSchema), images: z.array(catalogImageSchema), runtimes: z.array(z.object({ componentId: identifier, release: packageVersion, runtimeDigest: digest }).strict()), completedAt: z.string().datetime() }).strict();
 export const hostBackupSchema = z.object({
 	schemaVersion: z.literal('treeseed.host-backup/v1'),
 	backupId: identifier,
@@ -179,11 +268,14 @@ export const hostRecoverySchema = z.object({
 }).strict();
 
 export type DeploymentTrack = z.infer<typeof deploymentTrackSchema>;
+export type HostRole = z.infer<typeof hostRoleSchema>;
+export type HostConnectionBinding = z.infer<typeof hostConnectionBindingSchema>;
 export type HostConfiguration = z.infer<typeof hostConfigurationSchema>;
 export type PackageRuntime = z.infer<typeof packageRuntimeSchema>;
 export type PackageEndpoint = z.infer<typeof packageEndpointSchema>;
 export type ComponentRelease = z.infer<typeof componentReleaseSchema>;
 export type ReleaseCatalog = z.infer<typeof releaseCatalogSchema>;
+export type IntegrationRelease = z.infer<typeof integrationReleaseSchema>;
 export type HostPlan = z.infer<typeof hostPlanSchema>;
 export type HostBootstrap = z.infer<typeof hostBootstrapSchema>;
 export type HostUpdate = z.infer<typeof hostUpdateSchema>;
