@@ -104,7 +104,7 @@ describe('deployment contracts', () => {
 
 	it('binds Platform integration selections to exact release assets', () => {
 		const artifact = { url: 'https://github.com/treeseed-ai/agent/releases/download/1.0.0/component-release.json', sha256: 'a'.repeat(64) };
-		const value = integrationReleaseSchema.parse({ schemaVersion: 'treeseed.integration-release/v1', release: '1.0.0', track: 'stable', compatibilityId: 'linux-amd64-v1', platform: { repository: 'treeseed-ai/platform', commit: 'a'.repeat(40) }, deployment: { repository: 'treeseed-ai/deployment', commit: 'b'.repeat(40), tag: '1.0.0' }, hostPayloads: [], components: [{ componentId: 'agent', release: '1.0.0-1', manifest: artifact, files: [{ path: 'compose.yml', artifact: { ...artifact, url: artifact.url.replace('component-release.json', 'compose.yml') } }] }], createdAt: '2026-08-24T00:00:00.000Z' });
+		const value = integrationReleaseSchema.parse({ schemaVersion: 'treeseed.integration-release/v1', release: '1.0.0', generation: 1, track: 'stable', compatibilityId: 'linux-amd64-v1', platform: { repository: 'treeseed-ai/platform', commit: 'a'.repeat(40) }, deployment: { repository: 'treeseed-ai/deployment', commit: 'b'.repeat(40), tag: '1.0.0' }, hostPayloads: [], components: [{ componentId: 'agent', release: '1.0.0-1', manifest: artifact, files: [{ path: 'compose.yml', artifact: { ...artifact, url: artifact.url.replace('component-release.json', 'compose.yml') } }] }], createdAt: '2026-08-24T00:00:00.000Z' });
 		expect(value.components[0]?.files[0]?.path).toBe('compose.yml');
 	});
 

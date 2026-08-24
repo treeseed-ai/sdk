@@ -176,6 +176,7 @@ const lockedArtifactSchema = z.object({ url: z.string().url(), sha256: z.string(
 export const integrationReleaseSchema = z.object({
 	schemaVersion: z.literal('treeseed.integration-release/v1'),
 	release: packageVersion,
+	generation: z.number().int().positive(),
 	track: deploymentTrackSchema,
 	compatibilityId: identifier,
 	platform: z.object({ repository: z.literal('treeseed-ai/platform'), commit: gitCommit }).strict(),
