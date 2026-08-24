@@ -1,21 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalDeploymentJson, collectHostAliases, componentReleaseSchema, deploymentDigest, hostBackupSchema, hostBootstrapSchema, hostConfigurationSchema, hostMigrationSchema, hostRecoverySchema, hostUpdateSchema, packageRuntimeSchema, releaseCatalogSchema, resolveMixedTrackCatalog, type ComponentRelease, type HostConfiguration, type ReleaseCatalog } from '../../../src/deployment/index.ts';
+import { canonicalDeploymentJson, collectHostAliases, collectTopologyBlockers, componentReleaseSchema, deploymentDigest, hostBackupSchema, hostBootstrapSchema, hostConfigurationSchema, hostMigrationSchema, hostRecoverySchema, hostUpdateSchema, integrationReleaseSchema, packageRuntimeSchema, releaseCatalogSchema, resolveMixedTrackCatalog, type ComponentRelease, type HostConfiguration, type ReleaseCatalog } from '../../../src/deployment/index.ts';
 
 const hash = (value: string) => `sha256:${value.repeat(64)}`;
 
 function runtime(componentId: string, version: string, alias: string) {
 	return packageRuntimeSchema.parse({
 		schemaVersion: 'treeseed.package-runtime/v1', componentId, version,
-		compose: { projectName: `treeseed-${componentId}`, files: ['compose.yml'] },
+		compose: { projectName: `treeseed-${componentId}`, files: [{ path: 'compose.yml', digest: hash('f') }] },
 		services: [{ id: 'service', composeService: 'service', endpoints: [{ id: 'http', protocol: 'http', port: 3000, visibility: 'host', defaultAlias: alias, aliasOverride: true, tls: 'edge', authentication: 'application', healthGate: { protocol: 'http', path: '/healthz', timeoutSeconds: 30 } }] }],
-		stateVolumes: [], migrations: [], requiredCapabilities: ['docker-compose'],
+		stateVolumes: [], migrations: [], requiredCapabilities: ['docker-compose'], dependencies: [],
 	});
 }
 
 function release(componentId: string, track: 'stable' | 'development', marker: string): ComponentRelease {
 	const version = track === 'stable' ? '1.0.0' : '1.1.0~rc1';
 	return componentReleaseSchema.parse({
-		schemaVersion: 'treeseed.component-release/v1', componentId, release: version, track,
+		schemaVersion: 'treeseed.component-release/v1', componentId, release: version, applicationVersion: version, revision: 1, track,
 		source: { repository: `treeseed-ai/${componentId}`, commit: marker.repeat(40) },
 		stableBase: track === 'development' ? { releaseRange: '^1.0.0', compatibilityId: 'linux-amd64-v1', catalogDigest: hash('a') } : null,
 		packages: [{ name: `treeseed-component-${componentId}`, version, architecture: 'amd64', origin: 'TreeSeed Deployment', order: 1 }],
@@ -28,10 +28,11 @@ function release(componentId: string, track: 'stable' | 'development', marker: s
 function host(): HostConfiguration {
 	return hostConfigurationSchema.parse({
 		schemaVersion: 'treeseed.host/v1', configurationId: 'local-host', generation: 1,
-		host: { id: 'local-host', role: 'development', architecture: 'amd64' }, runtime: { management: 'managed' },
+		host: { id: 'local-host', role: 'integrated', architecture: 'amd64' }, runtime: { management: 'managed' },
 		updates: { defaultTrack: 'stable', stable: { metadataPollSeconds: 86400, maintenanceWindow: { weekday: 'sunday', localTime: '03:00', jitterMinutes: 30 } }, development: { pollSeconds: 60 } },
 		components: { api: { enabled: true, track: 'stable', configuration: {} }, agent: { enabled: true, track: 'development', configuration: {} } },
-		network: { manager: { binding: '0.0.0.0:4790', aliases: ['manager.treeseed.localhost'], sans: ['localhost'], trustedLanCidrs: [] } }, secrets: {},
+		network: { manager: { binding: '0.0.0.0:4790', aliases: ['manager.treeseed.localhost'], sans: ['localhost'], trustedLanCidrs: [] } },
+		fleet: { rolloutGroup: 'development', receiptReporting: { enabled: false, intervalSeconds: 300 } }, secrets: {},
 	});
 }
 
@@ -66,16 +67,33 @@ describe('deployment contracts', () => {
 
 	it('rejects unknown, private, and forbidden alias override identities', () => {
 		const api = release('api', 'stable', 'a');
-		expect(() => collectHostAliases([api], { 'api.http': 'api-canary.treeseed.localhost' })).toThrow(/does not identify an accepted host endpoint/u);
+		expect(() => collectHostAliases([api], { 'api.http': 'api-alt.treeseed.localhost' })).toThrow(/does not identify an accepted host endpoint/u);
 		api.runtime.services[0]!.endpoints.push({ id: 'internal', protocol: 'tcp', port: 4000, visibility: 'private', aliasOverride: false, tls: 'none', authentication: 'none' });
 		expect(() => collectHostAliases([api], { 'api.service.internal': 'internal.treeseed.localhost' })).toThrow(/does not identify an accepted host endpoint/u);
 		api.runtime.services[0]!.endpoints[0]!.aliasOverride = false;
-		expect(() => collectHostAliases([api], { 'api.service.http': 'api-canary.treeseed.localhost' })).toThrow(/does not permit alias overrides/u);
+		expect(() => collectHostAliases([api], { 'api.service.http': 'api-alt.treeseed.localhost' })).toThrow(/does not permit alias overrides/u);
 	});
 
 	it('applies a fully qualified host endpoint override', () => {
-		const aliases = collectHostAliases([release('api', 'stable', 'a')], { 'api.service.http': 'api-canary.treeseed.localhost' });
-		expect([...aliases.keys()]).toEqual(['api-canary.treeseed.localhost']);
+		const aliases = collectHostAliases([release('api', 'stable', 'a')], { 'api.service.http': 'api-alt.treeseed.localhost' });
+		expect([...aliases.keys()]).toEqual(['api-alt.treeseed.localhost']);
+	});
+
+	it('requires explicit local or remote bindings for component dependencies', () => {
+		const api = release('api', 'stable', 'a'), agent = release('agent', 'development', 'b');
+		agent.runtime.dependencies = [{ id: 'control-plane', capability: 'control-plane-api', locality: 'either', optional: false }];
+		const configuration = host();
+		expect(collectTopologyBlockers(configuration, [api, agent])).toMatchObject([{ code: 'missing-connection', componentId: 'agent' }]);
+		configuration.components.agent!.connections['control-plane'] = { kind: 'local', componentId: 'api', serviceId: 'service', endpointId: 'http' };
+		expect(collectTopologyBlockers(configuration, [api, agent])).toEqual([]);
+		configuration.components.agent!.connections['control-plane'] = { kind: 'remote', url: 'https://api.example.test', audience: 'https://api.example.test', tls: { trust: 'system' }, authentication: { mode: 'bearer', secretRef: 'provider-membership' }, healthGate: { protocol: 'https', path: '/v1/health', timeoutSeconds: 30 } };
+		expect(collectTopologyBlockers(configuration, [api, agent])).toEqual([]);
+	});
+
+	it('binds Platform integration selections to exact release assets', () => {
+		const artifact = { url: 'https://github.com/treeseed-ai/agent/releases/download/1.0.0/component-release.json', sha256: 'a'.repeat(64) };
+		const value = integrationReleaseSchema.parse({ schemaVersion: 'treeseed.integration-release/v1', release: '1.0.0', track: 'stable', compatibilityId: 'linux-amd64-v1', platform: { repository: 'treeseed-ai/platform', commit: 'a'.repeat(40) }, deployment: { repository: 'treeseed-ai/deployment', commit: 'b'.repeat(40), tag: '1.0.0' }, hostPayloads: [], components: [{ componentId: 'agent', release: '1.0.0-1', manifest: artifact, files: [{ path: 'compose.yml', artifact: { ...artifact, url: artifact.url.replace('component-release.json', 'compose.yml') } }] }], createdAt: '2026-08-24T00:00:00.000Z' });
+		expect(value.components[0]?.files[0]?.path).toBe('compose.yml');
 	});
 
 	it('allows project release candidates to defer catalog binding but requires it at catalog ingestion', () => {
