@@ -41,6 +41,14 @@ const operationBindings: Record<string, Execution> = {
 	'host component enable': local('local.host.component.enable'),
 	'host component disable': local('local.host.component.disable'),
 	'host aliases list': local('local.host.aliases.list'),
+	'host config show': local('local.host.config.show'),
+	'host config plan': local('local.host.config.plan'),
+	'host config apply': local('local.host.config.apply'),
+	'host config adopt': local('local.host.config.adopt'),
+	'host topology': local('local.host.topology'),
+	'host connections': local('local.host.connections'),
+	'host provider status': local('local.host.provider.status'),
+	'host fleet status': local('local.host.fleet.status'),
 	'host recovery status': local('local.host.recovery.status'),
 	'host recovery retry': local('local.host.recovery.retry'),
 	'host recovery restore': local('local.host.recovery.restore'),
@@ -120,6 +128,13 @@ function branch(segment: string, children: CommandNodeDescriptor[]): CommandNode
 	return { nodeType: 'branch', segment, description: `${segment[0]!.toUpperCase()}${segment.slice(1)} operations.`, children };
 }
 
+function configurationAdopt(): CommandNodeDescriptor {
+	const value = leaf('adopt', 'mutation', 'file', 'authority');
+	if (value.nodeType !== 'leaf') throw new Error('Configuration adoption must be a leaf command.');
+	value.options = [...(value.options ?? []), { name: '--confirm', description: 'Confirm replacement of the installed configuration identity.', type: 'boolean' }];
+	return value;
+}
+
 const commandTree: CommandTreeDescriptor = {
 	schemaVersion: 'treeseed.command-tree/v1',
 	executable: 'trsd',
@@ -129,6 +144,8 @@ const commandTree: CommandTreeDescriptor = {
 		branch('secrets', [leaf('list'), leaf('status'), leaf('unlock', 'mutation', undefined, 'credential'), leaf('lock', 'mutation'), leaf('rotate', 'mutation', undefined, 'credential')]),
 		branch('host', [
 			leaf('status'), leaf('doctor'), leaf('plan'), leaf('apply', 'mutation', undefined, 'authority'), leaf('reconcile', 'mutation', undefined, 'authority'), leaf('events'),
+			branch('config', [leaf('show'), leaf('plan', 'read', 'file'), leaf('apply', 'mutation', 'file', 'authority'), configurationAdopt()]),
+			leaf('topology'), leaf('connections'), branch('provider', [leaf('status')]), branch('fleet', [leaf('status')]),
 			branch('update', [leaf('status'), leaf('check', 'mutation'), leaf('apply', 'mutation', undefined, 'authority'), leaf('channel', 'mutation', 'track', 'authority'), leaf('pause', 'mutation', undefined, 'authority'), leaf('resume', 'mutation', undefined, 'authority')]),
 			branch('component', [leaf('list'), leaf('status', 'read', 'component'), leaf('enable', 'mutation', 'component', 'authority'), leaf('disable', 'mutation', 'component', 'destructive')]),
 			branch('aliases', [leaf('list')]),
