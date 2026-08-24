@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalDeploymentJson, collectHostAliases, collectTopologyBlockers, componentReleaseSchema, deploymentDigest, hostBackupSchema, hostBootstrapSchema, hostConfigurationSchema, hostMigrationSchema, hostRecoverySchema, hostUpdateSchema, integrationReleaseSchema, packageRuntimeSchema, releaseCatalogSchema, resolveMixedTrackCatalog, type ComponentRelease, type HostConfiguration, type ReleaseCatalog } from '../../../src/deployment/index.ts';
+import { canonicalDeploymentJson, collectHostAliases, collectTopologyBlockers, componentReleaseSchema, deploymentDigest, hostBackupSchema, hostBootstrapSchema, hostConfigurationSchema, hostMigrationSchema, hostNeedsEdge, hostRecoverySchema, hostUpdateSchema, integrationReleaseSchema, packageRuntimeSchema, releaseCatalogSchema, resolveMixedTrackCatalog, type ComponentRelease, type HostConfiguration, type ReleaseCatalog } from '../../../src/deployment/index.ts';
 
 const hash = (value: string) => `sha256:${value.repeat(64)}`;
 
@@ -90,9 +90,21 @@ describe('deployment contracts', () => {
 		expect(collectTopologyBlockers(configuration, [api, agent])).toEqual([]);
 	});
 
+	it('allows an edge-free provider host with no local aliases', () => {
+		const configuration = host();
+		configuration.host.role = 'capacity-provider';
+		configuration.components.api!.enabled = false;
+		configuration.network.manager.aliases = [];
+		configuration.network.manager.sans = [];
+		const agent = release('agent', 'development', 'b');
+		agent.runtime.services[0]!.endpoints = [];
+		expect(hostConfigurationSchema.parse(configuration).network.manager.aliases).toEqual([]);
+		expect(hostNeedsEdge(configuration, [agent])).toBe(false);
+	});
+
 	it('binds Platform integration selections to exact release assets', () => {
 		const artifact = { url: 'https://github.com/treeseed-ai/agent/releases/download/1.0.0/component-release.json', sha256: 'a'.repeat(64) };
-		const value = integrationReleaseSchema.parse({ schemaVersion: 'treeseed.integration-release/v1', release: '1.0.0', track: 'stable', compatibilityId: 'linux-amd64-v1', platform: { repository: 'treeseed-ai/platform', commit: 'a'.repeat(40) }, deployment: { repository: 'treeseed-ai/deployment', commit: 'b'.repeat(40), tag: '1.0.0' }, hostPayloads: [], components: [{ componentId: 'agent', release: '1.0.0-1', manifest: artifact, files: [{ path: 'compose.yml', artifact: { ...artifact, url: artifact.url.replace('component-release.json', 'compose.yml') } }] }], createdAt: '2026-08-24T00:00:00.000Z' });
+		const value = integrationReleaseSchema.parse({ schemaVersion: 'treeseed.integration-release/v1', release: '1.0.0', generation: 1, track: 'stable', compatibilityId: 'linux-amd64-v1', platform: { repository: 'treeseed-ai/platform', commit: 'a'.repeat(40) }, deployment: { repository: 'treeseed-ai/deployment', commit: 'b'.repeat(40), tag: '1.0.0' }, hostPayloads: [], components: [{ componentId: 'agent', release: '1.0.0-1', manifest: artifact, files: [{ path: 'compose.yml', artifact: { ...artifact, url: artifact.url.replace('component-release.json', 'compose.yml') } }] }], createdAt: '2026-08-24T00:00:00.000Z' });
 		expect(value.components[0]?.files[0]?.path).toBe('compose.yml');
 	});
 

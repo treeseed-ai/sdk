@@ -91,7 +91,7 @@ export const hostConfigurationSchema = z.object({
 	}).strict(),
 	components: z.record(identifier, hostComponentSchema),
 	network: z.object({
-		manager: z.object({ binding, aliases: z.array(localAlias).min(1), sans: z.array(z.string().min(1)), trustedLanCidrs: z.array(z.string().min(1)) }).strict(),
+		manager: z.object({ binding, aliases: z.array(localAlias).default([]), sans: z.array(z.string().min(1)).default([]), trustedLanCidrs: z.array(z.string().min(1)).default([]) }).strict(),
 	}).strict(),
 	fleet: z.object({
 		rolloutGroup: identifier,
@@ -176,6 +176,7 @@ const lockedArtifactSchema = z.object({ url: z.string().url(), sha256: z.string(
 export const integrationReleaseSchema = z.object({
 	schemaVersion: z.literal('treeseed.integration-release/v1'),
 	release: packageVersion,
+	generation: z.number().int().positive(),
 	track: deploymentTrackSchema,
 	compatibilityId: identifier,
 	platform: z.object({ repository: z.literal('treeseed-ai/platform'), commit: gitCommit }).strict(),
