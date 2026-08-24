@@ -91,7 +91,7 @@ export const hostConfigurationSchema = z.object({
 	}).strict(),
 	components: z.record(identifier, hostComponentSchema),
 	network: z.object({
-		manager: z.object({ binding, aliases: z.array(localAlias).min(1), sans: z.array(z.string().min(1)), trustedLanCidrs: z.array(z.string().min(1)) }).strict(),
+		manager: z.object({ binding, aliases: z.array(localAlias).default([]), sans: z.array(z.string().min(1)).default([]), trustedLanCidrs: z.array(z.string().min(1)).default([]) }).strict(),
 	}).strict(),
 	fleet: z.object({
 		rolloutGroup: identifier,

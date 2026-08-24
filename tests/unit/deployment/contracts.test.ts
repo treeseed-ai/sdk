@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalDeploymentJson, collectHostAliases, collectTopologyBlockers, componentReleaseSchema, deploymentDigest, hostBackupSchema, hostBootstrapSchema, hostConfigurationSchema, hostMigrationSchema, hostRecoverySchema, hostUpdateSchema, integrationReleaseSchema, packageRuntimeSchema, releaseCatalogSchema, resolveMixedTrackCatalog, type ComponentRelease, type HostConfiguration, type ReleaseCatalog } from '../../../src/deployment/index.ts';
+import { canonicalDeploymentJson, collectHostAliases, collectTopologyBlockers, componentReleaseSchema, deploymentDigest, hostBackupSchema, hostBootstrapSchema, hostConfigurationSchema, hostMigrationSchema, hostNeedsEdge, hostRecoverySchema, hostUpdateSchema, integrationReleaseSchema, packageRuntimeSchema, releaseCatalogSchema, resolveMixedTrackCatalog, type ComponentRelease, type HostConfiguration, type ReleaseCatalog } from '../../../src/deployment/index.ts';
 
 const hash = (value: string) => `sha256:${value.repeat(64)}`;
 
@@ -88,6 +88,18 @@ describe('deployment contracts', () => {
 		expect(collectTopologyBlockers(configuration, [api, agent])).toEqual([]);
 		configuration.components.agent!.connections['control-plane'] = { kind: 'remote', url: 'https://api.example.test', audience: 'https://api.example.test', tls: { trust: 'system' }, authentication: { mode: 'bearer', secretRef: 'provider-membership' }, healthGate: { protocol: 'https', path: '/v1/health', timeoutSeconds: 30 } };
 		expect(collectTopologyBlockers(configuration, [api, agent])).toEqual([]);
+	});
+
+	it('allows an edge-free provider host with no local aliases', () => {
+		const configuration = host();
+		configuration.host.role = 'capacity-provider';
+		configuration.components.api!.enabled = false;
+		configuration.network.manager.aliases = [];
+		configuration.network.manager.sans = [];
+		const agent = release('agent', 'development', 'b');
+		agent.runtime.services[0]!.endpoints = [];
+		expect(hostConfigurationSchema.parse(configuration).network.manager.aliases).toEqual([]);
+		expect(hostNeedsEdge(configuration, [agent])).toBe(false);
 	});
 
 	it('binds Platform integration selections to exact release assets', () => {
