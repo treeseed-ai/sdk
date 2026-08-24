@@ -187,7 +187,7 @@ export const integrationReleaseSchema = z.object({
 		release: packageVersion,
 		manifest: lockedArtifactSchema,
 		files: z.array(z.object({ path: z.string().min(1), artifact: lockedArtifactSchema }).strict()).min(1),
-	}).strict()).min(1),
+	}).strict()),
 	createdAt: z.string().datetime(),
 }).strict().superRefine((release, context) => {
 	const components = release.components.map((component) => component.componentId);
@@ -202,7 +202,7 @@ export const releaseCatalogSchema = z.object({
 	compatibilityId: identifier,
 	catalogDigest: digest,
 	stableBase: z.object({ release: packageVersion, catalogDigest: digest }).strict().nullable(),
-	components: z.array(componentReleaseSchema).min(1),
+	components: z.array(componentReleaseSchema),
 	createdAt: z.string().datetime(),
 }).strict().superRefine((catalog, context) => {
 	if (catalog.track === 'development' && !catalog.stableBase) context.addIssue({ code: z.ZodIssueCode.custom, path: ['stableBase'], message: 'Development catalogs require an exact stable base.' });
