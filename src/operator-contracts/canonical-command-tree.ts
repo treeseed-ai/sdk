@@ -104,6 +104,23 @@ const operationBindings: Record<string, Execution> = {
 	'projects treedx workspaces list': operation('treedx.workspaces.list', [field('path', 'projectId', 'argument', 'project', true), ...page()]),
 	'projects treedx workspaces show': operation('treedx.workspaces.show', [field('path', 'projectId', 'context', 'project', true), field('path', 'workspaceId', 'argument', 'workspace', true)]),
 	'projects treedx workspaces abandon': operation('treedx.workspaces.abandon', [field('path', 'projectId', 'context', 'project', true), field('path', 'workspaceId', 'argument', 'workspace', true)]),
+	'library show': local('local.library.show'),
+	'library status': local('local.library.status'),
+	'library paths': local('local.library.paths'),
+	'library read': local('local.library.read'),
+	'library search': local('local.library.search'),
+	'library query': local('local.library.query'),
+	'library context': local('local.library.context'),
+	'library workspace create': operation('knowledge.workspaces.create', [field('path', 'projectId', 'argument', 'project', true), field('body', 'requestId', 'option', 'request')]),
+	'library workspace show': operation('knowledge.workspaces.show', [field('path', 'workspaceId', 'argument', 'workspace', true)]),
+	'library workspace read': operation('knowledge.workspaces.content.show', [field('path', 'workspaceId', 'argument', 'workspace', true), field('query', 'path', 'argument', 'path', true)]),
+	'library workspace diff': operation('knowledge.workspaces.diff', [field('path', 'workspaceId', 'argument', 'workspace', true)]),
+	'library workspace write': operation('knowledge.workspaces.content.update', [field('path', 'workspaceId', 'argument', 'workspace', true), field('body', 'file', 'option', 'input', true)]),
+	'library workspace submit': operation('knowledge.workspaces.submit', [field('path', 'workspaceId', 'argument', 'workspace', true), field('body', 'version', 'option', 'version', true, 'integer'), field('body', 'message', 'option'), field('body', 'notes', 'option'), field('body', 'contextDigest', 'option', 'contextDigest')]),
+	'library workspace abandon': operation('knowledge.workspaces.abandon', [field('path', 'workspaceId', 'argument', 'workspace', true), field('body', 'version', 'option', 'version', true, 'integer')]),
+	'library reviews list': operation('knowledge.reviews.list', [field('path', 'teamId', 'context', 'team', true), ...page()]),
+	'library reviews decide': operation('knowledge.reviews.decide', [field('path', 'reviewId', 'argument', 'review', true), field('body', 'file', 'option', 'input', true)]),
+	'library reviews publish': operation('knowledge.reviews.publish', [field('path', 'reviewId', 'argument', 'review', true), field('body', 'file', 'option', 'input')]),
 	'status': operation('status.show'),
 	'save': unavailable('Unified GitHub-backed save is intentionally fail-closed during this cutover.'),
 	'stage': unavailable('Unified GitHub-backed stage is intentionally fail-closed during this cutover.'),
@@ -158,6 +175,20 @@ function userCreate(): CommandNodeDescriptor {
 	return value;
 }
 
+function libraryRead(segment: string, extraArguments: string[] = [], extraOptions: CommandLeafDescriptor['options'] = []): CommandNodeDescriptor {
+	return {
+		nodeType: 'leaf', segment, description: `${segment[0]!.toUpperCase()}${segment.slice(1)} project library knowledge.`, kind: 'read',
+		arguments: ['project', ...extraArguments].map((name) => ({ name, description: `${name} value.`, required: true })),
+		options: [{ name: '--ref', description: 'Exact commit or protected library ref.', type: 'string' }, ...extraOptions],
+		resultSchemaId: `treeseed.command.library.${segment}/v1`, execution: local(`local.library.${segment}`),
+	};
+}
+
+function addOptions(node: CommandNodeDescriptor, options: NonNullable<CommandLeafDescriptor['options']>): CommandNodeDescriptor {
+	if (node.nodeType === 'leaf') node.options = [...(node.options ?? []), ...options];
+	return node;
+}
+
 const commandTree: CommandTreeDescriptor = {
 	schemaVersion: 'treeseed.command-tree/v1',
 	executable: 'trsd',
@@ -202,6 +233,22 @@ const commandTree: CommandTreeDescriptor = {
 			leaf('diagnose', 'read', 'project'), leaf('capabilities', 'read', 'project'),
 			branch('workspaces', [leaf('list', 'read', 'project'), leaf('show', 'read', 'workspace'), leaf('abandon', 'mutation', 'workspace', 'destructive')]),
 		])]),
+		branch('library', [
+			libraryRead('show'), libraryRead('status'),
+			libraryRead('paths', [], [{ name: '--prefix', description: 'Repository-relative path prefix.', type: 'string' }, { name: '--limit', description: 'Page size.', type: 'number' }, { name: '--cursor', description: 'Opaque page cursor.', type: 'string' }]),
+			libraryRead('read', ['path']),
+			libraryRead('search', ['query'], [{ name: '--path', description: 'Restrict search to a repository-relative path.', type: 'string' }, { name: '--limit', description: 'Page size.', type: 'number' }, { name: '--cursor', description: 'Opaque page cursor.', type: 'string' }]),
+			libraryRead('query', ['query'], [{ name: '--model', description: 'TreeDX content model.', type: 'string' }, { name: '--input', description: 'YAML or JSON query body.', type: 'string' }]),
+			libraryRead('context', ['query'], [{ name: '--max-items', description: 'Maximum context items.', type: 'number' }, { name: '--max-tokens', description: 'Maximum context tokens.', type: 'number' }]),
+			branch('workspace', [
+				addOptions(leaf('create', 'mutation', 'project'), [{ name: '--request', description: 'Replay-safe UUID request identity.', type: 'string' }]),
+				leaf('show', 'read', 'workspace'), { nodeType: 'leaf', segment: 'read', description: 'Read a file from a governed library workspace.', kind: 'read', arguments: [{ name: 'workspace', description: 'Workspace identity.', required: true }, { name: 'path', description: 'Repository-relative path.', required: true }], resultSchemaId: 'treeseed.command.library.workspace.read/v1', execution: unavailable() }, leaf('diff', 'read', 'workspace'),
+				addOptions(leaf('write', 'mutation', 'workspace'), [{ name: '--input', description: 'YAML or JSON draft body.', type: 'string', required: true }]),
+				addOptions(leaf('submit', 'mutation', 'workspace'), [{ name: '--version', description: 'Expected workspace version.', type: 'number', required: true }, { name: '--message', description: 'Commit message.', type: 'string' }, { name: '--notes', description: 'Review notes.', type: 'string' }, { name: '--context-digest', description: 'Verified editorial context digest.', type: 'string' }]),
+				addOptions(leaf('abandon', 'mutation', 'workspace', 'destructive'), [{ name: '--version', description: 'Expected workspace version.', type: 'number', required: true }]),
+			]),
+			branch('reviews', [leaf('list'), addOptions(leaf('decide', 'mutation', 'review'), [{ name: '--input', description: 'YAML or JSON review decision.', type: 'string', required: true }]), addOptions(leaf('publish', 'mutation', 'review'), [{ name: '--input', description: 'Optional YAML or JSON publication body.', type: 'string' }])]),
+		]),
 		leaf('save', 'mutation'), leaf('stage', 'mutation', undefined, 'authority'), leaf('release', 'mutation', undefined, 'production'), leaf('status'), leaf('diagnose'),
 	],
 };

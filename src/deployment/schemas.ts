@@ -76,7 +76,14 @@ export const hostConfigurationSchema = z.object({
 		role: hostRoleSchema,
 		architecture: z.literal('amd64'),
 	}).strict(),
-	runtime: z.object({ management: z.enum(['managed', 'external']) }).strict(),
+	runtime: z.object({
+		management: z.enum(['managed', 'external']),
+		environment: z.enum(['production', 'development']).default('production'),
+		dataRoot: z.string().startsWith('/').regex(/\/\.treeseed\/data$/u, 'Development dataRoot must end with /.treeseed/data.').optional(),
+	}).strict().superRefine((runtime, context) => {
+		if (runtime.environment === 'development' && !runtime.dataRoot) context.addIssue({ code: z.ZodIssueCode.custom, path: ['dataRoot'], message: 'Development hosts require an explicit workspace-visible dataRoot.' });
+		if (runtime.environment === 'production' && runtime.dataRoot) context.addIssue({ code: z.ZodIssueCode.custom, path: ['dataRoot'], message: 'Production hosts use manager-owned /var/lib state and cannot override dataRoot.' });
+	}),
 	updates: z.object({
 		defaultTrack: deploymentTrackSchema,
 		stable: z.object({
