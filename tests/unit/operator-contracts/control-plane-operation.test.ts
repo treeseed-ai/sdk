@@ -79,6 +79,10 @@ describe('control-plane operation catalog', () => {
 		expect(CONTROL_PLANE_OPERATIONS.providers.discussionResponse.descriptor).toMatchObject({ authentication: 'provider', surfaces: ['rest'] });
 	});
 
+	it('coerces the projects list HTTP limit query parameter', () => {
+		expect(CONTROL_PLANE_OPERATIONS.projects.list.schema.query.parse({ limit: '200' })).toEqual({ limit: 200 });
+	});
+
 	it('derives the complete stable MCP catalog from resource-declared operations', () => {
 		const resources = buildMcpResources(CONTROL_PLANE_CATALOG.operations);
 		expect(resources).toHaveLength(57);

@@ -99,7 +99,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 			operationId: 'projects.list', description: 'List projects visible to the principal.', rest: { method: 'GET', path: '/v1/projects' },
 			capability: 'projects.read', oauthScopes: ['treeseed:read'], kind: 'read', riskClass: 'ordinary', confirmation: 'never',
 			surfaces: ['rest', 'cli', 'mcp_tool'], cacheScope: 'principal', pagination: 'cursor',
-		}, { path: empty, query: z.object({ teamId: z.string().min(1).optional(), limit: z.number().int().positive().max(200).optional(), cursor: z.string().min(1).optional() }).strict(), body: none, output: payload }),
+		}, { path: empty, query: z.object({ teamId: z.string().min(1).optional(), limit: z.coerce.number().int().positive().max(200).optional(), cursor: z.string().min(1).optional() }).strict(), body: none, output: payload }),
 		show: resource('projects.show', 'GET', '/v1/projects/{projectId}', { projectId: z.string().min(1) }, { capability: 'projects.read', surfaces: ['rest', 'cli', 'mcp_tool', 'mcp_resource'] }),
 		create: resource('projects.create', 'POST', '/v1/teams/{teamId}/projects', { teamId: z.string().min(1) }, { capability: 'projects.write', surfaces: ['rest', 'cli', 'mcp_tool'] }),
 		update: resource('projects.update', 'PUT', '/v1/projects/{projectId}', { projectId: z.string().min(1) }, { capability: 'projects.write', surfaces: ['rest', 'cli', 'mcp_tool'], concurrency: true }),
