@@ -21,7 +21,7 @@ describe('human command tree contract', () => {
 		expect(validateCommandTree(TREESEED_COMMAND_TREE_V1)).toEqual([]);
 		expect(validateCommandOperationBindings(TREESEED_COMMAND_TREE_V1, CONTROL_PLANE_OPERATION_LIST)).toEqual([]);
 		const paths = listCommandPaths();
-		expect(paths).toEqual(expect.arrayContaining(['send', 'agents classes list', 'providers offers apply', 'workdays profiles validate', 'workdays schedules retire', 'assignments artifacts', 'save', 'stage', 'release']));
+		expect(paths).toEqual(expect.arrayContaining(['send', 'users create', 'agents classes list', 'providers offers apply', 'workdays profiles validate', 'workdays schedules retire', 'assignments artifacts', 'save', 'stage', 'release']));
 		expect(paths).not.toEqual(expect.arrayContaining(['agent-author', 'capacity-plan-create', 'checkpoint-integrate', 'content-integrate', 'content-abandon']));
 		const release = TREESEED_COMMAND_TREE_V1.commands.find((node) => node.segment === 'release');
 		expect(release).toMatchObject({ nodeType: 'leaf', authorization: { confirmation: 'production' } });
@@ -37,6 +37,8 @@ describe('human command tree contract', () => {
 		visit(TREESEED_COMMAND_TREE_V1.commands);
 		expect(leaves.get('agents show')?.execution).toMatchObject({ kind: 'operation', operationId: 'agents.show' });
 		expect(leaves.get('auth login')?.execution).toEqual({ kind: 'protocol', handlerId: 'protocol.oauth.device.login' });
+		expect(leaves.get('users create')?.execution).toEqual({ kind: 'protocol', handlerId: 'protocol.accounts.create' });
+		expect(leaves.get('users create')?.options?.map((option) => option.name)).toEqual(['--plan', '--email', '--username', '--display-name']);
 		expect(leaves.get('secrets status')?.execution).toEqual({ kind: 'local', handlerId: 'local.secrets.status' });
 		expect(leaves.get('release')?.execution).toMatchObject({ kind: 'unavailable', code: 'standards_migration_not_enabled' });
 		expect(JSON.stringify(TREESEED_COMMAND_TREE_V1)).not.toContain('/v1/');
