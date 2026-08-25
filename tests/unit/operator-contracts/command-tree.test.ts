@@ -41,7 +41,7 @@ describe('human command tree contract', () => {
 		expect(leaves.get('release')?.execution).toMatchObject({ kind: 'unavailable', code: 'standards_migration_not_enabled' });
 		expect(JSON.stringify(TREESEED_COMMAND_TREE_V1)).not.toContain('/v1/');
 		expect(listCommandPaths()).toEqual(expect.arrayContaining([
-			'host status', 'host doctor', 'host config adopt', 'host topology', 'host connections', 'host provider status', 'host fleet status', 'host update channel', 'host component enable', 'host recovery restore', 'host bootstrap enroll',
+			'host status', 'host doctor', 'host config adopt', 'host topology', 'host connections', 'host provider status', 'host fleet status', 'host update channel', 'host component enable', 'host recovery restore', 'host bootstrap enroll', 'host reset',
 			'projects treedx show',
 			'projects treedx bind',
 			'projects treedx status',
