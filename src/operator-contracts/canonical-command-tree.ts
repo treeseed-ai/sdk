@@ -163,7 +163,7 @@ function hostReset(): CommandNodeDescriptor {
 }
 
 function userCreate(): CommandNodeDescriptor {
-	const value = leaf('create', 'mutation', undefined, 'credential');
+	const value = leaf('create', 'mutation');
 	if (value.nodeType !== 'leaf') throw new Error('User creation must be a leaf command.');
 	value.description = 'Create a local TreeSeed user with a securely prompted password.';
 	value.options = [
@@ -171,6 +171,17 @@ function userCreate(): CommandNodeDescriptor {
 		{ name: '--email', description: 'Email address for the new user.', type: 'string' },
 		{ name: '--username', description: 'Unique username for the new user.', type: 'string' },
 		{ name: '--display-name', description: 'Human-readable display name.', type: 'string' },
+		{ name: '--timeout', description: 'Maximum seconds to wait for registration.', type: 'number' },
+	];
+	return value;
+}
+
+function authLogin(): CommandNodeDescriptor {
+	const value = leaf('login', 'mutation');
+	if (value.nodeType !== 'leaf') throw new Error('Authentication login must be a leaf command.');
+	value.options = [
+		...(value.options ?? []),
+		{ name: '--timeout', description: 'Maximum seconds to wait for device authorization.', type: 'number' },
 	];
 	return value;
 }
@@ -194,7 +205,7 @@ const commandTree: CommandTreeDescriptor = {
 	executable: 'trsd',
 	commands: [
 		{ nodeType: 'leaf', segment: 'send', description: 'Send a message to project agents through a team discussion channel.', kind: 'mutation', arguments: [{ name: 'channel', description: 'Team discussion channel.', required: true }, { name: 'message', description: 'Markdown message to send.', required: true }], options: [planOption, { name: '--team', description: 'Team identity or slug.', type: 'string' }, { name: '--project', description: 'Default project for unqualified agent names.', type: 'string' }, { name: '--to', description: 'Agent target; use project/agent when names may be ambiguous.', type: 'string[]' }, { name: '--topic', description: 'Optional discussion topic.', type: 'string' }, { name: '--wait', description: 'Seconds to wait for durable responses.', type: 'number', defaultValue: 0 }], authorization: { capability: 'agents.execute', confirmation: 'never' }, resultSchemaId: 'treeseed.communication-send-receipt/v1', execution: unavailable() },
-		branch('auth', [leaf('login', 'mutation', undefined, 'credential'), leaf('logout', 'mutation'), leaf('status')]),
+		branch('auth', [authLogin(), leaf('logout', 'mutation'), leaf('status')]),
 		branch('users', [userCreate()]),
 		branch('secrets', [leaf('list'), leaf('status'), leaf('unlock', 'mutation', undefined, 'credential'), leaf('lock', 'mutation'), leaf('rotate', 'mutation', undefined, 'credential')]),
 		branch('host', [

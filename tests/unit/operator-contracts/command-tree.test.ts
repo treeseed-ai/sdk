@@ -38,7 +38,10 @@ describe('human command tree contract', () => {
 		expect(leaves.get('agents show')?.execution).toMatchObject({ kind: 'operation', operationId: 'agents.show' });
 		expect(leaves.get('auth login')?.execution).toEqual({ kind: 'protocol', handlerId: 'protocol.oauth.device.login' });
 		expect(leaves.get('users create')?.execution).toEqual({ kind: 'protocol', handlerId: 'protocol.accounts.create' });
-		expect(leaves.get('users create')?.options?.map((option) => option.name)).toEqual(['--plan', '--email', '--username', '--display-name']);
+		expect(leaves.get('users create')?.options?.map((option) => option.name)).toEqual(['--plan', '--email', '--username', '--display-name', '--timeout']);
+		expect(leaves.get('users create')?.authorization?.confirmation).toBe('never');
+		expect(leaves.get('auth login')?.authorization?.confirmation).toBe('never');
+		expect(leaves.get('auth login')?.options?.map((option) => option.name)).toEqual(['--plan', '--timeout']);
 		expect(leaves.get('secrets status')?.execution).toEqual({ kind: 'local', handlerId: 'local.secrets.status' });
 		expect(leaves.get('release')?.execution).toMatchObject({ kind: 'unavailable', code: 'standards_migration_not_enabled' });
 		expect(JSON.stringify(TREESEED_COMMAND_TREE_V1)).not.toContain('/v1/');
