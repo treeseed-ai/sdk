@@ -7,4 +7,5 @@ export * from './control-plane-operations.ts';
 export * from './mcp.ts';
 export * from './oauth.ts';
 export * from './communication/contracts.ts';
+export * from './communication/addressing.ts';
 export * from './seed/seed-bundle.ts';

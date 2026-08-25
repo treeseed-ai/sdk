@@ -19,7 +19,10 @@ const operationBindings: Record<string, Execution> = {
 	'auth logout': protocol('protocol.oauth.revoke'),
 	'auth status': operation('accounts.current.show'),
 	'users create': protocol('protocol.accounts.create'),
-	'send': operation('communications.send', [field('path', 'teamId', 'context', 'team', true), field('path', 'channel', 'argument', 'channel', true), field('body', 'message', 'argument', 'message', true), field('body', 'projectId', 'context', 'project'), field('body', 'recipients', 'option', 'to'), field('body', 'topic', 'option'), field('body', 'waitSeconds', 'option', 'wait', false, 'integer')]),
+	'send': operation('communications.send', [field('path', 'teamId', 'context', 'team', true), field('path', 'channel', 'argument', 'channel', true), field('body', 'message', 'argument', 'message', true), field('body', 'projectId', 'context', 'project', true), field('body', 'recipients', 'option', 'to'), field('body', 'timeoutSeconds', 'option', 'timeout', false, 'integer')]),
+	'teams list': operation('teams.list', page()),
+	'teams current': local('local.teams.current'),
+	'teams use': local('local.teams.use'),
 	'secrets list': local('local.secrets.list'),
 	'secrets status': local('local.secrets.status'),
 	'secrets unlock': local('local.secrets.unlock'),
@@ -204,9 +207,10 @@ const commandTree: CommandTreeDescriptor = {
 	schemaVersion: 'treeseed.command-tree/v1',
 	executable: 'trsd',
 	commands: [
-		{ nodeType: 'leaf', segment: 'send', description: 'Send a message to project agents through a team discussion channel.', kind: 'mutation', arguments: [{ name: 'channel', description: 'Team discussion channel.', required: true }, { name: 'message', description: 'Markdown message to send.', required: true }], options: [planOption, { name: '--team', description: 'Team identity or slug.', type: 'string' }, { name: '--project', description: 'Default project for unqualified agent names.', type: 'string' }, { name: '--to', description: 'Agent target; use project/agent when names may be ambiguous.', type: 'string[]' }, { name: '--topic', description: 'Optional discussion topic.', type: 'string' }, { name: '--wait', description: 'Seconds to wait for durable responses.', type: 'number', defaultValue: 0 }], authorization: { capability: 'agents.execute', confirmation: 'never' }, resultSchemaId: 'treeseed.communication-send-receipt/v1', execution: unavailable() },
+		{ nodeType: 'leaf', segment: 'send', description: 'Send a message to addressed project agents in a team discussion topic.', kind: 'mutation', arguments: [{ name: 'channel', description: 'Team discussion-topic channel.', required: true }, { name: 'message', description: 'Markdown message containing agent addresses.', required: true }], options: [planOption, { name: '--team', description: 'One-command team override.', type: 'string' }, { name: '--project', description: 'Project for agent resolution and the topic stream.', type: 'string', required: true }, { name: '--to', description: 'Deprecated validation-only address list.', type: 'string[]' }, { name: '--timeout', description: 'Maximum seconds to wait for the complete response chain.', type: 'number', defaultValue: 1800 }, { name: '--no-wait', description: 'Return immediately after durable admission.', type: 'boolean' }, { name: '--wait', description: 'Deprecated wait duration in seconds.', type: 'number' }], authorization: { capability: 'agents.execute', confirmation: 'never' }, resultSchemaId: 'treeseed.communication-send-receipt/v2', execution: unavailable() },
 		branch('auth', [authLogin(), leaf('logout', 'mutation'), leaf('status')]),
 		branch('users', [userCreate()]),
+		branch('teams', [leaf('list'), { nodeType: 'leaf', segment: 'current', description: 'Show the active team for this authenticated server session.', kind: 'read', resultSchemaId: 'treeseed.command.teams.current/v1', execution: unavailable() }, { nodeType: 'leaf', segment: 'use', description: 'Select the active team for this authenticated server session.', kind: 'mutation', arguments: [{ name: 'team', description: 'Team UUID or unambiguous slug.', required: true }], options: [planOption], authorization: { capability: 'teams.read', confirmation: 'never' }, resultSchemaId: 'treeseed.command.teams.use/v1', execution: unavailable() }]),
 		branch('secrets', [leaf('list'), leaf('status'), leaf('unlock', 'mutation', undefined, 'credential'), leaf('lock', 'mutation'), leaf('rotate', 'mutation', undefined, 'credential')]),
 		branch('host', [
 			leaf('status'), leaf('doctor'), leaf('plan'), leaf('apply', 'mutation', undefined, 'authority'), leaf('reconcile', 'mutation', undefined, 'authority'), leaf('events'),
