@@ -54,6 +54,7 @@ const operationBindings: Record<string, Execution> = {
 	'host recovery restore': local('local.host.recovery.restore'),
 	'host bootstrap status': local('local.host.bootstrap.status'),
 	'host bootstrap enroll': local('local.host.bootstrap.enroll'),
+	'host reset': local('local.host.reset'),
 	'agents list': operation('agents.list', [field('path', 'projectId', 'context', 'project', true), ...page()]),
 	'agents show': operation('agents.show', [field('path', 'projectId', 'context', 'project', true), field('path', 'agentSlug', 'argument', 'agent', true)]),
 	'agents classes list': operation('agents.classes.list', [field('path', 'projectId', 'context', 'project', true)]),
@@ -135,6 +136,14 @@ function configurationAdopt(): CommandNodeDescriptor {
 	return value;
 }
 
+function hostReset(): CommandNodeDescriptor {
+	const value = leaf('reset', 'mutation', undefined, 'irreversible');
+	if (value.nodeType !== 'leaf') throw new Error('Host reset must be a leaf command.');
+	value.description = 'Stop managed components, erase their state, and reconcile a fresh unseeded platform.';
+	value.options = [...(value.options ?? []), { name: '--confirm', description: 'Confirm deletion of all manager-owned component data and receipts.', type: 'boolean' }];
+	return value;
+}
+
 const commandTree: CommandTreeDescriptor = {
 	schemaVersion: 'treeseed.command-tree/v1',
 	executable: 'trsd',
@@ -151,6 +160,7 @@ const commandTree: CommandTreeDescriptor = {
 			branch('aliases', [leaf('list')]),
 			branch('recovery', [leaf('status'), leaf('retry', 'mutation', undefined, 'authority'), leaf('restore', 'mutation', 'generation', 'destructive')]),
 			branch('bootstrap', [leaf('status'), leaf('enroll', 'mutation', undefined, 'credential')]),
+			hostReset(),
 		]),
 		branch('agents', [
 			leaf('list'), leaf('show', 'read', 'agent'), leaf('validate'), leaf('diff'), leaf('diagnose'),
