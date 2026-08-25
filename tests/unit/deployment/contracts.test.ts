@@ -28,7 +28,7 @@ function release(componentId: string, track: 'stable' | 'development', marker: s
 function host(): HostConfiguration {
 	return hostConfigurationSchema.parse({
 		schemaVersion: 'treeseed.host/v1', configurationId: 'local-host', generation: 1,
-		host: { id: 'local-host', role: 'integrated', architecture: 'amd64' }, runtime: { management: 'managed' },
+		host: { id: 'local-host', role: 'integrated', architecture: 'amd64' }, runtime: { management: 'managed', environment: 'production' },
 		updates: { defaultTrack: 'stable', stable: { metadataPollSeconds: 86400, maintenanceWindow: { weekday: 'sunday', localTime: '03:00', jitterMinutes: 30 } }, development: { pollSeconds: 60 } },
 		components: { api: { enabled: true, track: 'stable', configuration: {} }, agent: { enabled: true, track: 'development', configuration: {} } },
 		network: { manager: { binding: '0.0.0.0:4790', aliases: ['manager.treeseed.localhost'], sans: ['localhost'], trustedLanCidrs: [] } },
