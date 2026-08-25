@@ -18,6 +18,7 @@ const operationBindings: Record<string, Execution> = {
 	'auth login': protocol('protocol.oauth.device.login'),
 	'auth logout': protocol('protocol.oauth.revoke'),
 	'auth status': operation('accounts.current.show'),
+	'users create': protocol('protocol.accounts.create'),
 	'send': operation('communications.send', [field('path', 'teamId', 'context', 'team', true), field('path', 'channel', 'argument', 'channel', true), field('body', 'message', 'argument', 'message', true), field('body', 'projectId', 'context', 'project'), field('body', 'recipients', 'option', 'to'), field('body', 'topic', 'option'), field('body', 'waitSeconds', 'option', 'wait', false, 'integer')]),
 	'secrets list': local('local.secrets.list'),
 	'secrets status': local('local.secrets.status'),
@@ -144,12 +145,26 @@ function hostReset(): CommandNodeDescriptor {
 	return value;
 }
 
+function userCreate(): CommandNodeDescriptor {
+	const value = leaf('create', 'mutation', undefined, 'credential');
+	if (value.nodeType !== 'leaf') throw new Error('User creation must be a leaf command.');
+	value.description = 'Create a local TreeSeed user with a securely prompted password.';
+	value.options = [
+		...(value.options ?? []),
+		{ name: '--email', description: 'Email address for the new user.', type: 'string' },
+		{ name: '--username', description: 'Unique username for the new user.', type: 'string' },
+		{ name: '--display-name', description: 'Human-readable display name.', type: 'string' },
+	];
+	return value;
+}
+
 const commandTree: CommandTreeDescriptor = {
 	schemaVersion: 'treeseed.command-tree/v1',
 	executable: 'trsd',
 	commands: [
 		{ nodeType: 'leaf', segment: 'send', description: 'Send a message to project agents through a team discussion channel.', kind: 'mutation', arguments: [{ name: 'channel', description: 'Team discussion channel.', required: true }, { name: 'message', description: 'Markdown message to send.', required: true }], options: [planOption, { name: '--team', description: 'Team identity or slug.', type: 'string' }, { name: '--project', description: 'Default project for unqualified agent names.', type: 'string' }, { name: '--to', description: 'Agent target; use project/agent when names may be ambiguous.', type: 'string[]' }, { name: '--topic', description: 'Optional discussion topic.', type: 'string' }, { name: '--wait', description: 'Seconds to wait for durable responses.', type: 'number', defaultValue: 0 }], authorization: { capability: 'agents.execute', confirmation: 'never' }, resultSchemaId: 'treeseed.communication-send-receipt/v1', execution: unavailable() },
 		branch('auth', [leaf('login', 'mutation', undefined, 'credential'), leaf('logout', 'mutation'), leaf('status')]),
+		branch('users', [userCreate()]),
 		branch('secrets', [leaf('list'), leaf('status'), leaf('unlock', 'mutation', undefined, 'credential'), leaf('lock', 'mutation'), leaf('rotate', 'mutation', undefined, 'credential')]),
 		branch('host', [
 			leaf('status'), leaf('doctor'), leaf('plan'), leaf('apply', 'mutation', undefined, 'authority'), leaf('reconcile', 'mutation', undefined, 'authority'), leaf('events'),
