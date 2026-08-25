@@ -26,6 +26,7 @@ export interface ControlPlaneServerSession {
 	refreshToken?: string;
 	expiresAt?: string;
 	principal?: ApiPrincipal | null;
+	activeTeam?: { id: string; slug: string; name: string } | null;
 }
 
 export interface ControlPlaneServerRegistry {
