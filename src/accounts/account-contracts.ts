@@ -90,12 +90,16 @@ export interface AccountIdentity {
 	hasCredential: boolean;
 	emails: AccountEmailAddress[];
 	providers: Array<{ id: string; provider: string; email?: string | null; linkedAt: string; canUnlink: boolean }>;
+	/** Exact account revision supplied as If-Match for concurrent identity mutations. */
+	updatedAt?: string;
 }
 
 export interface AccountPreferences {
 	timeZone: string;
 	realTimeUpdates: boolean;
 	realTimePollingIntervalSeconds: 2 | 5 | 15 | 30;
+	/** Exact preference revision supplied as If-Match for concurrent preference mutations. */
+	updatedAt?: string;
 }
 
 export type AccountPreferencesUpdate = Partial<AccountPreferences>;
@@ -154,6 +158,8 @@ export interface NotificationPreferences {
 	emailCadence: NotificationEmailCadence;
 	globalContentTypes: string[];
 	projectOverrides: NotificationProjectOverride[];
+	/** Exact notification-preference revision supplied as If-Match for concurrent updates. */
+	updatedAt?: string;
 }
 
 export interface AccountNotification {
