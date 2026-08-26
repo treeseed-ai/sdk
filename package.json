@@ -89,6 +89,26 @@
       "types": "./dist/guarantees/index.d.ts",
       "default": "./dist/guarantees/index.js"
     },
+    "./site-contracts/platform": {
+      "types": "./dist/site-contracts/platform.d.ts",
+      "default": "./dist/site-contracts/platform.js"
+    },
+    "./site-contracts/plugin": {
+      "types": "./dist/site-contracts/plugin.d.ts",
+      "default": "./dist/site-contracts/plugin.js"
+    },
+    "./site-contracts/cloudflare": {
+      "types": "./dist/site-contracts/cloudflare.d.ts",
+      "default": "./dist/site-contracts/cloudflare.js"
+    },
+    "./site-contracts/catalog": {
+      "types": "./dist/site-contracts/catalog.d.ts",
+      "default": "./dist/site-contracts/catalog.js"
+    },
+    "./field-aliases": {
+      "types": "./dist/entrypoints/models/field-aliases.d.ts",
+      "default": "./dist/entrypoints/models/field-aliases.js"
+    },
     "./control-plane-client": {
       "types": "./dist/entrypoints/clients/control-plane-client.d.ts",
       "default": "./dist/entrypoints/clients/control-plane-client.js"
