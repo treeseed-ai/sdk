@@ -61,6 +61,10 @@
     "vitest": "^4.1.2"
   },
   "exports": {
+    "./development": {
+      "types": "./dist/development/index.d.ts",
+      "default": "./dist/development/index.js"
+    },
     "./deployment": {
       "types": "./dist/deployment/index.d.ts",
       "default": "./dist/deployment/index.js"

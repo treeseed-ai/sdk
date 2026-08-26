@@ -59,6 +59,15 @@ const operationBindings: Record<string, Execution> = {
 	'host bootstrap status': local('local.host.bootstrap.status'),
 	'host bootstrap enroll': local('local.host.bootstrap.enroll'),
 	'host reset': local('local.host.reset'),
+	'dev session start': local('local.dev.session.start'),
+	'dev session stop': local('local.dev.session.stop'),
+	'dev use': local('local.dev.use'),
+	'dev rebuild': local('local.dev.rebuild'),
+	'dev status': local('local.dev.status'),
+	'dev logs': local('local.dev.logs'),
+	'dev plan': local('local.dev.plan'),
+	'dev freeze': local('local.dev.freeze'),
+	'dev verify': local('local.dev.verify'),
 	'agents list': operation('agents.list', [field('path', 'projectId', 'context', 'project', true), ...page()]),
 	'agents show': operation('agents.show', [field('path', 'projectId', 'context', 'project', true), field('path', 'agentSlug', 'argument', 'agent', true)]),
 	'agents classes list': operation('agents.classes.list', [field('path', 'projectId', 'context', 'project', true)]),
@@ -203,6 +212,16 @@ function addOptions(node: CommandNodeDescriptor, options: NonNullable<CommandLea
 	return node;
 }
 
+function developmentCommand(segment: string, kind: 'read' | 'mutation', argument?: string, options: NonNullable<CommandLeafDescriptor['options']> = []): CommandNodeDescriptor {
+	return {
+		nodeType: 'leaf', segment, description: `${segment[0]!.toUpperCase()}${segment.slice(1)} a local development session.`, kind,
+		arguments: argument ? [{ name: argument, description: `${argument} value.`, required: true }] : undefined,
+		options: [...(kind === 'mutation' ? [planOption] : []), ...options],
+		authorization: kind === 'mutation' ? { capability: `development.${segment}`, confirmation: 'never' } : undefined,
+		resultSchemaId: `treeseed.command.dev.${segment}/v1`, execution: local(`local.dev.${segment}`),
+	};
+}
+
 const commandTree: CommandTreeDescriptor = {
 	schemaVersion: 'treeseed.command-tree/v1',
 	executable: 'trsd',
@@ -212,6 +231,19 @@ const commandTree: CommandTreeDescriptor = {
 		branch('users', [userCreate()]),
 		branch('teams', [leaf('list'), { nodeType: 'leaf', segment: 'current', description: 'Show the active team for this authenticated server session.', kind: 'read', resultSchemaId: 'treeseed.command.teams.current/v1', execution: unavailable() }, { nodeType: 'leaf', segment: 'use', description: 'Select the active team for this authenticated server session.', kind: 'mutation', arguments: [{ name: 'team', description: 'Team UUID or unambiguous slug.', required: true }], options: [planOption], authorization: { capability: 'teams.read', confirmation: 'never' }, resultSchemaId: 'treeseed.command.teams.use/v1', execution: unavailable() }]),
 		branch('secrets', [leaf('list'), leaf('status'), leaf('unlock', 'mutation', undefined, 'credential'), leaf('lock', 'mutation'), leaf('rotate', 'mutation', undefined, 'credential')]),
+		branch('dev', [
+			branch('session', [
+				developmentCommand('start', 'mutation', 'manifest', [{ name: '--actor', description: 'Audited development-session actor.', type: 'string' }, { name: '--lease-seconds', description: 'Requested bounded lease duration.', type: 'number' }]),
+				developmentCommand('stop', 'mutation', undefined, [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--restore', description: 'Restore released routes and targets.', type: 'boolean' }]),
+			]),
+			developmentCommand('use', 'mutation', 'selection', [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--target', description: 'Additional project.target=mode selections.', type: 'string[]' }]),
+			developmentCommand('rebuild', 'mutation', 'target', [{ name: '--session', description: 'Development session identity.', type: 'string' }]),
+			developmentCommand('status', 'read', undefined, [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--all', description: 'Include stopped and expired sessions.', type: 'boolean' }]),
+			developmentCommand('logs', 'read', undefined, [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--target', description: 'Development target identity.', type: 'string' }, { name: '--follow', description: 'Follow target logs.', type: 'boolean' }]),
+			developmentCommand('plan', 'read', undefined, [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--affected', description: 'Show the smallest affected closure.', type: 'boolean' }]),
+			developmentCommand('freeze', 'mutation', undefined, [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--allow-dirty', description: 'Create a non-promotable dirty-source candidate.', type: 'boolean' }]),
+			developmentCommand('verify', 'mutation', undefined, [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--candidate', description: 'Candidate identity.', type: 'string' }]),
+		]),
 		branch('host', [
 			leaf('status'), leaf('doctor'), leaf('plan'), leaf('apply', 'mutation', undefined, 'authority'), leaf('reconcile', 'mutation', undefined, 'authority'), leaf('events'),
 			branch('config', [leaf('show'), leaf('plan', 'read', 'file'), leaf('apply', 'mutation', 'file', 'authority'), configurationAdopt()]),

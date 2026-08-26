@@ -19,6 +19,40 @@ artifacts:
     name: "@treeseed/sdk"
 releaseGate:
   workflow: verify.yml
+development:
+  schemaVersion: treeseed.development-runtime/v1
+  project: { id: sdk, repository: treeseed-ai/sdk }
+  defaults: { leaseSeconds: 14400, restoreOnFailure: true }
+  targets:
+    - id: package
+      kind: package-watch
+      platforms: [linux-amd64, linux-arm64, darwin-arm64, darwin-amd64]
+      runtimeRequirements: [node>=22]
+      sourceRoots: [src, scripts/build, scripts/development]
+      ignoredPaths: [dist, node_modules]
+      operations:
+        watch: { command: node, args: [--watch-path=src, --watch-path=package.json, --import, tsx, scripts/development/build-watch.ts], environment: {}, timeoutSeconds: 86400 }
+        build: { command: npm, args: [run, build:dist], environment: {}, timeoutSeconds: 900 }
+        verify: { command: npm, args: [run, test:contracts], environment: {}, timeoutSeconds: 900 }
+      ready: { kind: marker, path: dist/.treeseed-build-complete.json, timeoutSeconds: 120 }
+      outputs: [{ path: dist, mediaType: application/vnd.treeseed.node-package, completionMarker: dist/.treeseed-build-complete.json, digestAlgorithm: sha256 }]
+      endpoints: []
+      dependencies: []
+      statePolicy: stateless
+      migrationPolicy: none
+      secretRefs: {}
+      shutdown: { graceSeconds: 10, activeWorkPolicy: block }
+      resources: {}
+      logs: [.treeseed/development/package.log]
+      forbiddenOperations: [publish, production-tag]
+      freeze:
+        kind: npm-package
+        operation: { command: npm, args: [pack, --json], environment: {}, timeoutSeconds: 900 }
+        artifacts: [treeseed-sdk-*.tgz]
+        contractOperations:
+          - { command: npm, args: [run, standards:build], environment: {}, timeoutSeconds: 900 }
+          - { command: npm, args: [run, standards:compatibility], environment: {}, timeoutSeconds: 900 }
+      promotion: { liveAdmissible: false, candidateRequiresVerification: true }
 standards:
   schemaVersion: 1
   workflow:
