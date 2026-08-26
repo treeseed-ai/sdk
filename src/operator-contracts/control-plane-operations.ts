@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { type ControlPlaneOperationBinding, type ControlPlaneOperationDescriptor } from './control-plane-operation.ts';
 import { defineOperation as define, defineTreeDxProxyOperation as treedxProxy } from './operation-builder.ts';
 import { communicationOperations, providerDiscussionResponseOperation } from './catalog/communication-operations.ts';
-
+import { adminAccountOperations, adminTeamOperations } from './catalog/admin-account-team-operations.ts';
 const empty = z.object({}).strict();
 const none = z.undefined();
 const record = z.record(z.unknown());
@@ -114,6 +114,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 		updateRepositoryTopology: resource('projects.repository.update', 'PUT', '/v1/projects/{projectId}/repository-topology', { projectId: z.string().min(1) }, { capability: 'repositories.write', concurrency: true }),
 	},
 	accounts: {
+		...adminAccountOperations,
 		current: resource('accounts.current.show', 'GET', '/v1/me', {}, { capability: 'accounts.read', surfaces: ['rest', 'cli', 'mcp_resource'] }),
 		register: resource('accounts.register', 'POST', '/v1/auth/web/sign-up', {}, { capability: 'accounts.register', scopes: [], redactedPaths: ['body.password'] }),
 		confirmEmail: resource('accounts.email.confirm', 'POST', '/v1/auth/web/confirm-email', {}, { capability: 'accounts.register', scopes: [], redactedPaths: ['body.token'] }),
@@ -137,6 +138,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 		readNotification: resource('accounts.notifications.read', 'POST', '/v1/auth/web/notifications/{notificationId}/read', { notificationId: z.string().min(1) }, { capability: 'accounts.write' }),
 	},
 	teams: {
+		...adminTeamOperations,
 		list: resource('teams.list', 'GET', '/v1/teams', {}, { capability: 'teams.read', surfaces: ['rest', 'cli', 'mcp_tool'], pagination: 'cursor' }),
 		create: resource('teams.create', 'POST', '/v1/teams', {}, { capability: 'teams.write', surfaces: ['rest', 'cli', 'mcp_tool'] }),
 		profile: resource('teams.profile.show', 'GET', '/v1/teams/by-name/{name}/profile', { name: z.string().min(1) }, { capability: 'teams.read', surfaces: ['rest', 'mcp_resource'] }),
