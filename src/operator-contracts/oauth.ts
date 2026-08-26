@@ -1,11 +1,11 @@
 import type { OAuthScope } from './control-plane-operation.ts';
 
-export const TREESEED_OAUTH_CLIENT_IDS = {
+export const OAUTH_CLIENT_IDS = {
 	cli: 'trsd',
 	admin: 'treeseed-admin',
 } as const;
 
-export type TreeSeedOAuthClientId = typeof TREESEED_OAUTH_CLIENT_IDS[keyof typeof TREESEED_OAUTH_CLIENT_IDS];
+export type OAuthClientId = typeof OAUTH_CLIENT_IDS[keyof typeof OAUTH_CLIENT_IDS];
 
 export interface ApiPrincipal {
 	id: string;

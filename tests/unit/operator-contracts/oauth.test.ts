@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { TREESEED_OAUTH_CLIENT_IDS, type OAuthAuthorizationPresentation } from '../../../src/operator-contracts/oauth.ts';
+import { OAUTH_CLIENT_IDS, type OAuthAuthorizationPresentation } from '../../../src/operator-contracts/oauth.ts';
 
 describe('OAuth browser presentation contracts', () => {
 	it('keeps CLI and Admin as distinct first-party clients', () => {
-		expect(TREESEED_OAUTH_CLIENT_IDS).toEqual({ cli: 'trsd', admin: 'treeseed-admin' });
+		expect(OAUTH_CLIENT_IDS).toEqual({ cli: 'trsd', admin: 'treeseed-admin' });
 	});
 
 	it('describes validated consent without credential or token fields', () => {
