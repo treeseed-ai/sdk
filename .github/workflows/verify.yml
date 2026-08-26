@@ -1,5 +1,6 @@
 name: Verify
 
+# Feature branches verify through pull requests; protected branches reverify merged heads.
 on:
   push:
     branches: [staging, main]
