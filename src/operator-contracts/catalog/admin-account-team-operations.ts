@@ -11,7 +11,7 @@ function operation<T extends z.ZodRawShape>(
 	method: 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT',
 	path: `/v1/${string}`,
 	pathShape: T,
-	options: { capability: string; risk?: ControlPlaneOperationDescriptor['riskClass']; concurrency?: boolean; pagination?: ControlPlaneOperationDescriptor['pagination']; redactedPaths?: string[] },
+	options: { capability: string; risk?: ControlPlaneOperationDescriptor['riskClass']; concurrency?: boolean; pagination?: ControlPlaneOperationDescriptor['pagination']; redactedPaths?: string[]; authentication?: ControlPlaneOperationDescriptor['authentication']; cacheScope?: ControlPlaneOperationDescriptor['cacheScope']; surfaces?: ControlPlaneOperationDescriptor['surfaces'] },
 ) {
 	const read = method === 'GET';
 	const riskClass = options.risk ?? 'ordinary';
@@ -21,13 +21,13 @@ function operation<T extends z.ZodRawShape>(
 		rest: { method, path },
 		...(Object.keys(pathShape).length ? { parameters: `treeseed.${operationId}.parameters/v1` } : {}),
 		capability: options.capability,
-		authentication: 'oauth',
-		oauthScopes: [read ? 'treeseed:read' : 'treeseed:projects:write'],
+		authentication: options.authentication ?? 'oauth',
+		oauthScopes: options.authentication === 'anonymous' ? [] : [read ? 'treeseed:read' : 'treeseed:projects:write'],
 		kind: read ? 'read' : 'mutation',
 		riskClass,
 		confirmation: riskClass === 'ordinary' ? 'never' : 'input_required',
-		surfaces: ['rest'],
-		cacheScope: read ? 'principal' : 'none',
+		surfaces: options.surfaces ?? ['rest'],
+		cacheScope: options.cacheScope ?? (read ? 'principal' : 'none'),
 		pagination: options.pagination ?? 'none',
 		concurrencyRequired: options.concurrency,
 		redactedPaths: options.redactedPaths,
@@ -37,6 +37,7 @@ function operation<T extends z.ZodRawShape>(
 }
 
 export const adminAccountOperations = {
+	publicProfile: operation('accounts.profile.public.show', 'GET', '/v1/users/by-username/{username}/profile', { username: z.string().min(1) }, { capability: 'accounts.public.read', authentication: 'anonymous', cacheScope: 'public', surfaces: ['rest', 'mcp_resource'] }),
 	updateUsername: operation('accounts.username.update', 'PATCH', '/v1/auth/web/username', {}, { capability: 'accounts.write', concurrency: true }),
 	notificationPreferences: operation('accounts.notification.preferences.show', 'GET', '/v1/auth/web/notifications/preferences', {}, { capability: 'accounts.read' }),
 	updateNotificationPreferences: operation('accounts.notification.preferences.update', 'PUT', '/v1/auth/web/notifications/preferences', {}, { capability: 'accounts.write', concurrency: true }),
