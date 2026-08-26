@@ -1,7 +1,9 @@
 name: Verify
 
+# Feature branches verify through pull requests; protected branches reverify merged heads.
 on:
   push:
+    branches: [staging, main]
     paths-ignore: ["docs/src/content/**"]
   pull_request:
     paths-ignore: ["docs/src/content/**"]
