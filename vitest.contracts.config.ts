@@ -10,6 +10,7 @@ export default defineConfig({
 			'tests/contract/standards/**/*.test.ts',
 			'tests/contract/agent-capacity/capacity-configuration.test.ts',
 			'tests/unit/deployment/**/*.test.ts',
+			'tests/unit/development/**/*.test.ts',
 			'tests/unit/operator-contracts/**/*.test.ts',
 			'tests/unit/control-plane-client.test.ts',
 			'tests/unit/treedx-proxy.test.ts',
