@@ -67,7 +67,7 @@ function resource<T extends z.ZodRawShape>(
 		surfaces?: ControlPlaneOperationDescriptor['surfaces'];
 		risk?: ControlPlaneOperationDescriptor['riskClass'];
 		concurrency?: boolean;
-		pagination?: ControlPlaneOperationDescriptor['pagination'];
+		pagination?: ControlPlaneOperationDescriptor['pagination']; cacheScope?: ControlPlaneOperationDescriptor['cacheScope'];
 		redactedPaths?: string[];
 		authentication?: ControlPlaneOperationDescriptor['authentication'];
 	} = { capability: 'control-plane.use' },
@@ -81,7 +81,7 @@ function resource<T extends z.ZodRawShape>(
 		authentication: options.authentication ?? ((options.scopes ?? (kind === 'read' ? ['treeseed:read'] : ['treeseed:projects:write'])).length ? 'oauth' : 'anonymous'),
 		oauthScopes: options.scopes ?? (kind === 'read' ? ['treeseed:read'] : ['treeseed:projects:write']),
 		kind, riskClass, confirmation: riskClass === 'ordinary' ? 'never' : 'input_required',
-		surfaces: options.surfaces ?? ['rest'], cacheScope: kind === 'read' ? 'principal' : 'none',
+		surfaces: options.surfaces ?? ['rest'], cacheScope: options.cacheScope ?? (kind === 'read' ? 'principal' : 'none'),
 		pagination: options.pagination ?? 'none', concurrencyRequired: options.concurrency, redactedPaths: options.redactedPaths,
 	}, { path: z.object(pathShape).strict(), query: kind === 'read' ? record : empty, body: kind === 'read' ? none : record, output: payload });
 }
@@ -141,7 +141,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 		...adminTeamOperations,
 		list: resource('teams.list', 'GET', '/v1/teams', {}, { capability: 'teams.read', surfaces: ['rest', 'cli', 'mcp_tool'], pagination: 'cursor' }),
 		create: resource('teams.create', 'POST', '/v1/teams', {}, { capability: 'teams.write', surfaces: ['rest', 'cli', 'mcp_tool'] }),
-		profile: resource('teams.profile.show', 'GET', '/v1/teams/by-name/{name}/profile', { name: z.string().min(1) }, { capability: 'teams.read', surfaces: ['rest', 'mcp_resource'] }),
+		profile: resource('teams.profile.show', 'GET', '/v1/teams/by-name/{name}/profile', { name: z.string().min(1) }, { capability: 'teams.read', scopes: [], authentication: 'anonymous', cacheScope: 'public', surfaces: ['rest', 'mcp_resource'] }),
 		update: resource('teams.update', 'PATCH', '/v1/teams/{teamId}', { teamId: z.string().min(1) }, { capability: 'teams.write', concurrency: true }),
 		access: resource('teams.access.show', 'GET', '/v1/teams/{teamId}/access', { teamId: z.string().min(1) }, { capability: 'teams.read' }),
 		members: resource('teams.members.list', 'GET', '/v1/teams/{teamId}/members', { teamId: z.string().min(1) }, { capability: 'teams.read', pagination: 'cursor' }),

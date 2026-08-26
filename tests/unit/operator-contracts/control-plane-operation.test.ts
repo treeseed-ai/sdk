@@ -53,7 +53,7 @@ describe('control-plane operation catalog', () => {
 
 	it('publishes one valid catalog with unique REST bindings', () => {
 		expect(validateControlPlaneCatalog(CONTROL_PLANE_CATALOG)).toEqual([]);
-		expect(CONTROL_PLANE_OPERATION_LIST).toHaveLength(322);
+		expect(CONTROL_PLANE_OPERATION_LIST).toHaveLength(323);
 		expect(new Set(CONTROL_PLANE_OPERATION_LIST.map((entry) => entry.descriptor.operationId)).size).toBe(CONTROL_PLANE_OPERATION_LIST.length);
 		const paths = CONTROL_PLANE_OPERATION_LIST.flatMap((entry) => entry.descriptor.rest?.path ?? []);
 		expect(paths.some((path) => path.startsWith('/v1/operator/commands'))).toBe(false);
@@ -71,6 +71,8 @@ describe('control-plane operation catalog', () => {
 		expect(CONTROL_PLANE_OPERATIONS.services.putAuthority.descriptor.redactedPaths).toContain('body');
 		expect(CONTROL_PLANE_OPERATIONS.services.disconnect.descriptor.confirmation).toBe('input_required');
 		expect(CONTROL_PLANE_OPERATIONS.accounts.unlinkProvider.descriptor.riskClass).toBe('credential');
+		expect(CONTROL_PLANE_OPERATIONS.accounts.publicProfile.descriptor).toMatchObject({ authentication: 'anonymous', cacheScope: 'public', oauthScopes: [] });
+		expect(CONTROL_PLANE_OPERATIONS.teams.profile.descriptor).toMatchObject({ authentication: 'anonymous', cacheScope: 'public', oauthScopes: [] });
 		expect(CONTROL_PLANE_OPERATIONS.teams.remove.descriptor).toMatchObject({ riskClass: 'irreversible', concurrency: { required: true } });
 		expect(CONTROL_PLANE_OPERATIONS.planning.acceptExecutionInput.descriptor.rest?.path).toBe('/v1/decision-execution-inputs/{inputId}/accept');
 		expect(CONTROL_PLANE_OPERATIONS.estimates.list.descriptor.pagination).toBe('cursor');
@@ -87,11 +89,12 @@ describe('control-plane operation catalog', () => {
 
 	it('derives the complete stable MCP catalog from resource-declared operations', () => {
 		const resources = buildMcpResources(CONTROL_PLANE_CATALOG.operations);
-		expect(resources).toHaveLength(57);
+		expect(resources).toHaveLength(58);
 		expect(new Set(resources.map(({ uriTemplate }) => uriTemplate)).size).toBe(resources.length);
 		expect(resources).toEqual(expect.arrayContaining([
 			expect.objectContaining({ operationId: 'status.show', uriTemplate: 'treeseed://status' }),
 			expect.objectContaining({ operationId: 'accounts.current.show', uriTemplate: 'treeseed://accounts/current' }),
+			expect.objectContaining({ operationId: 'accounts.profile.public.show', uriTemplate: 'treeseed://users/by-username/{username}/profile' }),
 			expect.objectContaining({ operationId: 'projects.show', uriTemplate: 'treeseed://projects/{projectId}' }),
 			expect.objectContaining({ operationId: 'plans.show', uriTemplate: 'treeseed://plans/{capacityPlanId}' }),
 			expect.objectContaining({ operationId: 'operations.show', uriTemplate: 'treeseed://operations/{operationId}' }),
