@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { OAUTH_CLIENT_IDS, type OAuthAuthorizationPresentation } from '../../../src/operator-contracts/oauth.ts';
+import { OAUTH_CLIENT_IDS, type OAuthAuthorizationPresentation, type OAuthDeviceApprovalPresentation } from '../../../src/operator-contracts/oauth.ts';
 
 describe('OAuth browser presentation contracts', () => {
 	it('keeps CLI and Admin as distinct first-party clients', () => {
@@ -14,5 +14,14 @@ describe('OAuth browser presentation contracts', () => {
 		};
 		expect(presentation).not.toHaveProperty('password');
 		expect(presentation).not.toHaveProperty('accessToken');
+	});
+
+	it('presents a pending device grant without the device credential', () => {
+		const presentation: OAuthDeviceApprovalPresentation = {
+			schemaVersion: 'treeseed.oauth.device-approval-presentation/v1', clientId: 'trsd', clientName: 'TreeSeed CLI',
+			userCode: 'ABCD-EFGH', scopes: ['treeseed:read'], expiresAt: '2026-08-27T12:00:00.000Z', status: 'pending',
+		};
+		expect(presentation).not.toHaveProperty('deviceCode');
+		expect(presentation.status).toBe('pending');
 	});
 });
