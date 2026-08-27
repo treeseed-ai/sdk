@@ -9,6 +9,7 @@ import {
 } from '../../src/standards/index.ts';
 import { buildMcpCatalog, CONTROL_PLANE_CATALOG } from '../../src/operator-contracts/index.ts';
 import { createTreeDxServiceContractReceipt } from '../../src/treedx/contract.ts';
+import { createTreeAiServiceContractReceipt, validateTreeAiOperationMapping } from '../../src/treeai/contract.ts';
 import { TREEDX_OPENAPI_CONTRACT } from '@treeseed/treedx/openapi';
 import { buildContractModels } from './contract-models.ts';
 
@@ -61,19 +62,29 @@ const treeDxServiceContract = await createTreeDxServiceContractReceipt(controlPl
 	treedxPackageArtifactDigest: treeDxAdoption.packageArtifactDigest,
 });
 const treeDxServiceContractPath = resolve(outputRoot, 'treedx-service-contract.json');
+const treeAiDiagnostics = validateTreeAiOperationMapping();
+if (treeAiDiagnostics.length > 0) throw new Error(`TreeAI adoption mapping is incomplete: ${treeAiDiagnostics.join(', ')}.`);
+const treeAiServiceContract = await createTreeAiServiceContractReceipt();
+const treeAiServiceContractPath = resolve(outputRoot, 'treeai-service-contract.json');
 writeFileSync(typeScriptArtifactPath, `${canonicalStandardsJson(typescript)}\n`);
 writeFileSync(openApiArtifactPath, `${canonicalStandardsJson(openapi)}\n`);
 writeFileSync(controlPlaneCatalogPath, `${canonicalStandardsJson(CONTROL_PLANE_CATALOG)}\n`);
 writeFileSync(mcpCatalogInputPath, `${canonicalStandardsJson(mcpCatalogInput)}\n`);
 writeFileSync(guaranteeVerifierContractPath, `${canonicalStandardsJson(guaranteeVerifierContract)}\n`);
 writeFileSync(treeDxServiceContractPath, `${canonicalStandardsJson(treeDxServiceContract)}\n`);
+writeFileSync(treeAiServiceContractPath, `${canonicalStandardsJson(treeAiServiceContract)}\n`);
 
 const packRoot = resolve(outputRoot, 'package');
 mkdirSync(packRoot, { recursive: true });
-const packed = JSON.parse(execFileSync('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', packRoot], {
+const packageManager = process.env.TREESEED_PACKAGE_MANAGER ?? 'npm';
+const packArguments = packageManager.endsWith('pnpm')
+	? ['pack', '--json', '--pack-destination', packRoot]
+	: ['pack', '--json', '--ignore-scripts', '--pack-destination', packRoot];
+const packedOutput = JSON.parse(execFileSync(packageManager, packArguments, {
 	cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'],
-})) as Array<{ filename: string }>;
-const tarball = resolve(packRoot, packed[0]?.filename ?? '');
+})) as Array<{ filename: string }> | { filename: string };
+const packed = Array.isArray(packedOutput) ? packedOutput[0] : packedOutput;
+const tarball = resolve(packRoot, packed?.filename ?? '');
 if (!existsSync(tarball)) throw new Error('npm pack did not produce the declared SDK tarball.');
 const packageDigest = `sha256:${createHash('sha256').update(readFileSync(tarball)).digest('hex')}` as const;
 const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
@@ -106,6 +117,11 @@ const bundle = createStandardsContractBundle({
 			entrypoints: ['@treeseed/sdk/treedx'], guarantees: ['authoritative-upstream-openapi', 'project-scoped-control-plane-proxy', 'no-direct-transport'], deprecations: [],
 		},
 		{
+			id: '@treeseed/sdk/treeai-service-contract', family: 'behavioral', version: '1.0.0',
+			artifact: { path: '.treeseed/standards/treeai-service-contract.json', mediaType: 'application/json', digest: await standardsSha256(treeAiServiceContract) },
+			entrypoints: ['@treeseed/sdk/treeai'], guarantees: ['authoritative-upstream-openapi', 'complete-operation-adoption', 'node-scoped-control-plane-proxy'], deprecations: [],
+		},
+		{
 			id: '@treeseed/sdk/guarantee-verifier-contract', family: 'behavioral', version: '1.0.0',
 			artifact: { path: '.treeseed/standards/guarantee-verifier-contract.json', mediaType: 'application/json', digest: await standardsSha256(guaranteeVerifierContract) },
 			entrypoints: ['@treeseed/sdk/guarantees'], guarantees: ['artifact-bound-guarantee-evidence', 'ui-evidence-trust'], deprecations: [],
@@ -113,7 +129,7 @@ const bundle = createStandardsContractBundle({
 	],
 	evidence: [
 		{ kind: 'source', uri: `git:${sourceCommit}` },
-		{ kind: 'artifact', uri: `.treeseed/standards/package/${packed[0]!.filename}`, digest: packageDigest },
+		{ kind: 'artifact', uri: `.treeseed/standards/package/${tarball.split('/').at(-1)!}`, digest: packageDigest },
 	],
 });
 const bundlePath = resolve(outputRoot, 'contract-bundle.json');
@@ -122,6 +138,7 @@ console.log(JSON.stringify({
 	ok: true, sourceCommit, packageDigest, modelsDigest: await standardsSha256(models),
 	controlPlaneCatalogDigest,
 	treeDxServiceContractDigest: await standardsSha256(treeDxServiceContract),
+	treeAiServiceContractDigest: await standardsSha256(treeAiServiceContract),
 	mcpCatalogInputDigest: await standardsSha256(mcpCatalogInput),
 	bundleDigest: await standardsSha256(bundle), bundlePath, tarball,
 }));

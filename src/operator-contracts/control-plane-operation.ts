@@ -41,7 +41,7 @@ export interface ControlPlaneConcurrencyContract {
 }
 
 export interface ControlPlaneUpstreamBinding {
-	service: 'treedx';
+	service: 'treedx' | 'treeai';
 	operationId: string;
 	contractVersion: string;
 	contractDigest: `sha256:${string}`;

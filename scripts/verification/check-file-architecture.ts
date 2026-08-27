@@ -21,7 +21,7 @@ const isExecutable = (path: string) => executableExtensions.test(path) && !isExc
 const directFileCounts = new Map<string, number>();
 
 function brandedIdentifier(name: string) {
-	if (name === 'TreeSeedTreeDxClient' || name === 'TreeSeedTreeDxResourceLink') return false;
+	if (name === 'TreeSeedTreeDxClient' || name === 'TreeSeedTreeDxResourceLink' || name === 'TreeSeedTreeAiClient') return false;
 	if (/^TREESEED_[A-Z0-9_]+$/u.test(name)) return false;
 	if (/^__TREESEED_[A-Z0-9_]+__$/u.test(name)) return false;
 	return /(?:KnowledgeCoop|TreeSeed|Treeseed|TREESEED_)/u.test(name);
@@ -101,6 +101,7 @@ for (const path of repositoryFiles()) {
 	if (/\.(?:astro|js|jsx|ts|tsx)$/u.test(path)) {
 		const source = readFileSync(path, 'utf8');
 		if (path.startsWith('src/')
+			&& !isExcluded(path)
 			&& path !== 'src/operator-contracts/control-plane-operation.ts'
 			&& path !== 'src/operator-contracts/control-plane-operations.ts'
 			&& path !== 'src/operator-contracts/operation-builder.ts'

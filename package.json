@@ -158,6 +158,10 @@
       "types": "./dist/treedx/types.d.ts",
       "default": "./dist/treedx/types.js"
     },
+    "./treeai": {
+      "types": "./dist/treeai/index.d.ts",
+      "default": "./dist/treeai/index.js"
+    },
     "./capacity-provider": {
       "types": "./dist/capacity/providers/capacity-provider.d.ts",
       "default": "./dist/capacity/providers/capacity-provider.js"

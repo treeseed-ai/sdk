@@ -3,11 +3,11 @@ import { type ControlPlaneOperationBinding, type ControlPlaneOperationDescriptor
 import { defineOperation as define, defineTreeDxProxyOperation as treedxProxy } from './operation-builder.ts';
 import { communicationOperations, providerDiscussionResponseOperation } from './catalog/communication-operations.ts';
 import { adminAccountOperations, adminTeamOperations } from './catalog/admin-account-team-operations.ts';
+import { TREEAI_CONTROL_PLANE_OPERATIONS } from './catalog/treeai-operations.ts';
 const empty = z.object({}).strict();
 const none = z.undefined();
 const record = z.record(z.unknown());
 const payload = record;
-
 function read(operationId: `${string}.${string}`, path: `/v1/${string}`, capability: string, surfaces: ControlPlaneOperationDescriptor['surfaces'] = ['rest']) {
 	return define({
 		operationId, description: `Read ${operationId}.`, rest: { method: 'GET', path }, capability,
@@ -15,7 +15,6 @@ function read(operationId: `${string}.${string}`, path: `/v1/${string}`, capabil
 		surfaces, cacheScope: 'principal', pagination: 'none',
 	}, { path: empty, query: empty, body: none, output: payload });
 }
-
 function providerPath<T extends z.ZodRawShape>(
 	operationId: `${string}.${string}`,
 	method: 'GET' | 'POST' | 'PUT',
@@ -87,6 +86,7 @@ function resource<T extends z.ZodRawShape>(
 }
 
 export const CONTROL_PLANE_OPERATIONS = {
+	treeai: TREEAI_CONTROL_PLANE_OPERATIONS,
 	status: {
 		show: read('status.show', '/v1/status', 'status.read', ['rest', 'cli', 'mcp_tool', 'mcp_resource']),
 	},
