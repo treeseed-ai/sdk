@@ -53,7 +53,7 @@ describe('deployment contracts', () => {
 	it('declares manager-owned runtime configuration inputs', () => {
 		const value = runtime('api', '1.0.0', 'api.treeseed.localhost');
 		value.configuration = {
-			environment: [{ name: 'TREESEED_PUBLIC_URL', required: true, default: 'https://api.treeseed.localhost' }],
+			environment: [{ name: 'TREESEED_PUBLIC_URL', required: true, source: 'configuration', default: 'https://api.treeseed.localhost' }],
 			secretEnvironment: [{ name: 'TREESEED_DATABASE_URL', required: true }],
 			secretFiles: [{ id: 'signing-key', path: '/etc/treeseed/credentials/api-signing-key', required: true }],
 			files: [{ id: 'policy', path: '/etc/treeseed/components/api/policy.json', required: true, sensitive: false }],
@@ -66,6 +66,7 @@ describe('deployment contracts', () => {
 		expect(() => packageRuntimeSchema.parse({ ...value, configuration: { environment: [{ name: 'DATABASE_URL', required: true }], secretEnvironment: [{ name: 'DATABASE_URL', required: true }], secretFiles: [], files: [] } })).toThrow(/both public and secret custody/u);
 		expect(() => packageRuntimeSchema.parse({ ...value, configuration: { environment: [], secretEnvironment: [], secretFiles: [{ id: 'key', path: '/tmp/key', required: true }], files: [] } })).toThrow(/manager-owned credential paths/u);
 		expect(() => packageRuntimeSchema.parse({ ...value, configuration: { environment: [], secretEnvironment: [], secretFiles: [], files: [{ id: 'policy', path: '/etc/treeseed/components/agent/policy.json', required: true, sensitive: false }] } })).toThrow(/outside component api custody/u);
+		expect(() => packageRuntimeSchema.parse({ ...value, configuration: { environment: [{ name: 'RUNTIME_GID', required: true, source: 'manager', default: '0' }], secretEnvironment: [], secretFiles: [], files: [] } })).toThrow(/cannot declare configuration defaults/u);
 	});
 
 	it('inventories project-owned and pinned upstream OCI repositories without mutable reference syntax', () => {

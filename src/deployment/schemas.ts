@@ -143,7 +143,9 @@ const environmentName = z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/u, 'Environmen
 const componentSecretPath = z.string().regex(/^\/etc\/treeseed\/credentials\/[a-z0-9][a-z0-9._-]{0,127}$/u, 'Secret inputs must use manager-owned credential paths.');
 const componentConfigurationPath = z.string().regex(/^\/etc\/treeseed\/components\/[a-z][a-z0-9.-]*\/[a-z0-9][a-z0-9._-]{0,127}$/u, 'Configuration inputs must use manager-owned component paths.');
 const componentRuntimeConfigurationSchema = z.object({
-	environment: z.array(z.object({ name: environmentName, required: z.boolean(), default: z.string().max(16_384).optional() }).strict()).default([]),
+	environment: z.array(z.object({ name: environmentName, required: z.boolean(), source: z.enum(['configuration', 'manager']).default('configuration'), default: z.string().max(16_384).optional() }).strict().superRefine((input, context) => {
+		if (input.source === 'manager' && input.default !== undefined) context.addIssue({ code: z.ZodIssueCode.custom, path: ['default'], message: 'Manager-derived environment inputs cannot declare configuration defaults.' });
+	})).default([]),
 	secretEnvironment: z.array(z.object({ name: environmentName, required: z.boolean() }).strict()).default([]),
 	secretFiles: z.array(z.object({ id: identifier, path: componentSecretPath, required: z.boolean() }).strict()).default([]),
 	files: z.array(z.object({ id: identifier, path: componentConfigurationPath, required: z.boolean(), sensitive: z.boolean().default(false) }).strict()).default([]),
