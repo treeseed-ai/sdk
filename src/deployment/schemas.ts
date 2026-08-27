@@ -139,6 +139,26 @@ export const packageEndpointSchema = z.object({
 	if (endpoint.visibility === 'private' && endpoint.defaultAlias) context.addIssue({ code: z.ZodIssueCode.custom, path: ['defaultAlias'], message: 'Private endpoints cannot declare host aliases.' });
 });
 
+const environmentName = z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/u, 'Environment names must use portable uppercase identifiers.');
+const componentSecretPath = z.string().regex(/^\/etc\/treeseed\/credentials\/[a-z0-9][a-z0-9._-]{0,127}$/u, 'Secret inputs must use manager-owned credential paths.');
+const componentConfigurationPath = z.string().regex(/^\/etc\/treeseed\/components\/[a-z][a-z0-9.-]*\/[a-z0-9][a-z0-9._-]{0,127}$/u, 'Configuration inputs must use manager-owned component paths.');
+const componentRuntimeConfigurationSchema = z.object({
+	environment: z.array(z.object({ name: environmentName, required: z.boolean(), default: z.string().max(16_384).optional() }).strict()).default([]),
+	secretEnvironment: z.array(z.object({ name: environmentName, required: z.boolean() }).strict()).default([]),
+	secretFiles: z.array(z.object({ id: identifier, path: componentSecretPath, required: z.boolean() }).strict()).default([]),
+	files: z.array(z.object({ id: identifier, path: componentConfigurationPath, required: z.boolean(), sensitive: z.boolean().default(false) }).strict()).default([]),
+}).strict().default({ environment: [], secretEnvironment: [], secretFiles: [], files: [] }).superRefine((configuration, context) => {
+	const environment = configuration.environment.map(({ name }) => name);
+	const secretEnvironment = configuration.secretEnvironment.map(({ name }) => name);
+	for (const [path, values] of [['environment', environment], ['secretEnvironment', secretEnvironment]] as const) {
+		if (new Set(values).size !== values.length) context.addIssue({ code: z.ZodIssueCode.custom, path: [path], message: `Duplicate ${path} inputs are not allowed.` });
+	}
+	const overlap = environment.filter((name) => secretEnvironment.includes(name));
+	if (overlap.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['secretEnvironment'], message: `Environment inputs cannot have both public and secret custody: ${overlap.join(', ')}.` });
+	const filePaths = [...configuration.secretFiles.map(({ path }) => path), ...configuration.files.map(({ path }) => path)];
+	if (new Set(filePaths).size !== filePaths.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['files'], message: 'Component file input paths must be unique.' });
+});
+
 export const packageRuntimeSchema = z.object({
 	schemaVersion: z.literal('treeseed.package-runtime/v1'),
 	componentId: identifier,
@@ -147,6 +167,7 @@ export const packageRuntimeSchema = z.object({
 		projectName: identifier,
 		files: z.array(z.object({ path: z.string().min(1), digest }).strict()).min(1),
 	}).strict(),
+	configuration: componentRuntimeConfigurationSchema,
 	services: z.array(z.object({ id: identifier, composeService: identifier, endpoints: z.array(packageEndpointSchema) }).strict()).min(1),
 	stateVolumes: z.array(z.object({ id: identifier, volume: z.string().min(1), backup: z.enum(['required', 'optional', 'none']) }).strict()),
 	migrations: z.array(z.object({ id: identifier, order: z.number().int().nonnegative(), backupRequired: z.boolean() }).strict()),
@@ -160,6 +181,7 @@ export const packageRuntimeSchema = z.object({
 }).strict().superRefine((runtime, context) => {
 	const endpointIds = runtime.services.flatMap((service) => service.endpoints.map((endpoint) => `${service.id}.${endpoint.id}`));
 	if (new Set(endpointIds).size !== endpointIds.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['services'], message: 'Endpoint identities must be unique within a component.' });
+	for (const file of runtime.configuration.files) if (!file.path.startsWith(`/etc/treeseed/components/${runtime.componentId}/`)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['configuration', 'files'], message: `Configuration file ${file.id} is outside component ${runtime.componentId} custody.` });
 });
 
 const catalogPackageSchema = z.object({ name: z.string().regex(/^treeseed(?:-[a-z0-9-]+)?$/u), version: packageVersion, architecture: z.enum(['amd64', 'all']), origin: z.literal('TreeSeed Deployment'), order: z.number().int().nonnegative() }).strict();
