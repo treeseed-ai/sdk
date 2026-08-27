@@ -25,11 +25,13 @@ describe('SDK release version policy', () => {
 		const root = resolve(import.meta.dirname, '../../..');
 		const workflow = readFileSync(resolve(root, '.github/workflows/publish.yml'), 'utf8');
 		const publisher = readFileSync(resolve(root, 'scripts/packages/publish-package.ts'), 'utf8');
-		expect(workflow).toContain('npm run standards:baseline');
+		expect(workflow).toContain('sdk-candidate-${GITHUB_SHA}');
 		expect(workflow).not.toContain('standards:consumer');
 		expect(workflow).not.toContain('treeseed-ai/api');
-		expect(workflow).toContain('npm run standards:release-evidence');
+		expect(workflow).toContain('npm run release:verify-custody');
 		expect(workflow).toContain('npm run release:readback');
+		expect(workflow).not.toMatch(/npm run (?:build|verify:direct|standards:build|standards:release-evidence)/u);
+		expect(workflow).not.toMatch(/npm pack|docker (?:build|buildx build)/u);
 		expect(workflow).not.toMatch(/actions\/(?:checkout|setup-node|upload-artifact)@v4/u);
 		expect(publisher).toContain(".treeseed/standards/release-evidence.json");
 		expect(publisher).toContain("['publish', packageArtifact");

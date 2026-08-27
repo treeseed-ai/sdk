@@ -41,6 +41,7 @@
     "release:verify": "npm run check:file-lengths && node --import tsx ./scripts/packages/release-verify.ts",
     "release:publish": "node --import tsx ./scripts/packages/publish-package.ts",
     "release:readback": "node --import tsx ./scripts/packages/verify-published-package.ts",
+    "release:verify-custody": "node --import tsx ./scripts/packages/verify-release-custody.ts",
     "standards:baseline": "node --import tsx ./scripts/standards/acquire-accepted-baseline.ts",
     "standards:build": "node --import tsx ./scripts/standards/build-contract-bundle.ts",
     "standards:compatibility": "node --import tsx ./scripts/standards/compare-compatibility.ts",

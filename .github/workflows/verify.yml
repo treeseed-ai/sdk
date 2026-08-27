@@ -38,8 +38,35 @@ jobs:
       - name: Pack verified artifact
         run: mkdir -p artifacts && npm pack --json --ignore-scripts --pack-destination artifacts
 
+      - name: Seal protected staging candidate
+        if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+        run: |
+          npm run standards:baseline
+          npm run standards:compatibility -- \
+            --baseline .treeseed/standards/baseline/contract-models.json \
+            --candidate .treeseed/standards/contract-models.json \
+            --baseline-bundle .treeseed/standards/baseline/contract-bundle.json \
+            --candidate-bundle .treeseed/standards/contract-bundle.json \
+            --output .treeseed/standards/compatibility-attestation.json
+          npm run standards:compose
+          npm sbom --sbom-format cyclonedx > .treeseed/standards/sbom.cdx.json
+          npm run standards:release-evidence
+          npm run release:verify-custody
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: sdk-${{ github.sha }}
           path: artifacts/*.tgz
           if-no-files-found: error
+
+      - name: Upload sealed staging custody
+        if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: sdk-candidate-${{ github.sha }}
+          path: |
+            .treeseed/standards/*.json
+            .treeseed/standards/baseline/*.json
+            .treeseed/standards/package/*.tgz
+          if-no-files-found: error
+          retention-days: 30

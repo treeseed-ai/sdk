@@ -148,6 +148,54 @@ export const developmentCandidateSchema = z.object({
 }).strict().superRefine((candidate, context) => {
 	if (candidate.source.some((source) => source.dirty) && candidate.promotable) context.addIssue({ code: z.ZodIssueCode.custom, path: ['promotable'], message: 'Candidates containing dirty source cannot be promotable.' });
 	if (candidate.verification.status !== 'passed' && candidate.promotable) context.addIssue({ code: z.ZodIssueCode.custom, path: ['promotable'], message: 'Only verified candidates can be promotable.' });
+	if (candidate.promotable && candidate.source.some((source) => !Object.keys(candidate.dependencyGenerations).some((key) => key === source.projectId || key.startsWith(`${source.projectId}.`)))) {
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['dependencyGenerations'], message: 'Promotable candidates must bind a completed generation for every source project.' });
+	}
+});
+
+const releaseArtifactSchema = z.object({
+	id: identifier,
+	kind: z.enum(['npm-package', 'oci-image', 'archive', 'executable', 'sbom', 'contract-bundle', 'compatibility-attestation', 'component-manifest', 'compose', 'provenance']),
+	identity: z.string().min(1).max(2_048),
+	digest,
+	mediaType: z.string().min(1).max(256),
+	size: z.number().int().nonnegative().optional(),
+}).strict();
+
+/** Exact, immutable custody record used to promote an already-built candidate. */
+export const releaseEvidenceSchema = z.object({
+	schemaVersion: z.literal('treeseed.release-evidence/v1'),
+	candidate: z.object({
+		id: identifier,
+		receiptDigest: digest,
+		sourceCommit: gitCommit,
+		stagingRef: z.string().min(1).max(256),
+		workflowRunId: z.string().regex(/^[1-9][0-9]*$/u),
+		createdAt: z.string().datetime(),
+	}).strict(),
+	packages: z.array(z.object({
+		projectId: identifier,
+		name: z.string().min(1).max(256),
+		version: z.string().min(1).max(128),
+		minimumBump: z.enum(['none', 'patch', 'minor', 'major']),
+	}).strict()).min(1),
+	artifacts: z.array(releaseArtifactSchema).min(1),
+	contractBundles: z.array(z.object({ id: identifier, digest }).strict()).default([]),
+	compatibilityAttestations: z.array(z.object({ contractId: z.string().min(1), digest, compatible: z.literal(true), minimumBump: z.enum(['none', 'patch', 'minor', 'major']) }).strict()).default([]),
+	verification: z.object({
+		status: z.literal('passed'),
+		operations: z.array(z.string().min(1)).min(1),
+		completedAt: z.string().datetime(),
+	}).strict(),
+}).strict().superRefine((evidence, context) => {
+	const identities = evidence.artifacts.map((artifact) => artifact.identity);
+	if (new Set(identities).size !== identities.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['artifacts'], message: 'Release artifact identities must be unique.' });
+	for (const bundle of evidence.contractBundles) {
+		if (!evidence.artifacts.some((artifact) => artifact.kind === 'contract-bundle' && artifact.digest === bundle.digest)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['contractBundles'], message: `Contract bundle ${bundle.id} is not present in artifact custody.` });
+	}
+	for (const attestation of evidence.compatibilityAttestations) {
+		if (!evidence.artifacts.some((artifact) => artifact.kind === 'compatibility-attestation' && artifact.digest === attestation.digest)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['compatibilityAttestations'], message: `Compatibility attestation ${attestation.contractId} is not present in artifact custody.` });
+	}
 });
 
 export type DevelopmentRuntime = z.infer<typeof developmentRuntimeSchema>;
@@ -156,3 +204,4 @@ export type DevelopmentSession = z.infer<typeof developmentSessionSchema>;
 export type DevelopmentCandidate = z.infer<typeof developmentCandidateSchema>;
 export type DevelopmentMode = z.infer<typeof developmentModeSchema>;
 export type DevelopmentReaction = z.infer<typeof developmentReactionSchema>;
+export type ReleaseEvidence = z.infer<typeof releaseEvidenceSchema>;
