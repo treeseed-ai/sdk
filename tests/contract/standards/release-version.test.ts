@@ -25,6 +25,7 @@ describe('SDK release version policy', () => {
 		const root = resolve(import.meta.dirname, '../../..');
 		const workflow = readFileSync(resolve(root, '.github/workflows/publish.yml'), 'utf8');
 		const publisher = readFileSync(resolve(root, 'scripts/packages/publish-package.ts'), 'utf8');
+		const custodyVerifier = readFileSync(resolve(root, 'scripts/packages/verify-release-custody.ts'), 'utf8');
 		expect(workflow).toContain('sdk-candidate-${GITHUB_SHA}');
 		expect(workflow).not.toContain('standards:consumer');
 		expect(workflow).not.toContain('treeseed-ai/api');
@@ -35,5 +36,6 @@ describe('SDK release version policy', () => {
 		expect(workflow).not.toMatch(/actions\/(?:checkout|setup-node|upload-artifact)@v4/u);
 		expect(publisher).toContain(".treeseed/standards/release-evidence.json");
 		expect(publisher).toContain("['publish', packageArtifact");
+		expect(custodyVerifier).toContain("GITHUB_REF?.startsWith('refs/tags/')");
 	});
 });
