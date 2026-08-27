@@ -50,6 +50,19 @@ describe('deployment contracts', () => {
 		expect(() => packageRuntimeSchema.parse({ ...value, services: [{ ...value.services[0], endpoints: [{ ...endpoint, healthGate: undefined }] }] })).toThrow(/health gate/u);
 	});
 
+	it('inventories project-owned and pinned upstream OCI repositories without mutable reference syntax', () => {
+		for (const repository of ['treeseed/inference-api', 'postgres', 'docker.io/library/postgres', 'ghcr.io/open-webui/open-webui']) {
+			const candidate = release('api', 'stable', 'a');
+			candidate.images[0]!.repository = repository;
+			expect(componentReleaseSchema.parse(candidate).images[0]?.repository).toBe(repository);
+		}
+		for (const repository of ['https://ghcr.io/open-webui/open-webui', 'ghcr.io/Open-WebUI/open-webui', 'postgres:17', 'user:password@registry.example/repository', 'registry.example/repository@sha256:deadbeef', '../postgres']) {
+			const candidate = release('api', 'stable', 'a');
+			candidate.images[0]!.repository = repository;
+			expect(() => componentReleaseSchema.parse(candidate), repository).toThrow(/OCI repositories/u);
+		}
+	});
+
 	it('selects only explicitly compatible development overlays', () => {
 		const api = release('api', 'stable', 'b'), agent = release('agent', 'development', 'c');
 		const stable: ReleaseCatalog = { schemaVersion: 'treeseed.release-catalog/v1', release: '1.0.0', generation: 1, track: 'stable', compatibilityId: 'linux-amd64-v1', catalogDigest: hash('a'), stableBase: null, components: [api], createdAt: '2026-08-23T00:00:00.000Z' };
