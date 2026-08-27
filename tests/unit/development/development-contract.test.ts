@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { developmentCandidateSchema, developmentRuntimeSchema } from '../../../src/development/index.ts';
+import { developmentCandidateSchema, developmentRuntimeSchema, releaseEvidenceSchema } from '../../../src/development/index.ts';
 
 const runtime = {
 	schemaVersion: 'treeseed.development-runtime/v1',
@@ -46,5 +46,29 @@ describe('development runtime contracts', () => {
 			configurationDigest: digest, dependencyGenerations: {}, compatibilityAttestations: [],
 			verification: { status: 'passed', operations: ['npm test'], completedAt: new Date().toISOString() }, promotable: true,
 		})).toThrow(/dirty/i);
+	});
+
+	it('requires promotable candidates to bind every source generation', () => {
+		const digest = `sha256:${'a'.repeat(64)}`;
+		expect(() => developmentCandidateSchema.parse({
+			schemaVersion: 'treeseed.development-candidate/v1', candidateId: 'candidate-1', sessionId: 'session-1', createdAt: new Date().toISOString(),
+			source: [{ projectId: 'admin', repository: 'treeseed-ai/admin', worktree: '/tmp/admin', commit: 'a'.repeat(40), branch: 'staging', dirty: false, dirtyDigest: null, recipeDigest: digest }],
+			artifacts: [{ projectId: 'admin', targetId: 'web', kind: 'oci-image', identity: 'treeseed/admin:candidate', digest }],
+			configurationDigest: digest, dependencyGenerations: {}, compatibilityAttestations: [],
+			verification: { status: 'passed', operations: ['npm test'], completedAt: new Date().toISOString() }, promotable: true,
+		})).toThrow(/generation/i);
+	});
+
+	it('binds release contract evidence to artifacts in immutable custody', () => {
+		const digest = `sha256:${'b'.repeat(64)}`;
+		const evidence = releaseEvidenceSchema.parse({
+			schemaVersion: 'treeseed.release-evidence/v1',
+			candidate: { id: 'candidate-1', receiptDigest: digest, sourceCommit: 'a'.repeat(40), stagingRef: 'refs/heads/staging', workflowRunId: '123', createdAt: new Date().toISOString() },
+			packages: [{ projectId: 'sdk', name: '@treeseed/sdk', version: '0.13.0-rc.46', minimumBump: 'patch' }],
+			artifacts: [{ id: 'contracts', kind: 'contract-bundle', identity: 'contract-bundle.json', digest, mediaType: 'application/json' }],
+			contractBundles: [{ id: 'sdk-contracts', digest }], compatibilityAttestations: [],
+			verification: { status: 'passed', operations: ['npm test'], completedAt: new Date().toISOString() },
+		});
+		expect(evidence.artifacts[0]?.digest).toBe(digest);
 	});
 });
