@@ -86,6 +86,13 @@ standards:
       source: src/operator-contracts/control-plane-operations.ts
       artifact: .treeseed/standards/control-plane-catalog.json
       verifier: scripts/standards/compare-compatibility.ts
+    - id: "@treeseed/sdk/guarantee-verifier-contract"
+      family: behavioral
+      version: "1.0.0"
+      semanticRange: "^1.0.0"
+      source: src/guarantees
+      artifact: .treeseed/standards/guarantee-verifier-contract.json
+      verifier: runUiEvidenceTrustVerifier
     - id: "@treeseed/sdk/mcp-catalog-input"
       family: behavioral
       version: "1.0.0"
@@ -112,6 +119,7 @@ standards:
     - deterministic-contract-bundle
     - exact-artifact-and-source-binding
     - semantic-version-sufficiency
+    - artifact-bound-guarantee-evidence
     - authoritative-treedx-service-adoption
   deprecations: []
   runtimes:
