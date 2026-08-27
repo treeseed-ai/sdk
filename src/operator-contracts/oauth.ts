@@ -82,6 +82,17 @@ export interface OAuthDeviceAuthorizationResponse {
 	interval: number;
 }
 
+/** Safe browser presentation of a pending device grant. It never contains the device code. */
+export interface OAuthDeviceApprovalPresentation {
+	schemaVersion: 'treeseed.oauth.device-approval-presentation/v1';
+	clientId: string;
+	clientName: string;
+	userCode: string;
+	scopes: OAuthScope[];
+	expiresAt: string;
+	status: 'pending';
+}
+
 export interface OAuthTokenReceipt {
 	tokenType: 'Bearer';
 	accessToken: string;
