@@ -50,6 +50,24 @@ describe('deployment contracts', () => {
 		expect(() => packageRuntimeSchema.parse({ ...value, services: [{ ...value.services[0], endpoints: [{ ...endpoint, healthGate: undefined }] }] })).toThrow(/health gate/u);
 	});
 
+	it('declares manager-owned runtime configuration inputs', () => {
+		const value = runtime('api', '1.0.0', 'api.treeseed.localhost');
+		value.configuration = {
+			environment: [{ name: 'TREESEED_PUBLIC_URL', required: true, default: 'https://api.treeseed.localhost' }],
+			secretEnvironment: [{ name: 'TREESEED_DATABASE_URL', required: true }],
+			secretFiles: [{ id: 'signing-key', path: '/etc/treeseed/credentials/api-signing-key', required: true }],
+			files: [{ id: 'policy', path: '/etc/treeseed/components/api/policy.json', required: true, sensitive: false }],
+		};
+		expect(packageRuntimeSchema.parse(value).configuration).toEqual(value.configuration);
+	});
+
+	it('rejects ambiguous or escaped runtime configuration custody', () => {
+		const value = runtime('api', '1.0.0', 'api.treeseed.localhost');
+		expect(() => packageRuntimeSchema.parse({ ...value, configuration: { environment: [{ name: 'DATABASE_URL', required: true }], secretEnvironment: [{ name: 'DATABASE_URL', required: true }], secretFiles: [], files: [] } })).toThrow(/both public and secret custody/u);
+		expect(() => packageRuntimeSchema.parse({ ...value, configuration: { environment: [], secretEnvironment: [], secretFiles: [{ id: 'key', path: '/tmp/key', required: true }], files: [] } })).toThrow(/manager-owned credential paths/u);
+		expect(() => packageRuntimeSchema.parse({ ...value, configuration: { environment: [], secretEnvironment: [], secretFiles: [], files: [{ id: 'policy', path: '/etc/treeseed/components/agent/policy.json', required: true, sensitive: false }] } })).toThrow(/outside component api custody/u);
+	});
+
 	it('inventories project-owned and pinned upstream OCI repositories without mutable reference syntax', () => {
 		for (const repository of ['treeseed/inference-api', 'postgres', 'docker.io/library/postgres', 'ghcr.io/open-webui/open-webui']) {
 			const candidate = release('api', 'stable', 'a');
