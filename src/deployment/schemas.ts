@@ -4,6 +4,13 @@ const identifier = z.string().regex(/^[a-z][a-z0-9.-]{1,63}$/u);
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
 const gitCommit = z.string().regex(/^[a-f0-9]{40}$/u);
 const packageVersion = z.string().min(1).regex(/^[0-9][0-9A-Za-z.+:~-]*$/u);
+// OCI distribution references keep the registry and repository separate from
+// the immutable digest. Unqualified single-segment names cover Docker Hub's
+// official library images (for example `postgres`).
+const ociRepository = z.string().min(1).max(255).regex(
+	/^(?:(?:localhost|[a-z0-9]+(?:[.-][a-z0-9]+)+)(?::[1-9][0-9]{0,4})?\/)?[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)*$/u,
+	'OCI repositories must be normalized lowercase names without a scheme, tag, digest, credentials, or traversal.',
+);
 const localAlias = z.string().regex(
 	/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.localhost$/u,
 	'Host aliases must use the .localhost namespace.',
@@ -156,7 +163,7 @@ export const packageRuntimeSchema = z.object({
 });
 
 const catalogPackageSchema = z.object({ name: z.string().regex(/^treeseed(?:-[a-z0-9-]+)?$/u), version: packageVersion, architecture: z.enum(['amd64', 'all']), origin: z.literal('TreeSeed Deployment'), order: z.number().int().nonnegative() }).strict();
-const catalogImageSchema = z.object({ role: identifier, repository: z.string().regex(/^treeseed\/[a-z0-9-]+$/u), digest, platforms: z.array(z.enum(['linux/amd64', 'linux/arm64'])).min(1), consumers: z.array(identifier).min(1) }).strict();
+const catalogImageSchema = z.object({ role: identifier, repository: ociRepository, digest, platforms: z.array(z.enum(['linux/amd64', 'linux/arm64'])).min(1), consumers: z.array(identifier).min(1) }).strict();
 
 export const componentReleaseSchema = z.object({
 	schemaVersion: z.literal('treeseed.component-release/v1'),
