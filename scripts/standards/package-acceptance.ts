@@ -10,15 +10,17 @@ const required = [
 	'dist/standards/mcp/index.js', 'dist/standards/mcp/index.d.ts',
 	'dist/operator-contracts/index.js', 'dist/operator-contracts/index.d.ts',
 	'dist/treedx/index.js', 'dist/treedx/index.d.ts',
+	'dist/treeai/index.js', 'dist/treeai/index.d.ts',
 	'.treeseed/standards/contract-models.json', '.treeseed/standards/contract-bundle.json',
 	'.treeseed/standards/typescript-public-api.json', '.treeseed/standards/openapi.json',
 	'.treeseed/standards/control-plane-catalog.json', '.treeseed/standards/mcp-catalog-input.json',
 	'.treeseed/standards/treedx-service-contract.json',
+	'.treeseed/standards/treeai-service-contract.json',
 ];
 const missing = required.filter((path) => !existsSync(resolve(root, path)));
 if (missing.length) throw new Error(`Missing standards package outputs: ${missing.join(', ')}.`);
 const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as { exports: Record<string, unknown> };
-for (const specifier of ['./standards', './standards/typescript', './standards/openapi', './standards/mcp', './operator-contracts', './treedx']) {
+for (const specifier of ['./standards', './standards/typescript', './standards/openapi', './standards/mcp', './operator-contracts', './treedx', './treeai']) {
 	if (!packageJson.exports[specifier]) throw new Error(`Missing package export ${specifier}.`);
 }
 for (const forbidden of ['./treedx/auth', './treedx/transport', './treedx/openapi']) {

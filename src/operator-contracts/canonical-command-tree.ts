@@ -13,6 +13,7 @@ const local = (handlerId: `local.${string}`): Execution => ({ kind: 'local', han
 const field = (target: 'path' | 'query' | 'body', name: string, source: 'argument' | 'context' | 'option', sourceName = name, required = false, transform: 'identity' | 'integer' | 'csv' = 'identity') => ({ target, field: name, source, name: sourceName, required, transform });
 const operation = (operationId: `${string}.${string}`, input: ReturnType<typeof field>[] = []): Execution => ({ kind: 'operation', operationId, input });
 const page = () => [field('query', 'status', 'option'), field('query', 'limit', 'option', 'limit', false, 'integer'), field('query', 'cursor', 'option')];
+const aiNode = () => field('path', 'nodeId', 'context', 'node', true);
 
 const operationBindings: Record<string, Execution> = {
 	'auth login': protocol('protocol.oauth.device.login'),
@@ -116,6 +117,21 @@ const operationBindings: Record<string, Execution> = {
 	'projects treedx workspaces list': operation('treedx.workspaces.list', [field('path', 'projectId', 'argument', 'project', true), ...page()]),
 	'projects treedx workspaces show': operation('treedx.workspaces.show', [field('path', 'projectId', 'context', 'project', true), field('path', 'workspaceId', 'argument', 'workspace', true)]),
 	'projects treedx workspaces abandon': operation('treedx.workspaces.abandon', [field('path', 'projectId', 'context', 'project', true), field('path', 'workspaceId', 'argument', 'workspace', true)]),
+	'ai status': operation('treeai.qualification.get.status', [aiNode()]),
+	'ai mode show': operation('treeai.qualification.get.mode', [aiNode()]),
+	'ai mode set': operation('treeai.qualification.post.mode', [aiNode(), field('body', 'mode', 'argument', 'mode', true)]),
+	'ai inference models': operation('treeai.inference.get.models', [aiNode()]),
+	'ai inference jobs': operation('treeai.inference.get.jobs', [aiNode()]),
+	'ai inference rollback': operation('treeai.inference.post.deployments.rollback', [aiNode()]),
+	'ai training libraries': operation('treeai.training.get.libraries', [aiNode()]),
+	'ai training jobs': operation('treeai.training.get.jobs', [aiNode()]),
+	'ai training runs': operation('treeai.training.get.library.runs', [aiNode()]),
+	'ai lab status': operation('treeai.lab.get.status', [aiNode()]),
+	'ai lab agents': operation('treeai.lab.get.agents', [aiNode()]),
+	'ai lab libraries': operation('treeai.lab.get.libraries', [aiNode()]),
+	'ai qualify status': operation('treeai.qualification.get.qualification.profile', [aiNode()]),
+	'ai qualify run': operation('treeai.qualification.post.qualification.campaigns', [aiNode()]),
+	'ai qualify campaigns': operation('treeai.qualification.get.qualification.campaigns', [aiNode()]),
 	'library show': local('local.library.show'),
 	'library status': local('local.library.status'),
 	'library paths': local('local.library.paths'),
@@ -280,6 +296,13 @@ const commandTree: CommandTreeDescriptor = {
 			leaf('diagnose', 'read', 'project'), leaf('capabilities', 'read', 'project'),
 			branch('workspaces', [leaf('list', 'read', 'project'), leaf('show', 'read', 'workspace'), leaf('abandon', 'mutation', 'workspace', 'destructive')]),
 		])]),
+		branch('ai', [
+			leaf('status'), branch('mode', [leaf('show'), leaf('set', 'mutation', 'mode', 'authority')]),
+			branch('inference', [leaf('models'), leaf('jobs'), leaf('rollback', 'mutation', undefined, 'destructive')]),
+			branch('training', [leaf('libraries'), leaf('jobs'), leaf('runs')]),
+			branch('lab', [leaf('status'), leaf('agents'), leaf('libraries')]),
+			branch('qualify', [leaf('status'), leaf('run', 'mutation', undefined, 'authority'), leaf('campaigns')]),
+		]),
 		branch('library', [
 			libraryRead('show'), libraryRead('status'),
 			libraryRead('paths', [], [{ name: '--prefix', description: 'Repository-relative path prefix.', type: 'string' }, { name: '--limit', description: 'Page size.', type: 'number' }, { name: '--cursor', description: 'Opaque page cursor.', type: 'string' }]),

@@ -107,7 +107,21 @@ standards:
       source: src/treedx/contract.ts
       artifact: .treeseed/standards/treedx-service-contract.json
       verifier: scripts/standards/compare-compatibility.ts
+    - id: "@treeseed/sdk/treeai-service-contract"
+      family: behavioral
+      version: "1.0.0"
+      semanticRange: "^1.0.0"
+      source: src/treeai/contract.ts
+      artifact: .treeseed/standards/treeai-service-contract.json
+      verifier: scripts/standards/compare-compatibility.ts
   consumed:
+    - id: "@treeseed/treeai/openapi"
+      family: openapi
+      version: "0.11.0-rc2"
+      semanticRange: "0.11.0-rc2"
+      source: contracts/services/treeai/treeai-contract-release.json
+      artifact: contracts/services/treeai-adoption.json
+      verifier: scripts/standards/build-contract-bundle.ts
     - id: "@treeseed/treedx/openapi"
       family: openapi
       version: "0.11.0"
@@ -121,6 +135,7 @@ standards:
     - semantic-version-sufficiency
     - artifact-bound-guarantee-evidence
     - authoritative-treedx-service-adoption
+    - authoritative-treeai-service-adoption
   deprecations: []
   runtimes:
     - node>=22
