@@ -9,6 +9,7 @@ import { releaseEvidenceSchema } from '../../src/development/index.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 const read = <T>(path: string) => JSON.parse(readFileSync(resolve(root, path), 'utf8')) as T;
+const fileDigest = (path: string) => `sha256:${createHash('sha256').update(readFileSync(resolve(root, path))).digest('hex')}` as const;
 const packageJson = read<{ name: string; version: string }>('package.json');
 const manifestDocument = parseYaml(readFileSync(resolve(root, 'treeseed.package.yaml'), 'utf8')) as { standards: unknown };
 const acceptedBaseline = parseStandardsPackageManifest(manifestDocument.standards).acceptedBaseline;
@@ -54,8 +55,10 @@ const outputPath = resolve(root, '.treeseed/standards/release-evidence.json');
 writeFileSync(outputPath, `${canonicalStandardsJson(receipt)}\n`);
 const contractBundleDigest = await standardsSha256(bundle);
 const compatibilityAttestationDigest = await standardsSha256(attestation);
+const contractBundleFileDigest = fileDigest('.treeseed/standards/contract-bundle.json');
+const compatibilityAttestationFileDigest = fileDigest('.treeseed/standards/compatibility-attestation.json');
 const sbomPath = '.treeseed/standards/sbom.cdx.json';
-const sbomDigest = `sha256:${createHash('sha256').update(readFileSync(resolve(root, sbomPath))).digest('hex')}`;
+const sbomDigest = fileDigest(sbomPath);
 const candidateReceiptDigest = await standardsSha256({ sourceCommit, packageDigest, contractBundleDigest, compatibilityAttestationDigest, compositionDigest: receipt.compositionDigest });
 const releaseEvidence = releaseEvidenceSchema.parse({
 	schemaVersion: 'treeseed.release-evidence/v1',
@@ -71,11 +74,11 @@ const releaseEvidence = releaseEvidenceSchema.parse({
 	artifacts: [
 		{ id: 'sdk-package', kind: 'npm-package', identity: tarballPath, digest: packageDigest, mediaType: 'application/gzip', size: statSync(resolve(root, tarballPath)).size },
 		{ id: 'sdk-sbom', kind: 'sbom', identity: sbomPath, digest: sbomDigest, mediaType: 'application/vnd.cyclonedx+json', size: statSync(resolve(root, sbomPath)).size },
-		{ id: 'sdk-contracts', kind: 'contract-bundle', identity: '.treeseed/standards/contract-bundle.json', digest: contractBundleDigest, mediaType: 'application/json' },
-		{ id: 'sdk-compatibility', kind: 'compatibility-attestation', identity: '.treeseed/standards/compatibility-attestation.json', digest: compatibilityAttestationDigest, mediaType: 'application/json' },
+		{ id: 'sdk-contracts', kind: 'contract-bundle', identity: '.treeseed/standards/contract-bundle.json', digest: contractBundleFileDigest, mediaType: 'application/json' },
+		{ id: 'sdk-compatibility', kind: 'compatibility-attestation', identity: '.treeseed/standards/compatibility-attestation.json', digest: compatibilityAttestationFileDigest, mediaType: 'application/json' },
 	],
-	contractBundles: [{ id: 'sdk-contracts', digest: contractBundleDigest }],
-	compatibilityAttestations: [{ contractId: attestation.contractId, digest: compatibilityAttestationDigest, compatible: true, minimumBump: attestation.result.required }],
+	contractBundles: [{ id: 'sdk-contracts', digest: contractBundleFileDigest }],
+	compatibilityAttestations: [{ contractId: attestation.contractId, digest: compatibilityAttestationFileDigest, compatible: true, minimumBump: attestation.result.required }],
 	verification: { status: 'passed', operations: ['npm run verify:direct', 'npm run standards:compatibility', 'npm run standards:compose'], completedAt: new Date().toISOString() },
 });
 const custodyPath = resolve(root, '.treeseed/standards/release-evidence-v1.json');
