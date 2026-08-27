@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { parse } from 'yaml';
+export { runUiEvidenceTrustVerifier, validateUiEvidenceTrust } from './evidence-trust.ts';
 
 export type GuaranteeRunStatus = 'passed' | 'failed' | 'skipped' | 'blocked';
 export type GuaranteeFilter = Record<string, unknown>;
@@ -10,6 +11,18 @@ export interface GuaranteePlanEntry { id: string; journey: string; ownerPackage:
 export interface GuaranteePlanReport { ok: boolean; entries: GuaranteePlanEntry[]; diagnostics: GuaranteeDiagnostic[]; [key: string]: unknown; }
 export interface GuaranteeRunResult { id: string; journey: string; ownerPackage: string; type: string; subtype: string; status: GuaranteeRunStatus; selected: boolean; dependency: boolean; sourcePath: string; steps: GuaranteeRunStep[]; diagnostics: GuaranteeDiagnostic[]; evidence: string[]; [key: string]: unknown; }
 export interface GuaranteeRunReport { runId: string; environment: string; startedAt: string; completedAt?: string; ok: boolean; filter: GuaranteeFilter; counts: { passed: number; failed: number; skipped: number; blocked: number; releaseBlockingFailures: number }; results: GuaranteeRunResult[]; diagnostics?: GuaranteeDiagnostic[]; [key: string]: unknown; }
+
+export interface ArtifactGuaranteeVerifier {
+	kind: 'artifact'; ownerPackage: string; artifactId: string; entrypoint: string; exportName?: string; caseId: string; description?: string;
+}
+export interface CatalogOperationGuaranteeVerifier {
+	kind: 'catalogOperation'; ownerPackage: string; operationId: string; caseId: string; description?: string;
+}
+export type GuaranteeVerifierDefinition = ArtifactGuaranteeVerifier | CatalogOperationGuaranteeVerifier;
+export interface GuaranteeVerifierCheck { id: string; status: 'passed' | 'failed'; durationMs: number; diagnostics?: GuaranteeDiagnostic[]; error?: string; evidence?: string[]; }
+export interface GuaranteeVerifierResult {
+	schemaVersion: 'treeseed.guarantee-verifier-result/v1'; verifierId: string; startedAt: string; completedAt: string; ok: boolean; checks: GuaranteeVerifierCheck[]; [key: string]: unknown;
+}
 
 interface GuaranteeManifest { id: string; journey: string; ownerPackage: string; type: string; subtype: string; status: string; gates: string[]; [key: string]: unknown; }
 interface LoadedGuarantee { sourcePath: string; relativePath: string; manifest: GuaranteeManifest | null; }

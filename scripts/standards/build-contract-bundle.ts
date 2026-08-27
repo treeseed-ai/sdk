@@ -27,6 +27,11 @@ const openApiArtifactPath = resolve(outputRoot, 'openapi.json');
 const controlPlaneCatalogPath = resolve(outputRoot, 'control-plane-catalog.json');
 const mcpCatalogInput = buildMcpCatalog(CONTROL_PLANE_CATALOG.operations);
 const mcpCatalogInputPath = resolve(outputRoot, 'mcp-catalog-input.json');
+const guaranteeVerifierContract = {
+	schemaVersion: 'treeseed.guarantee-verifier-artifact/v1', artifactId: '@treeseed/sdk/guarantee-verifier-contract',
+	entrypoint: 'dist/guarantees/index.js', exportName: 'runUiEvidenceTrustVerifier', cases: ['sdk.ui.evidence-trust'],
+};
+const guaranteeVerifierContractPath = resolve(outputRoot, 'guarantee-verifier-contract.json');
 const treeDxAdoption = JSON.parse(readFileSync(resolve(root, 'contracts/services/treedx-adoption.json'), 'utf8')) as {
 	packageVersion: string;
 	sourceCommit: string;
@@ -60,6 +65,7 @@ writeFileSync(typeScriptArtifactPath, `${canonicalStandardsJson(typescript)}\n`)
 writeFileSync(openApiArtifactPath, `${canonicalStandardsJson(openapi)}\n`);
 writeFileSync(controlPlaneCatalogPath, `${canonicalStandardsJson(CONTROL_PLANE_CATALOG)}\n`);
 writeFileSync(mcpCatalogInputPath, `${canonicalStandardsJson(mcpCatalogInput)}\n`);
+writeFileSync(guaranteeVerifierContractPath, `${canonicalStandardsJson(guaranteeVerifierContract)}\n`);
 writeFileSync(treeDxServiceContractPath, `${canonicalStandardsJson(treeDxServiceContract)}\n`);
 
 const packRoot = resolve(outputRoot, 'package');
@@ -98,6 +104,11 @@ const bundle = createStandardsContractBundle({
 			id: '@treeseed/sdk/treedx-service-contract', family: 'behavioral', version: '1.0.0',
 			artifact: { path: '.treeseed/standards/treedx-service-contract.json', mediaType: 'application/json', digest: await standardsSha256(treeDxServiceContract) },
 			entrypoints: ['@treeseed/sdk/treedx'], guarantees: ['authoritative-upstream-openapi', 'project-scoped-control-plane-proxy', 'no-direct-transport'], deprecations: [],
+		},
+		{
+			id: '@treeseed/sdk/guarantee-verifier-contract', family: 'behavioral', version: '1.0.0',
+			artifact: { path: '.treeseed/standards/guarantee-verifier-contract.json', mediaType: 'application/json', digest: await standardsSha256(guaranteeVerifierContract) },
+			entrypoints: ['@treeseed/sdk/guarantees'], guarantees: ['artifact-bound-guarantee-evidence', 'ui-evidence-trust'], deprecations: [],
 		},
 	],
 	evidence: [
