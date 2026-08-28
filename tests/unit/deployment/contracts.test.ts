@@ -61,6 +61,14 @@ describe('deployment contracts', () => {
 		expect(packageRuntimeSchema.parse(value).configuration).toEqual(value.configuration);
 	});
 
+	it('binds AI GPU components to fixed gates and declared Compose services', () => {
+		const value = runtime('ai-inference', '1.0.0', 'inference.ai.treeseed.localhost');
+		value.services.push({ id: 'gpu', composeService: 'inference-vllm', endpoints: [] });
+		value.modeControl = { resource: 'ai-gpu', role: 'inference', gate: { service: 'service', executable: '/usr/local/bin/treeseed-ai-gpu-gate' }, services: { base: ['service'], gpu: ['inference-vllm'], warm: 'inference-vllm' } };
+		expect(packageRuntimeSchema.parse(value).modeControl?.resource).toBe('ai-gpu');
+		expect(() => packageRuntimeSchema.parse({ ...value, modeControl: { ...value.modeControl, services: { base: ['service'], gpu: ['arbitrary-container'] } } })).toThrow(/not declared/u);
+	});
+
 	it('rejects ambiguous or escaped runtime configuration custody', () => {
 		const value = runtime('api', '1.0.0', 'api.treeseed.localhost');
 		expect(() => packageRuntimeSchema.parse({ ...value, configuration: { environment: [{ name: 'DATABASE_URL', required: true }], secretEnvironment: [{ name: 'DATABASE_URL', required: true }], secretFiles: [], files: [] } })).toThrow(/both public and secret custody/u);

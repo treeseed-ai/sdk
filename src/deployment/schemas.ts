@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AI_MODE_INTERNAL_PATH } from './ai-mode.ts';
 
 const identifier = z.string().regex(/^[a-z][a-z0-9.-]{1,63}$/u);
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
@@ -180,10 +181,35 @@ export const packageRuntimeSchema = z.object({
 		locality: z.enum(['local', 'remote', 'either']),
 		optional: z.boolean().default(false),
 	}).strict()).default([]),
+	modeControl: z.object({
+		resource: z.literal('ai-gpu'),
+		role: z.enum(['inference', 'training', 'controller']),
+		gate: z.object({
+			service: identifier,
+			executable: z.literal('/usr/local/bin/treeseed-ai-gpu-gate'),
+		}).strict().optional(),
+		services: z.object({
+			base: z.array(identifier).min(1),
+			gpu: z.array(identifier).max(2),
+			warm: identifier.optional(),
+		}).strict(),
+		internalControl: z.object({
+			transport: z.literal('mtls'),
+			clientCommonName: z.literal('client-ai-lab-mode'),
+			path: z.literal(AI_MODE_INTERNAL_PATH),
+		}).strict().optional(),
+	}).strict().optional(),
 }).strict().superRefine((runtime, context) => {
 	const endpointIds = runtime.services.flatMap((service) => service.endpoints.map((endpoint) => `${service.id}.${endpoint.id}`));
 	if (new Set(endpointIds).size !== endpointIds.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['services'], message: 'Endpoint identities must be unique within a component.' });
 	for (const file of runtime.configuration.files) if (!file.path.startsWith(`/etc/treeseed/components/${runtime.componentId}/`)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['configuration', 'files'], message: `Configuration file ${file.id} is outside component ${runtime.componentId} custody.` });
+	if (runtime.modeControl) {
+		const services = new Set(runtime.services.map(({ composeService }) => composeService));
+		for (const service of [...runtime.modeControl.services.base, ...runtime.modeControl.services.gpu, ...(runtime.modeControl.services.warm ? [runtime.modeControl.services.warm] : [])]) if (!services.has(service)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['modeControl', 'services'], message: `AI mode service ${service} is not declared by the component runtime.` });
+		if (runtime.modeControl.gate && !services.has(runtime.modeControl.gate.service)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['modeControl', 'gate'], message: `AI mode gate service ${runtime.modeControl.gate.service} is not declared by the component runtime.` });
+		if (runtime.modeControl.role === 'controller' && (!runtime.modeControl.internalControl || runtime.modeControl.gate || runtime.modeControl.services.gpu.length)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['modeControl'], message: 'The AI controller may declare only the scoped internal control surface.' });
+		if (runtime.modeControl.role !== 'controller' && (!runtime.modeControl.gate || runtime.modeControl.internalControl || runtime.modeControl.services.gpu.length === 0)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['modeControl'], message: 'AI GPU components require a fixed gate and at least one GPU service.' });
+	}
 });
 
 const catalogPackageSchema = z.object({ name: z.string().regex(/^treeseed(?:-[a-z0-9-]+)?$/u), version: packageVersion, architecture: z.enum(['amd64', 'all']), origin: z.literal('TreeSeed Deployment'), order: z.number().int().nonnegative() }).strict();

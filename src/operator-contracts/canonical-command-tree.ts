@@ -118,8 +118,8 @@ const operationBindings: Record<string, Execution> = {
 	'projects treedx workspaces show': operation('treedx.workspaces.show', [field('path', 'projectId', 'context', 'project', true), field('path', 'workspaceId', 'argument', 'workspace', true)]),
 	'projects treedx workspaces abandon': operation('treedx.workspaces.abandon', [field('path', 'projectId', 'context', 'project', true), field('path', 'workspaceId', 'argument', 'workspace', true)]),
 	'ai status': operation('treeai.qualification.get.status', [aiNode()]),
-	'ai mode show': operation('treeai.qualification.get.mode', [aiNode()]),
-	'ai mode set': operation('treeai.qualification.post.mode', [aiNode(), field('body', 'mode', 'argument', 'mode', true)]),
+	'ai mode show': local('local.host.ai.mode.show'),
+	'ai mode set': local('local.host.ai.mode.set'),
 	'ai inference models': operation('treeai.inference.get.models', [aiNode()]),
 	'ai inference jobs': operation('treeai.inference.get.jobs', [aiNode()]),
 	'ai inference rollback': operation('treeai.inference.post.deployments.rollback', [aiNode()]),
@@ -187,6 +187,19 @@ function hostReset(): CommandNodeDescriptor {
 	if (value.nodeType !== 'leaf') throw new Error('Host reset must be a leaf command.');
 	value.description = 'Stop managed components, erase their state, and reconcile a fresh unseeded platform.';
 	value.options = [...(value.options ?? []), { name: '--confirm', description: 'Confirm deletion of all manager-owned component data and receipts.', type: 'boolean' }];
+	return value;
+}
+
+function aiModeSet(): CommandNodeDescriptor {
+	const value = leaf('set', 'mutation', 'mode', 'authority');
+	if (value.nodeType !== 'leaf') throw new Error('AI mode set must be a leaf command.');
+	value.description = 'Transition the exclusive AI GPU resource to awake or sleep.';
+	value.options = [...(value.options ?? []),
+		{ name: '--idempotency-key', description: 'Replay-safe transition identity.', type: 'string' },
+		{ name: '--drain-timeout', description: 'Maximum drain wait in seconds.', type: 'number' },
+	];
+	value.authorization = { capability: 'host.ai.mode', confirmation: 'authority' };
+	value.resultSchemaId = 'treeseed.ai-mode-transition-receipt/v1';
 	return value;
 }
 
@@ -297,7 +310,7 @@ const commandTree: CommandTreeDescriptor = {
 			branch('workspaces', [leaf('list', 'read', 'project'), leaf('show', 'read', 'workspace'), leaf('abandon', 'mutation', 'workspace', 'destructive')]),
 		])]),
 		branch('ai', [
-			leaf('status'), branch('mode', [leaf('show'), leaf('set', 'mutation', 'mode', 'authority')]),
+			leaf('status'), branch('mode', [leaf('show'), aiModeSet()]),
 			branch('inference', [leaf('models'), leaf('jobs'), leaf('rollback', 'mutation', undefined, 'destructive')]),
 			branch('training', [leaf('libraries'), leaf('jobs'), leaf('runs')]),
 			branch('lab', [leaf('status'), leaf('agents'), leaf('libraries')]),
