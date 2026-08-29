@@ -318,7 +318,7 @@ export type MinimumAssignmentDuration =
 export interface ProviderExecutionAdapterSnapshot {
 	id: string;
 	adapter: string;
-	isolation: 'process' | 'worker';
+	isolation: 'microvm' | 'process' | 'worker';
 	status: 'available' | 'degraded' | 'unavailable';
 	capabilities: string[];
 	laneIds: string[];
@@ -455,3 +455,27 @@ export interface CapacityProviderManifestV3 {
 	connections: ProviderConnectionConfig[];
 	metadata?: Record<string, unknown>;
 }
+
+export interface CapacityProviderSandboxProfile {
+	id: 'read' | 'unit' | 'integration' | 'platform' | 'connected' | string;
+	guestImage: string;
+	guestImageDigest: string;
+	defaultDenyNetwork: true;
+	resources: { cpuCores: number; memoryBytes: number; diskBytes: number; processLimit: number; outputBytes: number };
+}
+
+export interface CapacityProviderManifestV4 extends Omit<CapacityProviderManifestV3, 'schemaVersion' | 'adapters'> {
+	schemaVersion: 4;
+	sandbox: {
+		required: true;
+		brokerSocket: string;
+		runtime: 'kata-runtime-rs-qemu';
+		profiles: CapacityProviderSandboxProfile[];
+	};
+	adapters: Array<Omit<CapacityProviderManifestV3['adapters'][number], 'isolation'> & {
+		isolation: 'microvm' | 'process' | 'worker';
+		sandboxProfileIds?: string[];
+	}>;
+}
+
+export type CapacityProviderManifest = CapacityProviderManifestV3 | CapacityProviderManifestV4;

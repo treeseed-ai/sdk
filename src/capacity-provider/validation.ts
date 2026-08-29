@@ -4,6 +4,7 @@ CAPACITY_PROVIDER_ACCESS_TOKEN_REFRESH_SECONDS,
 CAPACITY_PROVIDER_ACCESS_TOKEN_TTL_SECONDS,
 CAPACITY_PROVIDER_PROOF_TTL_SECONDS,
 type CapacityProviderManifestV3,
+type CapacityProviderManifestV4,
 type CapacityProviderProofPayload,
 type CapacityProviderPublicJwk,
 type ProviderSupplyOffer,
@@ -196,6 +197,26 @@ export function validateCapacityProviderManifestV3(manifest: CapacityProviderMan
 	}
 	if (providerIds.size > 1) add(diagnostics, 'provider_connection_identity_mismatch', 'connections', 'Every connection in one provider manifest must reference the same global provider identity.');
 	if (explicitShare > 100) add(diagnostics, 'provider_connection_share_exceeded', 'connections', 'Explicit connection shares may not exceed 100 percent.');
+	return result(diagnostics);
+}
+
+export function validateCapacityProviderManifestV4(manifest: CapacityProviderManifestV4): CapacityProviderContractValidation {
+	const compatible = { ...manifest, schemaVersion: 3,
+		adapters: manifest.adapters.map((adapter) => ({ ...adapter, isolation: adapter.isolation === 'microvm' ? 'process' : adapter.isolation })) } as CapacityProviderManifestV3;
+	const diagnostics = validateCapacityProviderManifestV3(compatible).diagnostics;
+	if (manifest.schemaVersion !== 4) add(diagnostics, 'provider_manifest_schema_invalid', 'schemaVersion', 'Capacity provider manifest schemaVersion must be 4.');
+	if (manifest.sandbox?.required !== true || manifest.sandbox?.runtime !== 'kata-runtime-rs-qemu') add(diagnostics, 'provider_sandbox_required', 'sandbox', 'Manifest v4 requires the Kata runtime-rs QEMU sandbox.');
+	if (!manifest.sandbox?.brokerSocket?.startsWith('/run/treeseed/')) add(diagnostics, 'provider_sandbox_socket_invalid', 'sandbox.brokerSocket', 'Sandbox broker socket must remain under /run/treeseed.');
+	const profiles = new Set((manifest.sandbox?.profiles ?? []).map((profile) => profile.id));
+	for (const [index, profile] of (manifest.sandbox?.profiles ?? []).entries()) {
+		if (!['read', 'unit', 'integration', 'platform', 'connected'].includes(profile.id)) add(diagnostics, 'provider_sandbox_profile_invalid', `sandbox.profiles[${index}].id`, 'Sandbox profile must be one of read, unit, integration, platform, or connected.');
+		if (!/^sha256:[a-f0-9]{64}$/u.test(profile.guestImageDigest)) add(diagnostics, 'provider_sandbox_image_digest_invalid', `sandbox.profiles[${index}].guestImageDigest`, 'Guest images require an immutable SHA-256 digest.');
+		if (profile.defaultDenyNetwork !== true) add(diagnostics, 'provider_sandbox_network_policy_invalid', `sandbox.profiles[${index}].defaultDenyNetwork`, 'Sandbox networking must default deny.');
+	}
+	for (const [index, adapter] of manifest.adapters.entries()) {
+		if (adapter.isolation !== 'microvm') add(diagnostics, 'provider_v4_microvm_required', `adapters[${index}].isolation`, 'Manifest v4 adapters must use microvm isolation.');
+		for (const profile of adapter.sandboxProfileIds ?? []) if (!profiles.has(profile)) add(diagnostics, 'provider_sandbox_profile_unknown', `adapters[${index}].sandboxProfileIds`, `Unknown sandbox profile ${profile}.`);
+	}
 	return result(diagnostics);
 }
 
