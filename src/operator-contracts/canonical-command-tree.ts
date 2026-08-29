@@ -61,6 +61,14 @@ const operationBindings: Record<string, Execution> = {
 	'host storage connect': local('local.host.storage.connect'),
 	'host storage reconcile': local('local.host.storage.reconcile'),
 	'host storage rotate': local('local.host.storage.rotate'),
+	'host security plan': local('local.host.security.plan'),
+	'host security initialize': local('local.host.security.initialize'),
+	'host security status': local('local.host.security.status'),
+	'host security verify': local('local.host.security.verify'),
+	'host security rotate': local('local.host.security.rotate'),
+	'host security recovery verify': local('local.host.security.recovery.verify'),
+	'host sandbox status': local('local.host.sandbox.status'),
+	'host sandbox doctor': local('local.host.sandbox.doctor'),
 	'host fleet status': local('local.host.fleet.status'),
 	'host recovery status': local('local.host.recovery.status'),
 	'host recovery retry': local('local.host.recovery.retry'),
@@ -198,6 +206,29 @@ function hostReset(): CommandNodeDescriptor {
 	return value;
 }
 
+function hostSecurityInitialize(): CommandNodeDescriptor {
+	const value = leaf('initialize', 'mutation', undefined, 'credential');
+	if (value.nodeType !== 'leaf') throw new Error('Host security initialization must be a leaf command.');
+	value.description = 'Initialize the encrypted provider volume, application keys, and offline recovery bundle.';
+	value.options = [...(value.options ?? []), { name: '--recovery-bundle', description: 'Absolute path for the new encrypted offline recovery bundle.', type: 'string', required: true }, { name: '--confirm', description: 'Confirm provider-state migration and volume formatting.', type: 'boolean', required: true }];
+	return value;
+}
+
+function hostSecurityRotate(): CommandNodeDescriptor {
+	const value = leaf('rotate', 'mutation', 'target', 'credential');
+	if (value.nodeType !== 'leaf') throw new Error('Host security rotation must be a leaf command.');
+	value.options = [...(value.options ?? []),
+		{ name: '--recovery-bundle', description: 'Absolute path to the currently authenticated recovery bundle.', type: 'string', required: true },
+		{ name: '--new-recovery-bundle', description: 'Absolute non-existing path for the replacement recovery bundle.', type: 'string', required: true },
+		{ name: '--confirm', description: 'Confirm creation and activation of a new key generation.', type: 'boolean', required: true }];
+	return value;
+}
+
+function hostRecoveryVerify(): CommandNodeDescriptor {
+	return { nodeType: 'leaf', segment: 'verify', description: 'Authenticate and inventory an offline recovery bundle without revealing secrets.', kind: 'read',
+		options: [{ name: '--bundle', description: 'Absolute recovery bundle path.', type: 'string', required: true }], resultSchemaId: 'treeseed.host-recovery-verification/v1', execution: unavailable() };
+}
+
 function aiModeSet(): CommandNodeDescriptor {
 	const value = leaf('set', 'mutation', 'mode', 'authority');
 	if (value.nodeType !== 'leaf') throw new Error('AI mode set must be a leaf command.');
@@ -298,6 +329,8 @@ const commandTree: CommandTreeDescriptor = {
 				leaf('reconcile', 'mutation', undefined, 'authority'),
 				leaf('rotate', 'mutation', 'backend', 'credential'),
 			]),
+			branch('security', [leaf('plan'), hostSecurityInitialize(), leaf('status'), leaf('verify'), hostSecurityRotate(), branch('recovery', [hostRecoveryVerify()])]),
+			branch('sandbox', [leaf('status'), leaf('doctor')]),
 			branch('fleet', [leaf('status')]),
 			branch('update', [leaf('status'), leaf('check', 'mutation'), leaf('apply', 'mutation', undefined, 'authority'), leaf('channel', 'mutation', 'track', 'authority'), leaf('pause', 'mutation', undefined, 'authority'), leaf('resume', 'mutation', undefined, 'authority')]),
 			branch('component', [leaf('list'), leaf('status', 'read', 'component'), leaf('enable', 'mutation', 'component', 'authority'), leaf('disable', 'mutation', 'component', 'destructive')]),

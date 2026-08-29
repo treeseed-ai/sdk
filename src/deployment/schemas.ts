@@ -122,6 +122,13 @@ export const hostConfigurationSchema = z.object({
 		provider: z.enum(['file', 'systemd-credential', 'vault', 'aws-secrets-manager']),
 		reference: z.string().min(1),
 	}).strict()),
+	security: z.object({
+		sandbox: z.object({ required: z.boolean(), runtime: z.literal('kata-runtime-rs-qemu'), brokerSocket: z.string().startsWith('/run/treeseed/'),
+			modelGateway: z.object({ provider: z.literal('openai'), upstreamBaseUrl: z.literal('https://api.openai.com'), allowedModels: z.array(z.string().min(1)).min(1) }).strict(),
+			profiles: z.array(z.object({ id: z.enum(['read', 'unit', 'integration', 'platform', 'connected']), guestImage: z.string().min(1), guestImageDigest: digest }).strict()).min(1) }).strict(),
+		providerVolume: z.object({ encryption: z.literal('luks2'), backingPath: z.string().startsWith('/'), mountPath: z.string().startsWith('/'), sizeBytes: z.number().int().min(1_073_741_824), unlock: z.enum(['tpm2', 'systemd-credential']), recoveryRequired: z.literal(true) }).strict(),
+		applicationEncryption: z.object({ provider: z.literal('systemd-credential'), activeKeyVersion: z.number().int().positive(), diagnosticsKeyVersion: z.number().int().positive() }).strict(),
+	}).strict().optional(),
 }).strict();
 
 export const packageEndpointSchema = z.object({
@@ -348,3 +355,12 @@ export type HostReceipt = z.infer<typeof hostReceiptSchema>;
 export type HostBackup = z.infer<typeof hostBackupSchema>;
 export type HostMigration = z.infer<typeof hostMigrationSchema>;
 export type HostRecovery = z.infer<typeof hostRecoverySchema>;
+
+export const hostSecurityReceiptSchema = z.object({
+	schemaVersion: z.literal('treeseed.host-security-receipt/v1'), receiptId: identifier, hostId: identifier,
+	sandbox: z.object({ runtime: z.literal('kata-runtime-rs-qemu'), kvmReady: z.boolean(), brokerReady: z.boolean(), guestImageDigests: z.array(digest) }).strict(),
+	providerVolume: z.object({ encrypted: z.boolean(), format: z.literal('luks2'), mountPath: z.string().startsWith('/'), unlock: z.enum(['tpm2', 'systemd-credential']) }).strict(),
+	keys: z.object({ provider: z.literal('systemd-credential'), activeCredentialVersion: z.number().int().positive(), activeDiagnosticsVersion: z.number().int().positive(), recoveryBundleVerified: z.boolean() }).strict(),
+	state: z.enum(['planned', 'migrating', 'known-good', 'blocked']), completedAt: z.string().datetime(),
+}).strict();
+export type HostSecurityReceipt = z.infer<typeof hostSecurityReceiptSchema>;

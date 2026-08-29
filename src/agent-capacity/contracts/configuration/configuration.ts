@@ -19,7 +19,7 @@ export interface CapacityConfigurationDescriptor {
 }
 
 export const CAPACITY_CONFIGURATION_DESCRIPTORS: readonly CapacityConfigurationDescriptor[] = [
-	{ id: 'provider-manifest', ownerPackage: '@treeseed/sdk', format: 'yaml', schemaId: 'treeseed.capacity-provider/v3', validator: 'validateCapacityProviderManifestV3', runtimeOwner: '@treeseed/agent' },
+	{ id: 'provider-manifest', ownerPackage: '@treeseed/sdk', format: 'yaml', schemaId: 'treeseed.capacity-provider/v4', validator: 'validateCapacityProviderManifestV4', runtimeOwner: '@treeseed/agent' },
 	{ id: 'provider-offer', ownerPackage: '@treeseed/sdk', format: 'yaml', schemaId: 'treeseed.provider-supply-offer/v1', validator: 'validateProviderSupplyOffer', runtimeOwner: '@treeseed/agent' },
 	{ id: 'capacity-grant', ownerPackage: '@treeseed/sdk', format: 'yaml', schemaId: 'treeseed.capacity-grant/v2', validator: 'validateCapacityGrantV2', runtimeOwner: '@treeseed/api' },
 	{ id: 'allocation-set', ownerPackage: '@treeseed/sdk', format: 'yaml', schemaId: 'treeseed.capacity-allocation-set/v2', validator: 'validateCapacityAllocationSetV2', runtimeOwner: '@treeseed/api' },
