@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { type ControlPlaneOperationBinding, type ControlPlaneOperationDescriptor } from './control-plane-operation.ts';
 import { defineOperation as define, defineTreeDxProxyOperation as treedxProxy } from './operation-builder.ts';
-import { communicationOperations, providerDiscussionResponseOperation } from './catalog/communication-operations.ts';
+import { communicationOperations, providerCommunicationLifecycleOperations, providerDiscussionResponseOperation } from './catalog/communication-operations.ts';
+import { inboxOperations } from './catalog/inbox-operations.ts';
 import { adminAccountOperations, adminTeamOperations } from './catalog/admin-account-team-operations.ts';
 import { TREEAI_CONTROL_PLANE_OPERATIONS } from './catalog/treeai-operations.ts';
 const empty = z.object({}).strict();
@@ -30,7 +31,6 @@ function providerPath<T extends z.ZodRawShape>(
 		redactedPaths: options.redactedPaths,
 	}, { path: z.object(pathShape).strict(), query: empty, body: method === 'GET' ? none : record, output: payload });
 }
-
 const noPathProvider = (operationId: `${string}.${string}`, method: 'GET' | 'POST' | 'PUT', path: `/v1/${string}`, options: { read?: boolean; redactedPaths?: string[]; authentication?: ControlPlaneOperationDescriptor['authentication'] } = {}) =>
 	define({
 		operationId, description: `${options.read ? 'Read' : 'Apply'} ${operationId}.`, rest: { method, path },
@@ -54,7 +54,6 @@ function postRead<T extends z.ZodRawShape>(
 		surfaces, cacheScope: 'none', pagination: 'none', idempotencyRequired: false,
 	}, { path: z.object(pathShape).strict(), query: empty, body: record, output: payload });
 }
-
 function resource<T extends z.ZodRawShape>(
 	operationId: `${string}.${string}`,
 	method: 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT',
@@ -86,6 +85,7 @@ function resource<T extends z.ZodRawShape>(
 }
 
 export const CONTROL_PLANE_OPERATIONS = {
+	inbox: inboxOperations(),
 	treeai: TREEAI_CONTROL_PLANE_OPERATIONS,
 	status: {
 		show: read('status.show', '/v1/status', 'status.read', ['rest', 'cli', 'mcp_tool', 'mcp_resource']),
@@ -467,6 +467,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 		startCloseout: providerPath('providers.assignments.closeout.start', 'POST', '/v1/provider/assignments/{assignmentId}/closeout-start', { assignmentId: z.string().min(1) }),
 		completionPreflight: providerPath('providers.assignments.completion.preflight', 'POST', '/v1/provider/assignments/{assignmentId}/completion-preflight', { assignmentId: z.string().min(1) }),
 		discussionResponse: providerDiscussionResponseOperation(),
+		...providerCommunicationLifecycleOperations(),
 		returnAssignment: providerPath('providers.assignments.return', 'POST', '/v1/provider/assignments/{assignmentId}/return', { assignmentId: z.string().min(1) }),
 		completeAssignment: providerPath('providers.assignments.complete', 'POST', '/v1/provider/assignments/{assignmentId}/complete', { assignmentId: z.string().min(1) }),
 		failAssignment: providerPath('providers.assignments.fail', 'POST', '/v1/provider/assignments/{assignmentId}/fail', { assignmentId: z.string().min(1) }),
@@ -479,7 +480,6 @@ export const CONTROL_PLANE_OPERATIONS = {
 		workflowRun: providerPath('providers.assignments.workflow.show', 'GET', '/v1/provider/assignments/{assignmentId}/workflow-runs/{runId}', { assignmentId: z.string().min(1), runId: z.string().min(1) }, { read: true }),
 	},
 } as const;
-
 function flatten(value: unknown, output: ControlPlaneOperationBinding<any, any, any, any>[] = []) {
 	if (value && typeof value === 'object' && 'descriptor' in value && 'schema' in value) output.push(value as ControlPlaneOperationBinding<any, any, any, any>);
 	else if (value && typeof value === 'object') for (const child of Object.values(value)) flatten(child, output);

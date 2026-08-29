@@ -9,9 +9,43 @@ export const communicationRecipientSchema = z.object({
 
 export const communicationSendRequestSchema = z.object({
 	message: z.string().trim().min(1).max(100_000),
-	projectId: z.string().min(1),
 	recipients: z.array(z.string().trim().min(1)).max(100).optional(),
 	timeoutSeconds: z.number().int().min(1).max(3_600).optional(),
+}).strict();
+
+export const communicationTopicEventTypeSchema = z.enum([
+	'message.posted', 'mention.acknowledged', 'response_lease.accepted', 'agent.progress',
+	'agent.response', 'agent.abstained', 'agent.failed',
+]);
+
+export const communicationTopicEventSchema = z.object({
+	id: z.string().min(1),
+	sequence: z.number().int().positive(),
+	teamId: z.string().min(1),
+	topicId: z.string().min(1),
+	channel: z.string().min(1),
+	type: communicationTopicEventTypeSchema,
+	occurredAt: z.string().datetime(),
+	sendId: z.string().min(1).nullable(),
+	invocationId: z.string().min(1).nullable(),
+	assignmentId: z.string().min(1).nullable(),
+	actor: z.object({ kind: z.enum(['user', 'agent', 'provider', 'control-plane']), id: z.string().min(1), handle: z.string().min(1).nullable() }).strict(),
+	summary: z.string().min(1),
+	payload: z.record(z.unknown()),
+}).strict();
+
+export const communicationDiagnosticSchema = z.object({
+	availability: z.enum(['available', 'partial', 'unavailable']),
+	reason: z.string().min(1).nullable(),
+	provider: z.object({ providerId: z.string().min(1).nullable(), executionProviderId: z.string().min(1).nullable(), runtimeVersion: z.string().min(1).nullable() }).strict(),
+	selection: z.object({ model: z.string().min(1).nullable(), capabilities: z.array(z.string()), parameters: z.record(z.unknown()) }).strict(),
+	identityManifest: z.record(z.unknown()),
+	contextManifest: z.array(z.record(z.unknown())),
+	usage: z.array(z.record(z.unknown())),
+	timing: z.record(z.unknown()),
+	resources: z.record(z.unknown()),
+	traceEvents: z.array(z.record(z.unknown())),
+	fullPayload: z.record(z.unknown()).optional(),
 }).strict();
 
 export const communicationTargetSchema = communicationRecipientSchema.extend({
@@ -45,9 +79,13 @@ export const communicationTargetSchema = communicationRecipientSchema.extend({
 		returnedAt: z.string().datetime().nullable(),
 		failedAt: z.string().datetime().nullable(),
 	}).strict(),
+	acknowledgedAt: z.string().datetime().nullable(),
+	leaseAcceptedAt: z.string().datetime().nullable(),
+	diagnostics: communicationDiagnosticSchema,
 });
 
 export const communicationResponseSchema = communicationRecipientSchema.extend({
+	projectSlug: z.string().min(1),
 	invocationId: z.string().min(1),
 	assignmentId: z.string().min(1).nullable(),
 	messageRef: z.string().min(1),
@@ -58,21 +96,52 @@ export const communicationResponseSchema = communicationRecipientSchema.extend({
 });
 
 export const communicationSendReceiptSchema = z.object({
-	schemaVersion: z.literal('treeseed.communication-send-receipt/v2'),
+	schemaVersion: z.literal('treeseed.communication-send-receipt/v4'),
 	sendId: z.string().min(1),
 	teamId: z.string().min(1),
 	channel: z.string().min(1),
 	topic: z.object({ id: z.string().min(1), slug: z.string().min(1) }).strict(),
-	projectStream: z.object({ id: z.string().min(1), projectId: z.string().min(1), projectSlug: z.string().min(1) }).strict(),
-	discussionId: z.string().min(1),
-	messageRef: z.string().min(1),
-	sourceMessage: z.string(),
+	projectStreams: z.array(z.object({
+		id: z.string().min(1),
+		projectId: z.string().min(1),
+		projectSlug: z.string().min(1),
+		discussionId: z.string().min(1),
+		messageRef: z.string().min(1),
+	}).strict()).min(1),
 	status: z.enum(['queued', 'running', 'complete', 'partial', 'failed']),
 	targets: z.array(communicationTargetSchema),
 	responses: z.array(communicationResponseSchema),
+	events: z.array(communicationTopicEventSchema),
 	createdAt: z.string().datetime(),
 	updatedAt: z.string().datetime(),
 	replayed: z.boolean(),
+}).strict();
+
+export const communicationTopicListenerSchema = communicationRecipientSchema.extend({
+	projectSlug: z.string().min(1), agentHandle: z.string().min(1), status: z.enum(['active', 'removed']),
+	subscribedAt: z.string().datetime(), updatedAt: z.string().datetime(), source: z.enum(['mention', 'operator', 'seed']),
+}).strict();
+
+export const communicationTopicSchema = z.object({
+	id: z.string().min(1), teamId: z.string().min(1), slug: z.string().min(1), status: z.enum(['active', 'archived']),
+	createdAt: z.string().datetime(), updatedAt: z.string().datetime(),
+	streams: z.array(z.object({ id: z.string().min(1), projectId: z.string().min(1), projectSlug: z.string().min(1), discussionId: z.string().min(1) }).strict()),
+	listeners: z.array(communicationTopicListenerSchema),
+}).strict();
+
+export const communicationTopicPageSchema = z.object({ items: z.array(communicationTopicSchema), cursor: z.string().nullable() }).strict();
+export const communicationTopicTimelineSchema = z.object({ topic: communicationTopicSchema, events: z.array(communicationTopicEventSchema), cursor: z.string().nullable() }).strict();
+
+export const communicationTopicSubscriptionRequestSchema = z.object({ agent: z.string().trim().min(2).max(180) }).strict();
+export const communicationTopicSubscriptionReceiptSchema = z.object({ topicId: z.string().min(1), listener: communicationTopicListenerSchema, replayed: z.boolean() }).strict();
+
+export const providerCommunicationNotificationAcknowledgeRequestSchema = z.object({
+	providerId: z.string().min(1), runnerId: z.string().min(1), observedAt: z.string().datetime(),
+}).strict();
+export const providerCommunicationTraceEventRequestSchema = z.object({
+	leaseToken: z.string().min(1), runnerId: z.string().min(1), sequence: z.number().int().nonnegative(),
+	type: z.string().min(1), occurredAt: z.string().datetime(), summary: z.string().min(1), payload: z.record(z.unknown()),
+	protectedPayload: z.record(z.unknown()).optional(),
 }).strict();
 
 export const providerDiscussionResponseRequestSchema = z.object({
@@ -98,5 +167,7 @@ export const providerDiscussionResponseReceiptSchema = z.object({
 export type CommunicationSendRequest = z.infer<typeof communicationSendRequestSchema>;
 export type CommunicationSendReceipt = z.infer<typeof communicationSendReceiptSchema>;
 export type CommunicationResponse = z.infer<typeof communicationResponseSchema>;
+export type CommunicationTopicEvent = z.infer<typeof communicationTopicEventSchema>;
+export type CommunicationDiagnostic = z.infer<typeof communicationDiagnosticSchema>;
 export type ProviderDiscussionResponseRequest = z.infer<typeof providerDiscussionResponseRequestSchema>;
 export type ProviderDiscussionResponseReceipt = z.infer<typeof providerDiscussionResponseReceiptSchema>;

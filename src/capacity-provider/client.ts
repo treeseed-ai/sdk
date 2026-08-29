@@ -176,6 +176,14 @@ export class ProviderProtocolClient {
 		return this.invoke<ProviderDiscussionResponseReceipt>(CONTROL_PLANE_OPERATIONS.providers.discussionResponse, { path: { assignmentId }, body: request }, { idempotencyKey });
 	}
 
+	acknowledgeCommunicationNotification(assignmentId: string, request: { providerId: string; runnerId: string; observedAt: string }) {
+		return this.invoke<Record<string, unknown>>(CONTROL_PLANE_OPERATIONS.providers.notificationAcknowledge, { path: { assignmentId }, body: request });
+	}
+
+	createCommunicationTraceEvent(assignmentId: string, request: { leaseToken: string; runnerId: string; sequence: number; type: string; occurredAt: string; summary: string; payload: Record<string, unknown>; protectedPayload?: Record<string, unknown> }) {
+		return this.invoke<Record<string, unknown>>(CONTROL_PLANE_OPERATIONS.providers.traceEvent, { path: { assignmentId }, body: request });
+	}
+
 	returnAssignment(assignmentId: string, request: ProviderAssignmentLifecycleRequest = {}) {
 		return this.invoke<ProviderAssignmentLifecycleResult>(CONTROL_PLANE_OPERATIONS.providers.returnAssignment, { path: { assignmentId }, body: request });
 	}

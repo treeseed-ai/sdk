@@ -96,7 +96,7 @@ export const TREESEED_MCP_PROMPTS: readonly McpPromptDescriptor[] = [
 	{ name: 'research', description: 'Research a governed TreeSeed question and accumulate knowledge.', argumentSchemaId: 'treeseed.prompt.objective/v1', requiredScopes: ['treeseed:read'] },
 	{ name: 'governance-review', description: 'Review a proposal or decision using current governance evidence.', argumentSchemaId: 'treeseed.prompt.objective/v1', requiredScopes: ['treeseed:read'] },
 	{ name: 'workday-planning', description: 'Plan a time-based workday without bypassing API authority.', argumentSchemaId: 'treeseed.prompt.objective/v1', requiredScopes: ['treeseed:read'] },
-	{ name: 'project-agent-chat', description: 'Prepare an explicit governed project-agent chat invocation.', argumentSchemaId: 'treeseed.prompt.objective/v1', requiredScopes: ['treeseed:read'] },
+	{ name: 'project-agent-chat', description: 'Prepare an explicit governed team-topic chat invocation for project agents.', argumentSchemaId: 'treeseed.prompt.objective/v1', requiredScopes: ['treeseed:read'] },
 ];
 
 function resourcePath(restPath: string) {
