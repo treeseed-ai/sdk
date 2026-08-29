@@ -133,7 +133,7 @@ export const packageEndpointSchema = z.object({
 	aliasOverride: z.boolean().default(true),
 	tls: z.enum(['edge', 'passthrough', 'none']),
 	authentication: z.enum(['none', 'application', 'mtls']),
-	healthGate: z.object({ protocol: z.enum(['http', 'https', 'tcp']), path: z.string().startsWith('/').optional(), timeoutSeconds: z.number().int().positive().max(600) }).strict().optional(),
+	healthGate: z.object({ protocol: z.enum(['http', 'https', 'tcp']), path: z.string().startsWith('/').optional(), timeoutSeconds: z.number().int().positive().max(1_200) }).strict().optional(),
 }).strict().superRefine((endpoint, context) => {
 	if (endpoint.visibility === 'host' && !endpoint.defaultAlias) context.addIssue({ code: z.ZodIssueCode.custom, path: ['defaultAlias'], message: 'Host-visible endpoints require a .localhost alias.' });
 	if (endpoint.visibility === 'host' && !endpoint.healthGate) context.addIssue({ code: z.ZodIssueCode.custom, path: ['healthGate'], message: 'Host-visible endpoints require a health gate.' });

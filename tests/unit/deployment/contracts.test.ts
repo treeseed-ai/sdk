@@ -48,6 +48,8 @@ describe('deployment contracts', () => {
 		const endpoint = value.services[0]!.endpoints[0]!;
 		expect(() => packageRuntimeSchema.parse({ ...value, services: [{ ...value.services[0], endpoints: [{ ...endpoint, defaultAlias: 'api.example.com' }] }] })).toThrow(/localhost/u);
 		expect(() => packageRuntimeSchema.parse({ ...value, services: [{ ...value.services[0], endpoints: [{ ...endpoint, healthGate: undefined }] }] })).toThrow(/health gate/u);
+		expect(packageRuntimeSchema.parse({ ...value, services: [{ ...value.services[0], endpoints: [{ ...endpoint, healthGate: { ...endpoint.healthGate!, timeoutSeconds: 1_200 } }] }] }).services[0]!.endpoints[0]!.healthGate?.timeoutSeconds).toBe(1_200);
+		expect(() => packageRuntimeSchema.parse({ ...value, services: [{ ...value.services[0], endpoints: [{ ...endpoint, healthGate: { ...endpoint.healthGate!, timeoutSeconds: 1_201 } }] }] })).toThrow(/less than or equal to 1200/u);
 	});
 
 	it('declares manager-owned runtime configuration inputs', () => {
