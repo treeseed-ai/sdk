@@ -58,6 +58,35 @@ describe('human command tree contract', () => {
 		]));
 	});
 
+	it('maps workday planning options to the versioned intent wire contract', () => {
+		const workdays = TREESEED_COMMAND_TREE_V1.commands.find((node) => node.nodeType === 'branch' && node.segment === 'workdays');
+		const plan = workdays?.nodeType === 'branch' ? workdays.children.find((node) => node.nodeType === 'leaf' && node.segment === 'plan') : null;
+		expect(plan?.nodeType === 'leaf' ? plan.execution : null).toEqual(expect.objectContaining({
+			kind: 'operation',
+			operationId: 'workdays.plan',
+			input: expect.arrayContaining([
+				expect.objectContaining({ target: 'body', field: 'profileId', source: 'option', name: 'profile' }),
+				expect.objectContaining({ target: 'body', field: 'startsAt', source: 'option', name: 'start' }),
+				expect.objectContaining({ target: 'body', field: 'endsAt', source: 'option', name: 'end' }),
+				expect.objectContaining({ target: 'body', field: 'durationSeconds', source: 'option', name: 'duration', transform: 'integer' }),
+				expect.objectContaining({ target: 'body', field: 'objectiveFilters', source: 'option', name: 'objective', transform: 'csv' }),
+			]),
+		}));
+	});
+
+	it('maps workday start to the digest-bound API request', () => {
+		const workdays = TREESEED_COMMAND_TREE_V1.commands.find((node) => node.nodeType === 'branch' && node.segment === 'workdays');
+		const start = workdays?.nodeType === 'branch' ? workdays.children.find((node) => node.nodeType === 'leaf' && node.segment === 'start') : null;
+		expect(start?.nodeType === 'leaf' ? start.execution : null).toEqual(expect.objectContaining({
+			kind: 'operation',
+			operationId: 'workdays.start',
+			input: expect.arrayContaining([
+				expect.objectContaining({ target: 'body', field: 'preflightId', source: 'option', name: 'preflight' }),
+				expect.objectContaining({ target: 'body', field: 'preflightDigest', source: 'option', name: 'digest' }),
+			]),
+		}));
+	});
+
 	it('rejects mapped fields on strict empty and undefined operation inputs', () => {
 		const value = structuredClone(TREESEED_COMMAND_TREE_V1);
 		const status = value.commands.find((node) => node.nodeType === 'leaf' && node.segment === 'status');
