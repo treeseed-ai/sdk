@@ -32,7 +32,7 @@ development:
       ignoredPaths: [dist, node_modules]
       operations:
         watch: { command: node, args: [--watch-path=src, --watch-path=package.json, --import, tsx, scripts/development/build-watch.ts], environment: {}, timeoutSeconds: 86400 }
-        build: { command: npm, args: [run, build:dist], environment: {}, timeoutSeconds: 900 }
+        build: { command: node, args: [--import, tsx, scripts/development/build-watch.ts], environment: {}, timeoutSeconds: 900 }
         verify: { command: npm, args: [run, test:contracts], environment: {}, timeoutSeconds: 900 }
       ready: { kind: marker, path: dist/.treeseed-build-complete.json, timeoutSeconds: 120 }
       outputs: [{ path: dist, mediaType: application/vnd.treeseed.node-package, completionMarker: dist/.treeseed-build-complete.json, digestAlgorithm: sha256 }]

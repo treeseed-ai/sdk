@@ -20,7 +20,11 @@ const operationBindings: Record<string, Execution> = {
 	'auth logout': protocol('protocol.oauth.revoke'),
 	'auth status': operation('accounts.current.show'),
 	'users create': protocol('protocol.accounts.create'),
-	'send': operation('communications.send', [field('path', 'teamId', 'context', 'team', true), field('path', 'channel', 'argument', 'channel', true), field('body', 'message', 'argument', 'message', true), field('body', 'projectId', 'context', 'project', true), field('body', 'recipients', 'option', 'to'), field('body', 'timeoutSeconds', 'option', 'timeout', false, 'integer')]),
+	'send': operation('communications.send', [field('path', 'teamId', 'context', 'team', true), field('path', 'channel', 'argument', 'channel'), field('body', 'message', 'argument', 'message'), field('body', 'recipients', 'option', 'to'), field('body', 'timeoutSeconds', 'option', 'timeout', false, 'integer')]),
+	'topics list': operation('communications.topics.list', [field('path', 'teamId', 'context', 'team', true), ...page()]),
+	'topics show': operation('communications.topics.show', [field('path', 'teamId', 'context', 'team', true), field('path', 'channel', 'argument', 'topic', true)]),
+	'topics subscribe': operation('communications.topics.subscriptions.put', [field('path', 'teamId', 'context', 'team', true), field('path', 'channel', 'argument', 'topic', true), field('body', 'agent', 'argument', 'agent', true)]),
+	'topics unsubscribe': operation('communications.topics.subscriptions.delete', [field('path', 'teamId', 'context', 'team', true), field('path', 'channel', 'argument', 'topic', true), field('body', 'agent', 'argument', 'agent', true)]),
 	'teams list': operation('teams.list', page()),
 	'teams current': local('local.teams.current'),
 	'teams use': local('local.teams.use'),
@@ -53,6 +57,10 @@ const operationBindings: Record<string, Execution> = {
 	'host topology': local('local.host.topology'),
 	'host connections': local('local.host.connections'),
 	'host provider status': local('local.host.provider.status'),
+	'host storage status': local('local.host.storage.status'),
+	'host storage connect': local('local.host.storage.connect'),
+	'host storage reconcile': local('local.host.storage.reconcile'),
+	'host storage rotate': local('local.host.storage.rotate'),
 	'host fleet status': local('local.host.fleet.status'),
 	'host recovery status': local('local.host.recovery.status'),
 	'host recovery retry': local('local.host.recovery.retry'),
@@ -176,7 +184,7 @@ function branch(segment: string, children: CommandNodeDescriptor[]): CommandNode
 }
 
 function configurationAdopt(): CommandNodeDescriptor {
-	const value = leaf('adopt', 'mutation', 'file', 'authority');
+	const value = leaf('adopt', 'mutation', 'file', 'destructive');
 	if (value.nodeType !== 'leaf') throw new Error('Configuration adoption must be a leaf command.');
 	value.options = [...(value.options ?? []), { name: '--confirm', description: 'Confirm replacement of the installed configuration identity.', type: 'boolean' }];
 	return value;
@@ -255,7 +263,14 @@ const commandTree: CommandTreeDescriptor = {
 	schemaVersion: 'treeseed.command-tree/v1',
 	executable: 'trsd',
 	commands: [
-		{ nodeType: 'leaf', segment: 'send', description: 'Send a message to addressed project agents in a team discussion topic.', kind: 'mutation', arguments: [{ name: 'channel', description: 'Team discussion-topic channel.', required: true }, { name: 'message', description: 'Markdown message containing agent addresses.', required: true }], options: [planOption, { name: '--team', description: 'One-command team override.', type: 'string' }, { name: '--project', description: 'Project for agent resolution and the topic stream.', type: 'string', required: true }, { name: '--to', description: 'Deprecated validation-only address list.', type: 'string[]' }, { name: '--timeout', description: 'Maximum seconds to wait for the complete response chain.', type: 'number', defaultValue: 1800 }, { name: '--no-wait', description: 'Return immediately after durable admission.', type: 'boolean' }, { name: '--wait', description: 'Deprecated wait duration in seconds.', type: 'number' }], authorization: { capability: 'agents.execute', confirmation: 'never' }, resultSchemaId: 'treeseed.communication-send-receipt/v2', execution: unavailable() },
+		{ nodeType: 'leaf', segment: 'inbox', description: 'Open the active team governance inbox.', kind: 'read', options: [{ name: '--project', description: 'Initial project filter.', type: 'string' }, { name: '--type', description: 'Initial proposal, question, or all filter.', type: 'string' }, { name: '--all', description: 'Include completed and decided items.', type: 'boolean' }], resultSchemaId: 'treeseed.inbox-session/v1', execution: local('local.inbox') },
+		{ nodeType: 'leaf', segment: 'send', description: 'Send a message or open the interactive team topic browser.', kind: 'mutation', arguments: [{ name: 'channel', description: 'Optional team discussion topic to preselect.', required: false }, { name: 'message', description: 'Markdown message containing agent addresses.', required: false }], options: [planOption, { name: '--team', description: 'One-command team override.', type: 'string' }, { name: '--to', description: 'Deprecated validation-only address list.', type: 'string[]' }, { name: '--timeout', description: 'Optional maximum seconds to listen for the complete response chain.', type: 'number' }, { name: '--no-wait', description: 'Return immediately after durable admission.', type: 'boolean' }, { name: '--wait', description: 'Deprecated wait duration in seconds.', type: 'number' }, { name: '--json-stream', description: 'Emit ordered communication events as NDJSON.', type: 'boolean' }, { name: '--diagnostics', description: 'Diagnostic detail: metadata or full.', type: 'string' }], authorization: { capability: 'agents.execute', confirmation: 'never' }, resultSchemaId: 'treeseed.communication-send-receipt/v4', execution: unavailable() },
+		branch('topics', [
+			{ nodeType: 'leaf', segment: 'list', description: 'List discussion topics and active listeners.', kind: 'read', options: [{ name: '--status', description: 'Topic status.', type: 'string' }, { name: '--limit', description: 'Maximum topics.', type: 'number' }, { name: '--cursor', description: 'Pagination cursor.', type: 'string' }], resultSchemaId: 'treeseed.communication-topic-page/v1', execution: unavailable() },
+			{ nodeType: 'leaf', segment: 'show', description: 'Show a discussion topic and its listeners.', kind: 'read', arguments: [{ name: 'topic', description: 'Discussion topic.', required: true }], resultSchemaId: 'treeseed.communication-topic/v1', execution: unavailable() },
+			{ nodeType: 'leaf', segment: 'subscribe', description: 'Subscribe an agent to a discussion topic.', kind: 'mutation', arguments: [{ name: 'topic', description: 'Discussion topic.', required: true }, { name: 'agent', description: '@project/agent handle.', required: true }], options: [planOption], authorization: { capability: 'agents.execute', confirmation: 'never' }, resultSchemaId: 'treeseed.communication-topic-subscription-receipt/v1', execution: unavailable() },
+			{ nodeType: 'leaf', segment: 'unsubscribe', description: 'Remove an agent subscription from a discussion topic.', kind: 'mutation', arguments: [{ name: 'topic', description: 'Discussion topic.', required: true }, { name: 'agent', description: '@project/agent handle.', required: true }], options: [planOption], authorization: { capability: 'agents.execute', confirmation: 'never' }, resultSchemaId: 'treeseed.communication-topic-subscription-receipt/v1', execution: unavailable() },
+		]),
 		branch('auth', [authLogin(), leaf('logout', 'mutation'), leaf('status')]),
 		branch('users', [userCreate()]),
 		branch('teams', [leaf('list'), { nodeType: 'leaf', segment: 'current', description: 'Show the active team for this authenticated server session.', kind: 'read', resultSchemaId: 'treeseed.command.teams.current/v1', execution: unavailable() }, { nodeType: 'leaf', segment: 'use', description: 'Select the active team for this authenticated server session.', kind: 'mutation', arguments: [{ name: 'team', description: 'Team UUID or unambiguous slug.', required: true }], options: [planOption], authorization: { capability: 'teams.read', confirmation: 'never' }, resultSchemaId: 'treeseed.command.teams.use/v1', execution: unavailable() }]),
@@ -276,7 +291,14 @@ const commandTree: CommandTreeDescriptor = {
 		branch('host', [
 			leaf('status'), leaf('doctor'), leaf('plan'), leaf('apply', 'mutation', undefined, 'authority'), leaf('reconcile', 'mutation', undefined, 'authority'), leaf('events'),
 			branch('config', [leaf('show'), leaf('plan', 'read', 'file'), leaf('apply', 'mutation', 'file', 'authority'), configurationAdopt()]),
-			leaf('topology'), leaf('connections'), branch('provider', [leaf('status')]), branch('fleet', [leaf('status')]),
+			leaf('topology'), leaf('connections'), branch('provider', [leaf('status')]),
+			branch('storage', [
+				leaf('status'),
+				addOptions(leaf('connect', 'mutation', 'backend', 'credential'), [{ name: '--account-id', description: 'Optional Cloudflare account ID when the bootstrap authority reaches multiple accounts.', type: 'string' }]),
+				leaf('reconcile', 'mutation', undefined, 'authority'),
+				leaf('rotate', 'mutation', 'backend', 'credential'),
+			]),
+			branch('fleet', [leaf('status')]),
 			branch('update', [leaf('status'), leaf('check', 'mutation'), leaf('apply', 'mutation', undefined, 'authority'), leaf('channel', 'mutation', 'track', 'authority'), leaf('pause', 'mutation', undefined, 'authority'), leaf('resume', 'mutation', undefined, 'authority')]),
 			branch('component', [leaf('list'), leaf('status', 'read', 'component'), leaf('enable', 'mutation', 'component', 'authority'), leaf('disable', 'mutation', 'component', 'destructive')]),
 			branch('aliases', [leaf('list')]),

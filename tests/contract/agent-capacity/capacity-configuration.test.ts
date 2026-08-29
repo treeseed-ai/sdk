@@ -4,6 +4,7 @@ import { validateAgentActivityProfilesConfiguration } from '../../../src/agent-c
 import { validateProjectAgentClassConfiguration } from '../../../src/agent-capacity/validation/configuration.ts';
 import { CAPACITY_CONFIGURATION_DESCRIPTORS, CAPACITY_CONFIGURATION_FAMILIES } from '../../../src/agent-capacity/contracts/configuration/configuration.ts';
 import { validateCapacityProviderManifestV3, validateProviderSupplyOffer } from '../../../src/capacity-provider/validation.ts';
+import { compileAgentAuthoritySnapshot } from '../../../src/agent-capacity/authority/agent-authority-presets.ts';
 
 const validators = {
 	'provider-manifest': validateCapacityProviderManifestV3,
@@ -15,6 +16,15 @@ const validators = {
 } as const;
 
 describe('capacity configuration inventory', () => {
+	it('gives chat profiles project source read tools without source mutation authority', () => {
+		const snapshot = compileAgentAuthoritySnapshot('chat', {
+			activityType: 'chat', enabled: true, handler: 'writer', prompt: { system: 'Discuss.' },
+			branchPolicy: { kind: 'read-only', base: 'staging' }, permissions: { repository: { readPaths: ['**'], writePaths: [], allowCodeMutation: false } },
+			tools: { allowed: [] }, outputs: { messageTypes: ['discussion_response'], modelMutations: [] }, execution: {},
+		});
+		expect(snapshot.tools.allowed).toEqual(expect.arrayContaining(['treeseed.repository.read_file', 'treeseed.repository.search']));
+		expect(snapshot.permissions?.repository).toMatchObject({ readPaths: ['**'], writePaths: [], allowCodeMutation: false });
+	});
 	it('has one SDK-owned descriptor and validator for every declarative family', () => {
 		expect(CAPACITY_CONFIGURATION_DESCRIPTORS.map((entry) => entry.id)).toEqual(CAPACITY_CONFIGURATION_FAMILIES);
 		for (const descriptor of CAPACITY_CONFIGURATION_DESCRIPTORS) {

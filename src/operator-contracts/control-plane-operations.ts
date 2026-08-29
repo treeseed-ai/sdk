@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { type ControlPlaneOperationBinding, type ControlPlaneOperationDescriptor } from './control-plane-operation.ts';
 import { defineOperation as define, defineTreeDxProxyOperation as treedxProxy } from './operation-builder.ts';
-import { communicationOperations, providerDiscussionResponseOperation } from './catalog/communication-operations.ts';
+import { communicationOperations, providerCommunicationLifecycleOperations, providerDiscussionResponseOperation } from './catalog/communication-operations.ts';
+import { inboxOperations } from './catalog/inbox-operations.ts';
 import { adminAccountOperations, adminTeamOperations } from './catalog/admin-account-team-operations.ts';
 import { TREEAI_CONTROL_PLANE_OPERATIONS } from './catalog/treeai-operations.ts';
 const empty = z.object({}).strict();
@@ -86,6 +87,7 @@ function resource<T extends z.ZodRawShape>(
 }
 
 export const CONTROL_PLANE_OPERATIONS = {
+	inbox: inboxOperations(),
 	treeai: TREEAI_CONTROL_PLANE_OPERATIONS,
 	status: {
 		show: read('status.show', '/v1/status', 'status.read', ['rest', 'cli', 'mcp_tool', 'mcp_resource']),
@@ -467,6 +469,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 		startCloseout: providerPath('providers.assignments.closeout.start', 'POST', '/v1/provider/assignments/{assignmentId}/closeout-start', { assignmentId: z.string().min(1) }),
 		completionPreflight: providerPath('providers.assignments.completion.preflight', 'POST', '/v1/provider/assignments/{assignmentId}/completion-preflight', { assignmentId: z.string().min(1) }),
 		discussionResponse: providerDiscussionResponseOperation(),
+		...providerCommunicationLifecycleOperations(),
 		returnAssignment: providerPath('providers.assignments.return', 'POST', '/v1/provider/assignments/{assignmentId}/return', { assignmentId: z.string().min(1) }),
 		completeAssignment: providerPath('providers.assignments.complete', 'POST', '/v1/provider/assignments/{assignmentId}/complete', { assignmentId: z.string().min(1) }),
 		failAssignment: providerPath('providers.assignments.fail', 'POST', '/v1/provider/assignments/{assignmentId}/fail', { assignmentId: z.string().min(1) }),

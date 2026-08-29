@@ -1,5 +1,7 @@
 # `@treeseed/sdk`
 
+The operator catalog includes versioned `inbox.*` operations for unified team inbox queries, ordered events, private drafts, routed question creation, and exact-version governance actions.
+
 `@treeseed/sdk` is TreeSeed's portable contract and remote API package. It gives API, CLI, Agent, browser, and external integrations one versioned description of the control plane and typed conduits to remote TreeSeed and TreeDX services.
 
 The SDK does not own control-plane persistence, scheduling, repository mutation, content publication, deployment, provider runtimes, or server-side business workflows. Those implementations belong to the API or their dedicated runtime packages.
@@ -34,6 +36,8 @@ const health = await client.invoke(CONTROL_PLANE_OPERATIONS.health.readiness, {
 ```
 
 The client provides typed operation dispatch, RFC 9457 problem handling, OAuth device and refresh flows, server-profile normalization, idempotency keys, optimistic-concurrency headers, and request cancellation. Operation bindings come from the versioned operation catalog; callers do not construct control-plane paths. Token and profile persistence belong to the consuming CLI, application, or host credential store.
+
+Communication contracts treat discussion topics as team-wide coordination scopes. Qualified `@project/agent` addresses select one agent, while unqualified `@agent` addresses expand to every matching chat-enabled agent across active team projects. The API maintains a project-local TreeDX discussion stream for each addressed project and aggregates their invocations under one send identity.
 
 ## TreeDX API
 
