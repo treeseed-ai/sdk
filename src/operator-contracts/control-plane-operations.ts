@@ -31,7 +31,6 @@ function providerPath<T extends z.ZodRawShape>(
 		redactedPaths: options.redactedPaths,
 	}, { path: z.object(pathShape).strict(), query: empty, body: method === 'GET' ? none : record, output: payload });
 }
-
 const noPathProvider = (operationId: `${string}.${string}`, method: 'GET' | 'POST' | 'PUT', path: `/v1/${string}`, options: { read?: boolean; redactedPaths?: string[]; authentication?: ControlPlaneOperationDescriptor['authentication'] } = {}) =>
 	define({
 		operationId, description: `${options.read ? 'Read' : 'Apply'} ${operationId}.`, rest: { method, path },
@@ -55,7 +54,6 @@ function postRead<T extends z.ZodRawShape>(
 		surfaces, cacheScope: 'none', pagination: 'none', idempotencyRequired: false,
 	}, { path: z.object(pathShape).strict(), query: empty, body: record, output: payload });
 }
-
 function resource<T extends z.ZodRawShape>(
 	operationId: `${string}.${string}`,
 	method: 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT',
@@ -482,7 +480,6 @@ export const CONTROL_PLANE_OPERATIONS = {
 		workflowRun: providerPath('providers.assignments.workflow.show', 'GET', '/v1/provider/assignments/{assignmentId}/workflow-runs/{runId}', { assignmentId: z.string().min(1), runId: z.string().min(1) }, { read: true }),
 	},
 } as const;
-
 function flatten(value: unknown, output: ControlPlaneOperationBinding<any, any, any, any>[] = []) {
 	if (value && typeof value === 'object' && 'descriptor' in value && 'schema' in value) output.push(value as ControlPlaneOperationBinding<any, any, any, any>);
 	else if (value && typeof value === 'object') for (const child of Object.values(value)) flatten(child, output);
