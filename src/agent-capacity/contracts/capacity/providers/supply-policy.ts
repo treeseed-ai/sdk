@@ -8,9 +8,7 @@ export interface CapacitySupplyPolicy {
 	allowPlanningFailover: boolean;
 	allowActingFailover: boolean;
 	preferredCapacityProviderIds?: string[];
-	preferredExecutionProviderIds?: string[];
 	disallowedCapacityProviderIds?: string[];
-	disallowedExecutionProviderIds?: string[];
 }
 
 export interface CapacitySupplyCandidate {

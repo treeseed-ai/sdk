@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { generateKeyPairSync, sign } from 'node:crypto';
 import { ProviderProtocolClient } from '../../../../../src/capacity/providers/capacity-provider.ts';
 import { CONTROL_PLANE_OPERATIONS } from '../../../../../src/operator-contracts/index.ts';
 import type { CapacityProviderManifestV3 } from '../../../../../src/capacity-provider/contracts/governance.ts';
 import { validateCapacityProviderManifestV3 } from '../../../../../src/capacity-provider/validation.ts';
+import { sandboxEnvironmentCatalogDigest, sandboxEnvironmentCatalogSchema, sandboxEnvironmentCatalogSigningBytes, verifySandboxEnvironmentCatalog } from '../../../../../src/capacity-provider/environment-catalog.ts';
 
 function batteryManifest(): CapacityProviderManifestV3 {
 	return {
@@ -24,6 +26,30 @@ function batteryManifest(): CapacityProviderManifestV3 {
 }
 
 describe('capacity provider membership protocol', () => {
+	it('models environment kinds as signed catalog data rather than SDK enums', () => {
+		const hash = (value: string) => `sha256:${value.repeat(64)}`;
+		const base = { id: 'ubuntu-base', version: '24.04.0', kind: 'base', status: 'active', createdAt: '2026-08-29T00:00:00.000Z', contract: { id: 'base-contract', version: '1.0.0', digest: hash('3'), capabilities: [] },
+			image: { reference: 'registry.example/ubuntu', digest: hash('d'), architectures: ['amd64'], operatingSystem: 'linux' }, derivedFrom: null,
+			provenance: { sourceRepository: 'https://example.test/base', sourceRevision: 'd'.repeat(40), buildRecipeDigest: hash('4'), sbomDigest: hash('5'), signature: { keyId: 'build-key', algorithm: 'cosign', value: 'signature' } },
+			qualification: { suiteId: 'base-suite', suiteVersion: '1.0.0', evidenceDigest: hash('6'), status: 'passed', completedAt: '2026-08-29T00:00:00.000Z' } };
+		const catalog = sandboxEnvironmentCatalogSchema.parse({ schemaVersion: 'treeseed.sandbox-environment-catalog/v1', generation: 1, catalogDigest: hash('a'), rootPolicy: { allowedBaseImageDigests: [hash('d')] }, createdAt: '2026-08-29T00:00:00.000Z', signature: { keyId: 'catalog-key', algorithm: 'Ed25519', value: 'signature' }, entries: [base, {
+			id: 'customer-specialized-runtime', version: '1.0.0', kind: 'extension', status: 'active', createdAt: '2026-08-29T00:00:00.000Z',
+			contract: { id: 'customer-security-contract', version: '1.0.0', digest: hash('b'), capabilities: ['custom-scanning'] },
+			image: { reference: 'registry.example/customer/runtime', digest: hash('c'), architectures: ['amd64'], operatingSystem: 'linux' },
+			derivedFrom: [{ entryId: 'ubuntu-base', version: '24.04.0', imageDigest: hash('d') }],
+			provenance: { sourceRepository: 'https://example.test/runtime', sourceRevision: 'e'.repeat(40), buildRecipeDigest: hash('f'), sbomDigest: hash('1'), signature: { keyId: 'build-key', algorithm: 'cosign', value: 'signature' } },
+			qualification: { suiteId: 'customer-suite', suiteVersion: '1.0.0', evidenceDigest: hash('2'), status: 'passed', completedAt: '2026-08-29T00:00:00.000Z' },
+		}] });
+		expect(catalog.entries[1]?.contract.id).toBe('customer-security-contract');
+	});
+	it('authenticates the exact canonical environment catalog', () => {
+		const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+		const material = { schemaVersion: 'treeseed.sandbox-environment-catalog/v1' as const, generation: 1, rootPolicy: { allowedBaseImageDigests: [`sha256:${'a'.repeat(64)}`] }, entries: [], createdAt: '2026-08-29T00:00:00.000Z' };
+		const unsigned = sandboxEnvironmentCatalogSchema.parse({ ...material, catalogDigest: sandboxEnvironmentCatalogDigest(material), signature: { keyId: 'catalog-key', algorithm: 'Ed25519', value: 'pending' } });
+		const catalog = { ...unsigned, signature: { ...unsigned.signature, value: sign(null, sandboxEnvironmentCatalogSigningBytes(unsigned), privateKey).toString('base64url') } };
+		expect(verifySandboxEnvironmentCatalog(catalog, publicKey.export({ format: 'jwk' })).generation).toBe(1);
+		expect(() => verifySandboxEnvironmentCatalog({ ...catalog, generation: 2 }, publicKey.export({ format: 'jwk' }))).toThrow(/digest/u);
+	});
 	it('accepts one shared battery with reserved communication and isolated platform execution', () => {
 		expect(validateCapacityProviderManifestV3(batteryManifest())).toEqual({ ok: true, diagnostics: [] });
 	});

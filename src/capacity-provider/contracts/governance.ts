@@ -1,4 +1,5 @@
 import type { ResearchSourcePolicy } from '../../agent-capacity/contracts/support/research-source-policy.ts';
+import type { CapabilityOffer } from '../capability-ontology.ts';
 
 export const CAPACITY_PROVIDER_IDENTITY_ALGORITHM = 'Ed25519' as const;
 export const CAPACITY_PROVIDER_PROOF_TTL_SECONDS = 300;
@@ -457,9 +458,11 @@ export interface CapacityProviderManifestV3 {
 }
 
 export interface CapacityProviderSandboxProfile {
-	id: 'read' | 'unit' | 'integration' | 'platform' | 'connected' | string;
+	id: string;
+	contract?: { id: string; version: string; digest: string; capabilities: string[] };
 	guestImage: string;
 	guestImageDigest: string;
+	lineage?: { baseImageDigest: string; provenanceDigest: string; architectures: Array<'amd64' | 'arm64'>; signature: { keyId: string; algorithm: 'cosign' | 'Ed25519'; value: string } };
 	defaultDenyNetwork: true;
 	resources: { cpuCores: number; memoryBytes: number; diskBytes: number; processLimit: number; outputBytes: number };
 }
@@ -475,7 +478,17 @@ export interface CapacityProviderManifestV4 extends Omit<CapacityProviderManifes
 	adapters: Array<Omit<CapacityProviderManifestV3['adapters'][number], 'isolation'> & {
 		isolation: 'microvm' | 'process' | 'worker';
 		sandboxProfileIds?: string[];
+		defaultSandboxProfiles?: { conversation: string; execution: string };
 	}>;
 }
 
-export type CapacityProviderManifest = CapacityProviderManifestV3 | CapacityProviderManifestV4;
+export interface CapacityProviderManifestV5 extends Omit<CapacityProviderManifestV4, 'schemaVersion' | 'adapters'> {
+	schemaVersion: 5;
+	ontology: { generation: number; digest: string };
+	adapters: Array<Omit<CapacityProviderManifestV4['adapters'][number], 'capabilities' | 'sandboxProfileIds' | 'defaultSandboxProfiles'> & {
+		isolation: 'microvm';
+		offers: Array<{ offer: CapabilityOffer; sandboxProfileId: string }>;
+	}>;
+}
+
+export type CapacityProviderManifest = CapacityProviderManifestV3 | CapacityProviderManifestV4 | CapacityProviderManifestV5;

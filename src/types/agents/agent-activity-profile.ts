@@ -3,6 +3,15 @@ import { AgentActivityExecutionConfig,AgentActivityPermissions,AgentActivityPlan
 import type { AgentAuthorityPresetId } from '../../agent-capacity/authority/agent-authority-presets.ts';
 
 export interface AgentContentRevisionRef { id:string; revision:number }
+export interface AgentCapabilityConfigurationValue { value: unknown; requirement: 'required' | 'preferred' }
+export interface AgentCapabilityRequirement {
+	capabilityId: string;
+	versionRange: string;
+	requirement: 'required' | 'preferred';
+	alternativeGroup?: string | null;
+	requiredFeatures?: string[];
+	configuration?: Record<string, AgentCapabilityConfigurationValue>;
+}
 
 export interface AgentActivityProfile {
 	activityType?: AgentActivityType;
@@ -15,9 +24,9 @@ export interface AgentActivityProfile {
 	contextQueryRefs?: AgentContentRevisionRef[];
 	contextQuerySetRefs?: AgentContentRevisionRef[];
 	instructionTemplateRefs?: AgentContentRevisionRef[];
+	capabilityRequirements?: AgentCapabilityRequirement[];
 	artifactTriggers?: Array<{ event: string; artifactKind: string; model?: string; required?: boolean }>;
 	closeoutPolicy?: { warningSeconds?: number; summaryRequired?: boolean; requiredArtifactKinds?: string[]; blockOnOpenQuestions?: boolean };
-	providerOverrides?: { requiredCapabilities?: string[]; disallowedProviderIds?: string[]; promptRef?: string; instructionTemplateRefs?: AgentContentRevisionRef[]; maxRuntimeSeconds?: number; maxTotalTokens?: number; maxCostAmount?: number };
 	tools: AgentToolPolicy;
 	signals?: AgentSignalPolicy;
 	outputs: AgentOutputContract;
@@ -32,7 +41,7 @@ export interface AgentChatProfileConfiguration {
 	foundation: 'discussion-v1';
 	responseStyle?: string;
 	promptTask?: string;
-	requiredCapabilities?: string[];
+	capabilityRequirements?: AgentCapabilityRequirement[];
 	maxRuntimeSeconds?: number;
 	maxTotalTokens?: number;
 	warningTokens?: number;
@@ -69,8 +78,6 @@ export interface AgentDefinition {
 }
 
 export interface AgentExecutionConfig {
-	provider?: string;
-	model?: string;
 	approvalPolicy?: 'never' | 'on_request' | 'always' | string;
 	sandboxMode?: 'read_only' | 'workspace_write' | string;
 	reasoningEffort?: 'low' | 'medium' | 'high' | string;
@@ -87,7 +94,6 @@ export interface AgentExecutionConfig {
 	leaseSeconds: number;
 	retryLimit: number;
 	branchPrefix: string;
-	providerProfile?: AgentProviderProfile;
 }
 
 export type AgentProviderFallbackPolicy =
@@ -96,29 +102,8 @@ export type AgentProviderFallbackPolicy =
 	| 'fail_if_unavailable'
 	| 'ask_for_approval';
 
-export interface AgentExecutionProviderPreference {
-	providerId?: string;
-	provider?: string;
-	model?: string;
-	modelClass?: string;
-	weight: number;
-	reason?: string;
-}
-
-export interface AgentProviderFallback {
-	providerId?: string;
-	provider?: string;
-	model?: string;
-	modelClass?: string;
-	maxQualityPenalty?: number;
-}
-
 export interface AgentProviderProfile {
-	requiredCapabilities: string[];
-	preferredExecutionProviders: AgentExecutionProviderPreference[];
-	acceptableFallbacks: AgentProviderFallback[];
-	disallowedProviders?: string[];
-	disallowedRegions?: string[];
+	capabilityRequirements: AgentCapabilityRequirement[];
 	fallbackPolicy: AgentProviderFallbackPolicy;
 }
 

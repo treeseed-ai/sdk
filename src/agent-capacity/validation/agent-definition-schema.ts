@@ -30,12 +30,9 @@ const closeoutPolicySchema = z.object({
 	warningSeconds: z.number().int().positive().optional(),summaryRequired: z.boolean().optional(),
 	requiredArtifactKinds: stringList.optional(),blockOnOpenQuestions: z.boolean().optional(),
 }).strict();
-const providerOverridesSchema = z.object({
-	requiredCapabilities: stringList.optional(),disallowedProviderIds: stringList.optional(),
-	promptRef:nonEmpty.optional(),instructionTemplateRefs:exactRevisionRefList.optional(),
-	maxRuntimeSeconds: z.number().int().positive().optional(),maxTotalTokens: z.number().int().positive().optional(),
-	maxCostAmount: z.number().nonnegative().optional(),
-}).strict();
+const capabilityRequirementSchema = z.object({ capabilityId: nonEmpty, versionRange: nonEmpty,
+	requirement: z.enum(['required','preferred']), alternativeGroup: nonEmpty.nullable().optional(), requiredFeatures: stringList.optional(),
+	configuration: z.record(z.object({ value: z.unknown(), requirement: z.enum(['required','preferred']) }).strict()).optional() }).strict();
 const branchPolicySchema = z.object({
 	kind: z.enum(['read-only','main-planning-content','staging-content','assignment-feature','staging-release']),
 	base: z.enum(['main','staging']),
@@ -112,10 +109,10 @@ const activityProfileSchema = z.object({
 	contextQueryRefs: exactRevisionRefList.optional(),
 	contextQuerySetRefs: exactRevisionRefList.optional(),
 	instructionTemplateRefs: exactRevisionRefList.optional(),
+	capabilityRequirements: z.array(capabilityRequirementSchema).min(1).optional(),
 	permissions: permissionsSchema.optional(),
 	artifactTriggers: z.array(artifactTriggerSchema).optional(),
 	closeoutPolicy: closeoutPolicySchema.optional(),
-	providerOverrides: providerOverridesSchema.optional(),
 	tools: toolPolicySchema,
 	signals: signalPolicySchema.optional(),
 	outputs: z.object({ messageTypes: stringList, modelMutations: stringList }).strict(),
@@ -123,16 +120,6 @@ const activityProfileSchema = z.object({
 	questionPolicy: z.object({ blockExecutionWhenCreated: z.boolean().optional(), defaultAnswerPolicy: answerPolicySchema.optional() }).strict().optional(),
 	execution: executionSchema.optional(),
 }).strict().superRefine((profile,context) => {
-	const overrides = profile.providerOverrides;
-	if (!overrides) return;
-	for (const key of ['maxRuntimeSeconds','maxTotalTokens','maxCostAmount'] as const) {
-		if (overrides[key] !== undefined && (profile.execution?.[key] === undefined || overrides[key]! > profile.execution[key]!)) {
-			context.addIssue({ code:z.ZodIssueCode.custom,path:['providerOverrides',key],message:`${key} must narrow an explicit profile execution limit.` });
-		}
-	}
-	if (overrides.promptRef && !Object.hasOwn(profile.prompt.templates ?? {},overrides.promptRef)) {
-		context.addIssue({ code:z.ZodIssueCode.custom,path:['providerOverrides','promptRef'],message:'Provider promptRef must select a declared profile prompt template.' });
-	}
 });
 
 export const agentDefinitionSchema = z.object({
@@ -160,13 +147,6 @@ export const agentDefinitionSchema = z.object({
 }).passthrough().superRefine((agent,context) => {
 	const raw = agent as Record<string,unknown>;
 	for (const legacy of ['primaryGroupId','permissionPolicy','contentAccess']) if (legacy in raw) context.addIssue({ code:z.ZodIssueCode.custom,path:[legacy],message:`${legacy} is not part of the canonical agent contract.` });
-	for (const [profileName,profile] of Object.entries(agent.activityProfiles)) {
-		const key = (ref:{id:string;revision:number}) => `${ref.id}@${ref.revision}`;
-		const allowed = new Set([...(agent.instructionTemplateRefs ?? []),...(profile.instructionTemplateRefs ?? [])].map(key));
-		if (profile.providerOverrides?.instructionTemplateRefs?.some((ref) => !allowed.has(key(ref)))) context.addIssue({
-			code:z.ZodIssueCode.custom,path:['activityProfiles',profileName,'providerOverrides','instructionTemplateRefs'],message:'Provider instruction templates must narrow common or profile instruction templates.',
-		});
-	}
 });
 
 function issuePath(path: Array<string | number>) {

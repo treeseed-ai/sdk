@@ -4,7 +4,7 @@ import { compileAgentAuthoritySnapshot } from '../authority/agent-authority-pres
 export interface AgentActivityProfileDiagnostic { code: string; path: string; message: string }
 export interface AgentActivityProfileValidation { ok: boolean; diagnostics: AgentActivityProfileDiagnostic[] }
 
-const PROFILE_KEYS = new Set(['activityType','enabled','handler','prompt','branchPolicy','contextQueryRefs','contextQuerySetRefs','instructionTemplateRefs','permissions','authorityPresets','artifactTriggers','closeoutPolicy','providerOverrides','tools','signals','outputs','planningIntent','questionPolicy','execution']);
+const PROFILE_KEYS = new Set(['activityType','enabled','handler','prompt','branchPolicy','contextQueryRefs','contextQuerySetRefs','instructionTemplateRefs','capabilityRequirements','permissions','authorityPresets','artifactTriggers','closeoutPolicy','tools','signals','outputs','planningIntent','questionPolicy','execution']);
 const PROMPT_KEYS = new Set(['system', 'task', 'templates']);
 const TOOL_KEYS = new Set(['allowed', 'denied']);
 const SIGNAL_KEYS = new Set(['subscribesTo', 'publishes']);
@@ -62,9 +62,9 @@ export function validateAgentActivityProfilesConfiguration(value: unknown): Agen
 		validateContentAccess(raw.permissions,`${path}.permissions`,add);
 		if (raw.authorityPresets !== undefined && (!strings(raw.authorityPresets) || raw.authorityPresets.some((preset) => !['messaging','direction','influence','estimation','plan-contribution','source-execution','review-authority','reporting'].includes(preset)))) add('agent_activity_authority_presets_invalid',`${path}.authorityPresets`,'authorityPresets must contain supported unique preset ids.');
 		for (const key of ['contextQueryRefs','contextQuerySetRefs','instructionTemplateRefs']) if (raw[key] !== undefined && !exactRefs(raw[key])) add('agent_activity_revision_refs_invalid',`${path}.${key}`,`${path}.${key} must contain unique exact id and revision references.`);
+		validateCapabilityRequirements(raw.capabilityRequirements,`${path}.capabilityRequirements`,add);
 		validateArtifactTriggers(raw.artifactTriggers,`${path}.artifactTriggers`,add);
 		validateCloseoutPolicy(raw.closeoutPolicy,`${path}.closeoutPolicy`,add);
-		validateProviderOverrides(raw.providerOverrides,`${path}.providerOverrides`,add);
 		validateQuestionPolicy(raw.questionPolicy, `${path}.questionPolicy`, add);
 		validateExecution(raw.execution, `${path}.execution`, add);
 		if (typeof raw.enabled === 'boolean' && typeof raw.handler === 'string' && record(raw.tools) && record(raw.outputs) && record(raw.branchPolicy)) {
@@ -182,13 +182,19 @@ function validateCloseoutPolicy(value: unknown,path: string,add: Add) {
 	if (value.requiredArtifactKinds !== undefined && !strings(value.requiredArtifactKinds)) add('agent_activity_string_list_invalid',`${path}.requiredArtifactKinds`,'requiredArtifactKinds must contain unique non-empty strings.');
 }
 
-function validateProviderOverrides(value: unknown,path: string,add: Add) {
+function validateCapabilityRequirements(value: unknown,path: string,add: Add) {
 	if (value === undefined) return;
-	if (!record(value)) { add('agent_activity_provider_overrides_invalid',path,'providerOverrides must be an object.'); return; }
-	unknownKeys(value,new Set(['requiredCapabilities','disallowedProviderIds','promptRef','instructionTemplateRefs','maxRuntimeSeconds','maxTotalTokens','maxCostAmount']),path,add);
-	for (const key of ['requiredCapabilities','disallowedProviderIds']) if (value[key] !== undefined && !strings(value[key])) add('agent_activity_string_list_invalid',`${path}.${key}`,`${key} must contain unique non-empty strings.`);
-	if(value.instructionTemplateRefs!==undefined&&!exactRefs(value.instructionTemplateRefs)) add('agent_activity_revision_refs_invalid',`${path}.instructionTemplateRefs`,'instructionTemplateRefs must contain unique exact id and revision references.');
-	if (value.promptRef !== undefined && (typeof value.promptRef !== 'string' || !value.promptRef.trim())) add('agent_activity_provider_prompt_invalid',`${path}.promptRef`,'promptRef must be non-empty.');
+	if (!Array.isArray(value) || value.length === 0) { add('agent_activity_capability_requirements_required',path,'capabilityRequirements must be a non-empty array.'); return; }
+	value.forEach((candidate,index) => {
+		const itemPath=`${path}[${index}]`;
+		if (!record(candidate)) { add('agent_activity_capability_requirement_invalid',itemPath,'Capability requirement must be an object.'); return; }
+		unknownKeys(candidate,new Set(['capabilityId','versionRange','requirement','alternativeGroup','requiredFeatures','configuration']),itemPath,add);
+		if (typeof candidate.capabilityId !== 'string' || !/^(?:treeseed\.|provider\.)/u.test(candidate.capabilityId)) add('agent_activity_capability_id_invalid',`${itemPath}.capabilityId`,'capabilityId must use a TreeSeed or provider namespace.');
+		if (typeof candidate.versionRange !== 'string' || !candidate.versionRange.trim()) add('agent_activity_capability_version_invalid',`${itemPath}.versionRange`,'versionRange is required.');
+		if (!['required','preferred'].includes(String(candidate.requirement))) add('agent_activity_capability_requirement_invalid',`${itemPath}.requirement`,'requirement must be required or preferred.');
+		if (candidate.requiredFeatures !== undefined && !strings(candidate.requiredFeatures)) add('agent_activity_capability_features_invalid',`${itemPath}.requiredFeatures`,'requiredFeatures must contain unique values.');
+		if (candidate.configuration !== undefined && !record(candidate.configuration)) add('agent_activity_capability_configuration_invalid',`${itemPath}.configuration`,'configuration must be an object.');
+	});
 }
 
 function validateQuestionPolicy(value: unknown, path: string, add: Add) {
