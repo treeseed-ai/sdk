@@ -125,7 +125,7 @@ export const hostConfigurationSchema = z.object({
 	security: z.object({
 		sandbox: z.object({ required: z.boolean(), runtime: z.literal('kata-runtime-rs-qemu'), brokerSocket: z.string().startsWith('/run/treeseed/'),
 			modelGateway: z.object({ provider: z.literal('openai'), upstreamBaseUrl: z.literal('https://api.openai.com'), allowedModels: z.array(z.string().min(1)).min(1) }).strict(),
-			profiles: z.array(z.object({ id: z.enum(['read', 'unit', 'integration', 'platform', 'connected']), guestImage: z.string().min(1), guestImageDigest: digest }).strict()).min(1) }).strict(),
+			profiles: z.array(z.object({ id: identifier, guestImage: z.string().min(1), guestImageDigest: digest }).strict()).min(1) }).strict(),
 		providerVolume: z.object({ encryption: z.literal('luks2'), backingPath: z.string().startsWith('/'), mountPath: z.string().startsWith('/'), sizeBytes: z.number().int().min(1_073_741_824), unlock: z.enum(['tpm2', 'systemd-credential']), recoveryRequired: z.literal(true) }).strict(),
 		applicationEncryption: z.object({ provider: z.literal('systemd-credential'), activeKeyVersion: z.number().int().positive(), diagnosticsKeyVersion: z.number().int().positive() }).strict(),
 	}).strict().optional(),

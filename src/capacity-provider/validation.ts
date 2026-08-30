@@ -5,6 +5,7 @@ CAPACITY_PROVIDER_ACCESS_TOKEN_TTL_SECONDS,
 CAPACITY_PROVIDER_PROOF_TTL_SECONDS,
 type CapacityProviderManifestV3,
 type CapacityProviderManifestV4,
+type CapacityProviderManifestV5,
 type CapacityProviderProofPayload,
 type CapacityProviderPublicJwk,
 type ProviderSupplyOffer,
@@ -209,13 +210,46 @@ export function validateCapacityProviderManifestV4(manifest: CapacityProviderMan
 	if (!manifest.sandbox?.brokerSocket?.startsWith('/run/treeseed/')) add(diagnostics, 'provider_sandbox_socket_invalid', 'sandbox.brokerSocket', 'Sandbox broker socket must remain under /run/treeseed.');
 	const profiles = new Set((manifest.sandbox?.profiles ?? []).map((profile) => profile.id));
 	for (const [index, profile] of (manifest.sandbox?.profiles ?? []).entries()) {
-		if (!['read', 'unit', 'integration', 'platform', 'connected'].includes(profile.id)) add(diagnostics, 'provider_sandbox_profile_invalid', `sandbox.profiles[${index}].id`, 'Sandbox profile must be one of read, unit, integration, platform, or connected.');
+		if (!/^[a-z][a-z0-9._-]{0,127}$/u.test(profile.id)) add(diagnostics, 'provider_sandbox_profile_invalid', `sandbox.profiles[${index}].id`, 'Sandbox profile id must be a provider-local identifier.');
+		if (profile.contract) {
+			if (!/^[a-z][a-z0-9._-]{0,127}$/u.test(profile.contract.id) || !/^\d+\.\d+\.\d+$/u.test(profile.contract.version) || !/^sha256:[a-f0-9]{64}$/u.test(profile.contract.digest)) add(diagnostics, 'provider_sandbox_contract_invalid', `sandbox.profiles[${index}].contract`, 'Portable sandbox contracts require an id, exact semantic version, and immutable digest.');
+			if (!Array.isArray(profile.contract.capabilities) || profile.contract.capabilities.some((capability) => !/^[a-z][a-z0-9._-]{0,127}$/u.test(capability))) add(diagnostics, 'provider_sandbox_contract_capabilities_invalid', `sandbox.profiles[${index}].contract.capabilities`, 'Sandbox contract capabilities must be portable identifiers.');
+		}
 		if (!/^sha256:[a-f0-9]{64}$/u.test(profile.guestImageDigest)) add(diagnostics, 'provider_sandbox_image_digest_invalid', `sandbox.profiles[${index}].guestImageDigest`, 'Guest images require an immutable SHA-256 digest.');
 		if (profile.defaultDenyNetwork !== true) add(diagnostics, 'provider_sandbox_network_policy_invalid', `sandbox.profiles[${index}].defaultDenyNetwork`, 'Sandbox networking must default deny.');
 	}
 	for (const [index, adapter] of manifest.adapters.entries()) {
 		if (adapter.isolation !== 'microvm') add(diagnostics, 'provider_v4_microvm_required', `adapters[${index}].isolation`, 'Manifest v4 adapters must use microvm isolation.');
 		for (const profile of adapter.sandboxProfileIds ?? []) if (!profiles.has(profile)) add(diagnostics, 'provider_sandbox_profile_unknown', `adapters[${index}].sandboxProfileIds`, `Unknown sandbox profile ${profile}.`);
+		for (const [purpose, profile] of Object.entries(adapter.defaultSandboxProfiles ?? {})) if (!profiles.has(profile)) add(diagnostics, 'provider_sandbox_default_unknown', `adapters[${index}].defaultSandboxProfiles.${purpose}`, `Unknown default sandbox profile ${profile}.`);
+	}
+	return result(diagnostics);
+}
+
+export function validateCapacityProviderManifestV5(manifest: CapacityProviderManifestV5): CapacityProviderContractValidation {
+	const compatible = { ...manifest, schemaVersion: 4, adapters: manifest.adapters.map((adapter) => ({ ...adapter,
+		capabilities: [...new Set(adapter.offers.flatMap(({ offer }) => offer.capabilities.map(({ id }) => id)))],
+		sandboxProfileIds: [...new Set(adapter.offers.map(({ sandboxProfileId }) => sandboxProfileId))],
+		defaultSandboxProfiles: undefined,
+	})) } as unknown as CapacityProviderManifestV4;
+	const diagnostics = validateCapacityProviderManifestV4(compatible).diagnostics.filter((entry) => entry.code !== 'provider_sandbox_default_unknown');
+	if (manifest.schemaVersion !== 5) add(diagnostics, 'provider_manifest_schema_invalid', 'schemaVersion', 'Capacity provider manifest schemaVersion must be 5.');
+	if (!Number.isInteger(manifest.ontology?.generation) || manifest.ontology.generation < 1 || !/^sha256:[a-f0-9]{64}$/u.test(manifest.ontology?.digest ?? '')) add(diagnostics, 'provider_ontology_binding_invalid', 'ontology', 'Manifest v5 requires an exact ontology generation and digest.');
+	const profiles = new Set(manifest.sandbox.profiles.map(({ id }) => id)), offerIds = new Set<string>();
+	for (const [profileIndex, profile] of manifest.sandbox.profiles.entries()) {
+		if (!profile.lineage || !/^sha256:[a-f0-9]{64}$/u.test(profile.lineage.baseImageDigest) || !/^sha256:[a-f0-9]{64}$/u.test(profile.lineage.provenanceDigest)
+			|| !profile.lineage.architectures.length || !profile.lineage.signature.value) add(diagnostics, 'provider_sandbox_lineage_required', `sandbox.profiles[${profileIndex}].lineage`, 'Manifest v5 sandbox images require signed exact sandbox-base lineage and architectures.');
+	}
+	for (const [adapterIndex, adapter] of manifest.adapters.entries()) {
+		if (!adapter.offers.length) add(diagnostics, 'provider_adapter_offers_required', `adapters[${adapterIndex}].offers`, 'Every v5 adapter must expose at least one standardized capability offer.');
+		for (const [offerIndex, binding] of adapter.offers.entries()) {
+			const path = `adapters[${adapterIndex}].offers[${offerIndex}]`;
+			if (offerIds.has(binding.offer.offerId)) add(diagnostics, 'provider_offer_id_duplicate', `${path}.offer.offerId`, 'Offer ids must be provider-global unique.');
+			offerIds.add(binding.offer.offerId);
+			if (!profiles.has(binding.sandboxProfileId)) add(diagnostics, 'provider_offer_sandbox_unknown', `${path}.sandboxProfileId`, 'Offer references an unknown provider-local sandbox profile.');
+			if (binding.offer.capabilities.some((reference) => !reference.id.startsWith('treeseed.') && !reference.id.startsWith('provider.'))) add(diagnostics, 'provider_offer_capability_namespace_invalid', `${path}.offer.capabilities`, 'Offers require standardized TreeSeed or provider capability references.');
+			if (binding.offer.conformance.some((entry) => entry.status !== 'passed')) add(diagnostics, 'provider_offer_conformance_failed', `${path}.offer.conformance`, 'Only passing capability conformance may be advertised.');
+		}
 	}
 	return result(diagnostics);
 }

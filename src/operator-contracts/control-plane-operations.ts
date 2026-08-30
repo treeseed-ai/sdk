@@ -1,10 +1,12 @@
 import { z } from 'zod';
-import { type ControlPlaneOperationBinding, type ControlPlaneOperationDescriptor } from './control-plane-operation.ts';
+import type { ControlPlaneOperationDescriptor } from './control-plane-operation.ts';
 import { defineOperation as define, defineTreeDxProxyOperation as treedxProxy } from './operation-builder.ts';
 import { communicationOperations, providerCommunicationLifecycleOperations, providerDiscussionResponseOperation } from './catalog/communication-operations.ts';
 import { inboxOperations } from './catalog/inbox-operations.ts';
 import { adminAccountOperations, adminTeamOperations } from './catalog/admin-account-team-operations.ts';
 import { TREEAI_CONTROL_PLANE_OPERATIONS } from './catalog/treeai-operations.ts';
+import { capabilityOntologyOperations } from './catalog/capability-ontology-operations.ts';
+import { buildControlPlaneCatalog, flattenControlPlaneOperations } from './catalog/control-plane-catalog.ts';
 const empty = z.object({}).strict();
 const none = z.undefined();
 const record = z.record(z.unknown());
@@ -85,6 +87,7 @@ function resource<T extends z.ZodRawShape>(
 }
 
 export const CONTROL_PLANE_OPERATIONS = {
+	capabilities: capabilityOntologyOperations(),
 	inbox: inboxOperations(),
 	treeai: TREEAI_CONTROL_PLANE_OPERATIONS,
 	status: {
@@ -432,6 +435,8 @@ export const CONTROL_PLANE_OPERATIONS = {
 		},
 	},
 	providers: {
+		capabilityProposal: noPathProvider('providers.capabilities.propose', 'POST', '/v1/provider/capability-proposals'),
+		capabilityProposalStatus: providerPath('providers.capabilities.proposal.show', 'GET', '/v1/provider/capability-proposals/{proposalId}', { proposalId: z.string().min(1) }, { read: true }),
 		list: resource('providers.list', 'GET', '/v1/teams/{teamId}/capacity-providers', { teamId: z.string().min(1) }, { capability: 'providers.read', surfaces: ['rest', 'cli', 'mcp_tool'], pagination: 'cursor' }),
 		show: resource('providers.show', 'GET', '/v1/teams/{teamId}/capacity-providers/{providerId}', { teamId: z.string().min(1), providerId: z.string().min(1) }, { capability: 'providers.read', surfaces: ['rest', 'cli', 'mcp_resource'] }),
 		status: resource('providers.status', 'GET', '/v1/teams/{teamId}/capacity-providers/{providerId}/status', { teamId: z.string().min(1), providerId: z.string().min(1) }, { capability: 'providers.read', surfaces: ['rest', 'cli', 'mcp_tool'] }),
@@ -480,17 +485,8 @@ export const CONTROL_PLANE_OPERATIONS = {
 		workflowRun: providerPath('providers.assignments.workflow.show', 'GET', '/v1/provider/assignments/{assignmentId}/workflow-runs/{runId}', { assignmentId: z.string().min(1), runId: z.string().min(1) }, { read: true }),
 	},
 } as const;
-function flatten(value: unknown, output: ControlPlaneOperationBinding<any, any, any, any>[] = []) {
-	if (value && typeof value === 'object' && 'descriptor' in value && 'schema' in value) output.push(value as ControlPlaneOperationBinding<any, any, any, any>);
-	else if (value && typeof value === 'object') for (const child of Object.values(value)) flatten(child, output);
-	return output;
-}
-
-export const CONTROL_PLANE_OPERATION_LIST = Object.freeze(flatten(CONTROL_PLANE_OPERATIONS));
-export const CONTROL_PLANE_CATALOG = Object.freeze({
-	schemaVersion: 'treeseed.control-plane-catalog/v1' as const,
-	operations: CONTROL_PLANE_OPERATION_LIST.map((operation) => operation.descriptor),
-});
+export const CONTROL_PLANE_OPERATION_LIST = Object.freeze(flattenControlPlaneOperations(CONTROL_PLANE_OPERATIONS));
+export const CONTROL_PLANE_CATALOG = buildControlPlaneCatalog(CONTROL_PLANE_OPERATION_LIST);
 
 export function controlPlaneOperation(operationId: string) {
 	const operation = CONTROL_PLANE_OPERATION_LIST.find((candidate) => candidate.descriptor.operationId === operationId);
