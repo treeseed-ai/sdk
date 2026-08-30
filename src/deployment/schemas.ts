@@ -20,6 +20,34 @@ const binding = z.string().regex(/^(?:\[[0-9a-f:]+\]|[^:]+):[1-9][0-9]{0,4}$/iu)
 const httpsUrl = z.string().url().refine((value) => new URL(value).protocol === 'https:', 'Remote TreeSeed connections require HTTPS.');
 
 export const deploymentTrackSchema = z.enum(['stable', 'development']);
+
+export const hostCredentialInitializerSchema = z.object({
+	schemaVersion: z.literal('treeseed.host-credential-initializer/v1'),
+	id: identifier,
+	displayName: z.string().min(1).max(128),
+	description: z.string().min(1).max(1_024),
+	credentialId: identifier,
+	sources: z.array(z.object({
+		id: identifier,
+		label: z.string().min(1).max(128),
+		kind: z.enum(['file', 'secret']),
+		prompt: z.string().min(1).max(256),
+		suggestedPaths: z.array(z.string().min(1).max(4_096)).max(16).default([]),
+		contentType: z.enum(['application/json', 'text/plain']),
+		minimumBytes: z.number().int().positive().max(1_048_576),
+		maximumBytes: z.number().int().positive().max(1_048_576),
+	}).strict().refine((source) => source.maximumBytes >= source.minimumBytes, 'Credential source maximum must be at least its minimum.')).min(1),
+	activation: z.object({
+		kind: z.literal('sandbox-model-gateway'),
+		authenticationModes: z.record(identifier, z.enum(['api-key', 'subscription-file'])),
+	}).strict(),
+}).strict().superRefine((initializer, context) => {
+	for (const source of initializer.sources) if (!initializer.activation.authenticationModes[source.id]) {
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['activation', 'authenticationModes', source.id], message: 'Every credential source requires an activation mode.' });
+	}
+});
+
+export type HostCredentialInitializer = z.infer<typeof hostCredentialInitializerSchema>;
 export const hostRoleSchema = z.union([
 	z.enum(['integrated', 'capacity-provider', 'control-plane', 'knowledge', 'ai-gpu', 'edge']),
 	identifier,
