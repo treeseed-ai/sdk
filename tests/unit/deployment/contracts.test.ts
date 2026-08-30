@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalDeploymentJson, collectHostAliases, collectTopologyBlockers, componentReleaseSchema, deploymentDigest, hostBackupSchema, hostBootstrapSchema, hostConfigurationSchema, hostMigrationSchema, hostNeedsEdge, hostRecoverySchema, hostUpdateSchema, integrationReleaseSchema, packageRuntimeSchema, releaseCatalogSchema, resolveMixedTrackCatalog, type ComponentRelease, type HostConfiguration, type ReleaseCatalog } from '../../../src/deployment/index.ts';
+import { canonicalDeploymentJson, collectHostAliases, collectTopologyBlockers, componentReleaseSchema, deploymentDigest, hostBackupSchema, hostBootstrapSchema, hostConfigurationSchema, hostCredentialInitializerSchema, hostMigrationSchema, hostNeedsEdge, hostRecoverySchema, hostUpdateSchema, integrationReleaseSchema, packageRuntimeSchema, releaseCatalogSchema, resolveMixedTrackCatalog, type ComponentRelease, type HostConfiguration, type ReleaseCatalog } from '../../../src/deployment/index.ts';
 
 const hash = (value: string) => `sha256:${value.repeat(64)}`;
 
@@ -37,6 +37,13 @@ function host(): HostConfiguration {
 }
 
 describe('deployment contracts', () => {
+	it('validates provider-neutral host credential initializer registrations', () => {
+		const initializer = hostCredentialInitializerSchema.parse({ schemaVersion: 'treeseed.host-credential-initializer/v1', id: 'provider.adapter', displayName: 'Provider adapter', description: 'Initializes a registered adapter credential.', credentialId: 'provider-adapter-auth',
+			sources: [{ id: 'service-token', label: 'Service token', kind: 'secret', prompt: 'Service token', suggestedPaths: [], contentType: 'text/plain', minimumBytes: 16, maximumBytes: 4096 }],
+			activation: { kind: 'sandbox-model-gateway', authenticationModes: { 'service-token': 'api-key' } } });
+		expect(initializer.id).toBe('provider.adapter');
+		expect(() => hostCredentialInitializerSchema.parse({ ...initializer, activation: { ...initializer.activation, authenticationModes: {} } })).toThrow(/Every credential source/u);
+	});
 	it('canonicalizes host configuration and produces a stable digest', () => {
 		const value = host();
 		expect(canonicalDeploymentJson({ b: 2, a: 1 })).toBe('{"a":1,"b":2}\n');

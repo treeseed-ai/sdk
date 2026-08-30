@@ -59,6 +59,9 @@ const operationBindings: Record<string, Execution> = {
 	'host topology': local('local.host.topology'),
 	'host connections': local('local.host.connections'),
 	'host provider status': local('local.host.provider.status'),
+	'host provider credentials list': local('local.host.provider.credentials.list'),
+	'host provider credentials status': local('local.host.provider.credentials.status'),
+	'host provider credentials initialize': local('local.host.provider.credentials.initialize'),
 	'host storage status': local('local.host.storage.status'),
 	'host storage connect': local('local.host.storage.connect'),
 	'host storage reconcile': local('local.host.storage.reconcile'),
@@ -226,6 +229,14 @@ function hostSecurityRotate(): CommandNodeDescriptor {
 	return value;
 }
 
+function hostProviderCredentialInitialize(): CommandNodeDescriptor {
+	const value = leaf('initialize', 'mutation', 'initializer', 'credential');
+	if (value.nodeType !== 'leaf') throw new Error('Provider credential initialization must be a leaf command.');
+	value.description = 'Initialize an execution-provider credential through its registered host initializer.';
+	value.options = [...(value.options ?? []), { name: '--source', description: 'Registered credential source to use instead of automatic selection.', type: 'string' }];
+	return value;
+}
+
 function hostRecoveryVerify(): CommandNodeDescriptor {
 	return { nodeType: 'leaf', segment: 'verify', description: 'Authenticate and inventory an offline recovery bundle without revealing secrets.', kind: 'read',
 		options: [{ name: '--bundle', description: 'Absolute recovery bundle path.', type: 'string', required: true }], resultSchemaId: 'treeseed.host-recovery-verification/v1', execution: unavailable() };
@@ -328,7 +339,7 @@ const commandTree: CommandTreeDescriptor = {
 		branch('host', [
 			leaf('status'), leaf('doctor'), leaf('plan'), leaf('apply', 'mutation', undefined, 'authority'), leaf('reconcile', 'mutation', undefined, 'authority'), leaf('events'),
 			branch('config', [leaf('show'), leaf('plan', 'read', 'file'), leaf('apply', 'mutation', 'file', 'authority'), configurationAdopt()]),
-			leaf('topology'), leaf('connections'), branch('provider', [leaf('status')]),
+			leaf('topology'), leaf('connections'), branch('provider', [leaf('status'), branch('credentials', [leaf('list'), leaf('status'), hostProviderCredentialInitialize()])]),
 			branch('storage', [
 				leaf('status'),
 				addOptions(leaf('connect', 'mutation', 'backend', 'credential'), [{ name: '--account-id', description: 'Optional Cloudflare account ID when the bootstrap authority reaches multiple accounts.', type: 'string' }]),
