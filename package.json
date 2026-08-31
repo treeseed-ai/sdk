@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.13.0-rc.60",
+  "version": "0.13.0-rc.61",
   "description": "Portable TreeSeed contracts, standards, and typed remote control-plane clients.",
   "license": "Apache-2.0",
   "repository": {
@@ -62,6 +62,10 @@
     "vitest": "^4.1.2"
   },
   "exports": {
+    "./platform": {
+      "types": "./dist/platform/index.d.ts",
+      "default": "./dist/platform/index.js"
+    },
     "./security": {
       "types": "./dist/security/index.d.ts",
       "default": "./dist/security/index.js"
