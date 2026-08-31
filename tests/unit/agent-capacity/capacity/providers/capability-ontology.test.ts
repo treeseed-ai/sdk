@@ -6,7 +6,6 @@ import {
 	capabilityOfferDigest,
 	capabilityOfferSchema,
 	negotiateCapabilityOffer,
-	resolveLegacyCapability,
 	semverSatisfies,
 } from '../../../../../src/capacity-provider/index.ts';
 
@@ -16,11 +15,9 @@ describe('capability ontology contracts', () => {
 		expect(CORE_CAPABILITY_DEFINITIONS.every(({ id, digest }) => id.startsWith('treeseed.') && /^sha256:[a-f0-9]{64}$/u.test(digest))).toBe(true);
 	});
 
-	it('supports normal semantic-version ranges and deterministic legacy translation', () => {
+	it('supports normal semantic-version ranges', () => {
 		expect(semverSatisfies('1.4.2', '>=1.2.0 <2.0.0')).toBe(true);
 		expect(semverSatisfies('2.0.0', '^1.2.0')).toBe(false);
-		expect(resolveLegacyCapability('agent-execution', 'chat')).toBe('treeseed.coordination.conversation');
-		expect(resolveLegacyCapability('unknown-private-value', 'planning')).toBeNull();
 	});
 
 	it('never negotiates away required permissions or configuration', () => {

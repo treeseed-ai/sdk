@@ -3,8 +3,6 @@ import {
 CAPACITY_PROVIDER_ACCESS_TOKEN_REFRESH_SECONDS,
 CAPACITY_PROVIDER_ACCESS_TOKEN_TTL_SECONDS,
 CAPACITY_PROVIDER_PROOF_TTL_SECONDS,
-type CapacityProviderManifestV3,
-type CapacityProviderManifestV4,
 type CapacityProviderManifestV5,
 type CapacityProviderProofPayload,
 type CapacityProviderPublicJwk,
@@ -82,9 +80,9 @@ export function validateProviderSupplyOffer(offer: ProviderSupplyOffer, path = '
 	return result(diagnostics);
 }
 
-export function validateCapacityProviderManifestV3(manifest: CapacityProviderManifestV3): CapacityProviderContractValidation {
+export function validateCapacityProviderManifestV5(manifest: CapacityProviderManifestV5): CapacityProviderContractValidation {
 	const diagnostics: CapacityProviderContractDiagnostic[] = [];
-	if (manifest?.schemaVersion !== 3) add(diagnostics, 'provider_manifest_schema_invalid', 'schemaVersion', 'Capacity provider manifest schemaVersion must be 3.');
+	if (manifest?.schemaVersion !== 5) add(diagnostics, 'provider_manifest_schema_invalid', 'schemaVersion', 'Capacity provider manifest schemaVersion must be 5.');
 	if ('providerClass' in (manifest as unknown as Record<string, unknown>)) add(diagnostics, 'provider_manifest_legacy_class_forbidden', 'providerClass', 'Provider classes are not part of the unified battery contract.');
 	if (!['team', 'external'].includes(manifest?.ownership?.type)) add(diagnostics, 'provider_manifest_ownership_invalid', 'ownership.type', 'ownership.type must be team or external.');
 	if (manifest?.ownership?.type === 'team' && !nonEmpty(manifest.ownership.teamId)) add(diagnostics, 'provider_manifest_owner_team_required', 'ownership.teamId', 'Team-owned providers require ownership.teamId.');
@@ -110,9 +108,8 @@ export function validateCapacityProviderManifestV3(manifest: CapacityProviderMan
 		const path = `credentialProfiles[${index}]`;
 		if (!nonEmpty(binding.id) || bindingIds.has(binding.id)) add(diagnostics, 'provider_manifest_credential_binding_id_invalid', `${path}.id`, 'Credential binding IDs must be non-empty and unique.');
 		bindingIds.add(binding.id);
-		if (!['service-vault', 'process-environment'].includes(binding.source)) add(diagnostics, 'provider_manifest_credential_binding_source_invalid', `${path}.source`, 'Credential bindings must use service-vault or process-environment.');
+		if (binding.source !== 'service-vault') add(diagnostics, 'provider_manifest_credential_binding_source_invalid', `${path}.source`, 'Credential bindings must use the service vault.');
 		if (!nonEmpty(binding.reference)) add(diagnostics, 'provider_manifest_credential_binding_reference_required', `${path}.reference`, 'Credential binding reference is required.');
-		if (binding.source === 'process-environment' && !/^TREESEED_[A-Z0-9_]+$/u.test(binding.reference)) add(diagnostics, 'provider_manifest_credential_environment_invalid', `${path}.reference`, 'Process-environment bindings must name a TREESEED_* variable.');
 	}
 	if (!Array.isArray(manifest?.lanes) || manifest.lanes.length === 0) add(diagnostics, 'provider_manifest_lanes_required', 'lanes', 'At least one provider lane is required.');
 	const laneIds = new Set<string>();
@@ -159,12 +156,11 @@ export function validateCapacityProviderManifestV3(manifest: CapacityProviderMan
 		if (!nonEmpty(adapter.id) || adapterIds.has(adapter.id)) add(diagnostics, 'provider_adapter_id_invalid', `${path}.id`, 'Adapter id must be non-empty and unique.');
 		adapterIds.add(adapter.id);
 		if (!nonEmpty(adapter.adapter)) add(diagnostics, 'provider_adapter_required', `${path}.adapter`, 'Adapter implementation is required.');
-		if (!['process', 'worker'].includes(adapter.isolation)) add(diagnostics, 'provider_adapter_isolation_invalid', `${path}.isolation`, 'Adapter isolation must be process or worker.');
+		if (adapter.isolation !== 'microvm') add(diagnostics, 'provider_adapter_isolation_invalid', `${path}.isolation`, 'Adapters must use microVM isolation.');
 		if (!Number.isInteger(adapter.maxConcurrentWorkers) || adapter.maxConcurrentWorkers < 1 || adapter.maxConcurrentWorkers > manifest.capacity.maxConcurrentWorkers) add(diagnostics, 'provider_adapter_concurrency_invalid', `${path}.maxConcurrentWorkers`, 'Adapter concurrency must be positive and no greater than provider capacity.');
 		if (!Array.isArray(adapter.laneIds) || adapter.laneIds.length === 0) add(diagnostics, 'provider_adapter_lanes_required', `${path}.laneIds`, 'Every adapter must serve at least one lane.');
 		for (const laneId of adapter.laneIds ?? []) if (!laneIds.has(laneId)) add(diagnostics, 'provider_adapter_lane_unknown', `${path}.laneIds`, `Adapter references unknown lane ${laneId}.`);
 		for (const bindingId of adapter.credentialProfiles ?? []) if (!bindingIds.has(bindingId)) add(diagnostics, 'provider_adapter_credential_unknown', `${path}.credentialProfiles`, `Adapter references unknown credential profile ${bindingId}.`);
-		if ((adapter.laneIds ?? []).some((laneId) => (manifest.lanes ?? []).find((lane) => lane.id === laneId)?.purpose === 'platform') && adapter.isolation !== 'process') add(diagnostics, 'provider_platform_adapter_isolation_required', `${path}.isolation`, 'Platform adapters require process isolation.');
 		if (!adapter.nativeLimits || typeof adapter.nativeLimits !== 'object' || Array.isArray(adapter.nativeLimits)) add(diagnostics, 'provider_adapter_limits_invalid', `${path}.nativeLimits`, 'Adapter nativeLimits must be an object.');
 		for (const entry of validateExecutionProviderRuntimeConfiguration(adapter, path).diagnostics) add(diagnostics, entry.code, entry.path, entry.message);
 		if (adapter.researchSourcePolicy !== undefined) for (const diagnostic of validateResearchSourcePolicy(adapter.researchSourcePolicy).diagnostics) add(diagnostics, diagnostic.code, `${path}.researchSourcePolicy.${diagnostic.path}`, diagnostic.message);
@@ -198,15 +194,7 @@ export function validateCapacityProviderManifestV3(manifest: CapacityProviderMan
 	}
 	if (providerIds.size > 1) add(diagnostics, 'provider_connection_identity_mismatch', 'connections', 'Every connection in one provider manifest must reference the same global provider identity.');
 	if (explicitShare > 100) add(diagnostics, 'provider_connection_share_exceeded', 'connections', 'Explicit connection shares may not exceed 100 percent.');
-	return result(diagnostics);
-}
-
-export function validateCapacityProviderManifestV4(manifest: CapacityProviderManifestV4): CapacityProviderContractValidation {
-	const compatible = { ...manifest, schemaVersion: 3,
-		adapters: manifest.adapters.map((adapter) => ({ ...adapter, isolation: adapter.isolation === 'microvm' ? 'process' : adapter.isolation })) } as CapacityProviderManifestV3;
-	const diagnostics = validateCapacityProviderManifestV3(compatible).diagnostics;
-	if (manifest.schemaVersion !== 4) add(diagnostics, 'provider_manifest_schema_invalid', 'schemaVersion', 'Capacity provider manifest schemaVersion must be 4.');
-	if (manifest.sandbox?.required !== true || manifest.sandbox?.runtime !== 'kata-runtime-rs-qemu') add(diagnostics, 'provider_sandbox_required', 'sandbox', 'Manifest v4 requires the Kata runtime-rs QEMU sandbox.');
+	if (manifest.sandbox?.required !== true || manifest.sandbox?.runtime !== 'kata-runtime-rs-qemu') add(diagnostics, 'provider_sandbox_required', 'sandbox', 'Capacity providers require the Kata runtime-rs QEMU sandbox.');
 	if (!manifest.sandbox?.brokerSocket?.startsWith('/run/treeseed/')) add(diagnostics, 'provider_sandbox_socket_invalid', 'sandbox.brokerSocket', 'Sandbox broker socket must remain under /run/treeseed.');
 	const profiles = new Set((manifest.sandbox?.profiles ?? []).map((profile) => profile.id));
 	for (const [index, profile] of (manifest.sandbox?.profiles ?? []).entries()) {
@@ -218,24 +206,8 @@ export function validateCapacityProviderManifestV4(manifest: CapacityProviderMan
 		if (!/^sha256:[a-f0-9]{64}$/u.test(profile.guestImageDigest)) add(diagnostics, 'provider_sandbox_image_digest_invalid', `sandbox.profiles[${index}].guestImageDigest`, 'Guest images require an immutable SHA-256 digest.');
 		if (profile.defaultDenyNetwork !== true) add(diagnostics, 'provider_sandbox_network_policy_invalid', `sandbox.profiles[${index}].defaultDenyNetwork`, 'Sandbox networking must default deny.');
 	}
-	for (const [index, adapter] of manifest.adapters.entries()) {
-		if (adapter.isolation !== 'microvm') add(diagnostics, 'provider_v4_microvm_required', `adapters[${index}].isolation`, 'Manifest v4 adapters must use microvm isolation.');
-		for (const profile of adapter.sandboxProfileIds ?? []) if (!profiles.has(profile)) add(diagnostics, 'provider_sandbox_profile_unknown', `adapters[${index}].sandboxProfileIds`, `Unknown sandbox profile ${profile}.`);
-		for (const [purpose, profile] of Object.entries(adapter.defaultSandboxProfiles ?? {})) if (!profiles.has(profile)) add(diagnostics, 'provider_sandbox_default_unknown', `adapters[${index}].defaultSandboxProfiles.${purpose}`, `Unknown default sandbox profile ${profile}.`);
-	}
-	return result(diagnostics);
-}
-
-export function validateCapacityProviderManifestV5(manifest: CapacityProviderManifestV5): CapacityProviderContractValidation {
-	const compatible = { ...manifest, schemaVersion: 4, adapters: manifest.adapters.map((adapter) => ({ ...adapter,
-		capabilities: [...new Set(adapter.offers.flatMap(({ offer }) => offer.capabilities.map(({ id }) => id)))],
-		sandboxProfileIds: [...new Set(adapter.offers.map(({ sandboxProfileId }) => sandboxProfileId))],
-		defaultSandboxProfiles: undefined,
-	})) } as unknown as CapacityProviderManifestV4;
-	const diagnostics = validateCapacityProviderManifestV4(compatible).diagnostics.filter((entry) => entry.code !== 'provider_sandbox_default_unknown');
-	if (manifest.schemaVersion !== 5) add(diagnostics, 'provider_manifest_schema_invalid', 'schemaVersion', 'Capacity provider manifest schemaVersion must be 5.');
 	if (!Number.isInteger(manifest.ontology?.generation) || manifest.ontology.generation < 1 || !/^sha256:[a-f0-9]{64}$/u.test(manifest.ontology?.digest ?? '')) add(diagnostics, 'provider_ontology_binding_invalid', 'ontology', 'Manifest v5 requires an exact ontology generation and digest.');
-	const profiles = new Set(manifest.sandbox.profiles.map(({ id }) => id)), offerIds = new Set<string>();
+	const offerIds = new Set<string>();
 	for (const [profileIndex, profile] of manifest.sandbox.profiles.entries()) {
 		if (!profile.lineage || !/^sha256:[a-f0-9]{64}$/u.test(profile.lineage.baseImageDigest) || !/^sha256:[a-f0-9]{64}$/u.test(profile.lineage.provenanceDigest)
 			|| !profile.lineage.architectures.length || !profile.lineage.signature.value) add(diagnostics, 'provider_sandbox_lineage_required', `sandbox.profiles[${profileIndex}].lineage`, 'Manifest v5 sandbox images require signed exact sandbox-base lineage and architectures.');

@@ -67,18 +67,6 @@ export const EXECUTION_PROVIDER_KINDS = [
 	'ai_model',
 	'human_issue_queue',
 	'deterministic_workflow',
-	'local_process',
-] as const;
-
-export const BUILT_IN_AGENT_EXECUTION_PROVIDER_IDS = [
-	'codex',
-	'opencode',
-	'copilot',
-	'jira',
-	'github_issues',
-	'discord',
-	'workflow',
-	'platform-operation',
 ] as const;
 
 export const EXECUTION_RUN_STATUSES = [
@@ -118,6 +106,8 @@ export type AgentHandlerKind = string;
 
 export type AgentActivityType = (typeof AGENT_ACTIVITY_TYPES)[number];
 
+export type AgentReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+
 export type EngineeringHandlerKind = (typeof ENGINEERING_HANDLER_KINDS)[number];
 
 export type AgentCliAllowTool = (typeof AGENT_CLI_ALLOW_TOOLS)[number];
@@ -126,7 +116,6 @@ export type ExecutionResourceNeedKind = (typeof EXECUTION_RESOURCE_NEED_KINDS)[n
 
 export type ExecutionProviderKind = (typeof EXECUTION_PROVIDER_KINDS)[number] | string;
 
-export type BuiltInAgentExecutionProviderId = (typeof BUILT_IN_AGENT_EXECUTION_PROVIDER_IDS)[number];
 
 export type ExecutionRunStatus = (typeof EXECUTION_RUN_STATUSES)[number];
 
@@ -247,7 +236,7 @@ export interface AgentActivityPromptConfig {
 }
 
 export interface AgentActivityExecutionConfig {
-	requiredCapabilities?: string[];
+	reasoningEffort?: AgentReasoningEffort;
 	maxRuntimeSeconds?: number;
 	closeoutWarningSeconds?: number;
 	maxRetries?: number;

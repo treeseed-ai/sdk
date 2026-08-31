@@ -44,7 +44,6 @@ export const capabilityOntologySchema = z.object({
 	generation: z.number().int().positive(),
 	digest,
 	definitions: z.array(capabilityDefinitionSchema),
-	aliases: z.record(capabilityId),
 	createdAt: z.string().datetime(),
 	signature: z.object({ keyId: identifier, algorithm: z.enum(['Ed25519', 'release-catalog']), value: z.string().min(1) }).strict(),
 }).strict().superRefine((catalog, context) => {

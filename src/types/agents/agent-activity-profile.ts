@@ -1,5 +1,5 @@
 
-import { AgentActivityExecutionConfig,AgentActivityPermissions,AgentActivityPlanningIntent,AgentActivityPromptConfig,AgentActivityType,AgentBranchPolicy,AgentOutputContract,AgentQuestionPolicy,AgentSignalPolicy,AgentToolPolicy,EngineeringHandlerKind,ExecutionProviderKind,ExecutionProviderPressure,ExecutionProviderQuotaVisibility,ExecutionResourceNeedKind } from './agent-trigger-kinds.ts';
+import { AgentActivityExecutionConfig,AgentActivityPermissions,AgentActivityPlanningIntent,AgentActivityPromptConfig,AgentActivityType,AgentBranchPolicy,AgentOutputContract,AgentQuestionPolicy,AgentReasoningEffort,AgentSignalPolicy,AgentToolPolicy,EngineeringHandlerKind,ExecutionProviderKind,ExecutionProviderPressure,ExecutionProviderQuotaVisibility,ExecutionResourceNeedKind } from './agent-trigger-kinds.ts';
 import type { AgentAuthorityPresetId } from '../../agent-capacity/authority/agent-authority-presets.ts';
 
 export interface AgentContentRevisionRef { id:string; revision:number }
@@ -41,6 +41,7 @@ export interface AgentChatProfileConfiguration {
 	foundation: 'discussion-v1';
 	responseStyle?: string;
 	promptTask?: string;
+	reasoningEffort?: AgentReasoningEffort;
 	capabilityRequirements?: AgentCapabilityRequirement[];
 	maxRuntimeSeconds?: number;
 	maxTotalTokens?: number;
@@ -80,7 +81,7 @@ export interface AgentDefinition {
 export interface AgentExecutionConfig {
 	approvalPolicy?: 'never' | 'on_request' | 'always' | string;
 	sandboxMode?: 'read_only' | 'workspace_write' | string;
-	reasoningEffort?: 'low' | 'medium' | 'high' | string;
+	reasoningEffort?: AgentReasoningEffort;
 	allowedPaths?: string[];
 	forbiddenPaths?: string[];
 	worktree?: {
@@ -129,7 +130,6 @@ export interface ExecutionCapabilitySupply {
 	executionProviderId: string;
 	kind: ExecutionProviderKind;
 	capabilities: string[];
-	aliases?: string[];
 	grants: string[];
 	availability?: Record<string, unknown>;
 	pressure?: ExecutionProviderPressure;

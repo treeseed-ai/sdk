@@ -2,28 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { ProviderProtocolClient } from '../../../../../src/capacity/providers/capacity-provider.ts';
 import { CONTROL_PLANE_OPERATIONS } from '../../../../../src/operator-contracts/index.ts';
-import type { CapacityProviderManifestV3 } from '../../../../../src/capacity-provider/contracts/governance.ts';
-import { validateCapacityProviderManifestV3 } from '../../../../../src/capacity-provider/validation.ts';
 import { sandboxEnvironmentCatalogDigest, sandboxEnvironmentCatalogSchema, sandboxEnvironmentCatalogSigningBytes, verifySandboxEnvironmentCatalog } from '../../../../../src/capacity-provider/environment-catalog.ts';
-
-function batteryManifest(): CapacityProviderManifestV3 {
-	return {
-		schemaVersion: 3, ownership: { type: 'team', teamId: 'team:treeseed' }, configuration: { generation: 'generation-1' },
-		identity: { privateKeyRef: 'secret://provider-identity', displayName: 'Local TreeSeed capacity' },
-		capacity: { maxConcurrentWorkers: 4, cpuCores: 4, memoryBytes: 8_589_934_592 },
-		credentialProfiles: [{ id: 'platform', source: 'service-vault', reference: 'secret://platform', required: true }],
-		lanes: [
-			{ id: 'communication', purpose: 'communication', priority: 400, reservedConcurrentWorkers: 1, maxConcurrentWorkers: 4, borrowWhenIdle: true, lendWhenIdle: true, reclaimPolicy: 'admission', queueLimit: 32, timeoutSeconds: 300 },
-			{ id: 'platform', purpose: 'platform', priority: 200, reservedConcurrentWorkers: 0, maxConcurrentWorkers: 3, borrowWhenIdle: true, lendWhenIdle: true, reclaimPolicy: 'admission', queueLimit: 16, timeoutSeconds: 900 },
-			{ id: 'workday', purpose: 'workday', priority: 100, reservedConcurrentWorkers: 0, maxConcurrentWorkers: 3, borrowWhenIdle: true, lendWhenIdle: true, reclaimPolicy: 'admission', queueLimit: 64, timeoutSeconds: 3_600 },
-		],
-		adapters: [
-			{ id: 'agent', adapter: 'module:agent', isolation: 'worker', laneIds: ['communication', 'workday'], maxConcurrentWorkers: 3, nativeLimits: {}, capabilities: ['agent-execution'] },
-			{ id: 'platform', adapter: 'builtin:platform', isolation: 'process', laneIds: ['platform'], maxConcurrentWorkers: 1, credentialProfiles: ['platform'], nativeLimits: {}, capabilities: ['platform-operation'] },
-		],
-		connections: [],
-	};
-}
 
 describe('capacity provider membership protocol', () => {
 	it('models environment kinds as signed catalog data rather than SDK enums', () => {
@@ -49,19 +28,6 @@ describe('capacity provider membership protocol', () => {
 		const catalog = { ...unsigned, signature: { ...unsigned.signature, value: sign(null, sandboxEnvironmentCatalogSigningBytes(unsigned), privateKey).toString('base64url') } };
 		expect(verifySandboxEnvironmentCatalog(catalog, publicKey.export({ format: 'jwk' })).generation).toBe(1);
 		expect(() => verifySandboxEnvironmentCatalog({ ...catalog, generation: 2 }, publicKey.export({ format: 'jwk' }))).toThrow(/digest/u);
-	});
-	it('accepts one shared battery with reserved communication and isolated platform execution', () => {
-		expect(validateCapacityProviderManifestV3(batteryManifest())).toEqual({ ok: true, diagnostics: [] });
-	});
-
-	it('rejects legacy classes, unsafe platform adapters, and communication starvation', () => {
-		const value = batteryManifest() as CapacityProviderManifestV3 & { providerClass?: string };
-		value.providerClass = 'agent';
-		value.adapters[1]!.isolation = 'worker';
-		value.lanes[0]!.reservedConcurrentWorkers = 0;
-		expect(validateCapacityProviderManifestV3(value).diagnostics.map((entry) => entry.code)).toEqual(expect.arrayContaining([
-			'provider_manifest_legacy_class_forbidden', 'provider_platform_adapter_isolation_required', 'provider_communication_reservation_required',
-		]));
 	});
 	it('uses the authoritative operation catalog instead of a parallel endpoint table', () => {
 		expect(CONTROL_PLANE_OPERATIONS.providers.createAvailability.descriptor.rest?.path).toBe('/v1/provider/availability-sessions');

@@ -3,11 +3,11 @@ import { validateCapacityAllocationSetV2, validateCapacityGrantV2 } from '../../
 import { validateAgentActivityProfilesConfiguration } from '../../../src/agent-capacity/validation/activity-profile.ts';
 import { validateProjectAgentClassConfiguration } from '../../../src/agent-capacity/validation/configuration.ts';
 import { CAPACITY_CONFIGURATION_DESCRIPTORS, CAPACITY_CONFIGURATION_FAMILIES } from '../../../src/agent-capacity/contracts/configuration/configuration.ts';
-import { validateCapacityProviderManifestV3, validateProviderSupplyOffer } from '../../../src/capacity-provider/validation.ts';
+import { validateCapacityProviderManifestV5, validateProviderSupplyOffer } from '../../../src/capacity-provider/validation.ts';
 import { compileAgentAuthoritySnapshot } from '../../../src/agent-capacity/authority/agent-authority-presets.ts';
 
 const validators = {
-	'provider-manifest': validateCapacityProviderManifestV3,
+	'provider-manifest': validateCapacityProviderManifestV5,
 	'provider-offer': validateProviderSupplyOffer,
 	'capacity-grant': validateCapacityGrantV2,
 	'allocation-set': validateCapacityAllocationSetV2,
@@ -54,12 +54,24 @@ describe('capacity configuration inventory', () => {
 			activityType: 'estimating', enabled: true, handler: 'estimate',
 			prompt: { system: 'Estimate.' }, branchPolicy: { kind: 'read-only', base: 'main' },
 			tools: { allowed: [] }, outputs: { messageTypes: [], modelMutations: ['estimate:create'] },
+			capabilityRequirements: [{ capabilityId: 'treeseed.coordination.estimation', versionRange: '^1.0.0', requirement: 'required' }],
 		};
 		expect(validateAgentActivityProfilesConfiguration({ estimating: { ...base, planningIntent: { subjectModel: 'proposal', proposalTypes: ['technical-accuracy'] } } })).toEqual({ ok: true, diagnostics: [] });
 		expect(validateAgentActivityProfilesConfiguration({ estimating: { ...base, planningIntent: { subjectModel: '', includeWorkdayArtifacts: 'yes' } } }).diagnostics.map((entry) => entry.code)).toEqual(expect.arrayContaining([
 			'agent_activity_planning_intent_text_invalid',
 			'agent_activity_planning_intent_boolean_invalid',
 		]));
+	});
+
+	it('keeps model reasoning effort configurable on provider-neutral activity profiles', () => {
+		const base = {
+			activityType: 'chat', enabled: true, handler: 'writer', prompt: { system: 'Discuss.' },
+			branchPolicy: { kind: 'read-only', base: 'staging' }, tools: { allowed: [] },
+			outputs: { messageTypes: ['discussion_response'], modelMutations: [] },
+			capabilityRequirements: [{ capabilityId: 'treeseed.coordination.conversation', versionRange: '^1.0.0', requirement: 'required' }],
+		};
+		expect(validateAgentActivityProfilesConfiguration({ chat: { ...base, execution: { reasoningEffort: 'xhigh' } } })).toEqual({ ok: true, diagnostics: [] });
+		expect(validateAgentActivityProfilesConfiguration({ chat: { ...base, execution: { reasoningEffort: 'fastest' } } }).diagnostics.map((entry) => entry.code)).toContain('agent_activity_reasoning_effort_invalid');
 	});
 
 	it('accepts project agent classes as governed question answerers', () => {
@@ -72,14 +84,14 @@ describe('capacity configuration inventory', () => {
 					'treeseed.content.link', 'treeseed.content.commit',
 				] }, outputs: { messageTypes: [], modelMutations: [] },
 				questionPolicy: { blockExecutionWhenCreated: true, defaultAnswerPolicy: { kind: 'human-or-agent', allowedAgentClasses: ['architecture'] } },
-				execution: { requiredCapabilities: ['agent-execution'] },
+				capabilityRequirements: [{ capabilityId: 'treeseed.coordination.planning', versionRange: '^1.0.0', requirement: 'required' }],
 			},
 		};
 		expect(validateAgentActivityProfilesConfiguration(profile)).toEqual({ ok: true, diagnostics: [] });
 	});
 
 	it('fails closed on unknown project-agent-class configuration fields', () => {
-		const result = validateProjectAgentClassConfiguration({ id: 'engineer', slug: 'engineer', allowedModes: ['planning'], requiredCapabilities: ['engineering'], obsoletePolicy: {} });
+		const result = validateProjectAgentClassConfiguration({ id: 'engineer', slug: 'engineer', allowedModes: ['planning'], obsoletePolicy: {} });
 		expect(result).toMatchObject({ ok: false, diagnostics: [{ code: 'project_agent_class_configuration_unknown_field', path: 'obsoletePolicy' }] });
 	});
 });

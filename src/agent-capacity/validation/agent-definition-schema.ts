@@ -83,7 +83,7 @@ const answerPolicySchema = z.object({
 	agentSlug: nonEmpty.optional(),
 }).strict();
 const executionSchema = z.object({
-	requiredCapabilities: stringList.optional(),
+	reasoningEffort: z.enum(['minimal','low','medium','high','xhigh']).optional(),
 	maxRuntimeSeconds: z.number().int().positive().optional(),
 	closeoutWarningSeconds: z.number().int().positive().optional(),
 	preparationSeconds: z.number().int().positive().optional(),

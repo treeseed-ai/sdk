@@ -17,7 +17,7 @@ export const sandboxAssignmentSchema = z.object({
 	inputs: z.array(z.object({ id: identifier, digest, bytes: z.number().int().nonnegative(), disposition: z.enum(['read-only', 'copy-on-write']), mediaType: z.string().min(1), targetPath: z.string().startsWith('/workspace/') }).strict()),
 	outputs: z.array(z.object({ id: identifier, path: z.string().startsWith('/run/treeseed-output/'), mediaType: z.string().min(1), maxBytes: z.number().int().positive() }).strict()),
 	network: z.object({ defaultDeny: z.literal(true), relayUrl: z.string().url().startsWith('https://'), allowedServices: z.array(identifier), connectedDevelopmentSessionId: z.string().min(1).optional() }).strict(),
-	modelPolicy: z.object({ provider: identifier, model: z.string().min(1), capabilities: z.array(identifier), maxInputTokens: z.number().int().positive().optional(), maxOutputTokens: z.number().int().positive().optional(), maxCost: z.number().nonnegative().optional() }).strict(),
+	modelPolicy: z.object({ provider: identifier, model: z.string().min(1), reasoningEffort: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).optional(), capabilities: z.array(identifier), maxInputTokens: z.number().int().positive().optional(), maxOutputTokens: z.number().int().positive().optional(), maxCost: z.number().nonnegative().optional() }).strict(),
 	credentialHandles: z.array(z.object({ id: identifier, profileId: identifier, revealAllowed: z.literal(false) }).strict()),
 	treeDxHandleIds: z.array(z.string().min(1)), leaseExpiresAt: z.string().datetime(),
 	signature: z.object({ keyId: identifier, algorithm: z.literal('Ed25519'), value: z.string().min(1) }).strict(),

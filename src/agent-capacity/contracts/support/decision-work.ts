@@ -39,7 +39,6 @@ export interface DecisionDependencySpec {
 	optional?: boolean;
 	deliverableType?: string;
 	capability?: string;
-	agentClass?: string;
 	contentRefs?: string[];
 	humanInputPolicy?: { requiredFrom: 'team-human' | 'any-human' | 'any-human-or-agent'; teamId?: string | null };
 	summary?: string;

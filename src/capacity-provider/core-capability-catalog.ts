@@ -1,6 +1,8 @@
 import { capabilityDefinitionDigest, capabilityDefinitionSchema, type CapabilityDefinition } from './capability-ontology.ts';
 
-const createdAt = '2026-08-29T00:00:00.000Z';
+export const CORE_CAPABILITY_ONTOLOGY_GENERATION = 3;
+export const CORE_CAPABILITY_ONTOLOGY_CREATED_AT = '2026-08-30T00:00:00.000Z';
+const createdAt = CORE_CAPABILITY_ONTOLOGY_CREATED_AT;
 const services: Record<CapabilityDefinition['family'], string[]> = {
 	coordination: ['conversation', 'question-answering', 'planning', 'estimation', 'review', 'reporting', 'human-task-routing', 'decision-support'],
 	research: ['web', 'literature', 'market', 'repository', 'dataset-discovery', 'retrieval', 'extraction', 'verification', 'citation', 'synthesis', 'experimentation'],
@@ -17,6 +19,7 @@ function definition(family: CapabilityDefinition['family'], service: string): Ca
 		['instructions.templates', 'Immutable instruction template delivery.'],
 		['context.queries', 'Resolved context query manifest delivery.'],
 		['tools.policy', 'Assignment-scoped tool policy enforcement.'],
+		['intelligence.reasoning-effort', 'Provider-neutral reasoning effort requested by the agent activity profile.'],
 	].map(([key, description]) => ({ key: key!, description: description!, schema: {}, requirementSupport: ['required', 'preferred'] as Array<'required' | 'preferred'>, securityCritical: true }));
 	const material: Omit<CapabilityDefinition, 'digest'> = {
 		schemaVersion: 'treeseed.capability-definition/v1', id: `treeseed.${family}.${service}`, version: '1.0.0', family,
@@ -29,16 +32,3 @@ function definition(family: CapabilityDefinition['family'], service: string): Ca
 }
 
 export const CORE_CAPABILITY_DEFINITIONS = Object.entries(services).flatMap(([family, values]) => values.map((service) => definition(family as CapabilityDefinition['family'], service)));
-
-export const LEGACY_CAPABILITY_ALIASES: Record<string, string> = {
-	communication: 'treeseed.coordination.conversation', reporting: 'treeseed.coordination.reporting', 'terminal-reporting': 'treeseed.coordination.reporting',
-	'independent-review': 'treeseed.engineering.review', 'governed-revision': 'treeseed.engineering.code-change', repository_work: 'treeseed.engineering.repository-analysis',
-	'repository-read': 'treeseed.engineering.repository-analysis', research: 'treeseed.research.synthesis', planning: 'treeseed.coordination.planning',
-};
-
-export function resolveLegacyCapability(value: string, activityType?: string): string | null {
-	if (value === 'agent-execution') return ({ chat: 'treeseed.coordination.conversation', acting: 'treeseed.engineering.code-change', reviewing: 'treeseed.engineering.review', estimating: 'treeseed.coordination.estimation', reporting: 'treeseed.coordination.reporting', planning: 'treeseed.coordination.planning' } as Record<string, string>)[activityType ?? ''] ?? null;
-	if (value === 'repository_work' && activityType === 'acting') return 'treeseed.engineering.code-change';
-	if (value.startsWith('engineering:')) return value.endsWith(':review') ? 'treeseed.engineering.review' : 'treeseed.engineering.code-change';
-	return LEGACY_CAPABILITY_ALIASES[value] ?? (value.startsWith('treeseed.') || value.startsWith('provider.') ? value : null);
-}

@@ -384,111 +384,43 @@ export interface CapacityProviderJoinInput {
 	offer: ProviderSupplyOffer;
 }
 
-export interface CapacityProviderManifestV3 {
-	schemaVersion: 3;
-	ownership: {
-		type: 'team' | 'external';
-		teamId?: string;
-	};
-	configuration: {
-		generation: string;
-		sourceManifestDigest?: string;
-	};
-	identity: {
-		privateKeyRef: string;
-		displayName: string;
-	};
-	capacity: {
-		maxConcurrentWorkers: number;
-		cpuCores?: number;
-		memoryBytes?: number;
-		accelerators?: Array<{ kind: string; count: number; memoryBytes?: number }>;
-		maxActiveSeconds?: number;
-		maxInputTokens?: number;
-		maxOutputTokens?: number;
-		maxCost?: number;
-		currency?: string;
-		maxAttempts?: number;
-	};
-	credentialProfiles?: Array<{
-		id: string;
-		source: 'service-vault' | 'process-environment';
-		reference: string;
-		required: boolean;
-	}>;
-	lanes: Array<{
-		id: string;
-		purpose: import('../../agent-capacity/contracts/capacity/communication/communication-records.ts').ProviderLanePurpose;
-		priority: number;
-		reservedConcurrentWorkers: number;
-		maxConcurrentWorkers: number;
-		borrowWhenIdle: boolean;
-		lendWhenIdle: boolean;
-		reclaimPolicy: 'admission';
-		queueLimit: number;
-		timeoutSeconds: number;
-		minimumAssignmentDuration?: MinimumAssignmentDuration;
-		capabilities?: string[];
-	}>;
-	adapters: Array<{
-		id: string;
-		adapter: string;
-		isolation: 'process' | 'worker';
-		profile?: string;
-		module?: string;
-		protocol?: 'responses' | 'chat-completions';
-		model?: {
-			endpointRef?: string;
-			baseUrl?: string;
-			model?: string;
-		};
-		credentialProfiles?: string[];
-		laneIds: string[];
-		maxConcurrentWorkers: number;
-		healthProbe?: string;
-		versionConstraint?: string;
-		configurationDigest?: string;
-		minimumAssignmentDuration?: MinimumAssignmentDuration;
-		nativeLimits: Record<string, unknown>;
-		researchSourcePolicy?: ResearchSourcePolicy;
-		capabilities?: string[];
-	}>;
-	connections: ProviderConnectionConfig[];
-	metadata?: Record<string, unknown>;
-}
-
 export interface CapacityProviderSandboxProfile {
 	id: string;
 	contract?: { id: string; version: string; digest: string; capabilities: string[] };
 	guestImage: string;
 	guestImageDigest: string;
-	lineage?: { baseImageDigest: string; provenanceDigest: string; architectures: Array<'amd64' | 'arm64'>; signature: { keyId: string; algorithm: 'cosign' | 'Ed25519'; value: string } };
+	lineage: { baseImageDigest: string; provenanceDigest: string; architectures: Array<'amd64' | 'arm64'>; signature: { keyId: string; algorithm: 'cosign' | 'Ed25519'; value: string } };
 	defaultDenyNetwork: true;
 	resources: { cpuCores: number; memoryBytes: number; diskBytes: number; processLimit: number; outputBytes: number };
 }
 
-export interface CapacityProviderManifestV4 extends Omit<CapacityProviderManifestV3, 'schemaVersion' | 'adapters'> {
-	schemaVersion: 4;
-	sandbox: {
-		required: true;
-		brokerSocket: string;
-		runtime: 'kata-runtime-rs-qemu';
-		profiles: CapacityProviderSandboxProfile[];
-	};
-	adapters: Array<Omit<CapacityProviderManifestV3['adapters'][number], 'isolation'> & {
-		isolation: 'microvm' | 'process' | 'worker';
-		sandboxProfileIds?: string[];
-		defaultSandboxProfiles?: { conversation: string; execution: string };
-	}>;
-}
-
-export interface CapacityProviderManifestV5 extends Omit<CapacityProviderManifestV4, 'schemaVersion' | 'adapters'> {
+export interface CapacityProviderManifestV5 {
 	schemaVersion: 5;
+	ownership: { type: 'team' | 'external'; teamId?: string };
+	configuration: { generation: string; sourceManifestDigest?: string };
+	identity: { privateKeyRef: string; displayName: string };
 	ontology: { generation: number; digest: string };
-	adapters: Array<Omit<CapacityProviderManifestV4['adapters'][number], 'capabilities' | 'sandboxProfileIds' | 'defaultSandboxProfiles'> & {
-		isolation: 'microvm';
+	capacity: {
+		maxConcurrentWorkers: number; cpuCores?: number; memoryBytes?: number;
+		accelerators?: Array<{ kind: string; count: number; memoryBytes?: number }>;
+		maxActiveSeconds?: number; maxInputTokens?: number; maxOutputTokens?: number; maxCost?: number; currency?: string; maxAttempts?: number;
+	};
+	credentialProfiles?: Array<{ id: string; source: 'service-vault'; reference: string; required: boolean }>;
+	lanes: Array<{
+		id: string; purpose: import('../../agent-capacity/contracts/capacity/communication/communication-records.ts').ProviderLanePurpose;
+		priority: number; reservedConcurrentWorkers: number; maxConcurrentWorkers: number; borrowWhenIdle: boolean; lendWhenIdle: boolean;
+		reclaimPolicy: 'admission'; queueLimit: number; timeoutSeconds: number; minimumAssignmentDuration?: MinimumAssignmentDuration; capabilities?: string[];
+	}>;
+	sandbox: { required: true; brokerSocket: string; runtime: 'kata-runtime-rs-qemu'; profiles: CapacityProviderSandboxProfile[] };
+	adapters: Array<{
+		id: string; adapter: string; isolation: 'microvm'; profile?: string; module?: string; protocol?: 'responses' | 'chat-completions';
+		model?: { endpointRef?: string; baseUrl?: string; model?: string }; credentialProfiles?: string[]; laneIds: string[]; maxConcurrentWorkers: number;
+		healthProbe?: string; versionConstraint?: string; configurationDigest?: string; minimumAssignmentDuration?: MinimumAssignmentDuration;
+		nativeLimits: Record<string, unknown>; researchSourcePolicy?: ResearchSourcePolicy;
 		offers: Array<{ offer: CapabilityOffer; sandboxProfileId: string }>;
 	}>;
+	connections: ProviderConnectionConfig[];
+	metadata?: Record<string, unknown>;
 }
 
-export type CapacityProviderManifest = CapacityProviderManifestV3 | CapacityProviderManifestV4 | CapacityProviderManifestV5;
+export type CapacityProviderManifest = CapacityProviderManifestV5;

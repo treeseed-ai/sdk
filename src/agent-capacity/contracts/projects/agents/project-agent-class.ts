@@ -30,7 +30,6 @@ export interface ProjectAgentClass {
 	name: string;
 	status: ProjectAgentClassStatus;
 	allowedModes: AgentExecutionMode[];
-	requiredCapabilities: string[];
 	kernelProfile: AgentKernelProfile;
 	kernelPolicy: AgentKernelPolicy;
 	handlerRefs: Record<string, unknown>;

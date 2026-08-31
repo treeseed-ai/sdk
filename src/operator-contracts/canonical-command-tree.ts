@@ -328,6 +328,11 @@ const commandTree: CommandTreeDescriptor = {
 				{ nodeType: 'leaf', segment: 'activate', description: 'Build and activate a local host-runtime development generation.', kind: 'mutation', arguments: [{ name: 'worktree', description: 'Deployment worktree (defaults to the current workspace deployment package).', required: false }], options: [planOption, { name: '--guest-image', description: 'Optional exact sandbox guest image digest to bind while activating.', type: 'string' }], authorization: { capability: 'development.activate', confirmation: 'never' }, resultSchemaId: 'treeseed.command.dev.host.activate/v1', execution: local('local.dev.host.activate') },
 				{ nodeType: 'leaf', segment: 'status', description: 'Show the active local host-runtime development generation.', kind: 'read', resultSchemaId: 'treeseed.command.dev.host.status/v1', execution: local('local.dev.host.status') },
 				{ nodeType: 'leaf', segment: 'deactivate', description: 'Restore the installed host runtime.', kind: 'mutation', options: [planOption], authorization: { capability: 'development.deactivate', confirmation: 'never' }, resultSchemaId: 'treeseed.command.dev.host.deactivate/v1', execution: local('local.dev.host.deactivate') },
+				branch('guest', [
+					branch('image', [
+						{ nodeType: 'leaf', segment: 'import', description: 'Import a locally built provider sandbox image into the Kata development runtime.', kind: 'mutation', arguments: [{ name: 'image', description: 'Local treeseed/sandbox-*:local image reference.', required: true }], options: [planOption], authorization: { capability: 'development.activate', confirmation: 'never' }, resultSchemaId: 'treeseed.command.dev.host.guest-image.import/v1', execution: local('local.dev.host.guest-image.import') },
+					]),
+				]),
 			]),
 			branch('session', [
 				developmentCommand('start', 'mutation', 'manifest', [{ name: '--actor', description: 'Audited development-session actor.', type: 'string' }, { name: '--lease-seconds', description: 'Requested bounded lease duration.', type: 'number' }]),
@@ -335,6 +340,7 @@ const commandTree: CommandTreeDescriptor = {
 			]),
 			developmentCommand('use', 'mutation', 'selection', [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--target', description: 'Additional project.target=mode selections.', type: 'string[]' }]),
 			developmentCommand('rebuild', 'mutation', 'target', [{ name: '--session', description: 'Development session identity.', type: 'string' }]),
+			developmentCommand('restart', 'mutation', 'target', [{ name: '--session', description: 'Development session identity.', type: 'string' }]),
 			developmentCommand('status', 'read', undefined, [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--all', description: 'Include stopped and expired sessions.', type: 'boolean' }]),
 			developmentCommand('logs', 'read', undefined, [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--target', description: 'Development target identity.', type: 'string' }, { name: '--follow', description: 'Follow target logs.', type: 'boolean' }]),
 			developmentCommand('plan', 'read', undefined, [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--affected', description: 'Show the smallest affected closure.', type: 'boolean' }]),

@@ -268,6 +268,9 @@ try {
 	}
 
 	publishDistBuild();
+	const marker = resolve(distRoot, '.treeseed-build-complete.json'), temporaryMarker = `${marker}.new`;
+	writeFileSync(temporaryMarker, `${JSON.stringify({ completedAt: new Date().toISOString() })}\n`);
+	renameSync(temporaryMarker, marker);
 } finally {
 	rmSync(distBuildRoot, { recursive: true, force: true });
 	releaseBuildLock();

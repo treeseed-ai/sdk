@@ -170,6 +170,10 @@
       "types": "./dist/capacity/providers/capacity-provider.d.ts",
       "default": "./dist/capacity/providers/capacity-provider.js"
     },
+    "./capacity-provider/sandbox": {
+      "types": "./dist/capacity-provider/sandbox.d.ts",
+      "default": "./dist/capacity-provider/sandbox.js"
+    },
     "./capacity-provider/contracts": {
       "types": "./dist/capacity-provider/contracts/index.d.ts",
       "default": "./dist/capacity-provider/contracts/index.js"
