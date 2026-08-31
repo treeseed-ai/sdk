@@ -86,6 +86,7 @@ const operationBindings: Record<string, Execution> = {
 	'host bootstrap enroll': local('local.host.bootstrap.enroll'),
 	'host reset': local('local.host.reset'),
 	'host uninstall': local('local.host.uninstall'),
+	'host initialize': local('local.host.initialize'),
 	'dev session start': local('local.dev.session.start'),
 	'dev session stop': local('local.dev.session.stop'),
 	'dev use': local('local.dev.use'),
@@ -226,6 +227,19 @@ function hostUninstall(): CommandNodeDescriptor {
 		{ name: '--yes', description: 'Confirm non-interactive execution after reviewing the plan.', type: 'boolean' },
 	];
 	value.resultSchemaId = 'treeseed.host-uninstall-result/v1';
+	return value;
+}
+
+function hostInitialize(): CommandNodeDescriptor {
+	const value = leaf('initialize', 'mutation', undefined, 'authority');
+	if (value.nodeType !== 'leaf') throw new Error('Host initialize must be a leaf command.');
+	value.description = 'Initialize the generic host foundation from an immutable catalog-bound profile.';
+	value.options = [...(value.options ?? []),
+		{ name: '--profile', description: 'Catalog-bound host initialization profile.', type: 'string', required: true },
+		{ name: '--confirm', description: 'Confirm installation of the reviewed profile plan.', type: 'boolean' },
+		{ name: '--yes', description: 'Confirm non-interactive execution after reviewing the plan.', type: 'boolean' },
+	];
+	value.resultSchemaId = 'treeseed.host-initialization-result/v1';
 	return value;
 }
 
@@ -373,6 +387,7 @@ const commandTree: CommandTreeDescriptor = {
 			developmentCommand('verify', 'mutation', undefined, [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--candidate', description: 'Candidate identity.', type: 'string' }]),
 		]),
 		branch('host', [
+			hostInitialize(),
 			leaf('status'), leaf('doctor'), leaf('plan'), leaf('apply', 'mutation', undefined, 'authority'), leaf('reconcile', 'mutation', undefined, 'authority'), leaf('events'),
 			branch('config', [leaf('show'), leaf('plan', 'read', 'file'), leaf('apply', 'mutation', 'file', 'authority'), configurationAdopt()]),
 			leaf('topology'), leaf('connections'), branch('provider', [leaf('status'), branch('credentials', [leaf('list'), leaf('status'), hostProviderCredentialInitialize()])]),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalDeploymentJson, collectHostAliases, collectTopologyBlockers, componentReleaseSchema, deploymentDigest, hostBackupSchema, hostBootstrapSchema, hostConfigurationSchema, hostCredentialInitializerSchema, hostMigrationSchema, hostNeedsEdge, hostRecoverySchema, hostUpdateSchema, integrationReleaseSchema, packageRuntimeSchema, releaseCatalogSchema, resolveMixedTrackCatalog, type ComponentRelease, type HostConfiguration, type ReleaseCatalog } from '../../../src/deployment/index.ts';
+import { canonicalDeploymentJson, collectHostAliases, collectTopologyBlockers, componentReleaseSchema, deploymentDigest, hostBackupSchema, hostBootstrapSchema, hostConfigurationSchema, hostCredentialInitializerSchema, hostInitializationProfileSchema, hostMigrationSchema, hostNeedsEdge, hostRecoverySchema, hostUpdateSchema, integrationReleaseSchema, packageRuntimeSchema, releaseCatalogSchema, resolveMixedTrackCatalog, type ComponentRelease, type HostConfiguration, type ReleaseCatalog } from '../../../src/deployment/index.ts';
 
 const hash = (value: string) => `sha256:${value.repeat(64)}`;
 
@@ -155,6 +155,20 @@ describe('deployment contracts', () => {
 		const artifact = { url: 'https://github.com/treeseed-ai/agent/releases/download/1.0.0/component-release.json', sha256: 'a'.repeat(64) };
 		const value = integrationReleaseSchema.parse({ schemaVersion: 'treeseed.integration-release/v1', release: '1.0.0', generation: 1, track: 'stable', compatibilityId: 'linux-amd64-v1', platform: { repository: 'treeseed-ai/platform', commit: 'a'.repeat(40) }, deployment: { repository: 'treeseed-ai/deployment', commit: 'b'.repeat(40), tag: '1.0.0' }, hostPayloads: [], components: [{ componentId: 'agent', release: '1.0.0-1', manifest: artifact, files: [{ path: 'compose.yml', artifact: { ...artifact, url: artifact.url.replace('component-release.json', 'compose.yml') } }] }], createdAt: '2026-08-24T00:00:00.000Z' });
 		expect(value.components[0]?.files[0]?.path).toBe('compose.yml');
+	});
+
+	it('binds portable host initialization profiles without runtime values', () => {
+		const profile = hostInitializationProfileSchema.parse({ schemaVersion: 'treeseed.host-initialization-profile/v1', id: 'capacity-provider', role: 'capacity-provider', runtime: { management: 'managed', environment: 'track-default' }, components: ['agent'], security: { requirement: 'required' }, inputs: [
+			{ name: 'controlPlaneUrl', required: true, sensitive: false, description: 'Approved control-plane API URL.' },
+			{ name: 'teamRegistrationCode', required: true, sensitive: true, description: 'Prompted one-time team registration code.' },
+		] });
+		expect(profile.inputs.every((input) => !('value' in input))).toBe(true);
+		expect(() => hostInitializationProfileSchema.parse({ ...profile, components: ['agent', 'agent'] })).toThrow(/components must be unique/u);
+		expect(() => hostInitializationProfileSchema.parse({ ...profile, inputs: [...profile.inputs, profile.inputs[0]] })).toThrow(/inputs must be unique/u);
+
+		const catalog = { schemaVersion: 'treeseed.release-catalog/v1', release: '1.0.0', generation: 1, track: 'stable', compatibilityId: 'linux-amd64-v1', catalogDigest: hash('d'), stableBase: null, components: [release('agent', 'stable', 'a')], hostProfiles: [profile], createdAt: '2026-08-23T00:00:00.000Z' };
+		expect(releaseCatalogSchema.parse(catalog).hostProfiles[0]?.id).toBe('capacity-provider');
+		expect(() => releaseCatalogSchema.parse({ ...catalog, hostProfiles: [{ ...profile, components: ['api'] }] })).toThrow(/unavailable component api/u);
 	});
 
 	it('allows project release candidates to defer catalog binding but requires it at catalog ingestion', () => {

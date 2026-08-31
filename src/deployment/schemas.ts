@@ -272,6 +272,26 @@ export const componentReleaseSchema = z.object({
 });
 
 const lockedArtifactSchema = z.object({ url: z.string().url(), sha256: z.string().regex(/^[a-f0-9]{64}$/u) }).strict();
+const initializationInputName = z.string().regex(/^[a-z][A-Za-z0-9]{1,63}$/u);
+export const hostInitializationProfileSchema = z.object({
+	schemaVersion: z.literal('treeseed.host-initialization-profile/v1'),
+	id: identifier,
+	role: hostRoleSchema,
+	runtime: z.object({ management: z.literal('managed'), environment: z.enum(['track-default', 'production', 'development']) }).strict(),
+	components: z.array(identifier).min(1),
+	security: z.object({ requirement: z.enum(['required', 'optional', 'none']) }).strict(),
+	inputs: z.array(z.object({
+		name: initializationInputName,
+		required: z.boolean(),
+		sensitive: z.boolean(),
+		description: z.string().min(1).max(512),
+	}).strict()).default([]),
+}).strict().superRefine((profile, context) => {
+	for (const [path, values] of [['components', profile.components], ['inputs', profile.inputs.map(({ name }) => name)]] as const) {
+		if (new Set(values).size !== values.length) context.addIssue({ code: z.ZodIssueCode.custom, path: [path], message: `Host initialization profile ${path} must be unique.` });
+	}
+});
+
 export const integrationReleaseSchema = z.object({
 	schemaVersion: z.literal('treeseed.integration-release/v1'),
 	release: packageVersion,
@@ -281,6 +301,7 @@ export const integrationReleaseSchema = z.object({
 	platform: z.object({ repository: z.literal('treeseed-ai/platform'), commit: gitCommit }).strict(),
 	deployment: z.object({ repository: z.literal('treeseed-ai/deployment'), commit: gitCommit, tag: z.string().min(1) }).strict(),
 	hostPayloads: z.array(z.object({ id: identifier, packageName: z.string().min(1), version: packageVersion, artifact: lockedArtifactSchema }).strict()),
+	hostProfiles: z.array(z.object({ id: identifier, artifact: lockedArtifactSchema }).strict()).default([]),
 	components: z.array(z.object({
 		componentId: identifier,
 		release: packageVersion,
@@ -291,6 +312,8 @@ export const integrationReleaseSchema = z.object({
 }).strict().superRefine((release, context) => {
 	const components = release.components.map((component) => component.componentId);
 	if (new Set(components).size !== components.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['components'], message: 'Integration releases cannot select a component more than once.' });
+	const profiles = release.hostProfiles.map((profile) => profile.id);
+	if (new Set(profiles).size !== profiles.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['hostProfiles'], message: 'Integration releases cannot select a host profile more than once.' });
 });
 
 export const releaseCatalogSchema = z.object({
@@ -302,12 +325,19 @@ export const releaseCatalogSchema = z.object({
 	catalogDigest: digest,
 	stableBase: z.object({ release: packageVersion, catalogDigest: digest }).strict().nullable(),
 	components: z.array(componentReleaseSchema),
+	hostProfiles: z.array(hostInitializationProfileSchema).default([]),
 	createdAt: z.string().datetime(),
 }).strict().superRefine((catalog, context) => {
 	if (catalog.track === 'development' && !catalog.stableBase) context.addIssue({ code: z.ZodIssueCode.custom, path: ['stableBase'], message: 'Development catalogs require an exact stable base.' });
 	if (catalog.track === 'stable' && catalog.stableBase) context.addIssue({ code: z.ZodIssueCode.custom, path: ['stableBase'], message: 'Stable catalogs cannot bind another stable base.' });
 	if (catalog.track === 'development' && catalog.stableBase) for (const [index, component] of catalog.components.entries()) {
 		if (component.track !== 'development' || component.stableBase?.catalogDigest !== catalog.stableBase.catalogDigest) context.addIssue({ code: z.ZodIssueCode.custom, path: ['components', index, 'stableBase', 'catalogDigest'], message: 'Catalog ingestion must bind every development component to the exact selected stable base.' });
+	}
+	const profileIds = catalog.hostProfiles.map((profile) => profile.id);
+	if (new Set(profileIds).size !== profileIds.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['hostProfiles'], message: 'Release catalogs cannot contain duplicate host profiles.' });
+	const components = new Set(catalog.components.map((component) => component.componentId));
+	for (const [profileIndex, profile] of catalog.hostProfiles.entries()) for (const [componentIndex, componentId] of profile.components.entries()) {
+		if (!components.has(componentId)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['hostProfiles', profileIndex, 'components', componentIndex], message: `Host profile ${profile.id} selects unavailable component ${componentId}.` });
 	}
 });
 
@@ -376,6 +406,7 @@ export type PackageEndpoint = z.infer<typeof packageEndpointSchema>;
 export type ComponentRelease = z.infer<typeof componentReleaseSchema>;
 export type ReleaseCatalog = z.infer<typeof releaseCatalogSchema>;
 export type IntegrationRelease = z.infer<typeof integrationReleaseSchema>;
+export type HostInitializationProfile = z.infer<typeof hostInitializationProfileSchema>;
 export type HostPlan = z.infer<typeof hostPlanSchema>;
 export type HostBootstrap = z.infer<typeof hostBootstrapSchema>;
 export type HostUpdate = z.infer<typeof hostUpdateSchema>;

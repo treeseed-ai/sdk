@@ -46,7 +46,7 @@ describe('human command tree contract', () => {
 		expect(leaves.get('release')?.execution).toMatchObject({ kind: 'unavailable', code: 'standards_migration_not_enabled' });
 		expect(JSON.stringify(TREESEED_COMMAND_TREE_V1)).not.toContain('/v1/');
 		expect(listCommandPaths()).toEqual(expect.arrayContaining([
-			'host status', 'host doctor', 'host config adopt', 'host topology', 'host connections', 'host provider status', 'host storage connect', 'host storage status', 'host storage reconcile', 'host storage rotate', 'host fleet status', 'host update channel', 'host component enable', 'host recovery restore', 'host bootstrap enroll', 'host reset',
+			'host initialize', 'host status', 'host doctor', 'host config adopt', 'host topology', 'host connections', 'host provider status', 'host storage connect', 'host storage status', 'host storage reconcile', 'host storage rotate', 'host fleet status', 'host update channel', 'host component enable', 'host recovery restore', 'host bootstrap enroll', 'host reset',
 			'projects treedx show',
 			'projects treedx bind',
 			'projects treedx status',
@@ -56,6 +56,9 @@ describe('human command tree contract', () => {
 			'projects treedx workspaces show',
 			'projects treedx workspaces abandon',
 		]));
+		const initialize = leaves.get('host initialize');
+		expect(initialize?.execution).toEqual({ kind: 'local', handlerId: 'local.host.initialize' });
+		expect(initialize?.options?.map((option) => option.name)).toEqual(['--plan', '--profile', '--confirm', '--yes']);
 	});
 
 	it('maps workday planning options to the versioned intent wire contract', () => {
