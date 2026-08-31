@@ -85,6 +85,7 @@ const operationBindings: Record<string, Execution> = {
 	'host bootstrap status': local('local.host.bootstrap.status'),
 	'host bootstrap enroll': local('local.host.bootstrap.enroll'),
 	'host reset': local('local.host.reset'),
+	'host uninstall': local('local.host.uninstall'),
 	'dev session start': local('local.dev.session.start'),
 	'dev session stop': local('local.dev.session.stop'),
 	'dev use': local('local.dev.use'),
@@ -212,6 +213,19 @@ function hostReset(): CommandNodeDescriptor {
 	if (value.nodeType !== 'leaf') throw new Error('Host reset must be a leaf command.');
 	value.description = 'Stop managed components, erase their state, and reconcile a fresh unseeded platform.';
 	value.options = [...(value.options ?? []), { name: '--confirm', description: 'Confirm deletion of all manager-owned component data and receipts.', type: 'boolean' }];
+	return value;
+}
+
+function hostUninstall(): CommandNodeDescriptor {
+	const value = leaf('uninstall', 'mutation', undefined, 'irreversible');
+	if (value.nodeType !== 'leaf') throw new Error('Host uninstall must be a leaf command.');
+	value.description = 'Plan or remove every inventoried TreeSeed-owned host resource while preserving unrelated infrastructure and source repositories.';
+	value.options = [...(value.options ?? []),
+		{ name: '--confirm', description: 'Confirm removal of the reviewed TreeSeed resource inventory.', type: 'boolean' },
+		{ name: '--purge-security', description: 'Separately select destruction of encrypted state, credentials, users, and groups.', type: 'boolean' },
+		{ name: '--yes', description: 'Confirm non-interactive execution after reviewing the plan.', type: 'boolean' },
+	];
+	value.resultSchemaId = 'treeseed.host-uninstall-result/v1';
 	return value;
 }
 
@@ -378,6 +392,7 @@ const commandTree: CommandTreeDescriptor = {
 			branch('recovery', [leaf('status'), leaf('retry', 'mutation', undefined, 'authority'), leaf('restore', 'mutation', 'generation', 'destructive')]),
 			branch('bootstrap', [leaf('status'), leaf('enroll', 'mutation', undefined, 'credential')]),
 			hostReset(),
+			hostUninstall(),
 		]),
 		branch('agents', [
 			leaf('list'), leaf('show', 'read', 'agent'), leaf('validate'), leaf('diff'), leaf('diagnose'),
