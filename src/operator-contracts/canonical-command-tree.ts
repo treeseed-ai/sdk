@@ -35,6 +35,9 @@ const operationBindings: Record<string, Execution> = {
 	'secrets unlock': local('local.secrets.unlock'),
 	'secrets lock': local('local.secrets.lock'),
 	'secrets rotate': local('local.secrets.rotate'),
+	'platform verify': local('local.platform.verify'),
+	'platform workset': local('local.platform.workset'),
+	'platform project create': local('local.platform.project.create'),
 	'host status': local('local.host.status'),
 	'host doctor': local('local.host.doctor'),
 	'host plan': local('local.host.plan'),
@@ -324,6 +327,13 @@ const commandTree: CommandTreeDescriptor = {
 		branch('users', [userCreate()]),
 		branch('teams', [leaf('list'), { nodeType: 'leaf', segment: 'current', description: 'Show the active team for this authenticated server session.', kind: 'read', resultSchemaId: 'treeseed.command.teams.current/v1', execution: unavailable() }, { nodeType: 'leaf', segment: 'use', description: 'Select the active team for this authenticated server session.', kind: 'mutation', arguments: [{ name: 'team', description: 'Team UUID or unambiguous slug.', required: true }], options: [planOption], authorization: { capability: 'teams.read', confirmation: 'never' }, resultSchemaId: 'treeseed.command.teams.use/v1', execution: unavailable() }]),
 		branch('secrets', [leaf('list'), leaf('status'), leaf('unlock', 'mutation', undefined, 'credential'), leaf('lock', 'mutation'), leaf('rotate', 'mutation', undefined, 'credential')]),
+		branch('platform', [
+			{ nodeType: 'leaf', segment: 'verify', description: 'Verify a declarative Platform repository without package checkouts or a control-plane API.', kind: 'read', arguments: [{ name: 'root', description: 'Platform root; defaults to the current directory.', required: false }], options: [{ name: '--profile', description: 'Composable profile to verify.', type: 'string[]' }, { name: '--json', description: 'Emit the stable command-result envelope.', type: 'boolean' }], resultSchemaId: 'treeseed.platform-verification/v1', execution: local('local.platform.verify') },
+			{ nodeType: 'leaf', segment: 'workset', description: 'Plan or safely materialize exact primary source checkouts beneath packages/.', kind: 'mutation', options: [planOption, { name: '--apply', description: 'Apply the frozen workset plan.', type: 'boolean' }, { name: '--yes', description: 'Confirm the planned checkout mutations.', type: 'boolean' }, { name: '--profile', description: 'Composable source profile; repeat to union profiles.', type: 'string[]' }, { name: '--project', description: 'Explicit project slug; repeat to select projects.', type: 'string[]' }, { name: '--exclude', description: 'Project slug to exclude; repeat as needed.', type: 'string[]' }, { name: '--json', description: 'Emit the stable command-result envelope.', type: 'boolean' }], authorization: { capability: 'development.workset', confirmation: 'never' }, resultSchemaId: 'treeseed.platform-workset-result/v1', execution: local('local.platform.workset') },
+			branch('project', [
+				{ nodeType: 'leaf', segment: 'create', description: 'Plan or reconcile a project, repository, template, library binding, and live inventory without writing application source into Platform Git.', kind: 'mutation', arguments: [{ name: 'slug', description: 'Portable project slug.', required: true }], options: [planOption, { name: '--apply', description: 'Apply the accepted creation plan.', type: 'boolean' }, { name: '--yes', description: 'Confirm authority-bearing project creation.', type: 'boolean' }, { name: '--template', description: 'Published template identity.', type: 'string', required: true }, { name: '--json', description: 'Emit the stable command-result envelope.', type: 'boolean' }], authorization: { capability: 'projects.create', confirmation: 'authority' }, resultSchemaId: 'treeseed.platform-project-create-result/v1', execution: local('local.platform.project.create') },
+			]),
+		]),
 		branch('dev', [
 			branch('host', [
 				{ nodeType: 'leaf', segment: 'activate', description: 'Build and activate a local host-runtime development generation.', kind: 'mutation', arguments: [{ name: 'worktree', description: 'Deployment worktree (defaults to the current workspace deployment package).', required: false }], options: [planOption, { name: '--guest-image', description: 'Optional exact sandbox guest image digest to bind while activating.', type: 'string' }], authorization: { capability: 'development.activate', confirmation: 'never' }, resultSchemaId: 'treeseed.command.dev.host.activate/v1', execution: local('local.dev.host.activate') },

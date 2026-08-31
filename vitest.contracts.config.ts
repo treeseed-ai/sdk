@@ -12,6 +12,7 @@ export default defineConfig({
 			'tests/unit/deployment/**/*.test.ts',
 			'tests/unit/development/**/*.test.ts',
 			'tests/unit/operator-contracts/**/*.test.ts',
+			'tests/unit/platform-contracts.test.ts',
 			'tests/unit/control-plane-client.test.ts',
 			'tests/unit/treedx-proxy.test.ts',
 			'tests/unit/treeai-proxy.test.ts',
