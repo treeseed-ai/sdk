@@ -62,7 +62,7 @@ function semanticDiagnostics(root: string, tracked: ReadonlySet<string>): Platfo
 		if (![...integrationDigests.values()].includes(host.integration.digest)) report('host_integration_unknown', path, 'Host template integration digest is not present in a referenced integration lock.');
 	}
 	const production = site.production as { mutation?: string; topology?: string } | undefined;
-	if (production?.mutation !== 'blocked') report('production_not_fail_closed', sitePath, 'Production mutation must remain blocked until promotion gates pass.');
+	if (production && production.mutation !== 'blocked') report('production_not_fail_closed', sitePath, 'Production mutation must remain blocked until promotion gates pass.');
 	if (production?.topology && !tracked.has(production.topology)) report('topology_reference_invalid', sitePath, 'Production topology must reference a tracked declaration.');
 	return diagnostics;
 }

@@ -106,6 +106,16 @@ describe('Platform repository verification', () => {
 		expect(missing.ok).toBe(false);
 		expect(missing.diagnostics).toContainEqual(expect.objectContaining({ code: 'tracked_file_missing', path: 'README.md' }));
 	});
+
+	it('does not require a production declaration in a development-only Platform', () => {
+		const root = temporary();
+		execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
+		mkdirSync(resolve(root, 'seeds'));
+		writeFileSync(resolve(root, 'treeseed.site.yaml'), 'development:\n  local:\n    inventory: { source: seed, path: seeds/inventory.yaml }\n');
+		writeFileSync(resolve(root, 'seeds/inventory.yaml'), 'schemaVersion: treeseed.seed-bundle/v3\nresources: { projects: [], repositories: [] }\n');
+		execFileSync('git', ['add', '.'], { cwd: root, stdio: 'ignore' });
+		expect(verifyPlatformRepository(root)).toMatchObject({ ok: true, diagnostics: [] });
+	});
 });
 
 describe('Platform release and provider contracts', () => {
