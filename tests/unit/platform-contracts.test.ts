@@ -93,6 +93,19 @@ describe('Platform repository verification', () => {
 		expect(result.ok).toBe(false);
 		expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(expect.arrayContaining(['content_root_forbidden', 'personal_path_forbidden']));
 	});
+
+	it('accepts the project-scoped Skills lock and reports a missing tracked file', () => {
+		const root = temporary();
+		execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
+		writeFileSync(resolve(root, 'README.md'), '# Platform\n');
+		writeFileSync(resolve(root, 'skills-lock.json'), '{"version":1,"skills":{}}\n');
+		execFileSync('git', ['add', '.'], { cwd: root, stdio: 'ignore' });
+		expect(verifyPlatformRepository(root).ok).toBe(true);
+		rmSync(resolve(root, 'README.md'));
+		const missing = verifyPlatformRepository(root);
+		expect(missing.ok).toBe(false);
+		expect(missing.diagnostics).toContainEqual(expect.objectContaining({ code: 'tracked_file_missing', path: 'README.md' }));
+	});
 });
 
 describe('Platform release and provider contracts', () => {
