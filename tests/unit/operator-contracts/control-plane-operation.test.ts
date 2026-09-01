@@ -53,7 +53,7 @@ describe('control-plane operation catalog', () => {
 
 	it('publishes one valid catalog with unique REST bindings', () => {
 		expect(validateControlPlaneCatalog(CONTROL_PLANE_CATALOG)).toEqual([]);
-		expect(CONTROL_PLANE_OPERATION_LIST).toHaveLength(462);
+		expect(CONTROL_PLANE_OPERATION_LIST).toHaveLength(471);
 		expect(new Set(CONTROL_PLANE_OPERATION_LIST.map((entry) => entry.descriptor.operationId)).size).toBe(CONTROL_PLANE_OPERATION_LIST.length);
 		const paths = CONTROL_PLANE_OPERATION_LIST.flatMap((entry) => entry.descriptor.rest?.path ?? []);
 		expect(paths.some((path) => path.startsWith('/v1/operator/commands'))).toBe(false);
@@ -81,6 +81,9 @@ describe('control-plane operation catalog', () => {
 		expect(CONTROL_PLANE_OPERATIONS.communications.cancelInvocation.descriptor).toMatchObject({ riskClass: 'destructive', confirmation: 'input_required' });
 		expect(CONTROL_PLANE_OPERATIONS.communications.send.descriptor).toMatchObject({ authentication: 'oauth', surfaces: ['rest', 'cli', 'mcp_tool'] });
 		expect(CONTROL_PLANE_OPERATIONS.providers.discussionResponse.descriptor).toMatchObject({ authentication: 'provider', surfaces: ['rest'] });
+		expect(CONTROL_PLANE_OPERATIONS.providers.registrationCode.rotate.descriptor).toMatchObject({ riskClass: 'credential', redactedPaths: ['output.registrationCode'], concurrency: { required: true } });
+		expect(CONTROL_PLANE_OPERATIONS.providers.environmentProfiles.publish.descriptor).toMatchObject({ authentication: 'provider', oauthScopes: [] });
+		expect(CONTROL_PLANE_OPERATIONS.providers.environmentGrants.put.descriptor).toMatchObject({ authentication: 'oauth', riskClass: 'authority', concurrency: { required: true } });
 	});
 
 	it('coerces the projects list HTTP limit query parameter', () => {
