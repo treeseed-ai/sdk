@@ -33,14 +33,28 @@ export const projectCreatePlanSchema = z.object({
 	team: z.string().min(1),
 	repository: z.object({ owner: z.string().min(1), name: z.string().min(1), visibility: z.enum(['public', 'private']) }),
 	steps: z.array(z.enum(['project', 'repository', 'template', 'library', 'inventory'])),
+	actions: z.array(z.object({
+		step: z.enum(['project', 'repository', 'template', 'library', 'inventory']),
+		action: z.enum(['create', 'adopt', 'apply', 'bind', 'publish', 'noop', 'blocked']),
+	})),
+	observationDigest: digest,
+	planDigest: digest,
+	ok: z.boolean(),
+	blockers: z.array(z.string()),
 }).strict();
 
-export const projectCreateReceiptSchema = projectCreatePlanSchema.omit({ schemaVersion: true }).extend({
+export const projectCreateReceiptSchema = z.object({
 	schemaVersion: z.literal('treeseed.platform-project-create-receipt/v1'),
+	planDigest: digest,
+	slug: projectCreatePlanSchema.shape.slug,
+	template: projectCreatePlanSchema.shape.template,
+	team: z.string().min(1),
+	repository: projectCreatePlanSchema.shape.repository,
 	projectId: z.string().min(1),
 	repositoryUrl: z.string().url(),
 	libraryBindingId: z.string().min(1),
 	inventoryVersion: z.number().int().positive(),
+	actions: projectCreatePlanSchema.shape.actions,
 }).strict();
 
 export const providerRegistrationRequestSchema = z.object({
