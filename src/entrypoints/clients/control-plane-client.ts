@@ -297,6 +297,10 @@ export class ControlPlaneClient {
 				code: 'control_plane_response_invalid',
 			}, response.headers);
 		}
-		return payload as ControlPlaneResponseEnvelope<T>;
+		const envelope = payload as ControlPlaneResponseEnvelope<T>;
+		const etag = response.headers.get('etag');
+		const contractDigest = response.headers.get('x-treeseed-contract-digest');
+		if (!etag && !contractDigest) return envelope;
+		return { ...envelope, meta: { ...(envelope.meta ?? {}), ...(etag ? { etag } : {}), ...(contractDigest ? { contractDigest } : {}) } };
 	}
 }

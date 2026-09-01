@@ -21,6 +21,16 @@ describe('ControlPlaneClient', () => {
 		expect(headers.get('if-match')).toBe('"generation_1"');
 	});
 
+	it('preserves only exact concurrency and contract response evidence in metadata', async () => {
+		const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ data: { items: [] }, meta: { cursor: 'next' } }), {
+			status: 200, headers: { 'content-type': 'application/json', etag: '"revision-7"', 'x-treeseed-contract-digest': `sha256:${'b'.repeat(64)}`, 'set-cookie': 'secret=value' },
+		}));
+		const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002' }, fetchImpl });
+		await expect(client.invoke(CONTROL_PLANE_OPERATIONS.projects.list, { path: {}, query: {}, body: undefined })).resolves.toEqual({
+			data: { items: [] }, meta: { cursor: 'next', etag: '"revision-7"', contractDigest: `sha256:${'b'.repeat(64)}` },
+		});
+	});
+
 	it('projects RFC 9457 failures as typed errors', async () => {
 		const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
 			type: 'https://treeseed.dev/problems/denied', title: 'Denied', status: 403, code: 'authorization_denied',
