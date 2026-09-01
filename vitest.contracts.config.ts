@@ -18,8 +18,7 @@ export default defineConfig({
 			'tests/unit/treeai-proxy.test.ts',
 			'tests/unit/security/**/*.test.ts',
 			'tests/unit/secrets-capability/provider-operation-contracts.test.ts',
-			'tests/unit/agent-capacity/capacity/assignments/assignment-record-validation.test.ts',
-			'tests/unit/agent-capacity/capacity/providers/capacity-provider.test.ts',
+			'tests/unit/agent-capacity/capacity/**/*.test.ts',
 		],
 	},
 });

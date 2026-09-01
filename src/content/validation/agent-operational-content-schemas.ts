@@ -9,6 +9,11 @@ const nonEmptyUniqueStrings = z.array(nonEmpty).min(1).superRefine((items,contex
 	if (new Set(items).size !== items.length) context.addIssue({ code:z.ZodIssueCode.custom,message:'Values must be unique.' });
 });
 const exactRevisionRefSchema = z.object({ id:nonEmpty,revision:z.number().int().positive() }).strict();
+const contextSourceSelectorSchema = z.discriminatedUnion('scope', [
+	z.object({ scope:z.literal('current-project') }).strict(), z.object({ scope:z.literal('team-library') }).strict(),
+	z.object({ scope:z.literal('same-team'),projectIds:uniqueStrings.default([]),projectSlugs:uniqueStrings.default([]) }).strict(),
+	z.object({ scope:z.literal('shared-team'),teamId:nonEmpty,projectIds:uniqueStrings.default([]) }).strict(),
+]);
 const lifecycle = z.object({
 	id:nonEmpty,title:nonEmpty,description:nonEmpty.optional(),status:nonEmpty,
 	teamId:nonEmpty,projectId:nonEmpty,workdayId:nonEmpty.optional(),assignmentId:nonEmpty.optional(),
@@ -24,8 +29,16 @@ export const agentContextQueryContentSchema = z.object({
 	depth:z.number().int().min(0).max(3).default(1),resultLimit:z.number().int().positive(),
 	contextBudget:z.object({ maxItems:z.number().int().positive(),maxCharacters:z.number().int().positive().optional() }).strict(),
 	tokenBudget:z.number().int().positive(),format:z.enum(['summary','full','sources','list','brief','map']).default('summary'),
-	filters:z.record(z.unknown()).default({}),required:z.boolean().default(false),
-}).strict();
+	sources:z.array(contextSourceSelectorSchema).min(1).default([{scope:'current-project'}]),
+	requirement:z.enum(['required','preferred']).default('preferred'),priority:z.number().int().min(0).max(100).default(50),
+	minimumBudget:z.number().int().positive().optional(),maximumBudget:z.number().int().positive().optional(),
+	summarization:z.enum(['none','deterministic','provider']).default('deterministic'),
+	filters:z.record(z.unknown()).default({}),
+}).strict().superRefine((value,context) => {
+	if (value.minimumBudget !== undefined && value.maximumBudget !== undefined && value.minimumBudget > value.maximumBudget) {
+		context.addIssue({ code:z.ZodIssueCode.custom,path:['minimumBudget'],message:'minimumBudget cannot exceed maximumBudget.' });
+	}
+});
 
 export const agentContextQuerySetContentSchema = z.object({
 	id:nonEmpty,title:nonEmpty,description:nonEmpty,revision:z.number().int().positive(),queryRefs:z.array(exactRevisionRefSchema).min(1),

@@ -6,6 +6,7 @@ import { inboxOperations } from './catalog/inbox-operations.ts';
 import { adminAccountOperations, adminTeamOperations } from './catalog/admin-account-team-operations.ts';
 import { TREEAI_CONTROL_PLANE_OPERATIONS } from './catalog/treeai-operations.ts';
 import { capabilityOntologyOperations } from './catalog/capability-ontology-operations.ts';
+import { knowledgeShareOperations } from './catalog/knowledge-share-operations.ts';
 import { buildControlPlaneCatalog, flattenControlPlaneOperations } from './catalog/control-plane-catalog.ts';
 const empty = z.object({}).strict();
 const none = z.undefined();
@@ -166,6 +167,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 		updateStatus: resource('discussions.status.update', 'POST', '/v1/discussions/{discussionId}/status', { discussionId: z.string().min(1) }, { capability: 'discussions.write', scopes: ['treeseed:knowledge:write'], concurrency: true }),
 	},
 	knowledge: {
+		...knowledgeShareOperations(),
 		library: resource('knowledge.library.list', 'GET', '/v1/knowledge/library', {}, { capability: 'knowledge.read', surfaces: ['rest', 'mcp_tool', 'mcp_resource'], pagination: 'cursor' }),
 		reader: resource('knowledge.reader.show', 'GET', '/v1/knowledge/reader', {}, { capability: 'knowledge.read', surfaces: ['rest', 'mcp_resource'] }),
 		context: resource('knowledge.context.show', 'GET', '/v1/knowledge/context', {}, { capability: 'knowledge.read', surfaces: ['rest', 'mcp_tool'] }),

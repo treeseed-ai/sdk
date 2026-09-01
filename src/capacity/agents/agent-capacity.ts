@@ -2,6 +2,8 @@ export type { AgentKernelPolicy,AgentKernelProfile,ProjectAgentClass,ProjectAgen
 export * from '../../agent-capacity/allocation.ts';
 export * from '../../agent-capacity/validation/index.ts';
 export * from '../../agent-capacity/contracts/capacity/assignments/assignment-records.ts';
+export * from '../../agent-capacity/contracts/capacity/assignments/assignment-context-pack.ts';
+export * from '../../agent-capacity/contracts/capacity/assignments/context-pack-compiler.ts';
 export * from '../../agent-capacity/contracts/capacity/communication/communication-records.ts';
 export * from '../../agent-capacity/contracts/capacity/providers/supply-policy.ts';
 export * from '../../agent-capacity/contracts/capacity/workdays/workday-records.ts';

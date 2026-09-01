@@ -234,7 +234,8 @@ export class ControlPlaneClient {
 
 	async authorizeDevice(clientId: string, scope: OAuthScope[], signal?: AbortSignal): Promise<OAuthDeviceAuthorizationReceipt> {
 		const response = await this.fetchImpl(`${this.baseUrl}/oauth/device_authorization`, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: clientId, scope: scope.join(' ') }), signal });
-		const payload = await responsePayload(response) as Record<string, unknown>;
+		const rawPayload = await responsePayload(response);
+		const payload = rawPayload && typeof rawPayload === 'object' ? rawPayload as Record<string, unknown> : {};
 		if (!response.ok) throw new ControlPlaneClientError(String(payload.error_description ?? payload.error ?? 'Device authorization failed.'), response.status, problemFrom(payload, response.status), response.headers);
 		return { deviceCode: String(payload.device_code), userCode: String(payload.user_code), verificationUri: String(payload.verification_uri), verificationUriComplete: typeof payload.verification_uri_complete === 'string' ? payload.verification_uri_complete : undefined, expiresIn: Number(payload.expires_in), interval: Number(payload.interval) };
 	}
@@ -254,9 +255,10 @@ export class ControlPlaneClient {
 
 	private async exchangeOAuthToken(values: Record<string, string>, signal?: AbortSignal): Promise<OAuthTokenReceipt> {
 		const response = await this.fetchImpl(`${this.baseUrl}/oauth/token`, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(values), signal });
-		const payload = await responsePayload(response) as Record<string, unknown>;
+		const rawPayload = await responsePayload(response);
+		const payload = rawPayload && typeof rawPayload === 'object' ? rawPayload as Record<string, unknown> : {};
 		if (!response.ok) {
-			const problem = problemFrom(payload, response.status);
+			const problem = problemFrom(rawPayload, response.status);
 			problem.code = typeof payload.error === 'string' ? payload.error : problem.code;
 			problem.detail = typeof payload.error_description === 'string' ? payload.error_description : problem.detail;
 			throw new ControlPlaneClientError(problem.detail ?? problem.code, response.status, problem, response.headers);

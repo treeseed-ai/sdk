@@ -84,8 +84,25 @@ export const capabilityConformanceSchema = z.object({
 	signature: z.object({ keyId: identifier, algorithm: z.literal('Ed25519'), value: z.string().min(1) }).strict(),
 }).strict();
 
+export const providerContextCapacitySchema = z.discriminatedUnion('mode', [
+	z.object({
+		mode: z.literal('bounded'), measurement: z.enum(['tokens', 'bytes', 'items']),
+		defaultInitial: z.number().int().positive(), maximum: z.number().int().positive(),
+		reservedOutput: z.number().int().nonnegative().default(0), transportPayloadBytes: z.number().int().positive(),
+		measurementProvenance: z.object({ provider: identifier, implementation: z.string().min(1), version: z.string().min(1).nullable() }).strict(),
+	}).strict(),
+	z.object({
+		mode: z.literal('unbounded'), measurement: z.enum(['tokens', 'bytes', 'items']).nullable().default(null),
+		transportPayloadBytes: z.number().int().positive(),
+		measurementProvenance: z.object({ provider: identifier, implementation: z.string().min(1), version: z.string().min(1).nullable() }).strict(),
+	}).strict(),
+]).superRefine((value, context) => {
+	if (value.mode === 'bounded' && value.defaultInitial > value.maximum) context.addIssue({ code: z.ZodIssueCode.custom, path: ['defaultInitial'], message: 'Default initial context cannot exceed the maximum.' });
+	if (value.mode === 'bounded' && value.measurement === 'tokens' && value.reservedOutput >= value.maximum) context.addIssue({ code: z.ZodIssueCode.custom, path: ['reservedOutput'], message: 'Reserved output must leave room for input context.' });
+});
+
 export const capabilityOfferSchema = z.object({
-	schemaVersion: z.literal('treeseed.capability-offer/v1'),
+	schemaVersion: z.literal('treeseed.capability-offer/v2'),
 	offerId: identifier,
 	capabilities: z.array(capabilityReferenceSchema).min(1),
 	features: z.array(identifier),
@@ -96,6 +113,7 @@ export const capabilityOfferSchema = z.object({
 	outputContracts: z.array(artifactContractSchema),
 	interactionModes: z.array(identifier),
 	conformance: z.array(capabilityConformanceSchema).min(1),
+	contextCapacity: providerContextCapacitySchema,
 	limits: z.record(z.unknown()),
 	commercial: z.object({ currency: z.string().min(3).max(3).nullable(), estimatedCost: z.number().nonnegative().nullable() }).strict(),
 	region: z.string().min(1).nullable(),
@@ -177,4 +195,5 @@ export type CapabilityOntology = z.infer<typeof capabilityOntologySchema>;
 export type CapabilityDemand = z.infer<typeof capabilityDemandSchema>;
 export type CapabilityOffer = z.infer<typeof capabilityOfferSchema>;
 export type CapabilityConformance = z.infer<typeof capabilityConformanceSchema>;
+export type ProviderContextCapacity = z.infer<typeof providerContextCapacitySchema>;
 export type CapabilityNegotiationReceipt = z.infer<typeof capabilityNegotiationReceiptSchema>;

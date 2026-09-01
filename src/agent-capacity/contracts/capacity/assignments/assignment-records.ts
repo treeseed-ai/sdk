@@ -93,6 +93,7 @@ export interface TreeDxProxyHandle {
 	allowedPaths?: string[];
 	allowedReadPaths?: string[];
 	allowedWritePaths?: string[];
+	readRepositories?: Array<{ projectId:string; projectSlug:string; repositoryId:string; baseRef:string; allowedPaths:string[]; allowedModels:string[]; source:'team-library'|'same-team'|'shared-team' }>;
 	metadata?: Record<string, unknown>;
 }
 
