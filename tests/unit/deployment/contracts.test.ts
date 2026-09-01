@@ -70,6 +70,16 @@ describe('deployment contracts', () => {
 		expect(packageRuntimeSchema.parse(value).configuration).toEqual(value.configuration);
 	});
 
+	it('binds bounded non-secret managed-file defaults into the runtime digest', () => {
+		const value = runtime('agent', '1.0.0', 'agent.treeseed.localhost');
+		value.configuration.files = [{ id: 'treeseed.capacity-provider.yaml', path: '/etc/treeseed/components/agent/treeseed.capacity-provider.yaml', required: true, sensitive: false, default: 'schemaVersion: 5\n' }];
+		const accepted = packageRuntimeSchema.parse(value);
+		expect(accepted.configuration.files[0]?.default).toBe('schemaVersion: 5\n');
+		expect(deploymentDigest(accepted)).not.toBe(deploymentDigest({ ...accepted, configuration: { ...accepted.configuration, files: [{ ...accepted.configuration.files[0]!, default: 'schemaVersion: 4\n' }] } }));
+		expect(() => packageRuntimeSchema.parse({ ...value, configuration: { ...value.configuration, files: [{ ...value.configuration.files[0]!, sensitive: true }] } })).toThrow(/Sensitive managed files cannot publish defaults/u);
+		expect(() => packageRuntimeSchema.parse({ ...value, configuration: { ...value.configuration, files: [{ ...value.configuration.files[0]!, default: 'x'.repeat(1_048_577) }] } })).toThrow(/at most 1048576/u);
+	});
+
 	it('binds AI GPU components to fixed gates and declared Compose services', () => {
 		const value = runtime('ai-inference', '1.0.0', 'inference.ai.treeseed.localhost');
 		value.services.push({ id: 'gpu', composeService: 'inference-vllm', endpoints: [] });

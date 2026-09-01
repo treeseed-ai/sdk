@@ -184,7 +184,15 @@ const componentRuntimeConfigurationSchema = z.object({
 	})).default([]),
 	secretEnvironment: z.array(z.object({ name: environmentName, required: z.boolean() }).strict()).default([]),
 	secretFiles: z.array(z.object({ id: identifier, path: componentSecretPath, required: z.boolean() }).strict()).default([]),
-	files: z.array(z.object({ id: identifier, path: componentConfigurationPath, required: z.boolean(), sensitive: z.boolean().default(false) }).strict()).default([]),
+	files: z.array(z.object({
+		id: identifier,
+		path: componentConfigurationPath,
+		required: z.boolean(),
+		sensitive: z.boolean().default(false),
+		default: z.string().max(1_048_576).optional(),
+	}).strict().superRefine((file, context) => {
+		if (file.sensitive && file.default !== undefined) context.addIssue({ code: z.ZodIssueCode.custom, path: ['default'], message: 'Sensitive managed files cannot publish defaults.' });
+	})).default([]),
 }).strict().default({ environment: [], secretEnvironment: [], secretFiles: [], files: [] }).superRefine((configuration, context) => {
 	const environment = configuration.environment.map(({ name }) => name);
 	const secretEnvironment = configuration.secretEnvironment.map(({ name }) => name);
