@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
-import { applyPlatformWorkset, environmentProfileDescriptorSchema, integrationLockSchema, loadPlatformInventory, loadPlatformProfiles, planPlatformWorkset, providerSessionSchema, resolveProfileProjects, verifyPlatformRepository, type GitRunner, type Inventory, type PlatformProfile, type RemoteObserver } from '../../src/platform/index.ts';
+import { applyPlatformProjectCreate, applyPlatformWorkset, environmentProfileDescriptorSchema, integrationLockSchema, loadPlatformInventory, loadPlatformProfiles, planPlatformProjectCreate, planPlatformWorkset, providerSessionSchema, resolveProfileProjects, verifyPlatformRepository, type GitRunner, type Inventory, type PlatformProfile, type ProjectCreateAuthority, type ProjectCreateObservation, type RemoteObserver } from '../../src/platform/index.ts';
 
 const temporaryRoots: string[] = [];
 const temporary = () => { const root = mkdtempSync(resolve(tmpdir(), 'platform-contracts-')); temporaryRoots.push(root); return root; };
@@ -115,6 +115,53 @@ describe('Platform repository verification', () => {
 		writeFileSync(resolve(root, 'seeds/inventory.yaml'), 'schemaVersion: treeseed.seed-bundle/v3\nresources: { projects: [], repositories: [] }\n');
 		execFileSync('git', ['add', '.'], { cwd: root, stdio: 'ignore' });
 		expect(verifyPlatformRepository(root)).toMatchObject({ ok: true, diagnostics: [] });
+	});
+});
+
+describe('Platform project creation', () => {
+	const target = {
+		slug: 'example-app', template: { id: 'engineering', version: '1.0.0-rc.4', digest: `sha256:${'a'.repeat(64)}` },
+		team: 'team-example', repository: { owner: 'example', name: 'example-app', visibility: 'private' as const },
+	};
+	const missing = (): ProjectCreateObservation => ({ project: { state: 'missing' }, repository: { state: 'missing' }, template: { state: 'missing' }, library: { state: 'missing' }, inventory: { state: 'missing' } });
+	const ready = (): ProjectCreateObservation => ({ project: { state: 'ready', id: 'project-1' }, repository: { state: 'ready', url: 'https://github.com/example/example-app' }, template: { state: 'ready', digest: target.template.digest }, library: { state: 'ready', bindingId: 'binding-1' }, inventory: { state: 'ready', version: 2 } });
+
+	it('plans and applies every authority step in order, then returns exact identities', async () => {
+		let observation = missing();
+		const calls: string[] = [];
+		const authority: ProjectCreateAuthority = {
+			async observe() { return observation; },
+			async reconcileProject() { calls.push('project'); }, async reconcileRepository() { calls.push('repository'); },
+			async applyTemplate() { calls.push('template'); }, async reconcileLibrary() { calls.push('library'); },
+			async publishInventory() { calls.push('inventory'); observation = ready(); },
+		};
+		const plan = await planPlatformProjectCreate(target, authority);
+		expect(plan).toMatchObject({ ok: true, actions: [
+			{ step: 'project', action: 'create' }, { step: 'repository', action: 'adopt' }, { step: 'template', action: 'apply' },
+			{ step: 'library', action: 'bind' }, { step: 'inventory', action: 'publish' },
+		] });
+		await expect(applyPlatformProjectCreate(plan, authority)).resolves.toMatchObject({ projectId: 'project-1', libraryBindingId: 'binding-1', inventoryVersion: 2 });
+		expect(calls).toEqual(['project', 'repository', 'template', 'library', 'inventory']);
+	});
+
+	it('returns noop on replay and rejects conflicts or authority drift', async () => {
+		let observation = ready();
+		const calls: string[] = [];
+		const authority: ProjectCreateAuthority = {
+			async observe() { return observation; },
+			async reconcileProject() { calls.push('project'); }, async reconcileRepository() { calls.push('repository'); },
+			async applyTemplate() { calls.push('template'); }, async reconcileLibrary() { calls.push('library'); }, async publishInventory() { calls.push('inventory'); },
+		};
+		const noop = await planPlatformProjectCreate(target, authority);
+		expect(noop.actions.every((item) => item.action === 'noop')).toBe(true);
+		await applyPlatformProjectCreate(noop, authority);
+		expect(calls).toEqual([]);
+		observation = { ...ready(), repository: { state: 'conflict' } };
+		expect(await planPlatformProjectCreate(target, authority)).toMatchObject({ ok: false, blockers: ['repository_conflicts_with_requested_target'] });
+		observation = missing();
+		const planned = await planPlatformProjectCreate(target, authority);
+		observation = ready();
+		await expect(applyPlatformProjectCreate(planned, authority)).rejects.toThrow(/changed after planning/u);
 	});
 });
 
