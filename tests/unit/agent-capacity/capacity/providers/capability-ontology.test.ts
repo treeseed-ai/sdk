@@ -26,10 +26,12 @@ describe('capability ontology contracts', () => {
 			requirements: [{ capabilityId: capability.id, versionRange: '^1.0.0', requirement: 'required' as const, alternativeGroup: null, requiredFeatures: [], configuration: { 'tools.policy': { value: 'assignment', requirement: 'required' as const } } }],
 			resolved: [{ id: capability.id, version: capability.version, digest: capability.digest }], permissionClasses: ['tool-policy'], contextModes: ['manifest'], inputContracts: [], outputContracts: [] };
 		const demand = capabilityDemandSchema.parse({ ...demandMaterial, demandDigest: capabilityDemandDigest(demandMaterial) });
-		const offerMaterial = { schemaVersion: 'treeseed.capability-offer/v1' as const, offerId: 'offer-1', capabilities: demand.resolved,
+		const offerMaterial = { schemaVersion: 'treeseed.capability-offer/v2' as const, offerId: 'offer-1', capabilities: demand.resolved,
 			features: [], configurationSupport: {}, permissionClasses: [], contextModes: ['manifest'], inputContracts: [], outputContracts: [], interactionModes: ['asynchronous'],
 			conformance: [{ schemaVersion: 'treeseed.capability-conformance/v1' as const, providerId: 'provider-1', capability: demand.resolved[0]!, tier: 'signed-attestation' as const, status: 'passed' as const,
 				evidenceDigest: `sha256:${'a'.repeat(64)}`, suite: null, issuedAt: '2026-08-29T00:00:00.000Z', expiresAt: null, signature: { keyId: 'provider-key', algorithm: 'Ed25519' as const, value: 'signed' } }],
+			contextCapacity: { mode: 'bounded' as const, measurement: 'tokens' as const, defaultInitial: 32_000, maximum: 128_000, reservedOutput: 8_000,
+				transportPayloadBytes: 4_194_304, measurementProvenance: { provider: 'openai', implementation: 'provider-reported-tokenizer', version: null } },
 			limits: {}, commercial: { currency: 'USD', estimatedCost: 1 }, region: null, trust: [] };
 		const offer = capabilityOfferSchema.parse({ ...offerMaterial, offerDigest: capabilityOfferDigest(offerMaterial) });
 		expect(negotiateCapabilityOffer(demand, offer)).toMatchObject({ eligible: false, reasons: ['missing_permission_support:tool-policy', 'missing_required_capability:treeseed.coordination.conversation'] });

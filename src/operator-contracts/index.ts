@@ -9,5 +9,6 @@ export * from './oauth.ts';
 export * from './communication/contracts.ts';
 export * from './communication/addressing.ts';
 export * from './inbox/contracts.ts';
+export * from './knowledge/contracts.ts';
 export * from '../capacity-provider/capability-ontology.ts';
 export * from './seed/seed-bundle.ts';

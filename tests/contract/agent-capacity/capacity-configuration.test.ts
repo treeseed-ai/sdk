@@ -5,6 +5,7 @@ import { validateProjectAgentClassConfiguration } from '../../../src/agent-capac
 import { CAPACITY_CONFIGURATION_DESCRIPTORS, CAPACITY_CONFIGURATION_FAMILIES } from '../../../src/agent-capacity/contracts/configuration/configuration.ts';
 import { validateCapacityProviderManifestV5, validateProviderSupplyOffer } from '../../../src/capacity-provider/validation.ts';
 import { compileAgentAuthoritySnapshot } from '../../../src/agent-capacity/authority/agent-authority-presets.ts';
+import { validateAgentDefinitionModel } from '../../../src/agent-capacity/validation/agent-definition-schema.ts';
 
 const validators = {
 	'provider-manifest': validateCapacityProviderManifestV5,
@@ -47,6 +48,21 @@ describe('capacity configuration inventory', () => {
 			'agent_activity_unknown_field',
 			'agent_activity_type_mismatch',
 		]));
+	});
+
+	it('rejects provider, adapter, sandbox, and image selection at the agent-profile root', () => {
+		const base = { id:'architect',slug:'architect',title:'Architect',name:'Architect',description:'Architecture',summary:'Architecture',
+			agentClass:'architecture',projectAgentClassId:'architecture',projectAgentClassSlug:'architecture',enabled:true,groupIds:['architecture'],
+			identity:{purpose:'Architecture',responsibilities:[],durableInstructions:'Preserve boundaries.'},activityProfiles:{chat:{
+				activityType:'chat',enabled:true,handler:'writer',prompt:{system:'Discuss.'},branchPolicy:{kind:'read-only',base:'staging'},
+				capabilityRequirements:[{capabilityId:'treeseed.coordination.conversation',versionRange:'^1.0.0',requirement:'required'}],
+				tools:{allowed:[]},outputs:{messageTypes:['discussion_response'],modelMutations:[]},
+			}}};
+		for(const field of ['capacityProviderId','executionProviderId','providerPreference','sandboxEnvironment','sandboxProfile','containerImage','imageRef']) {
+			const result=validateAgentDefinitionModel({...base,[field]:'forbidden'});
+			expect(result.ok,field).toBe(false);
+			expect(result.diagnostics.some((entry)=>entry.path===field&&entry.message.includes('provider-owned'))).toBe(true);
+		}
 	});
 
 	it('accepts typed proposal-linked planning intent and rejects malformed intent', () => {

@@ -147,6 +147,8 @@ export const agentDefinitionSchema = z.object({
 }).passthrough().superRefine((agent,context) => {
 	const raw = agent as Record<string,unknown>;
 	for (const legacy of ['primaryGroupId','permissionPolicy','contentAccess']) if (legacy in raw) context.addIssue({ code:z.ZodIssueCode.custom,path:[legacy],message:`${legacy} is not part of the canonical agent contract.` });
+	for(const forbidden of ['capacityProviderId','capacityProviderIds','executionProviderId','executionProviderIds','executionProvider','providerPreference','providerPreferences','providerAllowList','providerDenyList','sandboxEnvironment','sandboxProfile','containerImage','imageRef'])
+		if(forbidden in raw)context.addIssue({code:z.ZodIssueCode.custom,path:[forbidden],message:`${forbidden} is provider-owned runtime configuration and cannot appear in an agent profile.`});
 });
 
 function issuePath(path: Array<string | number>) {

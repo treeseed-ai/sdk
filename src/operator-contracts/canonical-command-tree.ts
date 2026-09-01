@@ -315,7 +315,7 @@ function libraryRead(segment: string, extraArguments: string[] = [], extraOption
 	return {
 		nodeType: 'leaf', segment, description: `${segment[0]!.toUpperCase()}${segment.slice(1)} project library knowledge.`, kind: 'read',
 		arguments: ['project', ...extraArguments].map((name) => ({ name, description: `${name} value.`, required: true })),
-		options: [{ name: '--ref', description: 'Exact commit or protected library ref.', type: 'string' }, ...extraOptions],
+		options: [{ name: '--ref', description: 'Earlier historical revision; omit for the current library.', type: 'string' }, ...extraOptions],
 		resultSchemaId: `treeseed.command.library.${segment}/v1`, execution: local(`local.library.${segment}`),
 	};
 }
