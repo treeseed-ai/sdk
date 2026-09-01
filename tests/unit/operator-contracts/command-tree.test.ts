@@ -56,6 +56,16 @@ describe('human command tree contract', () => {
 			'projects treedx workspaces show',
 			'projects treedx workspaces abandon',
 		]));
+		expect(listCommandPaths()).toEqual(expect.arrayContaining([
+			'providers registration code status', 'providers registration code reveal', 'providers registration code rotate',
+			'providers environments list', 'providers environments show', 'providers environments grant', 'providers environments revoke',
+			'host provider environment list', 'host provider environment show', 'host provider environment status', 'host provider environment set',
+			'host provider environment import', 'host provider environment unset', 'host provider environment rotate', 'host provider environment verify',
+		]));
+		const environmentSet = leaves.get('host provider environment set');
+		expect(environmentSet?.options?.map((option) => option.name)).toEqual(['--plan', '--stdin']);
+		expect(environmentSet?.arguments?.map((argument) => argument.name)).toEqual(['profile', 'name']);
+		expect(JSON.stringify(environmentSet)).not.toContain('--value');
 		const initialize = leaves.get('host initialize');
 		expect(initialize?.execution).toEqual({ kind: 'local', handlerId: 'local.host.initialize' });
 		expect(initialize?.options?.map((option) => option.name)).toEqual(['--plan', '--profile', '--confirm', '--yes']);

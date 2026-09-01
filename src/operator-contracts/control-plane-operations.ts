@@ -7,6 +7,7 @@ import { adminAccountOperations, adminTeamOperations } from './catalog/admin-acc
 import { TREEAI_CONTROL_PLANE_OPERATIONS } from './catalog/treeai-operations.ts';
 import { capabilityOntologyOperations } from './catalog/capability-ontology-operations.ts';
 import { knowledgeShareOperations } from './catalog/knowledge-share-operations.ts';
+import { PROVIDER_ENVIRONMENT_OPERATIONS } from './catalog/provider-environment-operations.ts';
 import { buildControlPlaneCatalog, flattenControlPlaneOperations } from './catalog/control-plane-catalog.ts';
 const empty = z.object({}).strict();
 const none = z.undefined();
@@ -41,7 +42,6 @@ const noPathProvider = (operationId: `${string}.${string}`, method: 'GET' | 'POS
 		riskClass: 'ordinary', confirmation: 'never', surfaces: ['rest'], cacheScope: 'none', pagination: 'none',
 		redactedPaths: options.redactedPaths,
 	}, { path: empty, query: empty, body: method === 'GET' ? none : record, output: payload });
-
 function postRead<T extends z.ZodRawShape>(
 	operationId: `${string}.${string}`,
 	path: `/v1/${string}`,
@@ -444,6 +444,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 		status: resource('providers.status', 'GET', '/v1/teams/{teamId}/capacity-providers/{providerId}/status', { teamId: z.string().min(1), providerId: z.string().min(1) }, { capability: 'providers.read', surfaces: ['rest', 'cli', 'mcp_tool'] }),
 		diagnose: resource('providers.diagnose', 'GET', '/v1/teams/{teamId}/capacity-providers/{providerId}/diagnosis', { teamId: z.string().min(1), providerId: z.string().min(1) }, { capability: 'providers.read', surfaces: ['rest', 'cli', 'mcp_tool'] }),
 		connect: resource('providers.connect', 'POST', '/v1/teams/{teamId}/capacity-provider-connections', { teamId: z.string().min(1) }, { capability: 'providers.write', scopes: ['treeseed:admin'], surfaces: ['rest', 'cli'], risk: 'credential', redactedPaths: ['body.enrollmentToken'] }),
+		registrationCode: PROVIDER_ENVIRONMENT_OPERATIONS.registrationCode,
 		disconnect: resource('providers.disconnect', 'POST', '/v1/teams/{teamId}/capacity-provider-connections/{connectionId}/disconnect', { teamId: z.string().min(1), connectionId: z.string().min(1) }, { capability: 'providers.write', scopes: ['treeseed:admin'], surfaces: ['rest', 'cli'], risk: 'destructive' }),
 		requests: {
 			list: resource('providers.requests.list', 'GET', '/v1/teams/{teamId}/capacity-provider-requests', { teamId: z.string().min(1) }, { capability: 'providers.read', surfaces: ['rest', 'cli'], pagination: 'cursor' }),
@@ -456,6 +457,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 			rotate: resource('providers.credentials.rotate', 'POST', '/v1/teams/{teamId}/capacity-provider-connections/{connectionId}/credentials/rotate', { teamId: z.string().min(1), connectionId: z.string().min(1) }, { capability: 'providers.write', scopes: ['treeseed:admin'], surfaces: ['rest', 'cli'], risk: 'credential' }),
 			revoke: resource('providers.credentials.revoke', 'POST', '/v1/teams/{teamId}/capacity-provider-connections/{connectionId}/credentials/revoke', { teamId: z.string().min(1), connectionId: z.string().min(1) }, { capability: 'providers.write', scopes: ['treeseed:admin'], surfaces: ['rest', 'cli'], risk: 'irreversible' }),
 		},
+		environmentProfiles: PROVIDER_ENVIRONMENT_OPERATIONS.environmentProfiles, environmentGrants: PROVIDER_ENVIRONMENT_OPERATIONS.environmentGrants,
 		register: noPathProvider('providers.register', 'POST', '/v1/provider-registrations', { authentication: 'signed_request', redactedPaths: ['body.registrationKey'] }),
 		registration: providerPath('providers.registration.show', 'GET', '/v1/provider-registrations/{requestId}', { requestId: z.string().min(1) }, { authentication: 'signed_request', read: true }),
 		exchangeCredential: providerPath('providers.registration.credential', 'POST', '/v1/provider-registrations/{requestId}/credential', { requestId: z.string().min(1) }, { authentication: 'signed_request', redactedPaths: ['body.proof'] }),

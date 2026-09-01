@@ -1,4 +1,5 @@
 import type { CommandLeafDescriptor, CommandNodeDescriptor, CommandTreeDescriptor } from './command-tree.ts';
+import { hostProviderEnvironmentBranch, PROVIDER_ENVIRONMENT_COMMAND_BINDINGS, providerEnvironmentBranches } from './catalog/provider-environment-commands.ts';
 
 type Execution = CommandLeafDescriptor['execution'];
 
@@ -16,6 +17,7 @@ const page = () => [field('query', 'status', 'option'), field('query', 'limit', 
 const aiNode = () => field('path', 'nodeId', 'context', 'node', true);
 
 const operationBindings: Record<string, Execution> = {
+	...PROVIDER_ENVIRONMENT_COMMAND_BINDINGS,
 	'auth login': protocol('protocol.oauth.device.login'),
 	'auth logout': protocol('protocol.oauth.revoke'),
 	'auth status': operation('accounts.current.show'),
@@ -390,7 +392,7 @@ const commandTree: CommandTreeDescriptor = {
 			hostInitialize(),
 			leaf('status'), leaf('doctor'), leaf('plan'), leaf('apply', 'mutation', undefined, 'authority'), leaf('reconcile', 'mutation', undefined, 'authority'), leaf('events'),
 			branch('config', [leaf('show'), leaf('plan', 'read', 'file'), leaf('apply', 'mutation', 'file', 'authority'), configurationAdopt()]),
-			leaf('topology'), leaf('connections'), branch('provider', [leaf('status'), branch('credentials', [leaf('list'), leaf('status'), hostProviderCredentialInitialize()])]),
+			leaf('topology'), leaf('connections'), branch('provider', [leaf('status'), branch('credentials', [leaf('list'), leaf('status'), hostProviderCredentialInitialize()]), hostProviderEnvironmentBranch()]),
 			branch('storage', [
 				leaf('status'),
 				addOptions(leaf('connect', 'mutation', 'backend', 'credential'), [{ name: '--account-id', description: 'Optional Cloudflare account ID when the bootstrap authority reaches multiple accounts.', type: 'string' }]),
@@ -416,6 +418,7 @@ const commandTree: CommandTreeDescriptor = {
 		]),
 		branch('providers', [
 			leaf('list'), leaf('show', 'read', 'provider'), leaf('status', 'read', 'provider'), leaf('diagnose', 'read', 'provider'), leaf('connect', 'mutation', undefined, 'credential'), leaf('disconnect', 'mutation', 'connection', 'destructive'),
+			...providerEnvironmentBranches(),
 			branch('requests', [leaf('list'), leaf('show', 'read', 'request'), leaf('approve', 'mutation', 'request', 'authority'), leaf('reject', 'mutation', 'request', 'authority')]),
 			branch('credentials', [leaf('status', 'read', 'connection'), leaf('rotate', 'mutation', 'connection', 'credential'), leaf('revoke', 'mutation', 'connection', 'irreversible')]),
 			branch('offers', [leaf('show', 'read', 'connection'), leaf('validate', 'read', 'file'), leaf('plan', 'read', 'file'), leaf('apply', 'mutation', 'file', 'authority')]),
