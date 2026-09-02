@@ -40,6 +40,10 @@ const operationBindings: Record<string, Execution> = {
 	'platform verify': local('local.platform.verify'),
 	'platform workset': local('local.platform.workset'),
 	'platform project create': local('local.platform.project.create'),
+	'platform topology plan': local('local.platform.topology.plan'),
+	'platform topology apply': local('local.platform.topology.apply'),
+	'platform topology status': local('local.platform.topology.status'),
+	'platform topology rollback': local('local.platform.topology.rollback'),
 	'host status': local('local.host.status'),
 	'host doctor': local('local.host.doctor'),
 	'host plan': local('local.host.plan'),
@@ -362,6 +366,12 @@ const commandTree: CommandTreeDescriptor = {
 			{ nodeType: 'leaf', segment: 'workset', description: 'Plan or safely materialize exact primary source checkouts beneath packages/.', kind: 'mutation', options: [planOption, { name: '--apply', description: 'Apply the frozen workset plan.', type: 'boolean' }, { name: '--yes', description: 'Confirm the planned checkout mutations.', type: 'boolean' }, { name: '--profile', description: 'Composable source profile; repeat to union profiles.', type: 'string[]' }, { name: '--project', description: 'Explicit project slug; repeat to select projects.', type: 'string[]' }, { name: '--exclude', description: 'Project slug to exclude; repeat as needed.', type: 'string[]' }, { name: '--json', description: 'Emit the stable command-result envelope.', type: 'boolean' }], authorization: { capability: 'development.workset', confirmation: 'never' }, resultSchemaId: 'treeseed.platform-workset-result/v1', execution: local('local.platform.workset') },
 			branch('project', [
 				{ nodeType: 'leaf', segment: 'create', description: 'Plan or reconcile a project, repository, template, library binding, and live inventory without writing application source into Platform Git.', kind: 'mutation', arguments: [{ name: 'slug', description: 'Portable project slug.', required: true }], options: [planOption, { name: '--apply', description: 'Apply the accepted creation plan.', type: 'boolean' }, { name: '--yes', description: 'Confirm authority-bearing project creation.', type: 'boolean' }, { name: '--template', description: 'Published template identity.', type: 'string', required: true }, { name: '--json', description: 'Emit the stable command-result envelope.', type: 'boolean' }], authorization: { capability: 'projects.create', confirmation: 'authority' }, resultSchemaId: 'treeseed.platform-project-create-result/v1', execution: local('local.platform.project.create') },
+			]),
+			branch('topology', [
+				{ nodeType: 'leaf', segment: 'plan', description: 'Plan Cloudflare and Railway reconciliation from a portable hosted-topology declaration.', kind: 'read', arguments: [{ name: 'file', description: 'Hosted topology YAML or JSON declaration.', required: true }], resultSchemaId: 'treeseed.hosted-topology-plan/v1', execution: local('local.platform.topology.plan') },
+				{ nodeType: 'leaf', segment: 'apply', description: 'Apply an exact reviewed hosted-topology plan through the operations runner.', kind: 'mutation', arguments: [{ name: 'plan', description: 'Exact plan JSON file.', required: true }], options: [planOption, { name: '--approval', description: 'Exact environment approval JSON file.', type: 'string', required: true }, { name: '--yes', description: 'Confirm the authority-bearing mutation.', type: 'boolean' }], authorization: { capability: 'infrastructure.write', confirmation: 'authority' }, resultSchemaId: 'treeseed.platform-operation/v1', execution: local('local.platform.topology.apply') },
+				{ nodeType: 'leaf', segment: 'status', description: 'Read the latest hosted-topology operation and known-good receipt.', kind: 'read', resultSchemaId: 'treeseed.infrastructure.topology.status.output/v1', execution: local('local.platform.topology.status') },
+				{ nodeType: 'leaf', segment: 'rollback', description: 'Restore exact prior hosted-topology state from a known-good receipt.', kind: 'mutation', arguments: [{ name: 'rollback', description: 'Exact rollback JSON file.', required: true }], options: [planOption, { name: '--approval', description: 'Exact rollback approval JSON file.', type: 'string', required: true }, { name: '--yes', description: 'Confirm the destructive rollback.', type: 'boolean' }], authorization: { capability: 'infrastructure.write', confirmation: 'destructive' }, resultSchemaId: 'treeseed.platform-operation/v1', execution: local('local.platform.topology.rollback') },
 			]),
 		]),
 		branch('dev', [

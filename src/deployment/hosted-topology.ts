@@ -119,6 +119,7 @@ export const hostedTopologyRollbackSchema = z.object({
 	schemaVersion: z.literal('treeseed.hosted-topology-rollback/v1'),
 	rollbackId: z.string().regex(/^topology-rollback-[a-f0-9]{16}$/u),
 	sourceReceiptId: z.string().regex(/^topology-receipt-[a-f0-9]{16}$/u),
+	environment: z.enum(['staging', 'production']),
 	operations: z.array(z.object({
 		resourceId: identifier,
 		action: z.enum(['restore', 'delete-created', 'noop']),
@@ -126,6 +127,15 @@ export const hostedTopologyRollbackSchema = z.object({
 		targetDigest: digest.nullable(),
 	}).strict()),
 	rollbackDigest: digest,
+}).strict();
+
+export const hostedTopologyRollbackApprovalSchema = z.object({
+	schemaVersion: z.literal('treeseed.hosted-topology-rollback-approval/v1'),
+	rollbackDigest: digest,
+	environment: z.enum(['staging', 'production']),
+	decision: z.literal('approved'),
+	approvedBy: z.string().min(1).max(256),
+	approvedAt: timestamp,
 }).strict();
 
 export type HostedTopologyDeclaration = z.infer<typeof hostedTopologyDeclarationSchema>;
@@ -234,5 +244,11 @@ export function planHostedTopologyRollback(receiptInput: HostedTopologyReceipt) 
 		return { resourceId: resource.resourceId, action: !prior || prior.state === 'missing' ? 'delete-created' as const : prior.observedDigest === resource.observedDigest ? 'noop' as const : 'restore' as const, providerResourceId: resource.providerResourceId!, targetDigest: prior?.observedDigest ?? null };
 	}).sort((left, right) => left.resourceId.localeCompare(right.resourceId));
 	const rollbackDigest = deploymentDigest({ sourceReceiptId: receipt.receiptId, operations });
-	return hostedTopologyRollbackSchema.parse({ schemaVersion: 'treeseed.hosted-topology-rollback/v1', rollbackId: `topology-rollback-${rollbackDigest.slice(7, 23)}`, sourceReceiptId: receipt.receiptId, operations, rollbackDigest });
+	return hostedTopologyRollbackSchema.parse({ schemaVersion: 'treeseed.hosted-topology-rollback/v1', rollbackId: `topology-rollback-${rollbackDigest.slice(7, 23)}`, sourceReceiptId: receipt.receiptId, environment: receipt.environment, operations, rollbackDigest });
+}
+
+export function authorizeHostedTopologyRollback(rollbackInput: z.input<typeof hostedTopologyRollbackSchema>, approvalInput: z.input<typeof hostedTopologyRollbackApprovalSchema>) {
+	const rollback = hostedTopologyRollbackSchema.parse(rollbackInput), approval = hostedTopologyRollbackApprovalSchema.parse(approvalInput);
+	if (approval.rollbackDigest !== rollback.rollbackDigest || approval.environment !== rollback.environment) throw new Error('Hosted topology rollback approval does not bind the exact rollback and environment.');
+	return { rollback, approval };
 }

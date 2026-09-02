@@ -211,14 +211,14 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 		knowledgePageIds: ['provider.cloudflare'],
 		connectionFields: [field('accountId', 'Account ID', 'The non-secret Cloudflare account identifier.')],
 		capabilities: [
-			{ type: 'frontend-hosting', label: 'Frontend hosting', description: 'Future Pages and Workers application hosting.', credentialProfileIds: ['cloudflare-runtime'], status: 'available' },
-			{ type: 'dns-management', label: 'DNS management', description: 'Future scoped DNS record management.', credentialProfileIds: ['cloudflare-dns'], status: 'planned' },
+			{ type: 'frontend-hosting', label: 'Frontend hosting', description: 'Pages and Workers application hosting.', credentialProfileIds: ['cloudflare-runtime'], status: 'available' },
+			{ type: 'dns-management', label: 'DNS management', description: 'Scoped DNS record management.', credentialProfileIds: ['cloudflare-dns'], status: 'available' },
 			{ type: 'object-storage', label: 'Object storage', description: 'R2-backed immutable publication and private artifact storage.', credentialProfileIds: ['cloudflare-storage'], status: 'available' },
 		],
 		credentialProfiles: [
-			{ id: 'cloudflare-runtime', label: 'Pages and Workers token', description: 'A token limited to application deployment resources.', capabilities: ['frontend-hosting'], fields: [field('apiToken', 'API token', 'Encrypted in this browser and used only for authorized frontend operations.', true, true)], permissions: ['Account: Workers Scripts Edit', 'Account: Pages Edit'], sharing: 'capability-scoped', unattendedCompatible: false, knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
-			{ id: 'cloudflare-dns', label: 'DNS token', description: 'A token restricted to selected zones.', capabilities: ['dns-management'], fields: [field('apiToken', 'DNS API token', 'Encrypted separately from deployment authority.', true, true)], permissions: ['Zone: DNS Edit for only the managed zones'], sharing: 'capability-scoped', unattendedCompatible: false, knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
-			{ id: 'cloudflare-storage', label: 'Storage token', description: 'A token limited to R2 resources.', capabilities: ['object-storage'], fields: [field('apiToken', 'Storage API token', 'Encrypted separately from runtime and DNS authority.', true, true)], permissions: ['Account: Workers R2 Storage Edit'], sharing: 'capability-scoped', unattendedCompatible: false, knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
+			{ id: 'cloudflare-runtime', label: 'Pages and Workers token', description: 'A token limited to application deployment resources.', capabilities: ['frontend-hosting'], fields: [field('apiToken', 'API token', 'Encrypted in this browser and used only for authorized frontend operations.', true, true)], permissions: ['Account: Workers Scripts Edit', 'Account: Pages Edit'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['environment-reference', 'external-vault', 'workload-identity'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
+			{ id: 'cloudflare-dns', label: 'DNS token', description: 'A token restricted to selected zones.', capabilities: ['dns-management'], fields: [field('apiToken', 'DNS API token', 'Encrypted separately from deployment authority.', true, true)], permissions: ['Zone: DNS Edit for only the managed zones'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['environment-reference', 'external-vault', 'workload-identity'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
+			{ id: 'cloudflare-storage', label: 'Storage token', description: 'A token limited to R2 resources.', capabilities: ['object-storage'], fields: [field('apiToken', 'Storage API token', 'Encrypted separately from runtime and DNS authority.', true, true)], permissions: ['Account: Workers R2 Storage Edit'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['environment-reference', 'external-vault', 'workload-identity'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
 		],
 	},
 	{
@@ -230,10 +230,10 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 		knowledgePageIds: ['provider.railway'],
 		connectionFields: [field('workspaceId', 'Workspace ID', 'The non-secret Railway workspace identifier.')],
 		capabilities: [
-			{ type: 'backend-hosting', label: 'Backend hosting', description: 'Future API and backend service hosting.', credentialProfileIds: ['railway-workspace'], status: 'available' },
-			{ type: 'database-hosting', label: 'Database hosting', description: 'Future managed database placement.', credentialProfileIds: ['railway-workspace'], status: 'planned' },
+			{ type: 'backend-hosting', label: 'Backend hosting', description: 'API and backend service hosting.', credentialProfileIds: ['railway-workspace'], status: 'available' },
+			{ type: 'database-hosting', label: 'Database hosting', description: 'Managed database placement.', credentialProfileIds: ['railway-workspace'], status: 'available' },
 			{ type: 'capacity-runtime-hosting', label: 'Capacity runtime hosting', description: 'Future capacity provider placement.', credentialProfileIds: ['railway-workspace'], status: 'planned' },
-			{ type: 'private-knowledge-index-hosting', label: 'Private knowledge hosting', description: 'Future private TreeDX knowledge-plane placement.', credentialProfileIds: ['railway-workspace'], status: 'planned' },
+			{ type: 'private-knowledge-index-hosting', label: 'Private knowledge hosting', description: 'Private TreeDX knowledge-plane placement.', credentialProfileIds: ['railway-workspace'], status: 'available' },
 		],
 		credentialProfiles: [{
 			id: 'railway-workspace',
@@ -243,7 +243,8 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 			fields: [field('apiToken', 'Workspace token', 'Encrypted in this browser. TreeSeed will request explicit authorization before interactive use.', true, true)],
 			permissions: ['Workspace access required by the selected operations'],
 			sharing: 'provider-shared',
-			unattendedCompatible: false,
+			unattendedCompatible: true,
+			authoritySchemes: ['environment-reference', 'external-vault', 'workload-identity'],
 			knowledgePageIds: ['provider.railway', 'services.credentials', 'vault.rotation'],
 		}],
 	},
