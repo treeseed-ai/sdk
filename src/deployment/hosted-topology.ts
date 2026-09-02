@@ -44,7 +44,7 @@ export function bindHostedStateBackend(input: z.input<typeof hostedStateBackendC
 
 export const hostedProviderSchema = z.enum(['cloudflare', 'railway']);
 export const hostedResourceKindSchema = z.enum([
-	'admin-application', 'dns-record', 'tls-policy', 'api-proxy',
+	'admin-application', 'pages-application', 'dns-record', 'tls-policy', 'api-proxy',
 	'control-plane-api', 'postgresql', 'operations-runner', 'treedx-service',
 ]);
 
@@ -56,7 +56,7 @@ const parameterSchema = z.union([
 ]);
 
 const resourceProviderKinds = {
-	cloudflare: new Set(['admin-application', 'dns-record', 'tls-policy', 'api-proxy']),
+	cloudflare: new Set(['admin-application', 'pages-application', 'dns-record', 'tls-policy', 'api-proxy']),
 	railway: new Set(['control-plane-api', 'postgresql', 'operations-runner', 'treedx-service']),
 } as const;
 
@@ -99,6 +99,8 @@ export const hostedTopologyDeclarationSchema = z.object({
 	if (new Set(ids).size !== ids.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['resources'], message: 'Hosted topology resource identities must be unique.' });
 	for (const [index, resource] of declaration.resources.entries()) {
 		if (!resourceProviderKinds[resource.provider].has(resource.kind as never)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['resources', index, 'kind'], message: `${resource.kind} is not owned by ${resource.provider}.` });
+		if (resource.kind === 'pages-application') for (const key of ['artifact', 'name', 'production-branch', 'destination-dir'])
+			if (!resource.parameters[key]) context.addIssue({ code: z.ZodIssueCode.custom, path: ['resources', index, 'parameters', key], message: `Cloudflare Pages applications require ${key}.` });
 		for (const dependency of resource.dependsOn) if (!ids.includes(dependency)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['resources', index, 'dependsOn'], message: `Unknown hosted resource dependency ${dependency}.` });
 		for (const key of Object.keys(resource.parameters)) if (sensitiveKey.test(key)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['resources', index, 'parameters', key], message: 'Hosted topology parameters cannot carry credential-like values.' });
 		for (const [key, parameter] of Object.entries(resource.parameters)) if ('literal' in parameter && typeof parameter.literal === 'string' && personalPath.test(parameter.literal)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['resources', index, 'parameters', key], message: 'Hosted topology parameters cannot contain personal filesystem paths.' });

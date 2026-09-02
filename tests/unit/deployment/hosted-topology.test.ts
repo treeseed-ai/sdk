@@ -18,7 +18,7 @@ function declaration(): HostedTopologyDeclaration {
 		providerConnections: { cloudflare: { connectionRef: 'cloudflare-production' }, railway: { connectionRef: 'railway-production' } },
 		artifacts: { admin: { digest: sha('a'), source: 'https://example.test/admin.tar.gz' }, api: { digest: sha('b'), source: 'https://example.test/api.tar.gz' } },
 		resources: [
-			{ id: 'admin', provider: 'cloudflare', kind: 'admin-application', dependsOn: ['api-proxy'], parameters: { artifact: { artifact: 'admin' } }, adoption: { mode: 'adopt-or-create', externalIdInput: 'admin-resource-id', replacement: 'forbidden' } },
+			{ id: 'admin', provider: 'cloudflare', kind: 'pages-application', dependsOn: ['api-proxy'], parameters: { artifact: { artifact: 'admin' }, name: { literal: 'treeseed-admin' }, 'production-branch': { literal: 'main' }, 'destination-dir': { literal: '.treeseed/app-dist' } }, adoption: { mode: 'adopt-or-create', externalIdInput: 'admin-resource-id', replacement: 'forbidden' } },
 			{ id: 'api-proxy', provider: 'cloudflare', kind: 'api-proxy', dependsOn: ['api'], parameters: { upstream: { resourceOutput: { resourceId: 'api', output: 'public-url' } } }, adoption: { mode: 'adopt-or-create', replacement: 'forbidden' } },
 			{ id: 'api', provider: 'railway', kind: 'control-plane-api', dependsOn: ['postgres'], parameters: { artifact: { artifact: 'api' } }, adoption: { mode: 'adopt-or-create', replacement: 'forbidden' } },
 			{ id: 'postgres', provider: 'railway', kind: 'postgresql', dependsOn: [], parameters: { region: { input: 'railway-region' } }, adoption: { mode: 'adopt-or-create', externalIdInput: 'postgres-resource-id', replacement: 'forbidden' } },
@@ -129,5 +129,6 @@ describe('reviewed hosted topology contracts', () => {
 		expect(() => hostedTopologyDeclarationSchema.parse({ ...value, resources: [{ ...target, provider: 'railway' }, ...value.resources.slice(1)] })).toThrow(/not owned/u);
 		expect(() => hostedTopologyDeclarationSchema.parse({ ...value, resources: [{ ...target, parameters: { apiToken: { input: 'credential' } } }, ...value.resources.slice(1)] })).toThrow(/credential-like/u);
 		expect(() => hostedTopologyDeclarationSchema.parse({ ...value, resources: [{ ...target, parameters: { path: { literal: '/home/person/work' } } }, ...value.resources.slice(1)] })).toThrow(/personal filesystem/u);
+		expect(() => hostedTopologyDeclarationSchema.parse({ ...value, resources: [{ ...target, parameters: { artifact: { artifact: 'admin' } } }, ...value.resources.slice(1)] })).toThrow(/production-branch|destination-dir|name/u);
 	});
 });
