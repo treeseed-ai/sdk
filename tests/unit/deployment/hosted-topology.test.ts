@@ -16,9 +16,9 @@ function declaration(): HostedTopologyDeclaration {
 		platform: { repository: 'treeseed-ai/platform', commit: 'a'.repeat(40) },
 		stateBackend: { connectionRef: 'cloudflare-state' },
 		providerConnections: { cloudflare: { connectionRef: 'cloudflare-production' }, railway: { connectionRef: 'railway-production' } },
-		artifacts: { admin: { digest: sha('a'), source: 'https://example.test/admin.tar.gz' }, api: { digest: sha('b'), source: 'https://example.test/api.tar.gz' } },
+		artifacts: { admin: { kind: 'archive', format: 'tar+gzip', digest: sha('a'), source: 'https://example.test/admin.tar.gz' }, api: { kind: 'oci-image', digest: sha('b'), identity: `treeseed/api@${sha('b')}` } },
 		resources: [
-			{ id: 'admin', provider: 'cloudflare', kind: 'pages-application', dependsOn: ['api-proxy'], parameters: { artifact: { artifact: 'admin' }, name: { literal: 'treeseed-admin' }, 'production-branch': { literal: 'main' }, 'destination-dir': { literal: '.treeseed/app-dist' } }, adoption: { mode: 'adopt-or-create', externalIdInput: 'admin-resource-id', replacement: 'forbidden' } },
+			{ id: 'admin', provider: 'cloudflare', kind: 'pages-application', dependsOn: ['api-proxy'], parameters: { artifact: { artifact: 'admin' }, 'artifact-format': { literal: 'tar+gzip' }, name: { literal: 'treeseed-admin' }, 'production-branch': { literal: 'main' }, 'destination-dir': { literal: '.treeseed/app-dist' } }, adoption: { mode: 'adopt-or-create', externalIdInput: 'admin-resource-id', replacement: 'forbidden' } },
 			{ id: 'api-proxy', provider: 'cloudflare', kind: 'api-proxy', dependsOn: ['api'], parameters: { upstream: { resourceOutput: { resourceId: 'api', output: 'public-url' } } }, adoption: { mode: 'adopt-or-create', replacement: 'forbidden' } },
 			{ id: 'api', provider: 'railway', kind: 'control-plane-api', dependsOn: ['postgres'], parameters: { artifact: { artifact: 'api' } }, adoption: { mode: 'adopt-or-create', replacement: 'forbidden' } },
 			{ id: 'postgres', provider: 'railway', kind: 'postgresql', dependsOn: [], parameters: { region: { input: 'railway-region' } }, adoption: { mode: 'adopt-or-create', externalIdInput: 'postgres-resource-id', replacement: 'forbidden' } },
