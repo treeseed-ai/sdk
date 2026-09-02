@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { authorizeHostedTopologyPlan, authorizeHostedTopologyRollback, deploymentDigest, hostedTopologyDeclarationSchema, hostedTopologyPlanSchema, planHostedTopology, planHostedTopologyRollback, verifyHostedTopologyReadback, type HostedResourceObservation, type HostedTopologyDeclaration } from '../../../src/deployment/index.ts';
+import { authorizeHostedTopologyPlan, authorizeHostedTopologyRollback, authorizeHostedTopologyRollbackExecution, deploymentDigest, hostedTopologyDeclarationSchema, hostedTopologyPlanSchema, planHostedTopology, planHostedTopologyRollback, planHostedTopologyRollbackExecution, verifyHostedTopologyReadback, type HostedResourceObservation, type HostedTopologyDeclaration } from '../../../src/deployment/index.ts';
 
 const sha = (marker: string) => `sha256:${marker.repeat(64)}`;
 const now = '2026-09-02T12:00:00.000Z';
@@ -92,6 +92,22 @@ describe('reviewed hosted topology contracts', () => {
 		expect(() => planHostedTopology({ declaration: value, observations: [target, target], connections: connections() })).toThrow(/Duplicate/u);
 		expect(() => planHostedTopology({ declaration: value, observations: [{ ...target, resourceId: 'unexpected' }], connections: connections() })).toThrow(/Unknown/u);
 		expect(() => planHostedTopology({ declaration: value, observations: [{ ...target, provider: 'railway' }], connections: connections() })).toThrow(/identity mismatch/u);
+	});
+
+	it('binds rollback approval to the complete source and target plans', () => {
+		const value = declaration(), current = value.resources.map((resource) => observation(resource));
+		const sourcePlan = authorizeHostedTopologyPlan(planHostedTopology({ declaration: value, observations: [], connections: connections() }), { schemaVersion: 'treeseed.hosted-topology-approval/v1', planDigest: planHostedTopology({ declaration: value, observations: [], connections: connections() }).planDigest, environment: 'production', decision: 'approved', approvedBy: 'release-approver', approvedAt: now });
+		const previous = current.map((resource, index) => index ? resource : { ...resource, state: 'missing' as const, managedBy: null, providerResourceId: null, observedDigest: null });
+		const receipt = verifyHostedTopologyReadback({ plan: sourcePlan, previousResources: previous, resources: current, completedAt: now });
+		const rollback = planHostedTopologyRollback(receipt), targetDeclaration = hostedTopologyDeclarationSchema.parse({ ...value, resources: value.resources.slice(1) });
+		const targetPlan = planHostedTopology({ declaration: targetDeclaration, observations: previous.slice(1), connections: connections() });
+		const execution = planHostedTopologyRollbackExecution({ rollback, sourceReceipt: receipt, sourcePlan, targetPlan });
+		const approval = { schemaVersion: 'treeseed.hosted-topology-rollback-execution-approval/v1' as const, executionDigest: execution.executionDigest, environment: 'production' as const, decision: 'approved' as const, approvedBy: 'release-approver', approvedAt: now };
+		expect(authorizeHostedTopologyRollbackExecution(execution, approval).execution.targetPlanDigest).toBe(targetPlan.planDigest);
+		const changedConnections = connections(); changedConnections.cloudflare.nonSecretConfig.zoneId = 'different-zone';
+		const substitutedTarget = planHostedTopology({ declaration: targetDeclaration, observations: previous.slice(1), connections: changedConnections });
+		const substitutedExecution = planHostedTopologyRollbackExecution({ rollback, sourceReceipt: receipt, sourcePlan, targetPlan: substitutedTarget });
+		expect(() => authorizeHostedTopologyRollbackExecution(substitutedExecution, approval)).toThrow(/exact source, target/u);
 	});
 
 	it('rejects provider-kind confusion, credential-shaped parameters, and personal paths', () => {
