@@ -11,7 +11,7 @@ jobs:
       actions: read
       contents: write
       id-token: write
-    environment: production
+    environment: ${{ contains(github.ref_name, '-') && 'staging' || 'production' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with: { fetch-depth: 0 }
@@ -23,8 +23,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/staging)"
-          run_id="$(gh run list --workflow verify.yml --branch staging --commit "$GITHUB_SHA" --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            candidate_branch="staging"
+          else
+            candidate_branch="main"
+          fi
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "origin/${candidate_branch}")"
+          run_id="$(gh run list --workflow verify.yml --branch "$candidate_branch" --commit "$GITHUB_SHA" --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
           test -n "$run_id"
           gh run download "$run_id" --name "sdk-candidate-${GITHUB_SHA}" --dir candidate
           mkdir -p .treeseed/standards
