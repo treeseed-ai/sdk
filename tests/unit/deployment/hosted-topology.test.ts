@@ -20,7 +20,7 @@ function declaration(): HostedTopologyDeclaration {
 		resources: [
 			{ id: 'admin', provider: 'cloudflare', kind: 'pages-application', dependsOn: ['api-proxy'], parameters: { artifact: { artifact: 'admin' }, 'artifact-format': { literal: 'tar+gzip' }, name: { literal: 'treeseed-admin' }, 'production-branch': { literal: 'main' }, 'destination-dir': { literal: '.treeseed/app-dist' } }, adoption: { mode: 'adopt-or-create', externalIdInput: 'admin-resource-id', replacement: 'forbidden' } },
 			{ id: 'api-proxy', provider: 'cloudflare', kind: 'api-proxy', dependsOn: ['api'], parameters: { upstream: { resourceOutput: { resourceId: 'api', output: 'public-url' } } }, adoption: { mode: 'adopt-or-create', replacement: 'forbidden' } },
-			{ id: 'api', provider: 'railway', kind: 'control-plane-api', dependsOn: ['postgres'], parameters: { artifact: { artifact: 'api' } }, adoption: { mode: 'adopt-or-create', replacement: 'forbidden' } },
+			{ id: 'api', provider: 'railway', kind: 'control-plane-api', dependsOn: ['postgres'], parameters: { artifact: { artifact: 'api' }, 'variable.TREESEED_DATABASE_URL': { resourceOutput: { resourceId: 'postgres', output: 'database-url' } } }, adoption: { mode: 'adopt-or-create', replacement: 'forbidden' } },
 			{ id: 'postgres', provider: 'railway', kind: 'postgresql', dependsOn: [], parameters: { region: { input: 'railway-region' } }, adoption: { mode: 'adopt-or-create', externalIdInput: 'postgres-resource-id', replacement: 'forbidden' } },
 		],
 	});
@@ -130,5 +130,7 @@ describe('reviewed hosted topology contracts', () => {
 		expect(() => hostedTopologyDeclarationSchema.parse({ ...value, resources: [{ ...target, parameters: { apiToken: { input: 'credential' } } }, ...value.resources.slice(1)] })).toThrow(/credential-like/u);
 		expect(() => hostedTopologyDeclarationSchema.parse({ ...value, resources: [{ ...target, parameters: { path: { literal: '/home/person/work' } } }, ...value.resources.slice(1)] })).toThrow(/personal filesystem/u);
 		expect(() => hostedTopologyDeclarationSchema.parse({ ...value, resources: [{ ...target, parameters: { artifact: { artifact: 'admin' } } }, ...value.resources.slice(1)] })).toThrow(/production-branch|destination-dir|name/u);
+		const api = value.resources.find(({ id }) => id === 'api')!;
+		expect(() => hostedTopologyDeclarationSchema.parse({ ...value, resources: value.resources.map((resource) => resource.id === 'api' ? { ...api, parameters: { ...api.parameters, 'variable.TREESEED_WEB_SERVICE_SECRET': { input: 'forbidden' } } } : resource) })).toThrow(/credential-like/u);
 	});
 });
