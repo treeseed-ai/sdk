@@ -62,6 +62,7 @@ const parameterSchema = z.union([
 	z.object({ resourceOutput: z.object({ resourceId: identifier, output: identifier }).strict() }).strict(),
 	z.object({ literal: z.union([z.string().max(4_096), z.number().finite(), z.boolean()]) }).strict(),
 ]);
+const parameterName = z.union([identifier, z.string().regex(/^variable\.[A-Z][A-Z0-9_]{1,127}$/u)]);
 
 const resourceProviderKinds = {
 	cloudflare: new Set(['admin-application', 'pages-application', 'dns-record', 'tls-policy', 'api-proxy']),
@@ -85,7 +86,7 @@ export const hostedResourceDeclarationSchema = z.object({
 	provider: hostedProviderSchema,
 	kind: hostedResourceKindSchema,
 	dependsOn: z.array(identifier).default([]),
-	parameters: z.record(identifier, parameterSchema).default({}),
+	parameters: z.record(parameterName, parameterSchema).default({}),
 	adoption: z.object({ mode: z.literal('adopt-or-create'), externalIdInput: identifier.optional(), replacement: z.literal('forbidden') }).strict(),
 }).strict();
 
