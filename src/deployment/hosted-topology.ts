@@ -93,7 +93,7 @@ export const hostedTopologyDeclarationSchema = z.object({
 	stateBackend: z.object({ connectionRef: identifier }).strict(),
 	providerConnections: z.record(hostedProviderSchema, z.object({ connectionRef: identifier }).strict()),
 	artifacts: z.record(identifier, z.object({ digest, source: z.string().url() }).strict()),
-	resources: z.array(hostedResourceDeclarationSchema).min(1),
+	resources: z.array(hostedResourceDeclarationSchema),
 }).strict().superRefine((declaration, context) => {
 	const ids = declaration.resources.map(({ id }) => id);
 	if (new Set(ids).size !== ids.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['resources'], message: 'Hosted topology resource identities must be unique.' });
