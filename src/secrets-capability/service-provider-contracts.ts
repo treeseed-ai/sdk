@@ -210,6 +210,7 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 		description: 'Connect a Cloudflare account with separately scoped capability tokens.',
 		knowledgePageIds: ['provider.cloudflare'],
 		connectionFields: [
+			field('deploymentEnvironment', 'Deployment environment', 'The exact TreeSeed deployment environment. Use staging or production; one connection must never span both.'),
 			field('accountId', 'Account ID', 'The non-secret Cloudflare account identifier.'),
 			field('zoneId', 'Zone ID', 'Optional non-secret zone identifier used by reviewed DNS and TLS topology resources.', false),
 		],
@@ -221,7 +222,7 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 		credentialProfiles: [
 			{ id: 'cloudflare-runtime', label: 'Pages and Workers token', description: 'A token limited to application deployment resources.', capabilities: ['frontend-hosting'], fields: [field('apiToken', 'API token', 'Encrypted in this browser and used only for authorized frontend operations.', true, true)], permissions: ['Account: Workers Scripts Edit', 'Account: Pages Edit'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['environment-reference', 'external-vault', 'workload-identity'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
 			{ id: 'cloudflare-dns', label: 'DNS token', description: 'A token restricted to selected zones.', capabilities: ['dns-management'], fields: [field('apiToken', 'DNS API token', 'Encrypted separately from deployment authority.', true, true)], permissions: ['Zone: DNS Edit for only the managed zones'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['environment-reference', 'external-vault', 'workload-identity'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
-			{ id: 'cloudflare-storage', label: 'Storage token', description: 'A token limited to R2 resources.', capabilities: ['object-storage'], fields: [field('apiToken', 'Storage API token', 'Encrypted separately from runtime and DNS authority.', true, true)], permissions: ['Account: Workers R2 Storage Edit'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['environment-reference', 'external-vault', 'workload-identity'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
+			{ id: 'cloudflare-storage', label: 'Storage authority', description: 'Vault-custodied R2 management and S3-compatible state credentials, isolated from runtime and DNS authority.', capabilities: ['object-storage'], fields: [field('apiToken', 'Storage API token', 'Encrypted separately and used only to reconcile authorized R2 resources.', true, true), field('accessKeyId', 'R2 access key ID', 'Vault-custodied S3-compatible access key identifier for encrypted OpenTofu state.', true, true), field('secretAccessKey', 'R2 secret access key', 'Vault-custodied S3-compatible secret key for encrypted OpenTofu state.', true, true)], permissions: ['Account: Workers R2 Storage Edit', 'Object read and write for only the managed state bucket'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['environment-reference', 'external-vault', 'workload-identity'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
 		],
 	},
 	{
@@ -232,6 +233,7 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 		description: 'Connect a Railway workspace for future backend and private infrastructure.',
 		knowledgePageIds: ['provider.railway'],
 		connectionFields: [
+			field('deploymentEnvironment', 'Deployment environment', 'The exact TreeSeed deployment environment. Use staging or production; one connection must never span both.'),
 			field('workspaceId', 'Workspace ID', 'The non-secret Railway workspace identifier.'),
 			field('projectId', 'Project ID', 'Optional non-secret project identifier used to adopt a reviewed hosted topology.', false),
 			field('environmentId', 'Environment ID', 'Optional non-secret environment identifier used to target reviewed hosted deployments.', false),
