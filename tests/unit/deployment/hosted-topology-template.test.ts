@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compileHostedTopologyTemplate, hostedTopologyTemplateSchema } from '../../../src/deployment/index.ts';
+import { compileHostedTopologyTemplate, hostedTopologyArtifactInputsSchema, hostedTopologyTemplateSchema } from '../../../src/deployment/index.ts';
 
 const digest = (marker: string) => `sha256:${marker.repeat(64)}`;
 
@@ -24,6 +24,10 @@ const artifacts = {
 };
 
 describe('portable hosted topology templates', () => {
+	it('validates a strict versioned runtime artifact input document', () => {
+		expect(hostedTopologyArtifactInputsSchema.parse({ schemaVersion: 'treeseed.hosted-topology-artifacts/v1', artifacts })).toEqual({ schemaVersion: 'treeseed.hosted-topology-artifacts/v1', artifacts });
+		expect(() => hostedTopologyArtifactInputsSchema.parse({ schemaVersion: 'treeseed.hosted-topology-artifacts/v1', artifacts, teamId: 'forbidden' })).toThrow();
+	});
 	it('binds runtime custody and exact typed artifacts deterministically', () => {
 		const input = { template: template(), teamId: 'team-treeseed', platformCommit: 'c'.repeat(40), artifacts };
 		const first = compileHostedTopologyTemplate(input), second = compileHostedTopologyTemplate(input);

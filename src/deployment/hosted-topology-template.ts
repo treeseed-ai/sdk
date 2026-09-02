@@ -24,6 +24,13 @@ export const hostedTopologyTemplateSchema = z.object({
 
 export type HostedTopologyTemplate = z.infer<typeof hostedTopologyTemplateSchema>;
 
+export const hostedTopologyArtifactInputsSchema = z.object({
+	schemaVersion: z.literal('treeseed.hosted-topology-artifacts/v1'),
+	artifacts: z.record(identifier, hostedArtifactSchema),
+}).strict();
+
+export type HostedTopologyArtifactInputs = z.infer<typeof hostedTopologyArtifactInputsSchema>;
+
 export function compileHostedTopologyTemplate(input: {
 	template: HostedTopologyTemplate;
 	teamId: string;
@@ -31,11 +38,12 @@ export function compileHostedTopologyTemplate(input: {
 	artifacts: Record<string, z.input<typeof hostedArtifactSchema>>;
 }) {
 	const template = hostedTopologyTemplateSchema.parse(input.template), teamId = custodyIdentifier.parse(input.teamId), platformCommit = gitCommit.parse(input.platformCommit);
-	const expectedInputs = Object.values(template.artifactBindings).map(({ input: name }) => name).sort(), receivedInputs = Object.keys(input.artifacts).sort();
+	const artifactInputs = hostedTopologyArtifactInputsSchema.parse({ schemaVersion: 'treeseed.hosted-topology-artifacts/v1', artifacts: input.artifacts }).artifacts;
+	const expectedInputs = Object.values(template.artifactBindings).map(({ input: name }) => name).sort(), receivedInputs = Object.keys(artifactInputs).sort();
 	if (new Set(expectedInputs).size !== expectedInputs.length) throw new Error('Hosted topology template artifact input names must be unique.');
 	if (expectedInputs.join('\n') !== receivedInputs.join('\n')) throw new Error('Hosted topology artifact inputs must match the exact template bindings.');
 	const artifacts = Object.fromEntries(Object.entries(template.artifactBindings).sort(([left], [right]) => left.localeCompare(right)).map(([id, binding]) => {
-		const artifact = hostedArtifactSchema.parse(input.artifacts[binding.input]);
+		const artifact = artifactInputs[binding.input]!;
 		if (artifact.kind !== binding.kind) throw new Error(`Hosted topology artifact ${binding.input} must be ${binding.kind}.`);
 		return [id, artifact];
 	}));
