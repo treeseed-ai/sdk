@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { authorizeHostedTopologyPlan, authorizeHostedTopologyRollback, deploymentDigest, hostedTopologyDeclarationSchema, planHostedTopology, planHostedTopologyRollback, verifyHostedTopologyReadback, type HostedResourceObservation, type HostedTopologyDeclaration } from '../../../src/deployment/index.ts';
+import { authorizeHostedTopologyPlan, authorizeHostedTopologyRollback, deploymentDigest, hostedTopologyDeclarationSchema, hostedTopologyPlanSchema, planHostedTopology, planHostedTopologyRollback, verifyHostedTopologyReadback, type HostedResourceObservation, type HostedTopologyDeclaration } from '../../../src/deployment/index.ts';
 
 const sha = (marker: string) => `sha256:${marker.repeat(64)}`;
 const now = '2026-09-02T12:00:00.000Z';
@@ -32,6 +32,17 @@ describe('reviewed hosted topology contracts', () => {
 		expect(reordered.planDigest).toBe(first.planDigest);
 		expect(first.actions.every(({ action }) => action === 'noop')).toBe(true);
 		expect(authorizeHostedTopologyPlan(first).approval).toBeNull();
+	});
+
+	it('binds each executable action to the complete reviewed resource specification', () => {
+		const value = declaration();
+		const plan = planHostedTopology({ declaration: value, observations: [], availableConnections: ['cloudflare-production', 'railway-production'] });
+		expect(plan.actions.map(({ desiredResource }) => desiredResource)).toEqual([...value.resources]
+			.map((resource) => ({ ...resource, dependsOn: [...resource.dependsOn].sort() })).sort((left, right) => left.id.localeCompare(right.id)));
+		const action = plan.actions[0]!;
+		expect(() => hostedTopologyPlanSchema.parse({ ...plan, actions: [{ ...action, desiredResource: { ...action.desiredResource, parameters: { changed: { literal: true } } } }, ...plan.actions.slice(1)] })).toThrow(/desired digest/u);
+		expect(() => hostedTopologyPlanSchema.parse({ ...plan, actions: [{ ...action, resourceId: 'tampered' }, ...plan.actions.slice(1)] })).toThrow(/identity/u);
+		expect(() => hostedTopologyPlanSchema.parse({ ...plan, planDigest: sha('f') })).toThrow(/exact canonical plan/u);
 	});
 
 	it('adopts matching external resources without replacement and rejects drift', () => {
