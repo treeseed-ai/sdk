@@ -26,6 +26,15 @@ const resourceProviderKinds = {
 
 const sensitiveKey = /(?:credential|password|private.?key|registration.?code|secret|token)/iu;
 const personalPath = /(?:^|[\s'"`:=])(?:\/home\/[^/\s]+|\/Users\/[^/\s]+|[A-Za-z]:\\Users\\[^\\\s]+)/u;
+const runtimeScalar = z.union([z.string().max(4_096), z.number().finite(), z.boolean()]);
+const runtimeInputName = z.string().regex(/^[A-Za-z][A-Za-z0-9._-]{0,63}$/u);
+const hostedConnectionSnapshotSchema = z.object({
+	connectionRef: identifier,
+	nonSecretConfig: z.record(runtimeInputName, runtimeScalar),
+}).strict().superRefine((snapshot, context) => {
+	for (const key of Object.keys(snapshot.nonSecretConfig)) if (sensitiveKey.test(key))
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['nonSecretConfig', key], message: 'Hosted provider snapshots cannot contain credential-like fields.' });
+});
 
 const hostedResourceDeclarationSchema = z.object({
 	id: identifier,
@@ -75,6 +84,8 @@ const hostedTopologyPlanShape = {
 	topologyId: identifier,
 	environment: z.enum(['staging', 'production']),
 	platformCommit: gitCommit,
+	artifacts: z.record(identifier, z.object({ digest, source: z.string().url() }).strict()),
+	providerConnections: z.record(hostedProviderSchema, hostedConnectionSnapshotSchema),
 	actions: z.array(z.object({
 		resourceId: identifier,
 		provider: hostedProviderSchema,
@@ -92,6 +103,7 @@ const hostedTopologyPlanShape = {
 
 function verifyPlanBinding(plan: {
 	planId: string; planDigest: string; declarationDigest: string; topologyId: string; environment: 'staging' | 'production';
+	artifacts: Record<string, unknown>; providerConnections: Record<string, { connectionRef: string }>;
 	platformCommit: string; actions: Array<{ resourceId: string; provider: string; kind: string; desiredResource: unknown; desiredDigest: string }>;
 	blockers: unknown[];
 }, context: z.RefinementCtx) {
@@ -101,9 +113,12 @@ function verifyPlanBinding(plan: {
 			context.addIssue({ code: z.ZodIssueCode.custom, path: ['actions', index, 'desiredResource'], message: 'Hosted plan action identity must match its desired resource specification.' });
 		if (deploymentDigest(desired) !== action.desiredDigest)
 			context.addIssue({ code: z.ZodIssueCode.custom, path: ['actions', index, 'desiredDigest'], message: 'Hosted plan desired digest must bind its complete desired resource specification.' });
+		if (!plan.providerConnections[action.provider] && !plan.blockers.some((blocker: any) => blocker.code === 'connection-unavailable'))
+			context.addIssue({ code: z.ZodIssueCode.custom, path: ['providerConnections', action.provider], message: `Hosted plan is missing the selected ${action.provider} connection snapshot.` });
 	}
 	const core = { declarationDigest: plan.declarationDigest, topologyId: plan.topologyId, environment: plan.environment,
-		platformCommit: plan.platformCommit, actions: plan.actions, blockers: plan.blockers };
+		platformCommit: plan.platformCommit, artifacts: plan.artifacts, providerConnections: plan.providerConnections,
+		actions: plan.actions, blockers: plan.blockers };
 	const expected = deploymentDigest(core);
 	if (expected !== plan.planDigest || plan.planId !== `topology-plan-${expected.slice(7, 23)}`)
 		context.addIssue({ code: z.ZodIssueCode.custom, path: ['planDigest'], message: 'Hosted topology plan identity must bind the exact canonical plan.' });
@@ -199,7 +214,7 @@ function cycleMembers(declaration: HostedTopologyDeclaration) {
 export function planHostedTopology(input: {
 	declaration: HostedTopologyDeclaration;
 	observations: HostedResourceObservation[];
-	availableConnections: string[];
+	connections: Partial<Record<z.infer<typeof hostedProviderSchema>, z.input<typeof hostedConnectionSnapshotSchema>>>;
 }): HostedTopologyPlan {
 	const declaration = hostedTopologyDeclarationSchema.parse(input.declaration);
 	const normalizedDeclaration = {
@@ -210,7 +225,12 @@ export function planHostedTopology(input: {
 	};
 	const observations = observationMap(input.observations, normalizedDeclaration);
 	const blockers: HostedTopologyPlan['blockers'] = [];
-	for (const [provider, binding] of Object.entries(normalizedDeclaration.providerConnections)) if (!input.availableConnections.includes(binding.connectionRef)) blockers.push({ code: 'connection-unavailable', message: `${provider} connection ${binding.connectionRef} is unavailable.` });
+	const providerConnections: Record<string, z.infer<typeof hostedConnectionSnapshotSchema>> = {};
+	for (const [provider, binding] of Object.entries(normalizedDeclaration.providerConnections)) {
+		const snapshot = input.connections[provider as z.infer<typeof hostedProviderSchema>];
+		if (!snapshot || snapshot.connectionRef !== binding.connectionRef) blockers.push({ code: 'connection-unavailable', message: `${provider} connection ${binding.connectionRef} is unavailable.` });
+		else providerConnections[provider] = hostedConnectionSnapshotSchema.parse(snapshot);
+	}
 	for (const resourceId of cycleMembers(normalizedDeclaration)) blockers.push({ code: 'dependency-cycle', resourceId, message: `Hosted resource ${resourceId} participates in a dependency cycle.` });
 	const actions = normalizedDeclaration.resources.map((resource) => {
 		const desiredDigest = deploymentDigest(resource);
@@ -226,7 +246,8 @@ export function planHostedTopology(input: {
 			desiredDigest, previousDigest: observation?.observedDigest ?? null, providerResourceId: observation?.providerResourceId ?? null };
 	});
 	const declarationDigest = deploymentDigest(normalizedDeclaration);
-	const core = { declarationDigest, topologyId: declaration.id, environment: declaration.environment, platformCommit: declaration.platform.commit, actions, blockers };
+	const core = { declarationDigest, topologyId: declaration.id, environment: declaration.environment, platformCommit: declaration.platform.commit,
+		artifacts: normalizedDeclaration.artifacts, providerConnections, actions, blockers };
 	const planDigest = deploymentDigest(core);
 	return hostedTopologyPlanSchema.parse({ schemaVersion: 'treeseed.hosted-topology-plan/v1', planId: `topology-plan-${planDigest.slice(7, 23)}`, planDigest, ...core, approvalRequired: actions.some(({ action }) => action !== 'noop'), executable: false });
 }
