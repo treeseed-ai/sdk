@@ -27,6 +27,15 @@ const resourceProviderKinds = {
 const sensitiveKey = /(?:credential|password|private.?key|registration.?code|secret|token)/iu;
 const personalPath = /(?:^|[\s'"`:=])(?:\/home\/[^/\s]+|\/Users\/[^/\s]+|[A-Za-z]:\\Users\\[^\\\s]+)/u;
 
+const hostedResourceDeclarationSchema = z.object({
+	id: identifier,
+	provider: hostedProviderSchema,
+	kind: hostedResourceKindSchema,
+	dependsOn: z.array(identifier).default([]),
+	parameters: z.record(identifier, parameterSchema).default({}),
+	adoption: z.object({ mode: z.literal('adopt-or-create'), externalIdInput: identifier.optional(), replacement: z.literal('forbidden') }).strict(),
+}).strict();
+
 export const hostedTopologyDeclarationSchema = z.object({
 	schemaVersion: z.literal('treeseed.hosted-topology/v1'),
 	id: identifier,
@@ -35,14 +44,7 @@ export const hostedTopologyDeclarationSchema = z.object({
 	platform: z.object({ repository: z.literal('treeseed-ai/platform'), commit: gitCommit }).strict(),
 	providerConnections: z.record(hostedProviderSchema, z.object({ connectionRef: identifier }).strict()),
 	artifacts: z.record(identifier, z.object({ digest, source: z.string().url() }).strict()),
-	resources: z.array(z.object({
-		id: identifier,
-		provider: hostedProviderSchema,
-		kind: hostedResourceKindSchema,
-		dependsOn: z.array(identifier).default([]),
-		parameters: z.record(identifier, parameterSchema).default({}),
-		adoption: z.object({ mode: z.literal('adopt-or-create'), externalIdInput: identifier.optional(), replacement: z.literal('forbidden') }).strict(),
-	}).strict()).min(1),
+	resources: z.array(hostedResourceDeclarationSchema).min(1),
 }).strict().superRefine((declaration, context) => {
 	const ids = declaration.resources.map(({ id }) => id);
 	if (new Set(ids).size !== ids.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['resources'], message: 'Hosted topology resource identities must be unique.' });
@@ -65,7 +67,7 @@ export const hostedResourceObservationSchema = z.object({
 	observedAt: timestamp,
 }).strict();
 
-export const hostedTopologyPlanSchema = z.object({
+const hostedTopologyPlanShape = {
 	schemaVersion: z.literal('treeseed.hosted-topology-plan/v1'),
 	planId: z.string().regex(/^topology-plan-[a-f0-9]{16}$/u),
 	planDigest: digest,
@@ -78,6 +80,7 @@ export const hostedTopologyPlanSchema = z.object({
 		provider: hostedProviderSchema,
 		kind: hostedResourceKindSchema,
 		action: z.enum(['create', 'adopt', 'update', 'noop']),
+		desiredResource: hostedResourceDeclarationSchema,
 		desiredDigest: digest,
 		previousDigest: digest.nullable(),
 		providerResourceId: z.string().min(1).max(512).nullable(),
@@ -85,7 +88,28 @@ export const hostedTopologyPlanSchema = z.object({
 	blockers: z.array(z.object({ code: z.enum(['connection-unavailable', 'dependency-cycle', 'observation-unhealthy', 'adoption-drift']), resourceId: identifier.optional(), message: z.string().min(1) }).strict()),
 	approvalRequired: z.boolean(),
 	executable: z.literal(false),
-}).strict();
+} as const;
+
+function verifyPlanBinding(plan: {
+	planId: string; planDigest: string; declarationDigest: string; topologyId: string; environment: 'staging' | 'production';
+	platformCommit: string; actions: Array<{ resourceId: string; provider: string; kind: string; desiredResource: unknown; desiredDigest: string }>;
+	blockers: unknown[];
+}, context: z.RefinementCtx) {
+	for (const [index, action] of plan.actions.entries()) {
+		const desired = hostedResourceDeclarationSchema.parse(action.desiredResource);
+		if (desired.id !== action.resourceId || desired.provider !== action.provider || desired.kind !== action.kind)
+			context.addIssue({ code: z.ZodIssueCode.custom, path: ['actions', index, 'desiredResource'], message: 'Hosted plan action identity must match its desired resource specification.' });
+		if (deploymentDigest(desired) !== action.desiredDigest)
+			context.addIssue({ code: z.ZodIssueCode.custom, path: ['actions', index, 'desiredDigest'], message: 'Hosted plan desired digest must bind its complete desired resource specification.' });
+	}
+	const core = { declarationDigest: plan.declarationDigest, topologyId: plan.topologyId, environment: plan.environment,
+		platformCommit: plan.platformCommit, actions: plan.actions, blockers: plan.blockers };
+	const expected = deploymentDigest(core);
+	if (expected !== plan.planDigest || plan.planId !== `topology-plan-${expected.slice(7, 23)}`)
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['planDigest'], message: 'Hosted topology plan identity must bind the exact canonical plan.' });
+}
+
+export const hostedTopologyPlanSchema = z.object(hostedTopologyPlanShape).strict().superRefine(verifyPlanBinding);
 
 export const hostedTopologyApprovalSchema = z.object({
 	schemaVersion: z.literal('treeseed.hosted-topology-approval/v1'),
@@ -96,10 +120,10 @@ export const hostedTopologyApprovalSchema = z.object({
 	approvedAt: timestamp,
 }).strict();
 
-export const authorizedHostedTopologyPlanSchema = hostedTopologyPlanSchema.extend({
+export const authorizedHostedTopologyPlanSchema = z.object({ ...hostedTopologyPlanShape,
 	executable: z.literal(true),
 	approval: hostedTopologyApprovalSchema.nullable(),
-}).omit({ approvalRequired: true });
+}).strict().omit({ approvalRequired: true }).superRefine(verifyPlanBinding);
 
 export const hostedTopologyReceiptSchema = z.object({
 	schemaVersion: z.literal('treeseed.hosted-topology-receipt/v1'),
@@ -198,7 +222,8 @@ export function planHostedTopology(input: {
 			else if (observation.managedBy === 'external') blockers.push({ code: 'adoption-drift', resourceId: resource.id, message: `External resource ${resource.id} differs from the declaration and cannot be replaced.` });
 			else action = 'update';
 		}
-		return { resourceId: resource.id, provider: resource.provider, kind: resource.kind, action, desiredDigest, previousDigest: observation?.observedDigest ?? null, providerResourceId: observation?.providerResourceId ?? null };
+		return { resourceId: resource.id, provider: resource.provider, kind: resource.kind, action, desiredResource: resource,
+			desiredDigest, previousDigest: observation?.observedDigest ?? null, providerResourceId: observation?.providerResourceId ?? null };
 	});
 	const declarationDigest = deploymentDigest(normalizedDeclaration);
 	const core = { declarationDigest, topologyId: declaration.id, environment: declaration.environment, platformCommit: declaration.platform.commit, actions, blockers };
