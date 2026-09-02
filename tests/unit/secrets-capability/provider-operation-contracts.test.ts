@@ -30,4 +30,11 @@ describe('provider operation contracts', () => {
 		expect(SERVICE_CAPABILITY_TYPES).toContain('workflow-configuration');
 	});
 
+	it('exposes non-secret hosted adoption targets without embedding installation identities', () => {
+		const cloudflare = SERVICE_PROVIDER_CATALOG.find((provider) => provider.id === 'cloudflare');
+		const railway = SERVICE_PROVIDER_CATALOG.find((provider) => provider.id === 'railway');
+		expect(cloudflare?.connectionFields).toMatchObject([{ key: 'accountId', required: true, sensitive: false }, { key: 'zoneId', required: false, sensitive: false }]);
+		expect(railway?.connectionFields).toMatchObject([{ key: 'workspaceId', required: true, sensitive: false }, { key: 'projectId', required: false, sensitive: false }, { key: 'environmentId', required: false, sensitive: false }]);
+	});
+
 });

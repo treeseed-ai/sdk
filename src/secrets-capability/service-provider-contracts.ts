@@ -209,7 +209,10 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 		documentationUrl: 'https://developers.cloudflare.com/fundamentals/api/get-started/create-token/',
 		description: 'Connect a Cloudflare account with separately scoped capability tokens.',
 		knowledgePageIds: ['provider.cloudflare'],
-		connectionFields: [field('accountId', 'Account ID', 'The non-secret Cloudflare account identifier.')],
+		connectionFields: [
+			field('accountId', 'Account ID', 'The non-secret Cloudflare account identifier.'),
+			field('zoneId', 'Zone ID', 'Optional non-secret zone identifier used by reviewed DNS and TLS topology resources.', false),
+		],
 		capabilities: [
 			{ type: 'frontend-hosting', label: 'Frontend hosting', description: 'Pages and Workers application hosting.', credentialProfileIds: ['cloudflare-runtime'], status: 'available' },
 			{ type: 'dns-management', label: 'DNS management', description: 'Scoped DNS record management.', credentialProfileIds: ['cloudflare-dns'], status: 'available' },
@@ -228,7 +231,11 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 		documentationUrl: 'https://docs.railway.com/guides/public-api',
 		description: 'Connect a Railway workspace for future backend and private infrastructure.',
 		knowledgePageIds: ['provider.railway'],
-		connectionFields: [field('workspaceId', 'Workspace ID', 'The non-secret Railway workspace identifier.')],
+		connectionFields: [
+			field('workspaceId', 'Workspace ID', 'The non-secret Railway workspace identifier.'),
+			field('projectId', 'Project ID', 'Optional non-secret project identifier used to adopt a reviewed hosted topology.', false),
+			field('environmentId', 'Environment ID', 'Optional non-secret environment identifier used to target reviewed hosted deployments.', false),
+		],
 		capabilities: [
 			{ type: 'backend-hosting', label: 'Backend hosting', description: 'API and backend service hosting.', credentialProfileIds: ['railway-workspace'], status: 'available' },
 			{ type: 'database-hosting', label: 'Database hosting', description: 'Managed database placement.', credentialProfileIds: ['railway-workspace'], status: 'available' },
