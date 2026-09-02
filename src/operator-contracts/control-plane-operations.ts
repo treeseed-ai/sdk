@@ -8,11 +8,9 @@ import { TREEAI_CONTROL_PLANE_OPERATIONS } from './catalog/treeai-operations.ts'
 import { capabilityOntologyOperations } from './catalog/capability-ontology-operations.ts';
 import { knowledgeShareOperations } from './catalog/knowledge-share-operations.ts';
 import { PROVIDER_ENVIRONMENT_OPERATIONS } from './catalog/provider-environment-operations.ts';
+import { HOSTED_TOPOLOGY_OPERATIONS } from './catalog/hosted-topology-operations.ts';
 import { buildControlPlaneCatalog, flattenControlPlaneOperations } from './catalog/control-plane-catalog.ts';
-const empty = z.object({}).strict();
-const none = z.undefined();
-const record = z.record(z.unknown());
-const payload = record;
+const empty = z.object({}).strict(), none = z.undefined(), record = z.record(z.unknown()), payload = record;
 function read(operationId: `${string}.${string}`, path: `/v1/${string}`, capability: string, surfaces: ControlPlaneOperationDescriptor['surfaces'] = ['rest']) {
 	return define({
 		operationId, description: `Read ${operationId}.`, rest: { method: 'GET', path }, capability,
@@ -86,8 +84,8 @@ function resource<T extends z.ZodRawShape>(
 		pagination: options.pagination ?? 'none', concurrencyRequired: options.concurrency, redactedPaths: options.redactedPaths,
 	}, { path: z.object(pathShape).strict(), query: kind === 'read' ? record : empty, body: kind === 'read' ? none : record, output: payload });
 }
-
 export const CONTROL_PLANE_OPERATIONS = {
+	infrastructure: { topology: HOSTED_TOPOLOGY_OPERATIONS },
 	capabilities: capabilityOntologyOperations(),
 	inbox: inboxOperations(),
 	treeai: TREEAI_CONTROL_PLANE_OPERATIONS,

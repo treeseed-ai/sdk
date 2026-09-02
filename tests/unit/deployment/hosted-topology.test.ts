@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { authorizeHostedTopologyPlan, deploymentDigest, hostedTopologyDeclarationSchema, planHostedTopology, planHostedTopologyRollback, verifyHostedTopologyReadback, type HostedResourceObservation, type HostedTopologyDeclaration } from '../../../src/deployment/index.ts';
+import { authorizeHostedTopologyPlan, authorizeHostedTopologyRollback, deploymentDigest, hostedTopologyDeclarationSchema, planHostedTopology, planHostedTopologyRollback, verifyHostedTopologyReadback, type HostedResourceObservation, type HostedTopologyDeclaration } from '../../../src/deployment/index.ts';
 
 const sha = (marker: string) => `sha256:${marker.repeat(64)}`;
 const now = '2026-09-02T12:00:00.000Z';
@@ -61,7 +61,10 @@ describe('reviewed hosted topology contracts', () => {
 		const receipt = verifyHostedTopologyReadback({ plan: authorized, previousResources: previous, resources, completedAt: now });
 		expect(receipt.state).toBe('known-good');
 		expect(planHostedTopology({ declaration: value, observations: resources, availableConnections: ['cloudflare-production', 'railway-production'] }).actions.every(({ action }) => action === 'noop')).toBe(true);
-		expect(planHostedTopologyRollback(receipt).operations.every(({ action }) => action === 'delete-created')).toBe(true);
+		const rollback = planHostedTopologyRollback(receipt);
+		expect(rollback.operations.every(({ action }) => action === 'delete-created')).toBe(true);
+		expect(authorizeHostedTopologyRollback(rollback, { schemaVersion: 'treeseed.hosted-topology-rollback-approval/v1', rollbackDigest: rollback.rollbackDigest, environment: 'production', decision: 'approved', approvedBy: 'release-approver', approvedAt: now }).rollback.rollbackId).toBe(rollback.rollbackId);
+		expect(() => authorizeHostedTopologyRollback(rollback, { schemaVersion: 'treeseed.hosted-topology-rollback-approval/v1', rollbackDigest: sha('f'), environment: 'production', decision: 'approved', approvedBy: 'release-approver', approvedAt: now })).toThrow(/exact rollback/u);
 		expect(() => verifyHostedTopologyReadback({ plan: authorized, previousResources: previous, resources: resources.map((resource, index) => index ? resource : { ...resource, observedDigest: sha('f') }), completedAt: now })).toThrow(/read-back failed/u);
 	});
 
