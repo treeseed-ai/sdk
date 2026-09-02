@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.13.0-rc.70",
+  "version": "0.13.0-rc.71",
   "description": "Portable TreeSeed contracts, standards, and typed remote control-plane clients.",
   "license": "Apache-2.0",
   "repository": {
