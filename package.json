@@ -30,6 +30,7 @@
     "build:dist": "node --import tsx ./scripts/build/build-dist.ts",
     "check:file-lengths": "node --import tsx ./scripts/verification/check-file-lengths.ts && npm run check:file-architecture",
     "check:file-architecture": "node --import tsx ./scripts/verification/check-file-architecture.ts",
+    "prepare": "npm run build:dist",
     "prepack": "npm run build:dist",
     "test": "npm run test:contracts",
     "test:contracts": "vitest run --config ./vitest.contracts.config.ts",
