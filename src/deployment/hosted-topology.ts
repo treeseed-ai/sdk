@@ -48,6 +48,14 @@ export const hostedResourceKindSchema = z.enum([
 	'control-plane-api', 'postgresql', 'operations-runner', 'treedx-service',
 ]);
 
+const hostedArchiveArtifactSchema = z.object({ kind: z.literal('archive'), format: z.literal('tar+gzip'), digest, source: z.string().url() }).strict();
+const hostedFileArtifactSchema = z.object({ kind: z.literal('file'), mediaType: z.string().trim().min(1).max(255), digest, source: z.string().url() }).strict();
+const hostedOciArtifactSchema = z.object({ kind: z.literal('oci-image'), digest, identity: z.string().regex(/^[a-z0-9][a-z0-9._/-]*@sha256:[a-f0-9]{64}$/u) }).strict()
+	.superRefine((artifact, context) => {
+		if (!artifact.identity.endsWith(`@${artifact.digest}`)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['identity'], message: 'Hosted OCI identity must bind the declared digest.' });
+	});
+export const hostedArtifactSchema = z.union([hostedArchiveArtifactSchema, hostedFileArtifactSchema, hostedOciArtifactSchema]);
+
 const parameterSchema = z.union([
 	z.object({ input: identifier }).strict(),
 	z.object({ artifact: identifier }).strict(),
@@ -72,7 +80,7 @@ const hostedConnectionSnapshotSchema = z.object({
 		context.addIssue({ code: z.ZodIssueCode.custom, path: ['nonSecretConfig', key], message: 'Hosted provider snapshots cannot contain credential-like fields.' });
 });
 
-const hostedResourceDeclarationSchema = z.object({
+export const hostedResourceDeclarationSchema = z.object({
 	id: identifier,
 	provider: hostedProviderSchema,
 	kind: hostedResourceKindSchema,
@@ -92,14 +100,14 @@ export const hostedTopologyDeclarationSchema = z.object({
 	platform: z.object({ repository: z.literal('treeseed-ai/platform'), commit: gitCommit }).strict(),
 	stateBackend: z.object({ connectionRef: identifier }).strict(),
 	providerConnections: z.record(hostedProviderSchema, z.object({ connectionRef: identifier }).strict()),
-	artifacts: z.record(identifier, z.object({ digest, source: z.string().url() }).strict()),
+	artifacts: z.record(identifier, hostedArtifactSchema),
 	resources: z.array(hostedResourceDeclarationSchema),
 }).strict().superRefine((declaration, context) => {
 	const ids = declaration.resources.map(({ id }) => id);
 	if (new Set(ids).size !== ids.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['resources'], message: 'Hosted topology resource identities must be unique.' });
 	for (const [index, resource] of declaration.resources.entries()) {
 		if (!resourceProviderKinds[resource.provider].has(resource.kind as never)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['resources', index, 'kind'], message: `${resource.kind} is not owned by ${resource.provider}.` });
-		if (resource.kind === 'pages-application') for (const key of ['artifact', 'name', 'production-branch', 'destination-dir'])
+		if (resource.kind === 'pages-application') for (const key of ['artifact', 'artifact-format', 'name', 'production-branch', 'destination-dir'])
 			if (!resource.parameters[key]) context.addIssue({ code: z.ZodIssueCode.custom, path: ['resources', index, 'parameters', key], message: `Cloudflare Pages applications require ${key}.` });
 		for (const dependency of resource.dependsOn) if (!ids.includes(dependency)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['resources', index, 'dependsOn'], message: `Unknown hosted resource dependency ${dependency}.` });
 		for (const key of Object.keys(resource.parameters)) if (sensitiveKey.test(key)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['resources', index, 'parameters', key], message: 'Hosted topology parameters cannot carry credential-like values.' });
@@ -130,7 +138,7 @@ const hostedTopologyPlanShape = {
 	environment: hostedEnvironmentSchema,
 	platformCommit: gitCommit,
 	stateBackend: hostedStateBackendSchema.nullable(),
-	artifacts: z.record(identifier, z.object({ digest, source: z.string().url() }).strict()),
+	artifacts: z.record(identifier, hostedArtifactSchema),
 	providerConnections: z.record(hostedProviderSchema, hostedConnectionSnapshotSchema),
 	actions: z.array(z.object({
 		resourceId: identifier,
