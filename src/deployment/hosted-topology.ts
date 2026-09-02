@@ -177,12 +177,37 @@ export const hostedTopologyRollbackApprovalSchema = z.object({
 	approvedAt: timestamp,
 }).strict();
 
+export const hostedTopologyRollbackExecutionSchema = z.object({
+	schemaVersion: z.literal('treeseed.hosted-topology-rollback-execution/v1'),
+	rollback: hostedTopologyRollbackSchema,
+	sourceReceiptId: z.string().regex(/^topology-receipt-[a-f0-9]{16}$/u),
+	topologyId: identifier,
+	environment: z.enum(['staging', 'production']),
+	sourcePlanDigest: digest,
+	targetPlanDigest: digest,
+	executionDigest: digest,
+}).strict().superRefine((execution, context) => {
+	const core = { rollback: execution.rollback, sourceReceiptId: execution.sourceReceiptId, topologyId: execution.topologyId,
+		environment: execution.environment, sourcePlanDigest: execution.sourcePlanDigest, targetPlanDigest: execution.targetPlanDigest };
+	if (deploymentDigest(core) !== execution.executionDigest) context.addIssue({ code: z.ZodIssueCode.custom, path: ['executionDigest'], message: 'Hosted rollback execution digest does not bind its complete source and target closure.' });
+});
+
+export const hostedTopologyRollbackExecutionApprovalSchema = z.object({
+	schemaVersion: z.literal('treeseed.hosted-topology-rollback-execution-approval/v1'),
+	executionDigest: digest,
+	environment: z.enum(['staging', 'production']),
+	decision: z.literal('approved'),
+	approvedBy: z.string().min(1).max(256),
+	approvedAt: timestamp,
+}).strict();
+
 export type HostedTopologyDeclaration = z.infer<typeof hostedTopologyDeclarationSchema>;
 export type HostedResourceObservation = z.infer<typeof hostedResourceObservationSchema>;
 export type HostedTopologyPlan = z.infer<typeof hostedTopologyPlanSchema>;
 export type HostedTopologyApproval = z.infer<typeof hostedTopologyApprovalSchema>;
 export type AuthorizedHostedTopologyPlan = z.infer<typeof authorizedHostedTopologyPlanSchema>;
 export type HostedTopologyReceipt = z.infer<typeof hostedTopologyReceiptSchema>;
+export type HostedTopologyRollbackExecution = z.infer<typeof hostedTopologyRollbackExecutionSchema>;
 
 function observationMap(items: HostedResourceObservation[], declaration: HostedTopologyDeclaration) {
 	const resources = new Map(declaration.resources.map((resource) => [resource.id, resource]));
@@ -297,4 +322,43 @@ export function authorizeHostedTopologyRollback(rollbackInput: z.input<typeof ho
 	const rollback = hostedTopologyRollbackSchema.parse(rollbackInput), approval = hostedTopologyRollbackApprovalSchema.parse(approvalInput);
 	if (approval.rollbackDigest !== rollback.rollbackDigest || approval.environment !== rollback.environment) throw new Error('Hosted topology rollback approval does not bind the exact rollback and environment.');
 	return { rollback, approval };
+}
+
+export function planHostedTopologyRollbackExecution(input: {
+	rollback: z.input<typeof hostedTopologyRollbackSchema>;
+	sourceReceipt: z.input<typeof hostedTopologyReceiptSchema>;
+	sourcePlan: z.input<typeof hostedTopologyPlanSchema> | z.input<typeof authorizedHostedTopologyPlanSchema>;
+	targetPlan: z.input<typeof hostedTopologyPlanSchema>;
+}) {
+	const rollback = hostedTopologyRollbackSchema.parse(input.rollback), sourceReceipt = hostedTopologyReceiptSchema.parse(input.sourceReceipt);
+	const sourcePlan = input.sourcePlan && typeof input.sourcePlan === 'object' && 'approval' in input.sourcePlan
+		? authorizedHostedTopologyPlanSchema.parse(input.sourcePlan)
+		: hostedTopologyPlanSchema.parse(input.sourcePlan);
+	const targetPlan = hostedTopologyPlanSchema.parse(input.targetPlan);
+	if (sourceReceipt.receiptId !== rollback.sourceReceiptId || sourceReceipt.planDigest !== sourcePlan.planDigest) throw new Error('Hosted rollback execution source receipt is stale.');
+	if ([sourceReceipt.environment, sourcePlan.environment, targetPlan.environment].some((environment) => environment !== rollback.environment)) throw new Error('Hosted rollback execution environment does not match its source and target plans.');
+	if (sourceReceipt.topologyId !== sourcePlan.topologyId || sourcePlan.topologyId !== targetPlan.topologyId) throw new Error('Hosted rollback execution topology identity changed.');
+	const sourceActions = new Map(sourcePlan.actions.map((action) => [action.resourceId, action]));
+	const sourceResources = new Map(sourceReceipt.resources.map((resource) => [resource.resourceId, resource]));
+	const targetActions = new Map(targetPlan.actions.map((action) => [action.resourceId, action]));
+	if (sourceResources.size !== sourceActions.size || rollback.operations.length !== sourceActions.size || new Set(rollback.operations.map(({ resourceId }) => resourceId)).size !== sourceActions.size) throw new Error('Hosted rollback execution does not cover the complete source resource set.');
+	for (const operation of rollback.operations) {
+		const source = sourceActions.get(operation.resourceId), observed = sourceResources.get(operation.resourceId), target = targetActions.get(operation.resourceId);
+		if (!source || !observed || observed.providerResourceId !== operation.providerResourceId) throw new Error(`Hosted rollback execution source mismatch for ${operation.resourceId}.`);
+		if (operation.action === 'delete-created') {
+			if (target) throw new Error(`Hosted rollback execution target must remove created resource ${operation.resourceId}.`);
+		} else if (!target || !operation.targetDigest || target.desiredDigest !== operation.targetDigest || target.provider !== source.provider || target.kind !== source.kind) {
+			throw new Error(`Hosted rollback execution target specification mismatch for ${operation.resourceId}.`);
+		}
+	}
+	if ([...targetActions.keys()].some((resourceId) => !sourceActions.has(resourceId))) throw new Error('Hosted rollback execution target introduces an unapproved resource.');
+	const core = { rollback, sourceReceiptId: sourceReceipt.receiptId, topologyId: sourceReceipt.topologyId, environment: rollback.environment,
+		sourcePlanDigest: sourcePlan.planDigest, targetPlanDigest: targetPlan.planDigest };
+	return hostedTopologyRollbackExecutionSchema.parse({ schemaVersion: 'treeseed.hosted-topology-rollback-execution/v1', ...core, executionDigest: deploymentDigest(core) });
+}
+
+export function authorizeHostedTopologyRollbackExecution(executionInput: z.input<typeof hostedTopologyRollbackExecutionSchema>, approvalInput: z.input<typeof hostedTopologyRollbackExecutionApprovalSchema>) {
+	const execution = hostedTopologyRollbackExecutionSchema.parse(executionInput), approval = hostedTopologyRollbackExecutionApprovalSchema.parse(approvalInput);
+	if (approval.executionDigest !== execution.executionDigest || approval.environment !== execution.environment) throw new Error('Hosted rollback execution approval does not bind the exact source, target, and environment.');
+	return { execution, approval };
 }
