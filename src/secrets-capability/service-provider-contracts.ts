@@ -213,6 +213,10 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 			field('deploymentEnvironment', 'Deployment environment', 'The exact TreeSeed deployment environment. Use staging or production; one connection must never span both.'),
 			field('accountId', 'Account ID', 'The non-secret Cloudflare account identifier.'),
 			field('zoneId', 'Zone ID', 'Optional non-secret zone identifier used by reviewed DNS and TLS topology resources.', false),
+			field('stateBucket', 'OpenTofu state bucket', 'Optional R2 bucket name used only by a state-backend connection.', false),
+			field('stateEndpoint', 'OpenTofu state endpoint', 'Optional HTTPS S3-compatible R2 endpoint used only by a state-backend connection.', false),
+			field('stateRegion', 'OpenTofu state region', 'Optional S3-compatible region; omit to use auto.', false),
+			field('stateEncryptionKeyRef', 'State encryption key reference', 'Optional non-secret team-vault key name used to encrypt this backend state.', false),
 		],
 		capabilities: [
 			{ type: 'frontend-hosting', label: 'Frontend hosting', description: 'Pages and Workers application hosting.', credentialProfileIds: ['cloudflare-runtime'], status: 'available' },
