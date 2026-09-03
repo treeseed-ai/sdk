@@ -1,9 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
 	CREDENTIAL_AUTHORITY_SCHEMES,
+	SECRET_OPERATION_PURPOSES,
 	SERVICE_CAPABILITY_TYPES,
 	SERVICE_PROVIDER_CATALOG,
+	canonicalHostedSecretOperationBinding,
+	validateHostedSecretOperationBinding,
+	validateSealedSecretOperationPayload,
 } from '../../../src/configuration/secrets-capability.ts';
+
+const hostedBinding = {
+	subjectType: 'plan' as const,
+	subjectDigest: `sha256:${'a'.repeat(64)}`,
+	deploymentId: 'treeseed-cloud',
+	stackId: 'control-plane',
+	environment: 'staging' as const,
+};
 
 describe('provider operation contracts', () => {
 	it('keeps repository and workflow GitHub authority least-privilege and independently selectable', () => {
@@ -32,6 +44,20 @@ describe('provider operation contracts', () => {
 		expect(SERVICE_CAPABILITY_TYPES).toContain('workflow-configuration');
 	});
 
+	it('binds sealed interactive credentials to exact hosted operations', () => {
+		expect(SECRET_OPERATION_PURPOSES).toEqual(expect.arrayContaining([
+			'hosted-topology-plan', 'hosted-topology-apply', 'hosted-topology-readback', 'hosted-topology-rollback',
+		]));
+		expect(canonicalHostedSecretOperationBinding(hostedBinding)).toBe(JSON.stringify(hostedBinding));
+		expect(validateHostedSecretOperationBinding(hostedBinding)).toBe(true);
+		expect(validateHostedSecretOperationBinding({ ...hostedBinding, subjectDigest: 'moving-head' })).toBe(false);
+		const payload = { schemaVersion: 'treeseed.sealed-secret-operation-payload/v1', leaseId: 'lease-1', teamId: 'team-1',
+			operationCorrelationId: 'operation-1', hostedBinding, algorithm: 'x25519-sealed-box', ciphertext: 'base64-ciphertext' };
+		expect(validateSealedSecretOperationPayload(payload)).toBe(true);
+		expect(validateSealedSecretOperationPayload({ ...payload, ciphertext: '' })).toBe(false);
+		expect(validateSealedSecretOperationPayload({ ...payload, hostedBinding: { ...hostedBinding, environment: 'preview' } })).toBe(false);
+	});
+
 	it('exposes non-secret hosted adoption targets without embedding installation identities', () => {
 		const cloudflare = SERVICE_PROVIDER_CATALOG.find((provider) => provider.id === 'cloudflare');
 		const railway = SERVICE_PROVIDER_CATALOG.find((provider) => provider.id === 'railway');
@@ -49,7 +75,10 @@ describe('provider operation contracts', () => {
 			{ key: 'apiToken', sensitive: true },
 			{ key: 'accessKeyId', sensitive: true },
 			{ key: 'secretAccessKey', sensitive: true },
+			{ key: 'stateEncryptionKey', sensitive: true },
 		]);
+		expect(cloudflare?.credentialProfiles.filter(({ id }) => id.startsWith('cloudflare-')).every(({ authoritySchemes }) => authoritySchemes?.includes('client-encrypted'))).toBe(true);
+		expect(railway?.credentialProfiles.find(({ id }) => id === 'railway-workspace')?.authoritySchemes).toContain('client-encrypted');
 	});
 
 });
