@@ -1,11 +1,12 @@
 import { z } from 'zod';
-import { hostedTopologyApprovalSchema, hostedTopologyDeclarationSchema, hostedTopologyPlanSchema, hostedTopologyReceiptSchema, hostedTopologyRollbackApprovalSchema, hostedTopologyRollbackSchema } from '../../deployment/hosted-topology.ts';
+import { hostedTopologyApprovalSchema, hostedTopologyDeclarationSchema, hostedTopologyPlanSchema, hostedTopologyReceiptSchema, hostedTopologyRollbackExecutionApprovalSchema, hostedTopologyRollbackExecutionSchema } from '../../deployment/hosted-topology.ts';
 import { defineOperation } from '../operation-builder.ts';
 
 const teamPath = z.object({ teamId: z.string().min(1) }).strict();
 const empty = z.object({}).strict();
 const none = z.undefined();
 const operationReceipt = z.record(z.unknown());
+const credentialLeaseIds = z.array(z.string().min(1)).min(1).optional();
 
 export const HOSTED_TOPOLOGY_OPERATIONS = {
 	plan: defineOperation({
@@ -13,13 +14,13 @@ export const HOSTED_TOPOLOGY_OPERATIONS = {
 		rest: { method: 'POST', path: '/v1/teams/{teamId}/infrastructure/topology/plan' }, parameters: 'treeseed.infrastructure.topology.plan.parameters/v1',
 		capability: 'infrastructure.read', authentication: 'oauth', oauthScopes: ['treeseed:read'], kind: 'read', riskClass: 'ordinary', confirmation: 'never',
 		surfaces: ['rest', 'cli'], cacheScope: 'none', pagination: 'none', idempotencyRequired: false,
-	}, { path: teamPath, query: empty, body: z.object({ declaration: hostedTopologyDeclarationSchema }).strict(), output: hostedTopologyPlanSchema }),
+	}, { path: teamPath, query: empty, body: z.object({ declaration: hostedTopologyDeclarationSchema, credentialLeaseIds }).strict(), output: operationReceipt }),
 	apply: defineOperation({
 		operationId: 'infrastructure.topology.apply', description: 'Apply an exact approved hosted topology plan through the operations runner.',
 		rest: { method: 'POST', path: '/v1/teams/{teamId}/infrastructure/topology/apply' }, parameters: 'treeseed.infrastructure.topology.apply.parameters/v1',
 		capability: 'infrastructure.write', authentication: 'oauth', oauthScopes: ['treeseed:admin'], kind: 'mutation', riskClass: 'authority', confirmation: 'input_required',
 		surfaces: ['rest', 'cli'], cacheScope: 'none', pagination: 'none', concurrencyRequired: true, redactedPaths: ['body.approval.approvedBy'],
-	}, { path: teamPath, query: empty, body: z.object({ plan: hostedTopologyPlanSchema, approval: hostedTopologyApprovalSchema }).strict(), output: operationReceipt }),
+	}, { path: teamPath, query: empty, body: z.object({ plan: hostedTopologyPlanSchema, approval: hostedTopologyApprovalSchema, credentialLeaseIds }).strict(), output: operationReceipt }),
 	status: defineOperation({
 		operationId: 'infrastructure.topology.status', description: 'Read the latest authoritative hosted topology receipt and operation state.',
 		rest: { method: 'GET', path: '/v1/teams/{teamId}/infrastructure/topology' }, parameters: 'treeseed.infrastructure.topology.status.parameters/v1',
@@ -31,5 +32,7 @@ export const HOSTED_TOPOLOGY_OPERATIONS = {
 		rest: { method: 'POST', path: '/v1/teams/{teamId}/infrastructure/topology/rollback' }, parameters: 'treeseed.infrastructure.topology.rollback.parameters/v1',
 		capability: 'infrastructure.write', authentication: 'oauth', oauthScopes: ['treeseed:admin'], kind: 'mutation', riskClass: 'destructive', confirmation: 'input_required',
 		surfaces: ['rest', 'cli'], cacheScope: 'none', pagination: 'none', concurrencyRequired: true, redactedPaths: ['body.approval.approvedBy'],
-	}, { path: teamPath, query: empty, body: z.object({ rollback: hostedTopologyRollbackSchema, approval: hostedTopologyRollbackApprovalSchema }).strict(), output: operationReceipt }),
+	}, { path: teamPath, query: empty, body: z.object({ execution: hostedTopologyRollbackExecutionSchema,
+		approval: hostedTopologyRollbackExecutionApprovalSchema, sourcePlan: hostedTopologyPlanSchema,
+		targetPlan: hostedTopologyPlanSchema, credentialLeaseIds }).strict(), output: operationReceipt }),
 } as const;
