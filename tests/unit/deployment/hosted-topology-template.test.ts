@@ -5,7 +5,7 @@ const digest = (marker: string) => `sha256:${marker.repeat(64)}`;
 
 function template(environment: 'staging' | 'production' = 'production') {
 	return hostedTopologyTemplateSchema.parse({
-		schemaVersion: 'treeseed.hosted-topology-template/v1', id: `treeseed-${environment}`, deploymentId: 'treeseed-cloud', stackId: 'control-plane', environment, mutation: 'approval-required',
+		schemaVersion: 'treeseed.hosted-topology-template/v1', id: `treeseed-${environment}`, deploymentId: 'treeseed-cloud', stackId: 'control-plane', environment, mutation: 'agent-authorized',
 		stateBackend: { connectionRef: 'r2-infrastructure-state' },
 		providerConnections: { cloudflare: { connectionRef: 'cloudflare-hosting' }, railway: { connectionRef: 'railway-hosting' } },
 		artifactBindings: { admin: { input: 'admin-pages', kind: 'archive' }, proxy: { input: 'api-proxy-worker', kind: 'file' }, api: { input: 'api-image', kind: 'oci-image' } },

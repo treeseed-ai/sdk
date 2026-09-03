@@ -97,7 +97,7 @@ export const hostedTopologyDeclarationSchema = z.object({
 	deploymentId: custodyIdentifier,
 	stackId: custodyIdentifier,
 	environment: hostedEnvironmentSchema,
-	mutation: z.literal('approval-required'),
+	mutation: z.literal('agent-authorized'),
 	platform: z.object({ repository: z.literal('treeseed-ai/platform'), commit: gitCommit }).strict(),
 	stateBackend: z.object({ connectionRef: identifier }).strict(),
 	providerConnections: z.record(hostedProviderSchema, z.object({ connectionRef: identifier }).strict()),
@@ -152,7 +152,7 @@ const hostedTopologyPlanShape = {
 		providerResourceId: z.string().min(1).max(512).nullable(),
 	}).strict()),
 	blockers: z.array(z.object({ code: z.enum(['connection-unavailable', 'state-backend-unavailable', 'dependency-cycle', 'observation-unhealthy', 'adoption-drift']), resourceId: identifier.optional(), message: z.string().min(1) }).strict()),
-	approvalRequired: z.boolean(),
+	authorization: z.literal('authenticated-agent'),
 	executable: z.literal(false),
 } as const;
 
@@ -161,7 +161,7 @@ function verifyPlanBinding(plan: {
 	stateBackend: z.infer<typeof hostedStateBackendSchema> | null;
 	artifacts: Record<string, unknown>; providerConnections: Record<string, { connectionRef: string }>;
 	platformCommit: string; actions: Array<{ resourceId: string; provider: string; kind: string; desiredResource: unknown; desiredDigest: string }>;
-	blockers: unknown[];
+	blockers: unknown[]; authorization: 'authenticated-agent';
 }, context: z.RefinementCtx) {
 	for (const [index, action] of plan.actions.entries()) {
 		const desired = hostedResourceDeclarationSchema.parse(action.desiredResource);
@@ -177,7 +177,7 @@ function verifyPlanBinding(plan: {
 	const core = { declarationDigest: plan.declarationDigest, topologyId: plan.topologyId, teamId: plan.teamId, deploymentId: plan.deploymentId, stackId: plan.stackId, environment: plan.environment,
 		stateBackend: plan.stateBackend,
 		platformCommit: plan.platformCommit, artifacts: plan.artifacts, providerConnections: plan.providerConnections,
-		actions: plan.actions, blockers: plan.blockers };
+		actions: plan.actions, blockers: plan.blockers, authorization: plan.authorization };
 	const expected = deploymentDigest(core);
 	if (expected !== plan.planDigest || plan.planId !== `topology-plan-${expected.slice(7, 23)}`)
 		context.addIssue({ code: z.ZodIssueCode.custom, path: ['planDigest'], message: 'Hosted topology plan identity must bind the exact canonical plan.' });
@@ -185,23 +185,9 @@ function verifyPlanBinding(plan: {
 
 export const hostedTopologyPlanSchema = z.object(hostedTopologyPlanShape).strict().superRefine(verifyPlanBinding);
 
-export const hostedTopologyApprovalSchema = z.object({
-	schemaVersion: z.literal('treeseed.hosted-topology-approval/v1'),
-	planDigest: digest,
-	teamId: custodyIdentifier,
-	deploymentId: custodyIdentifier,
-	stackId: custodyIdentifier,
-	environment: hostedEnvironmentSchema,
-	backendBindingDigest: digest,
-	decision: z.literal('approved'),
-	approvedBy: z.string().min(1).max(256),
-	approvedAt: timestamp,
-}).strict();
-
 export const authorizedHostedTopologyPlanSchema = z.object({ ...hostedTopologyPlanShape,
 	executable: z.literal(true),
-	approval: hostedTopologyApprovalSchema.nullable(),
-}).strict().omit({ approvalRequired: true }).superRefine(verifyPlanBinding);
+}).strict().superRefine(verifyPlanBinding);
 
 export const hostedTopologyReceiptSchema = z.object({
 	schemaVersion: z.literal('treeseed.hosted-topology-receipt/v1'),
@@ -237,20 +223,12 @@ export const hostedTopologyRollbackSchema = z.object({
 		targetDigest: digest.nullable(),
 	}).strict()),
 	rollbackDigest: digest,
-}).strict();
-
-export const hostedTopologyRollbackApprovalSchema = z.object({
-	schemaVersion: z.literal('treeseed.hosted-topology-rollback-approval/v1'),
-	rollbackDigest: digest,
-	teamId: custodyIdentifier,
-	deploymentId: custodyIdentifier,
-	stackId: custodyIdentifier,
-	environment: hostedEnvironmentSchema,
-	backendBindingDigest: digest,
-	decision: z.literal('approved'),
-	approvedBy: z.string().min(1).max(256),
-	approvedAt: timestamp,
-}).strict();
+}).strict().superRefine((rollback, context) => {
+	const core = { sourceReceiptId: rollback.sourceReceiptId, teamId: rollback.teamId, deploymentId: rollback.deploymentId,
+		stackId: rollback.stackId, environment: rollback.environment, backendBindingDigest: rollback.backendBindingDigest, operations: rollback.operations };
+	if (deploymentDigest(core) !== rollback.rollbackDigest || rollback.rollbackId !== `topology-rollback-${rollback.rollbackDigest.slice(7, 23)}`)
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['rollbackDigest'], message: 'Hosted topology rollback identity must bind the exact rollback custody and operations.' });
+});
 
 export const hostedTopologyRollbackExecutionSchema = z.object({
 	schemaVersion: z.literal('treeseed.hosted-topology-rollback-execution/v1'),
@@ -272,24 +250,10 @@ export const hostedTopologyRollbackExecutionSchema = z.object({
 	if (deploymentDigest(core) !== execution.executionDigest) context.addIssue({ code: z.ZodIssueCode.custom, path: ['executionDigest'], message: 'Hosted rollback execution digest does not bind its complete source and target closure.' });
 });
 
-export const hostedTopologyRollbackExecutionApprovalSchema = z.object({
-	schemaVersion: z.literal('treeseed.hosted-topology-rollback-execution-approval/v1'),
-	executionDigest: digest,
-	teamId: custodyIdentifier,
-	deploymentId: custodyIdentifier,
-	stackId: custodyIdentifier,
-	environment: hostedEnvironmentSchema,
-	backendBindingDigest: digest,
-	decision: z.literal('approved'),
-	approvedBy: z.string().min(1).max(256),
-	approvedAt: timestamp,
-}).strict();
-
 export type HostedTopologyDeclaration = z.infer<typeof hostedTopologyDeclarationSchema>;
 export type HostedStateBackend = z.infer<typeof hostedStateBackendSchema>;
 export type HostedResourceObservation = z.infer<typeof hostedResourceObservationSchema>;
 export type HostedTopologyPlan = z.infer<typeof hostedTopologyPlanSchema>;
-export type HostedTopologyApproval = z.infer<typeof hostedTopologyApprovalSchema>;
 export type AuthorizedHostedTopologyPlan = z.infer<typeof authorizedHostedTopologyPlanSchema>;
 export type HostedTopologyReceipt = z.infer<typeof hostedTopologyReceiptSchema>;
 export type HostedTopologyRollbackExecution = z.infer<typeof hostedTopologyRollbackExecutionSchema>;
@@ -367,20 +331,16 @@ export function planHostedTopology(input: {
 	const declarationDigest = deploymentDigest(normalizedDeclaration);
 	const core = { declarationDigest, topologyId: declaration.id, teamId: declaration.teamId, deploymentId: declaration.deploymentId, stackId: declaration.stackId, environment: declaration.environment,
 		stateBackend, platformCommit: declaration.platform.commit,
-		artifacts: normalizedDeclaration.artifacts, providerConnections, actions, blockers };
+		artifacts: normalizedDeclaration.artifacts, providerConnections, actions, blockers, authorization: 'authenticated-agent' as const };
 	const planDigest = deploymentDigest(core);
-	return hostedTopologyPlanSchema.parse({ schemaVersion: 'treeseed.hosted-topology-plan/v1', planId: `topology-plan-${planDigest.slice(7, 23)}`, planDigest, ...core, approvalRequired: actions.some(({ action }) => action !== 'noop'), executable: false });
+	return hostedTopologyPlanSchema.parse({ schemaVersion: 'treeseed.hosted-topology-plan/v1', planId: `topology-plan-${planDigest.slice(7, 23)}`, planDigest, ...core, executable: false });
 }
 
-export function authorizeHostedTopologyPlan(planInput: HostedTopologyPlan, approvalInput?: HostedTopologyApproval): AuthorizedHostedTopologyPlan {
+export function authorizeHostedTopologyPlan(planInput: HostedTopologyPlan): AuthorizedHostedTopologyPlan {
 	const plan = hostedTopologyPlanSchema.parse(planInput);
 	if (plan.blockers.length) throw new Error('Hosted topology plan has unresolved blockers.');
 	if (!plan.stateBackend) throw new Error('Hosted topology plan has no state backend authority.');
-	const approval = approvalInput ? hostedTopologyApprovalSchema.parse(approvalInput) : null;
-	if (plan.approvalRequired && !approval) throw new Error('Hosted topology mutation requires environment approval.');
-	if (approval && (approval.planDigest !== plan.planDigest || approval.teamId !== plan.teamId || approval.deploymentId !== plan.deploymentId || approval.stackId !== plan.stackId || approval.environment !== plan.environment || approval.backendBindingDigest !== plan.stateBackend.bindingDigest)) throw new Error('Hosted topology approval does not bind the exact plan custody and backend.');
-	const { approvalRequired: _approvalRequired, ...approvedPlan } = plan;
-	return authorizedHostedTopologyPlanSchema.parse({ ...approvedPlan, executable: true, approval });
+	return authorizedHostedTopologyPlanSchema.parse({ ...plan, executable: true });
 }
 
 export function verifyHostedTopologyReadback(input: {
@@ -417,10 +377,8 @@ export function planHostedTopologyRollback(receiptInput: HostedTopologyReceipt) 
 	return hostedTopologyRollbackSchema.parse({ schemaVersion: 'treeseed.hosted-topology-rollback/v1', rollbackId: `topology-rollback-${rollbackDigest.slice(7, 23)}`, sourceReceiptId: receipt.receiptId, ...custody, operations, rollbackDigest });
 }
 
-export function authorizeHostedTopologyRollback(rollbackInput: z.input<typeof hostedTopologyRollbackSchema>, approvalInput: z.input<typeof hostedTopologyRollbackApprovalSchema>) {
-	const rollback = hostedTopologyRollbackSchema.parse(rollbackInput), approval = hostedTopologyRollbackApprovalSchema.parse(approvalInput);
-	if (approval.rollbackDigest !== rollback.rollbackDigest || approval.teamId !== rollback.teamId || approval.deploymentId !== rollback.deploymentId || approval.stackId !== rollback.stackId || approval.environment !== rollback.environment || approval.backendBindingDigest !== rollback.backendBindingDigest) throw new Error('Hosted topology rollback approval does not bind the exact rollback custody and backend.');
-	return { rollback, approval };
+export function authorizeHostedTopologyRollback(rollbackInput: z.input<typeof hostedTopologyRollbackSchema>) {
+	return { rollback: hostedTopologyRollbackSchema.parse(rollbackInput) };
 }
 
 export function planHostedTopologyRollbackExecution(input: {
@@ -430,7 +388,7 @@ export function planHostedTopologyRollbackExecution(input: {
 	targetPlan: z.input<typeof hostedTopologyPlanSchema>;
 }) {
 	const rollback = hostedTopologyRollbackSchema.parse(input.rollback), sourceReceipt = hostedTopologyReceiptSchema.parse(input.sourceReceipt);
-	const sourcePlan = input.sourcePlan && typeof input.sourcePlan === 'object' && 'approval' in input.sourcePlan
+	const sourcePlan = input.sourcePlan && typeof input.sourcePlan === 'object' && input.sourcePlan.executable === true
 		? authorizedHostedTopologyPlanSchema.parse(input.sourcePlan)
 		: hostedTopologyPlanSchema.parse(input.sourcePlan);
 	const targetPlan = hostedTopologyPlanSchema.parse(input.targetPlan);
@@ -455,14 +413,12 @@ export function planHostedTopologyRollbackExecution(input: {
 			throw new Error(`Hosted rollback execution target specification mismatch for ${operation.resourceId}.`);
 		}
 	}
-	if ([...targetActions.keys()].some((resourceId) => !sourceActions.has(resourceId))) throw new Error('Hosted rollback execution target introduces an unapproved resource.');
+	if ([...targetActions.keys()].some((resourceId) => !sourceActions.has(resourceId))) throw new Error('Hosted rollback execution target introduces an unauthorized resource.');
 	const core = { rollback, sourceReceiptId: sourceReceipt.receiptId, topologyId: sourceReceipt.topologyId, ...custody,
 		sourcePlanDigest: sourcePlan.planDigest, targetPlanDigest: targetPlan.planDigest };
 	return hostedTopologyRollbackExecutionSchema.parse({ schemaVersion: 'treeseed.hosted-topology-rollback-execution/v1', ...core, executionDigest: deploymentDigest(core) });
 }
 
-export function authorizeHostedTopologyRollbackExecution(executionInput: z.input<typeof hostedTopologyRollbackExecutionSchema>, approvalInput: z.input<typeof hostedTopologyRollbackExecutionApprovalSchema>) {
-	const execution = hostedTopologyRollbackExecutionSchema.parse(executionInput), approval = hostedTopologyRollbackExecutionApprovalSchema.parse(approvalInput);
-	if (approval.executionDigest !== execution.executionDigest || approval.teamId !== execution.teamId || approval.deploymentId !== execution.deploymentId || approval.stackId !== execution.stackId || approval.environment !== execution.environment || approval.backendBindingDigest !== execution.backendBindingDigest) throw new Error('Hosted rollback execution approval does not bind the exact source target custody and backend.');
-	return { execution, approval };
+export function authorizeHostedTopologyRollbackExecution(executionInput: z.input<typeof hostedTopologyRollbackExecutionSchema>) {
+	return { execution: hostedTopologyRollbackExecutionSchema.parse(executionInput) };
 }
