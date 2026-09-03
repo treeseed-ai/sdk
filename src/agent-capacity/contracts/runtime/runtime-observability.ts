@@ -1,9 +1,9 @@
 import type { CapacityPageInfo } from '../../../capacity/capacity-core/capacity-pagination.ts';
 import type { ExecutionCapabilityDemand,ExecutionCapabilitySupply } from '../../../types/agents.ts';
-import type { AgentCapacityEnvelope,AgentExecutionMode,AgentModeRun,DecisionExecutionInput,ProviderAssignment,ProviderAssignmentSynthesisSource,TreeDxProxyHandle,WorkdayCapacityEnvelope } from '../capacity/assignments/assignment-records.ts';
-import type { AgentKernelPolicy,AgentKernelProfile } from '../projects/agents/project-agent-class.ts';
+import type { AgentCapacityEnvelope,AgentExecutionMode,AgentModeRun,AgentModeRunUsageSettlement,DecisionExecutionInput,ProviderAssignment,ProviderAssignmentSynthesisSource,TreeDxProxyHandle,WorkdayCapacityEnvelope } from '../capacity/assignments/assignment-records.ts';
+import type { AgentKernelPolicy,AgentKernelProfile,ProjectAgentClass } from '../projects/agents/project-agent-class.ts';
 import type { CapacityLedgerEntry,CapacityReservation,CapacityUsageActual } from '../support/financial-records.ts';
-import type { WorkdayCapacityEnvelopeRecord } from '../support/planning-records.ts';
+import type { DecisionPlanningStatus,WorkdayCapacityEnvelopeRecord } from '../support/planning-records.ts';
 
 export type AgentKernelModeExecutionStatus = 'completed' | 'waiting' | 'failed' | 'returned';
 export type AgentKernelModeFallbackCode =

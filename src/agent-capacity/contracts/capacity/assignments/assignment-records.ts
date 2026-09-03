@@ -1,5 +1,5 @@
 export type AgentExecutionMode = 'planning' | 'acting';
-export type AgentWorkExecutionMode = import('../../support/execution-mode.ts').AgentWorkExecutionMode;
+import type { AgentWorkExecutionMode } from '../../support/authority/execution-mode.ts';
 export type ProviderAssignmentStatus = 'pending' | 'leased' | 'running' | 'completed' | 'failed' | 'returned' | 'expired' | 'cancelled';
 export type ProviderAssignmentLeaseState = 'unleased' | 'leased' | 'released' | 'expired';
 export type AgentModeRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';

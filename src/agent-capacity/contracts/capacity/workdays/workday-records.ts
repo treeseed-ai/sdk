@@ -1,6 +1,6 @@
 /** Portable durable records shared by workday control-plane and operator consumers. */
 import type { WorkdayAgentSelection } from '../../../workday.ts';
-import type { AgentWorkExecutionMode } from '../../support/execution-mode.ts';
+import type { AgentWorkExecutionMode } from '../../support/authority/execution-mode.ts';
 
 export type CapacityWorkdayRunStatus =
 	| 'queued'

@@ -312,12 +312,12 @@ export const CONTROL_PLANE_OPERATIONS = {
 		retry: resource('assignments.retry', 'POST', '/v1/teams/{teamId}/capacity/assignments/{assignmentId}/requeue', { teamId: z.string().min(1), assignmentId: z.string().min(1) }, { capability: 'assignments.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli', 'mcp_tool'], risk: 'authority' }),
 	},
 	operations: {
-		list: resource('operations.list', 'GET', '/v1/platform/operations', {}, { capability: 'operations.read', surfaces: ['rest', 'mcp_tool'], pagination: 'cursor' }),
+		list: resource('operations.list', 'GET', '/v1/platform/operations', {}, { capability: 'operations.read', surfaces: ['rest', 'cli', 'mcp_tool'], pagination: 'cursor' }),
 		create: resource('operations.create', 'POST', '/v1/platform/operations', {}, { capability: 'operations.execute', scopes: ['treeseed:execution'] }),
-		show: resource('operations.show', 'GET', '/v1/platform/operations/{operationId}', { operationId: z.string().min(1) }, { capability: 'operations.read', surfaces: ['rest', 'mcp_resource'] }),
+		show: resource('operations.show', 'GET', '/v1/platform/operations/{operationId}', { operationId: z.string().min(1) }, { capability: 'operations.read', surfaces: ['rest', 'cli', 'mcp_resource'] }),
 		events: resource('operations.events.list', 'GET', '/v1/platform/operations/{operationId}/events', { operationId: z.string().min(1) }, { capability: 'operations.read', pagination: 'cursor' }),
 		cancel: resource('operations.cancel', 'POST', '/v1/platform/operations/{operationId}/cancel', { operationId: z.string().min(1) }, { capability: 'operations.execute', scopes: ['treeseed:execution'], risk: 'destructive' }),
-		retry: resource('operations.retry', 'POST', '/v1/platform/operations/{operationId}/retry', { operationId: z.string().min(1) }, { capability: 'operations.execute', scopes: ['treeseed:execution'] }),
+		retry: resource('operations.retry', 'POST', '/v1/platform/operations/{operationId}/retry', { operationId: z.string().min(1) }, { capability: 'operations.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli'] }),
 	},
 	seeds: {
 		runs: resource('seeds.runs.list', 'GET', '/v1/seeds/runs', {}, { capability: 'seeds.read', pagination: 'cursor' }),

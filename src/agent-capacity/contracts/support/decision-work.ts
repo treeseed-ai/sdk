@@ -196,7 +196,7 @@ export interface DecisionAssignmentGraph {
 	edges: DecisionAssignmentGraphEdge[];
 	compiledAt?: string | null;
 	compiledBy: 'api-control-plane';
-	executionMode?: import('./execution-mode.ts').AgentWorkExecutionMode;
+	executionMode?: import('./authority/execution-mode.ts').AgentWorkExecutionMode;
 	metadata?: Record<string, unknown>;
 }
 
