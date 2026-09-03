@@ -9,6 +9,7 @@ import { capabilityOntologyOperations } from './catalog/capability-ontology-oper
 import { knowledgeShareOperations } from './catalog/knowledge-share-operations.ts';
 import { PROVIDER_ENVIRONMENT_OPERATIONS } from './catalog/provider-environment-operations.ts';
 import { HOSTED_TOPOLOGY_OPERATIONS } from './catalog/hosted-topology-operations.ts';
+import { SERVICE_VAULT_OPERATIONS } from './catalog/services/service-vault-operations.ts';
 import { buildControlPlaneCatalog, flattenControlPlaneOperations } from './catalog/control-plane-catalog.ts';
 const empty = z.object({}).strict(), none = z.undefined(), record = z.record(z.unknown()), payload = record;
 function read(operationId: `${string}.${string}`, path: `/v1/${string}`, capability: string, surfaces: ControlPlaneOperationDescriptor['surfaces'] = ['rest']) {
@@ -254,6 +255,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 		deleteWorkflowVariable: resource('repositories.workflow.variables.delete', 'DELETE', '/v1/projects/{projectId}/workflow-configuration/variables/{name}', { projectId: z.string().min(1), name: z.string().min(1) }, { capability: 'workflows.write', risk: 'destructive', concurrency: true }),
 	},
 	services: {
+		...SERVICE_VAULT_OPERATIONS,
 		providers: resource('services.providers.list', 'GET', '/v1/service-providers', {}, { capability: 'services.read', surfaces: ['rest', 'cli', 'mcp_tool'] }),
 		connections: resource('services.connections.list', 'GET', '/v1/teams/{teamId}/services', { teamId: z.string().min(1) }, { capability: 'services.read', surfaces: ['rest', 'cli', 'mcp_tool'], pagination: 'cursor' }),
 		connection: resource('services.connections.show', 'GET', '/v1/teams/{teamId}/services/{connectionId}', { teamId: z.string().min(1), connectionId: z.string().min(1) }, { capability: 'services.read', surfaces: ['rest', 'cli', 'mcp_resource'] }),
