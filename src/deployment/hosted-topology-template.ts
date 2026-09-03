@@ -11,7 +11,7 @@ export const hostedTopologyTemplateSchema = z.object({
 	deploymentId: custodyIdentifier,
 	stackId: custodyIdentifier,
 	environment: z.enum(['staging', 'production']),
-	mutation: z.literal('approval-required'),
+	mutation: z.literal('agent-authorized'),
 	stateBackend: z.object({ connectionRef: identifier }).strict(),
 	providerConnections: z.record(hostedProviderSchema, z.object({ connectionRef: identifier }).strict()),
 	artifactBindings: z.record(identifier, z.object({ input: identifier, kind: z.enum(['archive', 'file', 'oci-image']) }).strict()),
