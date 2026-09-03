@@ -15,7 +15,9 @@ describe('provider operation contracts', () => {
 		expect(github?.credentialProfiles.find((profile) => profile.id === 'github-repository-app')?.capabilities)
 			.toEqual(['repository-hosting']);
 		expect(github?.credentialProfiles.find((profile) => profile.id === 'github-repository-app'))
-			.toMatchObject({ fields: [], authoritySchemes: ['app-installation'] });
+			.toMatchObject({ fields: [], authoritySchemes: ['app-installation'], permissions: [
+				'Metadata: read', 'Contents: read and write', 'Checks: read', 'Administration: read and write',
+			] });
 		expect(github?.credentialProfiles.find((profile) => profile.id === 'github-workflow-app')?.capabilities)
 			.toEqual(['workflow-execution', 'workflow-configuration', 'secret-enclave']);
 		expect(github?.credentialProfiles.find((profile) => profile.id === 'github-workflow-app'))

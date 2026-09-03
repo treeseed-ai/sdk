@@ -165,10 +165,10 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 		credentialProfiles: [
 			{
 				id: 'github-repository-app', label: 'Repository Connector App',
-				description: 'Installation authority narrowed to one repository for guarded Git reads and writes.',
+				description: 'Installation authority for governed repository creation and guarded Git reads and writes.',
 				capabilities: ['repository-hosting'],
 				fields: [],
-				permissions: ['Metadata: read', 'Contents: read and write'], sharing: 'capability-scoped', unattendedCompatible: true,
+				permissions: ['Metadata: read', 'Contents: read and write', 'Checks: read', 'Administration: read and write'], sharing: 'capability-scoped', unattendedCompatible: true,
 				authoritySchemes: ['app-installation'],
 				knowledgePageIds: ['provider.github', 'services.credentials', 'vault.rotation'],
 			},
