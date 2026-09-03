@@ -2,7 +2,7 @@ export const ARTIFACT_MUTATION_RECEIPT_SCHEMA = 'treeseed.artifact-mutation-rece
 
 export type ArtifactMutationKind = 'treedx-content' | 'source-checkpoint';
 export type ArtifactMutationPhase = 'provisional' | 'integrated';
-import type { AgentWorkExecutionMode,UpstreamMutationPolicy } from './contracts/support/execution-mode.ts';
+import type { AgentWorkExecutionMode,UpstreamMutationPolicy } from './contracts/support/authority/execution-mode.ts';
 
 export interface ArtifactMutationEvidence {
 	ref: string;
