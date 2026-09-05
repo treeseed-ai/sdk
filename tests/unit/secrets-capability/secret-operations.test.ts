@@ -3,6 +3,10 @@ import { CONTROL_PLANE_OPERATIONS } from '../../../src/operator-contracts/contro
 const operations = CONTROL_PLANE_OPERATIONS.services;
 describe('managed secret operations', () => {
   it('requires CAS and redacts input values', () => {
+    for (const name of ['credentialStatus','putCredentials','deleteCredentials','validateCredentials'] as const) {
+      expect(operations[name].descriptor.confirmation).toBe('never');
+      expect(operations[name].descriptor.authentication).toBe('oauth');
+    }
     expect(operations.putCredentials.schema.body.parse({expectedVersion:0,values:{apiToken:'synthetic'}})).toBeDefined();
     expect(() => operations.putCredentials.schema.body.parse({values:{apiToken:'synthetic'}})).toThrow();
     expect(() => operations.putCredentials.schema.body.parse({expectedVersion:0,values:{},wrappedTeamVaultKey:'retired'})).toThrow();

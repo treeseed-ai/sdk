@@ -20,7 +20,7 @@ function operation(name: 'show' | 'put' | 'delete' | 'validate', method: 'GET' |
     capability: read ? 'secrets.read' : 'secrets.write', authentication: 'oauth',
     oauthScopes: read ? ['treeseed:read'] : ['treeseed:projects:write'],
     kind: read ? 'read' : 'mutation', riskClass: read ? 'ordinary' : 'credential',
-    confirmation: read ? 'never' : 'input_required', surfaces: ['rest'], cacheScope: 'none', pagination: 'none',
+    confirmation: 'never', surfaces: ['rest'], cacheScope: 'none', pagination: 'none',
     redactedPaths: ['body.values'],
   }, { path, query: z.object({}).strict(), body: read ? z.undefined() : name === 'put' ? put
     : z.object({ expectedVersion: version }).strict(),
