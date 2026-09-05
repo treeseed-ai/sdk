@@ -1,8 +1,8 @@
 import type { CommandLeafDescriptor, CommandNodeDescriptor, CommandTreeDescriptor } from './command-tree.ts';
+import { managedSecretCommands } from './catalog/services/secret-commands.ts';
 import { hostProviderEnvironmentBranch, PROVIDER_ENVIRONMENT_COMMAND_BINDINGS, providerEnvironmentBranches } from './catalog/provider-environment-commands.ts';
 
 type Execution = CommandLeafDescriptor['execution'];
-
 const unavailable = (reason = 'This capability is not enabled until its control-plane operation is accepted.'): Execution => ({
 	kind: 'unavailable',
 	code: 'standards_migration_not_enabled',
@@ -36,7 +36,6 @@ const operationBindings: Record<string, Execution> = {
 	'secrets status': local('local.secrets.status'),
 	'secrets unlock': local('local.secrets.unlock'),
 	'secrets lock': local('local.secrets.lock'),
-	'secrets rotate': local('local.secrets.rotate'),
 	'platform verify': local('local.platform.verify'),
 	'platform workset': local('local.platform.workset'),
 	'platform project create': local('local.platform.project.create'),
@@ -360,7 +359,8 @@ const commandTree: CommandTreeDescriptor = {
 		branch('auth', [authLogin(), leaf('logout', 'mutation'), leaf('status')]),
 		branch('users', [userCreate()]),
 		branch('teams', [leaf('list'), { nodeType: 'leaf', segment: 'current', description: 'Show the active team for this authenticated server session.', kind: 'read', resultSchemaId: 'treeseed.command.teams.current/v1', execution: unavailable() }, { nodeType: 'leaf', segment: 'use', description: 'Select the active team for this authenticated server session.', kind: 'mutation', arguments: [{ name: 'team', description: 'Team UUID or unambiguous slug.', required: true }], options: [planOption], authorization: { capability: 'teams.read', confirmation: 'never' }, resultSchemaId: 'treeseed.command.teams.use/v1', execution: unavailable() }]),
-		branch('secrets', [leaf('list'), leaf('status'), leaf('unlock', 'mutation', undefined, 'credential'), leaf('lock', 'mutation'), leaf('rotate', 'mutation', undefined, 'credential')]),
+		branch('secrets', [leaf('list'), leaf('status'), leaf('unlock', 'mutation', undefined, 'credential'), leaf('lock', 'mutation')]),
+		managedSecretCommands,
 		branch('platform', [
 			{ nodeType: 'leaf', segment: 'verify', description: 'Verify a declarative Platform repository without package checkouts or a control-plane API.', kind: 'read', arguments: [{ name: 'root', description: 'Platform root; defaults to the current directory.', required: false }], options: [{ name: '--profile', description: 'Composable profile to verify.', type: 'string[]' }, { name: '--json', description: 'Emit the stable command-result envelope.', type: 'boolean' }], resultSchemaId: 'treeseed.platform-verification/v1', execution: local('local.platform.verify') },
 			{ nodeType: 'leaf', segment: 'workset', description: 'Plan or safely materialize exact primary source checkouts beneath packages/.', kind: 'mutation', options: [planOption, { name: '--apply', description: 'Apply the frozen workset plan.', type: 'boolean' }, { name: '--yes', description: 'Confirm the planned checkout mutations.', type: 'boolean' }, { name: '--profile', description: 'Composable source profile; repeat to union profiles.', type: 'string[]' }, { name: '--project', description: 'Explicit project slug; repeat to select projects.', type: 'string[]' }, { name: '--exclude', description: 'Project slug to exclude; repeat as needed.', type: 'string[]' }, { name: '--json', description: 'Emit the stable command-result envelope.', type: 'boolean' }], authorization: { capability: 'development.workset', confirmation: 'never' }, resultSchemaId: 'treeseed.platform-workset-result/v1', execution: local('local.platform.workset') },
