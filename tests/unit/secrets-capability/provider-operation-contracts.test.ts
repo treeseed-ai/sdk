@@ -1,21 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
 	CREDENTIAL_AUTHORITY_SCHEMES,
-	SECRET_OPERATION_PURPOSES,
 	SERVICE_CAPABILITY_TYPES,
 	SERVICE_PROVIDER_CATALOG,
-	canonicalHostedSecretOperationBinding,
-	validateHostedSecretOperationBinding,
-	validateSealedSecretOperationPayload,
 } from '../../../src/configuration/secrets-capability.ts';
 
-const hostedBinding = {
-	subjectType: 'plan' as const,
-	subjectDigest: `sha256:${'a'.repeat(64)}`,
-	deploymentId: 'treeseed-cloud',
-	stackId: 'control-plane',
-	environment: 'staging' as const,
-};
 
 describe('provider operation contracts', () => {
 	it('keeps repository and workflow GitHub authority least-privilege and independently selectable', () => {
@@ -37,26 +26,12 @@ describe('provider operation contracts', () => {
 		expect(github?.connectionFields.map((field) => field.key)).toEqual(['organization']);
 	});
 
-	it('preserves app, token, environment, encrypted, and workload authority schemes', () => {
+	it('exposes App installation and managed OpenBao authority only', () => {
 		expect(CREDENTIAL_AUTHORITY_SCHEMES).toEqual(expect.arrayContaining([
-			'app-installation', 'api-token', 'environment-reference', 'client-encrypted', 'external-vault', 'workload-identity',
+			'app-installation', 'openbao',
 		]));
 		expect(SERVICE_CAPABILITY_TYPES).toContain('workflow-configuration');
 		expect(SERVICE_CAPABILITY_TYPES).toContain('state-encryption');
-	});
-
-	it('binds sealed interactive credentials to exact hosted operations', () => {
-		expect(SECRET_OPERATION_PURPOSES).toEqual(expect.arrayContaining([
-			'hosted-topology-plan', 'hosted-topology-apply', 'hosted-topology-readback', 'hosted-topology-rollback',
-		]));
-		expect(canonicalHostedSecretOperationBinding(hostedBinding)).toBe(JSON.stringify(hostedBinding));
-		expect(validateHostedSecretOperationBinding(hostedBinding)).toBe(true);
-		expect(validateHostedSecretOperationBinding({ ...hostedBinding, subjectDigest: 'moving-head' })).toBe(false);
-		const payload = { schemaVersion: 'treeseed.sealed-secret-operation-payload/v1', leaseId: 'lease-1', teamId: 'team-1',
-			operationCorrelationId: 'operation-1', hostedBinding, algorithm: 'x25519-sealed-box', ciphertext: 'base64-ciphertext' };
-		expect(validateSealedSecretOperationPayload(payload)).toBe(true);
-		expect(validateSealedSecretOperationPayload({ ...payload, ciphertext: '' })).toBe(false);
-		expect(validateSealedSecretOperationPayload({ ...payload, hostedBinding: { ...hostedBinding, environment: 'preview' } })).toBe(false);
 	});
 
 	it('exposes non-secret hosted adoption targets without embedding installation identities', () => {
@@ -85,8 +60,8 @@ describe('provider operation contracts', () => {
 		]);
 		expect(cloudflare?.capabilities.find(({ type }) => type === 'object-storage')?.credentialProfileIds).toEqual(['cloudflare-storage', 's3-state-session']);
 		expect(cloudflare?.capabilities.find(({ type }) => type === 'state-encryption')?.credentialProfileIds).toEqual(['opentofu-state-encryption']);
-		expect(cloudflare?.credentialProfiles.filter(({ id }) => id.startsWith('cloudflare-')).every(({ authoritySchemes }) => authoritySchemes?.includes('client-encrypted'))).toBe(true);
-		expect(railway?.credentialProfiles.find(({ id }) => id === 'railway-workspace')?.authoritySchemes).toContain('client-encrypted');
+		expect(cloudflare?.credentialProfiles.filter(({ id }) => id.startsWith('cloudflare-')).every(({ authoritySchemes }) => authoritySchemes?.includes('openbao'))).toBe(true);
+		expect(railway?.credentialProfiles.find(({ id }) => id === 'railway-workspace')?.authoritySchemes).toContain('openbao');
 	});
 
 });

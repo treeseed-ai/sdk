@@ -18,7 +18,7 @@ export type ProviderCredentialAuthority = {
 	scheme: CredentialAuthorityScheme;
 	reference: string;
 	capabilities: ServiceCapabilityType[];
-	status: 'ready' | 'interactive-only' | 'reauthorization-required' | 'revoked';
+	status: 'ready' | 'reauthorization-required' | 'revoked';
 	version: number;
 };
 
