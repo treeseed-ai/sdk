@@ -170,8 +170,10 @@ export function validateControlPlaneCatalog(catalog: ControlPlaneCatalog): Contr
 		}
 
 		const elevatedRisk = operation.riskClass !== 'ordinary';
-		if (elevatedRisk !== (operation.confirmation === 'input_required')) {
-			diagnostics.push({ code: 'confirmation_policy_invalid', path: `${path}.confirmation`, message: 'Elevated-risk operations require input_required; ordinary operations must not.' });
+		const directCredential = operation.riskClass === 'credential' && operation.confirmation === 'never'
+			&& operation.authentication === 'oauth' && operation.redactedPaths.includes('body.values');
+		if (!directCredential && elevatedRisk !== (operation.confirmation === 'input_required')) {
+			diagnostics.push({ code: 'confirmation_policy_invalid', path: `${path}.confirmation`, message: 'Elevated-risk operations require input_required unless authenticated credential input is explicitly redacted; ordinary operations must not.' });
 		}
 		if (operation.kind === 'read' && (operation.idempotency.required || operation.concurrency.required || operation.receipt)) {
 			diagnostics.push({ code: 'read_mutation_contract_invalid', path, message: 'Read operations cannot require mutation idempotency, write concurrency, or mutation receipts.' });
