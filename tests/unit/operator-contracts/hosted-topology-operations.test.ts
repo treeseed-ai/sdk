@@ -16,7 +16,7 @@ describe('hosted topology operator authority', () => {
 		for (const providerId of ['cloudflare', 'railway']) {
 			const provider = getServiceProviderDefinition(providerId)!;
 			expect(provider.credentialProfiles.every(({ unattendedCompatible }) => unattendedCompatible)).toBe(true);
-			expect(provider.credentialProfiles.every(({ authoritySchemes }) => authoritySchemes?.includes('environment-reference') && authoritySchemes.includes('external-vault'))).toBe(true);
+			expect(provider.credentialProfiles.every(({ authoritySchemes }) => authoritySchemes?.length === 1 && authoritySchemes.includes('openbao'))).toBe(true);
 			expect(provider.credentialProfiles.every(({ fields }) => fields.every(({ sensitive }) => sensitive))).toBe(true);
 		}
 	});

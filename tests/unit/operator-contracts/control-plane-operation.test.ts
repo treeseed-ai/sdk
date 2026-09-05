@@ -53,7 +53,7 @@ describe('control-plane operation catalog', () => {
 
 	it('publishes one valid catalog with unique REST bindings', () => {
 		expect(validateControlPlaneCatalog(CONTROL_PLANE_CATALOG)).toEqual([]);
-		expect(CONTROL_PLANE_OPERATION_LIST).toHaveLength(490);
+		expect(CONTROL_PLANE_OPERATION_LIST).toHaveLength(478);
 		expect(new Set(CONTROL_PLANE_OPERATION_LIST.map((entry) => entry.descriptor.operationId)).size).toBe(CONTROL_PLANE_OPERATION_LIST.length);
 		const paths = CONTROL_PLANE_OPERATION_LIST.flatMap((entry) => entry.descriptor.rest?.path ?? []);
 		expect(paths.some((path) => path.startsWith('/v1/operator/commands'))).toBe(false);
@@ -68,7 +68,7 @@ describe('control-plane operation catalog', () => {
 		expect(CONTROL_PLANE_OPERATIONS.providers.assignment.descriptor).toMatchObject({ authentication: 'provider', oauthScopes: [] });
 		expect(CONTROL_PLANE_OPERATIONS.feedback.create.descriptor).toMatchObject({ authentication: 'oauth', oauthScopes: [] });
 		expect(CONTROL_PLANE_OPERATIONS.treedx.workspaces.create.descriptor).toMatchObject({ authentication: 'oauth_or_provider', oauthScopes: ['treeseed:projects:write'], upstream: { operationId: 'createWorkspace' } });
-		expect(CONTROL_PLANE_OPERATIONS.services.putAuthority.descriptor.redactedPaths).toContain('body');
+		expect(CONTROL_PLANE_OPERATIONS.services.putCredentials.descriptor.redactedPaths).toContain('body.values');
 		expect(CONTROL_PLANE_OPERATIONS.services.disconnect.descriptor.confirmation).toBe('input_required');
 		expect(CONTROL_PLANE_OPERATIONS.accounts.unlinkProvider.descriptor.riskClass).toBe('credential');
 		expect(CONTROL_PLANE_OPERATIONS.accounts.publicProfile.descriptor).toMatchObject({ authentication: 'anonymous', cacheScope: 'public', oauthScopes: [] });

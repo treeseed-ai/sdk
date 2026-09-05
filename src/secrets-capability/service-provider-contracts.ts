@@ -1,4 +1,4 @@
-export const SERVICE_PROVIDER_IDS = ['github', 'cloudflare', 'railway', 'openbao'] as const;
+export const SERVICE_PROVIDER_IDS = ['github', 'cloudflare', 'railway'] as const;
 
 export const SERVICE_CAPABILITY_TYPES = [
 	'repository-hosting',
@@ -58,12 +58,7 @@ export type CredentialProfileDefinition = {
 
 export const CREDENTIAL_AUTHORITY_SCHEMES = [
 	'app-installation',
-	'api-token',
-	'oauth-token',
-	'environment-reference',
-	'client-encrypted',
-	'external-vault',
-	'workload-identity',
+	'openbao',
 ] as const;
 
 export type CredentialAuthorityScheme = (typeof CREDENTIAL_AUTHORITY_SCHEMES)[number];
@@ -176,9 +171,9 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 			{
 				id: 'github-repository-token', label: 'Repository token authority',
 				description: 'Fine-grained token authority restricted to selected repositories and Contents access.',
-				capabilities: ['repository-hosting'], fields: [field('accessToken', 'Fine-grained token', 'Encrypted before leaving this browser.', true, true)],
-				permissions: ['Metadata: read', 'Contents: read and write'], sharing: 'capability-scoped', unattendedCompatible: false,
-				authoritySchemes: ['api-token', 'environment-reference', 'client-encrypted', 'external-vault'],
+				capabilities: ['repository-hosting'], fields: [field('accessToken', 'Fine-grained token', 'Stored in core OpenBao; used only by authorized operations.', true, true)],
+				permissions: ['Metadata: read', 'Contents: read and write'], sharing: 'capability-scoped', unattendedCompatible: true,
+				authoritySchemes: ['openbao'],
 				knowledgePageIds: ['provider.github', 'services.credentials', 'vault.rotation'],
 			},
 			{
@@ -195,10 +190,10 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 				id: 'github-workflow-token', label: 'Workflow token authority',
 				description: 'Fine-grained token authority for Actions and explicitly enabled secret or variable scopes.',
 				capabilities: ['workflow-execution', 'workflow-configuration', 'secret-enclave'],
-				fields: [field('accessToken', 'Fine-grained token', 'Encrypted before leaving this browser.', true, true)],
+				fields: [field('accessToken', 'Fine-grained token', 'Stored in core OpenBao; used only by authorized operations.', true, true)],
 				permissions: ['Metadata: read', 'Contents: read', 'Actions: read and write', 'Secrets: read and write', 'Variables: read and write'],
-				sharing: 'capability-scoped', unattendedCompatible: false,
-				authoritySchemes: ['api-token', 'environment-reference', 'client-encrypted', 'external-vault'],
+				sharing: 'capability-scoped', unattendedCompatible: true,
+				authoritySchemes: ['openbao'],
 				knowledgePageIds: ['provider.github', 'services.credentials', 'vault.rotation'],
 			},
 		],
@@ -226,11 +221,11 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 			{ type: 'state-encryption', label: 'State encryption', description: 'Independent encryption authority for OpenTofu state and plan files.', credentialProfileIds: ['opentofu-state-encryption'], status: 'available' },
 		],
 		credentialProfiles: [
-			{ id: 'cloudflare-runtime', label: 'Pages and Workers token', description: 'A token limited to application deployment resources.', capabilities: ['frontend-hosting'], fields: [field('apiToken', 'API token', 'Encrypted in this browser and used only for authorized frontend operations.', true, true)], permissions: ['Account: Workers Scripts Edit', 'Account: Pages Edit'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['environment-reference', 'client-encrypted', 'external-vault', 'workload-identity'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
-			{ id: 'cloudflare-dns', label: 'DNS token', description: 'A token restricted to selected zones.', capabilities: ['dns-management'], fields: [field('apiToken', 'DNS API token', 'Encrypted separately from deployment authority.', true, true)], permissions: ['Zone: DNS Edit for only the managed zones'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['environment-reference', 'client-encrypted', 'external-vault', 'workload-identity'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
-			{ id: 'cloudflare-storage', label: 'Storage management authority', description: 'Vault-custodied token used only to reconcile authorized R2 resources.', capabilities: ['object-storage'], fields: [field('apiToken', 'Storage API token', 'Encrypted separately and used only to reconcile authorized R2 resources.', true, true)], permissions: ['Account: Workers R2 Storage Edit'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['environment-reference', 'client-encrypted', 'external-vault', 'workload-identity'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
-			{ id: 's3-state-session', label: 'OpenTofu state session', description: 'S3-compatible credentials limited to the selected team state prefix.', capabilities: ['object-storage'], fields: [field('accessKeyId', 'R2 access key ID', 'Vault-custodied S3-compatible access key identifier for encrypted OpenTofu state.', true, true), field('secretAccessKey', 'R2 secret access key', 'Vault-custodied S3-compatible secret key for encrypted OpenTofu state.', true, true), field('sessionToken', 'R2 session token', 'Optional short-lived S3-compatible session token.', false, true)], permissions: ['Object read and write for only the managed team state prefix'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['environment-reference', 'client-encrypted', 'external-vault', 'workload-identity'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
-			{ id: 'opentofu-state-encryption', label: 'OpenTofu state encryption', description: 'Independent encryption material that is never stored with the R2 state object.', capabilities: ['state-encryption'], fields: [field('stateEncryptionKey', 'OpenTofu state encryption key', 'Generated in the browser as a 32-byte hexadecimal key and encrypted separately.', true, true)], permissions: ['Encrypt and decrypt only the selected team OpenTofu state'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['environment-reference', 'client-encrypted', 'external-vault', 'workload-identity'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
+			{ id: 'cloudflare-runtime', label: 'Pages and Workers token', description: 'A token limited to application deployment resources.', capabilities: ['frontend-hosting'], fields: [field('apiToken', 'API token', 'Stored in core OpenBao and used only by authorized operations.', true, true)], permissions: ['Account: Workers Scripts Edit', 'Account: Pages Edit'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['openbao'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
+			{ id: 'cloudflare-dns', label: 'DNS token', description: 'A token restricted to selected zones.', capabilities: ['dns-management'], fields: [field('apiToken', 'DNS API token', 'Encrypted separately from deployment authority.', true, true)], permissions: ['Zone: DNS Edit for only the managed zones'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['openbao'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
+			{ id: 'cloudflare-storage', label: 'Storage management authority', description: 'Vault-custodied token used only to reconcile authorized R2 resources.', capabilities: ['object-storage'], fields: [field('apiToken', 'Storage API token', 'Encrypted separately and used only to reconcile authorized R2 resources.', true, true)], permissions: ['Account: Workers R2 Storage Edit'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['openbao'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
+			{ id: 's3-state-session', label: 'OpenTofu state session', description: 'S3-compatible credentials limited to the selected team state prefix.', capabilities: ['object-storage'], fields: [field('accessKeyId', 'R2 access key ID', 'Vault-custodied S3-compatible access key identifier for encrypted OpenTofu state.', true, true), field('secretAccessKey', 'R2 secret access key', 'Vault-custodied S3-compatible secret key for encrypted OpenTofu state.', true, true), field('sessionToken', 'R2 session token', 'Optional short-lived S3-compatible session token.', false, true)], permissions: ['Object read and write for only the managed team state prefix'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['openbao'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
+			{ id: 'opentofu-state-encryption', label: 'OpenTofu state encryption', description: 'Independent encryption material that is never stored with the R2 state object.', capabilities: ['state-encryption'], fields: [field('stateEncryptionKey', 'OpenTofu state encryption key', 'A 32-byte hexadecimal key stored separately in core OpenBao.', true, true)], permissions: ['Encrypt and decrypt only the selected team OpenTofu state'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['openbao'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
 		],
 	},
 	{
@@ -257,24 +252,13 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 			label: 'Railway workspace token',
 			description: 'Railway currently exposes broad workspace authority. Sharing it increases the blast radius across enabled capabilities.',
 			capabilities: ['backend-hosting', 'database-hosting', 'capacity-runtime-hosting', 'private-knowledge-index-hosting'],
-			fields: [field('apiToken', 'Workspace token', 'Encrypted in this browser. TreeSeed will request explicit authorization before interactive use.', true, true)],
+			fields: [field('apiToken', 'Workspace token', 'Stored in core OpenBao and used only by authorized operations.', true, true)],
 			permissions: ['Workspace access required by the selected operations'],
 			sharing: 'provider-shared',
 			unattendedCompatible: true,
-			authoritySchemes: ['environment-reference', 'client-encrypted', 'external-vault', 'workload-identity'],
+			authoritySchemes: ['openbao'],
 			knowledgePageIds: ['provider.railway', 'services.credentials', 'vault.rotation'],
 		}],
-	},
-	{
-		id: 'openbao',
-		label: 'OpenBao / HashiCorp Vault',
-		logoKey: 'vault',
-		documentationUrl: 'https://openbao.org/docs/auth/jwt/',
-		description: 'Reference an external vault through workload identity; no long-lived vault token is stored.',
-		knowledgePageIds: ['provider.openbao', 'services.external-vault'],
-		connectionFields: [field('address', 'Vault address', 'The HTTPS endpoint for the vault.'), field('mount', 'Secrets mount', 'The mount containing TreeSeed-managed references.'), field('role', 'Workload identity role', 'The OIDC/JWT role used by the operations runner.')],
-		capabilities: [{ type: 'secret-enclave', label: 'External secret vault', description: 'Resolve approved secret references through workload identity.', credentialProfileIds: [], status: 'available' }],
-		credentialProfiles: [],
 	},
 ] as const;
 
