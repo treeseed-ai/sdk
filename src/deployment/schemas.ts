@@ -147,7 +147,7 @@ export const hostConfigurationSchema = z.object({
 		if (fleet.receiptReporting.enabled && fleet.receiptReporting.connection?.kind !== 'remote') context.addIssue({ code: z.ZodIssueCode.custom, path: ['receiptReporting', 'connection'], message: 'Enabled fleet receipt reporting requires an explicit remote connection.' });
 	}),
 	secrets: z.record(identifier, z.object({
-		provider: z.enum(['file', 'systemd-credential', 'vault', 'aws-secrets-manager']),
+		provider: z.enum(['file', 'systemd-credential']),
 		reference: z.string().min(1),
 	}).strict()),
 	security: z.object({
