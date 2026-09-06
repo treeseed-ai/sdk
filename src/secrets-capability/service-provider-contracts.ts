@@ -208,7 +208,6 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 		description: 'Connect a Cloudflare account with separately scoped capability tokens.',
 		knowledgePageIds: ['provider.cloudflare'],
 		connectionFields: [
-			{ ...field('deploymentEnvironment', 'Deployment environment', 'Choose where TreeSeed will publish your websites and apps.', false), requiredForCapabilities: ['frontend-hosting'] },
 			field('accountId', 'Account ID', 'The non-secret Cloudflare account identifier.'),
 			{ ...field('domain', 'Domain', 'Enter the domain listed in Cloudflare (for example, example.com), without https:// or a path. TreeSeed verifies its zone when you check the DNS account access.', false), requiredForCapabilities: ['dns-management'], placeholder: 'example.com', pattern: '(?:[a-zA-Z0-9](?:[a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z](?:[a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?' },
 		],

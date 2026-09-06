@@ -38,10 +38,10 @@ describe('provider operation contracts', () => {
 		const cloudflare = SERVICE_PROVIDER_CATALOG.find((provider) => provider.id === 'cloudflare');
 		const railway = SERVICE_PROVIDER_CATALOG.find((provider) => provider.id === 'railway');
 		expect(cloudflare?.connectionFields).toMatchObject([
-			{ key: 'deploymentEnvironment', required: true, sensitive: false },
 			{ key: 'accountId', required: true, sensitive: false },
-			{ key: 'zoneId', required: false, sensitive: false },
+			{ key: 'domain', required: false, sensitive: false, requiredForCapabilities: ['dns-management'] },
 		]);
+		expect(cloudflare?.connectionFields.some(({key}) => ['zoneId', 'deploymentEnvironment'].includes(key))).toBe(false);
 		expect(railway?.connectionFields).toMatchObject([{ key: 'deploymentEnvironment', required: true, sensitive: false }, { key: 'workspaceId', required: true, sensitive: false }, { key: 'projectId', required: false, sensitive: false }, { key: 'environmentId', required: false, sensitive: false }]);
 		expect(cloudflare?.credentialProfiles.find(({ id }) => id === 'cloudflare-storage')?.fields.map(({ key, sensitive }) => ({ key, sensitive }))).toEqual([
 			{ key: 'apiToken', sensitive: true },
