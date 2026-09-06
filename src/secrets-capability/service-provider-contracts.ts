@@ -38,6 +38,8 @@ export type ServiceFieldDefinition = {
 	label: string;
 	description: string;
 	required: boolean;
+	requiredForCapabilities?: ServiceCapabilityType[];
+	pattern?: string;
 	sensitive: boolean;
 	input: 'text' | 'password' | 'url';
 	placeholder?: string;
@@ -208,7 +210,7 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 		connectionFields: [
 			field('deploymentEnvironment', 'Deployment environment', 'The exact TreeSeed deployment environment. Use staging or production; one connection must never span both.'),
 			field('accountId', 'Account ID', 'The non-secret Cloudflare account identifier.'),
-			field('zoneId', 'Zone ID', 'Optional non-secret zone identifier used by reviewed DNS and TLS topology resources.', false),
+			{ ...field('zoneId', 'Domain zone ID', 'Required to manage domain records. In Cloudflare, open your domain’s Overview page and copy its Zone ID (not the account ID).', false), requiredForCapabilities: ['dns-management'], pattern: '[a-fA-F0-9]{32}' },
 		],
 		capabilities: [
 			{ type: 'frontend-hosting', label: 'Frontend hosting', description: 'Pages and Workers application hosting.', credentialProfileIds: ['cloudflare-runtime'], status: 'available' },
