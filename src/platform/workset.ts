@@ -62,11 +62,15 @@ export function planPlatformWorkset(input: PlanWorksetInput): WorksetPlan {
 	const requested = new Set(selection.projects.length || profileProjects.length ? [...profileProjects, ...selection.projects] : [...projectCatalog.keys()]);
 	selection.exclude.forEach((slug) => requested.delete(slug));
 	requested.delete('platform');
+	for (const slug of requested) {
+		const project = projectCatalog.get(slug);
+		if (project?.kind === 'content' && !project.primaryRepository) requested.delete(slug);
+	}
 	const repositories = new Map(input.inventory.resources.repositories.map((repository) => [repository.key, repository]));
 	const entries = [...requested].sort().map((slug) => {
 		const project = projectCatalog.get(slug);
 		if (!project) throw new Error(`Unknown project ${slug}.`);
-		const repository = repositories.get(project.primaryRepository);
+		const repository = project.primaryRepository ? repositories.get(project.primaryRepository) : undefined;
 		if (!repository || repository.role !== 'primary') throw new Error(`Project ${slug} has no primary source repository.`);
 		const branch = repository.repositoryPolicy?.stagingBranch ?? repository.defaultBranch;
 		const remote = input.remote ?? systemRemote;
