@@ -12,8 +12,13 @@ export const repositorySchema = z.object({
 export const projectSchema = z.object({
 	key: z.string().min(1),
 	slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u),
-	primaryRepository: z.string().min(1),
-}).passthrough();
+	kind: z.string().optional(),
+	primaryRepository: z.string().min(1).optional(),
+	libraryRepository: z.string().min(1).optional(),
+}).passthrough().superRefine((project, context) => {
+	if (!project.primaryRepository && project.kind !== 'content') context.addIssue({ code: 'custom', path: ['primaryRepository'], message: 'Software projects require a primary source repository.' });
+	if (project.kind === 'content' && !project.libraryRepository) context.addIssue({ code: 'custom', path: ['libraryRepository'], message: 'Content projects require a library repository.' });
+});
 
 export const inventorySchema = z.object({
 	schemaVersion: z.string().min(1),
