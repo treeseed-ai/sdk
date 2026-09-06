@@ -240,6 +240,7 @@ function hostInitialize(): CommandNodeDescriptor {
 	if (value.nodeType !== 'leaf') throw new Error('Host initialize must be a leaf command.');
 	value.description = 'Initialize the generic host foundation from an immutable catalog-bound profile.';
 	value.options = [...(value.options ?? []),
+		{ name: '--input-file', description: 'Team capacity installation configuration downloaded from Admin. Values are never printed.', type: 'string' },
 		{ name: '--profile', description: 'Catalog-bound host initialization profile.', type: 'string', required: true },
 		{ name: '--confirm', description: 'Confirm installation of the reviewed profile plan.', type: 'boolean' },
 		{ name: '--yes', description: 'Confirm non-interactive execution after reviewing the plan.', type: 'boolean' },

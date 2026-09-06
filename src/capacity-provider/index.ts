@@ -1,4 +1,5 @@
 export * from './client.ts';
+export * from './install-configuration.ts';
 export * from './contracts/index.ts';
 export * from './validation.ts';
 export * from './sandbox-contracts.ts';

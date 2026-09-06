@@ -1,4 +1,4 @@
-export const SERVICE_PROVIDER_IDS = ['github', 'cloudflare', 'railway'] as const;
+export const SERVICE_PROVIDER_IDS = ['github', 'cloudflare', 'railway', 'hyperstack'] as const;
 
 export const SERVICE_CAPABILITY_TYPES = [
 	'repository-hosting',
@@ -14,6 +14,8 @@ export const SERVICE_CAPABILITY_TYPES = [
 	'capacity-runtime-hosting',
 	'private-knowledge-index-hosting',
 	'artifact-hosting',
+	'ai-inference-hosting',
+	'ai-training-hosting',
 ] as const;
 
 export const SERVICE_CONNECTION_STATUSES = [
@@ -238,20 +240,39 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 		capabilities: [
 			{ type: 'backend-hosting', label: 'Backend hosting', description: 'API and backend service hosting.', credentialProfileIds: ['railway-workspace'], status: 'available' },
 			{ type: 'database-hosting', label: 'Database hosting', description: 'Managed database placement.', credentialProfileIds: ['railway-workspace'], status: 'available' },
-			{ type: 'capacity-runtime-hosting', label: 'Capacity runtime hosting', description: 'Future capacity provider placement.', credentialProfileIds: ['railway-workspace'], status: 'planned' },
 			{ type: 'private-knowledge-index-hosting', label: 'Private knowledge hosting', description: 'Private TreeDX knowledge-plane placement.', credentialProfileIds: ['railway-workspace'], status: 'available' },
 		],
 		credentialProfiles: [{
 			id: 'railway-workspace',
 			label: 'Railway workspace token',
 			description: 'Railway currently exposes broad workspace authority. Sharing it increases the blast radius across enabled capabilities.',
-			capabilities: ['backend-hosting', 'database-hosting', 'capacity-runtime-hosting', 'private-knowledge-index-hosting'],
+			capabilities: ['backend-hosting', 'database-hosting', 'private-knowledge-index-hosting'],
 			fields: [field('apiToken', 'Workspace token', 'Stored in core OpenBao and used only by authorized operations.', true, true)],
 			permissions: ['Workspace access required by the selected operations'],
 			sharing: 'provider-shared',
 			unattendedCompatible: true,
 			authoritySchemes: ['openbao'],
 			knowledgePageIds: ['provider.railway', 'services.credentials', 'vault.rotation'],
+		}],
+	},
+	{
+		id: 'hyperstack', label: 'Hyperstack', logoKey: 'hyperstack',
+		documentationUrl: 'https://docs.hyperstack.cloud/docs/api-reference/quickstart/',
+		description: 'Host TreeAI inference and training on rented GPUs. This is AI hosting, not capacity-provider hosting.',
+		knowledgePageIds: ['provider.hyperstack'],
+		connectionFields: [],
+		capabilities: [
+			{ type: 'ai-inference-hosting', label: 'Provide AI service', description: 'Host the TreeAI vLLM inference engine on a rented GPU.', credentialProfileIds: ['hyperstack-runtime'], status: 'available' },
+			{ type: 'ai-training-hosting', label: 'Run training', description: 'Host the TreeAI Axolotl training engine, independently or alongside inference with managed GPU admission.', credentialProfileIds: ['hyperstack-runtime'], status: 'available' },
+		],
+		credentialProfiles: [{
+			id: 'hyperstack-runtime', label: 'Hyperstack API key',
+			description: 'Authorize GPU hosting. Saving this key does not rent a machine. Deployments select hardware, schedules and storage separately.',
+			capabilities: ['ai-inference-hosting', 'ai-training-hosting'],
+			fields: [field('apiToken', 'API key', 'Stored in your team vault and used only for authorized hosting operations.', true, true)],
+			permissions: ['Read environments for account verification', 'Manage virtual machines and attached resources for deployment'],
+			sharing: 'provider-shared', unattendedCompatible: true, authoritySchemes: ['openbao'],
+			knowledgePageIds: ['provider.hyperstack', 'services.credentials', 'vault.rotation'],
 		}],
 	},
 ] as const;
