@@ -208,9 +208,9 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 		description: 'Connect a Cloudflare account with separately scoped capability tokens.',
 		knowledgePageIds: ['provider.cloudflare'],
 		connectionFields: [
-			field('deploymentEnvironment', 'Deployment environment', 'The exact TreeSeed deployment environment. Use staging or production; one connection must never span both.'),
+			{ ...field('deploymentEnvironment', 'Deployment environment', 'Choose where TreeSeed will publish your websites and apps.', false), requiredForCapabilities: ['frontend-hosting'] },
 			field('accountId', 'Account ID', 'The non-secret Cloudflare account identifier.'),
-			{ ...field('zoneId', 'Domain zone ID', 'Required to manage domain records. In Cloudflare, open your domain’s Overview page and copy its Zone ID (not the account ID).', false), requiredForCapabilities: ['dns-management'], pattern: '[a-fA-F0-9]{32}' },
+			{ ...field('domain', 'Domain', 'Enter the domain listed in Cloudflare (for example, example.com), without https:// or a path. TreeSeed verifies its zone when you check the DNS account access.', false), requiredForCapabilities: ['dns-management'], placeholder: 'example.com', pattern: '(?:[a-zA-Z0-9](?:[a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z](?:[a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?' },
 		],
 		capabilities: [
 			{ type: 'frontend-hosting', label: 'Frontend hosting', description: 'Pages and Workers application hosting.', credentialProfileIds: ['cloudflare-runtime'], status: 'available' },
@@ -219,7 +219,7 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 		],
 		credentialProfiles: [
 			{ id: 'cloudflare-runtime', label: 'Pages and Workers token', description: 'A token limited to application deployment resources.', capabilities: ['frontend-hosting'], fields: [field('apiToken', 'API token', 'Stored in core OpenBao and used only by authorized operations.', true, true)], permissions: ['Account: Workers Scripts Edit', 'Account: Pages Edit'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['openbao'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
-			{ id: 'cloudflare-dns', label: 'DNS token', description: 'A token restricted to selected zones.', capabilities: ['dns-management'], fields: [field('apiToken', 'DNS API token', 'Encrypted separately from deployment authority.', true, true)], permissions: ['Zone: DNS Edit for only the managed zones'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['openbao'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
+			{ id: 'cloudflare-dns', label: 'DNS token', description: 'A token restricted to the domain you entered. Zone Read lets TreeSeed find its zone; DNS Edit lets it manage records.', capabilities: ['dns-management'], fields: [field('apiToken', 'DNS API token', 'Encrypted separately from deployment authority.', true, true)], permissions: ['Zone: Zone Read for the managed domain', 'Zone: DNS Edit for the managed domain'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['openbao'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
 			{ id: 'cloudflare-storage', label: 'Storage management authority', description: 'Vault-custodied token used only to reconcile authorized R2 resources.', capabilities: ['object-storage'], fields: [field('apiToken', 'Storage API token', 'Encrypted separately and used only to reconcile authorized R2 resources.', true, true)], permissions: ['Account: Workers R2 Storage Edit'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['openbao'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
 		],
 	},
