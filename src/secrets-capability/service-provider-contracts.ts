@@ -3,8 +3,6 @@ export const SERVICE_PROVIDER_IDS = ['github', 'cloudflare', 'railway', 'hyperst
 export const SERVICE_CAPABILITY_TYPES = [
 	'repository-hosting',
 	'workflow-execution',
-	'workflow-configuration',
-	'secret-enclave',
 	'frontend-hosting',
 	'backend-hosting',
 	'dns-management',
@@ -158,9 +156,7 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 		],
 		capabilities: [
 			{ type: 'repository-hosting', label: 'Repository hosting', description: 'Own source and knowledge repositories.', credentialProfileIds: ['github-repository-app', 'github-repository-token'], status: 'available' },
-			{ type: 'workflow-execution', label: 'Workflow execution', description: 'Run allowlisted GitHub Actions workflows.', credentialProfileIds: ['github-workflow-app', 'github-workflow-token'], status: 'available' },
-			{ type: 'workflow-configuration', label: 'Workflow configuration', description: 'Manage the scoped variables required by allowlisted workflows.', credentialProfileIds: ['github-workflow-app', 'github-workflow-token'], status: 'available' },
-			{ type: 'secret-enclave', label: 'Actions secret enclave', description: 'Write GitHub-encrypted values to Actions without making them readable by TreeSeed.', credentialProfileIds: ['github-workflow-app', 'github-workflow-token'], status: 'available' },
+			{ type: 'workflow-execution', label: 'Run workflows', description: 'Run project workflows and supply their declared configuration securely. Vault credentials remain authoritative; provider secrets are delivery destinations.', credentialProfileIds: ['github-workflow-app', 'github-workflow-token'], status: 'available' },
 		],
 		credentialProfiles: [
 			{
@@ -182,20 +178,20 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 			},
 			{
 				id: 'github-workflow-app', label: 'Workflow Connector App',
-				description: 'Installation authority for dispatch, run observation, and separately enabled secret and variable configuration.',
-				capabilities: ['workflow-execution', 'workflow-configuration', 'secret-enclave'],
+				description: 'Installation authority for workflow execution and explicitly declared configuration delivery.',
+				capabilities: ['workflow-execution'],
 				fields: [],
-				permissions: ['Metadata: read', 'Contents: read', 'Actions: read and write', 'Secrets: read and write', 'Variables: read and write'],
+				permissions: ['Metadata: read', 'Contents: read', 'Actions: read and write', 'Only when declared: Secrets write and/or Variables write'],
 				sharing: 'capability-scoped', unattendedCompatible: true,
 				authoritySchemes: ['app-installation'],
 				knowledgePageIds: ['provider.github', 'services.credentials', 'vault.rotation'],
 			},
 			{
 				id: 'github-workflow-token', label: 'Workflow token authority',
-				description: 'Fine-grained token authority for Actions and explicitly enabled secret or variable scopes.',
-				capabilities: ['workflow-execution', 'workflow-configuration', 'secret-enclave'],
+				description: 'Fine-grained token authority for workflow execution and explicitly declared configuration delivery.',
+				capabilities: ['workflow-execution'],
 				fields: [field('accessToken', 'Fine-grained token', 'Stored in core OpenBao; used only by authorized operations.', true, true)],
-				permissions: ['Metadata: read', 'Contents: read', 'Actions: read and write', 'Secrets: read and write', 'Variables: read and write'],
+				permissions: ['Metadata: read', 'Contents: read', 'Actions: read and write', 'Only when declared: Secrets write and/or Variables write'],
 				sharing: 'capability-scoped', unattendedCompatible: true,
 				authoritySchemes: ['openbao'],
 				knowledgePageIds: ['provider.github', 'services.credentials', 'vault.rotation'],

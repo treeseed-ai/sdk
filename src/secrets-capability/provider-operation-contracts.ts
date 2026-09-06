@@ -10,6 +10,22 @@ export const PROVIDER_ADAPTER_KINDS = [
 
 export type ProviderAdapterKind = (typeof PROVIDER_ADAPTER_KINDS)[number];
 
+/** Bounded delivery requirements attached to a workflow-execution binding.
+ * Values and vault login material never belong in this declaration.
+ */
+export type WorkflowConfigurationDeclaration = {
+	workflowPath: string;
+	repositoryBindingId: string;
+	kind: 'secrets' | 'variables';
+	scope: 'repository' | 'environment';
+	environment?: string | null;
+	names: string[];
+};
+
+export type WorkflowConfigurationPolicy = {
+	workflowConfiguration: WorkflowConfigurationDeclaration[];
+};
+
 export type ProviderCredentialAuthority = {
 	id: string;
 	teamId: string;

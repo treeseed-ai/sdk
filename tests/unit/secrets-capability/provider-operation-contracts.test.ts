@@ -11,7 +11,7 @@ describe('provider operation contracts', () => {
 		const github = SERVICE_PROVIDER_CATALOG.find((provider) => provider.id === 'github');
 		expect(github).toBeDefined();
 		expect(github?.capabilities.map((capability) => capability.type)).toEqual([
-			'repository-hosting', 'workflow-execution', 'workflow-configuration', 'secret-enclave',
+			'repository-hosting', 'workflow-execution',
 		]);
 		expect(github?.credentialProfiles.find((profile) => profile.id === 'github-repository-app')?.capabilities)
 			.toEqual(['repository-hosting']);
@@ -20,7 +20,7 @@ describe('provider operation contracts', () => {
 				'Metadata: read', 'Contents: read and write', 'Checks: read', 'Administration: read and write',
 			] });
 		expect(github?.credentialProfiles.find((profile) => profile.id === 'github-workflow-app')?.capabilities)
-			.toEqual(['workflow-execution', 'workflow-configuration', 'secret-enclave']);
+			.toEqual(['workflow-execution']);
 		expect(github?.credentialProfiles.find((profile) => profile.id === 'github-workflow-app'))
 			.toMatchObject({ fields: [], authoritySchemes: ['app-installation'] });
 		expect(github?.connectionFields.map((field) => field.key)).toEqual(['organization']);
@@ -30,7 +30,8 @@ describe('provider operation contracts', () => {
 		expect(CREDENTIAL_AUTHORITY_SCHEMES).toEqual(expect.arrayContaining([
 			'app-installation', 'openbao',
 		]));
-		expect(SERVICE_CAPABILITY_TYPES).toContain('workflow-configuration');
+		expect(SERVICE_CAPABILITY_TYPES).not.toContain('workflow-configuration');
+		expect(SERVICE_CAPABILITY_TYPES).not.toContain('secret-enclave');
 		expect(SERVICE_CAPABILITY_TYPES).toContain('state-encryption');
 	});
 
