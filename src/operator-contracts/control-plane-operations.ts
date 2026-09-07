@@ -428,6 +428,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 		},
 		searchIndex: {
 			status: treedxProxy('treedx.repositories.search.index.status', 'getSearchIndexStatus', 'GET', '/v1/dx/projects/{projectId}/repos/{repoId}/search-index', { projectId: z.string().min(1), repoId: z.string().min(1) }),
+			refresh: treedxProxy('treedx.repositories.search.index.refresh', 'refreshSearchIndex', 'POST', '/v1/dx/projects/{projectId}/repos/{repoId}/search-index/refresh', { projectId: z.string().min(1), repoId: z.string().min(1) }),
 		},
 	},
 	providers: {
