@@ -50,6 +50,8 @@ describe('human command tree contract', () => {
 		expect(leaves.get('auth login')?.authorization?.confirmation).toBe('never');
 		expect(leaves.get('auth login')?.options?.map((option) => option.name)).toEqual(['--plan', '--timeout']);
 		expect(leaves.get('secrets status')?.execution).toEqual({ kind: 'local', handlerId: 'local.secrets.status' });
+		expect(leaves.get('ai storage verify')).toMatchObject({ kind: 'mutation', execution: {kind: 'local', handlerId: 'local.host.ai.storage.verify'}, authorization: {confirmation: 'authority'} });
+		expect(leaves.get('ai storage verify')?.options?.map(option => option.name)).toContain('--plan');
 		expect(leaves.get('release')?.execution).toMatchObject({ kind: 'unavailable', code: 'standards_migration_not_enabled' });
 		expect(JSON.stringify(TREESEED_COMMAND_TREE_V1)).not.toContain('/v1/');
 		expect(listCommandPaths()).toEqual(expect.arrayContaining([
