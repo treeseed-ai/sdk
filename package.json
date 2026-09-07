@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.13.0-rc.92",
+  "version": "0.13.0-rc.93",
   "description": "Portable TreeSeed contracts, standards, and typed remote control-plane clients.",
   "license": "Apache-2.0",
   "repository": {
@@ -51,7 +51,7 @@
     "standards:release-evidence": "node --import tsx ./scripts/standards/create-release-evidence.ts"
   },
   "dependencies": {
-    "@treeseed/treedx": "0.3.0-rc.4",
+    "@treeseed/treedx": "0.3.0-rc.17",
     "esbuild": "^0.28.0",
     "libsodium-wrappers-sumo": "0.8.4",
     "typescript": "^5.9.3",

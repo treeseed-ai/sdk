@@ -12,6 +12,13 @@ import {
 } from '../../src/treedx/index.ts';
 
 describe('TreeSeed TreeDX proxy facade', () => {
+	it('exposes authorized search index repair through the project-scoped proxy', () => {
+		expect(TREESEED_TREEDX_OPERATIONS.searchIndex.refresh.descriptor).toMatchObject({
+			operationId: 'treedx.repositories.search.index.refresh',
+			upstream: { operationId: 'refreshSearchIndex' },
+		});
+	});
+
 	it('maps every public proxy operation to the accepted TreeDX contract', async () => {
 		expect(validateTreeDxProxyOperationMapping()).toEqual([]);
 		expect(CONTROL_PLANE_OPERATIONS.treedx.repositories.retire.descriptor).toMatchObject({
