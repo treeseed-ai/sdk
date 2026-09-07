@@ -6,7 +6,7 @@ describe('unified custody contracts', () => {
   it('has exactly central OpenBao and OS custody, with no optional external vault provider', () => {
     expect(SECRET_CUSTODY_BACKENDS).toEqual(['openbao', 'os']);
     expect(CREDENTIAL_AUTHORITY_SCHEMES).toEqual(['app-installation', 'openbao']);
-    expect(SERVICE_PROVIDER_CATALOG.map(p => p.id)).toEqual(['github', 'cloudflare', 'railway']);
+    expect(SERVICE_PROVIDER_CATALOG.map(p => p.id)).toEqual(['github', 'cloudflare', 'railway', 'hyperstack']);
     for (const provider of SERVICE_PROVIDER_CATALOG) for (const profile of provider.credentialProfiles)
       expect(profile.authoritySchemes).toEqual([profile.id.endsWith('-app') ? 'app-installation' : 'openbao']);
   });

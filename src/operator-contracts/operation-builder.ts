@@ -14,6 +14,14 @@ type Definition = Omit<ControlPlaneOperationDescriptor, 'schemaVersion' | 'schem
 	authentication?: ControlPlaneOperationDescriptor['authentication'];
 };
 
+export function defineReadOperation(operationId: `${string}.${string}`, path: `/v1/${string}`, capability: string, surfaces: ControlPlaneOperationDescriptor['surfaces'] = ['rest']) {
+	return defineOperation({
+		operationId, description: `Read ${operationId}.`, rest: { method: 'GET', path }, capability,
+		authentication: 'oauth', oauthScopes: ['treeseed:read'], kind: 'read', riskClass: 'ordinary', confirmation: 'never',
+		surfaces, cacheScope: 'principal', pagination: 'none',
+	}, { path: z.object({}).strict(), query: z.object({}).strict(), body: z.undefined(), output: z.record(z.unknown()) });
+}
+
 export function defineOperation<TPath, TQuery, TBody, TOutput>(
 	definition: Definition,
 	schema: ControlPlaneOperationBinding<TPath, TQuery, TBody, TOutput>['schema'],

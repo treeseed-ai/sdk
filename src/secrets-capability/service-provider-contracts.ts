@@ -1,10 +1,8 @@
-export const SERVICE_PROVIDER_IDS = ['github', 'cloudflare', 'railway'] as const;
+export const SERVICE_PROVIDER_IDS = ['github', 'cloudflare', 'railway', 'hyperstack'] as const;
 
 export const SERVICE_CAPABILITY_TYPES = [
 	'repository-hosting',
 	'workflow-execution',
-	'workflow-configuration',
-	'secret-enclave',
 	'frontend-hosting',
 	'backend-hosting',
 	'dns-management',
@@ -14,6 +12,8 @@ export const SERVICE_CAPABILITY_TYPES = [
 	'capacity-runtime-hosting',
 	'private-knowledge-index-hosting',
 	'artifact-hosting',
+	'ai-inference-hosting',
+	'ai-training-hosting',
 ] as const;
 
 export const SERVICE_CONNECTION_STATUSES = [
@@ -38,6 +38,8 @@ export type ServiceFieldDefinition = {
 	label: string;
 	description: string;
 	required: boolean;
+	requiredForCapabilities?: ServiceCapabilityType[];
+	pattern?: string;
 	sensitive: boolean;
 	input: 'text' | 'password' | 'url';
 	placeholder?: string;
@@ -154,9 +156,7 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 		],
 		capabilities: [
 			{ type: 'repository-hosting', label: 'Repository hosting', description: 'Own source and knowledge repositories.', credentialProfileIds: ['github-repository-app', 'github-repository-token'], status: 'available' },
-			{ type: 'workflow-execution', label: 'Workflow execution', description: 'Run allowlisted GitHub Actions workflows.', credentialProfileIds: ['github-workflow-app', 'github-workflow-token'], status: 'available' },
-			{ type: 'workflow-configuration', label: 'Workflow configuration', description: 'Manage the scoped variables required by allowlisted workflows.', credentialProfileIds: ['github-workflow-app', 'github-workflow-token'], status: 'available' },
-			{ type: 'secret-enclave', label: 'Actions secret enclave', description: 'Write GitHub-encrypted values to Actions without making them readable by TreeSeed.', credentialProfileIds: ['github-workflow-app', 'github-workflow-token'], status: 'available' },
+			{ type: 'workflow-execution', label: 'Run workflows', description: 'Run project workflows and supply their declared configuration securely. Vault credentials remain authoritative; provider secrets are delivery destinations.', credentialProfileIds: ['github-workflow-app', 'github-workflow-token'], status: 'available' },
 		],
 		credentialProfiles: [
 			{
@@ -178,20 +178,20 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 			},
 			{
 				id: 'github-workflow-app', label: 'Workflow Connector App',
-				description: 'Installation authority for dispatch, run observation, and separately enabled secret and variable configuration.',
-				capabilities: ['workflow-execution', 'workflow-configuration', 'secret-enclave'],
+				description: 'Installation authority for workflow execution and explicitly declared configuration delivery.',
+				capabilities: ['workflow-execution'],
 				fields: [],
-				permissions: ['Metadata: read', 'Contents: read', 'Actions: read and write', 'Secrets: read and write', 'Variables: read and write'],
+				permissions: ['Metadata: read', 'Contents: read', 'Actions: read and write', 'Only when declared: Secrets write and/or Variables write'],
 				sharing: 'capability-scoped', unattendedCompatible: true,
 				authoritySchemes: ['app-installation'],
 				knowledgePageIds: ['provider.github', 'services.credentials', 'vault.rotation'],
 			},
 			{
 				id: 'github-workflow-token', label: 'Workflow token authority',
-				description: 'Fine-grained token authority for Actions and explicitly enabled secret or variable scopes.',
-				capabilities: ['workflow-execution', 'workflow-configuration', 'secret-enclave'],
+				description: 'Fine-grained token authority for workflow execution and explicitly declared configuration delivery.',
+				capabilities: ['workflow-execution'],
 				fields: [field('accessToken', 'Fine-grained token', 'Stored in core OpenBao; used only by authorized operations.', true, true)],
-				permissions: ['Metadata: read', 'Contents: read', 'Actions: read and write', 'Secrets: read and write', 'Variables: read and write'],
+				permissions: ['Metadata: read', 'Contents: read', 'Actions: read and write', 'Only when declared: Secrets write and/or Variables write'],
 				sharing: 'capability-scoped', unattendedCompatible: true,
 				authoritySchemes: ['openbao'],
 				knowledgePageIds: ['provider.github', 'services.credentials', 'vault.rotation'],
@@ -206,26 +206,18 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 		description: 'Connect a Cloudflare account with separately scoped capability tokens.',
 		knowledgePageIds: ['provider.cloudflare'],
 		connectionFields: [
-			field('deploymentEnvironment', 'Deployment environment', 'The exact TreeSeed deployment environment. Use staging or production; one connection must never span both.'),
 			field('accountId', 'Account ID', 'The non-secret Cloudflare account identifier.'),
-			field('zoneId', 'Zone ID', 'Optional non-secret zone identifier used by reviewed DNS and TLS topology resources.', false),
-			field('stateBucket', 'OpenTofu state bucket', 'Optional R2 bucket name used only by a state-backend connection.', false),
-			field('stateEndpoint', 'OpenTofu state endpoint', 'Optional HTTPS S3-compatible R2 endpoint used only by a state-backend connection.', false),
-			field('stateRegion', 'OpenTofu state region', 'Optional S3-compatible region; omit to use auto.', false),
-			field('stateEncryptionKeyRef', 'State encryption key reference', 'Optional non-secret team-vault key name used to encrypt this backend state.', false),
+			{ ...field('domain', 'Domain', 'Enter the domain listed in Cloudflare (for example, example.com), without https:// or a path. TreeSeed verifies its zone when you check the DNS account access.', false), requiredForCapabilities: ['dns-management'], placeholder: 'example.com', pattern: '(?:[a-zA-Z0-9](?:[a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z](?:[a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?' },
 		],
 		capabilities: [
 			{ type: 'frontend-hosting', label: 'Frontend hosting', description: 'Pages and Workers application hosting.', credentialProfileIds: ['cloudflare-runtime'], status: 'available' },
 			{ type: 'dns-management', label: 'DNS management', description: 'Scoped DNS record management.', credentialProfileIds: ['cloudflare-dns'], status: 'available' },
-			{ type: 'object-storage', label: 'Object storage', description: 'R2-backed immutable publication, private artifact storage, and scoped S3 state access.', credentialProfileIds: ['cloudflare-storage', 's3-state-session'], status: 'available' },
-			{ type: 'state-encryption', label: 'State encryption', description: 'Independent encryption authority for OpenTofu state and plan files.', credentialProfileIds: ['opentofu-state-encryption'], status: 'available' },
+			{ type: 'object-storage', label: 'Object storage', description: 'R2-backed immutable publication and private artifact storage.', credentialProfileIds: ['cloudflare-storage'], status: 'available' },
 		],
 		credentialProfiles: [
 			{ id: 'cloudflare-runtime', label: 'Pages and Workers token', description: 'A token limited to application deployment resources.', capabilities: ['frontend-hosting'], fields: [field('apiToken', 'API token', 'Stored in core OpenBao and used only by authorized operations.', true, true)], permissions: ['Account: Workers Scripts Edit', 'Account: Pages Edit'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['openbao'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
-			{ id: 'cloudflare-dns', label: 'DNS token', description: 'A token restricted to selected zones.', capabilities: ['dns-management'], fields: [field('apiToken', 'DNS API token', 'Encrypted separately from deployment authority.', true, true)], permissions: ['Zone: DNS Edit for only the managed zones'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['openbao'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
+			{ id: 'cloudflare-dns', label: 'DNS token', description: 'A token restricted to the domain you entered. Zone Read lets TreeSeed find its zone; DNS Edit lets it manage records.', capabilities: ['dns-management'], fields: [field('apiToken', 'DNS API token', 'Encrypted separately from deployment authority.', true, true)], permissions: ['Zone: Zone Read for the managed domain', 'Zone: DNS Edit for the managed domain'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['openbao'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
 			{ id: 'cloudflare-storage', label: 'Storage management authority', description: 'Vault-custodied token used only to reconcile authorized R2 resources.', capabilities: ['object-storage'], fields: [field('apiToken', 'Storage API token', 'Encrypted separately and used only to reconcile authorized R2 resources.', true, true)], permissions: ['Account: Workers R2 Storage Edit'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['openbao'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
-			{ id: 's3-state-session', label: 'OpenTofu state session', description: 'S3-compatible credentials limited to the selected team state prefix.', capabilities: ['object-storage'], fields: [field('accessKeyId', 'R2 access key ID', 'Vault-custodied S3-compatible access key identifier for encrypted OpenTofu state.', true, true), field('secretAccessKey', 'R2 secret access key', 'Vault-custodied S3-compatible secret key for encrypted OpenTofu state.', true, true), field('sessionToken', 'R2 session token', 'Optional short-lived S3-compatible session token.', false, true)], permissions: ['Object read and write for only the managed team state prefix'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['openbao'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
-			{ id: 'opentofu-state-encryption', label: 'OpenTofu state encryption', description: 'Independent encryption material that is never stored with the R2 state object.', capabilities: ['state-encryption'], fields: [field('stateEncryptionKey', 'OpenTofu state encryption key', 'A 32-byte hexadecimal key stored separately in core OpenBao.', true, true)], permissions: ['Encrypt and decrypt only the selected team OpenTofu state'], sharing: 'capability-scoped', unattendedCompatible: true, authoritySchemes: ['openbao'], knowledgePageIds: ['provider.cloudflare', 'services.credentials', 'vault.rotation'] },
 		],
 	},
 	{
@@ -244,20 +236,39 @@ export const SERVICE_PROVIDER_CATALOG: readonly ServiceProviderDefinition[] = [
 		capabilities: [
 			{ type: 'backend-hosting', label: 'Backend hosting', description: 'API and backend service hosting.', credentialProfileIds: ['railway-workspace'], status: 'available' },
 			{ type: 'database-hosting', label: 'Database hosting', description: 'Managed database placement.', credentialProfileIds: ['railway-workspace'], status: 'available' },
-			{ type: 'capacity-runtime-hosting', label: 'Capacity runtime hosting', description: 'Future capacity provider placement.', credentialProfileIds: ['railway-workspace'], status: 'planned' },
 			{ type: 'private-knowledge-index-hosting', label: 'Private knowledge hosting', description: 'Private TreeDX knowledge-plane placement.', credentialProfileIds: ['railway-workspace'], status: 'available' },
 		],
 		credentialProfiles: [{
 			id: 'railway-workspace',
 			label: 'Railway workspace token',
 			description: 'Railway currently exposes broad workspace authority. Sharing it increases the blast radius across enabled capabilities.',
-			capabilities: ['backend-hosting', 'database-hosting', 'capacity-runtime-hosting', 'private-knowledge-index-hosting'],
+			capabilities: ['backend-hosting', 'database-hosting', 'private-knowledge-index-hosting'],
 			fields: [field('apiToken', 'Workspace token', 'Stored in core OpenBao and used only by authorized operations.', true, true)],
 			permissions: ['Workspace access required by the selected operations'],
 			sharing: 'provider-shared',
 			unattendedCompatible: true,
 			authoritySchemes: ['openbao'],
 			knowledgePageIds: ['provider.railway', 'services.credentials', 'vault.rotation'],
+		}],
+	},
+	{
+		id: 'hyperstack', label: 'Hyperstack', logoKey: 'hyperstack',
+		documentationUrl: 'https://docs.hyperstack.cloud/docs/api-reference/quickstart/',
+		description: 'Host TreeAI inference and training on rented GPUs. This is AI hosting, not capacity-provider hosting.',
+		knowledgePageIds: ['provider.hyperstack'],
+		connectionFields: [],
+		capabilities: [
+			{ type: 'ai-inference-hosting', label: 'Provide AI service', description: 'Host the TreeAI vLLM inference engine on a rented GPU.', credentialProfileIds: ['hyperstack-runtime'], status: 'available' },
+			{ type: 'ai-training-hosting', label: 'Run training', description: 'Host the TreeAI Axolotl training engine, independently or alongside inference with managed GPU admission.', credentialProfileIds: ['hyperstack-runtime'], status: 'available' },
+		],
+		credentialProfiles: [{
+			id: 'hyperstack-runtime', label: 'Hyperstack API key',
+			description: 'Authorize GPU hosting. Saving this key does not rent a machine. Deployments select hardware, schedules and storage separately.',
+			capabilities: ['ai-inference-hosting', 'ai-training-hosting'],
+			fields: [field('apiToken', 'API key', 'Stored in your team vault and used only for authorized hosting operations.', true, true)],
+			permissions: ['Read environments for account verification', 'Manage virtual machines and attached resources for deployment'],
+			sharing: 'provider-shared', unattendedCompatible: true, authoritySchemes: ['openbao'],
+			knowledgePageIds: ['provider.hyperstack', 'services.credentials', 'vault.rotation'],
 		}],
 	},
 ] as const;

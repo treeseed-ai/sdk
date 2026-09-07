@@ -1,4 +1,5 @@
 import type { CommandLeafDescriptor, CommandNodeDescriptor, CommandTreeDescriptor } from './command-tree.ts';
+import { commandPaths } from './catalog/infrastructure/command-tree-paths.ts';
 import { managedSecretCommands } from './catalog/services/secret-commands.ts';
 import { hostProviderEnvironmentBranch, PROVIDER_ENVIRONMENT_COMMAND_BINDINGS, providerEnvironmentBranches } from './catalog/provider-environment-commands.ts';
 
@@ -240,6 +241,7 @@ function hostInitialize(): CommandNodeDescriptor {
 	if (value.nodeType !== 'leaf') throw new Error('Host initialize must be a leaf command.');
 	value.description = 'Initialize the generic host foundation from an immutable catalog-bound profile.';
 	value.options = [...(value.options ?? []),
+		{ name: '--input-file', description: 'Team capacity installation configuration downloaded from Admin. Values are never printed.', type: 'string' },
 		{ name: '--profile', description: 'Catalog-bound host initialization profile.', type: 'string', required: true },
 		{ name: '--confirm', description: 'Confirm installation of the reviewed profile plan.', type: 'boolean' },
 		{ name: '--yes', description: 'Confirm non-interactive execution after reviewing the plan.', type: 'boolean' },
@@ -486,14 +488,5 @@ attachExecution(commandTree.commands);
 export const TREESEED_COMMAND_TREE_V1 = commandTree;
 
 export function listCommandPaths(tree: CommandTreeDescriptor = TREESEED_COMMAND_TREE_V1): string[] {
-	const paths: string[] = [];
-	const visit = (nodes: CommandNodeDescriptor[], parent: string[]): void => {
-		for (const node of nodes) {
-			const path = [...parent, node.segment];
-			if (node.nodeType === 'leaf') paths.push(path.join(' '));
-			else visit(node.children, path);
-		}
-	};
-	visit(tree.commands, []);
-	return paths;
+	return commandPaths(tree);
 }

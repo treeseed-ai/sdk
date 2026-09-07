@@ -3,3 +3,6 @@ export * from '../secrets-capability/provider-operation-contracts.ts';
 export * from '../secrets-capability/workflow-operation-contracts.ts';
 export * from '../secrets-capability/secret-contracts.ts';
 export * from '../secrets-capability/github-actions-encryption.ts';
+export * from '../secrets-capability/shared-resources.ts';
+export * from '../secrets-capability/vault-contracts.ts';
+export * from '../secrets-capability/shared-access.ts';
