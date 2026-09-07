@@ -16,6 +16,7 @@ const field = (target: 'path' | 'query' | 'body', name: string, source: 'argumen
 const operation = (operationId: `${string}.${string}`, input: ReturnType<typeof field>[] = []): Execution => ({ kind: 'operation', operationId, input });
 const page = () => [field('query', 'status', 'option'), field('query', 'limit', 'option', 'limit', false, 'integer'), field('query', 'cursor', 'option')];
 const aiNode = () => field('path', 'nodeId', 'context', 'node', true);
+const aiInstance = () => [field('path', 'teamId', 'context', 'team', true), field('path', 'instanceId', 'context', 'node', true)];
 
 const operationBindings: Record<string, Execution> = {
 	...PROVIDER_ENVIRONMENT_COMMAND_BINDINGS,
@@ -151,7 +152,10 @@ const operationBindings: Record<string, Execution> = {
 	'projects treedx workspaces list': operation('treedx.workspaces.list', [field('path', 'projectId', 'argument', 'project', true), ...page()]),
 	'projects treedx workspaces show': operation('treedx.workspaces.show', [field('path', 'projectId', 'context', 'project', true), field('path', 'workspaceId', 'argument', 'workspace', true)]),
 	'projects treedx workspaces abandon': operation('treedx.workspaces.abandon', [field('path', 'projectId', 'context', 'project', true), field('path', 'workspaceId', 'argument', 'workspace', true)]),
-	'ai status': operation('treeai.qualification.get.status', [aiNode()]),
+	'ai status': operation('ai.instances.show', aiInstance()),
+	'ai storage show': operation('ai.instances.storage.show', aiInstance()),
+	'ai storage connect': operation('ai.instances.storage.put', [...aiInstance(), field('body', 'connectionId', 'option', 'connection', true), field('body', 'bucket', 'option', 'bucket', true)]),
+	'ai storage disconnect': operation('ai.instances.storage.remove', aiInstance()),
 	'ai mode show': local('local.host.ai.mode.show'),
 	'ai mode set': local('local.host.ai.mode.set'),
 	'ai inference models': operation('treeai.inference.get.models', [aiNode()]),
@@ -163,9 +167,6 @@ const operationBindings: Record<string, Execution> = {
 	'ai lab status': operation('treeai.lab.get.status', [aiNode()]),
 	'ai lab agents': operation('treeai.lab.get.agents', [aiNode()]),
 	'ai lab libraries': operation('treeai.lab.get.libraries', [aiNode()]),
-	'ai qualify status': operation('treeai.qualification.get.qualification.profile', [aiNode()]),
-	'ai qualify run': operation('treeai.qualification.post.qualification.campaigns', [aiNode()]),
-	'ai qualify campaigns': operation('treeai.qualification.get.qualification.campaigns', [aiNode()]),
 	'library show': local('local.library.show'),
 	'library status': local('local.library.status'),
 	'library paths': local('local.library.paths'),
@@ -456,7 +457,10 @@ const commandTree: CommandTreeDescriptor = {
 			branch('inference', [leaf('models'), leaf('jobs'), leaf('rollback', 'mutation', undefined, 'destructive')]),
 			branch('training', [leaf('libraries'), leaf('jobs'), leaf('runs')]),
 			branch('lab', [leaf('status'), leaf('agents'), leaf('libraries')]),
-			branch('qualify', [leaf('status'), leaf('run', 'mutation', undefined, 'authority'), leaf('campaigns')]),
+			branch('storage', [leaf('show'), addOptions(leaf('connect', 'mutation'), [
+				{ name: '--connection', description: 'Team object-storage service connection ID.', type: 'string', required: true },
+				{ name: '--bucket', description: 'Private artifact bucket to ensure and bind.', type: 'string', required: true },
+			]), leaf('disconnect', 'mutation')]),
 		]),
 		branch('library', [
 			libraryRead('show'), libraryRead('status'),

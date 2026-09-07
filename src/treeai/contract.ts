@@ -5,9 +5,9 @@ import { TREEAI_UPSTREAM_OPERATIONS } from './generated/upstream.ts';
 
 export const TREESEED_TREEAI_SERVICE_CONTRACT_SCHEMA = 'treeseed.treeai-service-contract/v1' as const;
 export const TREEAI_ADOPTION = {
-	release: '0.11.0-rc2', sourceCommit: '9770c99ba3a2f91ce916b48efafa45b0e971bbf0',
-	packageArtifactDigest: 'sha256:90d695d499088f2788da36863128efe57079915d3999cc876888ceb091cb95f2',
-	operationInventoryDigest: 'sha256:dc60eb514e11a4b867b3353830d886205df6254c7c4ecfab9a06b1b4dcb4e1fc',
+	release: '0.11.0-rc22', sourceCommit: 'e3a462f30bfdc3539d3a5511932f28212f06a936',
+	packageArtifactDigest: 'sha256:25591daab061a782cf2a605be2977a0e1acf6e17c031e2cd1fe3b22166359a8c',
+	operationInventoryDigest: 'sha256:f1eaf33641e615e2f714d01d96e95454c42482d4ebbece6156e7601c5bb645d7',
 } as const;
 
 export function validateTreeAiOperationMapping() {
