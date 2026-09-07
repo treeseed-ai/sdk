@@ -5,5 +5,6 @@ export * from './topology.ts';
 export * from './ai-mode.ts';
 export * from './ai-hosting.ts';
 export * from './ai-instance.ts';
+export * from './ai-storage.ts';
 export * from './hosted-topology.ts';
 export * from './hosted-topology-template.ts';
