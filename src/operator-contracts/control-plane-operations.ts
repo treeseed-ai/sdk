@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { ControlPlaneOperationDescriptor } from './control-plane-operation.ts';
-import { defineOperation as define, defineTreeDxProxyOperation as treedxProxy } from './operation-builder.ts';
+import { defineOperation as define, defineTreeDxProxyOperation as treedxProxy, defineReadOperation as read } from './operation-builder.ts';
 import { communicationOperations, providerCommunicationLifecycleOperations, providerDiscussionResponseOperation } from './catalog/communication-operations.ts';
 import { inboxOperations } from './catalog/inbox-operations.ts';
 import { adminAccountOperations, adminTeamOperations } from './catalog/admin-account-team-operations.ts';
@@ -9,16 +9,10 @@ import { capabilityOntologyOperations } from './catalog/capability-ontology-oper
 import { knowledgeShareOperations } from './catalog/knowledge-share-operations.ts';
 import { PROVIDER_ENVIRONMENT_OPERATIONS } from './catalog/provider-environment-operations.ts';
 import { HOSTED_TOPOLOGY_OPERATIONS } from './catalog/hosted-topology-operations.ts';
+import { AI_INSTANCE_OPERATIONS } from './catalog/infrastructure/ai-instance-operations.ts';
 import { SECRET_OPERATIONS } from './catalog/services/secret-operations.ts';
 import { buildControlPlaneCatalog, flattenControlPlaneOperations } from './catalog/control-plane-catalog.ts';
 const empty = z.object({}).strict(), none = z.undefined(), record = z.record(z.unknown()), payload = record;
-function read(operationId: `${string}.${string}`, path: `/v1/${string}`, capability: string, surfaces: ControlPlaneOperationDescriptor['surfaces'] = ['rest']) {
-	return define({
-		operationId, description: `Read ${operationId}.`, rest: { method: 'GET', path }, capability,
-		authentication: 'oauth', oauthScopes: ['treeseed:read'], kind: 'read', riskClass: 'ordinary', confirmation: 'never',
-		surfaces, cacheScope: 'principal', pagination: 'none',
-	}, { path: empty, query: empty, body: none, output: payload });
-}
 function providerPath<T extends z.ZodRawShape>(
 	operationId: `${string}.${string}`,
 	method: 'GET' | 'POST' | 'PUT',
@@ -86,6 +80,7 @@ function resource<T extends z.ZodRawShape>(
 	}, { path: z.object(pathShape).strict(), query: kind === 'read' ? record : empty, body: kind === 'read' ? none : record, output: payload });
 }
 export const CONTROL_PLANE_OPERATIONS = {
+	aiInstances: AI_INSTANCE_OPERATIONS,
 	infrastructure: { topology: HOSTED_TOPOLOGY_OPERATIONS },
 	capabilities: capabilityOntologyOperations(),
 	inbox: inboxOperations(),

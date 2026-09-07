@@ -69,7 +69,7 @@ describe('human command tree contract', () => {
 		expect(JSON.stringify(environmentSet)).not.toContain('--value');
 		const initialize = leaves.get('host initialize');
 		expect(initialize?.execution).toEqual({ kind: 'local', handlerId: 'local.host.initialize' });
-		expect(initialize?.options?.map((option) => option.name)).toEqual(['--plan', '--profile', '--confirm', '--yes']);
+		expect(initialize?.options?.map((option) => option.name)).toEqual(['--plan', '--input-file', '--profile', '--confirm', '--yes']);
 	});
 
 	it('maps workday planning options to the versioned intent wire contract', () => {

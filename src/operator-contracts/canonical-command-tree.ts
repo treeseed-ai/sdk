@@ -1,4 +1,5 @@
 import type { CommandLeafDescriptor, CommandNodeDescriptor, CommandTreeDescriptor } from './command-tree.ts';
+import { commandPaths } from './catalog/infrastructure/command-tree-paths.ts';
 import { managedSecretCommands } from './catalog/services/secret-commands.ts';
 import { hostProviderEnvironmentBranch, PROVIDER_ENVIRONMENT_COMMAND_BINDINGS, providerEnvironmentBranches } from './catalog/provider-environment-commands.ts';
 
@@ -487,14 +488,5 @@ attachExecution(commandTree.commands);
 export const TREESEED_COMMAND_TREE_V1 = commandTree;
 
 export function listCommandPaths(tree: CommandTreeDescriptor = TREESEED_COMMAND_TREE_V1): string[] {
-	const paths: string[] = [];
-	const visit = (nodes: CommandNodeDescriptor[], parent: string[]): void => {
-		for (const node of nodes) {
-			const path = [...parent, node.segment];
-			if (node.nodeType === 'leaf') paths.push(path.join(' '));
-			else visit(node.children, path);
-		}
-	};
-	visit(tree.commands, []);
-	return paths;
+	return commandPaths(tree);
 }
