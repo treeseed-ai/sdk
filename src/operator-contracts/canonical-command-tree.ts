@@ -95,6 +95,7 @@ const operationBindings: Record<string, Execution> = {
 	'host initialize': local('local.host.initialize'),
 	'dev session start': local('local.dev.session.start'),
 	'dev session stop': local('local.dev.session.stop'),
+	'dev session recover': local('local.dev.session.recover'),
 	'dev use': local('local.dev.use'),
 	'dev rebuild': local('local.dev.rebuild'),
 	'dev status': local('local.dev.status'),
@@ -390,6 +391,7 @@ const commandTree: CommandTreeDescriptor = {
 			branch('session', [
 				developmentCommand('start', 'mutation', 'manifest', [{ name: '--actor', description: 'Audited development-session actor.', type: 'string' }, { name: '--lease-seconds', description: 'Requested bounded lease duration.', type: 'number' }]),
 				developmentCommand('stop', 'mutation', undefined, [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--restore', description: 'Restore released routes and targets.', type: 'boolean' }]),
+				developmentCommand('recover', 'mutation', undefined, [{ name: '--session', description: 'Exact manager session whose local custody should be recovered.', type: 'string', required: true }]),
 			]),
 			developmentCommand('use', 'mutation', 'selection', [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--target', description: 'Additional project.target=mode selections.', type: 'string[]' }]),
 			developmentCommand('rebuild', 'mutation', 'target', [{ name: '--session', description: 'Development session identity.', type: 'string' }]),
