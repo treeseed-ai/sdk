@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { migrateDevelopmentRuntime, migrateDevelopmentSession } from './session-migration.js';
 
 const identifier = z.string().regex(/^[a-z][a-z0-9.-]{1,63}$/u);
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
@@ -97,15 +98,15 @@ export const developmentTargetSchema = z.object({
 	if (target.statePolicy === 'shared-compatible' && target.migrationPolicy !== 'explicit-review') context.addIssue({ code: z.ZodIssueCode.custom, path: ['migrationPolicy'], message: 'Shared state requires explicit migration review.' });
 });
 
-export const developmentRuntimeSchema = z.object({
-	schemaVersion: z.literal('treeseed.development-runtime/v1'),
+export const developmentRuntimeSchema = z.preprocess(migrateDevelopmentRuntime, z.object({
+	schemaVersion: z.literal('treeseed.development-runtime/v2'),
 	project: z.object({ id: identifier, repository: z.string().regex(/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/iu) }).strict(),
-	defaults: z.object({ leaseSeconds: z.number().int().min(60).max(86_400).default(14_400), restoreOnFailure: z.boolean().default(true) }).strict(),
+	defaults: z.object({ restoreOnFailure: z.boolean().default(true) }).strict(),
 	targets: z.array(developmentTargetSchema).min(1),
 }).strict().superRefine((runtime, context) => {
 	const ids = runtime.targets.map((target) => target.id);
 	if (new Set(ids).size !== ids.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['targets'], message: 'Development target IDs must be unique.' });
-});
+}));
 
 const repositoryClosureSchema = z.object({
 	projectId: identifier,
@@ -118,20 +119,19 @@ const repositoryClosureSchema = z.object({
 	recipeDigest: digest,
 }).strict();
 
-export const developmentSessionSchema = z.object({
-	schemaVersion: z.literal('treeseed.development-session/v1'),
+export const developmentSessionSchema = z.preprocess(migrateDevelopmentSession, z.object({
+	schemaVersion: z.literal('treeseed.development-session/v2'),
 	sessionId: identifier,
 	actor: z.string().min(1).max(256),
 	hostId: identifier,
 	createdAt: z.string().datetime(),
-	expiresAt: z.string().datetime(),
-	status: z.enum(['planning', 'active', 'degraded', 'restoring', 'stopped', 'expired']),
+	status: z.enum(['planning', 'active', 'degraded', 'restoring', 'stopped']),
 	repositories: z.array(repositoryClosureSchema),
 	targets: z.array(z.object({ projectId: identifier, targetId: identifier, mode: developmentModeSchema, generation: z.number().int().nonnegative(), health: z.enum(['pending', 'ready', 'degraded', 'stopped']), reaction: developmentReactionSchema.optional() }).strict()),
-	leases: z.array(z.object({ kind: z.enum(['alias', 'component', 'state', 'secret']), resource: z.string().min(1), acquiredAt: z.string().datetime(), expiresAt: z.string().datetime() }).strict()),
+	leases: z.array(z.object({ kind: z.enum(['alias', 'component', 'state', 'secret']), resource: z.string().min(1), acquiredAt: z.string().datetime() }).strict()),
 	restoredReceiptId: identifier.nullable(),
 	blockers: z.array(z.object({ code: identifier, message: z.string().min(1), targetId: identifier.optional() }).strict()),
-}).strict();
+}).strict());
 
 export const developmentCandidateSchema = z.object({
 	schemaVersion: z.literal('treeseed.development-candidate/v1'),
