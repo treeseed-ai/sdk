@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { developmentCandidateSchema, developmentRuntimeSchema, releaseEvidenceSchema } from '../../../src/development/index.ts';
+import { developmentCandidateSchema, developmentRuntimeSchema, developmentSessionSchema, releaseEvidenceSchema } from '../../../src/development/index.ts';
 
 const runtime = {
 	schemaVersion: 'treeseed.development-runtime/v1',
@@ -19,6 +19,24 @@ const runtime = {
 } as const;
 
 describe('development runtime contracts', () => {
+	it('normalizes old recipes once and rejects expiry settings in v2', () => {
+		const current = developmentRuntimeSchema.parse(runtime);
+		expect(current.schemaVersion).toBe('treeseed.development-runtime/v2');
+		expect(current.defaults).toEqual({ restoreOnFailure: true });
+		expect(developmentRuntimeSchema.parse(current)).toEqual(current);
+		expect(() => developmentRuntimeSchema.parse({ ...current, defaults: { ...current.defaults, leaseSeconds: 600 } })).toThrow();
+	});
+	it('preserves old active session identity without expiry and never revives expired sessions', () => {
+		const old = { schemaVersion: 'treeseed.development-session/v1', sessionId: 'session-1', actor: 'developer', hostId: 'host-1',
+			createdAt: '2020-01-01T00:00:00.000Z', expiresAt: '2020-01-02T00:00:00.000Z', status: 'active', repositories: [], targets: [],
+			leases: [{ kind: 'alias', resource: 'admin.treeseed.localhost', acquiredAt: '2020-01-01T00:00:00.000Z', expiresAt: '2020-01-02T00:00:00.000Z' }], restoredReceiptId: null, blockers: [] };
+		const current = developmentSessionSchema.parse(old);
+		expect(current).toMatchObject({ sessionId: 'session-1', status: 'active', schemaVersion: 'treeseed.development-session/v2' });
+		expect(JSON.stringify(current)).not.toContain('expiresAt');
+		expect(developmentSessionSchema.parse(current)).toEqual(current);
+		expect(developmentSessionSchema.parse({ ...old, status: 'expired' }).status).toBe('stopped');
+		expect(() => developmentSessionSchema.parse({ ...current, expiresAt: old.expiresAt })).toThrow();
+	});
 	it('accepts a project-owned live web target', () => {
 		expect(developmentRuntimeSchema.parse(runtime).targets[0]?.id).toBe('web');
 	});
