@@ -4,10 +4,9 @@ import type { ControlPlaneOperationBinding, ControlPlaneOperationDescriptor } fr
 import { TREEAI_UPSTREAM_OPERATIONS, type TreeAiUpstreamOperation } from '../../treeai/generated/upstream.ts';
 
 export const TREEAI_OPENAPI_DIGESTS = {
-	inference: 'sha256:3a00f1d91635d87d0aad2c6d329f495ff210f393bc9851570aa3e3ad1f5c1db4',
-	training: 'sha256:89dc70cecc85079853e4f177827d681e66f4b24b93ef17713051b99f07c2fe00',
-	lab: 'sha256:bccafa27b00a63b9fb22b132b850f9af6e77d44047dbc8966344088266d65898',
-	qualification: 'sha256:3f68b78845ec19c5de389663f1cb677ab4df0683ecd113c4f5780885a89370b7',
+	inference: 'sha256:29255fae4e74aa0fb96d8abd1cdc5d869f469fc9bb55a68060eeae6d86f4273d',
+	training: 'sha256:de80f39ca9d0d5a2a7ca6ce588326d3a562c771bc7e077b7e6c4949134ef2143',
+	lab: 'sha256:8f9a3ca31a63143506e1b28ddb78eda50b2f6760278531b723047d968f56aa07',
 } as const;
 
 function treeSeedOperationId(operation: TreeAiUpstreamOperation) {

@@ -23,6 +23,8 @@ describe('human command tree contract', () => {
 		const paths = listCommandPaths();
 		expect(paths).toEqual(expect.arrayContaining(['send', 'users create', 'agents classes list', 'providers offers apply', 'workdays profiles validate', 'workdays schedules retire', 'assignments artifacts', 'save', 'stage', 'release']));
 		expect(paths).not.toEqual(expect.arrayContaining(['agent-author', 'capacity-plan-create', 'checkpoint-integrate', 'content-integrate', 'content-abandon']));
+		expect(paths).toEqual(expect.arrayContaining(['ai status', 'ai storage show', 'ai storage connect', 'ai storage disconnect', 'ai mode show', 'ai mode set']));
+		expect(paths.some(path => path.startsWith('ai qualify'))).toBe(false);
 		const release = TREESEED_COMMAND_TREE_V1.commands.find((node) => node.segment === 'release');
 		expect(release).toMatchObject({ nodeType: 'leaf', authorization: { confirmation: 'production' } });
 	});
@@ -36,6 +38,11 @@ describe('human command tree contract', () => {
 		});
 		visit(TREESEED_COMMAND_TREE_V1.commands);
 		expect(leaves.get('agents show')?.execution).toMatchObject({ kind: 'operation', operationId: 'agents.show' });
+		expect(leaves.get('ai status')?.execution).toMatchObject({ kind: 'operation', operationId: 'ai.instances.show' });
+		expect(leaves.get('ai storage connect')?.execution).toMatchObject({ kind: 'operation', operationId: 'ai.instances.storage.put', input: expect.arrayContaining([
+			{ target: 'path', field: 'teamId', source: 'context', name: 'team', required: true, transform: 'identity' },
+			{ target: 'path', field: 'instanceId', source: 'context', name: 'node', required: true, transform: 'identity' },
+		]) });
 		expect(leaves.get('auth login')?.execution).toEqual({ kind: 'protocol', handlerId: 'protocol.oauth.device.login' });
 		expect(leaves.get('users create')?.execution).toEqual({ kind: 'protocol', handlerId: 'protocol.accounts.create' });
 		expect(leaves.get('users create')?.options?.map((option) => option.name)).toEqual(['--plan', '--email', '--username', '--display-name', '--timeout']);
