@@ -156,6 +156,7 @@ const operationBindings: Record<string, Execution> = {
 	'ai storage show': operation('ai.instances.storage.show', aiInstance()),
 	'ai storage connect': operation('ai.instances.storage.put', [...aiInstance(), field('body', 'connectionId', 'option', 'connection', true), field('body', 'bucket', 'option', 'bucket', true)]),
 	'ai storage disconnect': operation('ai.instances.storage.remove', aiInstance()),
+	'ai storage verify': local('local.host.ai.storage.verify'),
 	'ai mode show': local('local.host.ai.mode.show'),
 	'ai mode set': local('local.host.ai.mode.set'),
 	'ai inference models': operation('treeai.inference.get.models', [aiNode()]),
@@ -460,7 +461,7 @@ const commandTree: CommandTreeDescriptor = {
 			branch('storage', [leaf('show'), addOptions(leaf('connect', 'mutation'), [
 				{ name: '--connection', description: 'Team object-storage service connection ID.', type: 'string', required: true },
 				{ name: '--bucket', description: 'Private artifact bucket to ensure and bind.', type: 'string', required: true },
-			]), leaf('disconnect', 'mutation')]),
+			]), leaf('disconnect', 'mutation'), leaf('verify', 'mutation', undefined, 'authority')]),
 		]),
 		branch('library', [
 			libraryRead('show'), libraryRead('status'),
