@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { aiStorageBindingSchema, aiStorageProofSchema, aiStorageProofMessage } from '../../src/deployment/ai-storage';
+import { aiStorageBindingSchema, aiStorageProofSchema, aiStorageProofMessage } from '../../src/deployment/ai/storage';
 import { AI_INSTANCE_OPERATIONS } from '../../src/operator-contracts/catalog/infrastructure/ai-instance-operations';
 const id = '10000000-0000-4000-8000-000000000001';
 const proof = { schemaVersion: 'treeseed.ai-storage-proof/v1' as const, teamId: id, projectId: id, nodeId: id,
