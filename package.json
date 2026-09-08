@@ -64,6 +64,10 @@
     "vitest": "^4.1.2"
   },
   "exports": {
+    "./identity": {
+      "types": "./dist/identity/index.d.ts",
+      "default": "./dist/identity/index.js"
+    },
     "./platform": {
       "types": "./dist/platform/index.d.ts",
       "default": "./dist/platform/index.js"
