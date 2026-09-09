@@ -13,6 +13,9 @@ export const postgresRequirementSchema = z.object({
   runtimeConnectionLimit: z.number().int().min(1).max(1000),
 }).strict();
 
+/** Immutable component requirement. Installation activation supplies componentId/enabled. */
+export const postgresComponentRequirementSchema = postgresRequirementSchema.omit({ componentId: true, enabled: true });
+
 /** Deployment owns the selected server and its bootstrap authority. No credentials here. */
 export const postgresServerSchema = z.object({
   id, installationId: id, environment: z.enum(['staging', 'production']),
