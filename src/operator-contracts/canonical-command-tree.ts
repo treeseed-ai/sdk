@@ -1,6 +1,7 @@
 import type { CommandLeafDescriptor, CommandNodeDescriptor, CommandTreeDescriptor } from './command-tree.ts';
 import { commandPaths } from './catalog/infrastructure/command-tree-paths.ts';
 import { managedSecretCommands } from './catalog/services/secret-commands.ts';
+import { identityLoginCommand } from './catalog/services/identity-commands.ts';
 import { hostProviderEnvironmentBranch, PROVIDER_ENVIRONMENT_COMMAND_BINDINGS, providerEnvironmentBranches } from './catalog/provider-environment-commands.ts';
 
 type Execution = CommandLeafDescriptor['execution'];
@@ -312,15 +313,7 @@ function userCreate(): CommandNodeDescriptor {
 }
 
 function authLogin(): CommandNodeDescriptor {
-	const value = leaf('login', 'mutation');
-	if (value.nodeType !== 'leaf') throw new Error('Authentication login must be a leaf command.');
-	value.options = [
-		...(value.options ?? []),
-		{ name: '--timeout', description: 'Maximum seconds to wait for identity authorization.', type: 'number' },
-		{ name: '--device', description: 'Use headless device authorization instead of local browser PKCE.', type: 'boolean' },
-		{ name: '--issuer', description: 'Choose an authorization server advertised by the selected API.', type: 'string' },
-	];
-	return value;
+	return identityLoginCommand(leaf('login', 'mutation'));
 }
 
 function libraryRead(segment: string, extraArguments: string[] = [], extraOptions: CommandLeafDescriptor['options'] = []): CommandNodeDescriptor {
