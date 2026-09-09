@@ -232,6 +232,12 @@ export const packageRuntimeSchema = z.object({
 	configuration: componentRuntimeConfigurationSchema,
 	// Optional without a default: parsing published artifacts must not change their digest.
 	postgresRequirements: z.array(postgresComponentRequirementSchema).max(32).optional(),
+	postgresLifecycle: z.array(z.object({
+		requirementId: identifier,
+		credentialOwner: z.object({ uid: z.number().int().min(0).max(65535), gid: z.number().int().min(0).max(65535) }).strict(),
+		migration: z.object({ composeService: identifier, completion: z.enum(['exit-zero', 'healthy-stop']), timeoutSeconds: z.number().int().min(1).max(3600) }).strict(),
+		runtimeServices: z.array(identifier).min(1).max(128),
+	}).strict()).max(32).optional(),
 	services: z.array(z.object({ id: identifier, composeService: identifier, endpoints: z.array(packageEndpointSchema) }).strict()).min(1),
 	stateVolumes: z.array(z.object({ id: identifier, volume: z.string().min(1), backup: z.enum(['required', 'optional', 'none']) }).strict()),
 	migrations: z.array(z.object({ id: identifier, order: z.number().int().nonnegative(), backupRequired: z.boolean() }).strict()),
@@ -263,6 +269,17 @@ export const packageRuntimeSchema = z.object({
 }).strict().superRefine((runtime, context) => {
 	const requirements = runtime.postgresRequirements ?? [];
 	if (new Set(requirements.map(({ id }) => id)).size !== requirements.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['postgresRequirements'], message: 'PostgreSQL requirement identities must be unique within a component.' });
+	const lifecycles = runtime.postgresLifecycle ?? [];
+	const lifecycleFailure = () => context.addIssue({ code: z.ZodIssueCode.custom, path: ['postgresLifecycle'], message: 'Each database requirement needs a distinct declared migration service and explicit runtime services.' });
+	if (lifecycles.length !== requirements.length || new Set(lifecycles.map(item => item.requirementId)).size !== lifecycles.length) lifecycleFailure();
+	const composeServices = new Set(runtime.services.map(item => item.composeService));
+	const migrationServices = new Set(lifecycles.map(item => item.migration.composeService));
+	if (migrationServices.size !== lifecycles.length) lifecycleFailure();
+	for (const item of lifecycles) {
+		if (!requirements.some(requirement => requirement.id === item.requirementId) || !composeServices.has(item.migration.composeService)
+			|| new Set(item.runtimeServices).size !== item.runtimeServices.length
+			|| item.runtimeServices.some(service => !composeServices.has(service) || migrationServices.has(service))) lifecycleFailure();
+	}
 	const endpointIds = runtime.services.flatMap((service) => service.endpoints.map((endpoint) => `${service.id}.${endpoint.id}`));
 	if (new Set(endpointIds).size !== endpointIds.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['services'], message: 'Endpoint identities must be unique within a component.' });
 	for (const file of runtime.configuration.files) if (!file.path.startsWith(`/etc/treeseed/components/${runtime.componentId}/`)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['configuration', 'files'], message: `Configuration file ${file.id} is outside component ${runtime.componentId} custody.` });
