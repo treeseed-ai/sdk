@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { verifyHostPostgresRequirements } from '../../../src/deployment/postgres/requirements.ts';
 import { canonicalDeploymentJson, collectHostAliases, collectTopologyBlockers, componentReleaseSchema, deploymentDigest, hostBackupSchema, hostBootstrapSchema, hostConfigurationSchema, hostCredentialInitializerSchema, hostInitializationProfileSchema, hostMigrationSchema, hostNeedsEdge, hostRecoverySchema, hostUpdateSchema, integrationReleaseSchema, packageRuntimeSchema, releaseCatalogSchema, resolveMixedTrackCatalog, type ComponentRelease, type HostConfiguration, type ReleaseCatalog } from '../../../src/deployment/index.ts';
 
 const hash = (value: string) => `sha256:${value.repeat(64)}`;
@@ -66,6 +67,15 @@ describe('deployment contracts', () => {
 			requirements: [{ id: 'api', componentId: 'api', enabled: true, supportedMajors: [17], extensions: [], runtimeConnectionLimit: 10 }],
 			allocations: [{ requirementId: 'api', serverId: 'shared', database: 'api', ownerRole: 'api_owner', migrationRole: 'api_migrator', runtimeRole: 'api_runtime', migrationCredentialReference: 'api-migration', runtimeCredentialReference: 'api-runtime', onDisable: 'preserve' }] };
 		expect(hostConfigurationSchema.safeParse(value).success).toBe(true);
+		const selected = release('api', 'stable', 'b');
+		selected.runtime.postgresRequirements = [{ id: 'api', supportedMajors: [17], extensions: [], runtimeConnectionLimit: 10 }];
+		selected.runtimeDigest = deploymentDigest(selected.runtime);
+		const others = ['agent', 'postgres'].map(id => { const item = release(id, 'stable', 'c'); item.runtimeDigest = deploymentDigest(item.runtime); return item; });
+		expect(verifyHostPostgresRequirements(value, [selected, ...others]).verified).toBe(true);
+		expect(() => verifyHostPostgresRequirements(value, [])).toThrow('incomplete');
+		value.postgres.requirements[0]!.runtimeConnectionLimit = 100;
+		expect(() => verifyHostPostgresRequirements(value, [selected, ...others])).toThrow('differ');
+		value.postgres.requirements[0]!.runtimeConnectionLimit = 10;
 		value.components.api!.enabled = false;
 		expect(hostConfigurationSchema.safeParse(value).success).toBe(false);
 		value.components.api!.enabled = true;
