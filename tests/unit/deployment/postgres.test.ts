@@ -16,10 +16,11 @@ describe('shared PostgreSQL contracts', () => {
     expect(postgresTopologySchema.safeParse(value).success).toBe(true);
     value.allocations.pop(); expect(postgresTopologySchema.safeParse(value).success).toBe(true);
   });
-  it.each(['database', 'role', 'environment', 'major', 'missing', 'superuser', 'secret', 'tls', 'duplicate-server'])('rejects %s conflicts', mode => {
+  it.each(['database', 'role', 'credential', 'environment', 'major', 'missing', 'superuser', 'secret', 'tls', 'duplicate-server'])('rejects %s conflicts', mode => {
     const value = fixture();
     if (mode === 'database') value.allocations[1]!.database = 'api';
     if (mode === 'role') value.allocations[1]!.runtimeRole = 'api_runtime';
+    if (mode === 'credential') value.allocations[1]!.runtimeCredentialReference = 'api-runtime';
     if (mode === 'environment') value.servers[0]!.environment = 'production';
     if (mode === 'major') value.servers[0]!.major = 16;
     if (mode === 'missing') value.allocations.pop();

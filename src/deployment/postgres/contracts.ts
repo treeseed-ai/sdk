@@ -48,7 +48,7 @@ export const postgresTopologySchema = z.object({
   if (!unique(value.servers.map(server => server.id)) || !unique(value.requirements.map(requirement => requirement.id)) || !unique(value.allocations.map(allocation => allocation.requirementId))) fail('Server, requirement and allocation identities must be unique.');
   if (value.servers.filter(server => server.mode === 'shared').length > 1) fail('An environment has at most one default shared server.');
   if (value.servers.some(server => server.installationId !== value.installationId || server.environment !== value.environment)) fail('Servers must belong to this installation and environment.');
-  const databases = new Set<string>(), roles = new Set<string>();
+  const databases = new Set<string>(), roles = new Set<string>(), credentials = new Set<string>();
   for (const allocation of value.allocations) {
     const server = value.servers.find(entry => entry.id === allocation.serverId);
     const requirement = value.requirements.find(entry => entry.id === allocation.requirementId);
@@ -57,6 +57,10 @@ export const postgresTopologySchema = z.object({
     const databaseKey = `${server.id}:${allocation.database}`;
     if (databases.has(databaseKey)) fail('Applications must not share an allocated database.');
     databases.add(databaseKey);
+    for (const reference of [allocation.migrationCredentialReference, allocation.runtimeCredentialReference]) {
+      if (credentials.has(reference)) fail('Applications must not share database credential references.');
+      credentials.add(reference);
+    }
     for (const role of [allocation.ownerRole, allocation.migrationRole, allocation.runtimeRole]) {
       const key = `${server.id}:${role}`;
       if (roles.has(key)) fail('Applications must not share database roles.');
