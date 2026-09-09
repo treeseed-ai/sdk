@@ -234,6 +234,7 @@ export const packageRuntimeSchema = z.object({
 	postgresRequirements: z.array(postgresComponentRequirementSchema).max(32).optional(),
 	postgresLifecycle: z.array(z.object({
 		requirementId: identifier,
+		credentialOwner: z.object({ uid: z.number().int().min(0).max(65535), gid: z.number().int().min(0).max(65535) }).strict(),
 		migration: z.object({ composeService: identifier, completion: z.enum(['exit-zero', 'healthy-stop']), timeoutSeconds: z.number().int().min(1).max(3600) }).strict(),
 		runtimeServices: z.array(identifier).min(1).max(128),
 	}).strict()).max(32).optional(),
