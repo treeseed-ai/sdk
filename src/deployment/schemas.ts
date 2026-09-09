@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { AI_MODE_INTERNAL_PATH } from './ai-mode.ts';
-import { postgresComponentRequirementSchema } from './postgres/contracts.ts';
+import { postgresComponentRequirementSchema, postgresTopologySchema } from './postgres/contracts.ts';
 
 const identifier = z.string().regex(/^[a-z][a-z0-9.-]{1,63}$/u);
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
@@ -134,6 +134,7 @@ export const hostConfigurationSchema = z.object({
 		development: z.object({ pollSeconds: z.literal(60) }).strict(),
 	}).strict(),
 	components: z.record(identifier, hostComponentSchema),
+	postgres: postgresTopologySchema.optional(),
 	network: z.object({
 		manager: z.object({ binding, aliases: z.array(localAlias).default([]), sans: z.array(z.string().min(1)).default([]), trustedLanCidrs: z.array(z.string().min(1)).default([]) }).strict(),
 	}).strict(),
@@ -158,7 +159,21 @@ export const hostConfigurationSchema = z.object({
 		providerVolume: z.object({ encryption: z.literal('luks2'), backingPath: z.string().startsWith('/'), mountPath: z.string().startsWith('/'), sizeBytes: z.number().int().min(1_073_741_824), unlock: z.enum(['tpm2', 'systemd-credential']), recoveryRequired: z.literal(true) }).strict(),
 		applicationEncryption: z.object({ provider: z.literal('systemd-credential'), activeKeyVersion: z.number().int().positive(), diagnosticsKeyVersion: z.number().int().positive() }).strict(),
 	}).strict().optional(),
-}).strict();
+}).strict().superRefine((host, context) => {
+	if (!host.postgres) return;
+	const fail = (message: string) => context.addIssue({ code: z.ZodIssueCode.custom, path: ['postgres'], message });
+	for (const requirement of host.postgres.requirements) {
+		if (!host.components[requirement.componentId] || host.components[requirement.componentId]!.enabled !== requirement.enabled) fail('Database requirements must match configured component activation.');
+	}
+	for (const allocation of host.postgres.allocations) {
+		if (!host.postgres.requirements.find(item => item.id === allocation.requirementId)?.enabled) continue;
+		for (const reference of [allocation.migrationCredentialReference, allocation.runtimeCredentialReference]) {
+			if (host.secrets[reference]?.provider !== 'systemd-credential' || host.secrets[reference]?.reference !== `/etc/treeseed/credentials/${reference}.cred`) fail('Database credentials require explicit fixed OS custody bindings.');
+		}
+		const server = host.postgres.servers.find(item => item.id === allocation.serverId)!;
+		if (server.mode !== 'external' && !host.components.postgres?.enabled) fail('Managed database allocations require the PostgreSQL component.');
+	}
+});
 
 export const packageEndpointSchema = z.object({
 	id: identifier,

@@ -56,6 +56,25 @@ function host(): HostConfiguration {
 }
 
 describe('deployment contracts', () => {
+	it('binds host database allocations to enabled components and OS custody', () => {
+		const value = host();
+		value.components.postgres = { ...value.components.api! };
+		value.secrets['api-migration'] = { provider: 'systemd-credential', reference: '/etc/treeseed/credentials/api-migration.cred' };
+		value.secrets['api-runtime'] = { provider: 'systemd-credential', reference: '/etc/treeseed/credentials/api-runtime.cred' };
+		value.postgres = { schemaVersion: 'treeseed.postgres-topology/v1', installationId: 'test', environment: 'staging',
+			servers: [{ id: 'shared', installationId: 'test', environment: 'staging', mode: 'shared', hostname: 'postgres', port: 5432, major: 17, extensions: [], tls: { mode: 'verify-full', trustReference: 'ca' } }],
+			requirements: [{ id: 'api', componentId: 'api', enabled: true, supportedMajors: [17], extensions: [], runtimeConnectionLimit: 10 }],
+			allocations: [{ requirementId: 'api', serverId: 'shared', database: 'api', ownerRole: 'api_owner', migrationRole: 'api_migrator', runtimeRole: 'api_runtime', migrationCredentialReference: 'api-migration', runtimeCredentialReference: 'api-runtime', onDisable: 'preserve' }] };
+		expect(hostConfigurationSchema.safeParse(value).success).toBe(true);
+		value.components.api!.enabled = false;
+		expect(hostConfigurationSchema.safeParse(value).success).toBe(false);
+		value.components.api!.enabled = true;
+		value.secrets['api-runtime']!.provider = 'file';
+		expect(hostConfigurationSchema.safeParse(value).success).toBe(false);
+		value.secrets['api-runtime']!.provider = 'systemd-credential';
+		value.components.postgres.enabled = false;
+		expect(hostConfigurationSchema.safeParse(value).success).toBe(false);
+	});
 	it('validates provider-neutral host credential initializer registrations', () => {
 		const initializer = hostCredentialInitializerSchema.parse({ schemaVersion: 'treeseed.host-credential-initializer/v1', id: 'provider.adapter', displayName: 'Provider adapter', description: 'Initializes a registered adapter credential.', credentialId: 'provider-adapter-auth',
 			sources: [{ id: 'service-token', label: 'Service token', kind: 'secret', prompt: 'Service token', suggestedPaths: [], contentType: 'text/plain', minimumBytes: 16, maximumBytes: 4096 }],
