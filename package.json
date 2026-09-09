@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.13.0-rc.105",
+  "version": "0.13.0-rc.106",
   "description": "Portable TreeSeed contracts, standards, and typed remote control-plane clients.",
   "license": "Apache-2.0",
   "repository": {
@@ -61,7 +61,7 @@
   "devDependencies": {
     "@types/node": "^24.6.0",
     "tsx": "^4.21.0",
-    "vitest": "^4.1.2"
+    "vitest": "4.1.11"
   },
   "exports": {
     "./identity": {

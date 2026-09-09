@@ -20,7 +20,7 @@ const aiInstance = () => [field('path', 'teamId', 'context', 'team', true), fiel
 
 const operationBindings: Record<string, Execution> = {
 	...PROVIDER_ENVIRONMENT_COMMAND_BINDINGS,
-	'auth login': protocol('protocol.oauth.device.login'),
+	'auth login': protocol('protocol.identity.login'),
 	'auth logout': protocol('protocol.oauth.revoke'),
 	'auth status': operation('accounts.current.show'),
 	'users create': protocol('protocol.accounts.create'),
@@ -316,7 +316,9 @@ function authLogin(): CommandNodeDescriptor {
 	if (value.nodeType !== 'leaf') throw new Error('Authentication login must be a leaf command.');
 	value.options = [
 		...(value.options ?? []),
-		{ name: '--timeout', description: 'Maximum seconds to wait for device authorization.', type: 'number' },
+		{ name: '--timeout', description: 'Maximum seconds to wait for identity authorization.', type: 'number' },
+		{ name: '--device', description: 'Use headless device authorization instead of local browser PKCE.', type: 'boolean' },
+		{ name: '--issuer', description: 'Choose an authorization server advertised by the selected API.', type: 'string' },
 	];
 	return value;
 }
