@@ -26,6 +26,21 @@ export const resourceTokenRequestSchema = z.object({
 
 export type ResourceTokenRequest = z.infer<typeof resourceTokenRequestSchema>;
 
+/** RFC 9728 resource discovery. Unknown extensions are not authority. Consumers
+ * must match resource exactly and explicitly select one advertised issuer.
+ * TreeSeed credentials are transported only in the Authorization header.
+ */
+export const protectedResourceMetadataSchema = z.object({
+	resource: identityEndpointSchema,
+	authorization_servers: z.array(identityEndpointSchema).min(1).max(16).refine(
+		value => new Set(value).size === value.length, 'Authorization servers must be unique.',
+	),
+	scopes_supported: scopes.refine(value => value.length <= 256 && value.every(scope => scope.length <= 128), 'Scope inventory is too large.').optional(),
+	bearer_methods_supported: z.array(z.literal('header')).length(1).optional(),
+	resource_documentation: identityEndpointSchema.optional(),
+});
+export type ProtectedResourceMetadata = z.infer<typeof protectedResourceMetadataSchema>;
+
 /** Implemented by Identity; implementations must isolate caches by resource and authority. */
 export interface IdentityCredentials {
 	token(request: ResourceTokenRequest): Promise<string>;
