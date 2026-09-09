@@ -41,6 +41,15 @@ export const protectedResourceMetadataSchema = z.object({
 });
 export type ProtectedResourceMetadata = z.infer<typeof protectedResourceMetadataSchema>;
 
+/** Persist with encrypted native-client tokens. Refresh must revalidate this
+ * issuer/subject and client; email or an API URL cannot substitute for it. */
+export const publicClientSessionBindingSchema = z.object({
+	identity: externalIdentitySchema,
+	clientId: identifier.refine(value => value.length <= 256, 'Client identifier is too long.'),
+	scopes: scopes.refine(value => value.length <= 256, 'Scope inventory is too large.'),
+}).strict();
+export type PublicClientSessionBinding = z.infer<typeof publicClientSessionBindingSchema>;
+
 /** Implemented by Identity; implementations must isolate caches by resource and authority. */
 export interface IdentityCredentials {
 	token(request: ResourceTokenRequest): Promise<string>;

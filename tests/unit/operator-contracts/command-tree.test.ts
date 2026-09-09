@@ -43,12 +43,12 @@ describe('human command tree contract', () => {
 			{ target: 'path', field: 'teamId', source: 'context', name: 'team', required: true, transform: 'identity' },
 			{ target: 'path', field: 'instanceId', source: 'context', name: 'node', required: true, transform: 'identity' },
 		]) });
-		expect(leaves.get('auth login')?.execution).toEqual({ kind: 'protocol', handlerId: 'protocol.oauth.device.login' });
+		expect(leaves.get('auth login')?.execution).toEqual({ kind: 'protocol', handlerId: 'protocol.identity.login' });
 		expect(leaves.get('users create')?.execution).toEqual({ kind: 'protocol', handlerId: 'protocol.accounts.create' });
 		expect(leaves.get('users create')?.options?.map((option) => option.name)).toEqual(['--plan', '--email', '--username', '--display-name', '--timeout']);
 		expect(leaves.get('users create')?.authorization?.confirmation).toBe('never');
 		expect(leaves.get('auth login')?.authorization?.confirmation).toBe('never');
-		expect(leaves.get('auth login')?.options?.map((option) => option.name)).toEqual(['--plan', '--timeout']);
+		expect(leaves.get('auth login')?.options?.map((option) => option.name)).toEqual(['--plan', '--timeout', '--device', '--issuer']);
 		expect(leaves.get('secrets status')?.execution).toEqual({ kind: 'local', handlerId: 'local.secrets.status' });
 		expect(leaves.get('ai storage verify')).toMatchObject({ kind: 'mutation', execution: {kind: 'local', handlerId: 'local.host.ai.storage.verify'}, authorization: {confirmation: 'authority'} });
 		expect(leaves.get('ai storage verify')?.options?.map(option => option.name)).toContain('--plan');

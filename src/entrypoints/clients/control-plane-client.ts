@@ -8,6 +8,7 @@ import type {
 } from '../../operator-contracts/control-plane-operation.ts';
 import type { ApiPrincipal } from '../../operator-contracts/oauth.ts';
 import type { InputRequired } from '../../operator-contracts/mcp.ts';
+import type { PublicClientSessionBinding } from '../../identity/contracts.ts';
 import { controlPlaneOperation } from '../../operator-contracts/control-plane-operations.ts';
 
 export const DEFAULT_CONTROL_PLANE_BASE_URL = 'http://127.0.0.1:3002';
@@ -19,7 +20,7 @@ export interface ControlPlaneServerProfile {
 	baseUrl: string;
 }
 
-export interface ControlPlaneServerSession {
+export interface ControlPlaneServerSession extends PublicClientSessionBinding {
 	serverId: string;
 	audience: string;
 	accessToken: string;

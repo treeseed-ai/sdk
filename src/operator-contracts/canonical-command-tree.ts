@@ -1,6 +1,7 @@
 import type { CommandLeafDescriptor, CommandNodeDescriptor, CommandTreeDescriptor } from './command-tree.ts';
 import { commandPaths } from './catalog/infrastructure/command-tree-paths.ts';
 import { managedSecretCommands } from './catalog/services/secret-commands.ts';
+import { identityLoginCommand } from './catalog/services/identity-commands.ts';
 import { hostProviderEnvironmentBranch, PROVIDER_ENVIRONMENT_COMMAND_BINDINGS, providerEnvironmentBranches } from './catalog/provider-environment-commands.ts';
 
 type Execution = CommandLeafDescriptor['execution'];
@@ -20,7 +21,7 @@ const aiInstance = () => [field('path', 'teamId', 'context', 'team', true), fiel
 
 const operationBindings: Record<string, Execution> = {
 	...PROVIDER_ENVIRONMENT_COMMAND_BINDINGS,
-	'auth login': protocol('protocol.oauth.device.login'),
+	'auth login': protocol('protocol.identity.login'),
 	'auth logout': protocol('protocol.oauth.revoke'),
 	'auth status': operation('accounts.current.show'),
 	'users create': protocol('protocol.accounts.create'),
@@ -312,13 +313,7 @@ function userCreate(): CommandNodeDescriptor {
 }
 
 function authLogin(): CommandNodeDescriptor {
-	const value = leaf('login', 'mutation');
-	if (value.nodeType !== 'leaf') throw new Error('Authentication login must be a leaf command.');
-	value.options = [
-		...(value.options ?? []),
-		{ name: '--timeout', description: 'Maximum seconds to wait for device authorization.', type: 'number' },
-	];
-	return value;
+	return identityLoginCommand(leaf('login', 'mutation'));
 }
 
 function libraryRead(segment: string, extraArguments: string[] = [], extraOptions: CommandLeafDescriptor['options'] = []): CommandNodeDescriptor {
