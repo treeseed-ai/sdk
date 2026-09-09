@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AI_MODE_INTERNAL_PATH } from './ai-mode.ts';
+import { postgresComponentRequirementSchema } from './postgres/contracts.ts';
 
 const identifier = z.string().regex(/^[a-z][a-z0-9.-]{1,63}$/u);
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
@@ -214,6 +215,8 @@ export const packageRuntimeSchema = z.object({
 		files: z.array(z.object({ path: z.string().min(1), digest }).strict()).min(1),
 	}).strict(),
 	configuration: componentRuntimeConfigurationSchema,
+	// Optional without a default: parsing published artifacts must not change their digest.
+	postgresRequirements: z.array(postgresComponentRequirementSchema).max(32).optional(),
 	services: z.array(z.object({ id: identifier, composeService: identifier, endpoints: z.array(packageEndpointSchema) }).strict()).min(1),
 	stateVolumes: z.array(z.object({ id: identifier, volume: z.string().min(1), backup: z.enum(['required', 'optional', 'none']) }).strict()),
 	migrations: z.array(z.object({ id: identifier, order: z.number().int().nonnegative(), backupRequired: z.boolean() }).strict()),
@@ -243,6 +246,8 @@ export const packageRuntimeSchema = z.object({
 		}).strict().optional(),
 	}).strict().optional(),
 }).strict().superRefine((runtime, context) => {
+	const requirements = runtime.postgresRequirements ?? [];
+	if (new Set(requirements.map(({ id }) => id)).size !== requirements.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['postgresRequirements'], message: 'PostgreSQL requirement identities must be unique within a component.' });
 	const endpointIds = runtime.services.flatMap((service) => service.endpoints.map((endpoint) => `${service.id}.${endpoint.id}`));
 	if (new Set(endpointIds).size !== endpointIds.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['services'], message: 'Endpoint identities must be unique within a component.' });
 	for (const file of runtime.configuration.files) if (!file.path.startsWith(`/etc/treeseed/components/${runtime.componentId}/`)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['configuration', 'files'], message: `Configuration file ${file.id} is outside component ${runtime.componentId} custody.` });

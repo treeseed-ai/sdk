@@ -12,6 +12,25 @@ function runtime(componentId: string, version: string, alias: string) {
 	});
 }
 
+describe('component-owned PostgreSQL requirements', () => {
+	const requirement = { id: 'api', supportedMajors: [17], extensions: ['pgcrypto'], runtimeConnectionLimit: 20 };
+	it('preserves existing immutable runtime payloads without injecting a default field', () => {
+		const value = runtime('api', '1.0.0', 'api.treeseed.localhost');
+		expect(value).not.toHaveProperty('postgresRequirements');
+		expect(packageRuntimeSchema.parse(value)).toEqual(value);
+	});
+	it('declares application requirements without provisioning another server', () => {
+		const value = packageRuntimeSchema.parse({ ...runtime('api', '1.0.0', 'api.treeseed.localhost'), postgresRequirements: [requirement] });
+		expect(value.postgresRequirements).toEqual([requirement]);
+	});
+	it('rejects duplicate requirements and installation-specific fields in artifacts', () => {
+		const value = runtime('api', '1.0.0', 'api.treeseed.localhost');
+		for (const postgresRequirements of [[requirement, requirement], [{ ...requirement, enabled: true }], [{ ...requirement, password: 'forbidden' }]]) {
+			expect(() => packageRuntimeSchema.parse({ ...value, postgresRequirements })).toThrow();
+		}
+	});
+});
+
 function release(componentId: string, track: 'stable' | 'development', marker: string): ComponentRelease {
 	const version = track === 'stable' ? '1.0.0' : '1.1.0~rc1';
 	return componentReleaseSchema.parse({
