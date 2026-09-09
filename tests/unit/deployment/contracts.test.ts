@@ -21,8 +21,13 @@ describe('component-owned PostgreSQL requirements', () => {
 		expect(packageRuntimeSchema.parse(value)).toEqual(value);
 	});
 	it('declares application requirements without provisioning another server', () => {
-		const value = packageRuntimeSchema.parse({ ...runtime('api', '1.0.0', 'api.treeseed.localhost'), postgresRequirements: [requirement] });
+		const base = runtime('api', '1.0.0', 'api.treeseed.localhost');
+		const value = packageRuntimeSchema.parse({ ...base, services: [...base.services, { id: 'migration', composeService: 'migration', endpoints: [] }], postgresRequirements: [requirement],
+			postgresLifecycle: [{ requirementId: 'api', migration: { composeService: 'migration', completion: 'exit-zero', timeoutSeconds: 300 }, runtimeServices: ['service'] }] });
 		expect(value.postgresRequirements).toEqual([requirement]);
+		for (const postgresLifecycle of [[], [{ ...value.postgresLifecycle![0], runtimeServices: ['migration'] }], [{ ...value.postgresLifecycle![0], requirementId: 'other' }], [{ ...value.postgresLifecycle![0], runtimeServices: ['unknown'] }]]) {
+			expect(packageRuntimeSchema.safeParse({ ...value, postgresLifecycle }).success).toBe(false);
+		}
 	});
 	it('rejects duplicate requirements and installation-specific fields in artifacts', () => {
 		const value = runtime('api', '1.0.0', 'api.treeseed.localhost');
@@ -69,6 +74,8 @@ describe('deployment contracts', () => {
 		expect(hostConfigurationSchema.safeParse(value).success).toBe(true);
 		const selected = release('api', 'stable', 'b');
 		selected.runtime.postgresRequirements = [{ id: 'api', supportedMajors: [17], extensions: [], runtimeConnectionLimit: 10 }];
+		selected.runtime.services.push({ id: 'migration', composeService: 'migration', endpoints: [] });
+		selected.runtime.postgresLifecycle = [{ requirementId: 'api', migration: { composeService: 'migration', completion: 'exit-zero', timeoutSeconds: 300 }, runtimeServices: ['service'] }];
 		selected.runtimeDigest = deploymentDigest(selected.runtime);
 		const others = ['agent', 'postgres'].map(id => { const item = release(id, 'stable', 'c'); item.runtimeDigest = deploymentDigest(item.runtime); return item; });
 		expect(verifyHostPostgresRequirements(value, [selected, ...others]).verified).toBe(true);
