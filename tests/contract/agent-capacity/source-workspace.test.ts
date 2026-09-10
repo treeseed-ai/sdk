@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sourceWorkspaceAuthorizationSchema, sourceWorkspaceKeySchema, sourceCandidateReceiptSchema } from '../../../src/capacity-provider/source-workspace.ts';
+import { sourceWorkspaceAuthorizationSchema, sourceWorkspaceKeySchema, sourceCandidateReceiptSchema, sourceWorkspaceRequestSchema, sourceWorkspaceResponseSchema } from '../../../src/capacity-provider/source-workspace.ts';
 
 const source = { controlPlaneId: 'control-plane', teamId: 'team', projectId: 'project', repositoryId: 'source-repository',
 	commit: 'a'.repeat(40), formatVersion: 1, profile: 'source-only' };
@@ -8,6 +8,18 @@ const authorization = { schemaVersion: 'treeseed.source-workspace-authorization/
 	issuedAt: '2026-01-01T00:00:00Z', expiresAt: '2026-01-01T00:10:00Z' };
 
 describe('exact-source workspace public contracts', () => {
+	it('correlates sealed host credential delivery and refuses alternate transports', () => {
+		const key = Buffer.alloc(32, 1).toString('base64');
+		expect(sourceWorkspaceRequestSchema.safeParse({ runnerId: 'runner', leaseToken: 'lease', recipientPublicKey: key }).success).toBe(true);
+		const response = { authorization, repository: { provider: 'github', owner: 'fixture', name: 'source', cloneUrl: 'https://github.com/fixture/source.git', ref: 'staging' },
+			credential: { schemaVersion: 'treeseed.source-credential-delivery/v1', id: 'delivery', authorizationId: 'grant',
+				algorithm: 'x25519-hkdf-sha256-chacha20-poly1305', ephemeralPublicKey: key,
+				nonce: Buffer.alloc(12).toString('base64'), tag: Buffer.alloc(16).toString('base64'), ciphertext: 'AAAA', expiresAt: authorization.expiresAt } };
+		expect(sourceWorkspaceResponseSchema.safeParse(response).success).toBe(true);
+		expect(sourceWorkspaceResponseSchema.safeParse({ ...response, credential: { ...response.credential, authorizationId: 'other' } }).success).toBe(false);
+		expect(sourceWorkspaceResponseSchema.safeParse({ ...response, repository: { ...response.repository, cloneUrl: 'https://github.com/other/source.git' } }).success).toBe(false);
+		expect(sourceWorkspaceResponseSchema.safeParse({ ...response, token: 'must-not-be-plaintext' }).success).toBe(false);
+	});
 	it('requires an immutable commit, not a branch or abbreviated ref', () => {
 		expect(sourceWorkspaceKeySchema.safeParse(source).success).toBe(true);
 		for (const commit of ['staging', 'main', 'abc1234', '../repository', 'a'.repeat(41)]) {

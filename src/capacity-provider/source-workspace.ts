@@ -70,3 +70,40 @@ export type SourceWorkspaceKey = z.infer<typeof sourceWorkspaceKeySchema>;
 export type SourceWorkspaceAuthorization = z.infer<typeof sourceWorkspaceAuthorizationSchema>;
 export type SourceWorkspaceLease = z.infer<typeof sourceWorkspaceLeaseSchema>;
 export type SourceCandidateReceipt = z.infer<typeof sourceCandidateReceiptSchema>;
+
+/** Provider-manager transport only. Recipient is an ephemeral host key, never a guest key. */
+export const sourceWorkspaceRequestSchema = z.object({
+	runnerId: id,
+	leaseToken: z.string().min(1).max(4096),
+	recipientPublicKey: z.string().regex(/^[A-Za-z0-9+/]{43}=$/u),
+}).strict();
+
+export const sourceCredentialDeliverySchema = z.object({
+	schemaVersion: z.literal('treeseed.source-credential-delivery/v1'),
+	id,
+	authorizationId: id,
+	algorithm: z.literal('x25519-hkdf-sha256-chacha20-poly1305'),
+	ephemeralPublicKey: z.string().regex(/^[A-Za-z0-9+/]{43}=$/u),
+	nonce: z.string().regex(/^[A-Za-z0-9+/]{16}$/u),
+	ciphertext: z.string().min(1).max(16384),
+	tag: z.string().regex(/^[A-Za-z0-9+/]{22}==$/u),
+	expiresAt: z.string().datetime(),
+}).strict();
+
+export const sourceWorkspaceResponseSchema = z.object({
+	authorization: sourceWorkspaceAuthorizationSchema,
+	repository: z.object({ provider: z.literal('github'), owner: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9-]{0,99}$/u), name: z.string().regex(/^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,99}$/u),
+		cloneUrl: z.string().url().startsWith('https://github.com/'), ref: id }).strict(),
+	credential: sourceCredentialDeliverySchema,
+}).strict().superRefine((value, context) => {
+	if (value.repository.cloneUrl !== `https://github.com/${value.repository.owner}/${value.repository.name}.git`) {
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['repository', 'cloneUrl'], message: 'Source transport must match its provider repository.' });
+	}
+	if (value.credential.authorizationId !== value.authorization.id || value.credential.expiresAt !== value.authorization.expiresAt) {
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['credential'], message: 'Source credential delivery must match exact authorization and lifetime.' });
+	}
+});
+
+export type SourceCredentialDelivery = z.infer<typeof sourceCredentialDeliverySchema>;
+export type SourceWorkspaceRequest = z.infer<typeof sourceWorkspaceRequestSchema>;
+export type SourceWorkspaceResponse = z.infer<typeof sourceWorkspaceResponseSchema>;
