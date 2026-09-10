@@ -67,6 +67,8 @@ const operationBindings: Record<string, Execution> = {
 	'host config plan': local('local.host.config.plan'),
 	'host config apply': local('local.host.config.apply'),
 	'host config adopt': local('local.host.config.adopt'),
+	'host postgres transfer prepare': local('local.host.postgres.transfer.prepare'),
+	'host postgres transfer status': local('local.host.postgres.transfer.status'),
 	'host topology': local('local.host.topology'),
 	'host connections': local('local.host.connections'),
 	'host provider status': local('local.host.provider.status'),
@@ -403,6 +405,7 @@ const commandTree: CommandTreeDescriptor = {
 			hostInitialize(),
 			leaf('status'), leaf('doctor'), leaf('plan'), leaf('apply', 'mutation', undefined, 'authority'), leaf('reconcile', 'mutation', undefined, 'authority'), leaf('events'),
 			branch('config', [leaf('show'), leaf('plan', 'read', 'file'), leaf('apply', 'mutation', 'file', 'authority'), configurationAdopt()]),
+			branch('postgres', [branch('transfer', [leaf('prepare', 'mutation', 'file', 'authority'), leaf('status')])]),
 			leaf('topology'), leaf('connections'), branch('provider', [leaf('status'), branch('credentials', [leaf('list'), leaf('status'), hostProviderCredentialInitialize()]), hostProviderEnvironmentBranch()]),
 			branch('storage', [
 				leaf('status'),

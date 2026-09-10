@@ -1,6 +1,7 @@
 export * from './schemas.ts';
 export * from './postgres/contracts.ts';
 export * from './postgres/requirements.ts';
+export * from './postgres/transfer.ts';
 export * from './canonical.ts';
 export * from './catalog.ts';
 export * from './topology.ts';
