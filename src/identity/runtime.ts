@@ -14,6 +14,8 @@ export const identityApiRuntimeSchema = z.object({
   schemaVersion: z.literal('treeseed.identity-api-runtime/v1'),
   issuer: identityEndpointSchema,
   resource: identityEndpointSchema,
+  /** Explicit enrollment policy, never inferred from issuer or email domain. */
+  registration: z.object({ enabled: z.boolean() }).strict().optional(),
   scopes,
   sessionKeys: z.object({
     id: reference,

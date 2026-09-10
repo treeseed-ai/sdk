@@ -11,6 +11,12 @@ const input = () => ({ schemaVersion: 'treeseed.identity-api-runtime/v1', issuer
   ],
 });
 describe('portable API Identity wiring', () => {
+  it('requires explicit boolean enrollment policy and preserves closed-by-absence configurations', () => {
+    expect(identityApiRuntimeSchema.parse(input()).registration).toBeUndefined();
+    for (const enabled of [true, false]) expect(identityApiRuntimeSchema.parse({ ...input(), registration: { enabled } }).registration).toEqual({ enabled });
+    for (const registration of [{ enabled: 'true' }, {}, { enabled: true, team: 'admin' }])
+      expect(identityApiRuntimeSchema.safeParse({ ...input(), registration }).success).toBe(false);
+  });
   it('binds one API resource to independent application keys and bounded session recovery keys', () => {
     expect(identityApiRuntimeSchema.parse(input())).toEqual(input());
     expect(identityApiRuntimeSchema.parse({ ...input(), applications: [] }).applications).toEqual([]);
