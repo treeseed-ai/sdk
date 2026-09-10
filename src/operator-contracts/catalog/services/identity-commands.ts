@@ -7,5 +7,6 @@ export function identityLoginCommand(value: CommandNodeDescriptor): CommandNodeD
 		{name:'--timeout', description:'Maximum seconds to wait for identity authorization.', type:'number'},
 		{name:'--device', description:'Use headless device authorization instead of local browser PKCE.', type:'boolean'},
 		{name:'--issuer', description:'Choose an authorization server advertised by the selected API.', type:'string'},
+		{name:'--scope', description:'Comma-separated additional API scopes to request explicitly, such as treeseed:admin. Does not grant application permissions.', type:'string'},
 	]};
 }
