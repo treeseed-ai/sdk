@@ -14,6 +14,7 @@ import type {
 	ProviderTeamCredentialIssue,
 } from './contracts/index.ts';
 import type { ProviderDiscussionResponseReceipt, ProviderDiscussionResponseRequest } from '../operator-contracts/communication/contracts.ts';
+import { sourceWorkspaceRequestSchema, sourceWorkspaceResponseSchema, type SourceWorkspaceRequest } from './source-workspace.ts';
 
 export interface ProviderProtocolClientOptions {
 	controlPlaneUrl: string;
@@ -170,6 +171,15 @@ export class ProviderProtocolClient {
 
 	preflightAssignmentCompletion(assignmentId: string, request: Record<string, unknown>) {
 		return this.invoke<Record<string, unknown>>(CONTROL_PLANE_OPERATIONS.providers.completionPreflight, { path: { assignmentId }, body: request });
+	}
+
+	/** Host provider transport only; the recipient key belongs to the trusted source fetch worker. */
+	async authorizeAssignmentSource(assignmentId: string, request: SourceWorkspaceRequest) {
+		const body = sourceWorkspaceRequestSchema.parse(request);
+		const response = sourceWorkspaceResponseSchema.parse(await this.invoke<unknown>(CONTROL_PLANE_OPERATIONS.providers.sourceWorkspace,
+			{ path: { assignmentId }, body }));
+		if (response.authorization.assignmentId !== assignmentId) throw new CapacityProviderApiError('Source authority assignment correlation failed.', 502, { code: 'source_authority_mismatch' });
+		return response;
 	}
 
 	respondToAssignmentDiscussion(assignmentId: string, request: ProviderDiscussionResponseRequest, idempotencyKey: string) {
