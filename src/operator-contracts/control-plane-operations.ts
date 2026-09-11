@@ -3,6 +3,7 @@ import type { ControlPlaneOperationDescriptor } from './control-plane-operation.
 import { defineOperation as define, defineTreeDxProxyOperation as treedxProxy, defineReadOperation as read } from './operation-builder.ts';
 import { communicationOperations, providerCommunicationLifecycleOperations, providerDiscussionResponseOperation } from './catalog/communication-operations.ts';
 import { inboxOperations } from './catalog/inbox-operations.ts';
+import { WORKDAY_PROFILE_OPERATIONS } from './catalog/workdays/profile-operations.ts';
 import { adminAccountOperations, adminTeamOperations } from './catalog/admin-account-team-operations.ts';
 import { TREEAI_CONTROL_PLANE_OPERATIONS } from './catalog/treeai-operations.ts';
 import { capabilityOntologyOperations } from './catalog/capability-ontology-operations.ts';
@@ -291,6 +292,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 		show: resource('plans.show', 'GET', '/v1/capacity-plans/{capacityPlanId}', { capacityPlanId: z.string().min(1) }, { capability: 'plans.read', surfaces: ['rest', 'cli', 'mcp_resource'] }),
 	},
 	workdays: {
+		...WORKDAY_PROFILE_OPERATIONS,
 		list: resource('workdays.list', 'GET', '/v1/teams/{teamId}/workday-runs', { teamId: z.string().min(1) }, { capability: 'workdays.read', surfaces: ['rest', 'cli', 'mcp_tool'], pagination: 'cursor' }),
 		preflight: resource('workdays.plan', 'POST', '/v1/teams/{teamId}/workday-runs/preflight', { teamId: z.string().min(1) }, { capability: 'workdays.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli', 'mcp_tool'] }),
 		start: resource('workdays.start', 'POST', '/v1/teams/{teamId}/workday-runs', { teamId: z.string().min(1) }, { capability: 'workdays.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli', 'mcp_tool'], risk: 'authority' }),

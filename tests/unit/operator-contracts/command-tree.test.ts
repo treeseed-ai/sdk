@@ -110,6 +110,17 @@ describe('human command tree contract', () => {
 		}));
 	});
 
+	it('exposes profile reconciliation separately from workday admission', () => {
+		const workdays = TREESEED_COMMAND_TREE_V1.commands.find((node) => node.nodeType === 'branch' && node.segment === 'workdays');
+		const profiles = workdays?.nodeType === 'branch' ? workdays.children.find((node) => node.segment === 'profiles') : null;
+		const reconcile = profiles?.nodeType === 'branch' ? profiles.children.find((node) => node.segment === 'reconcile') : null;
+		expect(reconcile?.nodeType === 'leaf' ? reconcile.execution : null).toMatchObject({ kind: 'operation',
+			operationId: 'workdays.profiles.reconcile', input: expect.arrayContaining([
+				expect.objectContaining({ target: 'path', field: 'projectId', source: 'argument', name: 'project', required: true }),
+				expect.objectContaining({ target: 'path', field: 'teamId', source: 'context', name: 'team', required: true }),
+			]) });
+	});
+
 	it('rejects mapped fields on strict empty and undefined operation inputs', () => {
 		const value = structuredClone(TREESEED_COMMAND_TREE_V1);
 		const status = value.commands.find((node) => node.nodeType === 'leaf' && node.segment === 'status');
