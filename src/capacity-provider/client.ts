@@ -14,7 +14,8 @@ import type {
 	ProviderTeamCredentialIssue,
 } from './contracts/index.ts';
 import type { ProviderDiscussionResponseReceipt, ProviderDiscussionResponseRequest } from '../operator-contracts/communication/contracts.ts';
-import { sourceWorkspaceRequestSchema, sourceWorkspaceResponseSchema, type SourceWorkspaceRequest } from './source-workspace.ts';
+import { sourceWorkspaceRequestSchema, sourceWorkspaceResponseSchema, sourceCandidateReceiptSchema, type SourceWorkspaceRequest } from './source-workspace.ts';
+import { sourceCandidateRequestSchema, sourceChunkRequestSchema, sourceChunkResponseSchema, type SourceCandidateRequest, type SourceChunkRequest } from './source-candidate.ts';
 
 export interface ProviderProtocolClientOptions {
 	controlPlaneUrl: string;
@@ -179,6 +180,30 @@ export class ProviderProtocolClient {
 		const response = sourceWorkspaceResponseSchema.parse(await this.invoke<unknown>(CONTROL_PLANE_OPERATIONS.providers.sourceWorkspace,
 			{ path: { assignmentId }, body }));
 		if (response.authorization.assignmentId !== assignmentId) throw new CapacityProviderApiError('Source authority assignment correlation failed.', 502, { code: 'source_authority_mismatch' });
+		return response;
+	}
+
+	/** Bounded host-only transfer. The API verifies registered-provider signatures and live publication authority. */
+	async publishAssignmentSourceCandidate(assignmentId: string, request: SourceCandidateRequest) {
+		const body = sourceCandidateRequestSchema.parse(request);
+		if (body.candidate.attestation.assignmentId !== assignmentId) throw new CapacityProviderApiError('Candidate assignment correlation failed.', 400, { code: 'source_candidate_mismatch' });
+		const response = await this.invoke<Record<string, unknown>>(CONTROL_PLANE_OPERATIONS.providers.sourceCandidate, { path: { assignmentId }, body });
+		if (body.action === 'commit') {
+			const receipt = sourceCandidateReceiptSchema.parse(response);
+			if (receipt.leaseId !== body.candidate.attestation.leaseId || receipt.commit !== body.candidate.attestation.commit
+				|| receipt.bundle.digest !== body.candidate.attestation.bundle.digest
+				|| JSON.stringify(receipt.source) !== JSON.stringify(body.candidate.attestation.source)) throw new CapacityProviderApiError('Candidate receipt correlation failed.', 502, { code: 'source_candidate_receipt_mismatch' });
+			return receipt;
+		}
+		if (response.accepted !== true || response.index !== body.index || response.digest !== body.candidate.attestation.bundle.chunks[body.index]) throw new CapacityProviderApiError('Candidate chunk receipt correlation failed.', 502, { code: 'source_candidate_chunk_mismatch' });
+		return response;
+	}
+
+	/** Source artifacts are accessible only through a current assignment, never ambient team access. */
+	async readAssignmentSourceChunk(assignmentId: string, request: SourceChunkRequest) {
+		const body = sourceChunkRequestSchema.parse(request);
+		const response = sourceChunkResponseSchema.parse(await this.invoke<unknown>(CONTROL_PLANE_OPERATIONS.providers.sourceChunk, { path: { assignmentId }, body }));
+		if (response.artifactId !== body.artifactId || response.index !== body.index) throw new CapacityProviderApiError('Source chunk correlation failed.', 502, { code: 'source_chunk_mismatch' });
 		return response;
 	}
 

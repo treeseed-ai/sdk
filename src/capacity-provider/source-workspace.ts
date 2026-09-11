@@ -92,10 +92,16 @@ export const sourceCredentialDeliverySchema = z.object({
 
 export const sourceWorkspaceResponseSchema = z.object({
 	authorization: sourceWorkspaceAuthorizationSchema,
+	/** Present only for an accepted predecessor candidate selected by the control plane. */
+	sourceBundle: z.object({ artifactId: id, digest, bytes: z.number().int().positive().max(536_870_912),
+		chunks: z.array(digest).min(1).max(1024) }).strict().optional(),
 	repository: z.object({ provider: z.literal('github'), owner: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9-]{0,99}$/u), name: z.string().regex(/^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,99}$/u),
 		cloneUrl: z.string().url().startsWith('https://github.com/'), ref: id }).strict(),
 	credential: sourceCredentialDeliverySchema,
 }).strict().superRefine((value, context) => {
+	if (value.sourceBundle && value.sourceBundle.chunks.length !== Math.ceil(value.sourceBundle.bytes / 524_288)) {
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['sourceBundle'], message: 'Source bundle chunks must match its bounded size.' });
+	}
 	if (value.repository.cloneUrl !== `https://github.com/${value.repository.owner}/${value.repository.name}.git`) {
 		context.addIssue({ code: z.ZodIssueCode.custom, path: ['repository', 'cloneUrl'], message: 'Source transport must match its provider repository.' });
 	}
