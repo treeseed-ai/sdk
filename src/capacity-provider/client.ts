@@ -15,7 +15,7 @@ import type {
 } from './contracts/index.ts';
 import type { ProviderDiscussionResponseReceipt, ProviderDiscussionResponseRequest } from '../operator-contracts/communication/contracts.ts';
 import { sourceWorkspaceRequestSchema, sourceWorkspaceResponseSchema, sourceCandidateReceiptSchema, type SourceWorkspaceRequest } from './source-workspace.ts';
-import { sourceCandidateRequestSchema, sourceChunkRequestSchema, sourceChunkResponseSchema, type SourceCandidateRequest, type SourceChunkRequest } from './source-candidate.ts';
+import { sourceCandidateRequestSchema, sourceChunkRequestSchema, sourceChunkResponseSchema, type SourceCandidateRequest, type SourceChunkRequest } from './source/candidate.ts';
 
 export interface ProviderProtocolClientOptions {
 	controlPlaneUrl: string;

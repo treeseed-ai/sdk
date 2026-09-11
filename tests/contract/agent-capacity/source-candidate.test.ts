@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sourceCandidateAttestationSchema, sourceCandidateRequestSchema, sourceCandidateChunkBytes } from '../../../src/capacity-provider/source-candidate.ts';
+import { sourceCandidateAttestationSchema, sourceCandidateRequestSchema, sourceCandidateChunkBytes } from '../../../src/capacity-provider/source/candidate.ts';
 import { ProviderProtocolClient } from '../../../src/capacity-provider/client.ts';
 
 const attestation = sourceCandidateAttestationSchema.parse({ schemaVersion: 'treeseed.source-candidate-attestation/v1', providerId: 'provider',

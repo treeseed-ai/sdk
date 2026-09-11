@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { sourceWorkspaceKeySchema } from './source-workspace.ts';
+import { sourceWorkspaceKeySchema } from '../source-workspace.ts';
 
 export const sourceCandidateChunkBytes = 524_288;
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
