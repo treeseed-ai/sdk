@@ -3,6 +3,7 @@ import { commandPaths } from './catalog/infrastructure/command-tree-paths.ts';
 import { managedSecretCommands } from './catalog/services/secret-commands.ts';
 import { identityLoginCommand } from './catalog/services/identity-commands.ts';
 import { WORKDAY_PROFILE_COMMAND_BINDINGS } from './catalog/workdays/profile-commands.ts';
+import { WORKDAY_PLAN_OPTIONS, WORKDAY_SELECTION_INPUTS } from './catalog/workdays/selection-commands.ts';
 import { hostProviderEnvironmentBranch, PROVIDER_ENVIRONMENT_COMMAND_BINDINGS, providerEnvironmentBranches } from './catalog/provider-environment-commands.ts';
 
 type Execution = CommandLeafDescriptor['execution'];
@@ -137,7 +138,7 @@ const operationBindings: Record<string, Execution> = {
 	'seeds verify': operation('seeds.verify', [field('path', 'name', 'argument', 'seed', true)]),
 	'plans list': operation('plans.list', [field('path', 'decisionId', 'option', 'decision', true), ...page()]),
 	'plans show': operation('plans.show', [field('path', 'capacityPlanId', 'argument', 'plan', true)]),
-	'workdays plan': operation('workdays.plan', [field('path', 'teamId', 'context', 'team', true), field('body', 'profileId', 'option', 'profile'), field('body', 'projects', 'option', 'projects', false, 'csv'), field('body', 'startsAt', 'option', 'start'), field('body', 'endsAt', 'option', 'end'), field('body', 'durationSeconds', 'option', 'duration', false, 'integer'), field('body', 'objectiveFilters', 'option', 'objective', false, 'csv')]),
+	'workdays plan': operation('workdays.plan', [field('path', 'teamId', 'context', 'team', true), field('body', 'profileId', 'option', 'profile'), field('body', 'projects', 'option', 'projects', false, 'csv'), field('body', 'startsAt', 'option', 'start'), field('body', 'endsAt', 'option', 'end'), field('body', 'durationSeconds', 'option', 'duration', false, 'integer'), field('body', 'objectiveFilters', 'option', 'objective', false, 'csv'), ...WORKDAY_SELECTION_INPUTS]),
 	...WORKDAY_PROFILE_COMMAND_BINDINGS,
 	'workdays start': operation('workdays.start', [field('path', 'teamId', 'context', 'team', true), field('body', 'preflightId', 'option', 'preflight', true), field('body', 'preflightDigest', 'option', 'digest', true)]),
 	'workdays list': operation('workdays.list', [field('path', 'teamId', 'context', 'team', true), ...page()]),
@@ -197,7 +198,6 @@ const operationBindings: Record<string, Execution> = {
 };
 
 const planOption = { name: '--plan', description: 'Return the exact proposed outcome without mutation.', type: 'boolean' as const };
-
 function leaf(segment: string, kind: 'read' | 'mutation' = 'read', argument?: string, confirmation: 'never' | 'destructive' | 'credential' | 'authority' | 'production' | 'irreversible' = 'never'): CommandNodeDescriptor {
 	const value: CommandLeafDescriptor = {
 		segment,
@@ -444,7 +444,7 @@ const commandTree: CommandTreeDescriptor = {
 		branch('plans', [leaf('list'), leaf('show', 'read', 'plan'), leaf('explain', 'read', 'plan'), { nodeType: 'leaf', segment: 'diff', description: 'Compare two API-derived plans.', kind: 'read', arguments: [{ name: 'left', description: 'Left plan identity.', required: true }, { name: 'right', description: 'Right plan identity.', required: true }], resultSchemaId: 'treeseed.command.plans.diff/v1', execution: unavailable() }]),
 		branch('workdays', [
 			branch('profiles', [leaf('list'), leaf('show', 'read', 'profile'), leaf('reconcile', 'mutation', 'project', 'authority'), leaf('validate', 'read', 'file')]),
-			leaf('plan', 'mutation'), leaf('start', 'mutation', undefined, 'authority'), leaf('list'), leaf('show', 'read', 'workday'), leaf('watch', 'read', 'workday'), leaf('pause', 'mutation', 'workday', 'authority'), leaf('resume', 'mutation', 'workday', 'authority'), leaf('stop', 'mutation', 'workday', 'destructive'), leaf('cancel', 'mutation', 'workday', 'destructive'),
+			{ ...leaf('plan', 'mutation'), nodeType: 'leaf', segment: 'plan', kind: 'mutation', description: 'Plan a workday with optional targeted cooperative planning; acting stays decision-governed.', resultSchemaId: 'treeseed.command.workdays.plan/v1', options: WORKDAY_PLAN_OPTIONS }, leaf('start', 'mutation', undefined, 'authority'), leaf('list'), leaf('show', 'read', 'workday'), leaf('watch', 'read', 'workday'), leaf('pause', 'mutation', 'workday', 'authority'), leaf('resume', 'mutation', 'workday', 'authority'), leaf('stop', 'mutation', 'workday', 'destructive'), leaf('cancel', 'mutation', 'workday', 'destructive'),
 			branch('schedules', [leaf('list'), leaf('show', 'read', 'schedule'), leaf('plan'), leaf('start', 'mutation', undefined, 'authority'), leaf('pause', 'mutation', 'schedule', 'authority'), leaf('resume', 'mutation', 'schedule', 'authority'), leaf('retire', 'mutation', 'schedule', 'destructive')]),
 		]),
 		branch('assignments', [leaf('list'), leaf('show', 'read', 'assignment'), leaf('explain', 'read', 'assignment'), leaf('watch', 'read', 'assignment'), leaf('retry', 'mutation', 'assignment', 'authority'), leaf('cancel', 'mutation', 'assignment', 'destructive'), leaf('artifacts', 'read', 'assignment')]),

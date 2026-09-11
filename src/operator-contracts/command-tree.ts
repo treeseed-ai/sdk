@@ -44,6 +44,7 @@ export type CommandInputSource = 'argument' | 'context' | 'option';
 export type CommandInputTarget = 'path' | 'query' | 'body';
 
 export interface CommandInputBinding {
+	/** Dot-separated object path in the selected target; unsafe prototype keys are forbidden. */
 	field: string;
 	source: CommandInputSource;
 	name: string;

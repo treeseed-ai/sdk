@@ -1,4 +1,6 @@
 import { validateWorkdayBorrowingEvidence, type WorkdayBorrowingEvidence } from './workday-profile.ts';
+import type { WorkdayAgentSelection } from '../agent-capacity/workday.ts';
+export { normalizeWorkdayAgentSelection } from '../agent-capacity/workday.ts';
 
 export type WorkdayDemandMode = 'planning' | 'acting';
 
@@ -11,6 +13,8 @@ export interface WorkdayIntent {
 	endsAt?: string;
 	durationSeconds?: number;
 	objectiveFilters?: string[];
+	/** Limits cooperative planning; acting still requires accepted decision/estimate authority. */
+	agentSelection?: Partial<WorkdayAgentSelection>;
 	operatorConstraints?: {
 		providerIds?: string[];
 		maxConcurrency?: number;
@@ -172,6 +176,28 @@ export function validateWorkdayIntent(intent: WorkdayIntent): WorkdayLifecycleDi
 	if (!Number.isFinite(start)) diagnostics.push({ code: 'start_invalid', path: 'startsAt', message: 'startsAt must be an ISO timestamp.' });
 	if (intent.endsAt !== undefined && (!Number.isFinite(Date.parse(intent.endsAt)) || Date.parse(intent.endsAt) <= start)) diagnostics.push({ code: 'end_invalid', path: 'endsAt', message: 'endsAt must be a valid timestamp after startsAt.' });
 	if (intent.durationSeconds !== undefined && (!Number.isInteger(intent.durationSeconds) || intent.durationSeconds <= 0)) diagnostics.push({ code: 'duration_invalid', path: 'durationSeconds', message: 'durationSeconds must be a positive integer.' });
+	if (intent.agentSelection !== undefined) diagnostics.push(...validateWorkdayIntentSelection(intent.agentSelection));
+	return diagnostics;
+}
+
+export function validateWorkdayIntentSelection(value: unknown): WorkdayLifecycleDiagnostic[] {
+	const invalid = (path: string, message: string) => ({ code: 'agent_selection_invalid', path: `agentSelection${path ? `.${path}` : ''}`, message });
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return [invalid('', 'Agent selection must be an object.')];
+	const selection = value as Record<string, unknown>, diagnostics: WorkdayLifecycleDiagnostic[] = [];
+	const fields = ['classIds', 'classSlugs', 'agentSlugs', 'activityTypes'];
+	for (const key of Object.keys(selection)) if (![...fields, 'mode'].includes(key)) diagnostics.push(invalid(key, 'Unknown selection field.'));
+	if (selection.mode !== undefined && !['intersection', 'union'].includes(String(selection.mode))) diagnostics.push(invalid('mode', 'Select intersection or union.'));
+	let selected = 0;
+	for (const field of fields) {
+		const entries = selection[field];
+		if (entries === undefined) continue;
+		if (!Array.isArray(entries) || entries.length > 128 || entries.some(entry => typeof entry !== 'string' || !entry.trim() || entry.length > 128)) {
+			diagnostics.push(invalid(field, 'Selectors must be a bounded array of nonempty strings.')); continue;
+		}
+		selected += entries.length;
+		if (field === 'activityTypes' && entries.some(entry => !['planning', 'estimating', 'reviewing', 'reporting', 'chat'].includes(String(entry).trim()))) diagnostics.push(invalid(field, 'Select a planning activity; acting is controlled by accepted decisions and estimates.'));
+	}
+	if (!selected) diagnostics.push(invalid('', 'Explicit selection must select an agent, class, or activity; omit it to select all.'));
 	return diagnostics;
 }
 

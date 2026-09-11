@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { validateSelectedDemand, validateWorkdayIntent, validateWorkdayPreflight, validateWorkdayPreflightFreshness, validateWorkdaySettlement, type WorkdayPreflightReceipt } from '../../../src/operator-contracts/index.ts';
+import { validateSelectedDemand, validateWorkdayIntent, validateWorkdayPreflight, validateWorkdayPreflightFreshness, validateWorkdaySettlement, validateWorkdayIntentSelection, normalizeWorkdayAgentSelection, type WorkdayPreflightReceipt } from '../../../src/operator-contracts/index.ts';
 
 describe('time-based workday lifecycle contracts', () => {
+	it('supports normalized explicit planning agent/activity selection', () => {
+		const selection = { agentSlugs: ['reviewer', ' architect ', 'reviewer'], activityTypes: ['reviewing'] };
+		expect(validateWorkdayIntentSelection(selection)).toEqual([]);
+		expect(normalizeWorkdayAgentSelection(selection)).toEqual({ agentSlugs: ['architect','reviewer'], activityTypes: ['reviewing'], classIds: [], classSlugs: [], mode: 'intersection' });
+	});
+	it.each([null, [], {}, { mode: 'union' }, { agentSlugs: [] }, { agentSlugs: [''] }, { agentSlugs: [1] }, { agentSlugs: 'reviewer' }, { agentSlugs: ['reviewer'], mode: 'all' }, { agentSlugs: ['reviewer'], unknown: true }, { activityTypes: ['acting'] }, { activityTypes: ['typo'] }])('rejects malformed or silently broadening selection %j', value => {
+		expect(validateWorkdayIntentSelection(value).length).toBeGreaterThan(0);
+	});
 	it('accepts a duration or explicit range, never both', () => {
 		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'feature-heavy', projects: 'all' as const, startsAt: '2026-08-21T12:00:00.000Z' };
 		expect(validateWorkdayIntent({ ...base, durationSeconds: 3600 })).toEqual([]);
