@@ -41,6 +41,17 @@ describe('development runtime contracts', () => {
 		expect(developmentRuntimeSchema.parse(runtime).targets[0]?.id).toBe('web');
 	});
 
+	it('models source-only verification and explicit manager custody', () => {
+		const source = { ...runtime.targets[0], id: 'source', kind: 'source-check', endpoints: [],
+			operations: { verify: { command: 'npm', args: ['test'], environment: {}, timeoutSeconds: 600 } },
+			ready: { kind: 'marker', path: 'README.md', timeoutSeconds: 30 } };
+		expect(developmentRuntimeSchema.parse({ ...runtime, targets: [source] }).targets[0]).toMatchObject({ kind: 'source-check', executionCustody: 'caller' });
+		const managed = { ...runtime.targets[0], kind: 'rebuild-restart', executionCustody: 'manager',
+			operations: { verify: { command: 'npm', args: ['test'], environment: {}, timeoutSeconds: 600 } },
+			ready: { kind: 'process', graceSeconds: 2 }, endpoints: [] };
+		expect(developmentRuntimeSchema.parse({ ...runtime, targets: [managed] }).targets[0]?.executionCustody).toBe('manager');
+	});
+
 	it.each(['/src', '../src', 'src/../secret', 'src\\secret'])('rejects unsafe source path %s', (sourceRoot) => {
 		expect(() => developmentRuntimeSchema.parse({ ...runtime, targets: [{ ...runtime.targets[0], sourceRoots: [sourceRoot] }] })).toThrow(/path/i);
 	});

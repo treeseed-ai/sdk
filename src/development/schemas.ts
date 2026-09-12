@@ -12,7 +12,8 @@ const environmentName = z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/u);
 const localAlias = z.string().regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.localhost$/u);
 
 export const developmentModeSchema = z.enum(['released', 'candidate', 'live']);
-export const developmentTargetKindSchema = z.enum(['package-watch', 'live-web', 'live-api', 'rebuild-restart', 'local-companion']);
+export const developmentTargetKindSchema = z.enum(['source-check', 'package-watch', 'live-web', 'live-api', 'rebuild-restart', 'local-companion']);
+export const developmentExecutionCustodySchema = z.enum(['caller', 'manager']);
 export const developmentReactionSchema = z.enum(['reload', 'restart', 'rebuild', 'stale', 'manual', 'none']);
 export const developmentStatePolicySchema = z.enum(['stateless', 'ephemeral', 'clone', 'shared-compatible']);
 
@@ -68,6 +69,7 @@ const freezeSchema = z.object({
 export const developmentTargetSchema = z.object({
 	id: identifier,
 	kind: developmentTargetKindSchema,
+	executionCustody: developmentExecutionCustodySchema.default('caller'),
 	platforms: z.array(z.enum(['linux-amd64', 'linux-arm64', 'darwin-arm64', 'darwin-amd64'])).min(1),
 	runtimeRequirements: z.array(z.string().min(1).max(128)).default([]),
 	sourceRoots: z.array(relativePath).min(1),
@@ -92,9 +94,11 @@ export const developmentTargetSchema = z.object({
 }).strict().superRefine((target, context) => {
 	const endpoints = target.endpoints.map((entry) => entry.id);
 	if (new Set(endpoints).size !== endpoints.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['endpoints'], message: 'Development endpoint IDs must be unique.' });
-	if (target.kind === 'package-watch' && target.endpoints.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['endpoints'], message: 'Package-watch targets cannot own service endpoints.' });
+	if ((target.kind === 'package-watch' || target.kind === 'source-check') && target.endpoints.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['endpoints'], message: 'Source and package targets cannot own service endpoints.' });
+	if (target.kind === 'source-check' && (!target.operations.verify || target.operations.start || target.operations.watch)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['operations'], message: 'Source-check targets require verify and cannot start a process.' });
 	if (target.kind === 'local-companion' && target.endpoints.some((entry) => entry.visibility !== 'loopback')) context.addIssue({ code: z.ZodIssueCode.custom, path: ['endpoints'], message: 'Local companions must remain loopback-only.' });
-	if (target.kind !== 'package-watch' && target.ready.kind === 'marker') context.addIssue({ code: z.ZodIssueCode.custom, path: ['ready'], message: 'Service targets require process, TCP, or HTTP readiness.' });
+	if (target.kind !== 'package-watch' && target.kind !== 'source-check' && target.ready.kind === 'marker') context.addIssue({ code: z.ZodIssueCode.custom, path: ['ready'], message: 'Service targets require process, TCP, or HTTP readiness.' });
+	if (target.executionCustody === 'manager' && target.kind !== 'rebuild-restart') context.addIssue({ code: z.ZodIssueCode.custom, path: ['executionCustody'], message: 'Manager custody is reserved for rebuild-restart runtimes.' });
 	if (target.statePolicy === 'shared-compatible' && target.migrationPolicy !== 'explicit-review') context.addIssue({ code: z.ZodIssueCode.custom, path: ['migrationPolicy'], message: 'Shared state requires explicit migration review.' });
 });
 
