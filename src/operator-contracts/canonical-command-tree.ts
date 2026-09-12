@@ -138,7 +138,7 @@ const operationBindings: Record<string, Execution> = {
 	'seeds verify': operation('seeds.verify', [field('path', 'name', 'argument', 'seed', true)]),
 	'plans list': operation('plans.list', [field('path', 'decisionId', 'option', 'decision', true), ...page()]),
 	'plans show': operation('plans.show', [field('path', 'capacityPlanId', 'argument', 'plan', true)]),
-	'workdays plan': operation('workdays.plan', [field('path', 'teamId', 'context', 'team', true), field('body', 'profileId', 'option', 'profile'), field('body', 'projects', 'option', 'projects', false, 'csv'), field('body', 'startsAt', 'option', 'start'), field('body', 'endsAt', 'option', 'end'), field('body', 'durationSeconds', 'option', 'duration', false, 'integer'), field('body', 'objectiveFilters', 'option', 'objective', false, 'csv'), ...WORKDAY_SELECTION_INPUTS]),
+	'workdays plan': operation('workdays.plan', [field('path', 'teamId', 'context', 'team', true), field('body', 'profileId', 'option', 'profile'), field('body', 'projects', 'option', 'projects', false, 'csv'), field('body', 'startsAt', 'option', 'start'), field('body', 'endsAt', 'option', 'end'), field('body', 'durationSeconds', 'option', 'duration', false, 'integer'), field('body', 'objectiveFilters', 'option', 'objective', false, 'csv'), field('body', 'decisionIds', 'option', 'decision', false, 'csv'), ...WORKDAY_SELECTION_INPUTS]),
 	...WORKDAY_PROFILE_COMMAND_BINDINGS,
 	'workdays start': operation('workdays.start', [field('path', 'teamId', 'context', 'team', true), field('body', 'preflightId', 'option', 'preflight', true), field('body', 'preflightDigest', 'option', 'digest', true)]),
 	'workdays list': operation('workdays.list', [field('path', 'teamId', 'context', 'team', true), ...page()]),
