@@ -10,6 +10,7 @@ describe('proposal content', () => {
 				id: 'repair', activity: 'acting', agentClass: 'engineer', workspace: 'read-only', review: 'none',
 				objective: 'Repair admission.', estimate: { minimumSeconds: 60, expectedSeconds: 120, maximumSeconds: 240 },
 				dependsOn: [], requestedPermissions: { content: { read: ['proposal'], write: [] }, tools: ['source.read'] },
+				requiredCapabilities: ['source.read'],
 				acceptanceCriteria: ['Focused tests pass.'],
 			}] },
 		});
