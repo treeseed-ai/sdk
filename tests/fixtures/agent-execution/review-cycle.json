@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "treeseed.agent-review-cycle-acceptance/v1",
+  "status": "revised",
+  "baseCommit": "0b70da01bbac7492ca783054861dbbe5690ea36f",
+  "reviewDecision": {
+    "commit": "e0a2117f2c6c15d2f44c004f545b787fab280fce",
+    "path": "decisions/node_Xa5dMs7x_MXaZ4Ow0wP6FS1dA8lVUITT.mdx"
+  }
+}
