@@ -72,13 +72,6 @@ export interface AgentRuntimeSpec {
 	handler: AgentHandlerKind;
 	activityType?: AgentActivityType;
 	activityProfiles?: Partial<Record<AgentActivityType, AgentActivityProfile>>;
-	authorityPresetIds?: import('../../agent-capacity/authority/agent-authority-presets.ts').AgentAuthorityPresetId[];
-	authoritySnapshot?: {
-		presetIds: import('../../agent-capacity/authority/agent-authority-presets.ts').AgentAuthorityPresetId[];
-		permissions?: AgentActivityPermissions;
-		tools: AgentToolPolicy;
-		branchPolicy: AgentBranchPolicy;
-	};
 	branchPolicy?: AgentBranchPolicy;
 	questionPolicy?: AgentQuestionPolicy;
 	identity?: AgentDefinitionIdentity;

@@ -106,7 +106,6 @@ function resourcePath(restPath: string) {
 	if (path === 'me') return 'accounts/current';
 	return path
 		.replace(/^platform\/operations(?=\/|$)/u, 'operations')
-		.replace(/^capacity-plans(?=\/|$)/u, 'plans')
 		.replace(/\/workday-runs(?=\/|$)/u, '/workdays')
 		.replace(/\/capacity\/assignments(?=\/|$)/u, '/assignments');
 }

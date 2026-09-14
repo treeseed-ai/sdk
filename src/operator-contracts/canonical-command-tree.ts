@@ -1,25 +1,10 @@
-import type { CommandLeafDescriptor, CommandNodeDescriptor, CommandTreeDescriptor } from './command-tree.ts';
+import type { CommandNodeDescriptor, CommandTreeDescriptor } from './command-tree.ts';
 import { commandPaths } from './catalog/infrastructure/command-tree-paths.ts';
 import { managedSecretCommands } from './catalog/services/secret-commands.ts';
-import { identityLoginCommand } from './catalog/services/identity-commands.ts';
 import { WORKDAY_PROFILE_COMMAND_BINDINGS } from './catalog/workdays/profile-commands.ts';
 import { WORKDAY_PLAN_OPTIONS, WORKDAY_SELECTION_INPUTS } from './catalog/workdays/selection-commands.ts';
 import { hostProviderEnvironmentBranch, PROVIDER_ENVIRONMENT_COMMAND_BINDINGS, providerEnvironmentBranches } from './catalog/provider-environment-commands.ts';
-
-type Execution = CommandLeafDescriptor['execution'];
-const unavailable = (reason = 'This capability is not enabled until its control-plane operation is accepted.'): Execution => ({
-	kind: 'unavailable',
-	code: 'standards_migration_not_enabled',
-	reason,
-});
-
-const protocol = (handlerId: `protocol.${string}`): Execution => ({ kind: 'protocol', handlerId });
-const local = (handlerId: `local.${string}`): Execution => ({ kind: 'local', handlerId });
-const field = (target: 'path' | 'query' | 'body', name: string, source: 'argument' | 'context' | 'option', sourceName = name, required = false, transform: 'identity' | 'integer' | 'csv' = 'identity') => ({ target, field: name, source, name: sourceName, required, transform });
-const operation = (operationId: `${string}.${string}`, input: ReturnType<typeof field>[] = []): Execution => ({ kind: 'operation', operationId, input });
-const page = () => [field('query', 'status', 'option'), field('query', 'limit', 'option', 'limit', false, 'integer'), field('query', 'cursor', 'option')];
-const aiNode = () => field('path', 'nodeId', 'context', 'node', true);
-const aiInstance = () => [field('path', 'teamId', 'context', 'team', true), field('path', 'instanceId', 'context', 'node', true)];
+import { addOptions, aiInstance, aiModeSet, aiNode, authLogin, branch, configurationAdopt, developmentCommand, field, hostInitialize, hostProviderCredentialInitialize, hostRecoveryVerify, hostReset, hostSecurityInitialize, hostSecurityRotate, hostUninstall, leaf, libraryRead, local, operation, page, planOption, protocol, unavailable, userCreate } from './catalog/commands/command-tree-builders.ts';
 
 const operationBindings: Record<string, Execution> = {
 	...PROVIDER_ENVIRONMENT_COMMAND_BINDINGS,
@@ -37,6 +22,17 @@ const operationBindings: Record<string, Execution> = {
 	'teams list': operation('teams.list', page()),
 	'teams current': local('local.teams.current'),
 	'teams use': local('local.teams.use'),
+	'proposals list': operation('governance.proposals.list', [field('path', 'projectId', 'context', 'project', true), ...page()]),
+	'proposals show': operation('governance.proposals.show', [field('path', 'projectId', 'context', 'project', true), field('path', 'proposalId', 'argument', 'proposal', true)]),
+	'proposals create': operation('governance.proposals.create', [field('path', 'projectId', 'context', 'project', true), field('body', 'file', 'argument', 'file', true)]),
+	'proposals update': operation('governance.proposals.update', [field('path', 'projectId', 'context', 'project', true), field('path', 'proposalId', 'argument', 'proposal', true), field('body', 'file', 'option', 'input', true)]),
+	'proposals feedback resolve': operation('governance.proposals.feedback.resolve', [field('path', 'projectId', 'context', 'project', true), field('path', 'proposalId', 'argument', 'proposal', true), field('path', 'feedbackId', 'option', 'feedback', true), field('body', 'file', 'option', 'input', true)]),
+	'proposals open': operation('governance.proposals.open', [field('path', 'projectId', 'context', 'project', true), field('path', 'proposalId', 'argument', 'proposal', true)]),
+	'proposals voting start': operation('governance.proposals.voting.start', [field('path', 'projectId', 'context', 'project', true), field('path', 'proposalId', 'argument', 'proposal', true)]),
+	'proposals vote': operation('governance.proposals.vote', [field('path', 'projectId', 'context', 'project', true), field('path', 'proposalId', 'argument', 'proposal', true), field('body', 'file', 'option', 'input', true)]),
+	'proposals evaluate': operation('governance.proposals.evaluate', [field('path', 'projectId', 'context', 'project', true), field('path', 'proposalId', 'argument', 'proposal', true), field('body', 'file', 'option', 'input')]),
+	'decisions list': operation('governance.decisions.list', [field('path', 'projectId', 'context', 'project', true), ...page()]),
+	'decisions show': operation('governance.decisions.show', [field('path', 'projectId', 'context', 'project', true), field('path', 'decisionId', 'argument', 'decision', true)]),
 	'secrets list': local('local.secrets.list'),
 	'secrets status': local('local.secrets.status'),
 	'secrets unlock': local('local.secrets.unlock'),
@@ -104,6 +100,7 @@ const operationBindings: Record<string, Execution> = {
 	'dev session recover': local('local.dev.session.recover'),
 	'dev use': local('local.dev.use'),
 	'dev rebuild': local('local.dev.rebuild'),
+	'dev migrate': local('local.dev.migrate'),
 	'dev status': local('local.dev.status'),
 	'dev logs': local('local.dev.logs'),
 	'dev plan': local('local.dev.plan'),
@@ -111,6 +108,10 @@ const operationBindings: Record<string, Execution> = {
 	'dev verify': local('local.dev.verify'),
 	'agents list': operation('agents.list', [field('path', 'projectId', 'context', 'project', true), ...page()]),
 	'agents show': operation('agents.show', [field('path', 'projectId', 'context', 'project', true), field('path', 'agentSlug', 'argument', 'agent', true)]),
+	'agents handlers list': operation('agents.handlers.list', [field('path', 'projectId', 'context', 'project', true)]),
+	'agents handlers show': operation('agents.handlers.show', [field('path', 'projectId', 'context', 'project', true), field('path', 'handlerId', 'argument', 'handler', true)]),
+	'agents profiles show': operation('agents.show', [field('path', 'projectId', 'context', 'project', true), field('path', 'agentSlug', 'argument', 'profile', true)]),
+	'agents profiles validate': operation('agents.profiles.validate', [field('path', 'projectId', 'context', 'project', true), field('path', 'agentSlug', 'argument', 'profile', true)]),
 	'agents classes list': operation('agents.classes.list', [field('path', 'projectId', 'context', 'project', true)]),
 	'agents classes show': operation('agents.classes.show', [field('path', 'projectId', 'context', 'project', true), field('path', 'classId', 'argument', 'class', true)]),
 	'providers list': operation('providers.list', [field('path', 'teamId', 'context', 'team', true), ...page()]),
@@ -128,21 +129,20 @@ const operationBindings: Record<string, Execution> = {
 	'providers credentials revoke': operation('providers.credentials.revoke', [field('path', 'teamId', 'context', 'team', true), field('path', 'connectionId', 'argument', 'connection', true)]),
 	'capacity status': operation('capacity.status', [field('path', 'teamId', 'context', 'team', true), ...page()]),
 	'capacity explain': operation('capacity.explain', [field('path', 'teamId', 'context', 'team', true)]),
-	'capacity usage': operation('capacity.usage', [field('path', 'teamId', 'context', 'team', true)]),
-	'capacity ledger': operation('capacity.ledger', [field('path', 'teamId', 'context', 'team', true), ...page()]),
+	'capacity usage': operation('capacity.usage', [field('path', 'teamId', 'context', 'team', true), field('query', 'projectId', 'option', 'project', true), field('query', 'workDayId', 'option', 'workday')]),
+	'capacity ledger': operation('capacity.ledger', [field('path', 'teamId', 'context', 'team', true), field('query', 'projectId', 'option', 'project', true), field('query', 'workDayId', 'option', 'workday'), ...page()]),
 	'capacity audit': operation('capacity.audit', [field('path', 'teamId', 'context', 'team', true), ...page()]),
 	'seeds validate': operation('seeds.validate', [field('body', 'file', 'argument', 'file', true)]),
 	'seeds plan': operation('seeds.plan', [field('path', 'name', 'context', 'seed', true), field('body', 'file', 'argument', 'file', true)]),
 	'seeds apply': operation('seeds.apply', [field('path', 'name', 'context', 'seed', true), field('body', 'file', 'argument', 'file', true)]),
 	'seeds show': operation('seeds.show', [field('path', 'name', 'argument', 'seed', true)]),
 	'seeds verify': operation('seeds.verify', [field('path', 'name', 'argument', 'seed', true)]),
-	'plans list': operation('plans.list', [field('path', 'decisionId', 'option', 'decision', true), ...page()]),
-	'plans show': operation('plans.show', [field('path', 'capacityPlanId', 'argument', 'plan', true)]),
 	'workdays plan': operation('workdays.plan', [field('path', 'teamId', 'context', 'team', true), field('body', 'profileId', 'option', 'profile'), field('body', 'projects', 'option', 'projects', false, 'csv'), field('body', 'startsAt', 'option', 'start'), field('body', 'endsAt', 'option', 'end'), field('body', 'durationSeconds', 'option', 'duration', false, 'integer'), field('body', 'objectiveFilters', 'option', 'objective', false, 'csv'), field('body', 'decisionIds', 'option', 'decision', false, 'csv'), ...WORKDAY_SELECTION_INPUTS]),
 	...WORKDAY_PROFILE_COMMAND_BINDINGS,
 	'workdays start': operation('workdays.start', [field('path', 'teamId', 'context', 'team', true), field('body', 'preflightId', 'option', 'preflight', true), field('body', 'preflightDigest', 'option', 'digest', true)]),
 	'workdays list': operation('workdays.list', [field('path', 'teamId', 'context', 'team', true), ...page()]),
 	'workdays show': operation('workdays.show', [field('path', 'teamId', 'context', 'team', true), field('path', 'runId', 'argument', 'workday', true)]),
+	'workdays stop': operation('workdays.stop', [field('path', 'teamId', 'context', 'team', true), field('path', 'runId', 'argument', 'workday', true), field('body', 'reason', 'option', 'reason')]),
 	'workdays schedules list': operation('workdays.schedules.list', [field('path', 'teamId', 'context', 'team', true)]),
 	'workdays schedules start': operation('workdays.schedules.create', [field('path', 'teamId', 'context', 'team', true), field('body', 'profile', 'option'), field('body', 'projects', 'option', 'projects', false, 'csv'), field('body', 'duration', 'option', 'duration', false, 'integer')]),
 	'assignments list': operation('assignments.list', [field('path', 'teamId', 'context', 'team', true), ...page()]),
@@ -150,6 +150,12 @@ const operationBindings: Record<string, Execution> = {
 	'assignments explain': operation('assignments.explain', [field('path', 'teamId', 'context', 'team', true), field('path', 'assignmentId', 'argument', 'assignment', true)]),
 	'assignments retry': operation('assignments.retry', [field('path', 'teamId', 'context', 'team', true), field('path', 'assignmentId', 'argument', 'assignment', true), field('body', 'reason', 'option')]),
 	'assignments cancel': operation('assignments.cancel', [field('path', 'teamId', 'context', 'team', true), field('path', 'assignmentId', 'argument', 'assignment', true), field('body', 'reason', 'option')]),
+	'execution graph show': operation('execution.graph.show', [field('path', 'teamId', 'context', 'team', true), field('query', 'projectId', 'option', 'project'), field('query', 'decisionId', 'option', 'decision')]),
+	'execution graph watch': operation('execution.graph.watch', [field('path', 'teamId', 'context', 'team', true), field('query', 'cursor', 'option'), field('query', 'waitSeconds', 'option', 'wait', false, 'integer')]),
+	'execution node show': operation('execution.nodes.show', [field('path', 'teamId', 'context', 'team', true), field('path', 'nodeId', 'argument', 'node', true)]),
+	'execution node explain': operation('execution.nodes.explain', [field('path', 'teamId', 'context', 'team', true), field('path', 'nodeId', 'argument', 'node', true)]),
+	'execution reconcile': operation('execution.reconcile', [field('path', 'teamId', 'context', 'team', true), field('body', 'projectId', 'option', 'project'), field('body', 'plan', 'option', 'plan', false, 'boolean')]),
+	'execution assignments list': operation('execution.assignments.list', [field('path', 'teamId', 'context', 'team', true), ...page()]),
 	'projects treedx show': operation('treedx.library.show', [field('path', 'projectId', 'argument', 'project', true)]),
 	'projects treedx bind': operation('treedx.library.bind', [field('path', 'projectId', 'argument', 'project', true), field('body', 'connectionId', 'option', 'connection', true)]),
 	'projects treedx status': operation('treedx.health.show', [field('path', 'projectId', 'argument', 'project', true)]),
@@ -197,153 +203,6 @@ const operationBindings: Record<string, Execution> = {
 	'release': unavailable('Production release is intentionally fail-closed during this cutover.'),
 };
 
-const planOption = { name: '--plan', description: 'Return the exact proposed outcome without mutation.', type: 'boolean' as const };
-function leaf(segment: string, kind: 'read' | 'mutation' = 'read', argument?: string, confirmation: 'never' | 'destructive' | 'credential' | 'authority' | 'production' | 'irreversible' = 'never'): CommandNodeDescriptor {
-	const value: CommandLeafDescriptor = {
-		segment,
-		description: `${segment[0]!.toUpperCase()}${segment.slice(1)} the selected resource.`,
-		kind,
-		arguments: argument ? [{ name: argument, description: `${argument} identity or path.`, required: true }] : undefined,
-		options: kind === 'mutation' ? [planOption] : undefined,
-		authorization: kind === 'mutation' ? { capability: `command.${segment}`, confirmation } : undefined,
-		resultSchemaId: `treeseed.command.${segment}/v1`,
-		execution: unavailable(),
-	};
-	return { nodeType: 'leaf', ...value };
-}
-
-function branch(segment: string, children: CommandNodeDescriptor[]): CommandNodeDescriptor {
-	return { nodeType: 'branch', segment, description: `${segment[0]!.toUpperCase()}${segment.slice(1)} operations.`, children };
-}
-
-function configurationAdopt(): CommandNodeDescriptor {
-	const value = leaf('adopt', 'mutation', 'file', 'destructive');
-	if (value.nodeType !== 'leaf') throw new Error('Configuration adoption must be a leaf command.');
-	value.options = [...(value.options ?? []), { name: '--confirm', description: 'Confirm replacement of the installed configuration identity.', type: 'boolean' }];
-	return value;
-}
-
-function hostReset(): CommandNodeDescriptor {
-	const value = leaf('reset', 'mutation', undefined, 'irreversible');
-	if (value.nodeType !== 'leaf') throw new Error('Host reset must be a leaf command.');
-	value.description = 'Stop managed components, erase their state, and reconcile a fresh unseeded platform.';
-	value.options = [...(value.options ?? []), { name: '--confirm', description: 'Confirm deletion of all manager-owned component data and receipts.', type: 'boolean' }];
-	return value;
-}
-
-function hostUninstall(): CommandNodeDescriptor {
-	const value = leaf('uninstall', 'mutation', undefined, 'irreversible');
-	if (value.nodeType !== 'leaf') throw new Error('Host uninstall must be a leaf command.');
-	value.description = 'Plan or remove every inventoried TreeSeed-owned host resource while preserving unrelated infrastructure and source repositories.';
-	value.options = [...(value.options ?? []),
-		{ name: '--confirm', description: 'Confirm removal of the reviewed TreeSeed resource inventory.', type: 'boolean' },
-		{ name: '--purge-security', description: 'Separately select destruction of encrypted state, credentials, users, and groups.', type: 'boolean' },
-		{ name: '--yes', description: 'Confirm non-interactive execution after reviewing the plan.', type: 'boolean' },
-	];
-	value.resultSchemaId = 'treeseed.host-uninstall-result/v1';
-	return value;
-}
-
-function hostInitialize(): CommandNodeDescriptor {
-	const value = leaf('initialize', 'mutation', undefined, 'authority');
-	if (value.nodeType !== 'leaf') throw new Error('Host initialize must be a leaf command.');
-	value.description = 'Initialize the generic host foundation from an immutable catalog-bound profile.';
-	value.options = [...(value.options ?? []),
-		{ name: '--input-file', description: 'Team capacity installation configuration downloaded from Admin. Values are never printed.', type: 'string' },
-		{ name: '--profile', description: 'Catalog-bound host initialization profile.', type: 'string', required: true },
-		{ name: '--confirm', description: 'Confirm installation of the reviewed profile plan.', type: 'boolean' },
-		{ name: '--yes', description: 'Confirm non-interactive execution after reviewing the plan.', type: 'boolean' },
-	];
-	value.resultSchemaId = 'treeseed.host-initialization-result/v1';
-	return value;
-}
-
-function hostSecurityInitialize(): CommandNodeDescriptor {
-	const value = leaf('initialize', 'mutation', undefined, 'credential');
-	if (value.nodeType !== 'leaf') throw new Error('Host security initialization must be a leaf command.');
-	value.description = 'Initialize the encrypted provider volume, application keys, and offline recovery bundle.';
-	value.options = [...(value.options ?? []), { name: '--recovery-bundle', description: 'Absolute path for the new encrypted offline recovery bundle.', type: 'string', required: true }, { name: '--confirm', description: 'Confirm provider-state migration and volume formatting.', type: 'boolean', required: true }];
-	return value;
-}
-
-function hostSecurityRotate(): CommandNodeDescriptor {
-	const value = leaf('rotate', 'mutation', 'target', 'credential');
-	if (value.nodeType !== 'leaf') throw new Error('Host security rotation must be a leaf command.');
-	value.options = [...(value.options ?? []),
-		{ name: '--recovery-bundle', description: 'Absolute path to the currently authenticated recovery bundle.', type: 'string', required: true },
-		{ name: '--new-recovery-bundle', description: 'Absolute non-existing path for the replacement recovery bundle.', type: 'string', required: true },
-		{ name: '--confirm', description: 'Confirm creation and activation of a new key generation.', type: 'boolean', required: true }];
-	return value;
-}
-
-function hostProviderCredentialInitialize(): CommandNodeDescriptor {
-	const value = leaf('initialize', 'mutation', 'initializer', 'credential');
-	if (value.nodeType !== 'leaf') throw new Error('Provider credential initialization must be a leaf command.');
-	value.description = 'Initialize an execution-provider credential through its registered host initializer.';
-	value.options = [...(value.options ?? []), { name: '--source', description: 'Registered credential source to use instead of automatic selection.', type: 'string' }];
-	return value;
-}
-
-function hostRecoveryVerify(): CommandNodeDescriptor {
-	return { nodeType: 'leaf', segment: 'verify', description: 'Authenticate and inventory an offline recovery bundle without revealing secrets.', kind: 'read',
-		options: [{ name: '--bundle', description: 'Absolute recovery bundle path.', type: 'string', required: true }], resultSchemaId: 'treeseed.host-recovery-verification/v1', execution: unavailable() };
-}
-
-function aiModeSet(): CommandNodeDescriptor {
-	const value = leaf('set', 'mutation', 'mode', 'authority');
-	if (value.nodeType !== 'leaf') throw new Error('AI mode set must be a leaf command.');
-	value.description = 'Transition the exclusive AI GPU resource to awake or sleep.';
-	value.options = [...(value.options ?? []),
-		{ name: '--idempotency-key', description: 'Replay-safe transition identity.', type: 'string' },
-		{ name: '--drain-timeout', description: 'Maximum drain wait in seconds.', type: 'number' },
-	];
-	value.authorization = { capability: 'host.ai.mode', confirmation: 'authority' };
-	value.resultSchemaId = 'treeseed.ai-mode-transition-receipt/v1';
-	return value;
-}
-
-function userCreate(): CommandNodeDescriptor {
-	const value = leaf('create', 'mutation');
-	if (value.nodeType !== 'leaf') throw new Error('User creation must be a leaf command.');
-	value.description = 'Create a local TreeSeed user with a securely prompted password.';
-	value.options = [
-		...(value.options ?? []),
-		{ name: '--email', description: 'Email address for the new user.', type: 'string' },
-		{ name: '--username', description: 'Unique username for the new user.', type: 'string' },
-		{ name: '--display-name', description: 'Human-readable display name.', type: 'string' },
-		{ name: '--timeout', description: 'Maximum seconds to wait for registration.', type: 'number' },
-	];
-	return value;
-}
-
-function authLogin(): CommandNodeDescriptor {
-	return identityLoginCommand(leaf('login', 'mutation'));
-}
-
-function libraryRead(segment: string, extraArguments: string[] = [], extraOptions: CommandLeafDescriptor['options'] = []): CommandNodeDescriptor {
-	return {
-		nodeType: 'leaf', segment, description: `${segment[0]!.toUpperCase()}${segment.slice(1)} project library knowledge.`, kind: 'read',
-		arguments: ['project', ...extraArguments].map((name) => ({ name, description: `${name} value.`, required: true })),
-		options: [{ name: '--ref', description: 'Earlier historical revision; omit for the current library.', type: 'string' }, ...extraOptions],
-		resultSchemaId: `treeseed.command.library.${segment}/v1`, execution: local(`local.library.${segment}`),
-	};
-}
-
-function addOptions(node: CommandNodeDescriptor, options: NonNullable<CommandLeafDescriptor['options']>): CommandNodeDescriptor {
-	if (node.nodeType === 'leaf') node.options = [...(node.options ?? []), ...options];
-	return node;
-}
-
-function developmentCommand(segment: string, kind: 'read' | 'mutation', argument?: string, options: NonNullable<CommandLeafDescriptor['options']> = []): CommandNodeDescriptor {
-	return {
-		nodeType: 'leaf', segment, description: `${segment[0]!.toUpperCase()}${segment.slice(1)} a local development session.`, kind,
-		arguments: argument ? [{ name: argument, description: `${argument} value.`, required: true }] : undefined,
-		options: [...(kind === 'mutation' ? [planOption] : []), ...options],
-		authorization: kind === 'mutation' ? { capability: `development.${segment}`, confirmation: 'never' } : undefined,
-		resultSchemaId: `treeseed.command.dev.${segment}/v1`, execution: local(`local.dev.${segment}`),
-	};
-}
-
 const commandTree: CommandTreeDescriptor = {
 	schemaVersion: 'treeseed.command-tree/v1',
 	executable: 'trsd',
@@ -363,6 +222,18 @@ const commandTree: CommandTreeDescriptor = {
 		branch('auth', [authLogin(), leaf('logout', 'mutation'), leaf('status')]),
 		branch('users', [userCreate()]),
 		branch('teams', [leaf('list'), { nodeType: 'leaf', segment: 'current', description: 'Show the active team for this authenticated server session.', kind: 'read', resultSchemaId: 'treeseed.command.teams.current/v1', execution: unavailable() }, { nodeType: 'leaf', segment: 'use', description: 'Select the active team for this authenticated server session.', kind: 'mutation', arguments: [{ name: 'team', description: 'Team UUID or unambiguous slug.', required: true }], options: [planOption], authorization: { capability: 'teams.read', confirmation: 'never' }, resultSchemaId: 'treeseed.command.teams.use/v1', execution: unavailable() }]),
+		branch('proposals', [
+			leaf('list'), leaf('show', 'read', 'proposal'), leaf('create', 'mutation', 'file'),
+			addOptions(leaf('update', 'mutation', 'proposal'), [{ name: '--input', description: 'YAML or JSON proposal update.', type: 'string', required: true }]), leaf('open', 'mutation', 'proposal'),
+			branch('feedback', [addOptions(leaf('resolve', 'mutation', 'proposal'), [
+				{ name: '--feedback', description: 'Exact blocking feedback event identity.', type: 'string', required: true },
+				{ name: '--input', description: 'YAML or JSON resolution evidence.', type: 'string', required: true },
+			])]),
+			branch('voting', [leaf('start', 'mutation', 'proposal')]),
+			addOptions(leaf('vote', 'mutation', 'proposal'), [{ name: '--input', description: 'YAML or JSON vote.', type: 'string', required: true }]),
+			addOptions(leaf('evaluate', 'mutation', 'proposal'), [{ name: '--input', description: 'Optional YAML or JSON evaluation decision.', type: 'string' }]),
+		]),
+		branch('decisions', [leaf('list'), leaf('show', 'read', 'decision')]),
 		branch('secrets', [leaf('list'), leaf('status'), leaf('unlock', 'mutation', undefined, 'credential'), leaf('lock', 'mutation')]),
 		managedSecretCommands,
 		branch('platform', [
@@ -396,6 +267,7 @@ const commandTree: CommandTreeDescriptor = {
 			]),
 			developmentCommand('use', 'mutation', 'selection', [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--target', description: 'Additional project.target=mode selections.', type: 'string[]' }]),
 			developmentCommand('rebuild', 'mutation', 'target', [{ name: '--session', description: 'Development session identity.', type: 'string' }]),
+			developmentCommand('migrate', 'mutation', 'target', [{ name: '--session', description: 'Development session identity.', type: 'string' }]),
 			developmentCommand('restart', 'mutation', 'target', [{ name: '--session', description: 'Development session identity.', type: 'string' }]),
 			developmentCommand('status', 'read', undefined, [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--all', description: 'Include stopped sessions.', type: 'boolean' }]),
 			developmentCommand('logs', 'read', undefined, [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--target', description: 'Development target identity.', type: 'string' }, { name: '--follow', description: 'Follow target logs.', type: 'boolean' }]),
@@ -428,9 +300,10 @@ const commandTree: CommandTreeDescriptor = {
 			hostUninstall(),
 		]),
 		branch('agents', [
-			leaf('list'), leaf('show', 'read', 'agent'), leaf('validate'), leaf('diff'), leaf('diagnose'),
+			leaf('list'), leaf('show', 'read', 'agent'),
+			branch('handlers', [leaf('list'), leaf('show', 'read', 'handler')]),
+			branch('profiles', [leaf('show', 'read', 'profile'), leaf('validate', 'read', 'profile')]),
 			branch('classes', [leaf('list'), leaf('show', 'read', 'class')]),
-			branch('bindings', [leaf('list'), leaf('show', 'read', 'binding'), leaf('explain', 'read', 'binding')]),
 		]),
 		branch('providers', [
 			leaf('list'), leaf('show', 'read', 'provider'), leaf('status', 'read', 'provider'), leaf('diagnose', 'read', 'provider'), leaf('connect', 'mutation', undefined, 'credential'), leaf('disconnect', 'mutation', 'connection', 'destructive'),
@@ -440,14 +313,22 @@ const commandTree: CommandTreeDescriptor = {
 			branch('offers', [leaf('show', 'read', 'connection'), leaf('validate', 'read', 'file'), leaf('plan', 'read', 'file'), leaf('apply', 'mutation', 'file', 'authority')]),
 		]),
 		branch('seeds', [leaf('validate', 'read', 'file'), leaf('plan', 'read', 'file'), leaf('apply', 'mutation', 'file', 'authority'), leaf('show', 'read', 'seed'), leaf('verify', 'read', 'seed')]),
-		branch('capacity', [leaf('status'), leaf('explain'), leaf('usage'), leaf('ledger'), leaf('audit')]),
-		branch('plans', [leaf('list'), leaf('show', 'read', 'plan'), leaf('explain', 'read', 'plan'), { nodeType: 'leaf', segment: 'diff', description: 'Compare two API-derived plans.', kind: 'read', arguments: [{ name: 'left', description: 'Left plan identity.', required: true }, { name: 'right', description: 'Right plan identity.', required: true }], resultSchemaId: 'treeseed.command.plans.diff/v1', execution: unavailable() }]),
+		branch('capacity', [leaf('status'), leaf('explain'),
+			addOptions(leaf('usage'), [{ name: '--workday', description: 'Restrict evidence to one workday.', type: 'string' }]),
+			addOptions(leaf('ledger'), [{ name: '--workday', description: 'Restrict evidence to one workday.', type: 'string' }]),
+			leaf('audit')]),
 		branch('workdays', [
 			branch('profiles', [leaf('list'), leaf('show', 'read', 'profile'), leaf('reconcile', 'mutation', 'project', 'authority'), leaf('validate', 'read', 'file')]),
-			{ ...leaf('plan', 'mutation'), nodeType: 'leaf', segment: 'plan', kind: 'mutation', description: 'Plan a workday with optional targeted cooperative planning; acting stays decision-governed.', resultSchemaId: 'treeseed.command.workdays.plan/v1', options: WORKDAY_PLAN_OPTIONS }, leaf('start', 'mutation', undefined, 'authority'), leaf('list'), leaf('show', 'read', 'workday'), leaf('watch', 'read', 'workday'), leaf('pause', 'mutation', 'workday', 'authority'), leaf('resume', 'mutation', 'workday', 'authority'), leaf('stop', 'mutation', 'workday', 'destructive'), leaf('cancel', 'mutation', 'workday', 'destructive'),
+			{ ...leaf('plan', 'mutation'), nodeType: 'leaf', segment: 'plan', kind: 'mutation', description: 'Plan a workday with optional targeted cooperative planning; acting stays decision-governed.', resultSchemaId: 'treeseed.command.workdays.plan/v1', options: WORKDAY_PLAN_OPTIONS }, leaf('start', 'mutation', undefined, 'authority'), leaf('list'), leaf('show', 'read', 'workday'), leaf('watch', 'read', 'workday'), leaf('stop', 'mutation', 'workday', 'authority'),
 			branch('schedules', [leaf('list'), leaf('show', 'read', 'schedule'), leaf('plan'), leaf('start', 'mutation', undefined, 'authority'), leaf('pause', 'mutation', 'schedule', 'authority'), leaf('resume', 'mutation', 'schedule', 'authority'), leaf('retire', 'mutation', 'schedule', 'destructive')]),
 		]),
 		branch('assignments', [leaf('list'), leaf('show', 'read', 'assignment'), leaf('explain', 'read', 'assignment'), leaf('watch', 'read', 'assignment'), leaf('retry', 'mutation', 'assignment', 'authority'), leaf('cancel', 'mutation', 'assignment', 'destructive'), leaf('artifacts', 'read', 'assignment')]),
+		branch('execution', [
+			branch('graph', [addOptions(leaf('show'), [{ name: '--project', description: 'Filter the team graph by project.', type: 'string' }, { name: '--decision', description: 'Filter the team graph by decision.', type: 'string' }]), addOptions(leaf('watch'), [{ name: '--cursor', description: 'Resume after this graph event cursor.', type: 'string' }, { name: '--wait', description: 'Long-poll duration in seconds.', type: 'number' }, { name: '--json-stream', description: 'Emit graph events as NDJSON.', type: 'boolean' }])]),
+			branch('node', [leaf('show', 'read', 'node'), leaf('explain', 'read', 'node')]),
+			addOptions(leaf('reconcile', 'mutation'), [{ name: '--project', description: 'Reconcile one affected project component.', type: 'string' }]),
+			branch('assignments', [addOptions(leaf('list'), [{ name: '--status', description: 'Filter by assignment status.', type: 'string' }, { name: '--limit', description: 'Page size.', type: 'number' }, { name: '--cursor', description: 'Opaque page cursor.', type: 'string' }])]),
+		]),
 		branch('projects', [branch('treedx', [
 			leaf('show', 'read', 'project'), leaf('bind', 'mutation', 'project'), leaf('status', 'read', 'project'),
 			leaf('diagnose', 'read', 'project'), leaf('capabilities', 'read', 'project'),

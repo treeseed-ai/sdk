@@ -1,170 +1,95 @@
-import { z } from 'zod';
-import { AGENT_ACTIVITY_TYPES,AGENT_HANDLER_KINDS } from '../../types/agents.ts';
-import { validateAgentActivityProfilesConfiguration,type AgentActivityProfileDiagnostic } from './activity-profile.ts';
+import { z, type ZodError } from 'zod';
+import { AGENT_CONTENT_MODELS, AGENT_TOOL_GROUPS } from '../../types/agents.ts';
 
+const identifier = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
+const agentClass = z.string().trim().min(1).max(100).regex(/^[a-z][a-z0-9-]*$/u);
 const nonEmpty = z.string().trim().min(1);
-const stringList = z.array(nonEmpty).superRefine((items, context) => {
-	if (new Set(items).size !== items.length) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Values must be unique.' });
+const unique = <T extends z.ZodTypeAny>(item: T) => z.array(item).superRefine((items, context) => {
+	if (new Set(items.map((value) => JSON.stringify(value))).size !== items.length) {
+		context.addIssue({ code: z.ZodIssueCode.custom, message: 'Values must be unique.' });
+	}
 });
-const nonEmptyStringList = z.array(nonEmpty).min(1).superRefine((items,context) => {
-	if (new Set(items).size !== items.length) context.addIssue({ code:z.ZodIssueCode.custom,message:'Values must be unique.' });
+
+const dependenciesSchema = z.object({
+	agents: unique(agentClass).optional(),
+	events: unique(z.literal('workday-closing')).optional(),
+}).strict().refine((value) => Boolean(value.agents?.length || value.events?.length), {
+	message: 'At least one dependency selector is required.',
 });
-const exactRevisionRefSchema=z.object({id:nonEmpty,revision:z.number().int().positive()}).strict();
-const exactRevisionRefList=z.array(exactRevisionRefSchema).superRefine((items,context)=>{
-	if(new Set(items.map((item)=>`${item.id}@${item.revision}`)).size!==items.length) context.addIssue({code:z.ZodIssueCode.custom,message:'Exact revision references must be unique.'});
-});
-const promptSchema = z.object({ system: nonEmpty, task: z.string().optional(), templates: z.record(z.string()).optional() }).strict();
-const toolPolicySchema = z.object({ allowed: stringList, denied: stringList.optional() }).strict();
-const modelPermissionSchema = z.object({ operations:nonEmptyStringList,filters:z.record(z.unknown()).optional() }).strict();
-const permissionsSchema = z.object({
-	content:z.record(modelPermissionSchema).optional(),
-	commit: z.object({ allowed: z.boolean() }).strict().optional(),
-	repository: z.object({ readPaths:stringList.optional(),writePaths:stringList.optional(),allowCodeMutation:z.boolean().optional() }).strict().optional(),
-	network: z.object({ allowWeb:z.boolean().optional(),allowedDomains:stringList.optional() }).strict().optional(),
-	shell: z.object({ allowCommands:z.boolean().optional(),allowedCommands:stringList.optional(),deniedCommands:stringList.optional() }).strict().optional(),
+
+const permissionSetSchema = z.object({
+	content: z.object({
+		read: unique(z.enum(AGENT_CONTENT_MODELS)),
+		write: unique(z.enum(AGENT_CONTENT_MODELS)),
+	}).strict(),
+	tools: unique(z.enum(AGENT_TOOL_GROUPS)),
 }).strict();
-const artifactTriggerSchema = z.object({
-	event: nonEmpty,artifactKind: nonEmpty,model: nonEmpty.optional(),required: z.boolean().optional(),
+
+const promptSchema = z.object({
+	system: z.string().trim().min(20),
+	instructions: z.array(nonEmpty).optional(),
 }).strict();
-const closeoutPolicySchema = z.object({
-	warningSeconds: z.number().int().positive().optional(),summaryRequired: z.boolean().optional(),
-	requiredArtifactKinds: stringList.optional(),blockOnOpenQuestions: z.boolean().optional(),
-}).strict();
-const capabilityRequirementSchema = z.object({ capabilityId: nonEmpty, versionRange: nonEmpty,
-	requirement: z.enum(['required','preferred']), alternativeGroup: nonEmpty.nullable().optional(), requiredFeatures: stringList.optional(),
-	configuration: z.record(z.object({ value: z.unknown(), requirement: z.enum(['required','preferred']) }).strict()).optional() }).strict();
-const branchPolicySchema = z.object({
-	kind: z.enum(['read-only','main-planning-content','staging-content','assignment-feature','staging-release']),
-	base: z.enum(['main','staging']),
-	target: z.enum(['main','staging']).optional(),
-	prefix: z.string().optional(),
-	branchNameTemplate: z.string().optional(),
-	worktree: z.string().optional(),
-	updateBaseBeforeRun: z.boolean().optional(),
-	mergeTargetBeforeSave: z.boolean().optional(),
-}).strict();
-const signalPolicySchema = z.object({
-	subscribesTo: z.array(z.object({
-		contract: nonEmpty,
-		groupScope: z.object({ mode: nonEmpty, projectId: nonEmpty.optional(), groupRefs: z.array(z.object({ projectId: nonEmpty, groupId: nonEmpty }).strict()).optional() }).strict().optional(),
-		filters: z.record(z.unknown()).optional(),
-		cardinality: z.enum(['single','each']).optional(),
-		producerPolicy: z.enum(['any','all','quorum']).optional(),
-		quorum: z.number().int().positive().optional(),
-	}).strict()).optional(),
-	publishes: stringList.optional(),
-}).strict();
-const planningSignalsSchema = signalPolicySchema.optional();
-const planningIntentSchema = z.object({
-	objective: nonEmpty.optional(),
-	proposalTypes: stringList.optional(),
-	artifactKind: nonEmpty.optional(),
-	subjectModel: nonEmpty.optional(),
-	subjectId: nonEmpty.nullable().optional(),
-	includeWorkdayArtifacts: z.boolean().optional(),
-	stage: z.enum(['discovery','synthesis','deliberation','evaluation','revision','closeout']).optional(),
-	stages: z.array(z.object({
-		stage: z.enum(['discovery','synthesis','deliberation','evaluation','revision','closeout']),
-		promptTask: nonEmpty.optional(),
-		signals: planningSignalsSchema,
-	}).strict()).min(1).optional(),
-	requiresArtifactKinds: stringList.optional(),
-}).strict();
-const answerPolicySchema = z.object({
-	kind: z.enum(['team-human','human-or-agent','specific-human','specific-agent']),
-	teamId: nonEmpty.optional(),
-	requiredRoles: stringList.optional(),
-	allowedRoles: stringList.optional(),
-	allowedAgentIds: stringList.optional(),
-	allowedAgentClasses: stringList.optional(),
-	allowedActivityProfiles: stringList.optional(),
-	teamMemberId: nonEmpty.optional(),
-	projectId: nonEmpty.optional(),
-	agentSlug: nonEmpty.optional(),
-}).strict();
-const executionSchema = z.object({
-	reasoningEffort: z.enum(['minimal','low','medium','high','xhigh']).optional(),
-	maxRuntimeSeconds: z.number().int().positive().optional(),
-	closeoutWarningSeconds: z.number().int().positive().optional(),
-	preparationSeconds: z.number().int().positive().optional(),
-	closeoutSeconds: z.number().int().positive().optional(),
-	maxRetries: z.number().int().nonnegative().optional(),
-	verificationRequired: z.boolean().optional(),
-	maxTotalTokens: z.number().int().positive().optional(),
-	warningTokens: z.number().int().positive().optional(),
-	maxCostAmount: z.number().nonnegative().optional(),
-	costCurrency: z.string().length(3).optional(),
-	nativeLimits: z.array(z.object({ unit: nonEmpty, amount: z.number().nonnegative(), enforceable: z.boolean().optional() }).strict()).optional(),
-	pricingGeneration: z.string().optional(),
-	enforcementConfidence: z.enum(['exact','bounded','estimated','opaque']).optional(),
-	allowedPaths: stringList.optional(),
-	forbiddenPaths: stringList.optional(),
-}).strict();
-const activityProfileSchema = z.object({
-	activityType: z.enum(AGENT_ACTIVITY_TYPES).optional(),
-	enabled: z.boolean(),
-	handler: z.enum(AGENT_HANDLER_KINDS),
+
+export const activityProfileSchema = z.object({
+	handler: identifier,
+	dependsOn: dependenciesSchema.optional(),
+	permissions: permissionSetSchema,
 	prompt: promptSchema,
-	branchPolicy: branchPolicySchema,
-	contextQueryRefs: exactRevisionRefList.optional(),
-	contextQuerySetRefs: exactRevisionRefList.optional(),
-	instructionTemplateRefs: exactRevisionRefList.optional(),
-	capabilityRequirements: z.array(capabilityRequirementSchema).min(1).optional(),
-	permissions: permissionsSchema.optional(),
-	artifactTriggers: z.array(artifactTriggerSchema).optional(),
-	closeoutPolicy: closeoutPolicySchema.optional(),
-	tools: toolPolicySchema,
-	signals: signalPolicySchema.optional(),
-	outputs: z.object({ messageTypes: stringList, modelMutations: stringList }).strict(),
-	planningIntent: planningIntentSchema.optional(),
-	questionPolicy: z.object({ blockExecutionWhenCreated: z.boolean().optional(), defaultAnswerPolicy: answerPolicySchema.optional() }).strict().optional(),
-	execution: executionSchema.optional(),
-}).strict().superRefine((profile,context) => {
+	additionalContext: unique(identifier).optional(),
+	parameters: z.record(z.unknown()).optional(),
+}).strict();
+
+export const activityProfilesSchema = z.object({
+	planning: activityProfileSchema.optional(),
+	estimating: activityProfileSchema.optional(),
+	acting: activityProfileSchema.optional(),
+	reviewing: activityProfileSchema.optional(),
+	reporting: activityProfileSchema.optional(),
+	chat: activityProfileSchema.optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, {
+	message: 'At least one activity profile is required.',
 });
 
 export const agentDefinitionSchema = z.object({
-	id: nonEmpty,
-	slug: nonEmpty,
-	title: nonEmpty,
+	schemaVersion: z.literal('treeseed.agent/v1'),
+	id: identifier,
 	name: nonEmpty,
-	description: nonEmpty,
-	summary: nonEmpty,
-	agentClass: nonEmpty,
-	projectAgentClassId: nonEmpty,
-	projectAgentClassSlug: nonEmpty,
-	template: z.string().optional(),
-	enabled: z.boolean(),
-	designMaturity: z.enum(['draft','validated','simulated','proven']).optional(),
-	runtimeStatus: z.enum(['active','experimental','dormant']).optional(),
-	groupIds: nonEmptyStringList,
-	topicIds: stringList.optional(),
-	contextQueryRefs: exactRevisionRefList.optional(),
-	contextQuerySetRefs: exactRevisionRefList.optional(),
-	instructionTemplateRefs: exactRevisionRefList.optional(),
-	identity: z.object({ purpose: nonEmpty, responsibilities: stringList, durableInstructions: nonEmpty }).passthrough(),
-	capabilities: z.array(z.union([nonEmpty, z.object({ id: nonEmpty }).passthrough()])).optional(),
-	activityProfiles:z.record(activityProfileSchema),
-}).passthrough().superRefine((agent,context) => {
-	const raw = agent as Record<string,unknown>;
-	for (const legacy of ['primaryGroupId','permissionPolicy','contentAccess']) if (legacy in raw) context.addIssue({ code:z.ZodIssueCode.custom,path:[legacy],message:`${legacy} is not part of the canonical agent contract.` });
-	for(const forbidden of ['capacityProviderId','capacityProviderIds','executionProviderId','executionProviderIds','executionProvider','providerPreference','providerPreferences','providerAllowList','providerDenyList','sandboxEnvironment','sandboxProfile','containerImage','imageRef'])
-		if(forbidden in raw)context.addIssue({code:z.ZodIssueCode.custom,path:[forbidden],message:`${forbidden} is provider-owned runtime configuration and cannot appear in an agent profile.`});
+	agentClass,
+	purpose: nonEmpty,
+	responsibilities: z.array(nonEmpty).min(1),
+	capabilities: unique(identifier).refine((value) => value.length > 0, 'At least one capability is required.'),
+	context: z.object({ include: unique(identifier).refine((value) => value.length > 0) }).strict(),
+	activityProfiles: activityProfilesSchema,
+}).strict().superRefine((agent, context) => {
+	if (agent.agentClass !== 'reviewer' && agent.activityProfiles.reviewing) {
+		context.addIssue({
+			code: z.ZodIssueCode.custom,
+			path: ['activityProfiles', 'reviewing'],
+			message: 'Only the Reviewer agent class may enable reviewing.',
+		});
+	}
 });
 
-function issuePath(path: Array<string | number>) {
-	return path.reduce<string>((current, segment) => typeof segment === 'number' ? `${current}[${segment}]` : current ? `${current}.${segment}` : segment, '');
+function issuePath(path: PropertyKey[]): string {
+	return path.reduce<string>((current, segment) => typeof segment === 'number'
+		? `${current}[${segment}]`
+		: current ? `${current}.${String(segment)}` : String(segment), '');
+}
+
+export function diagnosticsFromZod(error: ZodError, prefix = '') {
+	return error.issues.map((issue) => {
+		const suffix = issuePath(issue.path);
+		return {
+			code: `agent_schema_${issue.code}`,
+			path: prefix && suffix ? `${prefix}.${suffix}` : prefix || suffix,
+			message: issue.message,
+		};
+	});
 }
 
 export function validateAgentDefinitionModel(value: unknown) {
 	const parsed = agentDefinitionSchema.safeParse(value);
-	const diagnostics: AgentActivityProfileDiagnostic[] = parsed.success ? [] : parsed.error.issues.map((issue) => ({
-		code: `agent_zod_${issue.code}`,
-		path: issuePath(issue.path),
-		message: issue.message,
-	}));
-	if (value && typeof value === 'object' && !Array.isArray(value)) {
-		diagnostics.push(...validateAgentActivityProfilesConfiguration((value as Record<string, unknown>).activityProfiles).diagnostics);
-	}
-	const unique = new Map(diagnostics.map((diagnostic) => [`${diagnostic.code}:${diagnostic.path}:${diagnostic.message}`, diagnostic]));
-	return { ok: unique.size === 0, diagnostics: [...unique.values()], data: parsed.success ? parsed.data : null };
+	return parsed.success
+		? { ok: true, diagnostics: [], data: parsed.data }
+		: { ok: false, diagnostics: diagnosticsFromZod(parsed.error), data: null };
 }

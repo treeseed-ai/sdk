@@ -28,8 +28,8 @@ describe('time-based workday lifecycle contracts', () => {
 		const base = { id: 'demand', projectId: 'sdk', sourceType: 'planning-input', sourceId: 'input', classSlug: 'features', requestedSeconds: 600, priority: 10 };
 		expect(validateSelectedDemand({ ...base, mode: 'planning' })).toEqual([]);
 		expect(validateSelectedDemand({ ...base, mode: 'acting' }).map((item) => item.code)).toContain('acting_authority_required');
-		expect(validateSelectedDemand({ ...base, mode: 'acting', actingAuthority: { decisionId: 'decision', decisionStatus: 'approved', executionInputId: 'execution', executionInputStatus: 'accepted', estimateId: 'estimate', capacityPlanId: 'plan', capacityPlanDigest: 'sha256:plan' } })).toEqual([]);
-		expect(validateSelectedDemand({ ...base, mode: 'acting', actingAuthority: { decisionId: '', decisionStatus: 'approved', executionInputId: 'execution', executionInputStatus: 'accepted', estimateId: 'estimate', capacityPlanId: 'plan', capacityPlanDigest: 'sha256:plan' } }).map((item) => item.code)).toContain('acting_authority_identity_missing');
+		expect(validateSelectedDemand({ ...base, mode: 'acting', actingAuthority: { decisionId: 'decision', decisionRevision: 1, executionNodeId: 'node', executionNodeRevision: 2, graphRevision: 3, sourceDigest: 'sha256:source' } })).toEqual([]);
+		expect(validateSelectedDemand({ ...base, mode: 'acting', actingAuthority: { decisionId: '', decisionRevision: 1, executionNodeId: 'node', executionNodeRevision: 2, graphRevision: 3, sourceDigest: 'sha256:source' } }).map((item) => item.code)).toContain('acting_authority_identity_missing');
 	});
 
 	it('rejects expired preflight and missing identity digests', () => {

@@ -4,7 +4,6 @@ import { validateAgentActivityProfilesConfiguration } from '../../../src/agent-c
 import { validateProjectAgentClassConfiguration } from '../../../src/agent-capacity/validation/configuration.ts';
 import { CAPACITY_CONFIGURATION_DESCRIPTORS, CAPACITY_CONFIGURATION_FAMILIES } from '../../../src/agent-capacity/contracts/configuration/configuration.ts';
 import { validateCapacityProviderManifestV5, validateProviderSupplyOffer } from '../../../src/capacity-provider/validation.ts';
-import { compileAgentAuthoritySnapshot } from '../../../src/agent-capacity/authority/agent-authority-presets.ts';
 import { validateAgentDefinitionModel } from '../../../src/agent-capacity/validation/agent-definition-schema.ts';
 
 const validators = {
@@ -17,15 +16,6 @@ const validators = {
 } as const;
 
 describe('capacity configuration inventory', () => {
-	it('gives chat profiles project source read tools without source mutation authority', () => {
-		const snapshot = compileAgentAuthoritySnapshot('chat', {
-			activityType: 'chat', enabled: true, handler: 'writer', prompt: { system: 'Discuss.' },
-			branchPolicy: { kind: 'read-only', base: 'staging' }, permissions: { repository: { readPaths: ['**'], writePaths: [], allowCodeMutation: false } },
-			tools: { allowed: [] }, outputs: { messageTypes: ['discussion_response'], modelMutations: [] }, execution: {},
-		});
-		expect(snapshot.tools.allowed).toEqual(expect.arrayContaining(['treeseed.repository.read_file', 'treeseed.repository.search']));
-		expect(snapshot.permissions?.repository).toMatchObject({ readPaths: ['**'], writePaths: [], allowCodeMutation: false });
-	});
 	it('has one SDK-owned descriptor and validator for every declarative family', () => {
 		expect(CAPACITY_CONFIGURATION_DESCRIPTORS.map((entry) => entry.id)).toEqual(CAPACITY_CONFIGURATION_FAMILIES);
 		for (const descriptor of CAPACITY_CONFIGURATION_DESCRIPTORS) {
@@ -34,76 +24,60 @@ describe('capacity configuration inventory', () => {
 		}
 	});
 
-	it('fails closed on unknown activity fields, provider pins, and mismatched keyed activity types', () => {
+	it('accepts the minimal profile and preserves project-owned handler IDs', () => {
 		const result = validateAgentActivityProfilesConfiguration({
-			planning: {
-				activityType: 'acting', enabled: true, handler: 'writer', unexpected: true,
-				prompt: { system: 'Plan.' }, branchPolicy: { kind: 'read-only', base: 'main' },
-				tools: { allowed: [] }, outputs: { messageTypes: [], modelMutations: [] },
-				execution: { providerPreference: ['codex'] },
+			acting: {
+				handler: 'sdk/project-handler',
+				dependsOn: { agents: ['tester'] },
+				permissions: {
+					content: { read: ['book', 'knowledge', 'decision'], write: [] },
+					tools: ['source.read', 'source.write', 'verification'],
+				},
+				prompt: { system: 'Implement the accepted work with the smallest complete change.' },
+				additionalContext: ['assigned-source-scope'],
 			},
 		});
-		expect(result.ok).toBe(false);
-		expect(result.diagnostics.map((entry) => entry.code)).toEqual(expect.arrayContaining([
-			'agent_activity_unknown_field',
-			'agent_activity_type_mismatch',
-		]));
+		expect(result).toEqual({ ok: true, diagnostics: [] });
 	});
 
-	it('rejects provider, adapter, sandbox, and image selection at the agent-profile root', () => {
-		const base = { id:'architect',slug:'architect',title:'Architect',name:'Architect',description:'Architecture',summary:'Architecture',
-			agentClass:'architecture',projectAgentClassId:'architecture',projectAgentClassSlug:'architecture',enabled:true,groupIds:['architecture'],
-			identity:{purpose:'Architecture',responsibilities:[],durableInstructions:'Preserve boundaries.'},activityProfiles:{chat:{
-				activityType:'chat',enabled:true,handler:'writer',prompt:{system:'Discuss.'},branchPolicy:{kind:'read-only',base:'staging'},
-				capabilityRequirements:[{capabilityId:'treeseed.coordination.conversation',versionRange:'^1.0.0',requirement:'required'}],
-				tools:{allowed:[]},outputs:{messageTypes:['discussion_response'],modelMutations:[]},
-			}}};
-		for(const field of ['capacityProviderId','executionProviderId','providerPreference','sandboxEnvironment','sandboxProfile','containerImage','imageRef']) {
-			const result=validateAgentDefinitionModel({...base,[field]:'forbidden'});
-			expect(result.ok,field).toBe(false);
-			expect(result.diagnostics.some((entry)=>entry.path===field&&entry.message.includes('provider-owned'))).toBe(true);
+	it('rejects removed profile concepts instead of accepting compatibility aliases', () => {
+		for (const field of ['enabled', 'branchPolicy', 'authorityPresets', 'tools', 'outputs', 'execution']) {
+			const result = validateAgentActivityProfilesConfiguration({
+				chat: {
+					handler: 'writer',
+					permissions: { content: { read: ['discussion'], write: ['discussion'] }, tools: ['discussion'] },
+					prompt: { system: 'Answer the discussion using only the authorized project context.' },
+					[field]: field === 'enabled' ? true : {},
+				},
+			});
+			expect(result.ok, field).toBe(false);
+			expect(result.diagnostics.some((entry) => entry.message.includes('Unrecognized key')), field).toBe(true);
 		}
 	});
 
-	it('accepts typed proposal-linked planning intent and rejects malformed intent', () => {
-		const base = {
-			activityType: 'estimating', enabled: true, handler: 'estimate',
-			prompt: { system: 'Estimate.' }, branchPolicy: { kind: 'read-only', base: 'main' },
-			tools: { allowed: [] }, outputs: { messageTypes: [], modelMutations: ['estimate:create'] },
-			capabilityRequirements: [{ capabilityId: 'treeseed.coordination.estimation', versionRange: '^1.0.0', requirement: 'required' }],
-		};
-		expect(validateAgentActivityProfilesConfiguration({ estimating: { ...base, planningIntent: { subjectModel: 'proposal', proposalTypes: ['technical-accuracy'] } } })).toEqual({ ok: true, diagnostics: [] });
-		expect(validateAgentActivityProfilesConfiguration({ estimating: { ...base, planningIntent: { subjectModel: '', includeWorkdayArtifacts: 'yes' } } }).diagnostics.map((entry) => entry.code)).toEqual(expect.arrayContaining([
-			'agent_activity_planning_intent_text_invalid',
-			'agent_activity_planning_intent_boolean_invalid',
+	it('requires one handler, meaningful prompt, and permission ceiling', () => {
+		const result = validateAgentActivityProfilesConfiguration({ chat: { handler: '', prompt: { system: 'short' } } });
+		expect(result.ok).toBe(false);
+		expect(result.diagnostics.map((entry) => entry.path)).toEqual(expect.arrayContaining([
+			'activityProfiles.chat.handler',
+			'activityProfiles.chat.permissions',
+			'activityProfiles.chat.prompt.system',
 		]));
 	});
 
-	it('keeps model reasoning effort configurable on provider-neutral activity profiles', () => {
+	it('reserves reviewing for the Reviewer class', () => {
+		const activity = {
+			handler: 'writer',
+			permissions: { content: { read: ['decision'], write: ['note', 'decision'] }, tools: ['source.read', 'verification'] },
+			prompt: { system: 'Review the exact candidate and record a formal disposition.' },
+		};
 		const base = {
-			activityType: 'chat', enabled: true, handler: 'writer', prompt: { system: 'Discuss.' },
-			branchPolicy: { kind: 'read-only', base: 'staging' }, tools: { allowed: [] },
-			outputs: { messageTypes: ['discussion_response'], modelMutations: [] },
-			capabilityRequirements: [{ capabilityId: 'treeseed.coordination.conversation', versionRange: '^1.0.0', requirement: 'required' }],
+			schemaVersion: 'treeseed.agent/v1', id: 'sdk/engineer', name: 'SDK Engineer', agentClass: 'engineer',
+			purpose: 'Implement SDK work.', responsibilities: ['Implement accepted changes.'], capabilities: ['code-change'],
+			context: { include: ['assignment-subject'] }, activityProfiles: { reviewing: activity },
 		};
-		expect(validateAgentActivityProfilesConfiguration({ chat: { ...base, execution: { reasoningEffort: 'xhigh' } } })).toEqual({ ok: true, diagnostics: [] });
-		expect(validateAgentActivityProfilesConfiguration({ chat: { ...base, execution: { reasoningEffort: 'fastest' } } }).diagnostics.map((entry) => entry.code)).toContain('agent_activity_reasoning_effort_invalid');
-	});
-
-	it('accepts project agent classes as governed question answerers', () => {
-		const profile = {
-			planning: {
-				activityType: 'planning', enabled: true, handler: 'writer',
-				prompt: { system: 'Plan.' }, branchPolicy: { kind: 'read-only', base: 'main' },
-				tools: { allowed: [], denied: [
-					'treeseed.content.create', 'treeseed.content.update',
-					'treeseed.content.link', 'treeseed.content.commit',
-				] }, outputs: { messageTypes: [], modelMutations: [] },
-				questionPolicy: { blockExecutionWhenCreated: true, defaultAnswerPolicy: { kind: 'human-or-agent', allowedAgentClasses: ['architecture'] } },
-				capabilityRequirements: [{ capabilityId: 'treeseed.coordination.planning', versionRange: '^1.0.0', requirement: 'required' }],
-			},
-		};
-		expect(validateAgentActivityProfilesConfiguration(profile)).toEqual({ ok: true, diagnostics: [] });
+		expect(validateAgentDefinitionModel(base).ok).toBe(false);
+		expect(validateAgentDefinitionModel({ ...base, id: 'sdk/reviewer', agentClass: 'reviewer' }).ok).toBe(true);
 	});
 
 	it('fails closed on unknown project-agent-class configuration fields', () => {

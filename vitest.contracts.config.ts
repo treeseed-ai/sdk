@@ -6,10 +6,12 @@ export default defineConfig({
 		maxWorkers: 2,
 		testTimeout: 15_000,
 		include: [
+			'tests/unit/content/**/*.test.ts',
 			'tests/unit/identity/**/*.test.ts',
 			'tests/contract/operator-contracts/**/*.test.ts',
 			'tests/contract/standards/**/*.test.ts',
 			'tests/contract/agent-capacity/capacity-configuration.test.ts',
+			'tests/contract/agent-capacity/agent-execution-contract.test.ts',
 			'tests/contract/agent-capacity/source-workspace.test.ts',
 			'tests/contract/agent-capacity/source-client.test.ts',
 			'tests/contract/agent-capacity/source-candidate.test.ts',

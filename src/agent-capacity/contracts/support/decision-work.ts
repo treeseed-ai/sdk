@@ -216,32 +216,7 @@ export interface AgentCapacityContractDiagnostic {
 export interface AgentCapacityContractValidationResult { ok: boolean; diagnostics: AgentCapacityContractDiagnostic[]; }
 export interface DecisionAssignmentGraphCompileResult { graph: DecisionAssignmentGraph; diagnostics: AgentCapacityContractDiagnostic[]; }
 
-export interface EngineeringAssignmentGraphRoles {
-	tester: string;
-	engineer: string;
-	reviewer: string;
-	technicalWriter: string;
-	releaser: string;
-	operations?: string | null;
-	researcher?: string | null;
-	architect?: string | null;
-}
-
-export interface EngineeringAssignmentGraphInput {
-	id?: string;
-	teamId: string;
-	projectId: string;
-	decisionId: string;
-	version?: number;
-	exactBaseRef: string;
-	roles: EngineeringAssignmentGraphRoles;
-	includeResearch?: boolean;
-	includeArchitecture?: boolean;
-	seconds?: Partial<Record<'research' | 'architecture' | 'test' | 'implementation' | 'verification' | 'review' | 'documentation' | 'release' | 'operations', number>>;
-	compiledAt?: string | null;
-}
-
-export interface EngineeringRevisionCycleResult {
+export interface GovernedRevisionCycleResult {
 	graph: DecisionAssignmentGraph;
 	newContracts: DeliverableContract[];
 	revisionCycle: number;

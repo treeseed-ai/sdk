@@ -47,7 +47,9 @@ export const inboxDraftSchema = z.object({ schemaVersion: z.literal('treeseed.in
 	markdown: z.string(), baseVersion: z.number().int().positive(), revision: z.number().int().nonnegative(), updatedAt: z.string().datetime(), etag: z.string() }).strict();
 export const inboxDraftWriteSchema = z.object({ markdown: z.string().max(100_000), baseVersion: z.number().int().positive() }).strict();
 export const inboxQuestionCreateSchema = z.object({ projectId: z.string(), title: z.string().trim().min(1).max(180), markdown: z.string().trim().min(1).max(100_000),
-	recipients: z.array(z.string()).max(64).default([]), relatedObjectives: z.array(z.string()).max(64).default([]) }).strict();
+	severity: z.enum(['blocking', 'advisory']).default('blocking'), recipients: z.array(z.string()).max(64).default([]),
+	relatedObjectives: z.array(z.string()).max(64).default([]), relatedProposals: z.array(z.string()).max(64).default([]),
+	relatedDecisions: z.array(z.string()).max(64).default([]), relatedWorkItems: z.array(z.string()).max(64).default([]) }).strict();
 export const inboxActionRequestSchema = z.object({ action: inboxActionKindSchema, markdown: z.string().max(100_000).optional(),
 	parentId: z.string().optional(), changeReason: z.string().max(2_000).optional(), draftRevision: z.number().int().nonnegative().optional() }).strict();
 export const inboxMutationReceiptSchema = z.object({ schemaVersion: z.literal('treeseed.inbox-mutation-receipt/v1'), item: inboxItemSchema,

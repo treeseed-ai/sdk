@@ -38,12 +38,19 @@ describe('human command tree contract', () => {
 		});
 		visit(TREESEED_COMMAND_TREE_V1.commands);
 		expect(leaves.get('agents show')?.execution).toMatchObject({ kind: 'operation', operationId: 'agents.show' });
+		expect(leaves.get('execution graph show')?.execution).toMatchObject({ kind: 'operation', operationId: 'execution.graph.show' });
+		expect(leaves.get('execution reconcile')?.execution).toMatchObject({ kind: 'operation', operationId: 'execution.reconcile' });
 		expect(leaves.get('ai status')?.execution).toMatchObject({ kind: 'operation', operationId: 'ai.instances.show' });
 		expect(leaves.get('ai storage connect')?.execution).toMatchObject({ kind: 'operation', operationId: 'ai.instances.storage.put', input: expect.arrayContaining([
 			{ target: 'path', field: 'teamId', source: 'context', name: 'team', required: true, transform: 'identity' },
 			{ target: 'path', field: 'instanceId', source: 'context', name: 'node', required: true, transform: 'identity' },
 		]) });
 		expect(leaves.get('auth login')?.execution).toEqual({ kind: 'protocol', handlerId: 'protocol.identity.login' });
+		expect(leaves.get('capacity ledger')?.execution).toMatchObject({ kind: 'operation', operationId: 'capacity.ledger', input: expect.arrayContaining([
+			{ target: 'query', field: 'projectId', source: 'option', name: 'project', required: true, transform: 'identity' },
+			{ target: 'query', field: 'workDayId', source: 'option', name: 'workday', required: false, transform: 'identity' },
+		]) });
+		expect(leaves.get('capacity ledger')?.options?.map((option) => option.name)).toContain('--workday');
 		expect(leaves.get('users create')?.execution).toEqual({ kind: 'protocol', handlerId: 'protocol.accounts.create' });
 		expect(leaves.get('users create')?.options?.map((option) => option.name)).toEqual(['--plan', '--email', '--username', '--display-name', '--timeout']);
 		expect(leaves.get('users create')?.authorization?.confirmation).toBe('never');
