@@ -1,5 +1,9 @@
 {
   "schemaVersion": "treeseed.assignment-clock-acceptance/v1",
-  "status": "initial",
-  "baseCommit": "be8c7b3ee4be1f8470329c3bf975d94400c8633f"
+  "status": "revised",
+  "baseCommit": "be8c7b3ee4be1f8470329c3bf975d94400c8633f",
+  "reviewDecision": {
+    "commit": "49e8486a371b189f50632831329fd778d5690f47",
+    "path": "decisions/node_Tja0CDehQoli2VW_XO5Z2lDhEA8LNdOD.mdx"
+  }
 }
