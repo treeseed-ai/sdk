@@ -40,13 +40,13 @@ describe('canonical agent execution contract', () => {
 		expect(assignmentResultSchema.safeParse(result).success).toBe(true);
 	});
 
-	it('requires authoritative timing evidence on the one shared assignment result', () => {
+	it('accepts timing evidence without requiring it from deterministic handlers', () => {
 		const result = {
 			schemaVersion: 'treeseed.assignment-result/v1', id: 'result-1', assignmentId: 'assignment-1', status: 'completed',
 			summary: 'Completed the assignment.', references: [], verification: [], usage: { elapsedSeconds: 1 }, diagnostics: [],
 			completedAt: '2026-09-13T12:00:00.000Z',
 		};
-		expect(assignmentResultSchema.safeParse(result).success).toBe(false);
+		expect(assignmentResultSchema.safeParse(result).success).toBe(true);
 		expect(assignmentResultSchema.safeParse({ ...result, timingAwareness }).success).toBe(true);
 	});
 

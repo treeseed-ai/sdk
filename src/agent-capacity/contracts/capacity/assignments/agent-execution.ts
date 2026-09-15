@@ -136,7 +136,7 @@ export const assignmentResultSchema = z.object({
 	verification: z.array(verificationRecordSchema),
 	usage: usageSchema,
 	diagnostics: z.array(diagnosticSchema),
-	timingAwareness: assignmentTimingAwarenessReceiptSchema,
+	timingAwareness: assignmentTimingAwarenessReceiptSchema.optional(),
 	completedAt: timestamp,
 }).strict();
 
