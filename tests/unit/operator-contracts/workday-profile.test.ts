@@ -44,7 +44,7 @@ describe('workday allocation profiles', () => {
 
 	it('ships four valid SDK campaign profiles against the accepted class catalog',()=>{
 		const bundle=JSON.parse(readFileSync('.treeseed/workdays/allocation-profile.json','utf8')) as RepositoryWorkdayProfileBundle;
-		const catalog=[{projectId:'sdk',classSlugs:['architecture','engineering','release','reporting','research','review','technical-writing','testing']}];
+		const catalog=[{projectId:'sdk',classSlugs:['architect','engineer','releaser','reporter','researcher','reviewer','technical-writer','tester']}];
 		expect(validateRepositoryWorkdayProfileBundle(bundle,catalog)).toEqual([]);
 		expect(new Set(bundle.profiles.map((entry)=>entry.id))).toEqual(new Set(['sdk-feature-heavy','sdk-stability-heavy','sdk-documentation-heavy','sdk-testing-heavy']));
 	});
