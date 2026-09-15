@@ -14,6 +14,7 @@ import { AI_INSTANCE_OPERATIONS } from './catalog/infrastructure/ai-instance-ope
 import { SECRET_OPERATIONS } from './catalog/services/secret-operations.ts';
 import { buildControlPlaneCatalog, flattenControlPlaneOperations } from './catalog/control-plane-catalog.ts';
 import { EXECUTION_OPERATIONS } from './catalog/execution/execution-operations.ts';
+import { AGENT_TEAM_CLONE_OPERATIONS } from './catalog/agents/agent-team-clone-operations.ts';
 const empty = z.object({}).strict(), none = z.undefined(), record = z.record(z.unknown()), payload = record;
 function providerPath<T extends z.ZodRawShape>(operationId: `${string}.${string}`, method: 'GET' | 'POST' | 'PUT', path: `/v1/${string}`, pathShape: T,
 	options: { read?: boolean; redactedPaths?: string[]; authentication?: ControlPlaneOperationDescriptor['authentication'] } = {},
@@ -236,6 +237,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 		authorities: resource('services.credential.authorities.list', 'GET', '/v1/teams/{teamId}/services/{connectionId}/credential-authorities', { teamId: z.string().min(1), connectionId: z.string().min(1) }, { capability: 'secrets.read', surfaces: ['rest', 'cli'], pagination: 'cursor' }),
 	},
 	agents: {
+		teamClone: AGENT_TEAM_CLONE_OPERATIONS,
 		list: resource('agents.list', 'GET', '/v1/projects/{projectId}/agents', { projectId: z.string().min(1) }, { capability: 'agents.read', surfaces: ['rest', 'cli', 'mcp_tool'], pagination: 'cursor' }),
 		show: resource('agents.show', 'GET', '/v1/projects/{projectId}/agents/{agentSlug}', { projectId: z.string().min(1), agentSlug: z.string().min(1) }, { capability: 'agents.read', surfaces: ['rest', 'cli', 'mcp_resource'] }),
 		handlers: resource('agents.handlers.list', 'GET', '/v1/projects/{projectId}/agent-handlers', { projectId: z.string().min(1) }, { capability: 'agents.read', surfaces: ['rest', 'cli', 'mcp_tool'] }),

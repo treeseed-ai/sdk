@@ -12,6 +12,7 @@ export * from '../../agent-capacity/contracts/capacity/workdays/workday-records.
 export * from '../../agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
 export * from '../../agent-capacity/contracts/configuration/configuration.ts';
 export * from '../../agent-capacity/contracts/operations/research-workflow.ts';
+export * from '../../agent-capacity/contracts/operations/agent-team-clone.ts';
 export * from '../../agent-capacity/contracts/projects/agents/project-agent-class.ts';
 export * from '../../agent-capacity/contracts/runtime/runtime-observability.ts';
 export * from '../../agent-capacity/contracts/support/decision-work.ts';

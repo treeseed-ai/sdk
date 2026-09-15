@@ -114,6 +114,8 @@ const operationBindings: Record<string, Execution> = {
 	'agents profiles validate': operation('agents.profiles.validate', [field('path', 'projectId', 'context', 'project', true), field('path', 'agentSlug', 'argument', 'profile', true)]),
 	'agents classes list': operation('agents.classes.list', [field('path', 'projectId', 'context', 'project', true)]),
 	'agents classes show': operation('agents.classes.show', [field('path', 'projectId', 'context', 'project', true), field('path', 'classId', 'argument', 'class', true)]),
+	'agents team clone plan': operation('agents.team.clone.plan', [field('path', 'teamId', 'context', 'team', true), field('body', 'sourceProject', 'argument', 'source', true), field('body', 'targetProjects', 'option', 'project'), field('body', 'allEligible', 'option', 'all')]),
+	'agents team clone apply': operation('agents.team.clone.apply', [field('path', 'teamId', 'context', 'team', true), field('body', 'file', 'argument', 'file', true)]),
 	'providers list': operation('providers.list', [field('path', 'teamId', 'context', 'team', true), ...page()]),
 	'providers show': operation('providers.show', [field('path', 'teamId', 'context', 'team', true), field('path', 'providerId', 'argument', 'provider', true)]),
 	'providers status': operation('providers.status', [field('path', 'teamId', 'context', 'team', true), field('path', 'providerId', 'argument', 'provider', true)]),
@@ -301,6 +303,7 @@ const commandTree: CommandTreeDescriptor = {
 		]),
 		branch('agents', [
 			leaf('list'), leaf('show', 'read', 'agent'),
+			branch('team', [branch('clone', [addOptions(leaf('plan', 'read', 'source'), [{ name: '--project', description: 'Target project; repeat to select projects.', type: 'string[]' }, { name: '--all', description: 'Target every eligible project except the source.', type: 'boolean' }]), leaf('apply', 'mutation', 'file', 'authority')])]),
 			branch('handlers', [leaf('list'), leaf('show', 'read', 'handler')]),
 			branch('profiles', [leaf('show', 'read', 'profile'), leaf('validate', 'read', 'profile')]),
 			branch('classes', [leaf('list'), leaf('show', 'read', 'class')]),
