@@ -1,0 +1,70 @@
+name: Install exact TreeSeed SDK artifact
+description: Replace installed SDK copies with the verified package artifact produced by one exact SDK commit.
+
+inputs:
+  commit:
+    description: Exact 40-character SDK commit.
+    required: true
+  github-token:
+    description: GitHub token used to read the public SDK Actions artifact.
+    required: true
+  paths:
+    description: Newline-separated package paths to replace.
+    required: false
+    default: node_modules/@treeseed/sdk
+
+runs:
+  using: composite
+  steps:
+    - name: Download and install exact SDK
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        TREESEED_SDK_COMMIT: ${{ inputs.commit }}
+        TREESEED_SDK_PATHS: ${{ inputs.paths }}
+      run: |
+        set -euo pipefail
+        if [[ ! "${TREESEED_SDK_COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
+          echo "SDK commit must be an exact 40-character lowercase SHA." >&2
+          exit 1
+        fi
+
+        artifact_name="sdk-${TREESEED_SDK_COMMIT}"
+        run_id=""
+        for attempt in {1..120}; do
+          mapfile -t candidate_run_ids < <(
+            gh api "repos/treeseed-ai/sdk/actions/artifacts?name=${artifact_name}&per_page=100" \
+              --jq ".artifacts[] | select(.expired == false and .workflow_run.head_sha == \"${TREESEED_SDK_COMMIT}\") | .workflow_run.id"
+          )
+          for candidate_run_id in "${candidate_run_ids[@]}"; do
+            candidate_state="$(gh run view "${candidate_run_id}" --repo treeseed-ai/sdk --json headSha,status,conclusion --jq '[.headSha,.status,.conclusion] | join(" ")')"
+            if [[ "${candidate_state}" == "${TREESEED_SDK_COMMIT} completed success" ]]; then
+              run_id="${candidate_run_id}"
+              break
+            fi
+          done
+          [[ -n "${run_id}" ]] && break
+          sleep 10
+        done
+        if [[ -z "${run_id}" ]]; then
+          echo "No successful SDK Verify run published ${artifact_name}." >&2
+          exit 1
+        fi
+
+        artifact_dir="$(mktemp -d)"
+        trap 'rm -rf "${artifact_dir}"' EXIT
+        gh run download "${run_id}" --repo treeseed-ai/sdk --name "${artifact_name}" --dir "${artifact_dir}"
+        sdk_archive="$(find "${artifact_dir}" -name '*.tgz' -type f -print -quit)"
+        if [[ -z "${sdk_archive}" ]]; then
+          echo "Artifact ${artifact_name} did not contain an SDK package archive." >&2
+          exit 1
+        fi
+
+        while IFS= read -r package_path; do
+          [[ -z "${package_path}" ]] && continue
+          rm -rf -- "${package_path}"
+          mkdir -p -- "${package_path}"
+          tar -xzf "${sdk_archive}" --strip-components=1 -C "${package_path}"
+          test -f "${package_path}/package.json"
+          test -d "${package_path}/dist"
+        done <<< "${TREESEED_SDK_PATHS}"
