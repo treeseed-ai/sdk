@@ -3,7 +3,7 @@ import { ProviderProtocolClient } from '../../../src/capacity-provider/client.ts
 
 const request = { runnerId: 'runner', leaseToken: 'lease-secret', recipientPublicKey: Buffer.alloc(32, 1).toString('base64') };
 const response = { authorization: { schemaVersion: 'treeseed.source-workspace-authorization/v1', id: 'authority', providerId: 'provider', assignmentId: 'assignment', attempt: 1,
-  source: { controlPlaneId: 'control', teamId: 'team', projectId: 'project', repositoryId: 'repo', commit: 'a'.repeat(40), formatVersion: 1, profile: 'source-only' }, mode: 'analysis', publication: 'denied', credentialBindingId: 'binding', issuedAt: '2026-09-10T00:00:00.000Z', expiresAt: '2026-09-10T00:01:00.000Z' },
+  source: { controlPlaneId: 'control', teamId: 'team', projectId: 'project', repositoryId: 'repo', commit: 'a'.repeat(40), formatVersion: 1, profile: 'source-only' }, mode: 'analysis', acquisition: 'upstream-authorized', publication: 'denied', credentialBindingId: 'binding', issuedAt: '2026-09-10T00:00:00.000Z', expiresAt: '2026-09-10T00:01:00.000Z' },
   repository: { provider: 'github', owner: 'treeseed-ai', name: 'sdk', cloneUrl: 'https://github.com/treeseed-ai/sdk.git', ref: 'staging' },
   credential: { schemaVersion: 'treeseed.source-credential-delivery/v1', id: 'delivery', authorizationId: 'authority', algorithm: 'x25519-hkdf-sha256-chacha20-poly1305', ephemeralPublicKey: Buffer.alloc(32, 2).toString('base64'), nonce: Buffer.alloc(12).toString('base64'), tag: Buffer.alloc(16).toString('base64'), ciphertext: 'sealed', expiresAt: '2026-09-10T00:01:00.000Z' } };
 describe('host provider source authorization transport', () => {

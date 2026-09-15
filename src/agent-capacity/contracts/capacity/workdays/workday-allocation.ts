@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AGENT_WORK_EXECUTION_MODES, type AgentWorkExecutionMode } from '../../support/authority/execution-mode.ts';
 
 const identifier = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
 const positiveWeights = z.record(z.number().positive());
@@ -14,6 +15,7 @@ export const workdayPolicySchema = z.object({
 
 export const appliedWorkdaySchema = z.object({
 	schemaVersion: z.literal('treeseed.workday/v1'), id: identifier, teamId: identifier,
+	executionMode: z.enum(AGENT_WORK_EXECUTION_MODES),
 	policyId: identifier, policyRevision: z.number().int().positive(), policySnapshot: workdayPolicySchema,
 	state: z.enum(['planned', 'active', 'closing', 'ended']), startsAt: z.string().datetime({ offset: true }),
 	endsAt: z.string().datetime({ offset: true }),
@@ -83,11 +85,12 @@ export function compilePlanningRounds(workdayId: string, agentIds: string[], pla
 
 /** Shared by read-only plan and mutating start; callers persist this exact value. */
 export function compileWorkday(input: { id: string; teamId: string; policyId: string; policyRevision: number;
-	policy: z.input<typeof workdayPolicySchema>; agentIds: string[]; startsAt: string }) {
+	executionMode: AgentWorkExecutionMode; policy: z.input<typeof workdayPolicySchema>; agentIds: string[]; startsAt: string }) {
 	const policy = workdayPolicySchema.parse(input.policy);
 	const assignments = compilePlanningRounds(input.id, input.agentIds, policy.planningSecondsPerAgent);
 	const startsAt = new Date(input.startsAt).toISOString();
 	return appliedWorkdaySchema.parse({ schemaVersion: 'treeseed.workday/v1', id: input.id, teamId: input.teamId,
+		executionMode: input.executionMode,
 		policyId: input.policyId, policyRevision: input.policyRevision, policySnapshot: policy, state: 'planned', startsAt,
 		endsAt: new Date(Date.parse(startsAt) + policy.durationSeconds * 1_000).toISOString(),
 		planningRounds: [1, 2].map((round) => ({ round, state: 'pending',

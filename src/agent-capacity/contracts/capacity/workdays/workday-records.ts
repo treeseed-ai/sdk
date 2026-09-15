@@ -59,7 +59,7 @@ export interface CapacityWorkdayRunRecord {
 	scenarioId: string;
 	status: CapacityWorkdayRunStatus;
 	environment: string;
-	executionMode?: AgentWorkExecutionMode;
+	executionMode: AgentWorkExecutionMode;
 	executionKind?: import('../communication/communication-records.ts').CapacityExecutionKind;
 	triggerKind?: import('../communication/communication-records.ts').CapacityTriggerKind;
 	hidden?: boolean;

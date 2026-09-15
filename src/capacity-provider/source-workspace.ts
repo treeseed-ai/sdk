@@ -10,6 +10,13 @@ export function assignmentSourceBranch(assignmentId: string): string {
 	return `treeseed/assignments/${assignmentId}`;
 }
 
+export function simulationSourceBranch(campaignId: string, workdayId: string, assignmentId: string): string {
+	for (const [label, value] of Object.entries({ campaignId, workdayId, assignmentId })) {
+		if (!/^[A-Za-z0-9._-]+$/u.test(value)) throw new Error(`Invalid simulation ${label}.`);
+	}
+	return `simulation/${campaignId}/${workdayId}/${assignmentId}`;
+}
+
 /** Portable identity of canonical source. Physical storage belongs exclusively to Deployment. */
 export const sourceWorkspaceKeySchema = z.object({
 	controlPlaneId: id,
@@ -30,8 +37,10 @@ export const sourceWorkspaceAuthorizationSchema = z.object({
 	attempt: z.number().int().positive(),
 	source: sourceWorkspaceKeySchema,
 	mode: z.enum(['analysis', 'work']),
-	publication: z.enum(['denied', 'assignment-branch']),
-	credentialBindingId: id,
+	acquisition: z.enum(['upstream-public', 'upstream-authorized', 'simulation-local']),
+	publication: z.enum(['denied', 'assignment-branch', 'simulation-branch']),
+	publicationRef: id.optional(),
+	credentialBindingId: id.optional(),
 	issuedAt: z.string().datetime(),
 	expiresAt: z.string().datetime(),
 }).strict().superRefine((value, context) => {
@@ -40,6 +49,24 @@ export const sourceWorkspaceAuthorizationSchema = z.object({
 	}
 	if (value.mode === 'analysis' && value.publication !== 'denied') {
 		context.addIssue({ code: z.ZodIssueCode.custom, path: ['publication'], message: 'Analysis cannot publish source changes.' });
+	}
+	if (value.publication === 'denied' && value.publicationRef) {
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['publicationRef'], message: 'Denied publication cannot name a destination ref.' });
+	}
+	if (value.publication !== 'denied' && !value.publicationRef) {
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['publicationRef'], message: 'Work publication requires its exact destination ref.' });
+	}
+	if (value.publication === 'assignment-branch' && !value.credentialBindingId) {
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['credentialBindingId'], message: 'Upstream publication requires a credential binding.' });
+	}
+	if (value.publication === 'simulation-branch' && value.credentialBindingId) {
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['credentialBindingId'], message: 'Simulation cannot receive an upstream credential binding.' });
+	}
+	if (value.acquisition === 'upstream-authorized' && !value.credentialBindingId) {
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['credentialBindingId'], message: 'Authorized acquisition requires a credential binding.' });
+	}
+	if (value.acquisition !== 'upstream-authorized' && value.credentialBindingId) {
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['credentialBindingId'], message: 'Public and simulation-local acquisition cannot receive a credential binding.' });
 	}
 });
 
@@ -53,7 +80,8 @@ export const sourceWorkspaceLeaseSchema = z.object({
 	source: sourceWorkspaceKeySchema,
 	workspaceDigest: digest,
 	mode: z.enum(['analysis', 'work']),
-	publication: z.enum(['denied', 'assignment-branch']),
+	acquisition: z.enum(['upstream-public', 'upstream-authorized', 'simulation-local']),
+	publication: z.enum(['denied', 'assignment-branch', 'simulation-branch']),
 	state: z.enum(['active', 'exporting', 'released', 'quarantined']),
 	createdAt: z.string().datetime(),
 	expiresAt: z.string().datetime(),
@@ -86,13 +114,16 @@ export const sourceWorkspaceResponseSchema = z.object({
 	authorization: sourceWorkspaceAuthorizationSchema,
 	repository: z.object({ provider: z.literal('github'), owner: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9-]{0,99}$/u), name: z.string().regex(/^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,99}$/u),
 		cloneUrl: z.string().url().startsWith('https://github.com/'), ref: id }).strict(),
-	credential: sourceCredentialDeliverySchema,
+	credential: sourceCredentialDeliverySchema.nullable(),
 }).strict().superRefine((value, context) => {
 	if (value.repository.cloneUrl !== `https://github.com/${value.repository.owner}/${value.repository.name}.git`) {
 		context.addIssue({ code: z.ZodIssueCode.custom, path: ['repository', 'cloneUrl'], message: 'Source transport must match its provider repository.' });
 	}
-	if (value.credential.authorizationId !== value.authorization.id || value.credential.expiresAt !== value.authorization.expiresAt) {
+	if (value.credential && (value.credential.authorizationId !== value.authorization.id || value.credential.expiresAt !== value.authorization.expiresAt)) {
 		context.addIssue({ code: z.ZodIssueCode.custom, path: ['credential'], message: 'Source credential delivery must match exact authorization and lifetime.' });
+	}
+	if (Boolean(value.authorization.credentialBindingId) !== Boolean(value.credential)) {
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['credential'], message: 'Credential delivery must match the declared binding.' });
 	}
 });
 
