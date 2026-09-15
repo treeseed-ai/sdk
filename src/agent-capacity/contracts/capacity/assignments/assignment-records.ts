@@ -7,6 +7,7 @@ export type ProviderAssignmentSynthesisSource =
 	| 'approved_decision'
 	| 'planning_input_request'
 	| 'capacity_plan'
+	| 'living_execution_graph'
 	| 'workday_demand'
 	| 'verification_failure'
 	| 'fallback_queue';
@@ -77,6 +78,7 @@ export interface TreeDxProxyHandle {
 	assignmentId?: string | null;
 	executionMode?: AgentWorkExecutionMode;
 	repositoryId?: string | null;
+	repositoryProjectId?: string | null;
 	workspaceId?: string | null;
 	baseCommitSha?: string | null;
 	baseRef?: string | null;
@@ -220,6 +222,11 @@ export interface ProviderAssignment {
 	synthesisKey: string | null;
 	decisionId: string | null;
 	proposalId: string | null;
+	graphRevision?: number | null;
+	executionNodeId?: string | null;
+	executionNodeRevision?: number | null;
+	assignmentAttempt?: import('./agent-execution.ts').AssignmentAttempt | null;
+	assignmentResult?: import('./agent-execution.ts').AssignmentResult | null;
 	fallbackOutputId: string | null;
 	treedxProxyHandle: TreeDxProxyHandle | Record<string, unknown> | null;
 	capabilityHandles: ProviderAssignmentCapabilityHandles | Record<string, unknown> | null;

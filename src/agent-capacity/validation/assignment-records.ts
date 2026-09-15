@@ -9,7 +9,7 @@ export interface AssignmentRecordDiagnostic {
 const ASSIGNMENT_STATUSES = new Set(['pending', 'leased', 'running', 'completed', 'failed', 'returned', 'expired', 'cancelled']);
 const LEASE_STATES = new Set(['unleased', 'leased', 'released', 'expired']);
 const MODE_RUN_STATUSES = new Set(['queued', 'running', 'succeeded', 'failed', 'cancelled']);
-const SYNTHESIS_SOURCES = new Set(['approved_decision', 'planning_input_request', 'capacity_plan', 'workday_demand', 'verification_failure', 'fallback_queue']);
+const SYNTHESIS_SOURCES = new Set(['approved_decision', 'planning_input_request', 'capacity_plan', 'living_execution_graph', 'workday_demand', 'verification_failure', 'fallback_queue']);
 
 function record(value: unknown): Record<string, unknown> {
 	return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};

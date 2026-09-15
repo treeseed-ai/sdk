@@ -20,18 +20,16 @@ export interface WorkdayIntent {
 	operatorConstraints?: {
 		providerIds?: string[];
 		maxConcurrency?: number;
-		reservePercent?: number;
 	};
 }
 
 export interface WorkdayActingAuthorityEvidence {
 	decisionId: string;
-	decisionStatus: 'approved';
-	executionInputId: string;
-	executionInputStatus: 'accepted';
-	estimateId: string;
-	capacityPlanId: string;
-	capacityPlanDigest: string;
+	decisionRevision: number;
+	executionNodeId: string;
+	executionNodeRevision: number;
+	graphRevision: number;
+	sourceDigest: string;
 }
 
 export interface WorkdaySelectedDemand {
@@ -102,7 +100,7 @@ export interface WorkdayStartReceipt {
 	workdayId: string;
 	preflightId: string;
 	preflightDigest: string;
-	acceptedCapacityPlanIds: string[];
+	acceptedExecutionNodeIds: string[];
 	assignmentIds: string[];
 	reservationIds: string[];
 	startedAt: string;
@@ -210,9 +208,9 @@ export function validateWorkdayIntentSelection(value: unknown): WorkdayLifecycle
 export function validateSelectedDemand(demand: WorkdaySelectedDemand): WorkdayLifecycleDiagnostic[] {
 	const diagnostics: WorkdayLifecycleDiagnostic[] = [];
 	if (demand.requestedSeconds <= 0 || !Number.isInteger(demand.requestedSeconds)) diagnostics.push({ code: 'requested_seconds_invalid', path: 'requestedSeconds', message: 'Demand duration must be a positive integer.' });
-	if (demand.mode === 'acting' && !demand.actingAuthority) diagnostics.push({ code: 'acting_authority_required', path: 'actingAuthority', message: 'Acting demand requires approved decision, accepted execution input, estimate, and API-derived capacity plan evidence.' });
-	if (demand.mode === 'acting' && demand.actingAuthority && (demand.actingAuthority.decisionStatus !== 'approved' || demand.actingAuthority.executionInputStatus !== 'accepted')) diagnostics.push({ code: 'acting_authority_invalid', path: 'actingAuthority', message: 'Acting authority must bind an approved decision and accepted execution input.' });
-	if (demand.mode === 'acting' && demand.actingAuthority && [demand.actingAuthority.decisionId, demand.actingAuthority.executionInputId, demand.actingAuthority.estimateId, demand.actingAuthority.capacityPlanId, demand.actingAuthority.capacityPlanDigest].some((value) => !value.trim())) diagnostics.push({ code: 'acting_authority_identity_missing', path: 'actingAuthority', message: 'Acting authority must bind non-empty decision, execution, estimate, capacity-plan, and plan-digest identities.' });
+	if (demand.mode === 'acting' && !demand.actingAuthority) diagnostics.push({ code: 'acting_authority_required', path: 'actingAuthority', message: 'Acting demand requires an exact accepted decision and living execution-node revision.' });
+	if (demand.mode === 'acting' && demand.actingAuthority && [demand.actingAuthority.decisionId, demand.actingAuthority.executionNodeId, demand.actingAuthority.sourceDigest].some((value) => typeof value !== 'string' || !value.trim())) diagnostics.push({ code: 'acting_authority_identity_missing', path: 'actingAuthority', message: 'Acting authority must bind non-empty decision, execution-node, and source identities.' });
+	if (demand.mode === 'acting' && demand.actingAuthority && [demand.actingAuthority.decisionRevision, demand.actingAuthority.executionNodeRevision, demand.actingAuthority.graphRevision].some((value) => !Number.isInteger(value) || value <= 0)) diagnostics.push({ code: 'acting_authority_revision_invalid', path: 'actingAuthority', message: 'Acting authority must bind positive decision, node, and graph revisions.' });
 	return diagnostics;
 }
 

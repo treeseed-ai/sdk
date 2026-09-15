@@ -14,11 +14,6 @@ const contextSourceSelectorSchema = z.discriminatedUnion('scope', [
 	z.object({ scope:z.literal('same-team'),projectIds:uniqueStrings.default([]),projectSlugs:uniqueStrings.default([]) }).strict(),
 	z.object({ scope:z.literal('shared-team'),teamId:nonEmpty,projectIds:uniqueStrings.default([]) }).strict(),
 ]);
-const lifecycle = z.object({
-	id:nonEmpty,title:nonEmpty,description:nonEmpty.optional(),status:nonEmpty,
-	teamId:nonEmpty,projectId:nonEmpty,workdayId:nonEmpty.optional(),assignmentId:nonEmpty.optional(),
-	createdAt:z.coerce.date(),updatedAt:z.coerce.date().optional(),
-}).strict();
 
 export const agentContextQueryContentSchema = z.object({
 	id:nonEmpty,title:nonEmpty,description:nonEmpty,revision:z.number().int().positive(),
@@ -56,30 +51,10 @@ export const discussionTopicContentSchema = z.object({
 	groupIds:nonEmptyUniqueStrings,parentTopicId:nonEmpty.optional(),status:z.enum(['active','archived']).default('active'),
 }).strict();
 
-const planItemSchema = z.object({ id:nonEmpty,title:nonEmpty,description:nonEmpty }).strict();
-export const assignmentPlanContentSchema = lifecycle.extend({
-	status:z.enum(['draft','ready','active','completed','superseded']),revision:z.number().int().positive(),objective:nonEmpty,
-	completed:z.array(planItemSchema).default([]),remaining:z.array(planItemSchema).default([]),risks:z.array(planItemSchema).default([]),
-	resumeState:z.object({ checkpoint:nonEmpty,nextAction:nonEmpty,contextRefs:uniqueStrings.default([]) }).strict().optional(),
-	decisionId:nonEmpty.optional(),capacityPlanId:nonEmpty.optional(),
-});
-
-export const assignmentStatusContentSchema = lifecycle.extend({
-	status:z.enum(['pending','admitted','leased','running','waiting','suspended','completed','failed','cancelled']),
-	sequence:z.number().int().nonnegative(),previousStatusRef:exactRevisionRefSchema.optional(),phase:nonEmpty,
-	reason:z.string().optional(),progress:z.number().min(0).max(1).optional(),
-}).superRefine((value,context) => {
-	if (value.sequence > 0 && !value.previousStatusRef) context.addIssue({ code:z.ZodIssueCode.custom,path:['previousStatusRef'],message:'Append-only status entries after sequence zero require the exact previous status revision.' });
-});
-
-export const assignmentSummaryContentSchema = lifecycle.extend({
-	status:z.enum(['completed','failed','cancelled','suspended']),summary:nonEmpty,lessons:uniqueStrings.default([]),
-	performance:z.object({ outcome:nonEmpty,metrics:z.record(z.number()).default({}) }).strict(),blockers:uniqueStrings.default([]),
-	resumeState:z.object({ checkpoint:nonEmpty,nextAction:nonEmpty,contextRefs:uniqueStrings.default([]) }).strict().optional(),
-	artifactRefs:uniqueStrings.default([]),verificationRefs:uniqueStrings.default([]),
-});
-
-export const agentEvaluationContentSchema = lifecycle.extend({
+export const agentEvaluationContentSchema = z.object({
+	id:nonEmpty,title:nonEmpty,description:nonEmpty.optional(),status:nonEmpty,
+	teamId:nonEmpty,projectId:nonEmpty,workdayId:nonEmpty.optional(),assignmentId:nonEmpty.optional(),
+	createdAt:z.coerce.date(),updatedAt:z.coerce.date().optional(),
 	agentId:nonEmpty,agentDefinitionRef:exactRevisionRefSchema,activityProfile:nonEmpty,
 	contextQueryRefs:z.array(exactRevisionRefSchema).default([]),contextQuerySetRefs:z.array(exactRevisionRefSchema).default([]),
 	instructionTemplateRefs:z.array(exactRevisionRefSchema).default([]),evaluatorId:nonEmpty,
@@ -90,13 +65,11 @@ export const agentEvaluationContentSchema = lifecycle.extend({
 export const agentOperationalContentSchemas = {
 	agent_context_query:agentContextQueryContentSchema,agent_context_query_set:agentContextQuerySetContentSchema,
 	agent_instruction_template:agentInstructionTemplateContentSchema,discussion_topic:discussionTopicContentSchema,
-	assignment_plan:assignmentPlanContentSchema,assignment_status:assignmentStatusContentSchema,
-	assignment_summary:assignmentSummaryContentSchema,agent_evaluation:agentEvaluationContentSchema,
+	agent_evaluation:agentEvaluationContentSchema,
 } satisfies Record<string,z.ZodTypeAny>;
 
 export const AGENT_OPERATIONAL_CONTENT_COLLECTIONS = {
 	agent_context_query:'agent-context-queries',agent_context_query_set:'agent-context-query-sets',
 	agent_instruction_template:'agent-instruction-templates',discussion_topic:'discussion-topics',
-	assignment_plan:'assignment-plans',assignment_status:'assignment-statuses',
-	assignment_summary:'assignment-summaries',agent_evaluation:'agent-evaluations',
+	agent_evaluation:'agent-evaluations',
 } as const;

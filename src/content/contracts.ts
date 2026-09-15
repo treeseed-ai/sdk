@@ -28,9 +28,6 @@ export type ContentModel =
 	| 'agent_context_query_set'
 	| 'agent_instruction_template'
 	| 'discussion_topic'
-	| 'assignment_plan'
-	| 'assignment_status'
-	| 'assignment_summary'
 	| 'agent_evaluation';
 
 export interface ContentReference {

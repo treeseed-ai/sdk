@@ -208,6 +208,10 @@ export function validateCommandOperationBindings(
 			for (const input of node.execution.input) {
 				const keys = shapes[input.target];
 				const undefinedSchema = binding.schema[input.target] instanceof ZodUndefined;
+				// `body.file` is the canonical CLI transport for a complete YAML/JSON
+				// operation body. The CLI parses it before operation validation; it is
+				// not a public field in the REST body schema.
+				if (input.target === 'body' && input.field === 'file' && input.source !== 'context' && keys !== null && !undefinedSchema) continue;
 				if ((keys !== null && !keys.includes(input.field)) || undefinedSchema) diagnostics.push({ code: 'command_operation_input_unknown', path: `${diagnosticPath}.input.${input.target}.${input.field}`, message: `Operation ${node.execution.operationId} does not accept ${input.target} field ${input.field}.` });
 			}
 		}

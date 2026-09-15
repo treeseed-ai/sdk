@@ -33,6 +33,7 @@ function modeRun(overrides: Record<string, unknown> = {}) {
 describe('assignment and mode-run record validation', () => {
 	it('accepts complete canonical durable records', () => {
 		expect(validateProviderAssignment(assignment())).toEqual({ ok: true, diagnostics: [] });
+		expect(validateProviderAssignment(assignment({ synthesizedFrom: 'living_execution_graph' }))).toEqual({ ok: true, diagnostics: [] });
 		expect(validateAgentModeRun(modeRun())).toEqual({ ok: true, diagnostics: [] });
 	});
 

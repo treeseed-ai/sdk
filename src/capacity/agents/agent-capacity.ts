@@ -1,5 +1,7 @@
 export type { AgentKernelPolicy,AgentKernelProfile,ProjectAgentClass,ProjectAgentClassStatus } from '../../agent-capacity/contracts/projects/agents/project-agent-class.ts';
+export type { AgentDefinition, AgentActivityProfile } from '../../types/agents.ts';
 export * from '../../agent-capacity/allocation.ts';
+export * from '../../agent-capacity/artifacts.ts';
 export * from '../../agent-capacity/validation/index.ts';
 export * from '../../agent-capacity/contracts/capacity/assignments/assignment-records.ts';
 export * from '../../agent-capacity/contracts/capacity/assignments/assignment-context-pack.ts';
@@ -7,12 +9,14 @@ export * from '../../agent-capacity/contracts/capacity/assignments/context-pack-
 export * from '../../agent-capacity/contracts/capacity/communication/communication-records.ts';
 export * from '../../agent-capacity/contracts/capacity/providers/supply-policy.ts';
 export * from '../../agent-capacity/contracts/capacity/workdays/workday-records.ts';
+export * from '../../agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
 export * from '../../agent-capacity/contracts/configuration/configuration.ts';
 export * from '../../agent-capacity/contracts/operations/research-workflow.ts';
-export * from '../../agent-capacity/contracts/operations/workflow-promotion.ts';
+export * from '../../agent-capacity/contracts/operations/agent-team-clone.ts';
 export * from '../../agent-capacity/contracts/projects/agents/project-agent-class.ts';
 export * from '../../agent-capacity/contracts/runtime/runtime-observability.ts';
 export * from '../../agent-capacity/contracts/support/decision-work.ts';
+export * from '../../agent-capacity/contracts/support/execution-graph.ts';
 export * from '../../agent-capacity/contracts/support/agent-lab-monitoring.ts';
 export * from '../../agent-capacity/contracts/support/agent-atlas.ts';
 export * from '../../agent-capacity/contracts/support/failure-records.ts';

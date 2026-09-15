@@ -4,6 +4,12 @@ const id = z.string().min(1).max(256);
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
 const commit = z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u);
 
+/** The assignment identity already includes node revision and attempt. */
+export function assignmentSourceBranch(assignmentId: string): string {
+	if (!/^[A-Za-z0-9._-]+$/u.test(assignmentId)) throw new Error('Invalid assignment branch identity.');
+	return `treeseed/assignments/${assignmentId}`;
+}
+
 /** Portable identity of canonical source. Physical storage belongs exclusively to Deployment. */
 export const sourceWorkspaceKeySchema = z.object({
 	controlPlaneId: id,
@@ -24,7 +30,7 @@ export const sourceWorkspaceAuthorizationSchema = z.object({
 	attempt: z.number().int().positive(),
 	source: sourceWorkspaceKeySchema,
 	mode: z.enum(['analysis', 'work']),
-	publication: z.enum(['denied', 'candidate-only']),
+	publication: z.enum(['denied', 'assignment-branch']),
 	credentialBindingId: id,
 	issuedAt: z.string().datetime(),
 	expiresAt: z.string().datetime(),
@@ -47,29 +53,15 @@ export const sourceWorkspaceLeaseSchema = z.object({
 	source: sourceWorkspaceKeySchema,
 	workspaceDigest: digest,
 	mode: z.enum(['analysis', 'work']),
-	publication: z.enum(['denied', 'candidate-only']),
+	publication: z.enum(['denied', 'assignment-branch']),
 	state: z.enum(['active', 'exporting', 'released', 'quarantined']),
 	createdAt: z.string().datetime(),
 	expiresAt: z.string().datetime(),
 }).strict();
 
-/** This receipt is durable before execution storage can be destroyed. It is not merge authority. */
-export const sourceCandidateReceiptSchema = z.object({
-	schemaVersion: z.literal('treeseed.source-candidate-receipt/v1'),
-	id,
-	leaseId: id,
-	source: sourceWorkspaceKeySchema,
-	parentCandidateId: id.nullable(),
-	commit,
-	bundle: z.object({ artifactId: id, digest, bytes: z.number().int().positive().safe() }).strict(),
-	verification: z.object({ objectClosure: z.literal(true), ancestry: z.literal(true), authority: z.literal(true) }).strict(),
-	persistedAt: z.string().datetime(),
-}).strict();
-
 export type SourceWorkspaceKey = z.infer<typeof sourceWorkspaceKeySchema>;
 export type SourceWorkspaceAuthorization = z.infer<typeof sourceWorkspaceAuthorizationSchema>;
 export type SourceWorkspaceLease = z.infer<typeof sourceWorkspaceLeaseSchema>;
-export type SourceCandidateReceipt = z.infer<typeof sourceCandidateReceiptSchema>;
 
 /** Provider-manager transport only. Recipient is an ephemeral host key, never a guest key. */
 export const sourceWorkspaceRequestSchema = z.object({
@@ -92,16 +84,10 @@ export const sourceCredentialDeliverySchema = z.object({
 
 export const sourceWorkspaceResponseSchema = z.object({
 	authorization: sourceWorkspaceAuthorizationSchema,
-	/** Present only for an accepted predecessor candidate selected by the control plane. */
-	sourceBundle: z.object({ artifactId: id, digest, bytes: z.number().int().positive().max(536_870_912),
-		chunks: z.array(digest).min(1).max(1024) }).strict().optional(),
 	repository: z.object({ provider: z.literal('github'), owner: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9-]{0,99}$/u), name: z.string().regex(/^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,99}$/u),
 		cloneUrl: z.string().url().startsWith('https://github.com/'), ref: id }).strict(),
 	credential: sourceCredentialDeliverySchema,
 }).strict().superRefine((value, context) => {
-	if (value.sourceBundle && value.sourceBundle.chunks.length !== Math.ceil(value.sourceBundle.bytes / 524_288)) {
-		context.addIssue({ code: z.ZodIssueCode.custom, path: ['sourceBundle'], message: 'Source bundle chunks must match its bounded size.' });
-	}
 	if (value.repository.cloneUrl !== `https://github.com/${value.repository.owner}/${value.repository.name}.git`) {
 		context.addIssue({ code: z.ZodIssueCode.custom, path: ['repository', 'cloneUrl'], message: 'Source transport must match its provider repository.' });
 	}

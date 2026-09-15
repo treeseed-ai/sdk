@@ -1,81 +1,62 @@
 
-import { AgentActivityExecutionConfig,AgentActivityPermissions,AgentActivityPlanningIntent,AgentActivityPromptConfig,AgentActivityType,AgentBranchPolicy,AgentOutputContract,AgentQuestionPolicy,AgentReasoningEffort,AgentSignalPolicy,AgentToolPolicy,EngineeringHandlerKind,ExecutionProviderKind,ExecutionProviderPressure,ExecutionProviderQuotaVisibility,ExecutionResourceNeedKind } from './agent-trigger-kinds.ts';
-import type { AgentAuthorityPresetId } from '../../agent-capacity/authority/agent-authority-presets.ts';
+import { AgentActivityType,AgentReasoningEffort,EngineeringHandlerKind,ExecutionProviderKind,ExecutionProviderPressure,ExecutionProviderQuotaVisibility,ExecutionResourceNeedKind } from './agent-trigger-kinds.ts';
 
-export interface AgentContentRevisionRef { id:string; revision:number }
-export interface AgentCapabilityConfigurationValue { value: unknown; requirement: 'required' | 'preferred' }
-export interface AgentCapabilityRequirement {
-	capabilityId: string;
-	versionRange: string;
-	requirement: 'required' | 'preferred';
-	alternativeGroup?: string | null;
-	requiredFeatures?: string[];
-	configuration?: Record<string, AgentCapabilityConfigurationValue>;
+export const AGENT_CONTENT_MODELS = [
+	'agent','book','knowledge','objective','discussion','discussion-message',
+	'proposal','question','note','decision',
+] as const;
+export type AgentContentModel = (typeof AGENT_CONTENT_MODELS)[number];
+
+export const AGENT_TOOL_GROUPS = [
+	'discussion','source.read','source.write','verification','release',
+] as const;
+export type AgentToolGroup = (typeof AGENT_TOOL_GROUPS)[number];
+
+export interface AgentDependencySelectors {
+	agents?: string[];
+	events?: Array<'workday-closing'>;
+}
+
+export interface AgentPermissionSet {
+	content: { read: AgentContentModel[]; write: AgentContentModel[] };
+	tools: AgentToolGroup[];
+}
+
+export interface AgentPrompt {
+	system: string;
+	instructions?: string[];
 }
 
 export interface AgentActivityProfile {
-	activityType?: AgentActivityType;
-	enabled: boolean;
-	handler: EngineeringHandlerKind;
-	prompt: AgentActivityPromptConfig;
-	branchPolicy: AgentBranchPolicy;
-	permissions?: AgentActivityPermissions;
-	authorityPresets?: AgentAuthorityPresetId[];
-	contextQueryRefs?: AgentContentRevisionRef[];
-	contextQuerySetRefs?: AgentContentRevisionRef[];
-	instructionTemplateRefs?: AgentContentRevisionRef[];
-	capabilityRequirements?: AgentCapabilityRequirement[];
-	artifactTriggers?: Array<{ event: string; artifactKind: string; model?: string; required?: boolean }>;
-	closeoutPolicy?: { warningSeconds?: number; summaryRequired?: boolean; requiredArtifactKinds?: string[]; blockOnOpenQuestions?: boolean };
-	tools: AgentToolPolicy;
-	signals?: AgentSignalPolicy;
-	outputs: AgentOutputContract;
-	planningIntent?: AgentActivityPlanningIntent;
-	questionPolicy?: AgentQuestionPolicy;
-	execution?: AgentActivityExecutionConfig;
+	handler: string;
+	dependsOn?: AgentDependencySelectors;
+	permissions: AgentPermissionSet;
+	prompt: AgentPrompt;
+	additionalContext?: string[];
+	parameters?: Record<string, unknown>;
 }
 
 export type AgentActivityProfilesConfiguration = Partial<Record<AgentActivityType, AgentActivityProfile>>;
 
-export interface AgentChatProfileConfiguration {
-	foundation: 'discussion-v1';
-	responseStyle?: string;
-	promptTask?: string;
-	reasoningEffort?: AgentReasoningEffort;
-	capabilityRequirements?: AgentCapabilityRequirement[];
-	maxRuntimeSeconds?: number;
-	maxTotalTokens?: number;
-	warningTokens?: number;
-	maxCostAmount?: number;
-	costCurrency?: string;
-	toolAdditions?: string[];
-	contextModels?: string[];
-}
-
-export interface AgentCapability {
+export interface AgentDefinition {
+	schemaVersion: 'treeseed.agent/v1';
 	id: string;
-	description?: string;
-	produces?: string[];
-	requires?: string[];
-	reviews?: string[];
-	metadata?: Record<string, unknown>;
-}
-
-export interface AgentDefinitionIdentity {
+	name: string;
+	agentClass: string;
 	purpose: string;
 	responsibilities: string[];
-	durableInstructions: string;
+	capabilities: string[];
+	context: { include: string[] };
+	activityProfiles: Partial<Record<AgentActivityType, AgentActivityProfile>>;
 }
 
-export interface AgentDefinition {
-	slug: string;
-	title: string;
-	agentClass: string;
-	template?: string;
-	identity: AgentDefinitionIdentity;
-	capabilities: AgentCapability[];
-	activityProfiles: Partial<Record<AgentActivityType, AgentActivityProfile>>;
-	chatProfile?: AgentChatProfileConfiguration;
+/** @deprecated Transitional read-only shape used only by execution-run receipts. */
+export type AgentDefinitionIdentity = Pick<AgentDefinition, 'purpose' | 'responsibilities'>;
+
+export interface AgentCapabilityRequirement {
+	capabilityId: string;
+	versionRange: string;
+	requirement: 'required' | 'preferred';
 }
 
 export interface AgentExecutionConfig {
