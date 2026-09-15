@@ -118,6 +118,14 @@ export const diagnosticSchema = z.object({
 	code: identifier, severity: z.enum(['info', 'warning', 'error']), message: z.string().min(1), ref: exactEntityReferenceSchema.optional(),
 }).strict();
 
+export const assignmentTimingAwarenessReceiptSchema = z.object({
+	schemaVersion: z.literal('treeseed.assignment-timing-awareness/v1'),
+	requiredChecks: z.literal(2), completedChecks: z.number().int().min(2),
+	firstTool: z.literal('treedx:treeseed_time_status'), firstToolSucceeded: z.literal(true),
+	lastTool: z.literal('treedx:treeseed_time_status'), lastToolSucceeded: z.literal(true),
+	firstToolCompliant: z.literal(true), finalToolCompliant: z.literal(true),
+}).strict();
+
 export const assignmentResultSchema = z.object({
 	schemaVersion: z.literal('treeseed.assignment-result/v1'),
 	id: identifier,
@@ -128,6 +136,7 @@ export const assignmentResultSchema = z.object({
 	verification: z.array(verificationRecordSchema),
 	usage: usageSchema,
 	diagnostics: z.array(diagnosticSchema),
+	timingAwareness: assignmentTimingAwarenessReceiptSchema,
 	completedAt: timestamp,
 }).strict();
 
@@ -150,5 +159,6 @@ export type ExactGrant = z.infer<typeof exactGrantSchema>;
 export type AssignmentWorkspace = z.infer<typeof assignmentWorkspaceSchema>;
 export type EffectiveActivityProfile = z.infer<typeof effectiveActivityProfileSchema>;
 export type AssignmentAttempt = z.infer<typeof assignmentAttemptSchema>;
+export type AssignmentTimingAwarenessReceipt = z.infer<typeof assignmentTimingAwarenessReceiptSchema>;
 export type AssignmentResult = z.infer<typeof assignmentResultSchema>;
 export type AssignmentContext = z.infer<typeof assignmentContextSchema>;
