@@ -64,4 +64,5 @@ runs:
           tar -xzf "${sdk_archive}" --strip-components=1 -C "${package_path}"
           test -f "${package_path}/package.json"
           test -d "${package_path}/dist"
+          npm install --prefix "${package_path}" --ignore-scripts --no-save --package-lock=false --no-audit --no-fund
         done <<< "${TREESEED_SDK_PATHS}"
