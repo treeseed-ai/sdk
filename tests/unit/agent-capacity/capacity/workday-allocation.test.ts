@@ -17,8 +17,8 @@ describe('minimal workday allocation', () => {
 
 	it('uses one deterministic compiler for the complete applied workday', () => {
 		const workday = compileWorkday({ id: 'workday', teamId: 'team', policyId: 'default', policyRevision: 1,
-			policy, agentIds: ['sdk/tester', 'sdk/architect'], startsAt: '2026-09-13T12:00:00.000Z' });
-		expect(workday).toMatchObject({ state: 'planned', startsAt: '2026-09-13T12:00:00.000Z',
+			executionMode: 'simulation', policy, agentIds: ['sdk/tester', 'sdk/architect'], startsAt: '2026-09-13T12:00:00.000Z' });
+		expect(workday).toMatchObject({ state: 'planned', executionMode: 'simulation', startsAt: '2026-09-13T12:00:00.000Z',
 			endsAt: '2026-09-13T20:00:00.000Z', planningRounds: [
 				{ round: 1, assignmentIds: ['planning:workday:1:sdk/architect', 'planning:workday:1:sdk/tester'] },
 				{ round: 2, assignmentIds: ['planning:workday:2:sdk/architect', 'planning:workday:2:sdk/tester'] },

@@ -4,7 +4,7 @@ import { sourceWorkspaceAuthorizationSchema, sourceWorkspaceKeySchema, sourceWor
 const source = { controlPlaneId: 'control-plane', teamId: 'team', projectId: 'project', repositoryId: 'source-repository',
 	commit: 'a'.repeat(40), formatVersion: 1, profile: 'source-only' };
 const authorization = { schemaVersion: 'treeseed.source-workspace-authorization/v1', id: 'grant', providerId: 'provider',
-	assignmentId: 'assignment', attempt: 1, source, mode: 'analysis', publication: 'denied', credentialBindingId: 'binding',
+	assignmentId: 'assignment', attempt: 1, source, mode: 'analysis', acquisition: 'upstream-authorized', publication: 'denied', credentialBindingId: 'binding',
 	issuedAt: '2026-01-01T00:00:00Z', expiresAt: '2026-01-01T00:10:00Z' };
 
 describe('exact-source workspace public contracts', () => {
@@ -36,7 +36,8 @@ describe('exact-source workspace public contracts', () => {
 		expect(sourceWorkspaceAuthorizationSchema.safeParse(authorization).success).toBe(true);
 		expect(sourceWorkspaceAuthorizationSchema.safeParse({ ...authorization, publication: 'assignment-branch' }).success).toBe(false);
 		expect(sourceWorkspaceAuthorizationSchema.safeParse({ ...authorization, mode: 'work' }).success).toBe(true);
-		expect(sourceWorkspaceAuthorizationSchema.safeParse({ ...authorization, mode: 'work', publication: 'assignment-branch' }).success).toBe(true);
+		expect(sourceWorkspaceAuthorizationSchema.safeParse({ ...authorization, mode: 'work', publication: 'assignment-branch', publicationRef: 'treeseed/assignments/assignment' }).success).toBe(true);
+		expect(sourceWorkspaceAuthorizationSchema.safeParse({ ...authorization, mode: 'work', acquisition: 'upstream-public', publication: 'simulation-branch', publicationRef: 'simulation/campaign/workday/assignment', credentialBindingId: undefined }).success).toBe(true);
 		expect(sourceWorkspaceAuthorizationSchema.safeParse({ ...authorization, mode: 'work', publication: 'main' }).success).toBe(false);
 	});
 	it('rejects inverted authority lifetimes', () => {
