@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import { assignmentTimingAwarenessReceiptSchema } from '../agent-capacity/contracts/capacity/assignments/agent-execution.ts';
+
+export { assignmentTimingAwarenessReceiptSchema } from '../agent-capacity/contracts/capacity/assignments/agent-execution.ts';
+export type { AssignmentTimingAwarenessReceipt } from '../agent-capacity/contracts/capacity/assignments/agent-execution.ts';
 
 const identifier = z.string().regex(/^[a-z][a-z0-9._-]{0,127}$/u);
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
@@ -40,6 +44,7 @@ export const sandboxResultSchema = z.object({
 	status: z.enum(['completed', 'failed', 'cancelled', 'expired']), summary: z.string(),
 	responseMarkdown: z.string().optional(),
 	artifacts: z.array(z.object({ id: identifier, path: z.string().startsWith('/run/treeseed-output/'), digest, mediaType: z.string().min(1), bytes: z.number().int().nonnegative() }).strict()),
+	timingAwareness: assignmentTimingAwarenessReceiptSchema,
 	usage: z.record(z.unknown()).default({}), diagnostics: z.record(z.unknown()).default({}),
 	teardown: z.object({ verified: z.boolean(), completedAt: z.string().datetime().nullable() }).strict(),
 }).strict();
