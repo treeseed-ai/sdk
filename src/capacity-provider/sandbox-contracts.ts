@@ -35,11 +35,20 @@ export const sandboxLeaseRenewalSchema = z.object({
 	leaseExpiresAt: z.string().datetime(), issuedAt: z.string().datetime(), signature: z.object({ keyId: identifier, algorithm: z.literal('Ed25519'), value: z.string().min(1) }).strict(),
 }).strict();
 
+export const assignmentTimingAwarenessReceiptSchema = z.object({
+	schemaVersion: z.literal('treeseed.assignment-timing-awareness/v1'),
+	requiredChecks: z.literal(2), completedChecks: z.number().int().min(2),
+	firstTool: z.literal('treedx:treeseed_time_status'), firstToolSucceeded: z.literal(true),
+	lastTool: z.literal('treedx:treeseed_time_status'), lastToolSucceeded: z.literal(true),
+	firstToolCompliant: z.literal(true), finalToolCompliant: z.literal(true),
+}).strict();
+
 export const sandboxResultSchema = z.object({
 	schemaVersion: z.literal('treeseed.sandbox-result/v1'), sandboxId: z.string().min(1), assignmentId: z.string().min(1),
 	status: z.enum(['completed', 'failed', 'cancelled', 'expired']), summary: z.string(),
 	responseMarkdown: z.string().optional(),
 	artifacts: z.array(z.object({ id: identifier, path: z.string().startsWith('/run/treeseed-output/'), digest, mediaType: z.string().min(1), bytes: z.number().int().nonnegative() }).strict()),
+	timingAwareness: assignmentTimingAwarenessReceiptSchema,
 	usage: z.record(z.unknown()).default({}), diagnostics: z.record(z.unknown()).default({}),
 	teardown: z.object({ verified: z.boolean(), completedAt: z.string().datetime().nullable() }).strict(),
 }).strict();
@@ -56,6 +65,7 @@ export const providerEnvironmentReceiptSchema = z.object({
 export type SandboxAssignment = z.infer<typeof sandboxAssignmentSchema>;
 export type SandboxEvent = z.infer<typeof sandboxEventSchema>;
 export type SandboxLeaseRenewal = z.infer<typeof sandboxLeaseRenewalSchema>;
+export type AssignmentTimingAwarenessReceipt = z.infer<typeof assignmentTimingAwarenessReceiptSchema>;
 export type SandboxResult = z.infer<typeof sandboxResultSchema>;
 export type ProviderEnvironmentReceipt = z.infer<typeof providerEnvironmentReceiptSchema>;
 export type SandboxEnvironmentProfile = z.infer<typeof sandboxProfile>;
