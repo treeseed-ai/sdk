@@ -2,9 +2,6 @@ name: Install exact TreeSeed SDK artifact
 description: Replace installed SDK copies with the verified package artifact produced by one exact SDK commit.
 
 inputs:
-  commit:
-    description: Exact 40-character SDK commit.
-    required: true
   github-token:
     description: GitHub token used to read the public SDK Actions artifact.
     required: true
@@ -20,7 +17,7 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
-        TREESEED_SDK_COMMIT: ${{ inputs.commit }}
+        TREESEED_SDK_COMMIT: ${{ github.action_ref }}
         TREESEED_SDK_PATHS: ${{ inputs.paths }}
       run: |
         set -euo pipefail
