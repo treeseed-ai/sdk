@@ -19,6 +19,7 @@ const operationBindings: Record<string, Execution> = {
 	'topics unsubscribe': operation('communications.topics.subscriptions.delete', [field('path', 'teamId', 'context', 'team', true), field('path', 'channel', 'argument', 'topic', true), field('body', 'agent', 'argument', 'agent', true)]),
 	'capabilities list': operation('capabilities.list', [field('query', 'status', 'option'), field('query', 'family', 'option'), field('query', 'namespace', 'option'), field('query', 'limit', 'option', 'limit', false, 'integer'), field('query', 'cursor', 'option')]),
 	'capabilities show': operation('capabilities.show', [field('path', 'capabilityId', 'argument', 'capability', true), field('query', 'version', 'option')]),
+	'providers offers show': operation('providers.offers.show', [field('path', 'teamId', 'context', 'team', true), field('path', 'providerId', 'argument', 'connection', true)]),
 	'teams list': operation('teams.list', page()),
 	'teams current': local('local.teams.current'),
 	'teams use': local('local.teams.use'),
