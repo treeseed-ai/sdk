@@ -1,5 +1,6 @@
 import type { ResearchSourcePolicy } from '../../agent-capacity/contracts/support/research-source-policy.ts';
 import type { CapabilityOffer } from '../capability-ontology.ts';
+import type { CapabilityAccountingObservation } from '../../agent-capacity/contracts/capacity/workdays/capability-accounting.ts';
 
 export const CAPACITY_PROVIDER_IDENTITY_ALGORITHM = 'Ed25519' as const;
 export const CAPACITY_PROVIDER_PROOF_TTL_SECONDS = 300;
@@ -328,6 +329,7 @@ export interface ProviderExecutionAdapterSnapshot {
 	minimumAssignmentDuration?: MinimumAssignmentDuration;
 	nativeLimits: Record<string, unknown>;
 	observations?: Record<string, unknown>;
+	accountingObservation?: { modelUsage: CapabilityAccountingObservation; capabilityUsage: Record<string, CapabilityAccountingObservation> };
 }
 
 export interface ProviderAvailabilitySnapshot {
