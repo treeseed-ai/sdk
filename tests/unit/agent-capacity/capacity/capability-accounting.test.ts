@@ -24,6 +24,8 @@ describe('capability daily accounting', () => {
   expect(remainingCapabilitySeconds({ ...input, observation: { ...input.observation, observedAt: '2026-09-16T11:00:00Z' } }).reason).toBe('stale');
   expect(remainingCapabilitySeconds({ ...input, observation: { ...input.observation, observedAt: '2026-09-16T12:01:00Z' } }).reason).toBe('stale');
   expect(remainingCapabilitySeconds({ ...input, previousObservation: { ...input.observation, activeSeconds: 101 } }).reason).toBe('non-monotonic');
+  expect(remainingCapabilitySeconds({ ...input, observation: { ...input.observation, healthy: false },
+   previousObservation: { ...input.observation, activeSeconds: 101 } }).reason).toBe('non-monotonic');
  });
  it('requires a fresh report at UTC rollover and fails closed on exhausted supply', () => {
   expect(remainingCapabilitySeconds({ ...input, now: '2026-09-17T00:00:00Z' }).reason).toBe('stale');
