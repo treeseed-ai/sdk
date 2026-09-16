@@ -65,7 +65,9 @@ export const effectiveActivityProfileSchema = activityProfileSchema.omit({ depen
 	permissionCeiling: activityProfileSchema.shape.permissions,
 }).omit({ permissions: true }).strict();
 
-const providerSelectionSchema = z.object({ providerId: identifier, offerId: identifier, offerRevision: z.number().int().positive(), runtimeBuild: digest }).strict();
+const providerSelectionSchema = z.object({ providerId: identifier, offerId: identifier,
+	executionProviderId: identifier, modelConfigurationId: identifier, executionCapabilityId: identifier,
+	offerRevision: z.number().int().positive(), runtimeBuild: digest }).strict();
 const limitsSchema = z.object({
 	maximumSeconds: z.number().int().positive(),
 	maximumContextBytes: z.number().int().positive(),

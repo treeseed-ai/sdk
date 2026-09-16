@@ -236,6 +236,11 @@ export interface ProviderAssignment {
 }
 
 export interface ProviderAssignmentLifecycleRequest {
+	activeSeconds?: number | null;
+	elapsedSeconds?: number | null;
+	actualUsd?: number | null;
+	providerUnits?: number | null;
+	usage?: Record<string, unknown> | null;
 	runnerId?: string | null;
 	leaseToken?: string | null;
 	leaseSeconds?: number | null;

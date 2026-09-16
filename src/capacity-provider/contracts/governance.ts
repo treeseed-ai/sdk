@@ -1,5 +1,6 @@
 import type { ResearchSourcePolicy } from '../../agent-capacity/contracts/support/research-source-policy.ts';
 import type { CapabilityOffer } from '../capability-ontology.ts';
+import type { CapabilityAccountingObservation } from '../../agent-capacity/contracts/capacity/workdays/capability-accounting.ts';
 
 export const CAPACITY_PROVIDER_IDENTITY_ALGORITHM = 'Ed25519' as const;
 export const CAPACITY_PROVIDER_PROOF_TTL_SECONDS = 300;
@@ -328,6 +329,7 @@ export interface ProviderExecutionAdapterSnapshot {
 	minimumAssignmentDuration?: MinimumAssignmentDuration;
 	nativeLimits: Record<string, unknown>;
 	observations?: Record<string, unknown>;
+	accountingObservation?: { modelUsage: CapabilityAccountingObservation; capabilityUsage: Record<string, CapabilityAccountingObservation> };
 }
 
 export interface ProviderAvailabilitySnapshot {
@@ -414,7 +416,7 @@ export interface CapacityProviderManifestV5 {
 	sandbox: { required: true; brokerSocket: string; runtime: 'kata-runtime-rs-qemu'; profiles: CapacityProviderSandboxProfile[] };
 	adapters: Array<{
 		id: string; adapter: string; isolation: 'microvm'; profile?: string; module?: string; protocol?: 'responses' | 'chat-completions';
-		model?: { endpointRef?: string; baseUrl?: string; model?: string }; credentialProfiles?: string[]; laneIds: string[]; maxConcurrentWorkers: number;
+		model?: { endpointRef?: string; baseUrl?: string; model?: string; reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' }; credentialProfiles?: string[]; laneIds: string[]; maxConcurrentWorkers: number;
 		healthProbe?: string; versionConstraint?: string; configurationDigest?: string; minimumAssignmentDuration?: MinimumAssignmentDuration;
 		nativeLimits: Record<string, unknown>; researchSourcePolicy?: ResearchSourcePolicy;
 		offers: Array<{ offer: CapabilityOffer; sandboxProfileId: string }>;

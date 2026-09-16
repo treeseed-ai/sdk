@@ -7,11 +7,16 @@ const positiveWeights = z.record(z.number().positive());
 export const workdayPolicySchema = z.object({
 	durationSeconds: z.number().int().positive(),
 	maximumConcurrency: z.number().int().positive(),
-	planningSecondsPerAgent: z.number().int().positive(),
+	planningPercent: z.number().min(0).max(100).default(20),
+	allocationWeight: z.number().positive().default(1),
+	planningTurnMaximumSeconds: z.number().int().positive().default(180),
 	communicationConcurrency: z.number().int().positive(),
-	projectWeights: positiveWeights,
-	agentClassWeights: positiveWeights,
+	projectPercentages: positiveWeights.default({}),
+	agentClassPercentages: z.record(positiveWeights).default({}),
 }).strict();
+
+export const workdayAllocationOverridesSchema = workdayPolicySchema.pick({ planningPercent: true, allocationWeight: true,
+	planningTurnMaximumSeconds: true, projectPercentages: true, agentClassPercentages: true }).partial();
 
 export const appliedWorkdaySchema = z.object({
 	schemaVersion: z.literal('treeseed.workday/v1'), id: identifier, teamId: identifier,
@@ -19,9 +24,9 @@ export const appliedWorkdaySchema = z.object({
 	policyId: identifier, policyRevision: z.number().int().positive(), policySnapshot: workdayPolicySchema,
 	state: z.enum(['planned', 'active', 'closing', 'ended']), startsAt: z.string().datetime({ offset: true }),
 	endsAt: z.string().datetime({ offset: true }),
-	planningRounds: z.array(z.object({ round: z.union([z.literal(1), z.literal(2)]),
+	planningRounds: z.array(z.object({ round: z.number().int().positive(),
 		state: z.enum(['pending', 'active', 'complete']), assignmentIds: z.array(identifier),
-		startedAt: z.string().datetime({ offset: true }).optional(), completedAt: z.string().datetime({ offset: true }).optional() }).strict()).length(2),
+		startedAt: z.string().datetime({ offset: true }).optional(), completedAt: z.string().datetime({ offset: true }).optional() }).strict()),
 	admittedSecondsByProject: z.record(z.number().int().nonnegative()),
 	admittedSecondsByAgentClass: z.record(z.number().int().nonnegative()),
 	activatedAt: z.string().datetime({ offset: true }).optional(), closingAt: z.string().datetime({ offset: true }).optional(),
@@ -58,13 +63,15 @@ export function selectFairReadyNode(nodes: FairReadyNode[], usage: FairUsage[], 
 		projectActual.set(entry.projectId, (projectActual.get(entry.projectId) ?? 0) + entry.seconds);
 		classActual.set(`${entry.projectId}:${entry.agentClass}`, (classActual.get(`${entry.projectId}:${entry.agentClass}`) ?? 0) + entry.seconds);
 	}
-	const projects = [...new Set(nodes.map((node) => node.projectId))].sort((left, right) =>
-		shareDebt(right, policy.projectWeights, projectActual) - shareDebt(left, policy.projectWeights, projectActual)
+	const projectWeights = Object.fromEntries([...new Set(nodes.map((node) => node.projectId))]
+		.map((projectId) => [projectId, policy.projectPercentages[projectId] ?? 1]));
+	const projects = Object.keys(projectWeights).sort((left, right) =>
+		shareDebt(right, projectWeights, projectActual) - shareDebt(left, projectWeights, projectActual)
 		|| left.localeCompare(right));
 	const projectId = projects[0]!;
 	const projectNodes = nodes.filter((node) => node.projectId === projectId);
 	const classWeights = Object.fromEntries([...new Set(projectNodes.map((node) => node.agentClass))]
-		.map((agentClass) => [agentClass, policy.agentClassWeights[agentClass] ?? 1]));
+		.map((agentClass) => [agentClass, policy.agentClassPercentages[projectId]?.[agentClass] ?? 1]));
 	const projectClassActual = new Map([...classActual].filter(([key]) => key.startsWith(`${projectId}:`))
 		.map(([key, value]) => [key.slice(projectId.length + 1), value]));
 	const classes = [...new Set(projectNodes.map((node) => node.agentClass))].sort((left, right) =>
@@ -72,29 +79,38 @@ export function selectFairReadyNode(nodes: FairReadyNode[], usage: FairUsage[], 
 		|| left.localeCompare(right));
 	return projectNodes.filter((node) => node.agentClass === classes[0]).sort((left, right) =>
 		right.graphPriority - left.graphPriority || Date.parse(left.readyAt) - Date.parse(right.readyAt)
-		|| left.id.localeCompare(right))[0] ?? null;
+		|| left.id.localeCompare(right.id))[0] ?? null;
 }
 
-export function compilePlanningRounds(workdayId: string, agentIds: string[], planningSecondsPerAgent: number) {
+export function compilePlanningRounds(workdayId: string, agentIds: string[], planningTurnMaximumSeconds: number, round = 1) {
 	const agents = [...new Set(agentIds)].sort();
-	return [1, 2].flatMap((round) => agents.map((agentId) => ({
-		id: `planning:${workdayId}:${round}:${agentId}`, agentId, round, maximumSeconds: planningSecondsPerAgent,
-		dependsOn: round === 1 ? [] : agents.map((candidate) => `planning:${workdayId}:1:${candidate}`),
-	})));
+	return agents.map((agentId) => ({
+		id: `planning:${workdayId}:${round}:${agentId}`, agentId, round, maximumSeconds: planningTurnMaximumSeconds,
+		dependsOn: round === 1 ? [] : agents.map((candidate) => `planning:${workdayId}:${round - 1}:${candidate}`),
+	}));
+}
+
+export function workdayPlanningEndsAt(plan: Pick<AppliedWorkday, 'startsAt' | 'policySnapshot'>): string {
+	return new Date(Date.parse(plan.startsAt) + plan.policySnapshot.durationSeconds * plan.policySnapshot.planningPercent * 10).toISOString();
+}
+
+export function workdayPhase(plan: Pick<AppliedWorkday, 'startsAt' | 'endsAt' | 'policySnapshot'>, now: string): 'planning' | 'acting' | 'ended' {
+	if (Date.parse(now) >= Date.parse(plan.endsAt)) return 'ended';
+	return Date.parse(now) < Date.parse(workdayPlanningEndsAt(plan)) ? 'planning' : 'acting';
 }
 
 /** Shared by read-only plan and mutating start; callers persist this exact value. */
 export function compileWorkday(input: { id: string; teamId: string; policyId: string; policyRevision: number;
-	executionMode: AgentWorkExecutionMode; policy: z.input<typeof workdayPolicySchema>; agentIds: string[]; startsAt: string }) {
+	executionMode: AgentWorkExecutionMode; policy: z.input<typeof workdayPolicySchema>; agentIds: string[]; startsAt: string;
+	activityTypes?: string[] }) {
 	const policy = workdayPolicySchema.parse(input.policy);
-	const assignments = compilePlanningRounds(input.id, input.agentIds, policy.planningSecondsPerAgent);
+	const assignments = policy.planningPercent > 0 ? compilePlanningRounds(input.id, input.agentIds, policy.planningTurnMaximumSeconds) : [];
 	const startsAt = new Date(input.startsAt).toISOString();
 	return appliedWorkdaySchema.parse({ schemaVersion: 'treeseed.workday/v1', id: input.id, teamId: input.teamId,
 		executionMode: input.executionMode,
 		policyId: input.policyId, policyRevision: input.policyRevision, policySnapshot: policy, state: 'planned', startsAt,
 		endsAt: new Date(Date.parse(startsAt) + policy.durationSeconds * 1_000).toISOString(),
-		planningRounds: [1, 2].map((round) => ({ round, state: 'pending',
-			assignmentIds: assignments.filter((assignment) => assignment.round === round).map((assignment) => assignment.id) })),
+		planningRounds: assignments.length ? [{ round: 1, state: 'pending', assignmentIds: assignments.map((assignment) => assignment.id) }] : [],
 		admittedSecondsByProject: {}, admittedSecondsByAgentClass: {},
 	});
 }

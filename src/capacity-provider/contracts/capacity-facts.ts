@@ -39,6 +39,12 @@ export interface ExecutionProviderObservationCapacity {
 	resetAt?: string | null;
 	confidence?: NativeCapacityConfidence;
 	metadata?: Record<string, unknown>;
+	/** UTC-day active execution accounting, keyed by the advertised capability. */
+	capabilityUsage?: Record<string, {
+		day: string;
+		activeSeconds: number;
+		reservedSeconds: number;
+	}>;
 }
 
 export interface ExecutionProviderNativeCapacity {
@@ -54,6 +60,14 @@ export interface ExecutionProviderNativeCapacity {
 	metadata?: Record<string, unknown>;
 	nativeLimits?: ExecutionProviderNativeLimitCapacity[];
 	observation?: ExecutionProviderObservationCapacity;
+	/** Shared by all capabilities exposed through this model configuration. */
+	modelConfigurationId?: string;
+	dailyActiveSecondsLimit?: number;
+	capabilityLimits?: Record<string, {
+		dailyActiveSecondsLimit: number;
+		minimumAssignmentSeconds?: number;
+		maximumAssignmentSeconds?: number;
+	}>;
 }
 
 export interface CapacityProviderNativeCapacity {

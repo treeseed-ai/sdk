@@ -4,6 +4,7 @@ import {
 	CONTROL_PLANE_CATALOG,
 	CONTROL_PLANE_OPERATION_LIST,
 	CONTROL_PLANE_OPERATIONS,
+	TREESEED_COMMAND_TREE_V1,
 	buildMcpCatalog,
 	buildMcpResources,
 	buildMcpTools,
@@ -95,6 +96,15 @@ describe('control-plane operation catalog', () => {
 
 	it('coerces the projects list HTTP limit query parameter', () => {
 		expect(CONTROL_PLANE_OPERATIONS.projects.list.schema.query.parse({ limit: '200' })).toEqual({ limit: 200 });
+	});
+
+	it('binds an optional proposal subject into communication sends', () => {
+		expect(CONTROL_PLANE_OPERATIONS.communications.send.schema.body.parse({
+			message: '@sdk/architect Review this proposal.', proposalId: 'proposal-one',
+		})).toEqual({ message: '@sdk/architect Review this proposal.', proposalId: 'proposal-one' });
+		const send = TREESEED_COMMAND_TREE_V1.commands.find((node) => node.nodeType === 'leaf' && node.segment === 'send');
+		expect(send).toMatchObject({ options: expect.arrayContaining([expect.objectContaining({ name: '--proposal' })]),
+			execution: { input: expect.arrayContaining([expect.objectContaining({ target: 'body', field: 'proposalId', name: 'proposal' })]) } });
 	});
 
 	it('derives the complete stable MCP catalog from resource-declared operations', () => {

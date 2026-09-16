@@ -50,7 +50,7 @@ export interface CommandInputBinding {
 	name: string;
 	target: CommandInputTarget;
 	required?: boolean;
-	transform?: 'identity' | 'integer' | 'csv';
+	transform?: 'identity' | 'number' | 'integer' | 'csv' | 'json';
 }
 
 export type CommandExecutionBinding =
