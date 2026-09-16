@@ -14,6 +14,7 @@ describe('time-based workday lifecycle contracts', () => {
 		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'feature-heavy', projects: 'all' as const, startsAt: '2026-08-21T12:00:00.000Z' };
 		expect(validateWorkdayIntent({ ...base, durationSeconds: 3600 })).toEqual([]);
 		expect(validateWorkdayIntent({ ...base, durationSeconds: 3600, decisionIds: ['decision-1'] })).toEqual([]);
+		expect(validateWorkdayIntent({ ...base, durationSeconds: 3600, planningOnly: true, proposalIds: ['proposal-1'] })).toEqual([]);
 		expect(validateWorkdayIntent({ ...base, endsAt: '2026-08-21T13:00:00.000Z' })).toEqual([]);
 		expect(validateWorkdayIntent({ ...base, endsAt: '2026-08-21T13:00:00.000Z', durationSeconds: 3600 }).map((item) => item.code)).toContain('time_range_ambiguous');
 	});
@@ -22,6 +23,7 @@ describe('time-based workday lifecycle contracts', () => {
 		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'feature-heavy', projects: 'all' as const, startsAt: '2026-08-21T12:00:00.000Z', durationSeconds: 3600 };
 		expect(validateWorkdayIntent({ ...base, decisionIds: [] }).map((item) => item.code)).toContain('decision_selection_invalid');
 		expect(validateWorkdayIntent({ ...base, decisionIds: [''] }).map((item) => item.code)).toContain('decision_selection_invalid');
+		expect(validateWorkdayIntent({ ...base, proposalIds: [] }).map((item) => item.code)).toContain('proposal_selection_invalid');
 	});
 
 	it('allows planning without a decision and rejects acting without full authority', () => {

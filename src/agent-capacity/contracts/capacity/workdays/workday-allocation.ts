@@ -85,15 +85,21 @@ export function compilePlanningRounds(workdayId: string, agentIds: string[], pla
 
 /** Shared by read-only plan and mutating start; callers persist this exact value. */
 export function compileWorkday(input: { id: string; teamId: string; policyId: string; policyRevision: number;
-	executionMode: AgentWorkExecutionMode; policy: z.input<typeof workdayPolicySchema>; agentIds: string[]; startsAt: string }) {
+	executionMode: AgentWorkExecutionMode; policy: z.input<typeof workdayPolicySchema>; agentIds: string[]; startsAt: string;
+	activityTypes?: string[] }) {
 	const policy = workdayPolicySchema.parse(input.policy);
-	const assignments = compilePlanningRounds(input.id, input.agentIds, policy.planningSecondsPerAgent);
+	// Estimating is one contribution per owner, not a two-round planning
+	// conversation. The existing empty round remains complete; no second mode
+	// or scheduling contract is introduced.
+	const estimatingOnly = input.activityTypes?.length === 1 && input.activityTypes[0] === 'estimating';
+	const assignments = compilePlanningRounds(input.id, input.agentIds, policy.planningSecondsPerAgent)
+		.filter((assignment) => !estimatingOnly || assignment.round === 1);
 	const startsAt = new Date(input.startsAt).toISOString();
 	return appliedWorkdaySchema.parse({ schemaVersion: 'treeseed.workday/v1', id: input.id, teamId: input.teamId,
 		executionMode: input.executionMode,
 		policyId: input.policyId, policyRevision: input.policyRevision, policySnapshot: policy, state: 'planned', startsAt,
 		endsAt: new Date(Date.parse(startsAt) + policy.durationSeconds * 1_000).toISOString(),
-		planningRounds: [1, 2].map((round) => ({ round, state: 'pending',
+		planningRounds: [1, 2].map((round) => ({ round, state: estimatingOnly && round === 2 ? 'complete' : 'pending',
 			assignmentIds: assignments.filter((assignment) => assignment.round === round).map((assignment) => assignment.id) })),
 		admittedSecondsByProject: {}, admittedSecondsByAgentClass: {},
 	});

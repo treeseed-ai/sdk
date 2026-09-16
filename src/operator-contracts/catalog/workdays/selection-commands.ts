@@ -8,6 +8,8 @@ export const WORKDAY_SELECTION_INPUTS: CommandInputBinding[] = [
 
 export const WORKDAY_PLAN_OPTIONS: NonNullable<CommandLeafDescriptor['options']> = [
 	{ name: '--plan', description: 'Return the request without creating a preflight.', type: 'boolean' },
+	{ name: '--planning-only', description: 'Run cooperative planning profiles without admitting accepted acting work.', type: 'boolean' },
+	{ name: '--proposal', description: 'Governed proposal id for cooperative planning; repeat or comma-separate.', type: 'string[]' },
 	{ name: '--decision', description: 'Accepted decision id; repeat or comma-separate. The API derives and verifies acting authority.', type: 'string[]' },
 	{ name: '--agent', description: 'Planning agent slug; repeat or comma-separate. Intersects with class/activity selectors.', type: 'string[]' },
 	{ name: '--activity', description: 'Planning activity: planning, estimating, reviewing, reporting, or chat; repeat or comma-separate.', type: 'string[]' },

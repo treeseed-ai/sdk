@@ -13,6 +13,10 @@ export interface WorkdayIntent {
 	endsAt?: string;
 	durationSeconds?: number;
 	objectiveFilters?: string[];
+	/** Runs cooperative planning profiles without admitting accepted acting work. */
+	planningOnly?: boolean;
+	/** Selects exact governed proposals for cooperative planning and estimating. */
+	proposalIds?: string[];
 	/** Selects accepted decisions for API-derived acting work; it does not grant acting authority. */
 	decisionIds?: string[];
 	/** Limits cooperative planning; acting still requires accepted decision/estimate authority. */
@@ -176,6 +180,11 @@ export function validateWorkdayIntent(intent: WorkdayIntent): WorkdayLifecycleDi
 	if (!Number.isFinite(start)) diagnostics.push({ code: 'start_invalid', path: 'startsAt', message: 'startsAt must be an ISO timestamp.' });
 	if (intent.endsAt !== undefined && (!Number.isFinite(Date.parse(intent.endsAt)) || Date.parse(intent.endsAt) <= start)) diagnostics.push({ code: 'end_invalid', path: 'endsAt', message: 'endsAt must be a valid timestamp after startsAt.' });
 	if (intent.durationSeconds !== undefined && (!Number.isInteger(intent.durationSeconds) || intent.durationSeconds <= 0)) diagnostics.push({ code: 'duration_invalid', path: 'durationSeconds', message: 'durationSeconds must be a positive integer.' });
+	if (intent.planningOnly !== undefined && typeof intent.planningOnly !== 'boolean') diagnostics.push({ code: 'planning_only_invalid', path: 'planningOnly', message: 'planningOnly must be boolean.' });
+	if (intent.proposalIds !== undefined && (!Array.isArray(intent.proposalIds) || intent.proposalIds.length === 0 || intent.proposalIds.length > 64
+		|| intent.proposalIds.some((entry) => typeof entry !== 'string' || !entry.trim() || entry.length > 128))) {
+		diagnostics.push({ code: 'proposal_selection_invalid', path: 'proposalIds', message: 'Proposal selection must be a bounded nonempty array of proposal identities.' });
+	}
 	if (intent.decisionIds !== undefined && (!Array.isArray(intent.decisionIds) || intent.decisionIds.length === 0 || intent.decisionIds.length > 64
 		|| intent.decisionIds.some((entry) => typeof entry !== 'string' || !entry.trim() || entry.length > 128))) {
 		diagnostics.push({ code: 'decision_selection_invalid', path: 'decisionIds', message: 'Decision selection must be a bounded nonempty array of decision identities.' });

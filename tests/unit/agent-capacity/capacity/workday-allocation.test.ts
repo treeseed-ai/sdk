@@ -6,6 +6,13 @@ const policy = workdayPolicySchema.parse({ durationSeconds: 28_800, maximumConcu
 	projectWeights: { sdk: 4, api: 2 }, agentClassWeights: { engineer: 4, reviewer: 2 } });
 
 describe('minimal workday allocation', () => {
+	it('estimates once per owner without manufacturing a second planning contribution', () => {
+		const workday = compileWorkday({ id: 'estimates', teamId: 'team', policyId: 'default', policyRevision: 1,
+			executionMode: 'simulation', policy, agentIds: ['sdk/engineer:estimating', 'sdk/reviewer:estimating'],
+			activityTypes: ['estimating'], startsAt: '2026-09-13T12:00:00.000Z' });
+		expect(workday.planningRounds[0]?.assignmentIds).toHaveLength(2);
+		expect(workday.planningRounds[1]).toEqual({ round: 2, state: 'complete', assignmentIds: [] });
+	});
 	it('creates exactly two deterministic planning rounds for every eligible agent', () => {
 		const result = compilePlanningRounds('workday-1', ['sdk/tester', 'sdk/architect', 'sdk/tester'], 900);
 		expect(result.map((entry) => entry.id)).toEqual([
