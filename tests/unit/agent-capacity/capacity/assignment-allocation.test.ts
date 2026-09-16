@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { calculateAssignmentAllocation, calibrateAssignmentSeconds, distributeAllocationSeconds,
+import { allocateWorkdayCapacity, calculateAssignmentAllocation, calibrateAssignmentSeconds, distributeAllocationSeconds,
  type AllocationMeasurement } from '../../../../src/agent-capacity/contracts/capacity/workdays/assignment-allocation.ts';
+import { compileWorkday } from '../../../../src/agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
 
 const estimate = { minimumSeconds: 60, expectedSeconds: 300, maximumSeconds: 600 };
 const measurement = (overrides: Partial<AllocationMeasurement> = {}): AllocationMeasurement => ({
@@ -9,6 +10,24 @@ const measurement = (overrides: Partial<AllocationMeasurement> = {}): Allocation
 });
 
 describe('integrated assignment allocation arithmetic', () => {
+ it('derives planning pools after weighted workday sharing and reclaims them at the boundary', () => {
+  const workdays = ['production', 'simulation'].map((id, index) => ({
+   plan: { ...compileWorkday({ id, teamId: 'team', policyId: 'default', policyRevision: 1,
+    executionMode: index ? 'simulation' : 'production', policy: { durationSeconds: 1000, maximumConcurrency: 1,
+     communicationConcurrency: 1, allocationWeight: index ? 1 : 2 }, agentIds: ['sdk/architect'],
+    startsAt: '2026-09-16T12:00:00Z' }), state: 'active' as const },
+   committedSeconds: 0, planningCommittedSeconds: 0, maximumAdditionalSeconds: 900,
+  }));
+  const planning = allocateWorkdayCapacity({ remainingSeconds: 900, now: '2026-09-16T12:00:00Z', workdays });
+  expect(planning.production).toMatchObject({ shareSeconds: 600, availableSeconds: 120, phase: 'planning' });
+  expect(planning.simulation).toMatchObject({ shareSeconds: 300, availableSeconds: 60 });
+  const acting = allocateWorkdayCapacity({ remainingSeconds: 900, now: '2026-09-16T12:03:20Z', workdays });
+  expect(acting.production).toMatchObject({ availableSeconds: 600, phase: 'acting' });
+  expect(acting.simulation).toMatchObject({ availableSeconds: 300 });
+  workdays[0]!.committedSeconds = 120; workdays[0]!.planningCommittedSeconds = 120;
+  expect(allocateWorkdayCapacity({ remainingSeconds: 780, now: '2026-09-16T12:00:30Z', workdays }).production)
+   .toMatchObject({ shareSeconds: 480, availableSeconds: 0 });
+ });
  it('shares capacity across concurrent production/simulation workdays by weight', () => {
   expect(distributeAllocationSeconds(800, [
    { id: 'production', weight: 2, committedSeconds: 0, maximumAdditionalSeconds: 800 },

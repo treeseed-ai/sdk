@@ -1,4 +1,6 @@
 /** Pure allocation arithmetic. Admission must reserve the returned amount atomically. */
+import { workdayPhase, type AppliedWorkday } from './workday-allocation.ts';
+
 export interface AllocationShare {
 	id: string;
 	weight: number;
@@ -42,6 +44,38 @@ export function distributeAllocationSeconds(remainingSeconds: number, shares: Al
 		}
 	}
 	return result;
+}
+
+/** Resolve each live workday's phase opportunity from the same shared hard supply.
+ * maximumAdditionalSeconds is graph-ready demand, bounded by supply windows/concurrency.
+ * Existing commitments are never resized; execution mode does not alter entitlement.
+ */
+export function allocateWorkdayCapacity(input: {
+	remainingSeconds: number;
+	now: string;
+	workdays: Array<{ plan: AppliedWorkday; committedSeconds: number; planningCommittedSeconds: number;
+		maximumAdditionalSeconds: number }>;
+}) {
+	if (!Number.isFinite(Date.parse(input.now))) throw new Error('allocation_time_invalid');
+	const shares = input.workdays.map(({ plan, committedSeconds, planningCommittedSeconds, maximumAdditionalSeconds }) => {
+		nonnegative(planningCommittedSeconds);
+		if (planningCommittedSeconds > committedSeconds) throw new Error('allocation_planning_commitment_invalid');
+		const eligible = plan.state === 'active' && Date.parse(input.now) >= Date.parse(plan.startsAt)
+			&& workdayPhase(plan, input.now) !== 'ended';
+		return { id: plan.id, weight: plan.policySnapshot.allocationWeight, committedSeconds,
+			maximumAdditionalSeconds: eligible ? maximumAdditionalSeconds : 0 };
+	});
+	const opportunities = distributeAllocationSeconds(input.remainingSeconds, shares);
+	return Object.fromEntries(input.workdays.map(({ plan, committedSeconds, planningCommittedSeconds }) => {
+		const shareSeconds = opportunities[plan.id]!;
+		const phase = workdayPhase(plan, input.now);
+		// At the boundary all remaining entitlement is available to acting/review.
+		const phaseRemainingSeconds = phase === 'planning'
+			? Math.max(0, Math.floor((committedSeconds + shareSeconds) * plan.policySnapshot.planningPercent / 100)
+				- planningCommittedSeconds) : shareSeconds;
+		return [plan.id, { shareSeconds, phase, phaseRemainingSeconds,
+			availableSeconds: Math.min(shareSeconds, phaseRemainingSeconds) }];
+	}));
 }
 
 export interface AllocationMeasurement {
