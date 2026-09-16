@@ -17,6 +17,14 @@ function proposal() {
 }
 
 describe('proposal-owned execution plan', () => {
+	it('allows draft work to be estimated without fabricating initial budgets but gates ready work', () => {
+		const value = proposal();
+		const { estimate: _estimate, reviewEstimate: _reviewEstimate, ...unestimated } = value.executionPlan.workItems[0]!;
+		const draft = { ...value, status: 'draft', executionPlan: { workItems: [unestimated] } };
+		expect(validatePortableContentData('proposal', draft).ok).toBe(true);
+		expect(validatePortableContentData('proposal', { ...draft, status: 'ready' }).ok).toBe(false);
+		expect(validatePortableContentData('proposal', { ...draft, status: 'decided' }).ok).toBe(false);
+	});
 	it('accepts complete reviewed work without a separate execution-plan model', () => expect(validatePortableContentData('proposal', proposal()).ok).toBe(true));
 	it('preserves canonical exact evidence references without legacy registry translation', () => {
 		const value = { ...proposal(), evidenceRefs: [{ store: 'git', model: 'repository', id: 'sdk', repository: 'treeseed-ai/sdk', commit: 'b'.repeat(40) }] };

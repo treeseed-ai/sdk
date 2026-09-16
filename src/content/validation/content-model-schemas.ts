@@ -65,7 +65,7 @@ const executionPlanWorkItemSchema = z.object({
 	workspace: z.enum(['read-only', 'treedx', 'git']),
 	review: z.enum(['required', 'none']),
 	objective: nonEmpty,
-	estimate: estimateSchema,
+	estimate: estimateSchema.optional(),
 	reviewEstimate: estimateSchema.optional(),
 	maximumReviewCycles: z.number().int().positive().optional(),
 	dependsOn: z.array(nonEmpty.regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u)),
@@ -77,7 +77,7 @@ const executionPlanWorkItemSchema = z.object({
 	contextRefs: z.array(exactEntityReferenceSchema).optional(),
 	acceptanceCriteria: z.array(nonEmpty).min(1),
 }).strict().superRefine((value, context) => {
-	if (value.review === 'required' && !(value.reviewEstimate && value.maximumReviewCycles)) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Required review needs an estimate and maximum cycle count.' });
+	if (value.review === 'required' && !value.maximumReviewCycles) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Required review needs a maximum cycle count.' });
 	if (value.review === 'none' && (value.reviewEstimate || value.maximumReviewCycles)) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Unreviewed work cannot define review estimates or cycles.' });
 	if (value.workspace !== 'read-only') {
 		const mutable = (value.contextRefs ?? []).filter((reference) => reference.store === value.workspace);
@@ -108,6 +108,12 @@ const proposalSchema = z.object({
 	objectiveRefs: z.array(exactEntityReferenceSchema).optional(), evidenceRefs: z.array(exactEntityReferenceSchema).optional(),
 	discussionRef: exactEntityReferenceSchema.optional(), executionPlan: executionPlanSchema.optional(),
 }).strict().superRefine((value, context) => {
+	if (['ready', 'decided'].includes(value.status)) for (const [index, item] of (value.executionPlan?.workItems ?? []).entries()) {
+		if (!item.estimate) context.addIssue({ code: z.ZodIssueCode.custom,
+			path: ['executionPlan', 'workItems', index, 'estimate'], message: 'Ready work requires its agent-authored estimate.' });
+		if (item.review === 'required' && !item.reviewEstimate) context.addIssue({ code: z.ZodIssueCode.custom,
+			path: ['executionPlan', 'workItems', index, 'reviewEstimate'], message: 'Ready reviewed work requires its Reviewer-authored estimate.' });
+	}
 	if (['ready', 'decided'].includes(value.status) && !value.summary) {
 		context.addIssue({ code: z.ZodIssueCode.custom, path: ['summary'], message: 'A ready proposal requires a summary.' });
 	}
