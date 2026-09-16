@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { allocateWorkdayCapacity, calculateAssignmentAllocation, calibrateAssignmentSeconds, distributeAllocationSeconds,
  type AllocationMeasurement } from '../../../../src/agent-capacity/contracts/capacity/workdays/assignment-allocation.ts';
 import { compileWorkday } from '../../../../src/agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
+import * as capacity from '../../../../src/capacity/agents/agent-capacity.ts';
 
 const estimate = { minimumSeconds: 60, expectedSeconds: 300, maximumSeconds: 600 };
 const measurement = (overrides: Partial<AllocationMeasurement> = {}): AllocationMeasurement => ({
@@ -10,6 +11,10 @@ const measurement = (overrides: Partial<AllocationMeasurement> = {}): Allocation
 });
 
 describe('integrated assignment allocation arithmetic', () => {
+ it('exposes no retired hierarchical or alternate admission executor', () => {
+  expect(capacity).not.toHaveProperty('evaluateCapacityAdmission');
+  expect(capacity).not.toHaveProperty('evaluateAllocationHierarchy');
+ });
  it('admits bounded closeout through the same hard supply after stopping or ending productive work', () => {
   const plan = { ...compileWorkday({ id: 'closing', teamId: 'team', policyId: 'default', policyRevision: 1,
    executionMode: 'simulation', policy: { durationSeconds: 1000, maximumConcurrency: 1, communicationConcurrency: 1 },
