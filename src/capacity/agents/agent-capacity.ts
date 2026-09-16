@@ -10,6 +10,8 @@ export * from '../../agent-capacity/contracts/capacity/communication/communicati
 export * from '../../agent-capacity/contracts/capacity/providers/supply-policy.ts';
 export * from '../../agent-capacity/contracts/capacity/workdays/workday-records.ts';
 export * from '../../agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
+export * from '../../agent-capacity/contracts/capacity/workdays/assignment-allocation.ts';
+export * from '../../agent-capacity/contracts/capacity/workdays/capability-accounting.ts';
 export * from '../../agent-capacity/contracts/configuration/configuration.ts';
 export * from '../../agent-capacity/contracts/operations/research-workflow.ts';
 export * from '../../agent-capacity/contracts/operations/agent-team-clone.ts';
