@@ -1,5 +1,6 @@
 import { validateWorkdayBorrowingEvidence, type WorkdayBorrowingEvidence } from './workday-profile.ts';
 import type { WorkdayAgentSelection } from '../agent-capacity/workday.ts';
+import { workdayAllocationOverridesSchema } from '../agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
 export { normalizeWorkdayAgentSelection } from '../agent-capacity/workday.ts';
 
 export type WorkdayDemandMode = 'planning' | 'acting';
@@ -21,6 +22,9 @@ export interface WorkdayIntent {
 	decisionIds?: string[];
 	/** Limits cooperative planning; acting still requires accepted decision/estimate authority. */
 	agentSelection?: Partial<WorkdayAgentSelection>;
+	/** High-level overrides of the canonical workday allocation policy. */
+	allocation?: Partial<Pick<import('../agent-capacity/contracts/capacity/workdays/workday-allocation.ts').WorkdayPolicy,
+		'planningPercent' | 'allocationWeight' | 'planningTurnMaximumSeconds' | 'projectPercentages' | 'agentClassPercentages'>>;
 	operatorConstraints?: {
 		providerIds?: string[];
 		maxConcurrency?: number;
@@ -190,6 +194,11 @@ export function validateWorkdayIntent(intent: WorkdayIntent): WorkdayLifecycleDi
 		diagnostics.push({ code: 'decision_selection_invalid', path: 'decisionIds', message: 'Decision selection must be a bounded nonempty array of decision identities.' });
 	}
 	if (intent.agentSelection !== undefined) diagnostics.push(...validateWorkdayIntentSelection(intent.agentSelection));
+	if (intent.allocation !== undefined) {
+		const result = workdayAllocationOverridesSchema.safeParse(intent.allocation);
+		if (!result.success) diagnostics.push(...result.error.issues.map((issue) => ({ code: 'allocation_invalid',
+			path: `allocation.${issue.path.join('.')}`, message: issue.message })));
+	}
 	return diagnostics;
 }
 
