@@ -1,3 +1,23 @@
+import { z } from 'zod';
+
+/** Provider-owned configuration, carried in the existing adapter nativeLimits. */
+export const capabilityAccountingLimitsSchema = z.object({
+	modelConfigurationId: z.string().trim().min(1),
+	dailyActiveSecondsLimit: z.number().finite().nonnegative(),
+	capabilityLimits: z.record(z.object({
+		dailyActiveSecondsLimit: z.number().finite().nonnegative(),
+		minimumAssignmentSeconds: z.number().int().positive().optional(),
+		maximumAssignmentSeconds: z.number().int().positive().optional(),
+	}).strict().superRefine((value, context) => {
+		if (value.minimumAssignmentSeconds !== undefined && value.maximumAssignmentSeconds !== undefined
+			&& value.minimumAssignmentSeconds > value.maximumAssignmentSeconds) context.addIssue({
+				code: z.ZodIssueCode.custom, path: ['maximumAssignmentSeconds'], message: 'Maximum must not be below minimum.',
+			});
+	})).refine(value => Object.keys(value).length > 0, 'At least one execution capability limit is required.'),
+}).passthrough();
+
+export type CapabilityAccountingLimits = z.infer<typeof capabilityAccountingLimitsSchema>;
+
 export interface CapabilityAccountingObservation {
 	day: string;
 	observedAt: string;
@@ -14,7 +34,7 @@ export function remainingCapabilitySeconds(input: {
 	observation: CapabilityAccountingObservation;
 	previousObservation?: CapabilityAccountingObservation;
 	ledgerActiveSeconds: number;
-	/** Union of outstanding reservation identities, not the sum of two reports. */
+	/** Unconsumed portions of outstanding reservations; active portions are already usage. */
 	ledgerReservedSeconds: number;
 }) {
 	const now = Date.parse(input.now), observed = Date.parse(input.observation.observedAt);

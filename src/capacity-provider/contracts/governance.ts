@@ -414,7 +414,7 @@ export interface CapacityProviderManifestV5 {
 	sandbox: { required: true; brokerSocket: string; runtime: 'kata-runtime-rs-qemu'; profiles: CapacityProviderSandboxProfile[] };
 	adapters: Array<{
 		id: string; adapter: string; isolation: 'microvm'; profile?: string; module?: string; protocol?: 'responses' | 'chat-completions';
-		model?: { endpointRef?: string; baseUrl?: string; model?: string }; credentialProfiles?: string[]; laneIds: string[]; maxConcurrentWorkers: number;
+		model?: { endpointRef?: string; baseUrl?: string; model?: string; reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' }; credentialProfiles?: string[]; laneIds: string[]; maxConcurrentWorkers: number;
 		healthProbe?: string; versionConstraint?: string; configurationDigest?: string; minimumAssignmentDuration?: MinimumAssignmentDuration;
 		nativeLimits: Record<string, unknown>; researchSourcePolicy?: ResearchSourcePolicy;
 		offers: Array<{ offer: CapabilityOffer; sandboxProfileId: string }>;
