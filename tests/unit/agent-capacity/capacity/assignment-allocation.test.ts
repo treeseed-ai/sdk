@@ -10,6 +10,19 @@ const measurement = (overrides: Partial<AllocationMeasurement> = {}): Allocation
 });
 
 describe('integrated assignment allocation arithmetic', () => {
+ it('admits bounded closeout through the same hard supply after stopping or ending productive work', () => {
+  const plan = { ...compileWorkday({ id: 'closing', teamId: 'team', policyId: 'default', policyRevision: 1,
+   executionMode: 'simulation', policy: { durationSeconds: 1000, maximumConcurrency: 1, communicationConcurrency: 1 },
+   agentIds: [], startsAt: '2026-09-16T12:00:00Z' }), state: 'closing' as const };
+  const workday = { plan, committedSeconds: 100, planningCommittedSeconds: 100, maximumAdditionalSeconds: 30 };
+  for (const now of ['2026-09-16T12:00:30Z', '2026-09-16T12:30:00Z']) {
+   expect(allocateWorkdayCapacity({ remainingSeconds: 20, now, workdays: [workday] }).closing)
+    .toMatchObject({ shareSeconds: 20, availableSeconds: 20, phase: 'acting' });
+  }
+  expect(allocateWorkdayCapacity({ remainingSeconds: 0, now: '2026-09-16T12:30:00Z', workdays: [workday] }).closing.availableSeconds).toBe(0);
+  expect(allocateWorkdayCapacity({ remainingSeconds: 20, now: '2026-09-16T12:30:00Z',
+   workdays: [{ ...workday, plan: { ...plan, state: 'ended' } }] }).closing.availableSeconds).toBe(0);
+ });
  it('derives planning pools after weighted workday sharing and reclaims them at the boundary', () => {
   const workdays = ['production', 'simulation'].map((id, index) => ({
    plan: { ...compileWorkday({ id, teamId: 'team', policyId: 'default', policyRevision: 1,

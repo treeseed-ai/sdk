@@ -60,15 +60,15 @@ export function allocateWorkdayCapacity(input: {
 	const shares = input.workdays.map(({ plan, committedSeconds, planningCommittedSeconds, maximumAdditionalSeconds }) => {
 		nonnegative(planningCommittedSeconds);
 		if (planningCommittedSeconds > committedSeconds) throw new Error('allocation_planning_commitment_invalid');
-		const eligible = plan.state === 'active' && Date.parse(input.now) >= Date.parse(plan.startsAt)
-			&& workdayPhase(plan, input.now) !== 'ended';
+		const eligible = Date.parse(input.now) >= Date.parse(plan.startsAt)
+			&& (plan.state === 'closing' || (plan.state === 'active' && workdayPhase(plan, input.now) !== 'ended'));
 		return { id: plan.id, weight: plan.policySnapshot.allocationWeight, committedSeconds,
 			maximumAdditionalSeconds: eligible ? maximumAdditionalSeconds : 0 };
 	});
 	const opportunities = distributeAllocationSeconds(input.remainingSeconds, shares);
 	return Object.fromEntries(input.workdays.map(({ plan, committedSeconds, planningCommittedSeconds }) => {
 		const shareSeconds = opportunities[plan.id]!;
-		const phase = workdayPhase(plan, input.now);
+		const phase = plan.state === 'closing' ? 'acting' : workdayPhase(plan, input.now);
 		// At the boundary all remaining entitlement is available to acting/review.
 		const phaseRemainingSeconds = phase === 'planning'
 			? Math.max(0, Math.floor((committedSeconds + shareSeconds) * plan.policySnapshot.planningPercent / 100)
