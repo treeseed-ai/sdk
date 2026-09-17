@@ -74,6 +74,9 @@ export function allocateWorkdayCapacity(input: {
 			? Math.max(0, Math.floor((committedSeconds + shareSeconds) * plan.policySnapshot.planningPercent / 100)
 				- planningCommittedSeconds) : shareSeconds;
 		return [plan.id, { shareSeconds, phase, phaseRemainingSeconds,
+			weight: plan.policySnapshot.allocationWeight, committedSeconds, planningCommittedSeconds,
+			remainingSupplySeconds: input.remainingSeconds,
+			totalEligibleWeight: shares.filter(share => share.maximumAdditionalSeconds > 0).reduce((sum, share) => sum + share.weight, 0),
 			availableSeconds: Math.min(shareSeconds, phaseRemainingSeconds) }];
 	}));
 }

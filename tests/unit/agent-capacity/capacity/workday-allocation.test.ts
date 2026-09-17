@@ -45,7 +45,9 @@ describe('minimal workday allocation', () => {
 			{ id: 'sdk-engineer', projectId: 'sdk', agentClass: 'engineer', graphPriority: 2, readyAt: '2026-09-13T12:00:01Z' },
 			{ id: 'api-engineer', projectId: 'api', agentClass: 'engineer', graphPriority: 1, readyAt: '2026-09-13T12:00:00Z' },
 		];
-		expect(selectFairReadyNode(nodes, [{ projectId: 'api', agentClass: 'engineer', seconds: 120 }], policy)?.id).toBe('sdk-engineer');
+		expect(selectFairReadyNode(nodes, [{ projectId: 'api', agentClass: 'engineer', seconds: 120 }], policy)).toMatchObject({
+			id: 'sdk-engineer', explanation: { projectTargetPercent: 60, projectDeficitSeconds: 72, classTargetPercent: 60,
+				classDeficitSeconds: 0, readyNodeCount: 3 } });
 		expect(selectFairReadyNode(nodes, [{ projectId: 'sdk', agentClass: 'engineer', seconds: 600 }], policy)?.id).toBe('api-engineer');
 	});
 });

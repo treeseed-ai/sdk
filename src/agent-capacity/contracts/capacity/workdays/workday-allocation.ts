@@ -86,9 +86,16 @@ export function selectFairReadyNode(nodes: FairReadyNode[], usage: FairUsage[], 
 	const classes = [...new Set(projectNodes.map((node) => node.agentClass))].sort((left, right) =>
 		shareDebt(right, classWeights, projectClassActual) - shareDebt(left, classWeights, projectClassActual)
 		|| left.localeCompare(right));
-	return projectNodes.filter((node) => node.agentClass === classes[0]).sort((left, right) =>
+	const selected = projectNodes.filter((node) => node.agentClass === classes[0]).sort((left, right) =>
 		right.graphPriority - left.graphPriority || Date.parse(left.readyAt) - Date.parse(right.readyAt)
 		|| left.id.localeCompare(right.id))[0] ?? null;
+	return selected ? { ...selected, explanation: {
+		projectTargetPercent: 100 * projectWeights[projectId]! / Object.values(projectWeights).reduce((sum, weight) => sum + weight, 0),
+		projectDeficitSeconds: shareDebt(projectId, projectWeights, projectActual),
+		classTargetPercent: 100 * classWeights[selected.agentClass]! / Object.values(classWeights).reduce((sum, weight) => sum + weight, 0),
+		classDeficitSeconds: shareDebt(selected.agentClass, classWeights, projectClassActual),
+		readyNodeCount: nodes.length,
+	} } : null;
 }
 
 export function compilePlanningRounds(workdayId: string, agentIds: string[], planningTurnMaximumSeconds: number, round = 1) {
