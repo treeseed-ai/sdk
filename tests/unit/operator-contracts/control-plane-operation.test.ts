@@ -43,11 +43,12 @@ function catalog(...operations: ControlPlaneOperationDescriptor[]): ControlPlane
 }
 
 describe('control-plane operation catalog', () => {
-	it('requires operator identity and empty input for authoritative profile reconciliation', () => {
-		const binding = CONTROL_PLANE_OPERATIONS.workdays.profilesReconcile;
+	it('requires operator identity and versioned input for team policy replacement', () => {
+		const binding = CONTROL_PLANE_OPERATIONS.workdays.profilesUpdate;
 		expect(binding.descriptor).toMatchObject({ authentication: 'oauth', oauthScopes: ['treeseed:execution'],
 			kind: 'mutation', confirmation: 'input_required', idempotency: { required: true } });
-		expect(binding.schema.body.safeParse({}).success).toBe(true);
+		expect(binding.descriptor.concurrency.required).toBe(true);
+		expect(binding.schema.body.safeParse({}).success).toBe(false);
 		expect(binding.schema.body.safeParse({ commit: 'a'.repeat(40), content: '{}' }).success).toBe(false);
 	});
 	it('accepts a fully described operation and derives MCP annotations', () => {

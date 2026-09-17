@@ -18,6 +18,15 @@ export const workdayPolicySchema = z.object({
 export const workdayAllocationOverridesSchema = workdayPolicySchema.pick({ planningPercent: true, allocationWeight: true,
 	planningTurnMaximumSeconds: true, projectPercentages: true, agentClassPercentages: true }).partial();
 
+/** One canonical default; team-owned overrides use this same policy contract. */
+export const DEFAULT_WORKDAY_POLICY = Object.freeze(workdayPolicySchema.parse({
+	durationSeconds: 28_800, maximumConcurrency: 1, communicationConcurrency: 1,
+}));
+export const workdayProfileSchema = z.object({
+	id: z.literal('default'), teamId: identifier, revision: z.number().int().positive(), policy: workdayPolicySchema,
+}).strict();
+export type WorkdayProfile = z.infer<typeof workdayProfileSchema>;
+
 export const appliedWorkdaySchema = z.object({
 	schemaVersion: z.literal('treeseed.workday/v1'), id: identifier, teamId: identifier,
 	executionMode: z.enum(AGENT_WORK_EXECUTION_MODES),
