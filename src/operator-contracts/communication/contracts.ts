@@ -11,6 +11,7 @@ export const communicationSendRequestSchema = z.object({
 	message: z.string().trim().min(1).max(100_000),
 	recipients: z.array(z.string().trim().min(1)).max(100).optional(),
 	proposalId: z.string().trim().min(1).max(200).optional(),
+	parentWorkdayId: z.string().trim().min(1).max(200).optional(),
 	timeoutSeconds: z.number().int().min(1).max(3_600).optional(),
 }).strict();
 
