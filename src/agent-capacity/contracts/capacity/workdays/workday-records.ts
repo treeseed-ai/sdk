@@ -148,27 +148,10 @@ export interface ProviderRuntimeEventInput {
 export interface CapacityWorkdayScheduleRecord {
 	id: string;
 	teamId: string;
-	projectIds: string[];
 	status: 'active' | 'paused' | 'completed' | 'failed';
 	purpose: string;
-	capacityProviderId: string;
-	agentSelection: WorkdayAgentSelection;
 	cadenceSeconds: number;
-	durationSeconds: number;
-	maxActiveAssignments: number;
-	availableSeconds: number;
-	timePolicy: import('../../support/time-capacity.ts').WorkdayTimePolicy;
-	planningOnly: boolean;
-	executionMode?: AgentWorkExecutionMode;
-	publicationPolicy: {
-		bookIds: string[];
-		target: 'staging' | 'production';
-		cohortMode: 'accepted';
-		requireTechnicalReview: boolean;
-		requireAudienceReview: boolean;
-		requireGraphReviewWhenStructural: boolean;
-		simulatedHumanApproval: boolean;
-	};
+	intent: import('../../../../operator-contracts/workday-lifecycle.ts').WorkdayIntent;
 	lastRunId: string | null;
 	nextRunAt: string;
 	stateVersion: number;
