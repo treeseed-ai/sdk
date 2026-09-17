@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { validateSelectedDemand, validateWorkdayIntent, validateWorkdayPreflight, validateWorkdayPreflightFreshness, validateWorkdaySettlement, validateWorkdayIntentSelection, normalizeWorkdayAgentSelection, type WorkdayPreflightReceipt } from '../../../src/operator-contracts/index.ts';
 
 describe('time-based workday lifecycle contracts', () => {
+	it('validates explicit custody mode without granting free simulation capacity', () => {
+		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default',
+			projects: 'all' as const, startsAt: '2026-09-16T12:00:00Z' };
+		for (const executionMode of ['simulation', 'production'] as const) expect(validateWorkdayIntent({ ...base, executionMode })).toEqual([]);
+		expect(validateWorkdayIntent({ ...base, executionMode: 'other' } as never)).toContainEqual(expect.objectContaining({ code: 'execution_mode_invalid' }));
+	});
 	it('validates high-level allocation through the canonical policy contract', () => {
 		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default',
 			projects: 'all' as const, startsAt: '2026-09-16T12:00:00Z', durationSeconds: 3600 };

@@ -6,6 +6,12 @@ import { WORKDAY_PLAN_OPTIONS, WORKDAY_SELECTION_INPUTS } from './catalog/workda
 import { hostProviderEnvironmentBranch, PROVIDER_ENVIRONMENT_COMMAND_BINDINGS, providerEnvironmentBranches } from './catalog/provider-environment-commands.ts';
 import { addOptions, aiInstance, aiModeSet, aiNode, authLogin, branch, configurationAdopt, developmentCommand, field, hostInitialize, hostProviderCredentialInitialize, hostRecoveryVerify, hostReset, hostSecurityInitialize, hostSecurityRotate, hostUninstall, leaf, libraryRead, local, operation, page, planOption, protocol, unavailable, userCreate } from './catalog/commands/command-tree-builders.ts';
 
+const workdayIntentInputs = [field('body', 'profileId', 'option', 'profile'), field('body', 'projects', 'option', 'projects', false, 'csv'),
+	field('body', 'executionMode', 'option', 'executionMode'), field('body', 'startsAt', 'option', 'start'), field('body', 'endsAt', 'option', 'end'),
+	field('body', 'durationSeconds', 'option', 'duration', false, 'integer'), field('body', 'objectiveFilters', 'option', 'objective', false, 'csv'),
+	field('body', 'planningOnly', 'option', 'planningOnly'), field('body', 'proposalIds', 'option', 'proposal', false, 'csv'),
+	field('body', 'decisionIds', 'option', 'decision', false, 'csv'), ...WORKDAY_SELECTION_INPUTS];
+
 const operationBindings: Record<string, Execution> = {
 	...PROVIDER_ENVIRONMENT_COMMAND_BINDINGS,
 	'auth login': protocol('protocol.identity.login'),
@@ -140,14 +146,14 @@ const operationBindings: Record<string, Execution> = {
 	'seeds apply': operation('seeds.apply', [field('path', 'name', 'context', 'seed', true), field('body', 'file', 'argument', 'file', true)]),
 	'seeds show': operation('seeds.show', [field('path', 'name', 'argument', 'seed', true)]),
 	'seeds verify': operation('seeds.verify', [field('path', 'name', 'argument', 'seed', true)]),
-	'workdays plan': operation('workdays.plan', [field('path', 'teamId', 'context', 'team', true), field('body', 'profileId', 'option', 'profile'), field('body', 'projects', 'option', 'projects', false, 'csv'), field('body', 'startsAt', 'option', 'start'), field('body', 'endsAt', 'option', 'end'), field('body', 'durationSeconds', 'option', 'duration', false, 'integer'), field('body', 'objectiveFilters', 'option', 'objective', false, 'csv'), field('body', 'planningOnly', 'option', 'planningOnly'), field('body', 'proposalIds', 'option', 'proposal', false, 'csv'), field('body', 'decisionIds', 'option', 'decision', false, 'csv'), ...WORKDAY_SELECTION_INPUTS]),
+	'workdays plan': operation('workdays.plan', [field('path', 'teamId', 'context', 'team', true), ...workdayIntentInputs]),
 	...WORKDAY_PROFILE_COMMAND_BINDINGS,
 	'workdays start': operation('workdays.start', [field('path', 'teamId', 'context', 'team', true), field('body', 'preflightId', 'option', 'preflight', true), field('body', 'preflightDigest', 'option', 'digest', true)]),
 	'workdays list': operation('workdays.list', [field('path', 'teamId', 'context', 'team', true), ...page()]),
 	'workdays show': operation('workdays.show', [field('path', 'teamId', 'context', 'team', true), field('path', 'runId', 'argument', 'workday', true)]),
 	'workdays stop': operation('workdays.stop', [field('path', 'teamId', 'context', 'team', true), field('path', 'runId', 'argument', 'workday', true), field('body', 'reason', 'option', 'reason')]),
 	'workdays schedules list': operation('workdays.schedules.list', [field('path', 'teamId', 'context', 'team', true)]),
-	'workdays schedules start': operation('workdays.schedules.create', [field('path', 'teamId', 'context', 'team', true), field('body', 'profile', 'option'), field('body', 'projects', 'option', 'projects', false, 'csv'), field('body', 'duration', 'option', 'duration', false, 'integer')]),
+	'workdays schedules start': operation('workdays.schedules.create', [field('path', 'teamId', 'context', 'team', true), ...workdayIntentInputs.map(binding => ({ ...binding, field: `intent.${binding.field}` })), field('body', 'cadenceSeconds', 'option', 'cadenceSeconds', false, 'integer')]),
 	'assignments list': operation('assignments.list', [field('path', 'teamId', 'context', 'team', true), ...page()]),
 	'assignments show': operation('assignments.show', [field('path', 'teamId', 'context', 'team', true), field('path', 'assignmentId', 'argument', 'assignment', true)]),
 	'assignments explain': operation('assignments.explain', [field('path', 'teamId', 'context', 'team', true), field('path', 'assignmentId', 'argument', 'assignment', true)]),
@@ -324,7 +330,7 @@ const commandTree: CommandTreeDescriptor = {
 		branch('workdays', [
 			branch('profiles', [leaf('list'), leaf('show', 'read', 'profile'), leaf('update', 'mutation', 'profile', 'authority')]),
 			{ ...leaf('plan', 'mutation'), nodeType: 'leaf', segment: 'plan', kind: 'mutation', description: 'Plan a workday with optional targeted cooperative planning; acting stays decision-governed.', resultSchemaId: 'treeseed.command.workdays.plan/v1', options: WORKDAY_PLAN_OPTIONS }, leaf('start', 'mutation', undefined, 'authority'), leaf('list'), leaf('show', 'read', 'workday'), leaf('watch', 'read', 'workday'), leaf('stop', 'mutation', 'workday', 'authority'),
-			branch('schedules', [leaf('list'), leaf('show', 'read', 'schedule'), leaf('plan'), leaf('start', 'mutation', undefined, 'authority'), leaf('pause', 'mutation', 'schedule', 'authority'), leaf('resume', 'mutation', 'schedule', 'authority'), leaf('retire', 'mutation', 'schedule', 'destructive')]),
+			branch('schedules', [leaf('list'), leaf('show', 'read', 'schedule'), leaf('plan'), addOptions(leaf('start', 'mutation', undefined, 'authority'), [...WORKDAY_PLAN_OPTIONS.filter(option => option.name !== '--plan'), { name: '--cadence-seconds', description: 'Seconds between recurring workday starts.', type: 'number' }]), leaf('pause', 'mutation', 'schedule', 'authority'), leaf('resume', 'mutation', 'schedule', 'authority'), leaf('retire', 'mutation', 'schedule', 'destructive')]),
 		]),
 		branch('assignments', [leaf('list'), leaf('show', 'read', 'assignment'), leaf('explain', 'read', 'assignment'), leaf('watch', 'read', 'assignment'), leaf('retry', 'mutation', 'assignment', 'authority'), leaf('cancel', 'mutation', 'assignment', 'destructive'), leaf('artifacts', 'read', 'assignment')]),
 		branch('execution', [

@@ -9,6 +9,8 @@ export interface WorkdayIntent {
 	teamId: string;
 	profileId: string;
 	projects: 'all' | string[];
+	/** Selects the existing execution custody mode; omission defaults safely to simulation. */
+	executionMode?: 'simulation' | 'production';
 	startsAt: string;
 	endsAt?: string;
 	durationSeconds?: number;
@@ -111,19 +113,6 @@ export interface WorkdayStartReceipt {
 	transactionReceiptId: string;
 }
 
-export interface WorkdaySchedule {
-	schemaVersion: 'treeseed.workday-schedule/v1';
-	id: string;
-	teamId: string;
-	profileId: string;
-	profileVersion: string;
-	projectScope: 'all' | string[];
-	cadence: { timezone: string; expression: string };
-	durationSeconds: number;
-	status: 'active' | 'paused' | 'retired';
-	nextStartAt: string | null;
-}
-
 export interface WorkdaySettlement {
 	schemaVersion: 'treeseed.workday-settlement/v1';
 	workdayId: string;
@@ -174,6 +163,7 @@ export function validateWorkdayIntent(intent: WorkdayIntent): WorkdayLifecycleDi
 	if (intent.schemaVersion !== 'treeseed.workday-intent/v1') diagnostics.push({ code: 'schema_version_invalid', path: 'schemaVersion', message: 'Unsupported workday intent schema.' });
 	if (!intent.teamId.trim()) diagnostics.push({ code: 'team_required', path: 'teamId', message: 'Team identity is required.' });
 	if (!intent.profileId.trim()) diagnostics.push({ code: 'profile_required', path: 'profileId', message: 'Allocation profile identity is required.' });
+	if (intent.executionMode !== undefined && !['simulation', 'production'].includes(intent.executionMode)) diagnostics.push({ code: 'execution_mode_invalid', path: 'executionMode', message: 'Select simulation or production custody.' });
 	if (intent.endsAt !== undefined && intent.durationSeconds !== undefined) diagnostics.push({ code: 'time_range_ambiguous', path: 'endsAt', message: 'Specify endsAt or durationSeconds, not both; omission uses the team policy duration.' });
 	const start = Date.parse(intent.startsAt);
 	if (!Number.isFinite(start)) diagnostics.push({ code: 'start_invalid', path: 'startsAt', message: 'startsAt must be an ISO timestamp.' });
