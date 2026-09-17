@@ -1,4 +1,3 @@
-import { validateWorkdayBorrowingEvidence, type WorkdayBorrowingEvidence } from './workday-profile.ts';
 import type { WorkdayAgentSelection } from '../agent-capacity/workday.ts';
 import { workdayAllocationOverridesSchema } from '../agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
 export { normalizeWorkdayAgentSelection } from '../agent-capacity/workday.ts';
@@ -55,8 +54,6 @@ export interface WorkdaySelectedDemand {
 export interface WorkdayClassAccounting {
 	classSlug: string;
 	allocatedSeconds: number;
-	borrowedSeconds: number;
-	lentSeconds: number;
 	idleSeconds: number;
 	reservedSeconds: number;
 	activeSeconds: number;
@@ -79,11 +76,9 @@ export interface WorkdayPreflightReceipt {
 	reservationDigest: string;
 	selectedDemands: WorkdaySelectedDemand[];
 	classAccounting: WorkdayClassAccounting[];
-	borrowing: WorkdayBorrowingEvidence[];
 	startsAt: string;
 	endsAt: string;
 	maxConcurrency: number;
-	reserveSeconds: number;
 	preflightDigest: string;
 	expiresAt: string;
 }
@@ -179,7 +174,7 @@ export function validateWorkdayIntent(intent: WorkdayIntent): WorkdayLifecycleDi
 	if (intent.schemaVersion !== 'treeseed.workday-intent/v1') diagnostics.push({ code: 'schema_version_invalid', path: 'schemaVersion', message: 'Unsupported workday intent schema.' });
 	if (!intent.teamId.trim()) diagnostics.push({ code: 'team_required', path: 'teamId', message: 'Team identity is required.' });
 	if (!intent.profileId.trim()) diagnostics.push({ code: 'profile_required', path: 'profileId', message: 'Allocation profile identity is required.' });
-	if ((intent.endsAt === undefined) === (intent.durationSeconds === undefined)) diagnostics.push({ code: 'time_range_ambiguous', path: 'endsAt', message: 'Specify exactly one of endsAt or durationSeconds.' });
+	if (intent.endsAt !== undefined && intent.durationSeconds !== undefined) diagnostics.push({ code: 'time_range_ambiguous', path: 'endsAt', message: 'Specify endsAt or durationSeconds, not both; omission uses the team policy duration.' });
 	const start = Date.parse(intent.startsAt);
 	if (!Number.isFinite(start)) diagnostics.push({ code: 'start_invalid', path: 'startsAt', message: 'startsAt must be an ISO timestamp.' });
 	if (intent.endsAt !== undefined && (!Number.isFinite(Date.parse(intent.endsAt)) || Date.parse(intent.endsAt) <= start)) diagnostics.push({ code: 'end_invalid', path: 'endsAt', message: 'endsAt must be a valid timestamp after startsAt.' });
@@ -244,8 +239,6 @@ export function validateWorkdayPreflight(receipt: WorkdayPreflightReceipt, now =
 	else if (expiry <= now.getTime()) diagnostics.push({ code: 'preflight_expired', path: 'expiresAt', message: 'Workday preflight has expired and must be regenerated.' });
 	if (!Number.isFinite(Date.parse(receipt.startsAt)) || !Number.isFinite(Date.parse(receipt.endsAt)) || Date.parse(receipt.endsAt) <= Date.parse(receipt.startsAt)) diagnostics.push({ code: 'preflight_time_range_invalid', path: 'endsAt', message: 'Preflight must bind a valid time range.' });
 	if (!Number.isInteger(receipt.maxConcurrency) || receipt.maxConcurrency <= 0) diagnostics.push({ code: 'preflight_concurrency_invalid', path: 'maxConcurrency', message: 'Preflight concurrency must be a positive integer.' });
-	if (!Number.isFinite(receipt.reserveSeconds) || receipt.reserveSeconds < 0) diagnostics.push({ code: 'preflight_reserve_invalid', path: 'reserveSeconds', message: 'Preflight reserve seconds must be finite and non-negative.' });
-	for (const [index, evidence] of receipt.borrowing.entries()) diagnostics.push(...validateWorkdayBorrowingEvidence(evidence).map((diagnostic) => ({ ...diagnostic, path: `borrowing.${index}.${diagnostic.path}` })));
 	if (new Set(receipt.selectedDemands.map((demand) => demand.id)).size !== receipt.selectedDemands.length) diagnostics.push({ code: 'preflight_demand_duplicate', path: 'selectedDemands', message: 'Preflight demand identities must be unique.' });
 	return diagnostics;
 }
@@ -265,7 +258,6 @@ export function validateWorkdaySettlement(settlement: WorkdaySettlement): Workda
 		for (const [field, value] of Object.entries(accounting).filter(([field]) => field !== 'classSlug')) {
 			if (!Number.isFinite(value) || value < 0) diagnostics.push({ code: 'settlement_accounting_invalid', path: `classAccounting.${index}.${field}`, message: 'Settlement seconds must be finite and non-negative.' });
 		}
-		if (accounting.lentSeconds > accounting.allocatedSeconds + accounting.borrowedSeconds) diagnostics.push({ code: 'settlement_lending_invalid', path: `classAccounting.${index}.lentSeconds`, message: 'A class cannot lend more capacity than it held.' });
 	}
 	if (!settlement.preflightDigest.trim() || !settlement.settlementDigest.trim()) diagnostics.push({ code: 'settlement_digest_required', path: 'settlementDigest', message: 'Settlement must bind its preflight and final accounting digests.' });
 	if (!Number.isFinite(Date.parse(settlement.startedAt)) || !Number.isFinite(Date.parse(settlement.completedAt)) || Date.parse(settlement.completedAt) < Date.parse(settlement.startedAt)) diagnostics.push({ code: 'settlement_time_range_invalid', path: 'completedAt', message: 'Settlement must bind a valid completion time at or after workday start.' });

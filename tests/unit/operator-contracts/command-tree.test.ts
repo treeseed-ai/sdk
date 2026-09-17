@@ -21,7 +21,7 @@ describe('human command tree contract', () => {
 		expect(validateCommandTree(TREESEED_COMMAND_TREE_V1)).toEqual([]);
 		expect(validateCommandOperationBindings(TREESEED_COMMAND_TREE_V1, CONTROL_PLANE_OPERATION_LIST)).toEqual([]);
 		const paths = listCommandPaths();
-		expect(paths).toEqual(expect.arrayContaining(['send', 'users create', 'agents classes list', 'providers offers apply', 'workdays profiles validate', 'workdays schedules retire', 'assignments artifacts', 'save', 'stage', 'release']));
+		expect(paths).toEqual(expect.arrayContaining(['send', 'users create', 'agents classes list', 'providers offers apply', 'workdays profiles update', 'workdays schedules retire', 'assignments artifacts', 'save', 'stage', 'release']));
 		expect(paths).not.toEqual(expect.arrayContaining(['agent-author', 'capacity-plan-create', 'checkpoint-integrate', 'content-integrate', 'content-abandon']));
 		expect(paths).toEqual(expect.arrayContaining(['ai status', 'ai storage show', 'ai storage connect', 'ai storage disconnect', 'ai mode show', 'ai mode set']));
 		expect(paths.some(path => path.startsWith('ai qualify'))).toBe(false);
@@ -119,13 +119,13 @@ describe('human command tree contract', () => {
 		}));
 	});
 
-	it('exposes profile reconciliation separately from workday admission', () => {
+	it('exposes team policy replacement separately from workday admission', () => {
 		const workdays = TREESEED_COMMAND_TREE_V1.commands.find((node) => node.nodeType === 'branch' && node.segment === 'workdays');
 		const profiles = workdays?.nodeType === 'branch' ? workdays.children.find((node) => node.segment === 'profiles') : null;
-		const reconcile = profiles?.nodeType === 'branch' ? profiles.children.find((node) => node.segment === 'reconcile') : null;
-		expect(reconcile?.nodeType === 'leaf' ? reconcile.execution : null).toMatchObject({ kind: 'operation',
-			operationId: 'workdays.profiles.reconcile', input: expect.arrayContaining([
-				expect.objectContaining({ target: 'path', field: 'projectId', source: 'argument', name: 'project', required: true }),
+		const update = profiles?.nodeType === 'branch' ? profiles.children.find((node) => node.segment === 'update') : null;
+		expect(update?.nodeType === 'leaf' ? update.execution : null).toMatchObject({ kind: 'operation',
+			operationId: 'workdays.profiles.update', input: expect.arrayContaining([
+				expect.objectContaining({ target: 'path', field: 'profileId', source: 'argument', name: 'profile', required: true }),
 				expect.objectContaining({ target: 'path', field: 'teamId', source: 'context', name: 'team', required: true }),
 			]) });
 	});
