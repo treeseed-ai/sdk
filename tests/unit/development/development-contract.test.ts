@@ -35,6 +35,7 @@ describe('development runtime contracts', () => {
 		expect(JSON.stringify(current)).not.toContain('expiresAt');
 		expect(developmentSessionSchema.parse(current)).toEqual(current);
 		expect(developmentSessionSchema.parse({ ...old, status: 'expired' }).status).toBe('stopped');
+		expect(developmentSessionSchema.parse({ ...current, status: 'suspended' }).status).toBe('suspended');
 		expect(() => developmentSessionSchema.parse({ ...current, expiresAt: old.expiresAt })).toThrow();
 	});
 	it('accepts a project-owned live web target', () => {
