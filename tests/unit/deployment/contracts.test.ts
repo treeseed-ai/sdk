@@ -79,6 +79,12 @@ describe('deployment contracts', () => {
 		selected.runtimeDigest = deploymentDigest(selected.runtime);
 		const others = ['agent', 'postgres'].map(id => { const item = release(id, 'stable', 'c'); item.runtimeDigest = deploymentDigest(item.runtime); return item; });
 		expect(verifyHostPostgresRequirements(value, [selected, ...others]).verified).toBe(true);
+		value.components['ai-inference'] = { ...value.components.api!, enabled: false };
+		value.postgres.requirements.push({ id: 'ai-inference', componentId: 'ai-inference', enabled: false, supportedMajors: [17], extensions: [], runtimeConnectionLimit: 10 });
+		expect(verifyHostPostgresRequirements(value, [selected, ...others]).verified).toBe(true);
+		value.postgres.requirements[1]!.enabled = true;
+		expect(() => verifyHostPostgresRequirements(value, [selected, ...others])).toThrow();
+		value.postgres.requirements[1]!.enabled = false;
 		expect(() => verifyHostPostgresRequirements(value, [])).toThrow('incomplete');
 		value.postgres.requirements[0]!.runtimeConnectionLimit = 100;
 		expect(() => verifyHostPostgresRequirements(value, [selected, ...others])).toThrow('differ');

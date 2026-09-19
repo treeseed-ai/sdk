@@ -2,8 +2,9 @@ import { componentReleaseSchema, hostConfigurationSchema } from '../schemas.ts';
 import { canonicalDeploymentJson, deploymentDigest } from '../canonical.ts';
 import type { PostgresRequirement } from './contracts.ts';
 
-/** Call after artifact authenticity verification, with the complete selected
- * component inventory. Host configuration cannot weaken a package requirement.
+/** Call after artifact authenticity verification, with every enabled component
+ * in the selected inventory. Disabled requirements retain their allocation
+ * custody but cannot activate a database or weaken an enabled package contract.
  */
 export function verifyHostPostgresRequirements(hostInput: unknown, releaseInputs: unknown[]) {
   const host = hostConfigurationSchema.parse(hostInput);
@@ -21,6 +22,8 @@ export function verifyHostPostgresRequirements(hostInput: unknown, releaseInputs
   if (new Set(requirements.map(item => item.id)).size !== requirements.length) throw new Error('Component database requirement identities collide');
   const normalize = (items: PostgresRequirement[]) => items.map(item => ({ ...item,
     supportedMajors: [...item.supportedMajors].sort((a, b) => a - b), extensions: [...item.extensions].sort() })).sort((a, b) => a.id.localeCompare(b.id));
-  if (canonicalDeploymentJson(normalize(requirements)) !== canonicalDeploymentJson(normalize(host.postgres?.requirements ?? []))) throw new Error('Host database requirements differ from selected immutable components');
+  const configured = host.postgres?.requirements ?? [];
+  if (configured.some(item => host.components[item.componentId]?.enabled !== item.enabled)) throw new Error('Host database requirement enablement differs from component selection');
+  if (canonicalDeploymentJson(normalize(requirements.filter(item => item.enabled))) !== canonicalDeploymentJson(normalize(configured.filter(item => item.enabled)))) throw new Error('Host database requirements differ from selected immutable components');
   return { verified: true as const, requirements };
 }
