@@ -51,6 +51,10 @@ describe('human command tree contract', () => {
 			{ target: 'query', field: 'workDayId', source: 'option', name: 'workday', required: false, transform: 'identity' },
 		]) });
 		expect(leaves.get('capacity ledger')?.options?.map((option) => option.name)).toContain('--workday');
+		expect(leaves.get('workdays profiles update')?.options?.find((option) => option.name === '--input')).toMatchObject({ required: true, type: 'string' });
+		expect(leaves.get('workdays profiles update')?.execution).toMatchObject({ kind: 'operation', operationId: 'workdays.profiles.update', input: expect.arrayContaining([
+			{ target: 'body', field: 'file', source: 'option', name: 'input', required: true, transform: 'identity' },
+		]) });
 		expect(leaves.get('users create')?.execution).toEqual({ kind: 'protocol', handlerId: 'protocol.accounts.create' });
 		expect(leaves.get('users create')?.options?.map((option) => option.name)).toEqual(['--plan', '--email', '--username', '--display-name', '--timeout']);
 		expect(leaves.get('users create')?.authorization?.confirmation).toBe('never');
