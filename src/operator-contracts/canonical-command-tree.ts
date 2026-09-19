@@ -332,7 +332,9 @@ const commandTree: CommandTreeDescriptor = {
 			addOptions(leaf('ledger'), [{ name: '--workday', description: 'Restrict evidence to one workday.', type: 'string' }]),
 			leaf('audit')]),
 		branch('workdays', [
-			branch('profiles', [leaf('list'), leaf('show', 'read', 'profile'), leaf('update', 'mutation', 'profile', 'authority')]),
+			branch('profiles', [leaf('list'), leaf('show', 'read', 'profile'), addOptions(leaf('update', 'mutation', 'profile', 'authority'), [
+				{ name: '--input', description: 'YAML or JSON workday policy document.', type: 'string', required: true },
+			])]),
 			{ ...leaf('plan', 'mutation'), nodeType: 'leaf', segment: 'plan', kind: 'mutation', description: 'Plan a workday with optional targeted cooperative planning; acting stays decision-governed.', resultSchemaId: 'treeseed.command.workdays.plan/v1', options: WORKDAY_PLAN_OPTIONS }, leaf('start', 'mutation', undefined, 'authority'), leaf('list'), leaf('show', 'read', 'workday'), leaf('watch', 'read', 'workday'), leaf('stop', 'mutation', 'workday', 'authority'),
 			branch('schedules', [leaf('list'), leaf('show', 'read', 'schedule'), leaf('plan'), addOptions(leaf('start', 'mutation', undefined, 'authority'), [...WORKDAY_PLAN_OPTIONS.filter(option => option.name !== '--plan'), { name: '--cadence-seconds', description: 'Seconds between recurring workday starts.', type: 'number' }]), leaf('pause', 'mutation', 'schedule', 'authority'), leaf('resume', 'mutation', 'schedule', 'authority'), leaf('retire', 'mutation', 'schedule', 'destructive')]),
 		]),
