@@ -56,6 +56,8 @@ const operationBindings: Record<string, Execution> = {
 	'host plan': local('local.host.plan'),
 	'host apply': local('local.host.apply'),
 	'host reconcile': local('local.host.reconcile'),
+	'host start': local('local.host.start'),
+	'host stop': local('local.host.stop'),
 	'host events': local('local.host.events'),
 	'host update status': local('local.host.update.status'),
 	'host update check': local('local.host.update.check'),
@@ -71,6 +73,7 @@ const operationBindings: Record<string, Execution> = {
 	'host config show': local('local.host.config.show'),
 	'host config plan': local('local.host.config.plan'),
 	'host config apply': local('local.host.config.apply'),
+	'host config stage': local('local.host.config.stage'),
 	'host config adopt': local('local.host.config.adopt'),
 	'host postgres transfer prepare': local('local.host.postgres.transfer.prepare'),
 	'host postgres transfer status': local('local.host.postgres.transfer.status'),
@@ -286,8 +289,9 @@ const commandTree: CommandTreeDescriptor = {
 		]),
 		branch('host', [
 			hostInitialize(),
-			leaf('status'), leaf('doctor'), leaf('plan'), leaf('apply', 'mutation', undefined, 'authority'), leaf('reconcile', 'mutation', undefined, 'authority'), leaf('events'),
-			branch('config', [leaf('show'), leaf('plan', 'read', 'file'), leaf('apply', 'mutation', 'file', 'authority'), configurationAdopt()]),
+			leaf('status'), leaf('doctor'), leaf('plan'), leaf('apply', 'mutation', undefined, 'authority'), leaf('reconcile', 'mutation', undefined, 'authority'),
+			leaf('start', 'mutation', undefined, 'authority'), leaf('stop', 'mutation', undefined, 'authority'), leaf('events'),
+			branch('config', [leaf('show'), leaf('plan', 'read', 'file'), leaf('apply', 'mutation', 'file', 'authority'), leaf('stage', 'mutation', 'file', 'authority'), configurationAdopt()]),
 			branch('postgres', [branch('transfer', [leaf('prepare', 'mutation', 'file', 'authority'), leaf('status')])]),
 			leaf('topology'), leaf('connections'), branch('provider', [leaf('status'), branch('credentials', [leaf('list'), leaf('status'), hostProviderCredentialInitialize()]), hostProviderEnvironmentBranch()]),
 			branch('storage', [
