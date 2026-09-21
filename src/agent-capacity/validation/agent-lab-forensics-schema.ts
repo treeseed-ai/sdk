@@ -15,7 +15,6 @@ export const agentActivityEventSchema: z.ZodType<AgentActivityEvent> = z.object(
 	projectId: optionalId,
 	workdayId: nonEmpty,
 	assignmentId: optionalId,
-	modeRunId: optionalId,
 	executionRunId: optionalId,
 	agentId: optionalId,
 	agentClassId: optionalId,

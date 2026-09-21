@@ -46,7 +46,6 @@ export interface FairReadyNode {
 	id: string;
 	projectId: string;
 	agentClass: string;
-	graphPriority: number;
 	readyAt: string;
 }
 
@@ -87,7 +86,7 @@ export function selectFairReadyNode(nodes: FairReadyNode[], usage: FairUsage[], 
 		shareDebt(right, classWeights, projectClassActual) - shareDebt(left, classWeights, projectClassActual)
 		|| left.localeCompare(right));
 	const selected = projectNodes.filter((node) => node.agentClass === classes[0]).sort((left, right) =>
-		right.graphPriority - left.graphPriority || Date.parse(left.readyAt) - Date.parse(right.readyAt)
+		Date.parse(left.readyAt) - Date.parse(right.readyAt)
 		|| left.id.localeCompare(right.id))[0] ?? null;
 	return selected ? { ...selected, explanation: {
 		projectTargetPercent: 100 * projectWeights[projectId]! / Object.values(projectWeights).reduce((sum, weight) => sum + weight, 0),

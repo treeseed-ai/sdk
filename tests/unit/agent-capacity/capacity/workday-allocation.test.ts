@@ -41,9 +41,9 @@ describe('minimal workday allocation', () => {
 
 	it('selects project then class by weighted deficit and uses stable node ties', () => {
 		const nodes = [
-			{ id: 'sdk-review', projectId: 'sdk', agentClass: 'reviewer', graphPriority: 1, readyAt: '2026-09-13T12:00:00Z' },
-			{ id: 'sdk-engineer', projectId: 'sdk', agentClass: 'engineer', graphPriority: 2, readyAt: '2026-09-13T12:00:01Z' },
-			{ id: 'api-engineer', projectId: 'api', agentClass: 'engineer', graphPriority: 1, readyAt: '2026-09-13T12:00:00Z' },
+			{ id: 'sdk-review', projectId: 'sdk', agentClass: 'reviewer', readyAt: '2026-09-13T12:00:00Z' },
+			{ id: 'sdk-engineer', projectId: 'sdk', agentClass: 'engineer', readyAt: '2026-09-13T12:00:01Z' },
+			{ id: 'api-engineer', projectId: 'api', agentClass: 'engineer', readyAt: '2026-09-13T12:00:00Z' },
 		];
 		expect(selectFairReadyNode(nodes, [{ projectId: 'api', agentClass: 'engineer', seconds: 120 }], policy)).toMatchObject({
 			id: 'sdk-engineer', explanation: { projectTargetPercent: 60, projectDeficitSeconds: 72, classTargetPercent: 60,

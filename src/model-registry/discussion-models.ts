@@ -75,7 +75,6 @@ export function buildDiscussionModelRegistry(repoRoot?: string): Record<Discussi
 		sequence: field('sequence', { filterable: true, sortable: true, comparableAs: 'number', contentKeys: ['sequence'], writeContentKey: 'sequence' }),
 		agent_id: field('agent_id', { aliases: ['agentId'], filterable: true, contentKeys: ['agent_id', 'agentId'], writeContentKey: 'agent_id' }),
 		assignment_id: field('assignment_id', { aliases: ['assignmentId'], filterable: true, contentKeys: ['assignment_id', 'assignmentId'], writeContentKey: 'assignment_id' }),
-		mode_run_id: field('mode_run_id', { aliases: ['modeRunId'], filterable: true, contentKeys: ['mode_run_id', 'modeRunId'], writeContentKey: 'mode_run_id' }),
 		provider_id: field('provider_id', { aliases: ['providerId'], filterable: true, contentKeys: ['provider_id', 'providerId'], writeContentKey: 'provider_id' }),
 		group_ids: field('group_ids', { aliases: ['groupIds'], filterable: true, comparableAs: 'string_array', contentKeys: ['group_ids', 'groupIds'], writeContentKey: 'groupIds' }),
 		occurred_at: field('occurred_at', { aliases: ['occurredAt'], filterable: true, sortable: true, comparableAs: 'date', contentKeys: ['occurred_at', 'occurredAt'], writeContentKey: 'occurred_at' }),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateCapacityAllocationSetV2, validateCapacityGrantV2 } from '../../../src/agent-capacity/validation/allocation.ts';
+import { validateCapacityGrantV2 } from '../../../src/agent-capacity/validation/grant.ts';
 import { validateAgentActivityProfilesConfiguration } from '../../../src/agent-capacity/validation/activity-profile.ts';
 import { validateProjectAgentClassConfiguration } from '../../../src/agent-capacity/validation/configuration.ts';
 import { CAPACITY_CONFIGURATION_DESCRIPTORS, CAPACITY_CONFIGURATION_FAMILIES } from '../../../src/agent-capacity/contracts/configuration/configuration.ts';
@@ -10,7 +10,6 @@ const validators = {
 	'provider-manifest': validateCapacityProviderManifestV5,
 	'provider-offer': validateProviderSupplyOffer,
 	'capacity-grant': validateCapacityGrantV2,
-	'allocation-set': validateCapacityAllocationSetV2,
 	'project-agent-class': validateProjectAgentClassConfiguration,
 	'activity-profile': validateAgentActivityProfilesConfiguration,
 } as const;
@@ -82,6 +81,7 @@ describe('capacity configuration inventory', () => {
 
 	it('fails closed on unknown project-agent-class configuration fields', () => {
 		const result = validateProjectAgentClassConfiguration({ id: 'engineer', slug: 'engineer', allowedModes: ['planning'], obsoletePolicy: {} });
-		expect(result).toMatchObject({ ok: false, diagnostics: [{ code: 'project_agent_class_configuration_unknown_field', path: 'obsoletePolicy' }] });
+		expect(result.ok).toBe(false);
+		expect(result.diagnostics.map((entry) => entry.path)).toEqual(['allowedModes', 'obsoletePolicy']);
 	});
 });

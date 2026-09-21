@@ -83,6 +83,7 @@ export const assignmentAttemptSchema = z.object({
 	projectId: identifier,
 	workdayId: identifier,
 	nodeId: identifier,
+	agentClass: z.string().regex(/^[a-z][a-z0-9-]*$/u),
 	workItemId: identifier.optional(),
 	nodeRevision: z.number().int().positive(),
 	graphRevision: z.number().int().positive(),
@@ -106,7 +107,25 @@ export const assignmentAttemptSchema = z.object({
 	createdAt: timestamp,
 	startedAt: timestamp.optional(),
 	finishedAt: timestamp.optional(),
-}).strict();
+}).strict().superRefine((attempt, context) => {
+	const workspace = attempt.workspace;
+	const sourceWriters = attempt.grant.sourceWrite;
+	const contentWriters = attempt.grant.contentWrite;
+	const invalid = (path: (string | number)[], message: string) => context.addIssue({
+		code: z.ZodIssueCode.custom, path, message,
+	});
+	if (workspace.mode === 'read-only') {
+		if (sourceWriters.length) invalid(['grant', 'sourceWrite'], 'Read-only assignments cannot write source.');
+		if (contentWriters.length) invalid(['grant', 'contentWrite'], 'Read-only assignments cannot write TreeDX content.');
+	} else if (workspace.mode === 'git') {
+		if (contentWriters.length) invalid(['grant', 'contentWrite'], 'Git assignments cannot mutate TreeDX content.');
+		if (sourceWriters.some((repository) => repository !== workspace.repository)) invalid(['grant', 'sourceWrite'], 'Git writes must stay in the one assigned repository.');
+	} else {
+		if (sourceWriters.length) invalid(['grant', 'sourceWrite'], 'TreeDX assignments cannot mutate Git source.');
+		if (contentWriters.some((reference) => reference.store !== 'treedx' || reference.repository !== workspace.repository))
+			invalid(['grant', 'contentWrite'], 'TreeDX writes must stay in the one assigned repository.');
+	}
+});
 
 export const verificationRecordSchema = z.object({
 	command: z.string().min(1), status: z.enum(['passed', 'failed', 'skipped']), exitCode: z.number().int(),

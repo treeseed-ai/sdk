@@ -19,6 +19,19 @@ const date = z.coerce.date();
 const lifecycleStatus = z.enum(['live', 'in progress', 'exploratory', 'planned', 'speculative']);
 const contributor = nonEmpty;
 const exactRefs = z.array(exactEntityReferenceSchema);
+export const exactDependencyLinkSchema = z.object({ relation: z.literal('depends_on'),
+	from: exactEntityReferenceSchema, to: exactEntityReferenceSchema }).strict().superRefine((link, context) => {
+	for (const end of ['from', 'to'] as const) {
+		const ref = link[end];
+		if (ref.store !== 'treedx' || ref.model !== 'proposal' || !ref.repository || !ref.commit || !ref.path
+			|| !ref.digest || !ref.revision || !/^work-item\/[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(ref.anchor ?? '')) {
+			context.addIssue({ code: z.ZodIssueCode.custom, path: [end],
+				message: 'A dependency endpoint must identify an exact proposal work item.' });
+		}
+	}
+	if (JSON.stringify(link.from) === JSON.stringify(link.to)) context.addIssue({ code: z.ZodIssueCode.custom,
+		message: 'A work item cannot depend on itself.' });
+});
 const linked = {
 	group_ids: strings.optional(),
 	related_objectives: strings.optional(),
@@ -131,6 +144,7 @@ const schemas = {
 		schemaVersion: z.literal('treeseed.note/v1'), id: nonEmpty, projectId: nonEmpty,
 		classification: z.enum(['general', 'feedback', 'research', 'workday-report']),
 		subjectRefs: exactRefs.min(1), body: nonEmpty, createdAt: z.string().datetime({ offset: true }),
+		links: z.array(exactDependencyLinkSchema).optional(),
 	}).strict().superRefine((value, context) => {
 		if (value.classification === 'workday-report' && !value.subjectRefs.some((reference) => reference.store === 'postgresql' && reference.model === 'workday')) {
 			context.addIssue({ code: z.ZodIssueCode.custom, path: ['subjectRefs'], message: 'Workday reports must reference their exact workday.' });

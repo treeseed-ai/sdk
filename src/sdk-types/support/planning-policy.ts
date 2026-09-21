@@ -144,7 +144,7 @@ export interface ProjectCapacityDiagnostics {
 	environment: ProjectEnvironmentName | 'local';
 	providers: CapacityProviderMembershipView[];
 	executionProviders: CapacityExecutionProvider[];
-	grants: import('../../agent-capacity/allocation.ts').CapacityGrantV2[];
+	grants: import('../../agent-capacity/grant.ts').CapacityGrantV2[];
 	activeReservations: CapacityReservation[];
 	nativeCapacity?: NativeCapacitySummary | null;
 	remaining: {

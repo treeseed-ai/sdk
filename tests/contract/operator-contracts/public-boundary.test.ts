@@ -8,7 +8,7 @@ describe('operator contract public boundary', () => {
 		expect(operatorContracts).toHaveProperty('TREESEED_COMMAND_TREE_V1');
 		expect(publicAgentCapacity).toHaveProperty('validateAgentDefinitionModel');
 		expect(publicAgentCapacity).toHaveProperty('validateCapacityGrantV2');
-		expect(publicAgentCapacity).toHaveProperty('validateCapacityAllocationSetV2');
+		expect(publicAgentCapacity).not.toHaveProperty('validateCapacityAllocationSetV2');
 		expect(publicAgentCapacity).not.toHaveProperty('compileDefaultChatActivityProfile');
 		expect(publicAgentCapacity).not.toHaveProperty('deriveAgentRuntimeStatus');
 		expect(publicAgentCapacity).not.toHaveProperty('validateGroupDefinition');

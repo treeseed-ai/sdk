@@ -57,7 +57,7 @@ export const executionEdgeSchema = z.object({
 	teamId: identifier,
 	fromNodeId: identifier,
 	toNodeId: identifier,
-	provenance: z.enum(['profile-agent', 'profile-event', 'work-item', 'review-pair', 'governance']),
+	provenance: z.enum(['profile-agent', 'profile-event', 'work-item', 'review-pair', 'governance', 'treedx-link']),
 	sourceRef: exactEntityReferenceSchema.optional(),
 	graphRevisionCreated: z.number().int().positive(),
 	graphRevisionRemoved: z.number().int().positive().optional(),

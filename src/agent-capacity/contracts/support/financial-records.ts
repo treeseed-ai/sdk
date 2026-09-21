@@ -28,13 +28,10 @@ export interface CapacityReservation {
 	id: string;
 	idempotencyKey: string;
 	membershipId: string;
-	grantId: string;
+	grantId: string | null;
 	capacityProviderId: string;
 	executionProviderId: string | null;
 	laneId: string | null;
-	allocationSetId: string;
-	allocationVersion: number;
-	allocationSliceIds: string[];
 	policySnapshot: Record<string, unknown>;
 	projectAgentClassId: string;
 	assignmentId: string | null;
@@ -76,7 +73,6 @@ export interface CapacityLedgerEntry {
 	capacityProviderId: string;
 	reservationId: string | null;
 	assignmentId: string | null;
-	modeRunId: string | null;
 	mode: 'planning' | 'acting' | null;
 	teamId: string;
 	projectId: string | null;
@@ -127,7 +123,6 @@ export interface CapacityUsageActual {
 	assignmentAttempt: number;
 	usageDimension: string;
 	accountingMode: 'informational' | 'incremental' | 'aggregate';
-	modeRunId: string | null;
 	mode: 'planning' | 'acting' | null;
 	capacityProviderId: string | null;
 	executionProviderId: string | null;
