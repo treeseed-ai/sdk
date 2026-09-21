@@ -126,7 +126,7 @@ const executionPlanSchema = z.object({ workItems: z.array(executionPlanWorkItemS
 const proposalSchema = z.object({
 	schemaVersion: z.literal('treeseed.proposal/v1'), id: nonEmpty, projectId: nonEmpty, title: nonEmpty,
 	request: nonEmpty, summary: nonEmpty.optional(), status: z.enum(['draft', 'discussing', 'ready', 'decided', 'withdrawn']),
-	objectiveRefs: z.array(exactEntityReferenceSchema).optional(), evidenceRefs: z.array(exactEntityReferenceSchema).optional(),
+	objectiveRefs: unique(exactRefs).optional(), evidenceRefs: unique(exactRefs).optional(),
 	discussionRef: exactEntityReferenceSchema.optional(), executionPlan: executionPlanSchema.optional(),
 }).strict().superRefine((value, context) => {
 	if (['ready', 'decided'].includes(value.status)) for (const [index, item] of (value.executionPlan?.workItems ?? []).entries()) {

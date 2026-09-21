@@ -56,5 +56,18 @@ describe('exact Discussion content cutover', () => {
 		expect(validatePortableContentData('discussion', { ...discussion, team_id: 'treeseed' }).ok).toBe(false);
 		expect(validatePortableContentData('discussion_message', { ...message, discussionRef: undefined, discussion_id: discussion.id }).ok).toBe(false);
 		expect(validatePortableContentData('discussion', { ...discussion, participantClasses: ['architect', 'architect'] }).ok).toBe(false);
+		expect(validatePortableContentData('discussion_message', { ...message, sourceMessageRefs: [message.discussionRef, message.discussionRef] }).ok).toBe(false);
+	});
+});
+
+describe('proposal exact-reference uniqueness', () => {
+	const reference = { store: 'treedx', model: 'objective', id: 'sdk-core', revision: 1,
+		digest: `sha256:${'c'.repeat(64)}`, repository: 'treeseed-ai/sdk-library', path: 'objectives/core.mdx' };
+	const proposal = { schemaVersion: 'treeseed.proposal/v1', id: 'proposal-1', projectId: 'sdk',
+		title: 'One proposal', request: 'Implement one bounded change.', status: 'draft', objectiveRefs: [reference] };
+	it('rejects duplicate objective and evidence references', () => {
+		expect(validatePortableContentData('proposal', proposal).ok).toBe(true);
+		expect(validatePortableContentData('proposal', { ...proposal, objectiveRefs: [reference, reference] }).ok).toBe(false);
+		expect(validatePortableContentData('proposal', { ...proposal, evidenceRefs: [reference, reference] }).ok).toBe(false);
 	});
 });
