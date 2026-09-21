@@ -15,10 +15,31 @@ export * from './agent-operational-content-schemas.ts';
 
 const nonEmpty = z.string().trim().min(1);
 const strings = z.array(z.string());
+const identifier = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
+const slug = z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:[._/-][a-z0-9]+)*$/u);
+const agentClass = z.string().trim().min(1).max(100).regex(/^[a-z][a-z0-9-]*$/u);
+const identifiers = z.array(identifier);
+const unique = <T extends z.ZodTypeAny>(schema: z.ZodArray<T>) => schema.superRefine((values, context) => {
+	if (new Set(values.map((value) => JSON.stringify(value))).size !== values.length) {
+		context.addIssue({ code: z.ZodIssueCode.custom, message: 'Values must be unique.' });
+	}
+});
 const date = z.coerce.date();
 const lifecycleStatus = z.enum(['live', 'in progress', 'exploratory', 'planned', 'speculative']);
-const contributor = nonEmpty;
 const exactRefs = z.array(exactEntityReferenceSchema);
+export const exactDependencyLinkSchema = z.object({ relation: z.literal('depends_on'),
+	from: exactEntityReferenceSchema, to: exactEntityReferenceSchema }).strict().superRefine((link, context) => {
+	for (const end of ['from', 'to'] as const) {
+		const ref = link[end];
+		if (ref.store !== 'treedx' || ref.model !== 'proposal' || !ref.repository || !ref.commit || !ref.path
+			|| !ref.digest || !ref.revision || !/^work-item\/[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(ref.anchor ?? '')) {
+			context.addIssue({ code: z.ZodIssueCode.custom, path: [end],
+				message: 'A dependency endpoint must identify an exact proposal work item.' });
+		}
+	}
+	if (JSON.stringify(link.from) === JSON.stringify(link.to)) context.addIssue({ code: z.ZodIssueCode.custom,
+		message: 'A work item cannot depend on itself.' });
+});
 const linked = {
 	group_ids: strings.optional(),
 	related_objectives: strings.optional(),
@@ -105,7 +126,7 @@ const executionPlanSchema = z.object({ workItems: z.array(executionPlanWorkItemS
 const proposalSchema = z.object({
 	schemaVersion: z.literal('treeseed.proposal/v1'), id: nonEmpty, projectId: nonEmpty, title: nonEmpty,
 	request: nonEmpty, summary: nonEmpty.optional(), status: z.enum(['draft', 'discussing', 'ready', 'decided', 'withdrawn']),
-	objectiveRefs: z.array(exactEntityReferenceSchema).optional(), evidenceRefs: z.array(exactEntityReferenceSchema).optional(),
+	objectiveRefs: unique(exactRefs).optional(), evidenceRefs: unique(exactRefs).optional(),
 	discussionRef: exactEntityReferenceSchema.optional(), executionPlan: executionPlanSchema.optional(),
 }).strict().superRefine((value, context) => {
 	if (['ready', 'decided'].includes(value.status)) for (const [index, item] of (value.executionPlan?.workItems ?? []).entries()) {
@@ -131,6 +152,7 @@ const schemas = {
 		schemaVersion: z.literal('treeseed.note/v1'), id: nonEmpty, projectId: nonEmpty,
 		classification: z.enum(['general', 'feedback', 'research', 'workday-report']),
 		subjectRefs: exactRefs.min(1), body: nonEmpty, createdAt: z.string().datetime({ offset: true }),
+		links: z.array(exactDependencyLinkSchema).optional(),
 	}).strict().superRefine((value, context) => {
 		if (value.classification === 'workday-report' && !value.subjectRefs.some((reference) => reference.store === 'postgresql' && reference.model === 'workday')) {
 			context.addIssue({ code: z.ZodIssueCode.custom, path: ['subjectRefs'], message: 'Workday reports must reference their exact workday.' });
@@ -145,9 +167,10 @@ const schemas = {
 		if (value.status === 'answered' && !(value.answer || value.answerRefs?.length)) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Answered questions require an answer or exact answer reference.' });
 	}),
 	objective: z.object({
-		...governanceBase, time_horizon: z.enum(['near-term', 'mid-term', 'long-term']).optional(),
-		motivation: nonEmpty.optional(), primary_contributor: contributor.optional(), ...linked,
-	}),
+		schemaVersion: z.literal('treeseed.objective/v1'), id: identifier, projectId: identifier,
+		title: nonEmpty, outcome: nonEmpty, status: z.enum(['active', 'achieved', 'abandoned']),
+		evidenceRefs: unique(exactRefs).optional(),
+	}).strict(),
 	proposal: proposalSchema,
 	decision: z.object({
 		schemaVersion: z.literal('treeseed.decision/v1'), id: nonEmpty, projectId: nonEmpty,
@@ -163,32 +186,54 @@ const schemas = {
 		if (value.decisionClass !== 'work-review' && value.disposition === 'request-changes') context.addIssue({ code: z.ZodIssueCode.custom, path: ['disposition'], message: 'Only work review may request changes.' });
 	}),
 	book: z.object({
-		schemaVersion: z.literal(BOOK_SCHEMA_VERSION), id: nonEmpty, order: z.number().int().nonnegative(), slug: nonEmpty,
+		schemaVersion: z.literal(BOOK_SCHEMA_VERSION), id: identifier, projectId: identifier,
+		revision: z.number().int().positive(),
+		order: z.number().int().nonnegative(), slug,
 		title: nonEmpty, description: nonEmpty.optional(), summary: nonEmpty, status: z.enum(KNOWLEDGE_STATUSES),
-		visibility: z.enum(KNOWLEDGE_VISIBILITIES), groupIds: strings.optional(), audience: strings.optional(), relatedBookIds: strings.optional(),
-	}),
+		visibility: z.enum(KNOWLEDGE_VISIBILITIES), groupIds: identifiers.optional(), audience: z.array(nonEmpty).optional(), relatedBookIds: identifiers.optional(),
+		packPolicy: z.enum(['allowed', 'restricted', 'disabled']).optional(), editorialCoreNoteId: identifier.optional(),
+		cover: z.object({ image: nonEmpty.optional(), alt: nonEmpty.optional() }).strict().optional(),
+	}).strict(),
 	knowledge: z.object({
-		schemaVersion: z.literal(KNOWLEDGE_PAGE_SCHEMA_VERSION), id: nonEmpty, bookId: nonEmpty, slug: nonEmpty,
-		title: nonEmpty, description: nonEmpty.optional(), summary: nonEmpty, status: z.enum(KNOWLEDGE_STATUSES),
-		visibility: z.enum(KNOWLEDGE_VISIBILITIES), order: z.number().int().nonnegative().optional(), groupIds: strings.optional(),
-	}),
+		schemaVersion: z.literal(KNOWLEDGE_PAGE_SCHEMA_VERSION), id: identifier, projectId: identifier,
+		bookRef: exactEntityReferenceSchema.refine((ref) => ref.store === 'treedx' && ref.model === 'book'
+			&& Boolean(ref.revision && ref.digest && ref.path), 'Knowledge requires an exact Book path, revision, and digest.'),
+		slug, body: nonEmpty,
+		title: nonEmpty, description: nonEmpty.optional(), summary: nonEmpty.optional(), status: z.enum(KNOWLEDGE_STATUSES),
+		visibility: z.enum(KNOWLEDGE_VISIBILITIES), order: z.number().int().nonnegative().optional(), groupIds: identifiers.optional(),
+		parentId: identifier.optional(), contributors: identifiers.optional(), relatedBookIds: identifiers.optional(),
+		relatedKnowledgeIds: identifiers.optional(), relatedNoteIds: identifiers.optional(), relatedQuestionIds: identifiers.optional(),
+		relatedObjectiveIds: identifiers.optional(), relatedProposalIds: identifiers.optional(), relatedDecisionIds: identifiers.optional(),
+		guaranteeIds: identifiers.optional(), audiences: z.object({ primary: z.array(nonEmpty).optional(), secondary: z.array(nonEmpty).optional(), excluded: z.array(nonEmpty).optional() }).strict().optional(),
+		relatedRefs: unique(exactRefs).optional(),
+		capabilityIds: identifiers.optional(), routePatterns: z.array(nonEmpty).optional(), resourceTypes: identifiers.optional(),
+		actionIds: identifiers.optional(), keywords: z.array(nonEmpty).optional(), documentationUrls: z.array(nonEmpty).optional(),
+	}).strict(),
 	person: z.object({
 		name: nonEmpty, description: nonEmpty.optional(), summary: nonEmpty.optional(), role: nonEmpty.optional(), affiliation: nonEmpty.optional(),
 		status: lifecycleStatus.optional(), group_ids: strings.optional(), related_questions: strings.optional(), related_objectives: strings.optional(),
 	}),
 	agent: agentDefinitionSchema,
 	discussion: z.object({
-		title: nonEmpty, topic: nonEmpty.optional(), status: z.enum(['active', 'archived']).optional(), team_id: nonEmpty.optional(),
-		project_id: nonEmpty.optional(), participant_ids: strings.optional(), agent_ids: strings.optional(), group_ids: strings.optional(),
-		parent_workday_id: nonEmpty.optional(), legacy_status: z.enum(['open', 'resolved']).optional(), created_at: date.optional(), updated_at: date.optional(),
-	}),
+		schemaVersion: z.literal('treeseed.discussion/v1'), id: identifier, projectId: identifier,
+		subjectRef: exactEntityReferenceSchema, status: z.enum(['open', 'resolved', 'closed']),
+		participantClasses: unique(z.array(agentClass)), title: nonEmpty, teamId: identifier, createdAt: z.string().datetime({ offset: true }),
+		topic: nonEmpty.optional(), visibility: z.enum(KNOWLEDGE_VISIBILITIES).optional(),
+		participantIds: identifiers.optional(), agentIds: identifiers.optional(), groupIds: identifiers.optional(),
+		parentWorkdayId: identifier.optional(), updatedAt: z.string().datetime({ offset: true }).optional(),
+	}).strict(),
 	discussion_message: z.object({
-		title: nonEmpty, discussion_id: nonEmpty.optional(), author_id: nonEmpty.optional(), author_type: z.enum(['user', 'agent', 'system']).optional(),
-		intent: z.enum(['discuss', 'propose']).optional(), reply_to: nonEmpty.optional(), source_message_refs: strings.optional(), mentioned_agents: strings.optional(),
-		recipient_ids: strings.optional(),
-		author_agent_id: nonEmpty.optional(), handoff_id: nonEmpty.optional(), parent_workday_id: nonEmpty.optional(), resulting_operation_id: nonEmpty.optional(),
-		group_ids: strings.optional(), created_at: date.optional(),
-	}),
+		schemaVersion: z.literal('treeseed.discussion-message/v1'), id: identifier,
+		discussionRef: exactEntityReferenceSchema, authorRef: exactEntityReferenceSchema,
+		body: nonEmpty, createdAt: z.string().datetime({ offset: true }),
+		replyToRef: exactEntityReferenceSchema.optional(), title: nonEmpty.optional(), discussionId: identifier.optional(),
+		authorId: identifier.optional(), authorType: z.enum(['user', 'agent', 'system']).optional(),
+		intent: z.enum(['discuss', 'propose']).optional(), mentionedAgents: identifiers.optional(), recipientIds: identifiers.optional(),
+		fileRefs: z.array(z.record(z.unknown())).optional(), contextRefs: z.array(z.record(z.unknown())).optional(),
+		inboxIntent: z.enum(['comment', 'answer', 'reply']).optional(), sourceMessageRefs: unique(exactRefs).optional(),
+		authorAgentId: identifier.optional(), handoffId: identifier.optional(), parentWorkdayId: identifier.optional(),
+		resultingOperationId: identifier.optional(),
+	}).strict(),
 	discussion_event: z.object({
 		title: nonEmpty, discussion_id: nonEmpty.optional(), phase: nonEmpty.optional(), sequence: z.number().int().nonnegative().optional(),
 		group_ids: strings.optional(), occurred_at: date.optional(), refs: strings.optional(),

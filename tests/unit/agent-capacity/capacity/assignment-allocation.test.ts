@@ -94,6 +94,9 @@ describe('integrated assignment allocation arithmetic', () => {
    providerMaximumSeconds: 120, constraints: [{ id: 'phase', remainingSeconds: 300 }] })).toMatchObject({ allocatedSeconds: 120 });
   expect(calculateAssignmentAllocation({ estimate, measurements: [], planningTurnMaximumSeconds: 180,
    providerMinimumSeconds: 240, constraints: [{ id: 'phase', remainingSeconds: 300 }] })).toMatchObject({ admitted: false });
+  expect(calculateAssignmentAllocation({ estimate: { minimumSeconds: 10, expectedSeconds: 30, maximumSeconds: 60 },
+   measurements: [], planningTurnMaximumSeconds: 180, constraints: [{ id: 'phase', remainingSeconds: 300 }] }))
+   .toMatchObject({ admitted: true, allocatedSeconds: 60, limitingConstraint: 'task-duration' });
  });
  it('rejects malformed accounting rather than advertising usable supply', () => {
   expect(() => distributeAllocationSeconds(-1, [])).toThrow('allocation_amount_invalid');

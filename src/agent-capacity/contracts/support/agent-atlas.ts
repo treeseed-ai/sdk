@@ -1,8 +1,3 @@
-import type {
-  DecisionAssignmentGraphEdge,
-  DecisionAssignmentGraphNode,
-} from "./decision-work.ts";
-
 export const AGENT_ATLAS_TOPOLOGY_CONTRACT =
   "treeseed.agent-atlas-topology/v1" as const;
 
@@ -236,21 +231,6 @@ export interface AgentAtlasContextReference {
   immutableRef?: string;
   path?: string;
   digest?: string;
-}
-
-export interface AgentAtlasAssignmentGraphProjection {
-  id: string;
-  projectId: string;
-  decisionId: string;
-  proposalId: string | null;
-  status: string;
-  nodes: Array<
-    DecisionAssignmentGraphNode & {
-      assignmentIds: string[];
-      progressPercent: number | null;
-    }
-  >;
-  edges: DecisionAssignmentGraphEdge[];
 }
 
 export function isAgentAtlasContextReference(

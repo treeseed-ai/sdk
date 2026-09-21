@@ -6,6 +6,7 @@ import { parse } from 'yaml';
 import { hostTemplateSchema, integrationLockSchema } from './contracts.ts';
 import { inventorySchema, profileSchema } from './schemas.ts';
 import type { PlatformDiagnostic } from './schemas.ts';
+import { verifyAgentContentSchema } from './agent-schema-verification.ts';
 
 export interface PlatformVerification { schemaVersion: 'treeseed.platform-verification/v1'; root: string; digest: string; ok: boolean; diagnostics: PlatformDiagnostic[] }
 
@@ -60,6 +61,11 @@ function semanticDiagnostics(root: string, tracked: ReadonlySet<string>): Platfo
 		if (!host) continue;
 		for (const profile of host.profiles) if (!profiles.has(profile)) report('host_profile_unknown', path, `Host template profile ${profile} does not exist.`);
 		if (![...integrationDigests.values()].includes(host.integration.digest)) report('host_integration_unknown', path, 'Host template integration digest is not present in a referenced integration lock.');
+	}
+	const agentSchemaPath = 'docs/agent.schema.yml';
+	if (tracked.has(agentSchemaPath)) {
+		const schema = safe(agentSchemaPath, () => document(agentSchemaPath));
+		if (schema) diagnostics.push(...verifyAgentContentSchema(schema, agentSchemaPath));
 	}
 	const production = site.production as { mutation?: string; topology?: string } | undefined;
 	if (production && production.mutation !== 'blocked') report('production_not_fail_closed', sitePath, 'Production mutation must remain blocked until promotion gates pass.');

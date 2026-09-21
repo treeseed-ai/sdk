@@ -24,9 +24,12 @@ export const sourceWorkspaceKeySchema = z.object({
 	projectId: id,
 	repositoryId: id,
 	commit,
+	additionalCommits: z.array(commit).max(16).refine((values) => new Set(values).size === values.length).optional(),
 	formatVersion: z.literal(1),
 	profile: z.literal('source-only'),
-}).strict();
+}).strict().refine((value) => !value.additionalCommits?.includes(value.commit), {
+	path: ['additionalCommits'], message: 'Predecessor commits must differ from the base commit.',
+});
 
 /** Authorization is resolved again at lease acquisition; a READY cache entry grants no access. */
 export const sourceWorkspaceAuthorizationSchema = z.object({

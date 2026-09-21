@@ -130,7 +130,7 @@ export function calculateAssignmentAllocation(input: {
 	for (const entry of constraints) nonnegative(entry.remainingSeconds);
 	constraints.sort((a, b) => a.remainingSeconds - b.remainingSeconds || a.id.localeCompare(b.id));
 	const availableSeconds = Math.floor(constraints[0]!.remainingSeconds);
-	const desiredSeconds = input.planningTurnMaximumSeconds ?? calibration.seconds;
+	const desiredSeconds = calibration.seconds;
 	const allocatedSeconds = Math.min(Math.max(minimumSeconds, desiredSeconds), availableSeconds);
 	return { admitted: availableSeconds >= minimumSeconds, allocatedSeconds: availableSeconds >= minimumSeconds ? allocatedSeconds : 0,
 		minimumSeconds, desiredSeconds, calibration,

@@ -12,6 +12,7 @@ export default defineConfig({
 			'tests/contract/standards/**/*.test.ts',
 			'tests/contract/agent-capacity/capacity-configuration.test.ts',
 			'tests/contract/agent-capacity/agent-execution-contract.test.ts',
+			'tests/contract/agent-capacity/assignment-workspace-authority.test.ts',
 			'tests/contract/agent-capacity/source-workspace.test.ts',
 			'tests/contract/agent-capacity/source-client.test.ts',
 			'tests/contract/agent-capacity/source-candidate.test.ts',

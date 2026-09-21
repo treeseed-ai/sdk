@@ -2,15 +2,7 @@ export type AgentExecutionMode = 'planning' | 'acting';
 import type { AgentWorkExecutionMode } from '../../support/authority/execution-mode.ts';
 export type ProviderAssignmentStatus = 'pending' | 'leased' | 'running' | 'completed' | 'failed' | 'returned' | 'expired' | 'cancelled';
 export type ProviderAssignmentLeaseState = 'unleased' | 'leased' | 'released' | 'expired';
-export type AgentModeRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
-export type ProviderAssignmentSynthesisSource =
-	| 'approved_decision'
-	| 'planning_input_request'
-	| 'capacity_plan'
-	| 'living_execution_graph'
-	| 'workday_demand'
-	| 'verification_failure'
-	| 'fallback_queue';
+export type ProviderAssignmentSynthesisSource = 'living_execution_graph';
 
 export const AGENT_ASSIGNMENT_WORKSPACE_ACCESS_MODES = [
 	'context_only',
@@ -30,7 +22,6 @@ export interface WorkdayCapacityEnvelope {
 	workDayId?: string | null;
 	environment?: string | null;
 	executionMode?: AgentWorkExecutionMode;
-	allocationSetId?: string | null;
 	availableSeconds?: number | null;
 	requestedSeconds?: number | null;
 	reservedSeconds?: number | null;
@@ -51,24 +42,6 @@ export interface AgentCapacityEnvelope extends WorkdayCapacityEnvelope {
 	nativeUnit?: string | null;
 	reservedNativeAmount?: number | null;
 	limits?: Record<string, unknown>;
-}
-
-export interface DecisionExecutionInput {
-	teamId: string;
-	projectId: string;
-	projectAgentClassId: string;
-	mode: AgentExecutionMode;
-	executionMode?: AgentWorkExecutionMode;
-	activityType?: import('../../../../types/agents.ts').AgentActivityType;
-	workGraphNodeId?: string | null;
-	estimateId?: string | null;
-	taskId?: string | null;
-	workDayId?: string | null;
-	agentId?: string | null;
-	handlerId?: string | null;
-	capacity: AgentCapacityEnvelope;
-	input: Record<string, unknown>;
-	metadata?: Record<string, unknown>;
 }
 
 export interface TreeDxProxyHandle {
@@ -189,7 +162,6 @@ export interface ProviderAssignment {
 	handoffParentId?: string | null;
 	handoffDepth?: number;
 	sourceMessageRefs?: string[];
-	allocationSetId: string | null;
 	projectAgentClassId: string;
 	reservationId: string | null;
 	workDayId: string | null;
@@ -205,7 +177,6 @@ export interface ProviderAssignment {
 	agentId: string | null;
 	handlerId: string | null;
 	capacityEnvelope: AgentCapacityEnvelope;
-	decisionInput: DecisionExecutionInput | Record<string, unknown>;
 	workspaceContext: Record<string, unknown>;
 	allowedOutputs: Record<string, unknown>;
 	explanation: Record<string, unknown>;
@@ -251,7 +222,6 @@ export interface ProviderAssignmentLifecycleRequest {
 	output?: Record<string, unknown> | null;
 	summary?: Record<string, unknown> | null;
 	fallbackOutput?: Record<string, unknown> | null;
-	modeRunId?: string | null;
 	metadata?: Record<string, unknown>;
 	completion?: import('../../support/time-capacity.ts').AssignmentCompletionEvidence | null;
 	performance?: import('../../support/time-capacity.ts').AssignmentPerformanceSummary | null;
@@ -276,42 +246,4 @@ export interface ProviderAssignmentLifecycleResult {
 	leaseSeconds?: number | null;
 	diagnostics?: Record<string, unknown> | null;
 	leaseDiagnostics?: Record<string, unknown> | null;
-}
-
-export interface AgentModeRunUsageSettlement {
-	capacityUsageActualId: string | null;
-	capacityLedgerEntryId: string | null;
-	activeSeconds: number | null;
-	elapsedSeconds: number | null;
-	actualUsd: number | null;
-	nativeUsage: Record<string, unknown> | null;
-	metadata: Record<string, unknown>;
-}
-
-export interface AgentModeRun {
-	id: string;
-	teamId: string;
-	projectId: string;
-	providerAssignmentId: string;
-	capacityProviderId: string;
-	executionProviderId: string | null;
-	projectAgentClassId: string;
-	agentId: string | null;
-	handlerId: string | null;
-	mode: AgentExecutionMode;
-	executionMode?: AgentWorkExecutionMode;
-	status: AgentModeRunStatus;
-	selectedInput: Record<string, unknown>;
-	capacityEnvelope: AgentCapacityEnvelope;
-	outputs: Record<string, unknown>;
-	traceRefs: Record<string, unknown>;
-	usageActual: AgentModeRunUsageSettlement | Record<string, unknown>;
-	validation: Record<string, unknown>;
-	fallbackReason: string | null;
-	startedAt: string | null;
-	completedAt: string | null;
-	failedAt: string | null;
-	metadata: Record<string, unknown>;
-	createdAt: string;
-	updatedAt: string;
 }

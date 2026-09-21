@@ -169,9 +169,6 @@ export class ProviderProtocolClient {
 		return this.invoke<Record<string, unknown>>(CONTROL_PLANE_OPERATIONS.providers.startCloseout, { path: { assignmentId }, body: request });
 	}
 
-	preflightAssignmentCompletion(assignmentId: string, request: Record<string, unknown>) {
-		return this.invoke<Record<string, unknown>>(CONTROL_PLANE_OPERATIONS.providers.completionPreflight, { path: { assignmentId }, body: request });
-	}
 
 	/** Host provider transport only; the recipient key belongs to the trusted source fetch worker. */
 	async authorizeAssignmentSource(assignmentId: string, request: SourceWorkspaceRequest) {
@@ -212,10 +209,6 @@ export class ProviderProtocolClient {
 
 	settleAssignment(assignmentId: string, request: Record<string, unknown>, idempotencyKey: string) {
 		return this.invoke<Record<string, unknown>>(CONTROL_PLANE_OPERATIONS.providers.settleAssignment, { path: { assignmentId }, body: request }, { idempotencyKey });
-	}
-
-	createAssignmentModeRun(assignmentId: string, request: Record<string, unknown>) {
-		return this.invoke<Record<string, unknown>>(CONTROL_PLANE_OPERATIONS.providers.createModeRun, { path: { assignmentId }, body: request });
 	}
 
 	createAssignmentEvent(assignmentId: string, request: ProviderRuntimeEventInput) {

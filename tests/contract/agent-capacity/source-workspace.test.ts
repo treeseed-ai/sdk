@@ -26,6 +26,13 @@ describe('exact-source workspace public contracts', () => {
 			expect(sourceWorkspaceKeySchema.safeParse({ ...source, commit }).success).toBe(false);
 		}
 	});
+	it('keys predecessor access by distinct exact commits', () => {
+		const predecessor = 'b'.repeat(40);
+		expect(sourceWorkspaceKeySchema.safeParse({ ...source, additionalCommits: [predecessor] }).success).toBe(true);
+		for (const additionalCommits of [[predecessor, predecessor], [source.commit], ['staging'], Array(17).fill(predecessor)]) {
+			expect(sourceWorkspaceKeySchema.safeParse({ ...source, additionalCommits }).success).toBe(false);
+		}
+	});
 	it('does not expose backend paths, secret values, or storage implementation', () => {
 		for (const field of ['path', 'qcow2', 'token', 'password', 'cloneUrl']) {
 			expect(sourceWorkspaceKeySchema.safeParse({ ...source, [field]: 'untrusted' }).success).toBe(false);

@@ -6,7 +6,7 @@ import { isPortableContentModel,validateContentFrontmatter,type PortableContentM
 const registryIndependentModels = new Set<PortableContentModel>([
 	'agent_test', 'workday', 'template_product',
 	'agent_context_query', 'agent_context_query_set', 'agent_instruction_template', 'discussion_topic',
-	'agent_evaluation', 'proposal', 'decision', 'question', 'note',
+	'agent_evaluation', 'proposal', 'decision', 'question', 'note', 'book', 'knowledge', 'objective', 'discussion', 'discussion_message',
 ]);
 
 export interface PortableContentDiagnostic {
