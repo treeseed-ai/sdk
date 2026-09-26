@@ -43,6 +43,21 @@ function catalog(...operations: ControlPlaneOperationDescriptor[]): ControlPlane
 }
 
 describe('control-plane operation catalog', () => {
+	it('exposes usage pagination without losing exact workday filtering', () => {
+		expect(CONTROL_PLANE_OPERATIONS.capacity.usage.descriptor.pagination).toBe('cursor');
+		const capacity = TREESEED_COMMAND_TREE_V1.commands.find(node => node.segment === 'capacity');
+		const usage = capacity?.nodeType === 'branch' ? capacity.children.find(node => node.segment === 'usage') : undefined;
+		expect(usage?.nodeType).toBe('leaf');
+		if (usage?.nodeType !== 'leaf') throw new Error('Missing capacity usage command');
+		expect(usage.options).toEqual(expect.arrayContaining([
+			expect.objectContaining({ name: '--workday' }), expect.objectContaining({ name: '--limit' }), expect.objectContaining({ name: '--cursor' }),
+		]));
+		expect(usage.execution).toMatchObject({ input: expect.arrayContaining([
+			expect.objectContaining({ target: 'query', field: 'workDayId', name: 'workday' }),
+			expect.objectContaining({ target: 'query', field: 'limit', name: 'limit' }),
+			expect.objectContaining({ target: 'query', field: 'cursor', name: 'cursor' }),
+		]) });
+	});
 	it('requires operator identity and versioned input for team policy replacement', () => {
 		const binding = CONTROL_PLANE_OPERATIONS.workdays.profilesUpdate;
 		expect(binding.descriptor).toMatchObject({ authentication: 'oauth', oauthScopes: ['treeseed:execution'],

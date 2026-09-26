@@ -1,6 +1,11 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.complete-usage-pagination:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/control-plane-operation.test.ts
+    testName: "exposes usage pagination without losing exact workday filtering"
   sdk.golden.recursive-workspace-grant:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

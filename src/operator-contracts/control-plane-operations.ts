@@ -260,7 +260,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 	capacity: {
 		availability: resource('capacity.status', 'GET', '/v1/teams/{teamId}/capacity/availability-sessions', { teamId: z.string().min(1) }, { capability: 'capacity.read', surfaces: ['rest', 'cli', 'mcp_tool'], pagination: 'cursor' }),
 		explain: resource('capacity.explain', 'GET', '/v1/teams/{teamId}/capacity/explanation', { teamId: z.string().min(1) }, { capability: 'capacity.read', surfaces: ['rest', 'cli', 'mcp_tool'] }),
-		usage: resource('capacity.usage', 'GET', '/v1/teams/{teamId}/capacity/usage', { teamId: z.string().min(1) }, { capability: 'capacity.read', surfaces: ['rest', 'cli', 'mcp_tool'] }),
+		usage: resource('capacity.usage', 'GET', '/v1/teams/{teamId}/capacity/usage', { teamId: z.string().min(1) }, { capability: 'capacity.read', surfaces: ['rest', 'cli', 'mcp_tool'], pagination: 'cursor' }),
 		ledger: resource('capacity.ledger', 'GET', '/v1/teams/{teamId}/capacity/ledger', { teamId: z.string().min(1) }, { capability: 'capacity.read', surfaces: ['rest', 'cli'], pagination: 'cursor' }),
 		audit: resource('capacity.audit', 'GET', '/v1/teams/{teamId}/capacity/audit', { teamId: z.string().min(1) }, { capability: 'capacity.read', surfaces: ['rest', 'cli'], pagination: 'cursor' }),
 		lanes: resource('capacity.lanes.list', 'GET', '/v1/teams/{teamId}/capacity/lanes', { teamId: z.string().min(1) }, { capability: 'capacity.read', surfaces: ['rest', 'mcp_tool'], pagination: 'cursor' }),
