@@ -4,12 +4,12 @@ import { parse } from 'yaml';
 export { runUiEvidenceTrustVerifier, validateUiEvidenceTrust } from './evidence-trust.ts';
 
 export type GuaranteeRunStatus = 'passed' | 'failed' | 'skipped' | 'blocked';
-export type GuaranteeFilter = Record<string, unknown>;
+export interface GuaranteeFilter { ownerPackage?: string; type?: string; subtype?: string; gate?: string; status?: string; ids?: string[]; journeyIndexes?: number[]; }
 export interface GuaranteeDiagnostic { severity: 'error' | 'warning' | 'info'; code: string; message: string; path?: string; sourcePath?: string; }
-export interface GuaranteeRunStep { id: string; kind: string; status: GuaranteeRunStatus; evidence?: string[]; diagnostics?: GuaranteeDiagnostic[]; [key: string]: unknown; }
-export interface GuaranteePlanEntry { id: string; journey: string; ownerPackage: string; type: string; subtype: string; status: string; gates: string[]; sourcePath: string; selected: boolean; dependency: boolean; [key: string]: unknown; }
+export interface GuaranteeRunStep { id: string; kind: string; status: GuaranteeRunStatus; summary?: string; ref?: string; evidence?: string[]; diagnostics?: GuaranteeDiagnostic[]; [key: string]: unknown; }
+export interface GuaranteePlanEntry { id: string; journey: string; ownerPackage: string; type: string; subtype: string; status: string; gates: string[]; sourcePath: string; selected: boolean; dependency: boolean; sceneManifest?: string; verifierRefs?: string[]; sceneVerifierRefs?: string[]; journeyIndex?: number; [key: string]: unknown; }
 export interface GuaranteePlanReport { ok: boolean; entries: GuaranteePlanEntry[]; diagnostics: GuaranteeDiagnostic[]; [key: string]: unknown; }
-export interface GuaranteeRunResult { id: string; journey: string; ownerPackage: string; type: string; subtype: string; status: GuaranteeRunStatus; selected: boolean; dependency: boolean; sourcePath: string; steps: GuaranteeRunStep[]; diagnostics: GuaranteeDiagnostic[]; evidence: string[]; [key: string]: unknown; }
+export interface GuaranteeRunResult { id: string; journey: string; ownerPackage: string; type: string; subtype: string; status: GuaranteeRunStatus; selected: boolean; dependency: boolean; sourcePath: string; journeyIndex?: number; steps: GuaranteeRunStep[]; diagnostics: GuaranteeDiagnostic[]; evidence: string[]; [key: string]: unknown; }
 export interface GuaranteeRunReport { runId: string; environment: string; startedAt: string; completedAt?: string; ok: boolean; filter: GuaranteeFilter; counts: { passed: number; failed: number; skipped: number; blocked: number; releaseBlockingFailures: number }; results: GuaranteeRunResult[]; diagnostics?: GuaranteeDiagnostic[]; [key: string]: unknown; }
 
 export interface ArtifactGuaranteeVerifier {
@@ -18,7 +18,11 @@ export interface ArtifactGuaranteeVerifier {
 export interface CatalogOperationGuaranteeVerifier {
 	kind: 'catalogOperation'; ownerPackage: string; operationId: string; caseId: string; description?: string;
 }
-export type GuaranteeVerifierDefinition = ArtifactGuaranteeVerifier | CatalogOperationGuaranteeVerifier;
+/** Local development verification against package-owned tests, never release-artifact proof. */
+export interface DevelopmentTestGuaranteeVerifier {
+	kind: 'vitestCase' | 'nodeTestCase'; ownerPackage: string; testFile: string; testName: string;
+}
+export type GuaranteeVerifierDefinition = ArtifactGuaranteeVerifier | CatalogOperationGuaranteeVerifier | DevelopmentTestGuaranteeVerifier;
 export interface GuaranteeVerifierCheck { id: string; status: 'passed' | 'failed'; durationMs: number; diagnostics?: GuaranteeDiagnostic[]; error?: string; evidence?: string[]; }
 export interface GuaranteeVerifierResult {
 	schemaVersion: 'treeseed.guarantee-verifier-result/v1'; verifierId: string; startedAt: string; completedAt: string; ok: boolean; checks: GuaranteeVerifierCheck[]; [key: string]: unknown;

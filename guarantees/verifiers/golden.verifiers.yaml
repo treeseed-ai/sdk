@@ -1,0 +1,43 @@
+schemaVersion: treeseed.guarantee-verifiers/v1
+ownerPackage: "@treeseed/sdk"
+verifiers:
+  sdk.golden.planning-cycles:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/workday-allocation.test.ts
+    testName: "creates one deterministic cycle and can compile successive collaboration turns"
+  sdk.golden.phase-boundary:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/workday-allocation.test.ts
+    testName: "uses a percentage-based phase boundary and rejects retired policy fields"
+  sdk.golden.target-shares:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/workday-allocation.test.ts
+    testName: "selects project then class by weighted deficit and uses stable node ties"
+  sdk.golden.concurrent-fairness:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/assignment-allocation.test.ts
+    testName: "shares capacity across concurrent production/simulation workdays by weight"
+  sdk.golden.calibration:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/assignment-allocation.test.ts
+    testName: "starts conservatively, reduces gradually, and treats expiration as censored"
+  sdk.golden.caps:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/assignment-allocation.test.ts
+    testName: "checks both capability and shared model ceilings without charging additional requirements twice"
+  sdk.golden.minimum-viability:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/assignment-allocation.test.ts
+    testName: "defers below viable minimum and obeys provider bounds and planning turn ceilings"
+  sdk.golden.cycles-denied:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/execution-graph.test.ts
+    testName: "rejects cycles, missing endpoints, and duplicate identities"

@@ -1,0 +1,29 @@
+schemaVersion: treeseed.scene/v1
+id: sdk.golden.component-boundaries
+title: sdk golden component boundaries
+scope: local-component-tests
+workflow:
+  - id: planning-cycles
+    action: { verifier: sdk.golden.planning-cycles }
+    expect: { status: passed }
+  - id: phase-boundary
+    action: { verifier: sdk.golden.phase-boundary }
+    expect: { status: passed }
+  - id: target-shares
+    action: { verifier: sdk.golden.target-shares }
+    expect: { status: passed }
+  - id: concurrent-fairness
+    action: { verifier: sdk.golden.concurrent-fairness }
+    expect: { status: passed }
+  - id: calibration
+    action: { verifier: sdk.golden.calibration }
+    expect: { status: passed }
+  - id: caps
+    action: { verifier: sdk.golden.caps }
+    expect: { status: passed }
+  - id: minimum-viability
+    action: { verifier: sdk.golden.minimum-viability }
+    expect: { status: passed }
+  - id: cycles-denied
+    action: { verifier: sdk.golden.cycles-denied }
+    expect: { status: passed }
