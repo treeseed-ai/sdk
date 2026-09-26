@@ -1,6 +1,11 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.production-runtime-imports:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/standards/runtime-dependencies.test.ts
+    testName: "declares every handwritten SDK runtime import as a production dependency"
   sdk.golden.complete-usage-pagination:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
