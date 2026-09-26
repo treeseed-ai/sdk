@@ -160,6 +160,12 @@ export interface WorkdayLifecycleDiagnostic {
 
 export function validateWorkdayIntent(intent: WorkdayIntent): WorkdayLifecycleDiagnostic[] {
 	const diagnostics: WorkdayLifecycleDiagnostic[] = [];
+	const fields = new Set(['schemaVersion', 'teamId', 'profileId', 'projects', 'executionMode', 'startsAt',
+		'endsAt', 'durationSeconds', 'objectiveFilters', 'planningOnly', 'proposalIds', 'decisionIds',
+		'agentSelection', 'allocation', 'operatorConstraints']);
+	for (const key of Object.keys(intent)) if (!fields.has(key)) diagnostics.push({
+		code: 'field_forbidden', path: key, message: 'Derived execution state is not portable workday intent.',
+	});
 	if (intent.schemaVersion !== 'treeseed.workday-intent/v1') diagnostics.push({ code: 'schema_version_invalid', path: 'schemaVersion', message: 'Unsupported workday intent schema.' });
 	if (!intent.teamId.trim()) diagnostics.push({ code: 'team_required', path: 'teamId', message: 'Team identity is required.' });
 	if (!intent.profileId.trim()) diagnostics.push({ code: 'profile_required', path: 'profileId', message: 'Allocation profile identity is required.' });

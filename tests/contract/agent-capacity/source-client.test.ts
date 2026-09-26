@@ -27,4 +27,10 @@ describe('host provider source authorization transport', () => {
     const client = new ProviderProtocolClient({ controlPlaneUrl: 'https://control.test', accessToken: 'token', fetchImpl: async () => Response.json({ data: response }) });
     await expect(client.authorizeAssignmentSource('different', request)).rejects.toThrow('correlation');
   });
+  it('identifies the failed provider operation without echoing its credential', async () => {
+    const client = new ProviderProtocolClient({ controlPlaneUrl: 'https://control.test', accessToken: 'secret-token',
+      fetchImpl: async () => Response.json({ code: 'provider_authentication_required', detail: 'Provider authentication required.' }, { status: 401 }) });
+    await expect(client.assignment('assignment')).rejects.toThrow('providers.assignments.show: Provider authentication required.');
+    await expect(client.assignment('assignment')).rejects.not.toThrow('secret-token');
+  });
 });

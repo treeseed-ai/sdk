@@ -94,6 +94,10 @@ const executionPlanWorkItemSchema = z.object({
 		content: z.object({ read: z.array(z.enum(['agent','book','knowledge','objective','discussion','discussion-message','proposal','question','note','decision'])), write: z.array(z.enum(['agent','book','knowledge','objective','discussion','discussion-message','proposal','question','note','decision'])) }).strict(),
 		tools: z.array(z.enum(['discussion','source.read','source.write','verification','release'])),
 	}).strict(),
+	output: z.object({
+		model: z.enum(['agent','book','knowledge','objective','discussion','discussion-message','proposal','question','note','decision']),
+		id: identifier,
+	}).strict().optional(),
 	requiredCapabilities: z.array(nonEmpty).min(1),
 	contextRefs: z.array(exactEntityReferenceSchema).optional(),
 	acceptanceCriteria: z.array(nonEmpty).min(1),
@@ -101,8 +105,11 @@ const executionPlanWorkItemSchema = z.object({
 	if (value.review === 'required' && !value.maximumReviewCycles) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Required review needs a maximum cycle count.' });
 	if (value.review === 'none' && (value.reviewEstimate || value.maximumReviewCycles)) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Unreviewed work cannot define review estimates or cycles.' });
 	if (value.workspace !== 'read-only') {
-		const mutable = (value.contextRefs ?? []).filter((reference) => reference.store === value.workspace);
+		const mutable = (value.contextRefs ?? []).filter((reference) => reference.store === value.workspace && reference.model === 'repository');
 		if (mutable.length !== 1) context.addIssue({ code: z.ZodIssueCode.custom, path: ['contextRefs'], message: `${value.workspace} work requires exactly one exact ${value.workspace} workspace reference.` });
+	}
+	if (value.output && (value.workspace !== 'treedx' || !value.requestedPermissions.content.write.includes(value.output.model))) {
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['output'], message: 'A content output requires a TreeDX workspace and matching content-write authority.' });
 	}
 });
 

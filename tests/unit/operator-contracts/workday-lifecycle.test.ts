@@ -8,6 +8,13 @@ describe('time-based workday lifecycle contracts', () => {
 		for (const executionMode of ['simulation', 'production'] as const) expect(validateWorkdayIntent({ ...base, executionMode })).toEqual([]);
 		expect(validateWorkdayIntent({ ...base, executionMode: 'other' } as never)).toContainEqual(expect.objectContaining({ code: 'execution_mode_invalid' }));
 	});
+	it('rejects derived execution state in operator workday intent', () => {
+		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default',
+			projects: 'all' as const, startsAt: '2026-09-16T12:00:00Z' };
+		for (const field of ['graph', 'executionPlan', 'capacityPlan']) {
+			expect(validateWorkdayIntent({ ...base, [field]: {} } as never)).toContainEqual(expect.objectContaining({ code: 'field_forbidden', path: field }));
+		}
+	});
 	it('validates high-level allocation through the canonical policy contract', () => {
 		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default',
 			projects: 'all' as const, startsAt: '2026-09-16T12:00:00Z', durationSeconds: 3600 };

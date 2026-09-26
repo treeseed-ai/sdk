@@ -26,6 +26,29 @@ describe('proposal-owned execution plan', () => {
 		expect(validatePortableContentData('proposal', { ...draft, status: 'decided' }).ok).toBe(false);
 	});
 	it('accepts complete reviewed work without a separate execution-plan model', () => expect(validatePortableContentData('proposal', proposal()).ok).toBe(true));
+	it('allows exact read-only Books alongside one TreeDX workspace repository', () => {
+		const value = proposal() as ReturnType<typeof proposal> & { executionPlan: { workItems: Array<Record<string, unknown>> } };
+		const item = value.executionPlan.workItems[0]!;
+		item.workspace = 'treedx';
+		item.contextRefs = [
+			{ store: 'treedx', model: 'book', id: 'sdk-architecture', repository: 'treeseed-ai/sdk-library', commit: 'b'.repeat(40), path: 'books/architecture.md', revision: 1, digest: `sha256:${'c'.repeat(64)}` },
+			{ store: 'treedx', model: 'repository', id: 'sdk-library', repository: 'treeseed-ai/sdk-library', commit: 'b'.repeat(40), path: '.' },
+		];
+		expect(validatePortableContentData('proposal', value).ok).toBe(true);
+		item.contextRefs.push({ store: 'treedx', model: 'repository', id: 'second-library', repository: 'treeseed-ai/second-library', commit: 'd'.repeat(40), path: '.' });
+		expect(validatePortableContentData('proposal', value).ok).toBe(false);
+	});
+	it('binds one exact TreeDX output identity without introducing an output taxonomy', () => {
+		const value = proposal() as ReturnType<typeof proposal> & { executionPlan: { workItems: Array<Record<string, unknown>> } };
+		const item = value.executionPlan.workItems[0]!;
+		item.workspace = 'treedx';
+		item.requestedPermissions = { content: { read: ['proposal'], write: ['knowledge'] }, tools: ['source.read'] };
+		item.contextRefs = [{ store: 'treedx', model: 'repository', id: 'sdk-library', repository: 'treeseed-ai/sdk-library', commit: 'b'.repeat(40), path: '.' }];
+		item.output = { model: 'knowledge', id: 'sdk-workday-contract-inventory-v1' };
+		expect(validatePortableContentData('proposal', value).ok).toBe(true);
+		item.workspace = 'git';
+		expect(validatePortableContentData('proposal', value).ok).toBe(false);
+	});
 	it('preserves canonical exact evidence references without legacy registry translation', () => {
 		const value = { ...proposal(), evidenceRefs: [{ store: 'git', model: 'repository', id: 'sdk', repository: 'treeseed-ai/sdk', commit: 'b'.repeat(40) }] };
 		const result = validatePortableContentData('proposal', value);

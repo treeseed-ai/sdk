@@ -88,7 +88,7 @@ export class ProviderProtocolClient {
 			return response.data as T;
 		} catch (error) {
 			if (error instanceof CapacityProviderApiError) throw error;
-			if (error instanceof ControlPlaneClientError) throw new CapacityProviderApiError(error.message, error.status, error.problem);
+			if (error instanceof ControlPlaneClientError) throw new CapacityProviderApiError(`${operation.descriptor.operationId}: ${error.message}`, error.status, error.problem);
 			const timedOut = controller.signal.aborted || (error instanceof Error && error.name === 'AbortError');
 			throw new CapacityProviderApiError(
 				timedOut ? `Capacity provider request timed out after ${this.requestTimeoutMs}ms.` : error instanceof Error ? error.message : String(error),
