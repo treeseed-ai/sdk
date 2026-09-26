@@ -1,6 +1,11 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.recursive-workspace-grant:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/assignment-workspace-authority.test.ts
+    testName: "accepts recursive discussion grants without granting sibling collections"
   sdk.golden.planning-cycles:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { assignmentAttemptSchema } from '../../../src/agent-capacity/contracts/capacity/assignments/agent-execution.ts';
+import { assignmentPathAllowed } from '../../../src/capacity/agents/agent-capacity.ts';
 
 const digest = `sha256:${'a'.repeat(64)}`;
 const commit = 'b'.repeat(40);
@@ -24,6 +25,25 @@ const attempt = () => ({
 });
 
 describe('one mutable assignment workspace', () => {
+	it('accepts recursive discussion grants without granting sibling collections', () => {
+		for (const path of ['discussion-messages/message.mdx', 'discussion-messages/topic/message.mdx']) {
+			expect(assignmentPathAllowed(path, ['discussion-messages/**', 'discussion-events/**'])).toBe(true);
+		}
+		for (const path of ['knowledge/message.mdx', 'discussion-messages-other/message.mdx', '/discussion-messages/message.mdx',
+			'discussion-messages/../knowledge/message.mdx', 'discussion-messages//message.mdx', 'discussion-messages/./message.mdx',
+			'discussion-messages\\message.mdx', 'discussion-messages/\0message.mdx', 'discussion-messages/**']) {
+			expect(assignmentPathAllowed(path, ['discussion-messages/**'])).toBe(false);
+		}
+	});
+	it('preserves exact directory grants and rejects unsafe or unsupported grant patterns', () => {
+		expect(assignmentPathAllowed('src/index.ts', ['src'])).toBe(true);
+		expect(assignmentPathAllowed('src/index.ts', ['src/'])).toBe(true);
+		expect(assignmentPathAllowed('src/index.ts', ['.'])).toBe(true);
+		expect(assignmentPathAllowed('src/index.ts', ['**'])).toBe(true);
+		for (const grant of ['../src', '/src', 'src/*', 'src/**/other', 'src\\']) {
+			expect(assignmentPathAllowed('src/index.ts', [grant])).toBe(false);
+		}
+	});
 	it('allows an exact Git writer', () => {
 		const parsed = assignmentAttemptSchema.safeParse(attempt());
 		expect(parsed.success, parsed.success ? '' : JSON.stringify(parsed.error.issues)).toBe(true);

@@ -3,6 +3,9 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: recursive-workspace-grant
+    action: { verifier: sdk.golden.recursive-workspace-grant }
+    expect: { status: passed }
   - id: planning-cycles
     action: { verifier: sdk.golden.planning-cycles }
     expect: { status: passed }
