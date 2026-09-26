@@ -34,6 +34,10 @@ jobs:
 
       - name: Verify package
         run: npm run verify:direct
+      - name: Execute coded golden component scenes
+        uses: treeseed-ai/reviewer/.github/actions/run-scenes@e29c5bf2db97188c47fdc67a7a098e81a95ced22
+        with:
+          ids: guarantee.sdk.golden.component-boundaries
 
       - name: Pack verified artifact
         run: mkdir -p artifacts && npm pack --json --ignore-scripts --pack-destination artifacts
