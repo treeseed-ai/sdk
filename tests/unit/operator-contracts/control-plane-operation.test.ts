@@ -107,6 +107,14 @@ describe('control-plane operation catalog', () => {
 			execution: { input: expect.arrayContaining([expect.objectContaining({ target: 'body', field: 'proposalId', name: 'proposal' })]) } });
 	});
 
+	it('exposes governed proposal retirement without a parallel cleanup surface', () => {
+		const proposals = TREESEED_COMMAND_TREE_V1.commands.find((node) => node.nodeType === 'branch' && node.segment === 'proposals');
+		const leaves = proposals?.nodeType === 'branch' ? proposals.children.filter((node) => node.nodeType === 'leaf').map((node) => node.segment) : [];
+		expect(leaves).toEqual(expect.arrayContaining(['withdraw', 'supersede']));
+		expect(CONTROL_PLANE_OPERATIONS.governance.withdraw.descriptor).toMatchObject({ concurrency: { required: true }, surfaces: ['rest', 'cli'] });
+		expect(CONTROL_PLANE_OPERATIONS.governance.supersede.descriptor).toMatchObject({ concurrency: { required: true }, surfaces: ['rest', 'cli'] });
+	});
+
 	it('derives the complete stable MCP catalog from resource-declared operations', () => {
 		const resources = buildMcpResources(CONTROL_PLANE_CATALOG.operations);
 		expect(resources).toHaveLength(65);

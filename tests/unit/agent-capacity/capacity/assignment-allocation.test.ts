@@ -74,6 +74,19 @@ describe('integrated assignment allocation arithmetic', () => {
   expect(calibrateAssignmentSeconds(estimate, [measurement({ outcome: 'expired', activeSeconds: 600 })]).seconds).toBe(750);
   expect(calibrateAssignmentSeconds(estimate, [measurement({ outcome: 'infrastructure-failure' })]).seconds).toBe(600);
  });
+ it('backs off censored deadlines deterministically without overriding admission ceilings', () => {
+  const history = [measurement({ outcome: 'expired', activeSeconds: 600 }),
+   measurement({ id: 'b', completedAt: '2026-09-16T12:01:00Z', outcome: 'expired',
+    allocatedSeconds: 750, activeSeconds: 750 })];
+  const calibrated = calibrateAssignmentSeconds(estimate, history);
+  expect(calibrated.seconds).toBe(938);
+  expect(calibrateAssignmentSeconds(estimate, [...history].reverse())).toEqual(calibrated);
+  expect(calculateAssignmentAllocation({ estimate, measurements: history, providerMaximumSeconds: 900,
+   constraints: [{ id: 'shared-model', remainingSeconds: 800 }] }))
+   .toMatchObject({ admitted: true, desiredSeconds: 938, allocatedSeconds: 800, limitingConstraint: 'shared-model' });
+  expect(calibrateAssignmentSeconds(estimate, [...history,
+   measurement({ id: 'c', completedAt: '2026-09-16T12:02:00Z', activeSeconds: 100 })]).seconds).toBe(844);
+ });
  it('normalizes task complexity and uses only the latest twenty eligible samples', () => {
   const history = Array.from({ length: 21 }, (_, index) => measurement({ id: String(index).padStart(2, '0'),
    completedAt: new Date(Date.parse('2026-09-16T12:00:00Z') + index * 1000).toISOString() }));

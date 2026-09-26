@@ -7,6 +7,10 @@ const slug = z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:[._/-][a-z0-9
 const uniqueIds = z.array(identifier).superRefine((items, context) => {
 	if (new Set(items).size !== items.length) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Values must be unique.' });
 });
+const contentOutputSchema = z.object({
+	model: z.enum(['agent','book','knowledge','objective','discussion','discussion-message','proposal','question','note','decision']),
+	id: identifier,
+}).strict();
 
 export const conditionDefinitionSchema = z.object({
 	conditionType: z.enum(['question', 'external', 'authority', 'lifecycle']),
@@ -32,6 +36,7 @@ export const executionNodeSchema = z.object({
 	estimate: estimateSchema.optional(),
 	requiredCapabilities: uniqueIds.optional(),
 	requestedPermissions: activityProfileSchema.shape.permissions.optional(),
+	output: contentOutputSchema.optional(),
 	workspace: z.enum(['read-only', 'treedx', 'git']).optional(),
 	acceptanceCriteria: z.array(z.string().trim().min(1)).min(1).optional(),
 	maximumReviewCycles: z.number().int().positive().optional(),
@@ -46,6 +51,9 @@ export const executionNodeSchema = z.object({
 	} else {
 		for (const key of assignable) if (node[key] === undefined) context.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `Assignable nodes require ${key}.` });
 		if (node.condition) context.addIssue({ code: z.ZodIssueCode.custom, path: ['condition'], message: 'Assignable nodes cannot define condition.' });
+	}
+	if (node.output && (node.workspace !== 'treedx' || !node.requestedPermissions?.content.write.includes(node.output.model))) {
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['output'], message: 'A content output requires a TreeDX workspace and matching content-write authority.' });
 	}
 	if (node.pairRole && !(node.workItemId && node.maximumReviewCycles)) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Actor and Reviewer nodes require workItemId and maximumReviewCycles.' });
 	if (node.graphRevisionUpdated < node.graphRevisionCreated) context.addIssue({ code: z.ZodIssueCode.custom, path: ['graphRevisionUpdated'], message: 'Updated revision cannot precede created revision.' });
