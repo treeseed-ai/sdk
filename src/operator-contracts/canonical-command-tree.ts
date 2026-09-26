@@ -246,7 +246,7 @@ const commandTree: CommandTreeDescriptor = {
 			branch('voting', [leaf('start', 'mutation', 'proposal')]),
 			addOptions(leaf('vote', 'mutation', 'proposal'), [{ name: '--input', description: 'YAML or JSON vote.', type: 'string', required: true }]),
 			addOptions(leaf('evaluate', 'mutation', 'proposal'), [{ name: '--input', description: 'Optional YAML or JSON evaluation decision.', type: 'string' }]),
-			addOptions(leaf('withdraw', 'mutation', 'proposal'), [{ name: '--input', description: 'Optional YAML or JSON withdrawal reason and evidence.', type: 'string' }]),
+			addOptions(leaf('withdraw', 'mutation', 'proposal', 'destructive'), [{ name: '--input', description: 'Optional YAML or JSON withdrawal reason and evidence.', type: 'string' }]),
 			addOptions(leaf('supersede', 'mutation', 'proposal'), [{ name: '--input', description: 'Optional YAML or JSON successor, reason, and evidence.', type: 'string' }]),
 		]),
 		branch('decisions', [leaf('list'), leaf('show', 'read', 'decision')]),
