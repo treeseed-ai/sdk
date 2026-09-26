@@ -1,6 +1,7 @@
 export type { ProjectAgentClass,ProjectAgentClassStatus } from '../../agent-capacity/contracts/projects/agents/project-agent-class.ts';
 export type { AgentDefinition, AgentActivityProfile } from '../../types/agents.ts';
 export * from '../../agent-capacity/grant.ts';
+export * from '../../agent-capacity/contracts/capacity/assignments/assignment-path.ts';
 export * from '../../agent-capacity/validation/index.ts';
 export * from '../../agent-capacity/contracts/capacity/assignments/assignment-records.ts';
 export * from '../../agent-capacity/contracts/capacity/assignments/assignment-context-pack.ts';
