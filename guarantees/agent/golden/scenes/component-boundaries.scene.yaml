@@ -6,6 +6,9 @@ workflow:
   - id: planning-cycles
     action: { verifier: sdk.golden.planning-cycles }
     expect: { status: passed }
+  - id: response-reference
+    action: { verifier: sdk.golden.response-reference }
+    expect: { status: passed }
   - id: phase-boundary
     action: { verifier: sdk.golden.phase-boundary }
     expect: { status: passed }

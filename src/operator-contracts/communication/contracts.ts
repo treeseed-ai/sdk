@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { assignmentReferenceSchema } from '../../agent-capacity/contracts/capacity/assignments/agent-execution.ts';
 
 // Portable communication payloads shared by CLI, API, MCP, and provider runtimes.
 
@@ -162,9 +163,13 @@ export const providerDiscussionResponseReceiptSchema = z.object({
 	assignmentId: z.string().min(1),
 	invocationId: z.string().min(1),
 	messageRef: z.string().min(1),
+	reference: assignmentReferenceSchema.refine(value => value.kind === 'treedx', 'Discussion responses require a committed TreeDX reference.'),
 	status: z.enum(['responded', 'abstained']),
 	settledAt: z.string().datetime(),
-}).strict();
+}).strict().superRefine((value, context) => {
+	if (value.reference.kind === 'treedx' && value.reference.path !== value.messageRef)
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['reference', 'path'], message: 'The reference must identify the published response.' });
+});
 
 export type CommunicationSendRequest = z.infer<typeof communicationSendRequestSchema>;
 export type CommunicationSendReceipt = z.infer<typeof communicationSendReceiptSchema>;

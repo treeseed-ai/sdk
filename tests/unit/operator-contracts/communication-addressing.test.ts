@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { parseCommunicationAddresses } from '../../../src/operator-contracts/communication/addressing.ts';
-import { communicationSendRequestSchema } from '../../../src/operator-contracts/communication/contracts.ts';
+import { communicationSendRequestSchema, providerDiscussionResponseReceiptSchema } from '../../../src/operator-contracts/communication/contracts.ts';
 import { TREESEED_COMMAND_TREE_V1 } from '../../../src/operator-contracts/canonical-command-tree.ts';
 
 describe('communication addressing', () => {
+	it('requires the exact committed response reference instead of a path-only completion claim', () => {
+		const receipt = { schemaVersion: 'treeseed.provider-discussion-response-receipt/v1', assignmentId: 'assignment', invocationId: 'invocation',
+			messageRef: 'discussion-messages/reply.mdx', status: 'responded', settledAt: '2026-09-26T10:00:00.000Z' };
+		const reference = { kind: 'treedx', projectId: 'sdk', repository: 'repo_sdk', commit: 'a'.repeat(40), path: receipt.messageRef, workspaceId: 'workspace' };
+		expect(providerDiscussionResponseReceiptSchema.safeParse(receipt).success).toBe(false);
+		expect(providerDiscussionResponseReceiptSchema.parse({ ...receipt, reference }).reference).toEqual(reference);
+		expect(providerDiscussionResponseReceiptSchema.safeParse({ ...receipt, reference: { ...reference, commit: 'staging' } }).success).toBe(false);
+		expect(providerDiscussionResponseReceiptSchema.safeParse({ ...receipt, reference: { ...reference, path: 'other.mdx' } }).success).toBe(false);
+	});
 	it('accepts an exact parent workday without caller-authored budgets or graph state', () => {
 		const input = { message: '@sdk/architect Assess the proposal.', proposalId: 'proposal', parentWorkdayId: 'workday' };
 		expect(communicationSendRequestSchema.parse(input)).toEqual(input);

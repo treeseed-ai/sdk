@@ -41,3 +41,8 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/agent-capacity/capacity/execution-graph.test.ts
     testName: "rejects cycles, missing endpoints, and duplicate identities"
+  sdk.golden.response-reference:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/communication-addressing.test.ts
+    testName: "requires the exact committed response reference instead of a path-only completion claim"
