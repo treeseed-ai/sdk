@@ -143,7 +143,7 @@ const operationBindings: Record<string, Execution> = {
 	'providers credentials revoke': operation('providers.credentials.revoke', [field('path', 'teamId', 'context', 'team', true), field('path', 'connectionId', 'argument', 'connection', true)]),
 	'capacity status': operation('capacity.status', [field('path', 'teamId', 'context', 'team', true), ...page()]),
 	'capacity explain': operation('capacity.explain', [field('path', 'teamId', 'context', 'team', true)]),
-	'capacity usage': operation('capacity.usage', [field('path', 'teamId', 'context', 'team', true), field('query', 'projectId', 'option', 'project', true), field('query', 'workDayId', 'option', 'workday')]),
+	'capacity usage': operation('capacity.usage', [field('path', 'teamId', 'context', 'team', true), field('query', 'projectId', 'option', 'project', true), field('query', 'workDayId', 'option', 'workday'), ...page()]),
 	'capacity ledger': operation('capacity.ledger', [field('path', 'teamId', 'context', 'team', true), field('query', 'projectId', 'option', 'project', true), field('query', 'workDayId', 'option', 'workday'), ...page()]),
 	'capacity audit': operation('capacity.audit', [field('path', 'teamId', 'context', 'team', true), ...page()]),
 	'seeds validate': operation('seeds.validate', [field('body', 'file', 'argument', 'file', true)]),
@@ -332,7 +332,7 @@ const commandTree: CommandTreeDescriptor = {
 		]),
 		branch('seeds', [leaf('validate', 'read', 'file'), leaf('plan', 'read', 'file'), leaf('apply', 'mutation', 'file', 'authority'), leaf('show', 'read', 'seed'), leaf('verify', 'read', 'seed')]),
 		branch('capacity', [leaf('status'), leaf('explain'),
-			addOptions(leaf('usage'), [{ name: '--workday', description: 'Restrict evidence to one workday.', type: 'string' }]),
+			addOptions(leaf('usage'), [{ name: '--workday', description: 'Restrict evidence to one workday.', type: 'string' }, { name: '--limit', description: 'Page size.', type: 'number' }, { name: '--cursor', description: 'Opaque page cursor.', type: 'string' }]),
 			addOptions(leaf('ledger'), [{ name: '--workday', description: 'Restrict evidence to one workday.', type: 'string' }]),
 			leaf('audit')]),
 		branch('workdays', [

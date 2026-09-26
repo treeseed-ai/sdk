@@ -3,6 +3,9 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: complete-usage-pagination
+    action: { verifier: sdk.golden.complete-usage-pagination }
+    expect: { status: passed }
   - id: recursive-workspace-grant
     action: { verifier: sdk.golden.recursive-workspace-grant }
     expect: { status: passed }
