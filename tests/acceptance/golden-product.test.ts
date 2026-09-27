@@ -5,7 +5,7 @@ import { verifySdkGoldenProduct } from './golden-product.ts';
 
 test('SDK golden retains exact source and passing measured candidate release gates', () => {
 	const id = process.env.TREESEED_ACCEPTANCE_WORKDAY_ID;
-	assert.ok(id?.startsWith('workday-'), 'ACCEPTANCE_SDK_WORKDAY: Explicit real workday required');
+	assert.ok(typeof id === 'string' && id.startsWith('workday-'), 'ACCEPTANCE_SDK_WORKDAY: Explicit real workday required');
 	const read = (args: string[]) => {
 		const envelope = JSON.parse(execFileSync('trsd', [...args, '--server', 'local', '--team', process.env.TREESEED_ACCEPTANCE_TEAM ?? 'treeseed', '--json'],
 			{ encoding: 'utf8', timeout: 30000, maxBuffer: 32 * 1024 * 1024 }));
