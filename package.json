@@ -18,6 +18,8 @@
   },
   "files": [
     "README.md",
+    "guarantees",
+    "tests/acceptance",
     "dist"
   ],
   "publishConfig": {
