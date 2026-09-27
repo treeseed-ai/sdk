@@ -1,6 +1,11 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.live.product:
+    kind: nodeTestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/acceptance/golden-product.test.ts
+    testName: SDK golden retains exact source and passing measured candidate release gates
   sdk.golden.production-runtime-imports:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

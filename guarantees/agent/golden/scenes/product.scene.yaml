@@ -1,0 +1,8 @@
+schemaVersion: treeseed.scene/v1
+id: sdk.golden.product
+title: SDK golden product evidence
+scope: local-integrated-runtime
+workflow:
+  - id: product
+    action: { verifier: sdk.golden.live.product }
+    expect: { status: passed }
