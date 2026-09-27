@@ -21,6 +21,8 @@ export interface CatalogOperationGuaranteeVerifier {
 /** Local development verification against package-owned tests, never release-artifact proof. */
 export interface DevelopmentTestGuaranteeVerifier {
 	kind: 'vitestCase' | 'nodeTestCase'; ownerPackage: string; testFile: string; testName: string;
+	/** Test-process watchdog only; milliseconds, 1..86_400_000. Default: 120_000. Never an assignment budget. */
+	timeoutMs?: number;
 }
 export type GuaranteeVerifierDefinition = ArtifactGuaranteeVerifier | CatalogOperationGuaranteeVerifier | DevelopmentTestGuaranteeVerifier;
 export interface GuaranteeVerifierCheck { id: string; status: 'passed' | 'failed'; durationMs: number; diagnostics?: GuaranteeDiagnostic[]; error?: string; evidence?: string[]; }
