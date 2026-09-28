@@ -61,6 +61,9 @@ describe('human command tree contract', () => {
 		expect(leaves.get('auth login')?.authorization?.confirmation).toBe('never');
 		expect(leaves.get('auth login')?.options?.map((option) => option.name)).toEqual(['--plan', '--timeout', '--device', '--issuer', '--scope']);
 		expect(leaves.get('secrets status')?.execution).toEqual({ kind: 'local', handlerId: 'local.secrets.status' });
+		expect(leaves.get('host provider limits show')?.execution).toEqual({ kind: 'local', handlerId: 'local.host.provider.limits.show' });
+		expect(leaves.get('host provider limits set')).toMatchObject({ kind: 'mutation', execution: { kind: 'local', handlerId: 'local.host.provider.limits.set' }, authorization: { confirmation: 'authority' } });
+		expect(leaves.get('host provider limits set')?.options?.map(option => option.name)).toEqual(['--plan', '--daily-active-seconds', '--capability', '--expected-generation']);
 		expect(leaves.get('ai storage verify')).toMatchObject({ kind: 'mutation', execution: {kind: 'local', handlerId: 'local.host.ai.storage.verify'}, authorization: {confirmation: 'authority'} });
 		expect(leaves.get('ai storage verify')?.options?.map(option => option.name)).toContain('--plan');
 		for (const [path, handlerId] of [

@@ -82,6 +82,8 @@ const operationBindings: Record<string, Execution> = {
 	'host topology': local('local.host.topology'),
 	'host connections': local('local.host.connections'),
 	'host provider status': local('local.host.provider.status'),
+	'host provider limits show': local('local.host.provider.limits.show'),
+	'host provider limits set': local('local.host.provider.limits.set'),
 	'host provider credentials list': local('local.host.provider.credentials.list'),
 	'host provider credentials status': local('local.host.provider.credentials.status'),
 	'host provider credentials initialize': local('local.host.provider.credentials.initialize'),
@@ -297,7 +299,11 @@ const commandTree: CommandTreeDescriptor = {
 			leaf('start', 'mutation', undefined, 'authority'), leaf('stop', 'mutation', undefined, 'authority'), leaf('events'),
 			branch('config', [leaf('show'), leaf('plan', 'read', 'file'), leaf('apply', 'mutation', 'file', 'authority'), leaf('stage', 'mutation', 'file', 'authority'), configurationAdopt()]),
 			branch('postgres', [branch('transfer', [leaf('prepare', 'mutation', 'file', 'authority'), leaf('status')])]),
-			leaf('topology'), leaf('connections'), branch('provider', [leaf('status'), branch('credentials', [leaf('list'), leaf('status'), hostProviderCredentialInitialize()]), hostProviderEnvironmentBranch()]),
+			leaf('topology'), leaf('connections'), branch('provider', [leaf('status'), branch('limits', [leaf('show'), addOptions(leaf('set', 'mutation', 'provider', 'authority'), [
+				{ name: '--daily-active-seconds', description: 'Daily active-time cap in seconds.', type: 'number', required: true },
+				{ name: '--capability', description: 'Set only this capability; otherwise set the shared model and all its capabilities.', type: 'string' },
+				{ name: '--expected-generation', description: 'Reject if the host configuration generation changed.', type: 'number' },
+			])]), branch('credentials', [leaf('list'), leaf('status'), hostProviderCredentialInitialize()]), hostProviderEnvironmentBranch()]),
 			branch('storage', [
 				leaf('status'),
 				addOptions(leaf('connect', 'mutation', 'backend', 'credential'), [{ name: '--account-id', description: 'Optional Cloudflare account ID when the bootstrap authority reaches multiple accounts.', type: 'string' }]),
