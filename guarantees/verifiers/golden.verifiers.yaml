@@ -51,11 +51,11 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/agent-capacity/capacity/assignment-allocation.test.ts
     testName: "checks both capability and shared model ceilings without charging additional requirements twice"
-  sdk.golden.minimum-viability:
+  sdk.golden.bounded-turns:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/agent-capacity/capacity/assignment-allocation.test.ts
-    testName: "defers below viable minimum and obeys provider bounds and planning turn ceilings"
+    testName: "admits any positive bounded turn and obeys maximum ceilings"
   sdk.golden.cycles-denied:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
