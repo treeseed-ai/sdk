@@ -93,6 +93,23 @@ describe('integrated assignment allocation arithmetic', () => {
   expect(calibrateAssignmentSeconds(estimate, history).measurementIds).toHaveLength(20);
   expect(calibrateAssignmentSeconds({ expectedSeconds: 600, maximumSeconds: 1200 }, [measurement()]).seconds).toBe(1080);
  });
+ it('keeps repeatable governance reviews viable when genuine estimates vary', () => {
+  const reviews = Array.from({ length: 20 }, (_, index) => measurement({ id: `review-${index}`,
+   completedAt: new Date(Date.parse('2026-09-16T12:00:00Z') + index * 1000).toISOString(),
+   expectedSeconds: 250, allocatedSeconds: 200, activeSeconds: index < 15 ? 84 : 100 }));
+  const reviewEstimate = { minimumSeconds: 60, expectedSeconds: 100, maximumSeconds: 165 };
+  const constraints = [{ id: 'execution-window', remainingSeconds: 180 }];
+  expect(calculateAssignmentAllocation({ estimate: reviewEstimate, measurements: reviews, constraints }))
+   .toMatchObject({ admitted: true, allocatedSeconds: 60, observedMinimumSeconds: 0 });
+  expect(calculateAssignmentAllocation({ estimate: reviewEstimate, measurements: reviews, constraints,
+   observedViabilityFloor: true })).toMatchObject({ admitted: true, allocatedSeconds: 105,
+    minimumSeconds: 105, observedMinimumSeconds: 105 });
+  expect(calculateAssignmentAllocation({ estimate: reviewEstimate, measurements: reviews,
+   constraints: [{ id: 'execution-window', remainingSeconds: 104 }], observedViabilityFloor: true }))
+   .toMatchObject({ admitted: false, allocatedSeconds: 0, limitingConstraint: 'execution-window' });
+  expect(calculateAssignmentAllocation({ estimate: reviewEstimate, measurements: [], constraints,
+   observedViabilityFloor: true })).toMatchObject({ observedMinimumSeconds: 0, allocatedSeconds: 165 });
+ });
  it('checks both capability and shared model ceilings without charging additional requirements twice', () => {
   const result = calculateAssignmentAllocation({ estimate, measurements: [], constraints: [
    { id: 'capability-research', remainingSeconds: 3600 }, { id: 'model-astra', remainingSeconds: 120 },

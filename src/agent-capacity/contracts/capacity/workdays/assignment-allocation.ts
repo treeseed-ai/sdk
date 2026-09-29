@@ -120,9 +120,18 @@ export function calculateAssignmentAllocation(input: {
 	providerMaximumSeconds?: number;
 	profileMaximumSeconds?: number;
 	planningTurnMaximumSeconds?: number;
+	/** Governance reviews have a repeatable verification envelope, even when authored estimates vary. */
+	observedViabilityFloor?: boolean;
 }) {
 	const calibration = calibrateAssignmentSeconds(input.estimate, input.measurements);
-	const minimumSeconds = Math.max(1, nonnegative(input.estimate.minimumSeconds), nonnegative(input.providerMinimumSeconds ?? 1));
+	const completed = input.observedViabilityFloor
+		? input.measurements.filter((entry) => entry.outcome === 'completed').sort((a, b) =>
+			Date.parse(a.completedAt) - Date.parse(b.completedAt) || a.id.localeCompare(b.id)).slice(-20)
+			.map((entry) => nonnegative(entry.activeSeconds)).sort((a, b) => a - b) : [];
+	const observedMinimumSeconds = completed.length
+		? Math.ceil(1.25 * completed[Math.ceil(completed.length * .75) - 1]!) : 0;
+	const minimumSeconds = Math.max(1, nonnegative(input.estimate.minimumSeconds),
+		nonnegative(input.providerMinimumSeconds ?? 1), observedMinimumSeconds);
 	const constraints = [...input.constraints];
 	for (const [id, value] of [['provider-maximum', input.providerMaximumSeconds], ['profile-maximum', input.profileMaximumSeconds],
 		['planning-turn', input.planningTurnMaximumSeconds]] as const) if (value !== undefined) constraints.push({ id, remainingSeconds: nonnegative(value) });
@@ -133,6 +142,6 @@ export function calculateAssignmentAllocation(input: {
 	const desiredSeconds = calibration.seconds;
 	const allocatedSeconds = Math.min(Math.max(minimumSeconds, desiredSeconds), availableSeconds);
 	return { admitted: availableSeconds >= minimumSeconds, allocatedSeconds: availableSeconds >= minimumSeconds ? allocatedSeconds : 0,
-		minimumSeconds, desiredSeconds, calibration,
+		minimumSeconds, observedMinimumSeconds, desiredSeconds, calibration,
 		limitingConstraint: availableSeconds < Math.max(minimumSeconds, desiredSeconds) ? constraints[0]!.id : 'task-duration', constraints };
 }
