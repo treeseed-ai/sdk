@@ -18,7 +18,7 @@ const attempt = () => ({
 		executionCapabilityId: 'code-change', offerRevision: 1, runtimeBuild: digest },
 	contextRefs: [], predecessorResultIds: [], workspace: { mode: 'git', repository: 'treeseed-ai/sdk', baseCommit: commit,
 		branch: 'treeseed/assignments/assignment', writablePaths: ['src'] },
-	estimate: { minimumSeconds: 1, expectedSeconds: 2, maximumSeconds: 3 },
+	estimate: { expectedSeconds: 2, maximumSeconds: 3 },
 	limits: { maximumSeconds: 3, maximumContextBytes: 1024, maximumContextItems: 1 },
 	deadline: '2026-09-20T21:00:00.000Z', leaseId: 'lease', reservationId: 'reservation', attempt: 1,
 	status: 'created', createdAt: '2026-09-20T20:00:00.000Z',

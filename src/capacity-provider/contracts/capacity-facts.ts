@@ -65,7 +65,6 @@ export interface ExecutionProviderNativeCapacity {
 	dailyActiveSecondsLimit?: number;
 	capabilityLimits?: Record<string, {
 		dailyActiveSecondsLimit: number;
-		minimumAssignmentSeconds?: number;
 		maximumAssignmentSeconds?: number;
 	}>;
 }

@@ -109,9 +109,11 @@ export function workdayPlanningEndsAt(plan: Pick<AppliedWorkday, 'startsAt' | 'p
 	return new Date(Date.parse(plan.startsAt) + plan.policySnapshot.durationSeconds * plan.policySnapshot.planningPercent * 10).toISOString();
 }
 
-export function workdayPhase(plan: Pick<AppliedWorkday, 'startsAt' | 'endsAt' | 'policySnapshot'>, now: string): 'planning' | 'acting' | 'ended' {
+/** The percentage reserves an initial planning window; later phase choice follows live graph readiness. */
+export function workdayPhase(plan: Pick<AppliedWorkday, 'startsAt' | 'endsAt' | 'policySnapshot'>,
+	now: string, actingReady: boolean): 'planning' | 'acting' | 'ended' {
 	if (Date.parse(now) >= Date.parse(plan.endsAt)) return 'ended';
-	return Date.parse(now) < Date.parse(workdayPlanningEndsAt(plan)) ? 'planning' : 'acting';
+	return Date.parse(now) < Date.parse(workdayPlanningEndsAt(plan)) || !actingReady ? 'planning' : 'acting';
 }
 
 /** Shared by read-only plan and mutating start; callers persist this exact value. */
