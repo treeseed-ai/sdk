@@ -284,7 +284,6 @@ export interface CapacityProviderLane {
 	timeoutSeconds: number;
 	capabilities: string[];
 	maxConcurrentWorkers: number;
-	minimumAssignmentDuration?: MinimumAssignmentDuration;
 	metadata?: Record<string, unknown>;
 	createdAt: string;
 	updatedAt: string;
@@ -302,20 +301,7 @@ export interface ProviderLaneSnapshot {
 	capabilities: string[];
 	maxConcurrentWorkers: number;
 	activeWorkers: number;
-	minimumAssignmentDuration?: MinimumAssignmentDuration;
 }
-
-export type MinimumAssignmentDuration =
-	| { amount: number; unit: 'seconds' }
-	| {
-		amount: number;
-		unit: 'business-days';
-		calendar: {
-			timeZone: string;
-			weekdays?: number[];
-			holidayDates?: string[];
-		};
-	};
 
 export interface ProviderExecutionAdapterSnapshot {
 	id: string;
@@ -326,7 +312,6 @@ export interface ProviderExecutionAdapterSnapshot {
 	laneIds: string[];
 	maxConcurrentWorkers: number;
 	activeWorkers: number;
-	minimumAssignmentDuration?: MinimumAssignmentDuration;
 	nativeLimits: Record<string, unknown>;
 	observations?: Record<string, unknown>;
 	accountingObservation?: { modelUsage: CapabilityAccountingObservation; capabilityUsage: Record<string, CapabilityAccountingObservation> };
@@ -411,13 +396,13 @@ export interface CapacityProviderManifestV5 {
 	lanes: Array<{
 		id: string; purpose: import('../../agent-capacity/contracts/capacity/communication/communication-records.ts').ProviderLanePurpose;
 		priority: number; reservedConcurrentWorkers: number; maxConcurrentWorkers: number; borrowWhenIdle: boolean; lendWhenIdle: boolean;
-		reclaimPolicy: 'admission'; queueLimit: number; timeoutSeconds: number; minimumAssignmentDuration?: MinimumAssignmentDuration; capabilities?: string[];
+		reclaimPolicy: 'admission'; queueLimit: number; timeoutSeconds: number; capabilities?: string[];
 	}>;
 	sandbox: { required: true; brokerSocket: string; runtime: 'kata-runtime-rs-qemu'; profiles: CapacityProviderSandboxProfile[] };
 	adapters: Array<{
 		id: string; adapter: string; isolation: 'microvm'; profile?: string; module?: string; protocol?: 'responses' | 'chat-completions';
 		model?: { endpointRef?: string; baseUrl?: string; model?: string; reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' }; credentialProfiles?: string[]; laneIds: string[]; maxConcurrentWorkers: number;
-		healthProbe?: string; versionConstraint?: string; configurationDigest?: string; minimumAssignmentDuration?: MinimumAssignmentDuration;
+		healthProbe?: string; versionConstraint?: string; configurationDigest?: string;
 		nativeLimits: Record<string, unknown>; researchSourcePolicy?: ResearchSourcePolicy;
 		offers: Array<{ offer: CapabilityOffer; sandboxProfileId: string }>;
 	}>;
