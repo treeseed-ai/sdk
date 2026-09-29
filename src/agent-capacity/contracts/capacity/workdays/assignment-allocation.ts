@@ -54,25 +54,23 @@ export function allocateWorkdayCapacity(input: {
 	remainingSeconds: number;
 	now: string;
 	workdays: Array<{ plan: AppliedWorkday; committedSeconds: number; planningCommittedSeconds: number;
-		maximumAdditionalSeconds: number }>;
+		maximumAdditionalSeconds: number; actingReady: boolean }>;
 }) {
 	if (!Number.isFinite(Date.parse(input.now))) throw new Error('allocation_time_invalid');
-	const shares = input.workdays.map(({ plan, committedSeconds, planningCommittedSeconds, maximumAdditionalSeconds }) => {
+	const shares = input.workdays.map(({ plan, committedSeconds, planningCommittedSeconds, maximumAdditionalSeconds, actingReady }) => {
 		nonnegative(planningCommittedSeconds);
 		if (planningCommittedSeconds > committedSeconds) throw new Error('allocation_planning_commitment_invalid');
 		const eligible = Date.parse(input.now) >= Date.parse(plan.startsAt)
-			&& (plan.state === 'closing' || (plan.state === 'active' && workdayPhase(plan, input.now) !== 'ended'));
+			&& (plan.state === 'closing' || (plan.state === 'active' && workdayPhase(plan, input.now, actingReady) !== 'ended'));
 		return { id: plan.id, weight: plan.policySnapshot.allocationWeight, committedSeconds,
 			maximumAdditionalSeconds: eligible ? maximumAdditionalSeconds : 0 };
 	});
 	const opportunities = distributeAllocationSeconds(input.remainingSeconds, shares);
-	return Object.fromEntries(input.workdays.map(({ plan, committedSeconds, planningCommittedSeconds }) => {
+	return Object.fromEntries(input.workdays.map(({ plan, committedSeconds, planningCommittedSeconds, actingReady }) => {
 		const shareSeconds = opportunities[plan.id]!;
-		const phase = plan.state === 'closing' ? 'acting' : workdayPhase(plan, input.now);
-		// At the boundary all remaining entitlement is available to acting/review.
-		const phaseRemainingSeconds = phase === 'planning'
-			? Math.max(0, Math.floor((committedSeconds + shareSeconds) * plan.policySnapshot.planningPercent / 100)
-				- planningCommittedSeconds) : shareSeconds;
+		const phase = plan.state === 'closing' ? 'acting' : workdayPhase(plan, input.now, actingReady);
+		// Planning borrows idle acting supply. The percentage is a minimum time window, not a spending ceiling.
+		const phaseRemainingSeconds = shareSeconds;
 		return [plan.id, { shareSeconds, phase, phaseRemainingSeconds,
 			weight: plan.policySnapshot.allocationWeight, committedSeconds, planningCommittedSeconds,
 			remainingSupplySeconds: input.remainingSeconds,
@@ -113,25 +111,14 @@ export function calibrateAssignmentSeconds(estimate: { expectedSeconds: number; 
 export interface AssignmentAllocationConstraint { id: string; remainingSeconds: number }
 
 export function calculateAssignmentAllocation(input: {
-	estimate: { minimumSeconds: number; expectedSeconds: number; maximumSeconds: number };
+	estimate: { expectedSeconds: number; maximumSeconds: number };
 	measurements: AllocationMeasurement[];
 	constraints: AssignmentAllocationConstraint[];
-	providerMinimumSeconds?: number;
 	providerMaximumSeconds?: number;
 	profileMaximumSeconds?: number;
 	planningTurnMaximumSeconds?: number;
-	/** Governance reviews have a repeatable verification envelope, even when authored estimates vary. */
-	observedViabilityFloor?: boolean;
 }) {
 	const calibration = calibrateAssignmentSeconds(input.estimate, input.measurements);
-	const completed = input.observedViabilityFloor
-		? input.measurements.filter((entry) => entry.outcome === 'completed').sort((a, b) =>
-			Date.parse(a.completedAt) - Date.parse(b.completedAt) || a.id.localeCompare(b.id)).slice(-20)
-			.map((entry) => nonnegative(entry.activeSeconds)).sort((a, b) => a - b) : [];
-	const observedMinimumSeconds = completed.length
-		? Math.ceil(1.25 * completed[Math.ceil(completed.length * .75) - 1]!) : 0;
-	const minimumSeconds = Math.max(1, nonnegative(input.estimate.minimumSeconds),
-		nonnegative(input.providerMinimumSeconds ?? 1), observedMinimumSeconds);
 	const constraints = [...input.constraints];
 	for (const [id, value] of [['provider-maximum', input.providerMaximumSeconds], ['profile-maximum', input.profileMaximumSeconds],
 		['planning-turn', input.planningTurnMaximumSeconds]] as const) if (value !== undefined) constraints.push({ id, remainingSeconds: nonnegative(value) });
@@ -140,8 +127,8 @@ export function calculateAssignmentAllocation(input: {
 	constraints.sort((a, b) => a.remainingSeconds - b.remainingSeconds || a.id.localeCompare(b.id));
 	const availableSeconds = Math.floor(constraints[0]!.remainingSeconds);
 	const desiredSeconds = calibration.seconds;
-	const allocatedSeconds = Math.min(Math.max(minimumSeconds, desiredSeconds), availableSeconds);
-	return { admitted: availableSeconds >= minimumSeconds, allocatedSeconds: availableSeconds >= minimumSeconds ? allocatedSeconds : 0,
-		minimumSeconds, observedMinimumSeconds, desiredSeconds, calibration,
-		limitingConstraint: availableSeconds < Math.max(minimumSeconds, desiredSeconds) ? constraints[0]!.id : 'task-duration', constraints };
+	const admitted = availableSeconds >= 1;
+	const allocatedSeconds = admitted ? Math.min(desiredSeconds, availableSeconds) : 0;
+	return { admitted, allocatedSeconds, desiredSeconds, calibration,
+		limitingConstraint: availableSeconds < desiredSeconds ? constraints[0]!.id : 'task-duration', constraints };
 }

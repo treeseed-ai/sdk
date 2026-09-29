@@ -6,9 +6,9 @@ const input = { now: '2026-09-16T12:00:00Z', maximumObservationAgeSeconds: 90,
  observation: { day: '2026-09-16', observedAt: '2026-09-16T11:59:59Z', healthy: true, activeSeconds: 100, reservedSeconds: 200 } };
 
 describe('capability daily accounting', () => {
- it('requires explicit shared-model and capability caps and valid assignment bounds', () => {
+ it('requires explicit shared-model and capability caps without assignment minimums', () => {
   const limits = { modelConfigurationId: 'codex-terra', dailyActiveSecondsLimit: 28800,
-   capabilityLimits: { implementation: { dailyActiveSecondsLimit: 28800, minimumAssignmentSeconds: 60, maximumAssignmentSeconds: 3600 } } };
+   capabilityLimits: { implementation: { dailyActiveSecondsLimit: 28800, maximumAssignmentSeconds: 3600 } } };
   expect(capabilityAccountingLimitsSchema.safeParse(limits).success).toBe(true);
   expect(capabilityAccountingLimitsSchema.safeParse({}).success).toBe(false);
   expect(capabilityAccountingLimitsSchema.safeParse({ ...limits, capabilityLimits: {} }).success).toBe(false);

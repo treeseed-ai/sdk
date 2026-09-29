@@ -50,12 +50,11 @@ export const assignmentWorkspaceSchema = z.discriminatedUnion('mode', [
 ]);
 
 export const estimateSchema = z.object({
-	minimumSeconds: z.number().int().positive(),
 	expectedSeconds: z.number().int().positive(),
 	maximumSeconds: z.number().int().positive(),
 	rationale: z.string().optional(),
-}).strict().refine((value) => value.minimumSeconds <= value.expectedSeconds && value.expectedSeconds <= value.maximumSeconds, {
-	message: 'Estimate must satisfy minimumSeconds <= expectedSeconds <= maximumSeconds.',
+}).strict().refine((value) => value.expectedSeconds <= value.maximumSeconds, {
+	message: 'Estimate must satisfy expectedSeconds <= maximumSeconds.',
 });
 
 export const effectiveActivityProfileSchema = activityProfileSchema.omit({ dependsOn: true }).extend({

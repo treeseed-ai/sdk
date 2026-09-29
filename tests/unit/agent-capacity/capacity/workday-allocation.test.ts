@@ -30,12 +30,14 @@ describe('minimal workday allocation', () => {
 				{ round: 1, assignmentIds: ['planning:workday:1:sdk/architect', 'planning:workday:1:sdk/tester'] },
 			] });
 	});
-	it('uses a percentage-based phase boundary and rejects retired policy fields', () => {
+	it('uses the percentage as a minimum planning window and returns to planning when acting has no ready work', () => {
 		const workday = compileWorkday({ id: 'w', teamId: 'team', policyId: 'default', policyRevision: 1,
 			executionMode: 'simulation', policy: { ...policy, durationSeconds: 1000 }, agentIds: ['sdk/architect'], startsAt: '2026-09-13T12:00:00Z' });
-		expect(workdayPhase(workday, '2026-09-13T12:03:19Z')).toBe('planning');
-		expect(workdayPhase(workday, '2026-09-13T12:03:20Z')).toBe('acting');
-		expect(workdayPhase(workday, workday.endsAt)).toBe('ended');
+		expect(workdayPhase(workday, '2026-09-13T12:03:19Z', true)).toBe('planning');
+		expect(workdayPhase(workday, '2026-09-13T12:03:20Z', true)).toBe('acting');
+		expect(workdayPhase(workday, '2026-09-13T12:03:20Z', false)).toBe('planning');
+		expect(workdayPhase(workday, '2026-09-13T12:03:21Z', true)).toBe('acting');
+		expect(workdayPhase(workday, workday.endsAt, false)).toBe('ended');
 		expect(workdayPolicySchema.safeParse({ ...policy, planningSecondsPerAgent: 900 }).success).toBe(false);
 	});
 

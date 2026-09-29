@@ -33,8 +33,8 @@ workflow:
   - id: caps
     action: { verifier: sdk.golden.caps }
     expect: { status: passed }
-  - id: minimum-viability
-    action: { verifier: sdk.golden.minimum-viability }
+  - id: bounded-turns
+    action: { verifier: sdk.golden.bounded-turns }
     expect: { status: passed }
   - id: cycles-denied
     action: { verifier: sdk.golden.cycles-denied }

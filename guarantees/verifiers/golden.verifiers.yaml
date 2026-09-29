@@ -30,7 +30,7 @@ verifiers:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/agent-capacity/capacity/workday-allocation.test.ts
-    testName: "uses a percentage-based phase boundary and rejects retired policy fields"
+    testName: "uses the percentage as a minimum planning window and returns to planning when acting has no ready work"
   sdk.golden.target-shares:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
@@ -51,11 +51,11 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/agent-capacity/capacity/assignment-allocation.test.ts
     testName: "checks both capability and shared model ceilings without charging additional requirements twice"
-  sdk.golden.minimum-viability:
+  sdk.golden.bounded-turns:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/agent-capacity/capacity/assignment-allocation.test.ts
-    testName: "defers below viable minimum and obeys provider bounds and planning turn ceilings"
+    testName: "admits any positive bounded turn and obeys maximum ceilings"
   sdk.golden.cycles-denied:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

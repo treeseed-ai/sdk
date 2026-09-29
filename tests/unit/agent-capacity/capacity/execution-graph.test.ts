@@ -9,7 +9,7 @@ function node(id: string): ExecutionNode {
 	return {
 		schemaVersion: 'treeseed.execution-node/v1', id, teamId: 'team-1', projectId: 'project-1', workItemId: id,
 		kind: 'acting', pairRole: 'actor', sourceRef, authorityRefs: [], ruleRevision: 1, nodeRevision: 1, agentClass: 'engineer',
-		status: 'ready', estimate: { minimumSeconds: 10, expectedSeconds: 20, maximumSeconds: 30 }, requiredCapabilities: [],
+		status: 'ready', estimate: { expectedSeconds: 20, maximumSeconds: 30 }, requiredCapabilities: [],
 		requestedPermissions: permissions, workspace: 'git', acceptanceCriteria: ['Tests pass.'], maximumReviewCycles: 2,
 		graphRevisionCreated: 1, graphRevisionUpdated: 1,
 	};

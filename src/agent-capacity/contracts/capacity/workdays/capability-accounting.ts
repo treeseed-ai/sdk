@@ -6,14 +6,8 @@ export const capabilityAccountingLimitsSchema = z.object({
 	dailyActiveSecondsLimit: z.number().finite().nonnegative(),
 	capabilityLimits: z.record(z.object({
 		dailyActiveSecondsLimit: z.number().finite().nonnegative(),
-		minimumAssignmentSeconds: z.number().int().positive().optional(),
 		maximumAssignmentSeconds: z.number().int().positive().optional(),
-	}).strict().superRefine((value, context) => {
-		if (value.minimumAssignmentSeconds !== undefined && value.maximumAssignmentSeconds !== undefined
-			&& value.minimumAssignmentSeconds > value.maximumAssignmentSeconds) context.addIssue({
-				code: z.ZodIssueCode.custom, path: ['maximumAssignmentSeconds'], message: 'Maximum must not be below minimum.',
-			});
-	})).refine(value => Object.keys(value).length > 0, 'At least one execution capability limit is required.'),
+	}).strict()).refine(value => Object.keys(value).length > 0, 'At least one execution capability limit is required.'),
 }).passthrough();
 
 export type CapabilityAccountingLimits = z.infer<typeof capabilityAccountingLimitsSchema>;

@@ -4,7 +4,7 @@ import { allocateWorkdayCapacity, calculateAssignmentAllocation, calibrateAssign
 import { compileWorkday } from '../../../../src/agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
 import * as capacity from '../../../../src/capacity/agents/agent-capacity.ts';
 
-const estimate = { minimumSeconds: 60, expectedSeconds: 300, maximumSeconds: 600 };
+const estimate = { expectedSeconds: 300, maximumSeconds: 600 };
 const measurement = (overrides: Partial<AllocationMeasurement> = {}): AllocationMeasurement => ({
  id: 'a', completedAt: '2026-09-16T12:00:00Z', expectedSeconds: 300, allocatedSeconds: 600,
  activeSeconds: 100, outcome: 'completed', ...overrides,
@@ -19,7 +19,7 @@ describe('integrated assignment allocation arithmetic', () => {
   const plan = { ...compileWorkday({ id: 'closing', teamId: 'team', policyId: 'default', policyRevision: 1,
    executionMode: 'simulation', policy: { durationSeconds: 1000, maximumConcurrency: 1, communicationConcurrency: 1 },
    agentIds: [], startsAt: '2026-09-16T12:00:00Z' }), state: 'closing' as const };
-  const workday = { plan, committedSeconds: 100, planningCommittedSeconds: 100, maximumAdditionalSeconds: 30 };
+  const workday = { plan, committedSeconds: 100, planningCommittedSeconds: 100, maximumAdditionalSeconds: 30, actingReady: false };
   for (const now of ['2026-09-16T12:00:30Z', '2026-09-16T12:30:00Z']) {
    expect(allocateWorkdayCapacity({ remainingSeconds: 20, now, workdays: [workday] }).closing)
     .toMatchObject({ shareSeconds: 20, availableSeconds: 20, phase: 'acting' });
@@ -34,17 +34,20 @@ describe('integrated assignment allocation arithmetic', () => {
     executionMode: index ? 'simulation' : 'production', policy: { durationSeconds: 1000, maximumConcurrency: 1,
      communicationConcurrency: 1, allocationWeight: index ? 1 : 2 }, agentIds: ['sdk/architect'],
     startsAt: '2026-09-16T12:00:00Z' }), state: 'active' as const },
-   committedSeconds: 0, planningCommittedSeconds: 0, maximumAdditionalSeconds: 900,
+   committedSeconds: 0, planningCommittedSeconds: 0, maximumAdditionalSeconds: 900, actingReady: true,
   }));
   const planning = allocateWorkdayCapacity({ remainingSeconds: 900, now: '2026-09-16T12:00:00Z', workdays });
-  expect(planning.production).toMatchObject({ shareSeconds: 600, availableSeconds: 120, phase: 'planning' });
-  expect(planning.simulation).toMatchObject({ shareSeconds: 300, availableSeconds: 60 });
+  expect(planning.production).toMatchObject({ shareSeconds: 600, availableSeconds: 600, phase: 'planning' });
+  expect(planning.simulation).toMatchObject({ shareSeconds: 300, availableSeconds: 300 });
   const acting = allocateWorkdayCapacity({ remainingSeconds: 900, now: '2026-09-16T12:03:20Z', workdays });
   expect(acting.production).toMatchObject({ availableSeconds: 600, phase: 'acting' });
   expect(acting.simulation).toMatchObject({ availableSeconds: 300 });
   workdays[0]!.committedSeconds = 120; workdays[0]!.planningCommittedSeconds = 120;
   expect(allocateWorkdayCapacity({ remainingSeconds: 780, now: '2026-09-16T12:00:30Z', workdays }).production)
-   .toMatchObject({ shareSeconds: 480, availableSeconds: 0 });
+   .toMatchObject({ shareSeconds: 480, availableSeconds: 480 });
+  workdays[0]!.actingReady = false;
+  expect(allocateWorkdayCapacity({ remainingSeconds: 780, now: '2026-09-16T12:03:20Z', workdays }).production)
+   .toMatchObject({ phase: 'planning', availableSeconds: 480 });
  });
  it('shares capacity across concurrent production/simulation workdays by weight', () => {
   expect(distributeAllocationSeconds(800, [
@@ -93,22 +96,19 @@ describe('integrated assignment allocation arithmetic', () => {
   expect(calibrateAssignmentSeconds(estimate, history).measurementIds).toHaveLength(20);
   expect(calibrateAssignmentSeconds({ expectedSeconds: 600, maximumSeconds: 1200 }, [measurement()]).seconds).toBe(1080);
  });
- it('keeps repeatable governance reviews viable when genuine estimates vary', () => {
+ it('uses history to size a deadline without imposing a duration floor', () => {
   const reviews = Array.from({ length: 20 }, (_, index) => measurement({ id: `review-${index}`,
    completedAt: new Date(Date.parse('2026-09-16T12:00:00Z') + index * 1000).toISOString(),
    expectedSeconds: 250, allocatedSeconds: 200, activeSeconds: index < 15 ? 84 : 100 }));
-  const reviewEstimate = { minimumSeconds: 60, expectedSeconds: 100, maximumSeconds: 165 };
+  const reviewEstimate = { expectedSeconds: 100, maximumSeconds: 165 };
   const constraints = [{ id: 'execution-window', remainingSeconds: 180 }];
   expect(calculateAssignmentAllocation({ estimate: reviewEstimate, measurements: reviews, constraints }))
-   .toMatchObject({ admitted: true, allocatedSeconds: 60, observedMinimumSeconds: 0 });
-  expect(calculateAssignmentAllocation({ estimate: reviewEstimate, measurements: reviews, constraints,
-   observedViabilityFloor: true })).toMatchObject({ admitted: true, allocatedSeconds: 105,
-    minimumSeconds: 105, observedMinimumSeconds: 105 });
+   .toMatchObject({ admitted: true, allocatedSeconds: 50 });
   expect(calculateAssignmentAllocation({ estimate: reviewEstimate, measurements: reviews,
-   constraints: [{ id: 'execution-window', remainingSeconds: 104 }], observedViabilityFloor: true }))
-   .toMatchObject({ admitted: false, allocatedSeconds: 0, limitingConstraint: 'execution-window' });
-  expect(calculateAssignmentAllocation({ estimate: reviewEstimate, measurements: [], constraints,
-   observedViabilityFloor: true })).toMatchObject({ observedMinimumSeconds: 0, allocatedSeconds: 165 });
+   constraints: [{ id: 'execution-window', remainingSeconds: 1 }] }))
+   .toMatchObject({ admitted: true, allocatedSeconds: 1, limitingConstraint: 'execution-window' });
+  expect(calculateAssignmentAllocation({ estimate: reviewEstimate, measurements: [], constraints }))
+   .toMatchObject({ allocatedSeconds: 165 });
  });
  it('checks both capability and shared model ceilings without charging additional requirements twice', () => {
   const result = calculateAssignmentAllocation({ estimate, measurements: [], constraints: [
@@ -117,14 +117,14 @@ describe('integrated assignment allocation arithmetic', () => {
   ] });
   expect(result).toMatchObject({ admitted: true, allocatedSeconds: 120, limitingConstraint: 'model-astra' });
  });
- it('defers below viable minimum and obeys provider bounds and planning turn ceilings', () => {
+ it('admits any positive bounded turn and obeys maximum ceilings', () => {
   expect(calculateAssignmentAllocation({ estimate, measurements: [], constraints: [{ id: 'capability', remainingSeconds: 59 }] }))
+   .toMatchObject({ admitted: true, allocatedSeconds: 59 });
+  expect(calculateAssignmentAllocation({ estimate, measurements: [], constraints: [{ id: 'capability', remainingSeconds: 0 }] }))
    .toMatchObject({ admitted: false, allocatedSeconds: 0 });
   expect(calculateAssignmentAllocation({ estimate, measurements: [], planningTurnMaximumSeconds: 180,
    providerMaximumSeconds: 120, constraints: [{ id: 'phase', remainingSeconds: 300 }] })).toMatchObject({ allocatedSeconds: 120 });
-  expect(calculateAssignmentAllocation({ estimate, measurements: [], planningTurnMaximumSeconds: 180,
-   providerMinimumSeconds: 240, constraints: [{ id: 'phase', remainingSeconds: 300 }] })).toMatchObject({ admitted: false });
-  expect(calculateAssignmentAllocation({ estimate: { minimumSeconds: 10, expectedSeconds: 30, maximumSeconds: 60 },
+  expect(calculateAssignmentAllocation({ estimate: { expectedSeconds: 30, maximumSeconds: 60 },
    measurements: [], planningTurnMaximumSeconds: 180, constraints: [{ id: 'phase', remainingSeconds: 300 }] }))
    .toMatchObject({ admitted: true, allocatedSeconds: 60, limitingConstraint: 'task-duration' });
  });

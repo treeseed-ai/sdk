@@ -130,18 +130,6 @@ export function validateCapacityProviderManifestV5(manifest: CapacityProviderMan
 		if (!Number.isInteger(lane.queueLimit) || lane.queueLimit < 0) add(diagnostics, 'provider_lane_queue_limit_invalid', `${lanePath}.queueLimit`, 'Lane queueLimit must be a non-negative integer.');
 		if (!Number.isInteger(lane.timeoutSeconds) || lane.timeoutSeconds < 1) add(diagnostics, 'provider_lane_timeout_invalid', `${lanePath}.timeoutSeconds`, 'Lane timeoutSeconds must be a positive integer.');
 		if (lane.capabilities && lane.capabilities.some((entry) => !nonEmpty(entry))) add(diagnostics, 'provider_lane_capabilities_invalid', `${lanePath}.capabilities`, 'Provider lane capabilities must be non-empty strings.');
-		const minimumDuration = lane.minimumAssignmentDuration;
-		if (minimumDuration !== undefined) {
-			if (!Number.isInteger(minimumDuration.amount) || minimumDuration.amount < 1) add(diagnostics, 'provider_lane_minimum_duration_invalid', `${lanePath}.minimumAssignmentDuration.amount`, 'Minimum assignment duration amount must be a positive integer.');
-			if (!['seconds', 'business-days'].includes(minimumDuration.unit)) add(diagnostics, 'provider_lane_minimum_duration_unit_invalid', `${lanePath}.minimumAssignmentDuration.unit`, 'Minimum assignment duration unit must be seconds or business-days.');
-			if (minimumDuration.unit === 'business-days') {
-				try { new Intl.DateTimeFormat('en', { timeZone: minimumDuration.calendar?.timeZone }).format(); }
-				catch { add(diagnostics, 'provider_lane_minimum_duration_timezone_invalid', `${lanePath}.minimumAssignmentDuration.calendar.timeZone`, 'Business-day duration requires a valid IANA time zone.'); }
-				const weekdays = minimumDuration.calendar?.weekdays ?? [1, 2, 3, 4, 5];
-				if (!Array.isArray(weekdays) || weekdays.length === 0 || weekdays.some((day) => !Number.isInteger(day) || day < 1 || day > 7) || new Set(weekdays).size !== weekdays.length) add(diagnostics, 'provider_lane_minimum_duration_weekdays_invalid', `${lanePath}.minimumAssignmentDuration.calendar.weekdays`, 'Business weekdays must be unique ISO weekday numbers from 1 through 7.');
-				if ((minimumDuration.calendar?.holidayDates ?? []).some((date) => !/^\d{4}-\d{2}-\d{2}$/u.test(date))) add(diagnostics, 'provider_lane_minimum_duration_holidays_invalid', `${lanePath}.minimumAssignmentDuration.calendar.holidayDates`, 'Business-day holidays must use YYYY-MM-DD dates.');
-			}
-		}
 	}
 	if (reservedWorkers > manifest?.capacity?.maxConcurrentWorkers) add(diagnostics, 'provider_lane_reservations_exceed_capacity', 'lanes', 'Total reserved workers may not exceed provider capacity.');
 	for (const purpose of ['communication', 'platform', 'workday']) if (!purposes.has(purpose)) add(diagnostics, 'provider_lane_purpose_required', 'lanes', `Unified providers require a ${purpose} lane.`);

@@ -8,7 +8,7 @@ describe('proposal content', () => {
 			title: 'Repair assignment admission', request: 'Repair assignment admission.',
 			summary: 'Use the living graph.', status: 'draft', executionPlan: { workItems: [{
 				id: 'repair', activity: 'acting', agentClass: 'engineer', workspace: 'read-only', review: 'none',
-				objective: 'Repair admission.', estimate: { minimumSeconds: 60, expectedSeconds: 120, maximumSeconds: 240 },
+				objective: 'Repair admission.', estimate: { expectedSeconds: 120, maximumSeconds: 240 },
 				dependsOn: [], requestedPermissions: { content: { read: ['proposal'], write: [] }, tools: ['source.read'] },
 				requiredCapabilities: ['source.read'],
 				acceptanceCriteria: ['Focused tests pass.'],

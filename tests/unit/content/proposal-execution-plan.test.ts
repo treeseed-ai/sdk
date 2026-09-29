@@ -7,8 +7,8 @@ function proposal() {
 		request: 'Make pagination reliable.', summary: 'Define, test, and implement bounded pagination.', status: 'ready',
 		executionPlan: { workItems: [{
 			id: 'implement', activity: 'acting', agentClass: 'engineer', workspace: 'git', review: 'required',
-			objective: 'Implement the accepted pagination behavior.', estimate: { minimumSeconds: 60, expectedSeconds: 120, maximumSeconds: 240 },
-			reviewEstimate: { minimumSeconds: 30, expectedSeconds: 60, maximumSeconds: 120 }, maximumReviewCycles: 2,
+			objective: 'Implement the accepted pagination behavior.', estimate: { expectedSeconds: 120, maximumSeconds: 240 },
+			reviewEstimate: { expectedSeconds: 60, maximumSeconds: 120 }, maximumReviewCycles: 2,
 			dependsOn: [], requestedPermissions: { content: { read: ['proposal', 'decision'], write: [] }, tools: ['source.read', 'source.write', 'verification'] },
 			contextRefs: [{ store: 'git', model: 'repository', id: 'sdk', repository: 'treeseed-ai/sdk', commit: 'a'.repeat(40) }],
 			requiredCapabilities: ['code-change'], acceptanceCriteria: ['Focused tests pass.'],
@@ -55,7 +55,7 @@ describe('proposal-owned execution plan', () => {
 		expect(result.ok).toBe(true);
 		expect(result.data).toMatchObject({ evidenceRefs: value.evidenceRefs });
 	});
-	it('rejects invalid estimate ordering', () => { const value = proposal(); value.executionPlan.workItems[0]!.estimate.minimumSeconds = 300; expect(validatePortableContentData('proposal', value).ok).toBe(false); });
+	it('rejects invalid estimate ordering', () => { const value = proposal(); value.executionPlan.workItems[0]!.estimate.expectedSeconds = 300; expect(validatePortableContentData('proposal', value).ok).toBe(false); });
 	it('rejects executable work without a provider capability demand', () => {
 		const value = proposal() as ReturnType<typeof proposal> & { executionPlan: { workItems: Array<Record<string, unknown>> } };
 		delete value.executionPlan.workItems[0]!.requiredCapabilities;
