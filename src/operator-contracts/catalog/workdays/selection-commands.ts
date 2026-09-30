@@ -22,6 +22,7 @@ export const WORKDAY_PLAN_OPTIONS: NonNullable<CommandLeafDescriptor['options']>
 	{ name: '--execution-mode', description: 'Select simulation or production custody; both consume real capacity.', type: 'string' },
 	{ name: '--proposal', description: 'Governed proposal id for cooperative planning; repeat or comma-separate.', type: 'string[]' },
 	{ name: '--decision', description: 'Accepted decision id; repeat or comma-separate. The API derives and verifies acting authority.', type: 'string[]' },
+	{ name: '--continue-from', description: 'Settled workday whose exact accepted results and review history should continue. Omit for a fresh simulation.', type: 'string' },
 	{ name: '--agent', description: 'Planning agent slug; repeat or comma-separate. Intersects with class/activity selectors.', type: 'string[]' },
 	{ name: '--activity', description: 'Planning activity: planning, estimating, reviewing, reporting, or chat; repeat or comma-separate.', type: 'string[]' },
 	{ name: '--class', description: 'Planning class slug; repeat or comma-separate. Acting remains governed by accepted decisions.', type: 'string[]' },

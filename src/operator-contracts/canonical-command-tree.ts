@@ -10,7 +10,8 @@ const workdayIntentInputs = [field('body', 'profileId', 'option', 'profile'), fi
 	field('body', 'executionMode', 'option', 'executionMode'), field('body', 'startsAt', 'option', 'start'), field('body', 'endsAt', 'option', 'end'),
 	field('body', 'durationSeconds', 'option', 'duration', false, 'integer'), field('body', 'objectiveFilters', 'option', 'objective', false, 'csv'),
 	field('body', 'planningOnly', 'option', 'planningOnly'), field('body', 'proposalIds', 'option', 'proposal', false, 'csv'),
-	field('body', 'decisionIds', 'option', 'decision', false, 'csv'), ...WORKDAY_SELECTION_INPUTS];
+	field('body', 'decisionIds', 'option', 'decision', false, 'csv'),
+	field('body', 'continueFromWorkdayId', 'option', 'continueFrom'), ...WORKDAY_SELECTION_INPUTS];
 
 const operationBindings: Record<string, Execution> = {
 	...PROVIDER_ENVIRONMENT_COMMAND_BINDINGS,

@@ -113,6 +113,7 @@ describe('human command tree contract', () => {
 				expect.objectContaining({ target: 'body', field: 'objectiveFilters', source: 'option', name: 'objective', transform: 'csv' }),
 				expect.objectContaining({ target: 'body', field: 'proposalIds', source: 'option', name: 'proposal', transform: 'csv' }),
 				expect.objectContaining({ target: 'body', field: 'decisionIds', source: 'option', name: 'decision', transform: 'csv' }),
+				expect.objectContaining({ target: 'body', field: 'continueFromWorkdayId', source: 'option', name: 'continueFrom' }),
 			]),
 		}));
 	});

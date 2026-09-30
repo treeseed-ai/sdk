@@ -1,6 +1,11 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.continuation-intent:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/unit/operator-contracts/workday-lifecycle.test.ts
+    testName: requires explicit accepted decisions for continuation, without changing fresh intent
   sdk.golden.live.product:
     kind: nodeTestCase
     ownerPackage: "@treeseed/sdk"

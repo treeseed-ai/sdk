@@ -21,6 +21,8 @@ export interface WorkdayIntent {
 	proposalIds?: string[];
 	/** Selects accepted decisions for API-derived acting work; it does not grant acting authority. */
 	decisionIds?: string[];
+	/** Continue exact accepted work from a settled workday; omission starts a fresh simulation. */
+	continueFromWorkdayId?: string;
 	/** Limits cooperative planning; acting still requires accepted decision/estimate authority. */
 	agentSelection?: Partial<WorkdayAgentSelection>;
 	/** High-level overrides of the canonical workday allocation policy. */
@@ -162,7 +164,7 @@ export function validateWorkdayIntent(intent: WorkdayIntent): WorkdayLifecycleDi
 	const diagnostics: WorkdayLifecycleDiagnostic[] = [];
 	const fields = new Set(['schemaVersion', 'teamId', 'profileId', 'projects', 'executionMode', 'startsAt',
 		'endsAt', 'durationSeconds', 'objectiveFilters', 'planningOnly', 'proposalIds', 'decisionIds',
-		'agentSelection', 'allocation', 'operatorConstraints']);
+		'continueFromWorkdayId', 'agentSelection', 'allocation', 'operatorConstraints']);
 	for (const key of Object.keys(intent)) if (!fields.has(key)) diagnostics.push({
 		code: 'field_forbidden', path: key, message: 'Derived execution state is not portable workday intent.',
 	});
@@ -185,6 +187,12 @@ export function validateWorkdayIntent(intent: WorkdayIntent): WorkdayLifecycleDi
 		diagnostics.push({ code: 'decision_selection_invalid', path: 'decisionIds', message: 'Decision selection must be a bounded nonempty array of decision identities.' });
 	}
 	if (intent.agentSelection !== undefined) diagnostics.push(...validateWorkdayIntentSelection(intent.agentSelection));
+	if (intent.continueFromWorkdayId !== undefined && (typeof intent.continueFromWorkdayId !== 'string'
+		|| !intent.continueFromWorkdayId.trim() || intent.continueFromWorkdayId.length > 128
+		|| !intent.decisionIds?.length || intent.proposalIds !== undefined || intent.planningOnly === true)) diagnostics.push({
+		code: 'continuation_invalid', path: 'continueFromWorkdayId',
+		message: 'Continuation requires a settled workday identity and exact decisions, not new proposal planning.',
+	});
 	if (intent.allocation !== undefined) {
 		const result = workdayAllocationOverridesSchema.safeParse(intent.allocation);
 		if (!result.success) diagnostics.push(...result.error.issues.map((issue) => ({ code: 'allocation_invalid',

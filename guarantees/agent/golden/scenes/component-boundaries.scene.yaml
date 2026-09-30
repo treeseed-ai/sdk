@@ -3,6 +3,9 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: continuation-intent
+    action: { verifier: sdk.golden.continuation-intent }
+    expect: { status: passed }
   - id: production-runtime-imports
     action: { verifier: sdk.golden.production-runtime-imports }
     expect: { status: passed }
