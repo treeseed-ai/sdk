@@ -94,7 +94,9 @@ describe('integrated assignment allocation arithmetic', () => {
   const history = Array.from({ length: 21 }, (_, index) => measurement({ id: String(index).padStart(2, '0'),
    completedAt: new Date(Date.parse('2026-09-16T12:00:00Z') + index * 1000).toISOString() }));
   expect(calibrateAssignmentSeconds(estimate, history).measurementIds).toHaveLength(20);
-  expect(calibrateAssignmentSeconds({ expectedSeconds: 600, maximumSeconds: 1200 }, [measurement()]).seconds).toBe(1080);
+  expect(calibrateAssignmentSeconds({ expectedSeconds: 600, maximumSeconds: 1200 }, [measurement()]).seconds).toBe(1140);
+  expect(calibrateAssignmentSeconds({ expectedSeconds: 600, maximumSeconds: 1200 },
+   [measurement({ expectedSeconds: 600, allocatedSeconds: 1200, activeSeconds: 200 })]).seconds).toBe(1080);
  });
  it('uses history to size a deadline without imposing a duration floor', () => {
   const reviews = Array.from({ length: 20 }, (_, index) => measurement({ id: `review-${index}`,
@@ -103,12 +105,33 @@ describe('integrated assignment allocation arithmetic', () => {
   const reviewEstimate = { expectedSeconds: 100, maximumSeconds: 165 };
   const constraints = [{ id: 'execution-window', remainingSeconds: 180 }];
   expect(calculateAssignmentAllocation({ estimate: reviewEstimate, measurements: reviews, constraints }))
-   .toMatchObject({ admitted: true, allocatedSeconds: 50 });
+   .toMatchObject({ admitted: true, allocatedSeconds: 73 });
   expect(calculateAssignmentAllocation({ estimate: reviewEstimate, measurements: reviews,
    constraints: [{ id: 'execution-window', remainingSeconds: 1 }] }))
    .toMatchObject({ admitted: true, allocatedSeconds: 1, limitingConstraint: 'execution-window' });
-  expect(calculateAssignmentAllocation({ estimate: reviewEstimate, measurements: [], constraints }))
+ expect(calculateAssignmentAllocation({ estimate: reviewEstimate, measurements: [], constraints }))
    .toMatchObject({ allocatedSeconds: 165 });
+ });
+ it('does not starve small reviews by replaying full reductions from much larger tasks', () => {
+  const history = Array.from({ length: 20 }, (_, index) => measurement({ id: `large-review-${index}`,
+   completedAt: new Date(Date.parse('2026-09-16T12:00:00Z') + index * 1000).toISOString(),
+   expectedSeconds: index % 2 ? 2400 : 900, allocatedSeconds: 400,
+   activeSeconds: index % 2 ? 231 : 66 }));
+  for (const current of [{ expectedSeconds: 65, maximumSeconds: 105 }, { expectedSeconds: 80, maximumSeconds: 130 }]) {
+   const allocated = calibrateAssignmentSeconds(current, history);
+   expect(allocated.seconds).toBeGreaterThan(current.expectedSeconds);
+   expect(allocated.seconds).toBeLessThan(current.maximumSeconds);
+   expect(calibrateAssignmentSeconds(current, [...history].reverse())).toEqual(allocated);
+   expect(calibrateAssignmentSeconds(current, [...history, measurement({ id: 'deadline',
+    completedAt: '2026-09-16T13:00:00Z', expectedSeconds: current.expectedSeconds,
+    allocatedSeconds: allocated.seconds, activeSeconds: allocated.seconds, outcome: 'expired' })]).seconds)
+    .toBeGreaterThanOrEqual(Math.ceil(allocated.seconds * 1.25));
+  }
+  // Confidence depends only on relative task size, not a duration floor or test mode.
+  expect(calibrateAssignmentSeconds({ expectedSeconds: 10, maximumSeconds: 20 },
+   [measurement({ expectedSeconds: 100, allocatedSeconds: 200, activeSeconds: 1 })]).seconds).toBe(20);
+  expect(calibrateAssignmentSeconds({ expectedSeconds: 100, maximumSeconds: 200 },
+   [measurement({ expectedSeconds: 10, allocatedSeconds: 20, activeSeconds: 1 })]).seconds).toBe(198);
  });
  it('checks both capability and shared model ceilings without charging additional requirements twice', () => {
   const result = calculateAssignmentAllocation({ estimate, measurements: [], constraints: [

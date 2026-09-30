@@ -101,9 +101,14 @@ export function calibrateAssignmentSeconds(estimate: { expectedSeconds: number; 
 			|| !Number.isFinite(entry.allocatedSeconds) || entry.allocatedSeconds <= 0) throw new Error('allocation_measurement_invalid');
 		nonnegative(entry.activeSeconds);
 		const ratio = entry.activeSeconds / entry.expectedSeconds;
+		// Task-size normalization does not make a tiny content review equivalent
+		// to a full release replay. Distant estimates give weaker evidence for
+		// reducing this task's ceiling; equal sizes retain the full 10% step.
+		const similarity = Math.min(estimate.expectedSeconds, entry.expectedSeconds)
+			/ Math.max(estimate.expectedSeconds, entry.expectedSeconds);
 		multiplier = entry.outcome === 'expired'
 			? Math.max(multiplier * 1.25, entry.allocatedSeconds / entry.expectedSeconds * 1.25, ratio * 1.25)
-			: Math.max(multiplier * .9, ratio * 1.25);
+			: Math.max(multiplier * (1 - .1 * similarity), ratio * 1.25);
 	}
 	return { seconds: Math.ceil(estimate.expectedSeconds * multiplier), multiplier, measurementIds: eligible.map((entry) => entry.id) };
 }
