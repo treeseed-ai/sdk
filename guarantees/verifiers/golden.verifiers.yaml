@@ -51,6 +51,11 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/agent-capacity/capacity/assignment-allocation.test.ts
     testName: "starts conservatively, reduces gradually, and treats expiration as censored"
+  sdk.golden.calibration-task-size:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/assignment-allocation.test.ts
+    testName: "does not starve small reviews by replaying full reductions from much larger tasks"
   sdk.golden.caps:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

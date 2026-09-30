@@ -33,6 +33,9 @@ workflow:
   - id: calibration
     action: { verifier: sdk.golden.calibration }
     expect: { status: passed }
+  - id: calibration-task-size
+    action: { verifier: sdk.golden.calibration-task-size }
+    expect: { status: passed }
   - id: caps
     action: { verifier: sdk.golden.caps }
     expect: { status: passed }
