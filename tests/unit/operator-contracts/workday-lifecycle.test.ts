@@ -42,6 +42,16 @@ describe('time-based workday lifecycle contracts', () => {
 		expect(validateWorkdayIntent({ ...base, endsAt: '2026-08-21T13:00:00.000Z', durationSeconds: 3600 }).map((item) => item.code)).toContain('time_range_ambiguous');
 	});
 
+	it('requires explicit accepted decisions for continuation, without changing fresh intent', () => {
+		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default', projects: ['sdk'], startsAt: '2026-08-21T12:00:00Z' };
+		expect(validateWorkdayIntent({ ...base, continueFromWorkdayId: 'previous', decisionIds: ['decision'] })).toEqual([]);
+		for (const value of [{ continueFromWorkdayId: '' }, { continueFromWorkdayId: 'previous' },
+			{ continueFromWorkdayId: 'previous', decisionIds: ['decision'], proposalIds: ['new'] },
+			{ continueFromWorkdayId: 'previous', decisionIds: ['decision'], planningOnly: true }])
+			expect(validateWorkdayIntent({ ...base, ...value }).map(item => item.code)).toContain('continuation_invalid');
+		expect(validateWorkdayIntent(base)).toEqual([]);
+	});
+
 	it('rejects malformed decision selection without broadening to all decisions', () => {
 		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'feature-heavy', projects: 'all' as const, startsAt: '2026-08-21T12:00:00.000Z', durationSeconds: 3600 };
 		expect(validateWorkdayIntent({ ...base, decisionIds: [] }).map((item) => item.code)).toContain('decision_selection_invalid');
