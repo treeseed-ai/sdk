@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { verifySdkGoldenProduct } from './golden-product.ts';
+import { sdkGoldenSource, verifySdkGoldenProduct } from './golden-product.ts';
 
 test('SDK golden retains exact source and passing measured candidate release gates', () => {
 	const read = (args: string[]) => {
@@ -12,7 +12,9 @@ test('SDK golden retains exact source and passing measured candidate release gat
 	};
 	let id = process.env.TREESEED_ACCEPTANCE_WORKDAY_ID;
 	const freezePath = process.env.TREESEED_ACCEPTANCE_FREEZE_PATH;
-	const proposalId = freezePath ? JSON.parse(readFileSync(freezePath, 'utf8')).proposal?.id : undefined;
+	assert.ok(freezePath, 'ACCEPTANCE_SDK_FREEZE: Explicit immutable campaign freeze required');
+	const freeze = JSON.parse(readFileSync(freezePath, 'utf8'));
+	const proposalId = freeze.proposal?.id;
 	if (!id && proposalId) {
 		const matches: Record<string, any>[] = [];
 		let cursor: string | undefined;
@@ -39,5 +41,5 @@ test('SDK golden retains exact source and passing measured candidate release gat
 		assert.ok(result.page.nextCursor && result.page.nextCursor !== cursor && page < 39, 'ACCEPTANCE_SDK_PAGINATION: Incomplete assignment evidence');
 		cursor = result.page.nextCursor;
 	}
-	verifySdkGoldenProduct(assignments, '1186bff3b400fe442642013b2de93e7f0d4939df');
+	verifySdkGoldenProduct(assignments, sdkGoldenSource(freeze, run.parameters.proposalIds));
 });

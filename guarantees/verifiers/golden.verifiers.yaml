@@ -1,6 +1,26 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.current-frozen-source:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/unit/operator-contracts/golden-product.test.ts
+    testName: uses the exact current campaign source and rejects missing moving or unrelated freeze authority
+  sdk.golden.archive-measured-review:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/unit/operator-contracts/golden-product.test.ts
+    testName: rejects narrative archive inspection without a measured standalone archive command
+  sdk.golden.archive-portable:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/contract/standards/package-archive.test.ts
+    testName: replays archive inspection in independent npm workspaces and rejects an omitted declaration
+  sdk.golden.archive-targets:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/contract/standards/package-archive.test.ts
+    testName: uses one export validation path for source and archive and rejects unsafe or absent targets
   sdk.golden.continuation-intent:
     kind: vitestCase
     ownerPackage: '@treeseed/sdk'

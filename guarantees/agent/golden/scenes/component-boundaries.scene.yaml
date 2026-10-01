@@ -3,6 +3,18 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: current-frozen-source
+    action: { verifier: sdk.golden.current-frozen-source }
+    expect: { status: passed }
+  - id: archive-measured-review
+    action: { verifier: sdk.golden.archive-measured-review }
+    expect: { status: passed }
+  - id: archive-portable
+    action: { verifier: sdk.golden.archive-portable }
+    expect: { status: passed }
+  - id: archive-targets
+    action: { verifier: sdk.golden.archive-targets }
+    expect: { status: passed }
   - id: continuation-intent
     action: { verifier: sdk.golden.continuation-intent }
     expect: { status: passed }
