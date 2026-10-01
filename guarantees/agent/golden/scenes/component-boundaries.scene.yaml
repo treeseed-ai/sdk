@@ -9,6 +9,15 @@ workflow:
   - id: archive-measured-review
     action: { verifier: sdk.golden.archive-measured-review }
     expect: { status: passed }
+  - id: release-owned-suite
+    action: { verifier: sdk.golden.release-owned-suite }
+    expect: { status: passed }
+  - id: release-aggregate
+    action: { verifier: sdk.golden.release-aggregate }
+    expect: { status: passed }
+  - id: archive-current-directory
+    action: { verifier: sdk.golden.archive-current-directory }
+    expect: { status: passed }
   - id: archive-portable
     action: { verifier: sdk.golden.archive-portable }
     expect: { status: passed }

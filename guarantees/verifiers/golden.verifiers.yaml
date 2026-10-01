@@ -21,6 +21,21 @@ verifiers:
     ownerPackage: '@treeseed/sdk'
     testFile: tests/contract/standards/package-archive.test.ts
     testName: uses one export validation path for source and archive and rejects unsafe or absent targets
+  sdk.golden.release-owned-suite:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/unit/operator-contracts/golden-product.test.ts
+    testName: keeps standards generation and the full contract suite owned by release verification
+  sdk.golden.release-aggregate:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/unit/operator-contracts/golden-product.test.ts
+    testName: accepts measured passing command evidence and rejects a missing full release gate
+  sdk.golden.archive-current-directory:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/unit/operator-contracts/golden-product.test.ts
+    testName: accepts measured current-directory archives and rejects unsafe paths and invalid evidence
   sdk.golden.continuation-intent:
     kind: vitestCase
     ownerPackage: '@treeseed/sdk'
