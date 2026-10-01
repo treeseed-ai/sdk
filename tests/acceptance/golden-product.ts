@@ -20,10 +20,10 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string): 
 			'ACCEPTANCE_SDK_SOURCE: Early roles must receive exact frozen SDK source');
 	const records = release.assignmentResult?.verification as Row[] | undefined;
 	assert.ok(Array.isArray(records), 'ACCEPTANCE_SDK_VERIFICATION: Canonical measured verification required');
-	// release:verify owns standards generation and its acceptance before the full
-	// release suite; a second standalone generator receipt would duplicate that gate.
-	for (const command of ['npm run build', 'npm run release:verify', 'npm pack', 'npm run test:contracts']) {
-		const record = records.find(item => typeof item.command === 'string' && item.command.includes(command));
+	// release:verify owns standards generation, acceptance and test:contracts through
+	// test:release. Separate generator/full-suite receipts would duplicate that gate.
+	for (const command of ['npm run build', 'npm run release:verify', 'npm pack']) {
+		const record = records.find(item => item.command === command);
 		assert.ok(record && record.status === 'passed' && record.exitCode === 0
 			&& /^sha256:[a-f0-9]{64}$/u.test(record.outputDigest)
 			&& typeof record.durationSeconds === 'number' && record.durationSeconds >= 0,
@@ -32,7 +32,7 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string): 
 	assert.ok(!records.some(record => record.status === 'failed' || record.exitCode !== 0),
 		'ACCEPTANCE_SDK_RELEASE_GATE: A failed candidate cannot pass');
 	const archivePassed = (verification: unknown) => Array.isArray(verification) && verification.some(record =>
-		/^npm run standards:acceptance -- --archive [a-zA-Z0-9][a-zA-Z0-9._-]*\.tgz$/u.test(String(record.command))
+		/^npm run standards:acceptance -- --archive (?:\.\/)?[a-zA-Z0-9][a-zA-Z0-9._-]*\.tgz$/u.test(String(record.command))
 		&& record.status === 'passed' && record.exitCode === 0 && /^sha256:[a-f0-9]{64}$/u.test(String(record.outputDigest))
 		&& typeof record.durationSeconds === 'number' && record.durationSeconds >= 0);
 	assert.ok(archivePassed(records), 'ACCEPTANCE_SDK_RELEASE_GATE: Packed export/type inspection must be independently replayable');
