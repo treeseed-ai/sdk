@@ -1,6 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { standardsSha256 } from '../../src/standards/index.ts';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { assertPackageExportTargets } from './acceptance/package-exports.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 const required = [
@@ -17,9 +20,16 @@ const required = [
 	'.treeseed/standards/treedx-service-contract.json',
 	'.treeseed/standards/treeai-service-contract.json',
 ];
-const missing = required.filter((path) => !existsSync(resolve(root, path)));
+const args = process.argv.slice(2);
+if (args.length && (args.length !== 2 || args[0] !== '--archive')) throw new Error('Expected --archive <local npm tarball>.');
+const archive = args[1] ? resolve(args[1]) : null;
+const archiveFiles = archive ? new Set(execFileSync('tar', ['-tzf', archive], { encoding: 'utf8', timeout: 30000 }).trim().split('\n')) : null;
+const missing = archive ? [] : required.filter((path) => !existsSync(resolve(root, path)));
 if (missing.length) throw new Error(`Missing standards package outputs: ${missing.join(', ')}.`);
-const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as { exports: Record<string, unknown> };
+const localManifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as { name: string; version: string; exports: Record<string, unknown>; types?: string };
+const packageJson = archive ? JSON.parse(execFileSync('tar', ['-xOzf', archive, 'package/package.json'], { encoding: 'utf8', timeout: 30000 })) as typeof localManifest : localManifest;
+if (archive && (packageJson.name !== localManifest.name || packageJson.version !== localManifest.version))
+	throw new Error('Packed package identity differs from this candidate.');
 for (const specifier of ['./standards', './standards/typescript', './standards/openapi', './standards/mcp', './operator-contracts', './treedx', './treeai']) {
 	if (!packageJson.exports[specifier]) throw new Error(`Missing package export ${specifier}.`);
 }
@@ -27,26 +37,16 @@ for (const forbidden of ['./treedx/auth', './treedx/transport', './treedx/openap
 	if (packageJson.exports[forbidden]) throw new Error(`Direct TreeDX implementation export is forbidden: ${forbidden}.`);
 }
 
-function collectExportTargets(value: unknown): string[] {
-	if (typeof value === 'string') return [value];
-	if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
-	return Object.values(value).flatMap(collectExportTargets);
-}
-
-const exportTargets = [...new Set(collectExportTargets(packageJson.exports))];
-const missingExportTargets = exportTargets.filter((target) => {
-	if (!target.startsWith('./')) {
-		throw new Error(`Package export targets must be package-relative: ${target}.`);
-	}
-	return !existsSync(resolve(root, target));
-});
-if (missingExportTargets.length) {
-	throw new Error(`Package exports reference missing build outputs: ${missingExportTargets.join(', ')}.`);
-}
+const exists = (target: string) => archiveFiles ? archiveFiles.has(`package/${target.replace(/^\.\//u, '')}`) : existsSync(resolve(root, target));
+const exportTargets = assertPackageExportTargets(packageJson.exports, exists);
+if (archive && (!exportTargets.some(target => target.endsWith('.d.ts'))
+	|| !packageJson.types || !exists(packageJson.types))) throw new Error('Packed package must contain its declared TypeScript entrypoint.');
 
 console.log(JSON.stringify({
 	ok: true,
-	files: required.length,
+	files: archiveFiles?.size ?? required.length,
 	exportTargets: exportTargets.length,
 	exportMapDigest: await standardsSha256(packageJson.exports),
+	...(archive ? { archiveDigest: `sha256:${createHash('sha256').update(readFileSync(archive)).digest('hex')}`,
+		declarations: [...archiveFiles!].filter(path => path.endsWith('.d.ts')).length } : {}),
 }));
