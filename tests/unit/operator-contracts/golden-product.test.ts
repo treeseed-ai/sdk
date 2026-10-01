@@ -21,7 +21,9 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 		expect(() => verifySdkGoldenProduct([release, missingReview], commit)).toThrow('ACCEPTANCE_SDK_ARCHIVE_REVIEW');
 	});
 	it('accepts measured passing command evidence and rejects a missing full release gate', () => {
-		expect(() => verifySdkGoldenProduct([release, review], commit)).not.toThrow();
+		const pipeline = structuredClone(release);
+		pipeline.assignmentResult.verification = pipeline.assignmentResult.verification.filter(item => item.command !== 'npm run standards:build');
+		expect(() => verifySdkGoldenProduct([pipeline, review], commit)).not.toThrow();
 		const missing = structuredClone(release); missing.assignmentResult.verification.splice(2, 1);
 		expect(() => verifySdkGoldenProduct([missing], commit)).toThrow('ACCEPTANCE_SDK_RELEASE_GATE');
 	});

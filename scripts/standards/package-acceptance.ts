@@ -39,8 +39,14 @@ for (const forbidden of ['./treedx/auth', './treedx/transport', './treedx/openap
 
 const exists = (target: string) => archiveFiles ? archiveFiles.has(`package/${target.replace(/^\.\//u, '')}`) : existsSync(resolve(root, target));
 const exportTargets = assertPackageExportTargets(packageJson.exports, exists);
-if (archive && (!exportTargets.some(target => target.endsWith('.d.ts'))
-	|| !packageJson.types || !exists(packageJson.types))) throw new Error('Packed package must contain its declared TypeScript entrypoint.');
+if (archive) {
+	for (const [specifier, entry] of Object.entries(packageJson.exports)) {
+		const types = entry && typeof entry === 'object' ? (entry as { types?: unknown }).types : null;
+		if (typeof types !== 'string' || !types.endsWith('.d.ts'))
+			throw new Error(`Packed SDK export must declare TypeScript types: ${specifier}.`);
+	}
+	if (packageJson.types !== undefined) assertPackageExportTargets({ types: packageJson.types }, exists);
+}
 
 console.log(JSON.stringify({
 	ok: true,
