@@ -20,7 +20,9 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string): 
 			'ACCEPTANCE_SDK_SOURCE: Early roles must receive exact frozen SDK source');
 	const records = release.assignmentResult?.verification as Row[] | undefined;
 	assert.ok(Array.isArray(records), 'ACCEPTANCE_SDK_VERIFICATION: Canonical measured verification required');
-	for (const command of ['npm run standards:build', 'npm run build', 'npm run release:verify', 'npm pack', 'npm run test:contracts']) {
+	// release:verify owns standards generation and its acceptance before the full
+	// release suite; a second standalone generator receipt would duplicate that gate.
+	for (const command of ['npm run build', 'npm run release:verify', 'npm pack', 'npm run test:contracts']) {
 		const record = records.find(item => typeof item.command === 'string' && item.command.includes(command));
 		assert.ok(record && record.status === 'passed' && record.exitCode === 0
 			&& /^sha256:[a-f0-9]{64}$/u.test(record.outputDigest)
