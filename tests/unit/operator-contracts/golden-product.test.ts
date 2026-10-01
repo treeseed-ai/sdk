@@ -13,12 +13,15 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 		const manifest = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8'));
 		const verifier = readFileSync(new URL('../../../scripts/packages/release-verify.ts', import.meta.url), 'utf8');
 		expect(manifest.scripts['release:verify']).toContain('./scripts/packages/release-verify.ts');
+		expect(manifest.scripts.lint).toBe('npm run build:dist');
+		expect(manifest.scripts.build).toBe('npm run build:dist');
 		expect(manifest.scripts['test:release']).toBe('npm run test:contracts');
 		expect(manifest.scripts['test:contracts']).toBe('vitest run --config ./vitest.contracts.config.ts');
+		const build = verifier.indexOf("run('npm', ['run', 'lint']);");
 		const generation = verifier.indexOf("run('npm', ['run', 'standards:build']);");
 		const acceptance = verifier.indexOf("run('npm', ['run', 'standards:acceptance']);");
 		const suite = verifier.indexOf("run('npm', ['run', 'test:release']);");
-		expect(generation).toBeGreaterThan(-1); expect(acceptance).toBeGreaterThan(generation); expect(suite).toBeGreaterThan(acceptance);
+		expect(build).toBeGreaterThan(-1); expect(generation).toBeGreaterThan(build); expect(acceptance).toBeGreaterThan(generation); expect(suite).toBeGreaterThan(acceptance);
 		expect(verifier).toContain('if (result.status !== 0)');
 		expect(verifier).toContain('process.exit(result.status ?? 1)');
 	});
@@ -36,7 +39,7 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 	});
 	it('accepts measured passing command evidence and rejects a missing full release gate', () => {
 		const pipeline = structuredClone(release);
-		pipeline.assignmentResult.verification = pipeline.assignmentResult.verification.filter(item => !['npm run standards:build', 'npm run test:contracts'].includes(item.command));
+		pipeline.assignmentResult.verification = pipeline.assignmentResult.verification.filter(item => !['npm run build', 'npm run standards:build', 'npm run test:contracts'].includes(item.command));
 		expect(() => verifySdkGoldenProduct([pipeline, review], commit)).not.toThrow();
 		const missing = structuredClone(release); missing.assignmentResult.verification.splice(2, 1);
 		expect(() => verifySdkGoldenProduct([missing], commit)).toThrow('ACCEPTANCE_SDK_RELEASE_GATE');
