@@ -3,6 +3,33 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: closeout-canonical
+    action: { verifier: sdk.golden.closeout-canonical }
+    expect: { status: passed }
+  - id: closeout-preterminal
+    action: { verifier: sdk.golden.closeout-preterminal }
+    expect: { status: passed }
+  - id: closeout-ended
+    action: { verifier: sdk.golden.closeout-ended }
+    expect: { status: passed }
+  - id: closeout-missing
+    action: { verifier: sdk.golden.closeout-missing }
+    expect: { status: passed }
+  - id: closeout-invalid
+    action: { verifier: sdk.golden.closeout-invalid }
+    expect: { status: passed }
+  - id: estimate-no-minimum
+    action: { verifier: sdk.golden.estimate-no-minimum }
+    expect: { status: passed }
+  - id: closeout-public
+    action: { verifier: sdk.golden.closeout-public }
+    expect: { status: passed }
+  - id: closeout-public-missing
+    action: { verifier: sdk.golden.closeout-public-missing }
+    expect: { status: passed }
+  - id: estimate-public-no-minimum
+    action: { verifier: sdk.golden.estimate-public-no-minimum }
+    expect: { status: passed }
   - id: canonical-target
     action: { verifier: sdk.golden.canonical-target }
     expect: { status: passed }

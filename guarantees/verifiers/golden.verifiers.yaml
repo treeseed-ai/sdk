@@ -1,6 +1,51 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.closeout-canonical:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: retains one exact TreeDX closeout reference and ended-only requirement in the canonical target
+  sdk.golden.closeout-preterminal:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: permits planned active and closing workdays without inventing premature report authority
+  sdk.golden.closeout-ended:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: accepts an ended workday with exactly one immutable report reference without modifying input
+  sdk.golden.closeout-missing:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: denies ended workdays missing the required closeout report rather than accepting silent closure
+  sdk.golden.closeout-invalid:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: denies malformed moving duplicate map and retired plural report authorities
+  sdk.golden.estimate-no-minimum:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: keeps expected maximum bounds and rejects caller authored minimum authority
+  sdk.golden.closeout-public:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: admits exact single closeout report through the independent native public SDK boundary
+  sdk.golden.closeout-public-missing:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: denies missing ended report through the independent native public SDK boundary
+  sdk.golden.estimate-public-no-minimum:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: rejects minimum estimate authority through the independent native public SDK boundary
   sdk.golden.canonical-target:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
