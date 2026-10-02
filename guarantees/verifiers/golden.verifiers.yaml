@@ -1,6 +1,56 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.canonical-target:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/canonical-schema-equivalence.test.ts
+    testName: "accepts the exact complete canonical target without modifying its stored or runtime definitions"
+  sdk.golden.canonical-stored-definitions:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/canonical-schema-equivalence.test.ts
+    testName: "detects deletion and unconstrained replacement of every canonical stored record"
+  sdk.golden.canonical-runtime-definitions:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/canonical-schema-equivalence.test.ts
+    testName: "detects deletion and unconstrained replacement of every canonical runtime and shared definition"
+  sdk.golden.canonical-root-union:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/canonical-schema-equivalence.test.ts
+    testName: "detects omitted duplicated and runtime-only members of the canonical stored-record union"
+  sdk.golden.canonical-fields:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/canonical-schema-equivalence.test.ts
+    testName: "detects field removal required-field removal and open-record drift across every canonical object"
+  sdk.golden.canonical-constraints:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/canonical-schema-equivalence.test.ts
+    testName: "detects removed reference bounds uniqueness union and conditional assertions throughout the canonical target"
+  sdk.golden.canonical-git-stored:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "detects each stored canonical definition replacement through real committed public repository read-back"
+  sdk.golden.canonical-git-runtime:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "detects each runtime/shared canonical definition replacement through real committed public repository read-back"
+  sdk.golden.canonical-git-target:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "accepts exact complete canonical schema bytes through native public repository verification"
+  sdk.golden.canonical-git-assignment:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "detects committed assignment authority drift independently of existing canonical baseline diagnostics"
   sdk.golden.schema-completeness:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

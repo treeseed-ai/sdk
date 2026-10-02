@@ -2,15 +2,17 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
 import { verifyPlatformRepository } from '../../../../src/platform/index.ts';
-import { partialSdkDocument, type Declaration } from './schema-verification-fixture.ts';
+import { partialSdkDocument } from './schema-verification-fixture.ts';
+import { assertCanonicalAuthorityUnchanged, canonicalAuthority, storedDefinitions } from './canonical-schema-fixture.ts';
 
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
+afterAll(assertCanonicalAuthorityUnchanged);
 
-function repository(document: Declaration) {
+function repository(document: unknown) {
 	const root = mkdtempSync(resolve(tmpdir(), 'architecture-schema-custody-'));
 	roots.push(root);
 	mkdirSync(resolve(root, 'docs'));
@@ -21,11 +23,67 @@ function repository(document: Declaration) {
 	execFileSync('git', ['init', '--quiet'], { cwd: root });
 	execFileSync('git', ['add', '.'], { cwd: root });
 	execFileSync('git', ['-c', 'user.name=Architecture test', '-c', 'user.email=architecture@example.test',
-		'commit', '--quiet', '-m', 'Isolated incomplete declaration'], { cwd: root });
+		'commit', '--quiet', '-m', 'Isolated schema declaration'], { cwd: root });
 	return root;
 }
 
 describe('native Platform architecture-schema custody', () => {
+	for (const group of ['stored', 'runtime/shared'] as const) {
+		it(`detects each ${group} canonical definition replacement through real committed public repository read-back`, () => {
+			const { document } = canonicalAuthority();
+			const root = repository(document);
+			const stored = new Set(storedDefinitions(document));
+			const names = Object.keys(document.$defs).filter(name => stored.has(name) === (group === 'stored'));
+			const missed: string[] = [];
+			let previous = verifyPlatformRepository(root);
+			let commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+			for (const name of names) {
+				const changed = structuredClone(document);
+				changed.$defs[name] = true;
+				const bytes = stringify(changed);
+				writeFileSync(resolve(root, 'docs/agent.schema.yml'), bytes);
+				execFileSync('git', ['add', 'docs/agent.schema.yml'], { cwd: root });
+				execFileSync('git', ['-c', 'user.name=Architecture test', '-c', 'user.email=architecture@example.test',
+					'commit', '--quiet', '-m', `Unconstrained canonical ${name}`], { cwd: root });
+				const selected = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+				const result = verifyPlatformRepository(root);
+				expect(selected).not.toBe(commit);
+				expect(result.digest).not.toBe(previous.digest);
+				expect(readFileSync(resolve(root, 'docs/agent.schema.yml'), 'utf8')).toBe(bytes);
+				if (result.ok || !result.diagnostics.length) missed.push(name);
+				previous = result;
+				commit = selected;
+			}
+			expect(missed).toEqual([]);
+		});
+	}
+	it('accepts exact complete canonical schema bytes through native public repository verification', () => {
+		const { document, bytes } = canonicalAuthority();
+		const root = repository(document);
+		writeFileSync(resolve(root, 'docs/agent.schema.yml'), bytes);
+		execFileSync('git', ['add', 'docs/agent.schema.yml'], { cwd: root });
+		execFileSync('git', ['-c', 'user.name=Architecture test', '-c', 'user.email=architecture@example.test',
+			'commit', '--quiet', '-m', 'Exact canonical input bytes'], { cwd: root });
+		const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+		const result = verifyPlatformRepository(root);
+		expect(readFileSync(resolve(root, 'docs/agent.schema.yml'), 'utf8')).toBe(bytes);
+		expect(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()).toBe(commit);
+		expect(result).toMatchObject({ ok: true, diagnostics: [] });
+	});
+	it('detects committed assignment authority drift independently of existing canonical baseline diagnostics', () => {
+		const document = structuredClone(canonicalAuthority().document);
+		const root = repository(document);
+		const baseline = verifyPlatformRepository(root);
+		document.$defs.AssignmentAttempt = true;
+		writeFileSync(resolve(root, 'docs/agent.schema.yml'), stringify(document));
+		execFileSync('git', ['add', 'docs/agent.schema.yml'], { cwd: root });
+		execFileSync('git', ['-c', 'user.name=Architecture test', '-c', 'user.email=architecture@example.test',
+			'commit', '--quiet', '-m', 'Unconstrained immutable assignment authority'], { cwd: root });
+		const changed = verifyPlatformRepository(root);
+		expect(changed.digest).not.toBe(baseline.digest);
+		expect(changed.ok).toBe(false);
+		expect(changed.diagnostics).not.toEqual(baseline.diagnostics);
+	});
 	it('rejects an incomplete SDK-generated architecture declaration through native Git repository verification', () => {
 		const root = repository(partialSdkDocument());
 		const before = readFileSync(resolve(root, 'docs/agent.schema.yml'), 'utf8');

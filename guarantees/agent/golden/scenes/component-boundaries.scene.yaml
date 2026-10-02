@@ -3,6 +3,36 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: canonical-target
+    action: { verifier: sdk.golden.canonical-target }
+    expect: { status: passed }
+  - id: canonical-stored-definitions
+    action: { verifier: sdk.golden.canonical-stored-definitions }
+    expect: { status: passed }
+  - id: canonical-runtime-definitions
+    action: { verifier: sdk.golden.canonical-runtime-definitions }
+    expect: { status: passed }
+  - id: canonical-root-union
+    action: { verifier: sdk.golden.canonical-root-union }
+    expect: { status: passed }
+  - id: canonical-fields
+    action: { verifier: sdk.golden.canonical-fields }
+    expect: { status: passed }
+  - id: canonical-constraints
+    action: { verifier: sdk.golden.canonical-constraints }
+    expect: { status: passed }
+  - id: canonical-git-stored
+    action: { verifier: sdk.golden.canonical-git-stored }
+    expect: { status: passed }
+  - id: canonical-git-runtime
+    action: { verifier: sdk.golden.canonical-git-runtime }
+    expect: { status: passed }
+  - id: canonical-git-target
+    action: { verifier: sdk.golden.canonical-git-target }
+    expect: { status: passed }
+  - id: canonical-git-assignment
+    action: { verifier: sdk.golden.canonical-git-assignment }
+    expect: { status: passed }
   - id: schema-completeness
     action: { verifier: sdk.golden.schema-completeness }
     expect: { status: passed }
