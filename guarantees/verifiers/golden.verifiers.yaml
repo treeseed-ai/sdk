@@ -1,6 +1,61 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.schema-completeness:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "rejects an implementation-generated five-model subset as complete canonical authority"
+  sdk.golden.schema-field-drift:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "detects drift in fields, required fields, and constants"
+  sdk.golden.schema-nested-drift:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "detects nested declarative constraint drift"
+  sdk.golden.schema-reference-completeness:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "reports unresolved stored and runtime model references instead of skipping the root union"
+  sdk.golden.schema-union-drift:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "detects union and exclusion constraints rather than discarding declaration semantics"
+  sdk.golden.schema-unconstrained-assignment:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "rejects unconstrained assignment authority without mutating the submitted declaration"
+  sdk.golden.schema-root-reference-denial:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "rejects malformed or moving root references before declaring equivalence"
+  sdk.golden.schema-retired-model-denial:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "rejects every retired model instead of accepting a compatibility root union"
+  sdk.golden.schema-git-completeness:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "rejects an incomplete SDK-generated architecture declaration through native Git repository verification"
+  sdk.golden.schema-git-change:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "read-backs a committed runtime-contract change without accepting unchecked definitions"
+  sdk.golden.schema-git-missing:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "retains missing tracked schema denial instead of treating absent authority as a passing replay"
   sdk.golden.current-frozen-source:
     kind: vitestCase
     ownerPackage: '@treeseed/sdk'

@@ -3,6 +3,39 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: schema-completeness
+    action: { verifier: sdk.golden.schema-completeness }
+    expect: { status: passed }
+  - id: schema-field-drift
+    action: { verifier: sdk.golden.schema-field-drift }
+    expect: { status: passed }
+  - id: schema-nested-drift
+    action: { verifier: sdk.golden.schema-nested-drift }
+    expect: { status: passed }
+  - id: schema-reference-completeness
+    action: { verifier: sdk.golden.schema-reference-completeness }
+    expect: { status: passed }
+  - id: schema-union-drift
+    action: { verifier: sdk.golden.schema-union-drift }
+    expect: { status: passed }
+  - id: schema-unconstrained-assignment
+    action: { verifier: sdk.golden.schema-unconstrained-assignment }
+    expect: { status: passed }
+  - id: schema-root-reference-denial
+    action: { verifier: sdk.golden.schema-root-reference-denial }
+    expect: { status: passed }
+  - id: schema-retired-model-denial
+    action: { verifier: sdk.golden.schema-retired-model-denial }
+    expect: { status: passed }
+  - id: schema-git-completeness
+    action: { verifier: sdk.golden.schema-git-completeness }
+    expect: { status: passed }
+  - id: schema-git-change
+    action: { verifier: sdk.golden.schema-git-change }
+    expect: { status: passed }
+  - id: schema-git-missing
+    action: { verifier: sdk.golden.schema-git-missing }
+    expect: { status: passed }
   - id: current-frozen-source
     action: { verifier: sdk.golden.current-frozen-source }
     expect: { status: passed }
