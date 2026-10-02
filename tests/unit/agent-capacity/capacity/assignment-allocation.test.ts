@@ -10,7 +10,7 @@ const measurement = (overrides: Partial<AllocationMeasurement> = {}): Allocation
  activeSeconds: 100, outcome: 'completed', ...overrides,
 });
 
-describe('integrated assignment allocation arithmetic', () => {
+describe('assignment allocation arithmetic unit contracts', () => {
  it('exposes no retired hierarchical or alternate admission executor', () => {
   expect(capacity).not.toHaveProperty('evaluateCapacityAdmission');
   expect(capacity).not.toHaveProperty('evaluateAllocationHierarchy');
@@ -28,7 +28,7 @@ describe('integrated assignment allocation arithmetic', () => {
   expect(allocateWorkdayCapacity({ remainingSeconds: 20, now: '2026-09-16T12:30:00Z',
    workdays: [{ ...workday, plan: { ...plan, state: 'ended' } }] }).closing.availableSeconds).toBe(0);
  });
- it('derives planning pools after weighted workday sharing and reclaims them at the boundary', () => {
+ it('keeps planning a minimum initial time window rather than a separate spending pool', () => {
   const workdays = ['production', 'simulation'].map((id, index) => ({
    plan: { ...compileWorkday({ id, teamId: 'team', policyId: 'default', policyRevision: 1,
     executionMode: index ? 'simulation' : 'production', policy: { durationSeconds: 1000, maximumConcurrency: 1,
@@ -93,7 +93,7 @@ describe('integrated assignment allocation arithmetic', () => {
  it('normalizes task complexity and uses only the latest twenty eligible samples', () => {
   const history = Array.from({ length: 21 }, (_, index) => measurement({ id: String(index).padStart(2, '0'),
    completedAt: new Date(Date.parse('2026-09-16T12:00:00Z') + index * 1000).toISOString() }));
-  expect(calibrateAssignmentSeconds(estimate, history).measurementIds).toHaveLength(20);
+  expect(calibrateAssignmentSeconds(estimate, history).measurementIds).toEqual(history.slice(1).map(({ id }) => id));
   expect(calibrateAssignmentSeconds({ expectedSeconds: 600, maximumSeconds: 1200 }, [measurement()]).seconds).toBe(1140);
   expect(calibrateAssignmentSeconds({ expectedSeconds: 600, maximumSeconds: 1200 },
    [measurement({ expectedSeconds: 600, allocatedSeconds: 1200, activeSeconds: 200 })]).seconds).toBe(1080);

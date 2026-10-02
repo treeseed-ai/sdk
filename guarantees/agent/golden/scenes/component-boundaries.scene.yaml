@@ -3,6 +3,21 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: calibration-exact-window
+    action: { verifier: sdk.golden.calibration-exact-window }
+    expect: { status: passed }
+  - id: calibration-failure-exclusion
+    action: { verifier: sdk.golden.calibration-failure-exclusion }
+    expect: { status: passed }
+  - id: calibration-malformed
+    action: { verifier: sdk.golden.calibration-malformed }
+    expect: { status: passed }
+  - id: calibration-public-ceilings
+    action: { verifier: sdk.golden.calibration-public-ceilings }
+    expect: { status: passed }
+  - id: calibration-public-deferral
+    action: { verifier: sdk.golden.calibration-public-deferral }
+    expect: { status: passed }
   - id: closeout-canonical
     action: { verifier: sdk.golden.closeout-canonical }
     expect: { status: passed }

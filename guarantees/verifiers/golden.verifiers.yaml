@@ -1,6 +1,31 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.calibration-exact-window:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/calibration-architecture.test.ts
+    testName: "replays the exact latest twenty eligible samples with stable ties and unchanged inputs"
+  sdk.golden.calibration-failure-exclusion:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/calibration-architecture.test.ts
+    testName: "does not let newer cancellation credential infrastructure or invalid results displace eligible history"
+  sdk.golden.calibration-malformed:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/calibration-architecture.test.ts
+    testName: "denies malformed eligible timing and accounting rather than calibrating a usable deadline"
+  sdk.golden.calibration-public-ceilings:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/calibration-architecture.test.ts
+    testName: "uses public SDK calibration without moving provider profile planning or supply ceilings"
+  sdk.golden.calibration-public-deferral:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/calibration-architecture.test.ts
+    testName: "defers exhausted or malformed supply through the independent public SDK boundary"
   sdk.golden.closeout-canonical:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
