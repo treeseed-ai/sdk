@@ -1,6 +1,11 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.architecture-workday-event-command:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/command-tree.test.ts
+    testName: "exposes the existing workday event operation with exact run scope and complete cursor pagination"
   sdk.golden.calibration-exact-window:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

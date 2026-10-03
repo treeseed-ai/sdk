@@ -17,6 +17,22 @@ function tree(): CommandTreeDescriptor {
 }
 
 describe('human command tree contract', () => {
+	it('exposes the existing workday event operation with exact run scope and complete cursor pagination', () => {
+		const leaves: Extract<(typeof TREESEED_COMMAND_TREE_V1.commands)[number], { nodeType: 'leaf' }>[] = [];
+		function visit(nodes: typeof TREESEED_COMMAND_TREE_V1.commands): void {
+			for (const node of nodes) if (node.nodeType === 'branch') visit(node.children); else leaves.push(node);
+		}
+		visit(TREESEED_COMMAND_TREE_V1.commands);
+		const commands = leaves.filter(node => node.execution.kind === 'operation' && node.execution.operationId === 'workdays.events.list');
+		expect(commands).toHaveLength(1);
+		expect(commands[0]?.kind).toBe('read');
+		expect(commands[0]?.execution).toMatchObject({ kind: 'operation', input: expect.arrayContaining([
+			expect.objectContaining({ target: 'path', field: 'teamId', source: 'context', name: 'team', required: true }),
+			expect.objectContaining({ target: 'path', field: 'runId', source: 'argument', required: true }),
+			expect.objectContaining({ target: 'query', field: 'cursor', source: 'option', name: 'cursor' }),
+			expect.objectContaining({ target: 'query', field: 'limit', source: 'option', name: 'limit' }),
+		]) });
+	});
 	it('publishes the complete canonical surface without legacy internal actions', () => {
 		expect(validateCommandTree(TREESEED_COMMAND_TREE_V1)).toEqual([]);
 		expect(validateCommandOperationBindings(TREESEED_COMMAND_TREE_V1, CONTROL_PLANE_OPERATION_LIST)).toEqual([]);

@@ -3,6 +3,9 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: architecture-workday-event-command
+    action: { verifier: sdk.golden.architecture-workday-event-command }
+    expect: { status: passed }
   - id: calibration-exact-window
     action: { verifier: sdk.golden.calibration-exact-window }
     expect: { status: passed }
