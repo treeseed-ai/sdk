@@ -97,6 +97,24 @@ function disjointTaggedBranches(value: unknown): value is JsonSchema[] {
 	});
 }
 
+type Scalar = string | number | boolean | null;
+function finiteValues(value: unknown): Scalar[] | undefined {
+	const schema = record(value), keys = Object.keys(schema);
+	if (keys.length !== 1) return undefined;
+	const values = keys[0] === 'const' ? [schema.const]
+		: keys[0] === 'enum' && Array.isArray(schema.enum) ? schema.enum
+			: schema.type === 'null' ? [null] : undefined;
+	if (!values?.length || values.some(item => item !== null && typeof item !== 'string'
+		&& typeof item !== 'boolean' && !(typeof item === 'number' && Number.isFinite(item)))) return undefined;
+	return values as Scalar[];
+}
+
+function finiteSchema(values: Scalar[]): JsonSchema {
+	const unique = [...new Map(values.map(value => [JSON.stringify(value), value])).entries()]
+		.sort(([left], [right]) => left.localeCompare(right)).map(([, value]) => value);
+	return unique.length === 1 ? { const: unique[0] } : { enum: unique };
+}
+
 /** Compare validation assertions, not annotation text. A declaration assertion
  * absent from the executable schema is a mismatch, including constraints Zod
  * cannot represent in its generated JSON Schema. Never silently discard it. */
@@ -147,6 +165,23 @@ function structuralSchema(value: unknown, root: JsonSchema, ancestors: ReadonlyS
 	if (schema.additionalProperties === false) normalized.additionalProperties = false;
 	else if (schema.additionalProperties && Object.keys(record(schema.additionalProperties)).length) {
 		normalized.additionalProperties = structuralSchema(schema.additionalProperties, root, references);
+	}
+	const finite = finiteValues(normalized);
+	if (finite) return finiteSchema(finite);
+	// Finite scalar unions are equivalent to their exact set only when no
+	// other assertions qualify them. oneOf additionally requires disjoint
+	// branches; duplicate/overlapping alternatives must not become anyOf.
+	if (Object.keys(normalized).length === 1) {
+		const key = normalized.anyOf !== undefined ? 'anyOf' : 'oneOf', union = normalized[key];
+		if (Array.isArray(union) && union.length) {
+			const branches = union.map(finiteValues);
+			if (branches.every((branch): branch is Scalar[] => branch !== undefined)) {
+				const values = branches.flat();
+				if (key === 'anyOf' || new Set(values.map(value => JSON.stringify(value))).size === values.length) {
+					return finiteSchema(values);
+				}
+			}
+		}
 	}
 	return normalized;
 }

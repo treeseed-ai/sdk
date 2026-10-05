@@ -28,6 +28,38 @@ function repository(document: unknown) {
 }
 
 describe('native Platform architecture-schema custody', () => {
+	it('native public repository verification preserves finite enum equivalence without accepting changed overlapping or qualified committed scalar authority', () => {
+		const { document } = canonicalAuthority(), root = repository(document), path = resolve(root, 'docs/agent.schema.yml');
+		const bytes = readFileSync(path, 'utf8'), commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+		const baseline = verifyPlatformRepository(root), choices = ['general', 'feedback', 'research', 'workday-report'];
+		for (const keyword of ['anyOf', 'oneOf'] as const) {
+			const changed = structuredClone(document);
+			schemaRecord(schemaRecord(changed.$defs.Note).properties).classification = { [keyword]: choices.map(value => ({ const: value })).reverse() };
+			schemaRecord(schemaRecord(changed.$defs.ExecutionNode).properties).pairRole = { [keyword]: [{ enum: ['reviewer', 'actor'] }, { type: 'null' }] };
+			const supplied = stringify(changed); writeFileSync(path, supplied);
+			const result = verifyPlatformRepository(root); expect(result.ok).toBe(false);
+			expect(result.diagnostics).toEqual(baseline.diagnostics);
+			expect(readFileSync(path, 'utf8')).toBe(supplied);
+			expect(execFileSync('git', ['show', `${commit}:docs/agent.schema.yml`], { cwd: root, encoding: 'utf8' })).toBe(bytes);
+		}
+		for (const field of [
+			{ anyOf: choices.slice(1).map(value => ({ const: value })) },
+			{ anyOf: [...choices.map(value => ({ const: value })), { type: 'null' }] },
+			{ oneOf: [...choices.map(value => ({ const: value })), { const: 'general' }] },
+			{ oneOf: [{ enum: choices }, { type: 'string' }] },
+			{ anyOf: [{ enum: choices, maxLength: 6 }] },
+		]) {
+			const changed = structuredClone(document); schemaRecord(schemaRecord(changed.$defs.Note).properties).classification = field;
+			const supplied = stringify(changed); writeFileSync(path, supplied);
+			const denied = verifyPlatformRepository(root); expect(denied.ok).toBe(false);
+			expect(denied.diagnostics).toContainEqual(expect.objectContaining({ code: 'agent_schema_structure_mismatch',
+				message: expect.stringContaining('Note nested declarative constraints differ') }));
+			expect(readFileSync(path, 'utf8')).toBe(supplied);
+			expect(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()).toBe(commit);
+			expect(execFileSync('git', ['show', `${commit}:docs/agent.schema.yml`], { cwd: root, encoding: 'utf8' })).toBe(bytes);
+		}
+		writeFileSync(path, bytes); expect(verifyPlatformRepository(root)).toEqual(baseline);
+	});
 	it('native public repository verification binds ended workday report authority and preserves original conditional bytes through denial and retry', () => {
 		const { document } = canonicalAuthority(), root = repository(document), path = resolve(root, 'docs/agent.schema.yml');
 		const bytes = readFileSync(path, 'utf8'), commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();

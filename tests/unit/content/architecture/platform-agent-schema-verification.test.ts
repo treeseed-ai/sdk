@@ -8,6 +8,37 @@ import { graphChangeSetSchema, appliedWorkdaySchema, exactEntityReferenceSchema 
 afterAll(assertCanonicalAuthorityUnchanged);
 
 describe('Platform agent content schema verification', () => {
+	it('recognizes only exact finite enum unions including nullable pair roles while retaining changed overlapping and qualified scalar denials', () => {
+		const { document } = canonicalAuthority(), held = structuredClone(document);
+		const choices = ['general', 'feedback', 'research', 'workday-report'];
+		const originalNodes = verifyAgentContentSchema(document).filter(entry => entry.message.startsWith('ExecutionNode '));
+		for (const keyword of ['anyOf', 'oneOf'] as const) {
+			const changed = structuredClone(document);
+			schemaRecord(schemaRecord(changed.$defs.Note).properties).classification = { [keyword]: choices.map(value => ({ const: value })).reverse() };
+			schemaRecord(schemaRecord(changed.$defs.ExecutionNode).properties).pairRole = { [keyword]: [{ enum: ['reviewer', 'actor'] }, { type: 'null' }] };
+			const before = structuredClone(changed), result = verifyAgentContentSchema(changed);
+			expect(result.filter(entry => entry.message.startsWith('Note '))).toEqual([]);
+			expect(result.filter(entry => entry.message.startsWith('ExecutionNode '))).toEqual(originalNodes);
+			expect(changed).toEqual(before);
+		}
+		const invalid = [
+			{ anyOf: choices.slice(1).map(value => ({ const: value })) },
+			{ anyOf: [...choices.map(value => ({ const: value })), { const: 'foreign' }] },
+			{ anyOf: [...choices.map(value => ({ const: value })), { type: 'null' }] },
+			{ oneOf: [...choices.map(value => ({ const: value })), { const: 'general' }] },
+			{ oneOf: [{ enum: choices }, { type: 'string' }] },
+			{ anyOf: [{ enum: choices, maxLength: 6 }] },
+			{ anyOf: [] },
+		];
+		for (const field of invalid) {
+			const changed = structuredClone(document); schemaRecord(schemaRecord(changed.$defs.Note).properties).classification = field;
+			const before = structuredClone(changed);
+			expect(verifyAgentContentSchema(changed)).toContainEqual(expect.objectContaining({ code: 'agent_schema_structure_mismatch',
+				message: expect.stringContaining('Note nested declarative constraints differ') }));
+			expect(changed).toEqual(before);
+		}
+		expect(document).toEqual(held);
+	});
 	it('recognizes only redundant object kinds under established object authority while retaining contradictory branch and nested field assertions', () => {
 		const { document } = canonicalAuthority(), held = structuredClone(document);
 		const original = verifyAgentContentSchema(document).filter(entry => entry.message.startsWith('ExactEntityReference '));

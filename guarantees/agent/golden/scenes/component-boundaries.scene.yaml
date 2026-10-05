@@ -3,6 +3,12 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: execution-finite-enum-unit
+    action: { verifier: sdk.golden.execution-finite-enum-unit }
+    expect: { status: passed }
+  - id: execution-finite-enum-native
+    action: { verifier: sdk.golden.execution-finite-enum-native }
+    expect: { status: passed }
   - id: execution-node-conditions-unit
     action: { verifier: sdk.golden.execution-node-conditions-unit }
     expect: { status: passed }
