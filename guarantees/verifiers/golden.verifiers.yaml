@@ -1,6 +1,26 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-content-identity-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/note-dependency-links.test.ts
+    testName: "retains exact bounded governed execution content identifiers and denies malformed or missing identities without normalization"
+  sdk.golden.execution-content-identity-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/note-dependency-links.test.ts
+    testName: "native public governed content validation denies malformed identities while retaining exact valid source bytes"
+  sdk.golden.execution-content-inventory-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/note-dependency-links.test.ts
+    testName: "retains distinct governed evidence and agent addresses but denies duplicated malformed or empty required inventories"
+  sdk.golden.execution-content-inventory-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/note-dependency-links.test.ts
+    testName: "native public governed content validation preserves distinct evidence and rejects duplicate refs or malformed addressed agent classes"
   sdk.golden.execution-object-conditional-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

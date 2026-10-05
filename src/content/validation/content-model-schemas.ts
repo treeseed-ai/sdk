@@ -16,7 +16,7 @@ export * from './agent-operational-content-schemas.ts';
 
 const nonEmpty = z.string().trim().min(1);
 const strings = z.array(z.string());
-const identifier = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
+const identifier = z.string().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
 const slug = z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:[._/-][a-z0-9]+)*$/u);
 const agentClass = z.string().trim().min(1).max(100).regex(/^[a-z][a-z0-9-]*$/u);
 const identifiers = z.array(identifier);
@@ -128,7 +128,7 @@ const executionPlanSchema = z.object({ workItems: z.array(executionPlanWorkItemS
 });
 
 const proposalSchema = z.object({
-	schemaVersion: z.literal('treeseed.proposal/v1'), id: nonEmpty, projectId: nonEmpty, title: nonEmpty,
+	schemaVersion: z.literal('treeseed.proposal/v1'), id: identifier, projectId: identifier, title: nonEmpty,
 	request: nonEmpty, summary: nonEmpty.optional(), status: z.enum(['draft', 'discussing', 'ready', 'decided', 'withdrawn']),
 	objectiveRefs: unique(exactRefs).optional(), evidenceRefs: unique(exactRefs).optional(),
 	discussionRef: exactEntityReferenceSchema.optional(), executionPlan: executionPlanSchema.optional(),
@@ -153,9 +153,9 @@ const schemas = {
 		status: lifecycleStatus.optional(), stage: nonEmpty.optional(), audience: strings.optional(), summary: nonEmpty.optional(), updated_at: date.optional(),
 	}),
 	note: z.object({
-		schemaVersion: z.literal('treeseed.note/v1'), id: nonEmpty, projectId: nonEmpty,
+		schemaVersion: z.literal('treeseed.note/v1'), id: identifier, projectId: identifier,
 		classification: z.enum(['general', 'feedback', 'research', 'workday-report']),
-		subjectRefs: exactRefs.min(1), body: nonEmpty, createdAt: z.string().datetime({ offset: true }),
+		subjectRefs: unique(exactRefs.min(1)), body: nonEmpty, createdAt: z.string().datetime({ offset: true }),
 		links: z.array(exactDependencyLinkSchema).optional(),
 	}).strict().superRefine((value, context) => {
 		if (value.classification === 'workday-report' && !value.subjectRefs.some((reference) => reference.store === 'postgresql' && reference.model === 'workday')) {
@@ -163,9 +163,9 @@ const schemas = {
 		}
 	}),
 	question: z.object({
-		schemaVersion: z.literal('treeseed.question/v1'), id: nonEmpty, projectId: nonEmpty,
+		schemaVersion: z.literal('treeseed.question/v1'), id: identifier, projectId: identifier,
 		subjectRef: exactEntityReferenceSchema, question: nonEmpty, status: z.enum(['open', 'answered', 'withdrawn']),
-		addressedTo: strings.optional(), answer: nonEmpty.optional(), answerRefs: exactRefs.optional(),
+		addressedTo: unique(z.array(agentClass)).optional(), answer: nonEmpty.optional(), answerRefs: unique(exactRefs).optional(),
 		askedAt: z.string().datetime({ offset: true }), answeredAt: z.string().datetime({ offset: true }).optional(),
 	}).strict().superRefine((value, context) => {
 		if (value.status === 'answered' && !(value.answer || value.answerRefs?.length)) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Answered questions require an answer or exact answer reference.' });
@@ -177,11 +177,11 @@ const schemas = {
 	}).strict(),
 	proposal: proposalSchema,
 	decision: z.object({
-		schemaVersion: z.literal('treeseed.decision/v1'), id: nonEmpty, projectId: nonEmpty,
+		schemaVersion: z.literal('treeseed.decision/v1'), id: identifier, projectId: identifier,
 		decisionClass: z.enum(['proposal', 'work-review', 'publication']),
 		decisionMethod: z.enum(['authority', 'approval', 'vote']), subjectRef: exactEntityReferenceSchema,
 		disposition: z.enum(['approved', 'rejected', 'request-changes', 'deferred', 'superseded']), rationale: nonEmpty,
-		findingRefs: exactRefs.optional(), authorityRefs: exactRefs.min(1), decidedByRefs: exactRefs.min(1),
+		findingRefs: unique(exactRefs).optional(), authorityRefs: unique(exactRefs.min(1)), decidedByRefs: unique(exactRefs.min(1)),
 		positions: z.array(z.object({ actorRef: exactEntityReferenceSchema, position: z.enum(['approve', 'reject', 'abstain']), rationale: z.string().optional(), recordedAt: z.string().datetime({ offset: true }) }).strict()).min(1).optional(),
 		decidedAt: z.string().datetime({ offset: true }),
 	}).strict().superRefine((value, context) => {

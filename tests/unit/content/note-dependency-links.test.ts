@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { validatePortableContentData } from '../../../src/content/validation/portable-content-data.ts';
 import { AGENT_OPERATIONAL_CONTENT_COLLECTIONS } from '../../../src/content/validation/agent-operational-content-schemas.ts';
+import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const ref = (id: string, anchor: string) => ({
 	store: 'treedx', model: 'proposal', id, revision: 1,
@@ -13,7 +16,66 @@ const note = { schemaVersion: 'treeseed.note/v1', id: 'cross-project-dependency'
 	classification: 'general', subjectRefs: [from, to], body: 'The API tests depend on the SDK candidate.',
 	createdAt: '2026-09-20T00:00:00Z', links: [{ relation: 'depends_on', from, to }] };
 
+function records(): Array<{ model: string; data: Record<string, unknown> }> {
+	return [{ model: 'note', data: note },
+		{ model: 'question', data: { schemaVersion: 'treeseed.question/v1', id: 'question', projectId: 'api', subjectRef: from,
+			question: 'Which exact source is authorized?', status: 'open', askedAt: note.createdAt } },
+		{ model: 'decision', data: { schemaVersion: 'treeseed.decision/v1', id: 'decision', projectId: 'api', decisionClass: 'proposal',
+			decisionMethod: 'authority', subjectRef: from, disposition: 'approved', rationale: 'Supplied parser input, not native approval.',
+			authorityRefs: [from], decidedByRefs: [to], decidedAt: note.createdAt } },
+		{ model: 'proposal', data: { schemaVersion: 'treeseed.proposal/v1', id: 'proposal', projectId: 'api', title: 'Controlled request',
+			request: 'Complete only the exact authorized work.', status: 'draft' } }];
+}
+function identifierEntries() {
+	return records().flatMap(({ model, data }) => ['id', 'projectId'].flatMap(field => [
+		...['A', 'a'.repeat(200), 'A._:/-z'].map(value => ({ model, data: { ...data, [field]: value }, valid: true })),
+		...['', ' ', ' padded ', 'a b', 'é', 'a'.repeat(201), null, 1].map(value => ({ model, data: { ...data, [field]: value }, valid: false })),
+		{ model, data: Object.fromEntries(Object.entries(data).filter(([key]) => key !== field)), valid: false },
+	]));
+}
+function referenceEntries() {
+	return records().flatMap(({ model, data }) => {
+		const fields = model === 'note' ? ['subjectRefs'] : model === 'question' ? ['answerRefs']
+			: model === 'decision' ? ['authorityRefs', 'decidedByRefs', 'findingRefs'] : ['objectiveRefs', 'evidenceRefs'];
+		return fields.flatMap(field => [
+			{ model, data: { ...data, [field]: [from, to] }, valid: true },
+			{ model, data: { ...data, [field]: [] }, valid: !['subjectRefs', 'authorityRefs', 'decidedByRefs'].includes(field) },
+			...[ [from, structuredClone(from)], [from, Object.fromEntries(Object.entries(from).reverse())], [from, null] ]
+				.map(value => ({ model, data: { ...data, [field]: value }, valid: false })),
+		]);
+	}).concat([[], ['renamed-author'], ['a'.repeat(100)], ['first', 'second']]
+		.map(addressedTo => ({ model: 'question', data: { ...records()[1]!.data, addressedTo }, valid: true })),
+		[['same', 'same'], ['UPPER'], ['a'.repeat(101)], ['a b'], [''], [null], null, 'author']
+			.map(addressedTo => ({ model: 'question', data: { ...records()[1]!.data, addressedTo }, valid: false })));
+}
+function observations(entries: ReturnType<typeof identifierEntries>, native: boolean) {
+	const held = structuredClone(entries);
+	if (!native) {
+		const result = entries.map(entry => {
+			const parsed = validatePortableContentData(entry.model, entry.data);
+			if (entry.valid) expect(parsed).toMatchObject({ ok: true, data: entry.data });
+			return parsed.ok;
+		});
+		expect(result).toEqual(entries.map(entry => entry.valid));
+	} else {
+		const path = fileURLToPath(new URL('./architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+		const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'content-records'], {
+			input: JSON.stringify(entries.map(({ model, data }) => ({ model, data }))), encoding: 'utf8', timeout: 15_000,
+		});
+		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+		const result: unknown = JSON.parse(child.stdout); if (!Array.isArray(result)) throw new Error('Native governed content observations required.');
+		expect(result).toHaveLength(entries.length);
+		for (const [index, entry] of entries.entries()) expect(result[index]).toMatchObject(entry.valid ? { ok: true, data: entry.data } : { ok: false });
+		expect(readFileSync(path)).toEqual(bytes);
+	}
+		expect(entries).toEqual(held);
+}
+
 describe('exact dependency links on an ordinary TreeDX note', () => {
+	it('retains exact bounded governed execution content identifiers and denies malformed or missing identities without normalization', () => observations(identifierEntries(), false));
+	it('native public governed content validation denies malformed identities while retaining exact valid source bytes', () => observations(identifierEntries(), true));
+	it('retains distinct governed evidence and agent addresses but denies duplicated malformed or empty required inventories', () => observations(referenceEntries(), false));
+	it('native public governed content validation preserves distinct evidence and rejects duplicate refs or malformed addressed agent classes', () => observations(referenceEntries(), true));
 	it('registers the existing governed Note and Decision collections for execution authority without introducing another model', () => {
 		const collections: Readonly<Record<string, string>> = AGENT_OPERATIONAL_CONTENT_COLLECTIONS;
 		expect(collections.note).toBe('notes');

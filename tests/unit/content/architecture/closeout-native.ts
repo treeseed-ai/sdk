@@ -3,11 +3,22 @@ import { appliedWorkdaySchema, estimateSchema } from '../../../../src/capacity/a
 import * as publicContracts from '../../../../src/capacity/agents/agent-capacity.ts';
 import { z } from 'zod';
 import { CONTROL_PLANE_OPERATIONS, buildMcpResources } from '../../../../src/operator-contracts/index.ts';
+import { validatePortableContentData } from '../../../../src/content/validation/index.ts';
 
 // Independent native process, actual public owning SDK entry point. No mock or
 // generated result is substituted for the validator's real observation.
 const input: unknown = JSON.parse(readFileSync(0, 'utf8'));
 const kind = process.argv[2];
+if (kind === 'content-records') {
+	if (!Array.isArray(input)) throw new Error('Native content inventory required.');
+	const result = input.map(entry => {
+		if (!entry || typeof entry !== 'object' || !('model' in entry) || typeof entry.model !== 'string' || !('data' in entry)) {
+			throw new Error('Native content model and supplied record required.');
+		}
+		return validatePortableContentData(entry.model, entry.data);
+	});
+	process.stdout.write(JSON.stringify(result)); process.exit(0);
+}
 if (kind === 'fair-ready-weights') {
 	if (!Array.isArray(input)) throw new Error('Native fair selection inventory required.');
 	const result = input.map(entry => {
