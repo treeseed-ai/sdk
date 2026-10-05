@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { validateCapabilityOfferQualification as qualify } from '../../../../../src/capacity-provider/contracts/index.ts';
 import {
 	CORE_CAPABILITY_DEFINITIONS,
 	capabilityDemandDigest,
@@ -43,6 +44,13 @@ describe('capability ontology contracts', () => {
 		};
 		const original = structuredClone(manifest);
 		expect(validateCapacityProviderManifestV5(manifest)).toEqual({ ok: true, diagnostics: [] });
+		expect(qualify).toBeTypeOf('function');
+		const offer = manifest.adapters[0]!.offers[0]!.offer;
+		expect(qualify(offer, { providerId: 'provider' })).toEqual({ ok: true, diagnostics: [] });
+		for (const providerId of ['', 'foreign-provider']) expect(qualify(offer, { providerId }).ok, providerId).toBe(false);
+		for (const changed of [undefined, null, {}, [], { ...offer, offerDigest: `sha256:${'0'.repeat(64)}` }]) {
+			const before = structuredClone(changed); expect(qualify(changed).ok).toBe(false); expect(changed).toEqual(before);
+		}
 		for (const mode of ['missing', 'duplicate', 'downgraded', 'missing-suite', 'future', 'expired', 'reverse-clock',
 			'failed', 'revoked', 'foreign-reference', 'extra-receipt', 'malformed-evidence', 'malformed-issued', 'malformed-expiry']) {
 			const changed = structuredClone(manifest), offer = changed.adapters[0]!.offers[0]!.offer, receipt = offer.conformance[0]!;
@@ -62,6 +70,7 @@ describe('capability ontology contracts', () => {
 			const { offerDigest: ignored, ...changedMaterial } = offer; offer.offerDigest = capabilityOfferDigest(changedMaterial);
 			const before = structuredClone(changed), outcome = validateCapacityProviderManifestV5(changed);
 			expect(outcome.ok, mode).toBe(false);
+			expect(qualify(offer).ok, `shared:${mode}`).toBe(false);
 			expect(outcome.diagnostics, mode).toContainEqual(expect.objectContaining({
 				code: mode === 'failed' || mode === 'revoked' ? 'provider_offer_conformance_failed' : 'provider_offer_conformance_invalid',
 				path: 'adapters[0].offers[0].offer.conformance' }));

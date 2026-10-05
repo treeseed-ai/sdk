@@ -11,7 +11,7 @@ type ProviderSupplyOffer,
 } from './contracts/governance.ts';
 import { validateExecutionProviderRuntimeConfiguration } from '../ai-appliance/validation.ts';
 import { CORE_CAPABILITY_DEFINITIONS } from './core-capability-catalog.ts';
-import { capabilityOfferSchema } from './capability-ontology.ts';
+import { capabilityOfferSchema, capabilityOfferDigest, type CapabilityDefinition } from './capability-ontology.ts';
 
 export interface CapacityProviderContractDiagnostic {
 	code: string;
@@ -34,6 +34,48 @@ export function add(diagnostics: CapacityProviderContractDiagnostic[], code: str
 
 export function nonEmpty(value: unknown): value is string {
 	return typeof value === 'string' && value.trim().length > 0;
+}
+
+/** Qualification semantics shared by advertisement and admission. Signature
+ * verification still belongs to the registered-identity publication boundary. */
+export function validateCapabilityOfferQualification(value: unknown,
+	options: { now?: Date; providerId?: string; definitions?: readonly CapabilityDefinition[] } = {}): CapacityProviderContractValidation {
+	const diagnostics: CapacityProviderContractDiagnostic[] = [], parsed = capabilityOfferSchema.safeParse(value);
+	if (!parsed.success) {
+		add(diagnostics, 'provider_offer_invalid', 'offer', 'A complete canonical capability offer is required.');
+		return result(diagnostics);
+	}
+	const offer = parsed.data, { offerDigest, ...material } = offer;
+	if (capabilityOfferDigest(material) !== offerDigest) add(diagnostics, 'provider_offer_digest_mismatch', 'offer.offerDigest', 'Offer digest does not bind its exact material.');
+	const now = (options.now ?? new Date()).getTime(), definitions = options.definitions ?? CORE_CAPABILITY_DEFINITIONS;
+	const tiers = ['signed-attestation', 'automated-suite', 'reviewed-certification'], keys = new Set<string>();
+	const matches = (left: typeof offer.capabilities[number], right: typeof offer.capabilities[number]) =>
+		left.id === right.id && left.version === right.version && left.digest === right.digest;
+	for (const reference of offer.capabilities) {
+		const key = `${reference.id}@${reference.version}`, receipts = offer.conformance.filter(receipt => matches(receipt.capability, reference));
+		const definition = definitions.find(entry => entry.id === reference.id && entry.version === reference.version);
+		if (keys.has(key) || !Number.isFinite(now) || receipts.length !== 1
+			|| (definition && (definition.status === 'revoked' || definition.digest !== reference.digest))
+			|| (!definition && (options.definitions !== undefined || reference.id.startsWith('treeseed.')))) {
+			add(diagnostics, 'provider_offer_conformance_invalid', 'offer.conformance', 'Qualification requires unique exact current capability authority.');
+		}
+		keys.add(key);
+		for (const receipt of receipts) {
+			if (receipt.status !== 'passed' || (options.providerId !== undefined && receipt.providerId !== options.providerId)
+				|| (receipt.tier !== 'signed-attestation' && receipt.suite === null)
+				|| Date.parse(receipt.issuedAt) > now || (receipt.expiresAt !== null
+					&& (Date.parse(receipt.expiresAt) <= now || Date.parse(receipt.expiresAt) <= Date.parse(receipt.issuedAt)))) {
+				add(diagnostics, 'provider_offer_conformance_invalid', 'offer.conformance', 'Qualification must be passed, current and bind its provider and suite.');
+			}
+			if (definition && tiers.indexOf(receipt.tier) < tiers.indexOf(definition.qualificationTier)) {
+				add(diagnostics, 'provider_offer_qualification_insufficient', 'offer.conformance', 'Qualification is below the declared capability tier.');
+			}
+		}
+	}
+	if (offer.conformance.some(receipt => !offer.capabilities.some(reference => matches(receipt.capability, reference)))) {
+		add(diagnostics, 'provider_offer_conformance_invalid', 'offer.conformance', 'Orphan qualification receipts cannot be advertised.');
+	}
+	return result(diagnostics);
 }
 
 export function validateCapacityProviderPublicJwk(jwk: CapacityProviderPublicJwk): CapacityProviderContractValidation {
@@ -214,19 +256,7 @@ export function validateCapacityProviderManifestV5(manifest: CapacityProviderMan
 			if (!profiles.has(binding.sandboxProfileId)) add(diagnostics, 'provider_offer_sandbox_unknown', `${path}.sandboxProfileId`, 'Offer references an unknown provider-local sandbox profile.');
 			if (binding.offer.capabilities.some((reference) => !reference.id.startsWith('treeseed.') && !reference.id.startsWith('provider.'))) add(diagnostics, 'provider_offer_capability_namespace_invalid', `${path}.offer.capabilities`, 'Offers require standardized TreeSeed or provider capability references.');
 			if (binding.offer.conformance.some((entry) => entry.status !== 'passed')) add(diagnostics, 'provider_offer_conformance_failed', `${path}.offer.conformance`, 'Only passing capability conformance may be advertised.');
-			const offer = capabilityOfferSchema.safeParse(binding.offer);
-			const tierOrder = ['signed-attestation', 'automated-suite', 'reviewed-certification'];
-			if (!offer.success || offer.data.capabilities.some(reference => {
-				const receipts = offer.data.conformance.filter(receipt => receipt.capability.id === reference.id
-					&& receipt.capability.version === reference.version && receipt.capability.digest === reference.digest);
-				const requiredTier = CORE_CAPABILITY_DEFINITIONS.find(definition => definition.id === reference.id)?.qualificationTier;
-				return receipts.length !== 1 || receipts.some(receipt =>
-					(requiredTier && tierOrder.indexOf(receipt.tier) < tierOrder.indexOf(requiredTier))
-					|| (receipt.tier !== 'signed-attestation' && !receipt.suite)
-					|| Date.parse(receipt.issuedAt) > Date.now()
-					|| (receipt.expiresAt !== null && Date.parse(receipt.expiresAt) <= Date.now()));
-			}) || offer.success && offer.data.conformance.some(receipt => !offer.data.capabilities.some(reference =>
-				reference.id === receipt.capability.id && reference.version === receipt.capability.version && reference.digest === receipt.capability.digest))) {
+			if (!validateCapabilityOfferQualification(binding.offer).ok) {
 				add(diagnostics, 'provider_offer_conformance_invalid', `${path}.offer.conformance`, 'Capability qualification must be unique, current, and satisfy its declared tier and suite.');
 			}
 		}

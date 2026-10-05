@@ -41,9 +41,24 @@ describe('capacity configuration inventory', () => {
 			assert.deepEqual(denied.diagnostics.map(value => value.code), ['provider_proof_identity_version_invalid']);
 			assert.equal(denied.ok, false); assert.deepEqual(changed, retained); assert.deepEqual(proof, original);
 			assert.deepEqual(contracts.validateCapacityProviderProofPayload(proof, options), { ok: true, diagnostics: [] });
-			process.stdout.write(JSON.stringify({ valid: true, invalid: false, retry: true }));
+			const reference = { id: 'provider.aaaaaaaaaaaaaaaa.work', version: '1.0.0', digest: 'sha256:' + 'a'.repeat(64) };
+			const material = { schemaVersion: 'treeseed.capability-offer/v2', offerId: 'native-qualified-input', capabilities: [reference],
+				features: [], configurationSupport: {}, permissionClasses: [], contextModes: [], inputContracts: [], outputContracts: [],
+				interactionModes: [], conformance: [{ schemaVersion: 'treeseed.capability-conformance/v1', providerId: 'provider',
+					capability: reference, tier: 'signed-attestation', status: 'passed', evidenceDigest: reference.digest, suite: null,
+					issuedAt: proof.issuedAt, expiresAt: proof.expiresAt, signature: { keyId: 'input-key', algorithm: 'Ed25519', value: 'controlled-input' } }],
+				contextCapacity: { mode: 'unbounded', measurement: null, transportPayloadBytes: 1024,
+					measurementProvenance: { provider: 'provider', implementation: 'native-input', version: null } },
+				limits: {}, commercial: { currency: null, estimatedCost: null }, region: null, trust: [] };
+			const offer = { ...material, offerDigest: contracts.capabilityOfferDigest(material) }, retainedOffer = structuredClone(offer);
+			assert.deepEqual(contracts.validateCapabilityOfferQualification(offer, { ...options, providerId: 'provider' }), { ok: true, diagnostics: [] });
+			assert.equal(contracts.validateCapabilityOfferQualification(offer, { ...options, providerId: 'foreign' }).ok, false);
+			assert.equal(contracts.validateCapabilityOfferQualification(offer, { now: new Date(proof.expiresAt) }).ok, false);
+			assert.deepEqual(offer, retainedOffer);
+			assert.deepEqual(contracts.validateCapabilityOfferQualification(offer, { ...options, providerId: 'provider' }), { ok: true, diagnostics: [] });
+			process.stdout.write(JSON.stringify({ valid: true, invalid: false, retry: true, qualification: true }));
 		`], { cwd: fileURLToPath(new URL('../../../', import.meta.url)), encoding: 'utf8', timeout: 15_000 });
-		expect(JSON.parse(output)).toEqual({ valid: true, invalid: false, retry: true });
+		expect(JSON.parse(output)).toEqual({ valid: true, invalid: false, retry: true, qualification: true });
 	});
 	it('exposes the original provider manifest validator and offer schemas through the client-free contracts boundary', () => {
 		expect(Reflect.get(providerContracts, 'validateCapacityProviderManifestV5')).toBe(validateCapacityProviderManifestV5);
