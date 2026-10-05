@@ -37,9 +37,10 @@ export function minimumProperties<T extends z.AnyZodObject>(object: T, minimum: 
 type ConditionalRequirement<Field extends string> = {
 	field: Field; equals?: unknown; notEquals?: unknown; in?: readonly unknown[];
 	message: string; path?: readonly (string | number)[];
-} & ({ alternatives: readonly (readonly Field[])[]; forbidden?: never; allowed?: never }
-	| { alternatives?: never; forbidden: { field: Field; key: string }; allowed?: never }
-	| { alternatives?: never; forbidden?: never; allowed: { field: Field; values: readonly unknown[] } });
+} & ({ alternatives: readonly (readonly Field[])[]; forbidden?: never; allowed?: never; contains?: never }
+	| { alternatives?: never; forbidden: { field: Field; key: string }; allowed?: never; contains?: never }
+	| { alternatives?: never; forbidden?: never; allowed: { field: Field; values: readonly unknown[] }; contains?: never }
+	| { alternatives?: never; forbidden?: never; allowed?: never; contains: { field: Field; properties: Readonly<Record<string, unknown>> } });
 
 /** The same owning field rules drive runtime validation and schema export. */
 export function conditionalFields<T extends z.AnyZodObject>(object: T,
@@ -51,9 +52,12 @@ export function conditionalFields<T extends z.AnyZodObject>(object: T,
 			if (Object.hasOwn(rule, 'notEquals') && selected === rule.notEquals) continue;
 			if (rule.in && !rule.in.includes(selected)) continue;
 			const nested = rule.forbidden ? Object.getOwnPropertyDescriptor(value, rule.forbidden.field)?.value : undefined;
+			const entries: unknown = rule.contains ? Object.getOwnPropertyDescriptor(value, rule.contains.field)?.value : undefined;
 			const invalid = rule.forbidden ? nested && typeof nested === 'object'
 				&& Object.getOwnPropertyDescriptor(nested, rule.forbidden.key)?.value !== undefined
 				: rule.allowed ? !rule.allowed.values.includes(Object.getOwnPropertyDescriptor(value, rule.allowed.field)?.value)
+				: rule.contains ? !Array.isArray(entries) || !entries.some(entry => entry && typeof entry === 'object'
+					&& Object.entries(rule.contains.properties).every(([key, expected]) => Object.getOwnPropertyDescriptor(entry, key)?.value === expected))
 				: !rule.alternatives.some(fields => fields.every(field => Object.getOwnPropertyDescriptor(value, field)?.value !== undefined));
 			if (invalid) {
 				context.addIssue({ code: z.ZodIssueCode.custom, path: [...(rule.path ?? [])], message: rule.message });
@@ -69,6 +73,9 @@ export function conditionalFields<T extends z.AnyZodObject>(object: T,
 				: rule.in ? { properties: { [rule.field]: { enum: [...rule.in] } } } : {}) },
 			then: rule.forbidden ? { type: 'object', properties: { [rule.forbidden.field]: { not: required([rule.forbidden.key]) } } }
 				: rule.allowed ? { type: 'object', properties: { [rule.allowed.field]: { enum: [...rule.allowed.values] } } }
+				: rule.contains ? { type: 'object', properties: { [rule.contains.field]: { type: 'array', contains: {
+					...required(Object.keys(rule.contains.properties)), properties: Object.fromEntries(Object.entries(rule.contains.properties).map(([key, value]) => [key, { const: value }])),
+				} } } }
 				: rule.alternatives.length === 1 ? required(rule.alternatives[0]!)
 				: { type: 'object', anyOf: rule.alternatives.map(required) },
 		})) };

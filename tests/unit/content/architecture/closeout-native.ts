@@ -11,10 +11,11 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 // generated result is substituted for the validator's real observation.
 const input: unknown = JSON.parse(readFileSync(0, 'utf8'));
 const kind = process.argv[2];
-if (kind === 'decision-inventory') {
-	if (!Array.isArray(input)) throw new Error('Native Decision inventory required.');
-	process.stdout.write(JSON.stringify({ schema: zodToJsonSchema(describeContentFrontmatterSchema('decision'),
-		{ $refStrategy: 'none', postProcess: exportSchemaConstraints }), observations: input.map(value => validatePortableContentData('decision', value)) }));
+if (kind === 'decision-inventory' || kind === 'note-inventory') {
+	const model = kind === 'decision-inventory' ? 'decision' : 'note';
+	if (!Array.isArray(input)) throw new Error('Native governed content inventory required.');
+	process.stdout.write(JSON.stringify({ schema: zodToJsonSchema(describeContentFrontmatterSchema(model),
+		{ $refStrategy: 'none', postProcess: exportSchemaConstraints }), observations: input.map(value => validatePortableContentData(model, value)) }));
 	process.exit(0);
 }
 if (kind === 'content-records') {

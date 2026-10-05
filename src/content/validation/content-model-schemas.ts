@@ -148,16 +148,14 @@ const schemas = {
 		title: nonEmpty, description: nonEmpty.optional(), slug: nonEmpty.optional(), page_layout: z.enum(['article', 'bridge']).optional(),
 		status: lifecycleStatus.optional(), stage: nonEmpty.optional(), audience: strings.optional(), summary: nonEmpty.optional(), updated_at: date.optional(),
 	}),
-	note: z.object({
+	note: conditionalFields(z.object({
 		schemaVersion: z.literal('treeseed.note/v1'), id: identifier, projectId: identifier,
 		classification: z.enum(['general', 'feedback', 'research', 'workday-report']),
 		subjectRefs: unique(exactRefs.min(1)), body: nonEmpty, createdAt: z.string().datetime({ offset: true }),
 		links: z.array(exactDependencyLinkSchema).optional(),
-	}).strict().superRefine((value, context) => {
-		if (value.classification === 'workday-report' && !value.subjectRefs.some((reference) => reference.store === 'postgresql' && reference.model === 'workday')) {
-			context.addIssue({ code: z.ZodIssueCode.custom, path: ['subjectRefs'], message: 'Workday reports must reference their exact workday.' });
-		}
-	}),
+	}).strict(), [{ field: 'classification', equals: 'workday-report',
+		contains: { field: 'subjectRefs', properties: { store: 'postgresql', model: 'workday' } },
+		path: ['subjectRefs'], message: 'Workday reports must reference their exact workday.' }]),
 	question: z.object({
 		schemaVersion: z.literal('treeseed.question/v1'), id: identifier, projectId: identifier,
 		subjectRef: exactEntityReferenceSchema, question: nonEmpty, status: z.enum(['open', 'answered', 'withdrawn']),

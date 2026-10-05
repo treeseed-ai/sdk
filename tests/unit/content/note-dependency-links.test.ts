@@ -29,6 +29,43 @@ function decisionEntries() {
 					&& (value === undefined ? decisionMethod === 'authority' : value.length > 0),
 			})))));
 }
+function observeReportRules(native: boolean) {
+	const workday = { store: 'postgresql', model: 'workday', id: 'bounded-workday' };
+	const entries = ['general', 'feedback', 'research', 'workday-report'].flatMap(classification => [
+		{ refs: [workday], valid: true }, { refs: [from, workday, to], valid: true },
+		{ refs: [from], valid: classification !== 'workday-report' },
+		{ refs: [{ ...from, model: 'workday' }], valid: classification !== 'workday-report' },
+		{ refs: [{ ...workday, model: 'proposal' }], valid: classification !== 'workday-report' },
+		{ refs: [], valid: false }, { refs: [workday, workday], valid: false },
+		{ refs: [{ ...workday, id: null }], valid: false }, { refs: null, valid: false },
+	].map(({ refs, valid }) => ({ data: { ...note, classification, subjectRefs: refs }, valid })));
+	const held = structuredClone(entries), expected = [{
+		if: { type: 'object', required: ['classification'], properties: { classification: { const: 'workday-report' } } },
+		then: { type: 'object', properties: { subjectRefs: { type: 'array', contains: {
+			type: 'object', required: ['store', 'model'], properties: { store: { const: 'postgresql' }, model: { const: 'workday' } },
+		} } } },
+	}];
+	if (native) {
+		const path = fileURLToPath(new URL('./architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+		const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'note-inventory'], {
+			input: JSON.stringify(entries.map(entry => entry.data)), encoding: 'utf8', timeout: 15_000,
+		});
+		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+		const output: unknown = JSON.parse(child.stdout);
+		if (!output || typeof output !== 'object' || !('schema' in output) || !('observations' in output) || !Array.isArray(output.observations))
+			throw new Error('Native Note schema and observations required.');
+		expect(output.observations).toHaveLength(entries.length);
+		for (const [index, entry] of entries.entries()) expect(output.observations[index]).toMatchObject(entry.valid ? { ok: true, data: entry.data } : { ok: false });
+		expect(output.schema).toMatchObject({ allOf: expected }); expect(readFileSync(path)).toEqual(bytes);
+	} else {
+		const observations = entries.map(entry => validatePortableContentData('note', entry.data));
+		expect(observations.map(value => value.ok)).toEqual(entries.map(entry => entry.valid));
+		for (const [index, entry] of entries.entries()) if (entry.valid) expect(observations[index]).toMatchObject({ data: entry.data });
+		expect(zodToJsonSchema(describeContentFrontmatterSchema('note'),
+			{ $refStrategy: 'none', postProcess: exportSchemaConstraints })).toMatchObject({ allOf: expected });
+	}
+		expect(entries).toEqual(held);
+}
 function observeDecisionRules(native: boolean) {
 	const entries = decisionEntries(), held = structuredClone(entries);
 	const expected = [
@@ -121,6 +158,8 @@ function observations(entries: ReturnType<typeof identifierEntries>, native: boo
 }
 
 describe('exact dependency links on an ordinary TreeDX note', () => {
+	it('exports the same exact workday subject requirement that the owning report Note validator enforces', () => observeReportRules(false));
+	it('native public report Note validation and schema retain exact workday subjects and deny missing duplicated or malformed authority', () => observeReportRules(true));
 	it('exports the same classed Decision dispositions and required approval or vote positions enforced by the owning validator', () => observeDecisionRules(false));
 	it('native public Decision validation and schema agree across every class disposition method and retained position inventory', () => observeDecisionRules(true));
 	it('retains exact bounded governed execution content identifiers and denies malformed or missing identities without normalization', () => observations(identifierEntries(), false));
