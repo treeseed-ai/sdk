@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { describeContentFrontmatterContract, describeContentFrontmatterJsonSchema, validatePortableContentData } from '../../../src/content/validation/index.ts';
+import type { ExactEntityReference } from '../../../src/agent-capacity/contracts/capacity/assignments/agent-execution.ts';
 
 function proposal() {
+	const dependsOn: string[] = [], write: string[] = [];
+	const contextRefs: ExactEntityReference[] = [{ store: 'git', model: 'repository', id: 'sdk', repository: 'treeseed-ai/sdk', commit: 'a'.repeat(40) }];
 	return {
 		schemaVersion: 'treeseed.proposal/v1', id: 'proposal-one', projectId: 'sdk', title: 'Reliable pagination',
 		request: 'Make pagination reliable.', summary: 'Define, test, and implement bounded pagination.', status: 'ready',
@@ -9,8 +12,8 @@ function proposal() {
 			id: 'implement', activity: 'acting', agentClass: 'engineer', workspace: 'git', review: 'required',
 			objective: 'Implement the accepted pagination behavior.', estimate: { expectedSeconds: 120, maximumSeconds: 240 },
 			reviewEstimate: { expectedSeconds: 60, maximumSeconds: 120 }, maximumReviewCycles: 2,
-			dependsOn: [], requestedPermissions: { content: { read: ['proposal', 'decision'], write: [] }, tools: ['source.read', 'source.write', 'verification'] },
-			contextRefs: [{ store: 'git', model: 'repository', id: 'sdk', repository: 'treeseed-ai/sdk', commit: 'a'.repeat(40) }],
+			dependsOn, requestedPermissions: { content: { read: ['proposal', 'decision'], write }, tools: ['source.read', 'source.write', 'verification'] },
+			contextRefs,
 			requiredCapabilities: ['code-change'], acceptanceCriteria: ['Focused tests pass.'],
 		}] },
 	};
@@ -44,7 +47,7 @@ describe('proposal-owned execution plan', () => {
 	});
 	it('accepts complete reviewed work without a separate execution-plan model', () => expect(validatePortableContentData('proposal', proposal()).ok).toBe(true));
 	it('allows exact read-only Books alongside one TreeDX workspace repository', () => {
-		const value = proposal() as ReturnType<typeof proposal> & { executionPlan: { workItems: Array<Record<string, unknown>> } };
+		const value = proposal();
 		const item = value.executionPlan.workItems[0]!;
 		item.workspace = 'treedx';
 		item.contextRefs = [
@@ -56,12 +59,12 @@ describe('proposal-owned execution plan', () => {
 		expect(validatePortableContentData('proposal', value).ok).toBe(false);
 	});
 	it('binds one exact TreeDX output identity without introducing an output taxonomy', () => {
-		const value = proposal() as ReturnType<typeof proposal> & { executionPlan: { workItems: Array<Record<string, unknown>> } };
+		const value = proposal();
 		const item = value.executionPlan.workItems[0]!;
 		item.workspace = 'treedx';
 		item.requestedPermissions = { content: { read: ['proposal'], write: ['knowledge'] }, tools: ['source.read'] };
 		item.contextRefs = [{ store: 'treedx', model: 'repository', id: 'sdk-library', repository: 'treeseed-ai/sdk-library', commit: 'b'.repeat(40), path: '.' }];
-		item.output = { model: 'knowledge', id: 'sdk-workday-contract-inventory-v1' };
+		Object.assign(item, { output: { model: 'knowledge', id: 'sdk-workday-contract-inventory-v1' } });
 		expect(validatePortableContentData('proposal', value).ok).toBe(true);
 		item.workspace = 'git';
 		expect(validatePortableContentData('proposal', value).ok).toBe(false);
@@ -74,9 +77,8 @@ describe('proposal-owned execution plan', () => {
 	});
 	it('rejects invalid estimate ordering', () => { const value = proposal(); value.executionPlan.workItems[0]!.estimate.expectedSeconds = 300; expect(validatePortableContentData('proposal', value).ok).toBe(false); });
 	it('rejects executable work without a provider capability demand', () => {
-		const value = proposal() as ReturnType<typeof proposal> & { executionPlan: { workItems: Array<Record<string, unknown>> } };
-		delete value.executionPlan.workItems[0]!.requiredCapabilities;
-		expect(validatePortableContentData('proposal', value).ok).toBe(false);
+		const value = proposal(), { requiredCapabilities: _required, ...missing } = value.executionPlan.workItems[0]!;
+		expect(validatePortableContentData('proposal', { ...value, executionPlan: { workItems: [missing] } }).ok).toBe(false);
 	});
 	it('rejects missing and cyclic work-item dependencies', () => {
 		const missing = proposal(); missing.executionPlan.workItems[0]!.dependsOn.push('missing'); expect(validatePortableContentData('proposal', missing).ok).toBe(false);
@@ -84,8 +86,8 @@ describe('proposal-owned execution plan', () => {
 		expect(validatePortableContentData('proposal', cyclic).ok).toBe(false);
 	});
 	it('rejects retired work-product and dependency taxonomies', () => {
-		const value = proposal() as ReturnType<typeof proposal> & { executionPlan: { workItems: Array<Record<string, unknown>> } };
-		value.executionPlan.workItems[0]!.produces = [{ outputType: 'specialized-output' }];
+		const value = proposal();
+		Object.assign(value.executionPlan.workItems[0]!, { produces: [{ outputType: 'specialized-output' }] });
 		expect(validatePortableContentData('proposal', value).ok).toBe(false);
 	});
 	it('describes nested execution-plan fields from the canonical validator', () => {

@@ -166,7 +166,7 @@ describe('ControlPlaneClient', () => {
 		const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002' }, fetchImpl });
 		await expect(client.invoke(CONTROL_PLANE_OPERATIONS.projects.list, {
 			path: {}, query: { teamId: 'team 1', limit: 20 }, body: undefined,
-		})).rejects.toMatchObject<Partial<ControlPlaneClientError>>({ status: 403, problem: { code: 'authorization_denied' } });
+		})).rejects.toMatchObject({ status: 403, problem: { code: 'authorization_denied' } });
 		expect(String(fetchImpl.mock.calls[0]![0])).toBe('http://127.0.0.1:3002/v1/projects?teamId=team+1&limit=20');
 	});
 
@@ -199,7 +199,7 @@ describe('ControlPlaneClient', () => {
 	it('preserves OAuth protocol error codes for device polling', async () => {
 		const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ error: 'authorization_pending', error_description: 'Authorization is pending.' }), { status: 400, headers: { 'content-type': 'application/json' } }));
 		const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002' }, fetchImpl });
-		await expect(client.exchangeDeviceCode('trsd', 'device')).rejects.toMatchObject<Partial<ControlPlaneClientError>>({ status: 400, problem: { code: 'authorization_pending', detail: 'Authorization is pending.' } });
+		await expect(client.exchangeDeviceCode('trsd', 'device')).rejects.toMatchObject({ status: 400, problem: { code: 'authorization_pending', detail: 'Authorization is pending.' } });
 	});
 
 	it('preserves signed input-required state for an exact confirmation retry', async () => {
@@ -207,7 +207,7 @@ describe('ControlPlaneClient', () => {
 		const inputRequired = { type: 'input_required', requestId: 'request_1', prompt: 'Confirm exact input.', confirmation };
 		const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ type: 'about:blank', title: 'Confirmation required', status: 409, code: 'confirmation_required', inputRequired }), { status: 409, headers: { 'content-type': 'application/problem+json' } }));
 		const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002' }, fetchImpl });
-		await expect(client.invoke(CONTROL_PLANE_OPERATIONS.workdays.start, { path: { teamId: 'team_1' }, query: {}, body: {} }, { idempotencyKey: 'idempotency_1' })).rejects.toMatchObject<Partial<ControlPlaneClientError>>({ problem: { code: 'confirmation_required', inputRequired } });
+		await expect(client.invoke(CONTROL_PLANE_OPERATIONS.workdays.start, { path: { teamId: 'team_1' }, query: {}, body: {} }, { idempotencyKey: 'idempotency_1' })).rejects.toMatchObject({ problem: { code: 'confirmation_required', inputRequired } });
 		expect(JSON.parse(Buffer.from(encodeConfirmationState(confirmation), 'base64url').toString('utf8'))).toEqual(confirmation);
 	});
 });
