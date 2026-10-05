@@ -107,6 +107,6 @@ export function verifySandboxEnvironmentCatalog(value: unknown, publicJwk: JsonW
 	const catalog = sandboxEnvironmentCatalogSchema.parse(value);
 	const { catalogDigest, signature: _signature, ...material } = catalog;
 	if (sandboxEnvironmentCatalogDigest(material) !== catalogDigest) throw new Error('Sandbox environment catalog digest does not match its canonical content.');
-	if (!verify(null, sandboxEnvironmentCatalogSigningBytes(catalog), createPublicKey({ key: publicJwk, format: 'jwk' }), Buffer.from(catalog.signature.value, 'base64url'))) throw new Error('Sandbox environment catalog signature is invalid.');
+	if (!verify(null, sandboxEnvironmentCatalogSigningBytes(catalog), createPublicKey({ key: { ...publicJwk }, format: 'jwk' }), Buffer.from(catalog.signature.value, 'base64url'))) throw new Error('Sandbox environment catalog signature is invalid.');
 	return catalog;
 }

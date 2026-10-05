@@ -1,4 +1,4 @@
-import type { CommandNodeDescriptor, CommandTreeDescriptor } from './command-tree.ts';
+import type { CommandLeafDescriptor, CommandNodeDescriptor, CommandTreeDescriptor } from './command-tree.ts';
 import { commandPaths } from './catalog/infrastructure/command-tree-paths.ts';
 import { managedSecretCommands } from './catalog/services/secret-commands.ts';
 import { WORKDAY_PROFILE_COMMAND_BINDINGS } from './catalog/workdays/profile-commands.ts';
@@ -13,7 +13,7 @@ const workdayIntentInputs = [field('body', 'profileId', 'option', 'profile'), fi
 	field('body', 'decisionIds', 'option', 'decision', false, 'csv'),
 	field('body', 'continueFromWorkdayId', 'option', 'continueFrom'), ...WORKDAY_SELECTION_INPUTS];
 
-const operationBindings: Record<string, Execution> = {
+const operationBindings: Record<string, CommandLeafDescriptor['execution']> = {
 	...PROVIDER_ENVIRONMENT_COMMAND_BINDINGS,
 	'auth login': protocol('protocol.identity.login'),
 	'auth logout': protocol('protocol.oauth.revoke'),
@@ -159,6 +159,7 @@ const operationBindings: Record<string, Execution> = {
 	'workdays start': operation('workdays.start', [field('path', 'teamId', 'context', 'team', true), field('body', 'preflightId', 'option', 'preflight', true), field('body', 'preflightDigest', 'option', 'digest', true)]),
 	'workdays list': operation('workdays.list', [field('path', 'teamId', 'context', 'team', true), ...page()]),
 	'workdays show': operation('workdays.show', [field('path', 'teamId', 'context', 'team', true), field('path', 'runId', 'argument', 'workday', true)]),
+	'workdays events list': operation('workdays.events.list', [field('path', 'teamId', 'context', 'team', true), field('path', 'runId', 'argument', 'workday', true), ...page()]),
 	'workdays stop': operation('workdays.stop', [field('path', 'teamId', 'context', 'team', true), field('path', 'runId', 'argument', 'workday', true), field('body', 'reason', 'option', 'reason')]),
 	'workdays schedules list': operation('workdays.schedules.list', [field('path', 'teamId', 'context', 'team', true)]),
 	'workdays schedules start': operation('workdays.schedules.create', [field('path', 'teamId', 'context', 'team', true), ...workdayIntentInputs.map(binding => ({ ...binding, field: `intent.${binding.field}` })), field('body', 'cadenceSeconds', 'option', 'cadenceSeconds', false, 'integer')]),
@@ -347,6 +348,7 @@ const commandTree: CommandTreeDescriptor = {
 				{ name: '--input', description: 'YAML or JSON workday policy document.', type: 'string', required: true },
 			])]),
 			{ ...leaf('plan', 'mutation'), nodeType: 'leaf', segment: 'plan', kind: 'mutation', description: 'Plan a workday with optional targeted cooperative planning; acting stays decision-governed.', resultSchemaId: 'treeseed.command.workdays.plan/v1', options: WORKDAY_PLAN_OPTIONS }, leaf('start', 'mutation', undefined, 'authority'), leaf('list'), leaf('show', 'read', 'workday'), leaf('watch', 'read', 'workday'), leaf('stop', 'mutation', 'workday', 'authority'),
+			branch('events', [leaf('list', 'read', 'workday')]),
 			branch('schedules', [leaf('list'), leaf('show', 'read', 'schedule'), leaf('plan'), addOptions(leaf('start', 'mutation', undefined, 'authority'), [...WORKDAY_PLAN_OPTIONS.filter(option => option.name !== '--plan'), { name: '--cadence-seconds', description: 'Seconds between recurring workday starts.', type: 'number' }]), leaf('pause', 'mutation', 'schedule', 'authority'), leaf('resume', 'mutation', 'schedule', 'authority'), leaf('retire', 'mutation', 'schedule', 'destructive')]),
 		]),
 		branch('assignments', [leaf('list'), leaf('show', 'read', 'assignment'), leaf('explain', 'read', 'assignment'), leaf('watch', 'read', 'assignment'), leaf('retry', 'mutation', 'assignment', 'authority'), leaf('cancel', 'mutation', 'assignment', 'destructive'), leaf('artifacts', 'read', 'assignment')]),

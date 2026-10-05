@@ -1,4 +1,5 @@
 import { validateResearchSourcePolicy } from '../agent-capacity/validation/research/source-policy.ts';
+import { capabilityAccountingLimitsSchema } from '../agent-capacity/contracts/capacity/workdays/capability-accounting.ts';
 import {
 CAPACITY_PROVIDER_ACCESS_TOKEN_REFRESH_SECONDS,
 CAPACITY_PROVIDER_ACCESS_TOKEN_TTL_SECONDS,
@@ -9,6 +10,8 @@ type CapacityProviderPublicJwk,
 type ProviderSupplyOffer,
 } from './contracts/index.ts';
 import { validateExecutionProviderRuntimeConfiguration } from '../ai-appliance/validation.ts';
+import { CORE_CAPABILITY_DEFINITIONS } from './core-capability-catalog.ts';
+import { capabilityOfferSchema } from './capability-ontology.ts';
 
 export interface CapacityProviderContractDiagnostic {
 	code: string;
@@ -149,7 +152,9 @@ export function validateCapacityProviderManifestV5(manifest: CapacityProviderMan
 		if (!Array.isArray(adapter.laneIds) || adapter.laneIds.length === 0) add(diagnostics, 'provider_adapter_lanes_required', `${path}.laneIds`, 'Every adapter must serve at least one lane.');
 		for (const laneId of adapter.laneIds ?? []) if (!laneIds.has(laneId)) add(diagnostics, 'provider_adapter_lane_unknown', `${path}.laneIds`, `Adapter references unknown lane ${laneId}.`);
 		for (const bindingId of adapter.credentialProfiles ?? []) if (!bindingIds.has(bindingId)) add(diagnostics, 'provider_adapter_credential_unknown', `${path}.credentialProfiles`, `Adapter references unknown credential profile ${bindingId}.`);
-		if (!adapter.nativeLimits || typeof adapter.nativeLimits !== 'object' || Array.isArray(adapter.nativeLimits)) add(diagnostics, 'provider_adapter_limits_invalid', `${path}.nativeLimits`, 'Adapter nativeLimits must be an object.');
+		if (!adapter.nativeLimits || typeof adapter.nativeLimits !== 'object' || Array.isArray(adapter.nativeLimits)
+			|| ((adapter.offers?.length || ['modelConfigurationId', 'dailyActiveSecondsLimit', 'capabilityLimits'].some(key => Object.hasOwn(adapter.nativeLimits, key)))
+				&& !capabilityAccountingLimitsSchema.safeParse(adapter.nativeLimits).success)) add(diagnostics, 'provider_adapter_limits_invalid', `${path}.nativeLimits`, 'Adapter nativeLimits must contain valid shared-model and capability accounting bounds.');
 		for (const entry of validateExecutionProviderRuntimeConfiguration(adapter, path).diagnostics) add(diagnostics, entry.code, entry.path, entry.message);
 		if (adapter.researchSourcePolicy !== undefined) for (const diagnostic of validateResearchSourcePolicy(adapter.researchSourcePolicy).diagnostics) add(diagnostics, diagnostic.code, `${path}.researchSourcePolicy.${diagnostic.path}`, diagnostic.message);
 	}
@@ -209,6 +214,21 @@ export function validateCapacityProviderManifestV5(manifest: CapacityProviderMan
 			if (!profiles.has(binding.sandboxProfileId)) add(diagnostics, 'provider_offer_sandbox_unknown', `${path}.sandboxProfileId`, 'Offer references an unknown provider-local sandbox profile.');
 			if (binding.offer.capabilities.some((reference) => !reference.id.startsWith('treeseed.') && !reference.id.startsWith('provider.'))) add(diagnostics, 'provider_offer_capability_namespace_invalid', `${path}.offer.capabilities`, 'Offers require standardized TreeSeed or provider capability references.');
 			if (binding.offer.conformance.some((entry) => entry.status !== 'passed')) add(diagnostics, 'provider_offer_conformance_failed', `${path}.offer.conformance`, 'Only passing capability conformance may be advertised.');
+			const offer = capabilityOfferSchema.safeParse(binding.offer);
+			const tierOrder = ['signed-attestation', 'automated-suite', 'reviewed-certification'];
+			if (!offer.success || offer.data.capabilities.some(reference => {
+				const receipts = offer.data.conformance.filter(receipt => receipt.capability.id === reference.id
+					&& receipt.capability.version === reference.version && receipt.capability.digest === reference.digest);
+				const requiredTier = CORE_CAPABILITY_DEFINITIONS.find(definition => definition.id === reference.id)?.qualificationTier;
+				return receipts.length !== 1 || receipts.some(receipt =>
+					(requiredTier && tierOrder.indexOf(receipt.tier) < tierOrder.indexOf(requiredTier))
+					|| (receipt.tier !== 'signed-attestation' && !receipt.suite)
+					|| Date.parse(receipt.issuedAt) > Date.now()
+					|| (receipt.expiresAt !== null && Date.parse(receipt.expiresAt) <= Date.now()));
+			}) || offer.success && offer.data.conformance.some(receipt => !offer.data.capabilities.some(reference =>
+				reference.id === receipt.capability.id && reference.version === receipt.capability.version && reference.digest === receipt.capability.digest))) {
+				add(diagnostics, 'provider_offer_conformance_invalid', `${path}.offer.conformance`, 'Capability qualification must be unique, current, and satisfy its declared tier and suite.');
+			}
 		}
 	}
 	return result(diagnostics);

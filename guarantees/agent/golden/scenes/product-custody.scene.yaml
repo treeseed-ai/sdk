@@ -3,6 +3,15 @@ id: sdk.golden.product-custody
 title: SDK product and archive custody
 scope: local-component-tests
 workflow:
+  - id: architecture-release-review-unit-1
+    action: { verifier: sdk.golden.architecture-release-review-unit-1 }
+    expect: { status: passed }
+  - id: architecture-release-review-unit-2
+    action: { verifier: sdk.golden.architecture-release-review-unit-2 }
+    expect: { status: passed }
+  - id: architecture-release-archive-native-1
+    action: { verifier: sdk.golden.architecture-release-archive-native-1 }
+    expect: { status: passed }
   - id: current-source
     action: { verifier: sdk.golden.current-frozen-source }
     expect: { status: passed }

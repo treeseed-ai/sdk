@@ -81,6 +81,7 @@ const proposalLinks = {
 
 const executionPlanWorkItemSchema = z.object({
 	id: nonEmpty.regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u),
+	priority: z.number().int().safe().optional(),
 	activity: z.literal('acting'),
 	agentClass: nonEmpty.regex(/^[a-z][a-z0-9-]*$/u),
 	workspace: z.enum(['read-only', 'treedx', 'git']),
@@ -294,7 +295,8 @@ function fieldContract(schema: z.ZodTypeAny): Record<string, unknown> {
 	while (current instanceof z.ZodOptional || current instanceof z.ZodNullable
 		|| current instanceof z.ZodDefault || current instanceof z.ZodEffects) {
 		if (current instanceof z.ZodOptional || current instanceof z.ZodDefault) required = false;
-		current = current instanceof z.ZodEffects ? current.innerType() : current.removeDefault?.() ?? current.unwrap();
+		current = current instanceof z.ZodEffects ? current.innerType()
+			: current instanceof z.ZodDefault ? current.removeDefault() : current.unwrap();
 	}
 	const contract: Record<string, unknown> = { required };
 	if (current instanceof z.ZodEnum) return { ...contract, type: 'string', values: current.options };

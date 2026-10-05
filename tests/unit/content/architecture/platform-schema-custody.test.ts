@@ -6,7 +6,7 @@ import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
 import { verifyPlatformRepository } from '../../../../src/platform/index.ts';
 import { partialSdkDocument } from './schema-verification-fixture.ts';
-import { assertCanonicalAuthorityUnchanged, canonicalAuthority, storedDefinitions } from './canonical-schema-fixture.ts';
+import { assertCanonicalAuthorityUnchanged, canonicalAuthority, constraintPaths, removeConstraint, storedDefinitions } from './canonical-schema-fixture.ts';
 
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
@@ -80,6 +80,32 @@ describe('native Platform architecture-schema custody', () => {
 		execFileSync('git', ['-c', 'user.name=Architecture test', '-c', 'user.email=architecture@example.test',
 			'commit', '--quiet', '-m', 'Unconstrained immutable assignment authority'], { cwd: root });
 		const changed = verifyPlatformRepository(root);
+		// The original committed failure stays readable. Each controlled field
+		// substitution below exercises the SAME public workspace reader without
+		// adding a schema validator, runner or a commit per individual assertion.
+		const retainedCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+		const retainedBytes = readFileSync(resolve(root, 'docs/agent.schema.yml'), 'utf8');
+		const original = canonicalAuthority().document, originalBytes = stringify(original), missed: string[] = [];
+		writeFileSync(resolve(root, 'docs/agent.schema.yml'), originalBytes);
+		const complete = verifyPlatformRepository(root);
+		for (const name of ['AssignmentAttempt', 'AssignmentContext', 'AssignmentResult', 'Lease', 'Reservation', 'UsageSettlement']) {
+			for (const path of constraintPaths(original.$defs[name])) {
+				const altered = structuredClone(original); removeConstraint(altered, name, path);
+				const bytes = stringify(altered); writeFileSync(resolve(root, 'docs/agent.schema.yml'), bytes);
+				const denied = verifyPlatformRepository(root);
+				expect(readFileSync(resolve(root, 'docs/agent.schema.yml'), 'utf8')).toBe(bytes);
+				expect(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()).toBe(retainedCommit);
+				if (denied.ok || !denied.diagnostics.length || JSON.stringify(denied.diagnostics) === JSON.stringify(complete.diagnostics)) missed.push(`${name}.${path.join('.')}`);
+			}
+		}
+		// Restore ONLY the controlled workspace input, not the committed failed
+		// observation. Exact canonical retry is fresh and cannot erase that blob.
+		writeFileSync(resolve(root, 'docs/agent.schema.yml'), originalBytes);
+		expect(verifyPlatformRepository(root)).toEqual(complete);
+		writeFileSync(resolve(root, 'docs/agent.schema.yml'), retainedBytes);
+		expect(execFileSync('git', ['show', `${retainedCommit}:docs/agent.schema.yml`], { cwd: root, encoding: 'utf8' })).toBe(retainedBytes);
+		expect(verifyPlatformRepository(root)).toEqual(changed);
+		expect(missed).toEqual([]);
 		expect(changed.digest).not.toBe(baseline.digest);
 		expect(changed.ok).toBe(false);
 		expect(changed.diagnostics).not.toEqual(baseline.diagnostics);

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AGENT_WORK_EXECUTION_MODES, type AgentWorkExecutionMode } from '../../support/authority/execution-mode.ts';
+import { assignmentReferenceSchema } from '../assignments/agent-execution.ts';
 
 const identifier = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
 const positiveWeights = z.record(z.number().positive());
@@ -40,10 +41,16 @@ export const appliedWorkdaySchema = z.object({
 	admittedSecondsByAgentClass: z.record(z.number().int().nonnegative()),
 	activatedAt: z.string().datetime({ offset: true }).optional(), closingAt: z.string().datetime({ offset: true }).optional(),
 	endedAt: z.string().datetime({ offset: true }).optional(),
-}).strict();
+	reportRef: assignmentReferenceSchema.options[1].optional(),
+}).strict().superRefine((workday, context) => {
+	if (workday.state === 'ended' && !workday.reportRef) context.addIssue({
+		code: z.ZodIssueCode.custom, path: ['reportRef'], message: 'An ended workday requires its exact TreeDX closeout report.',
+	});
+});
 
 export interface FairReadyNode {
 	id: string;
+	priority?: number;
 	projectId: string;
 	agentClass: string;
 	readyAt: string;
@@ -65,6 +72,7 @@ function shareDebt(id: string, weights: Record<string, number>, actual: Map<stri
 /** Select work only; provider selection is a later hard-gated admission step. */
 export function selectFairReadyNode(nodes: FairReadyNode[], usage: FairUsage[], policy: z.infer<typeof workdayPolicySchema>) {
 	if (!nodes.length) return null;
+	for (const node of nodes) if (node.priority !== undefined && !Number.isSafeInteger(node.priority)) throw new Error('execution_node_priority_invalid');
 	const projectActual = new Map<string, number>();
 	const classActual = new Map<string, number>();
 	for (const entry of usage) {
@@ -86,9 +94,13 @@ export function selectFairReadyNode(nodes: FairReadyNode[], usage: FairUsage[], 
 		shareDebt(right, classWeights, projectClassActual) - shareDebt(left, classWeights, projectClassActual)
 		|| left.localeCompare(right));
 	const selected = projectNodes.filter((node) => node.agentClass === classes[0]).sort((left, right) =>
-		Date.parse(left.readyAt) - Date.parse(right.readyAt)
+		(right.priority ?? 0) - (left.priority ?? 0) || Date.parse(left.readyAt) - Date.parse(right.readyAt)
 		|| left.id.localeCompare(right.id))[0] ?? null;
-	return selected ? { ...selected, explanation: {
+	return selected ? { ...selected, input: structuredClone({
+		nodes: [...nodes].sort((left, right) => left.id.localeCompare(right.id)),
+		usage: [...usage].sort((left, right) => left.projectId.localeCompare(right.projectId)
+			|| left.agentClass.localeCompare(right.agentClass) || left.seconds - right.seconds),
+	}), explanation: {
 		projectTargetPercent: 100 * projectWeights[projectId]! / Object.values(projectWeights).reduce((sum, weight) => sum + weight, 0),
 		projectDeficitSeconds: shareDebt(projectId, projectWeights, projectActual),
 		classTargetPercent: 100 * classWeights[selected.agentClass]! / Object.values(classWeights).reduce((sum, weight) => sum + weight, 0),

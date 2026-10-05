@@ -9,14 +9,15 @@ const sample = (id: string, seconds: number, overrides: Partial<AllocationMeasur
 	id, completedAt: new Date(Date.parse('2026-10-02T12:00:00Z') + seconds * 1000).toISOString(),
 	expectedSeconds: 300, allocatedSeconds: 600, activeSeconds: 100, outcome: 'completed', ...overrides,
 });
-function native(input: Parameters<typeof calculateAssignmentAllocation>[0]) {
+type NativeCalibration = { result?: ReturnType<typeof calculateAssignmentAllocation>; error?: string };
+function native(input: Parameters<typeof calculateAssignmentAllocation>[0] | { cases: Array<Parameters<typeof calculateAssignmentAllocation>[0]> }) {
 	const result = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'),
 		fileURLToPath(new URL('./calibration-native.ts', import.meta.url))], {
 		input: JSON.stringify(input), encoding: 'utf8', timeout: 15_000,
 	});
 	expect(result.error).toBeUndefined();
 	expect(result.status, result.stderr).toBe(0);
-	return JSON.parse(result.stdout) as { result?: ReturnType<typeof calculateAssignmentAllocation>; error?: string };
+	return JSON.parse(result.stdout) as NativeCalibration & { cases?: NativeCalibration[] };
 }
 
 describe('architecture calibration eligibility and immutable hard limits', () => {
@@ -50,6 +51,25 @@ describe('architecture calibration eligibility and immutable hard limits', () =>
 		for (const completedAt of ['', 'not-a-clock']) {
 			expect(() => calibrateAssignmentSeconds(estimate, [sample('invalid', 0, { completedAt })])).toThrow();
 		}
+		const observations: Array<{ field: string; denied: boolean }> = [];
+		for (const field of ['id', 'completedAt', 'expectedSeconds', 'allocatedSeconds', 'activeSeconds']) {
+			const values: unknown[] = [undefined, null, '', ' ', false, true, [], {}];
+			if (field !== 'id') values.push('1');
+			if (field === 'id') values.push(' padded-id ', 1);
+			if (field === 'completedAt') values.push(0, 1, '2026-10-02', '0');
+			for (const value of values) {
+				const input = Object.assign(sample('original-sample', 0), { [field]: value }), before = structuredClone(input);
+				let denied = false; try { calibrateAssignmentSeconds(estimate, [input]); } catch { denied = true; }
+				observations.push({ field, denied }); expect(input).toEqual(before);
+			}
+		}
+		for (const history of [[sample('same', 0), sample('same', 1)], [sample('same', 0), sample('same', 0)]]) {
+			const before = structuredClone(history); let denied = false;
+			try { calibrateAssignmentSeconds(estimate, history); } catch { denied = true; }
+			observations.push({ field: 'duplicate', denied }); expect(history).toEqual(before);
+		}
+		expect(observations.every(value => value.denied), JSON.stringify(observations)).toBe(true);
+		expect(() => calibrateAssignmentSeconds(estimate, [sample('1', 0)])).not.toThrow();
 	});
 	it('uses public SDK calibration without moving provider profile planning or supply ceilings', () => {
 		const input = { estimate, measurements: [sample('expired', 0, { outcome: 'expired', activeSeconds: 600 })],
@@ -66,5 +86,22 @@ describe('architecture calibration eligibility and immutable hard limits', () =>
 		expect(native(input).result).toMatchObject({ admitted: false, allocatedSeconds: 0, desiredSeconds: 600 });
 		expect(native({ ...input, constraints: [] }).error).toBeDefined();
 		expect(native({ ...input, constraints: [{ id: 'shared-model', remainingSeconds: -1 }] }).error).toBeDefined();
+		const cases: Array<Parameters<typeof calculateAssignmentAllocation>[0]> = [];
+		for (const field of ['id', 'completedAt', 'expectedSeconds', 'allocatedSeconds', 'activeSeconds']) {
+			const values: unknown[] = [undefined, null, '', ' ', false, true, [], {}];
+			if (field !== 'id') values.push('1');
+			if (field === 'id') values.push(' padded-id ', 1);
+			if (field === 'completedAt') values.push(0, 1, '2026-10-02', '0');
+			for (const value of values) {
+				cases.push({ estimate, measurements: [Object.assign(sample('original-sample', 0), { [field]: value })],
+					constraints: [{ id: 'original-hard-limit', remainingSeconds: 600 }] });
+			}
+		}
+		cases.push({ estimate, measurements: [sample('same', 0), sample('same', 1)],
+			constraints: [{ id: 'original-hard-limit', remainingSeconds: 600 }] });
+		const before = structuredClone(cases), output = native({ cases }); expect(cases).toEqual(before);
+		expect(output.cases).toHaveLength(cases.length);
+		expect(output.cases!.every(value => typeof value.error === 'string' && value.error.length > 0), JSON.stringify(output.cases)).toBe(true);
+		expect(native({ estimate, measurements: [sample('1', 0)], constraints: [{ id: 'original-hard-limit', remainingSeconds: 600 }] }).error).toBeUndefined();
 	});
 });

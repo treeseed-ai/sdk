@@ -1,6 +1,6 @@
-import type { CommandExecutionBinding, CommandLeafDescriptor, CommandNodeDescriptor } from '../command-tree.ts';
+import type { CommandExecutionBinding, CommandLeafDescriptor, CommandNodeDescriptor, CommandOptionDescriptor } from '../command-tree.ts';
 
-const plan = { name: '--plan', description: 'Return the exact proposed outcome without mutation.', type: 'boolean' as const };
+const plan = { name: '--plan', description: 'Return the exact proposed outcome without mutation.', type: 'boolean' as const } satisfies CommandOptionDescriptor;
 const local = (handlerId: `local.${string}`): CommandExecutionBinding => ({ kind: 'local', handlerId });
 const operation = (operationId: `${string}.${string}`, input: Extract<CommandExecutionBinding, { kind: 'operation' }>['input']): CommandExecutionBinding => ({ kind: 'operation', operationId, input });
 const path = (field: string, source: 'argument' | 'context', name: string, required = true) => ({ target: 'path' as const, field, source, name, required, transform: 'identity' as const });

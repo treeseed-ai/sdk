@@ -1,4 +1,4 @@
-import type { CommandLeafDescriptor, CommandNodeDescriptor } from '../../command-tree.ts';
+import type { CommandInputBinding, CommandLeafDescriptor, CommandNodeDescriptor } from '../../command-tree.ts';
 import { identityLoginCommand } from '../services/identity-commands.ts';
 
 type Execution = CommandLeafDescriptor['execution'];
@@ -8,11 +8,11 @@ export const unavailable = (reason = 'This capability is not enabled until its c
 export const protocol = (handlerId: `protocol.${string}`): Execution => ({ kind: 'protocol', handlerId });
 export const local = (handlerId: `local.${string}`): Execution => ({ kind: 'local', handlerId });
 export const field = (target: 'path' | 'query' | 'body', name: string, source: 'argument' | 'context' | 'option', sourceName = name, required = false, transform: 'identity' | 'integer' | 'csv' = 'identity') => ({ target, field: name, source, name: sourceName, required, transform });
-export const operation = (operationId: `${string}.${string}`, input: ReturnType<typeof field>[] = []): Execution => ({ kind: 'operation', operationId, input });
+export const operation = (operationId: `${string}.${string}`, input: CommandInputBinding[] = []): Execution => ({ kind: 'operation', operationId, input });
 export const page = () => [field('query', 'status', 'option'), field('query', 'limit', 'option', 'limit', false, 'integer'), field('query', 'cursor', 'option')];
 export const aiNode = () => field('path', 'nodeId', 'context', 'node', true);
 export const aiInstance = () => [field('path', 'teamId', 'context', 'team', true), field('path', 'instanceId', 'context', 'node', true)];
-export const planOption = { name: '--plan', description: 'Return the exact proposed outcome without mutation.', type: 'boolean' as const };
+export const planOption = { name: '--plan', description: 'Return the exact proposed outcome without mutation.', type: 'boolean' } satisfies NonNullable<CommandLeafDescriptor['options']>[number];
 
 export function leaf(segment: string, kind: 'read' | 'mutation' = 'read', argument?: string, confirmation: 'never' | 'destructive' | 'credential' | 'authority' | 'production' | 'irreversible' = 'never'): CommandNodeDescriptor {
 	const value: CommandLeafDescriptor = {

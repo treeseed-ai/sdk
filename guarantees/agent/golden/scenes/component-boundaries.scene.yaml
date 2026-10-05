@@ -3,6 +3,120 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: execution-qualification-unit-1
+    action: { verifier: sdk.golden.execution-qualification-unit-1 }
+    expect: { status: passed }
+  - id: execution-work-priority-unit-1
+    action: { verifier: sdk.golden.execution-work-priority-unit-1 }
+    expect: { status: passed }
+  - id: execution-node-priority-unit-1
+    action: { verifier: sdk.golden.execution-node-priority-unit-1 }
+    expect: { status: passed }
+  - id: execution-node-priority-unit-2
+    action: { verifier: sdk.golden.execution-node-priority-unit-2 }
+    expect: { status: passed }
+  - id: execution-selection-input-unit-1
+    action: { verifier: sdk.golden.execution-selection-input-unit-1 }
+    expect: { status: passed }
+  - id: sdk.golden.execution-protected-observation-native-1
+    action: { verifier: sdk.golden.execution-protected-observation-native-1 }
+    expect: { status: passed }
+  - id: sdk.golden.execution-protected-observation-unit-1
+    action: { verifier: sdk.golden.execution-protected-observation-unit-1 }
+    expect: { status: passed }
+  - id: execution-retired-mode-unit-1
+    action: { verifier: sdk.golden.execution-retired-mode-unit-1 }
+    expect: { status: passed }
+  - id: execution-retired-mode-native-1
+    action: { verifier: sdk.golden.execution-retired-mode-native-1 }
+    expect: { status: passed }
+  - id: execution-retired-command-unit-1
+    action: { verifier: sdk.golden.execution-retired-command-unit-1 }
+    expect: { status: passed }
+  - id: execution-weighted-opportunity-unit-1
+    action: { verifier: sdk.golden.execution-weighted-opportunity-unit-1 }
+    expect: { status: passed }
+  - id: execution-retained-quota-unit-1
+    action: { verifier: sdk.golden.execution-retained-quota-unit-1 }
+    expect: { status: passed }
+  - id: execution-accounting-continuity-unit-1
+    action: { verifier: sdk.golden.execution-accounting-continuity-unit-1 }
+    expect: { status: passed }
+  - id: execution-accounting-continuity-unit-2
+    action: { verifier: sdk.golden.execution-accounting-continuity-unit-2 }
+    expect: { status: passed }
+  - id: architecture-intent-unit-1
+    action: { verifier: sdk.golden.architecture-intent-unit-1 }
+    expect: { status: passed }
+  - id: architecture-intent-unit-2
+    action: { verifier: sdk.golden.architecture-intent-unit-2 }
+    expect: { status: passed }
+  - id: architecture-intent-unit-3
+    action: { verifier: sdk.golden.architecture-intent-unit-3 }
+    expect: { status: passed }
+  - id: architecture-intent-unit-4
+    action: { verifier: sdk.golden.architecture-intent-unit-4 }
+    expect: { status: passed }
+  - id: architecture-intent-transport-unit-1
+    action: { verifier: sdk.golden.architecture-intent-transport-unit-1 }
+    expect: { status: passed }
+  - id: architecture-intent-transport-unit-2
+    action: { verifier: sdk.golden.architecture-intent-transport-unit-2 }
+    expect: { status: passed }
+  - id: architecture-intent-native-1
+    action: { verifier: sdk.golden.architecture-intent-native-1 }
+    expect: { status: passed }
+  - id: architecture-record-custody-unit-1
+    action: { verifier: sdk.golden.architecture-record-custody-unit-1 }
+    expect: { status: passed }
+  - id: architecture-record-custody-unit-2
+    action: { verifier: sdk.golden.architecture-record-custody-unit-2 }
+    expect: { status: passed }
+  - id: architecture-record-custody-unit-3
+    action: { verifier: sdk.golden.architecture-record-custody-unit-3 }
+    expect: { status: passed }
+  - id: architecture-record-custody-unit-4
+    action: { verifier: sdk.golden.architecture-record-custody-unit-4 }
+    expect: { status: passed }
+  - id: architecture-profile-authority-1
+    action: { verifier: sdk.golden.architecture-profile-authority-1 }
+    expect: { status: passed }
+  - id: architecture-profile-authority-2
+    action: { verifier: sdk.golden.architecture-profile-authority-2 }
+    expect: { status: passed }
+  - id: architecture-profile-authority-3
+    action: { verifier: sdk.golden.architecture-profile-authority-3 }
+    expect: { status: passed }
+  - id: architecture-profile-authority-4
+    action: { verifier: sdk.golden.architecture-profile-authority-4 }
+    expect: { status: passed }
+  - id: architecture-profile-authority-5
+    action: { verifier: sdk.golden.architecture-profile-authority-5 }
+    expect: { status: passed }
+  - id: architecture-profile-authority-6
+    action: { verifier: sdk.golden.architecture-profile-authority-6 }
+    expect: { status: passed }
+  - id: architecture-profile-authority-7
+    action: { verifier: sdk.golden.architecture-profile-authority-7 }
+    expect: { status: passed }
+  - id: architecture-shared-allocation-1
+    action: { verifier: sdk.golden.architecture-shared-allocation-1 }
+    expect: { status: passed }
+  - id: architecture-shared-allocation-2
+    action: { verifier: sdk.golden.architecture-shared-allocation-2 }
+    expect: { status: passed }
+  - id: architecture-shared-allocation-3
+    action: { verifier: sdk.golden.architecture-shared-allocation-3 }
+    expect: { status: passed }
+  - id: architecture-shared-allocation-4
+    action: { verifier: sdk.golden.architecture-shared-allocation-4 }
+    expect: { status: passed }
+  - id: architecture-shared-allocation-5
+    action: { verifier: sdk.golden.architecture-shared-allocation-5 }
+    expect: { status: passed }
+  - id: architecture-shared-allocation-6
+    action: { verifier: sdk.golden.architecture-shared-allocation-6 }
+    expect: { status: passed }
   - id: architecture-workday-event-command
     action: { verifier: sdk.golden.architecture-workday-event-command }
     expect: { status: passed }

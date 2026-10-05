@@ -58,7 +58,7 @@ export function schemaRecord(value: unknown): Schema {
 // from runtime code. Only assertion keywords are mutations; prose is not policy.
 export function constraintPaths(value: unknown, path: string[] = []): string[][] {
 	if (!value || typeof value !== 'object') return [];
-	const keywords = new Set(['$ref', 'enum', 'const', 'minLength', 'maxLength', 'pattern',
+	const keywords = new Set(['$ref', 'type', 'properties', 'required', 'additionalProperties', 'items', 'enum', 'const', 'minLength', 'maxLength', 'pattern',
 		'format', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'minItems',
 		'maxItems', 'minProperties', 'uniqueItems', 'allOf', 'anyOf', 'oneOf', 'not', 'if',
 		'then', 'else', 'contains']);

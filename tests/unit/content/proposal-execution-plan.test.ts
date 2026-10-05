@@ -17,6 +17,23 @@ function proposal() {
 }
 
 describe('proposal-owned execution plan', () => {
+	it('retains optional governed work-item integer priority in draft ready and decided proposals without coercion or an independent node authority', () => {
+		for (const status of ['draft', 'ready', 'decided']) {
+			const original = { ...proposal(), status }, before = structuredClone(original);
+			const omitted = validatePortableContentData('proposal', original);
+			expect(omitted.ok).toBe(true); expect(omitted.data).toMatchObject({ executionPlan: { workItems: original.executionPlan.workItems } });
+			for (const priority of [Number.MIN_SAFE_INTEGER, -1, 0, 1, Number.MAX_SAFE_INTEGER]) {
+				const input = { ...original, executionPlan: { workItems: original.executionPlan.workItems.map(item => ({ ...item, priority })) } }, held = structuredClone(input);
+				const result = validatePortableContentData('proposal', input);
+				expect(result.ok).toBe(true); expect(result.data).toMatchObject({ executionPlan: input.executionPlan }); expect(input).toEqual(held);
+			}
+			for (const priority of [null, '', '1', false, true, [], {}, 0.5, NaN, Infinity, -Infinity, Number.MAX_SAFE_INTEGER + 1, Number.MIN_SAFE_INTEGER - 1]) {
+				const input = { ...original, executionPlan: { workItems: original.executionPlan.workItems.map(item => Object.assign({}, item, { priority })) } }, held = structuredClone(input);
+				expect(validatePortableContentData('proposal', input).ok).toBe(false); expect(input).toEqual(held);
+			}
+			expect(original).toEqual(before); expect(Object.hasOwn(original.executionPlan.workItems[0]!, 'priority')).toBe(false);
+		}
+	});
 	it('allows draft work to be estimated without fabricating initial budgets but gates ready work', () => {
 		const value = proposal();
 		const { estimate: _estimate, reviewEstimate: _reviewEstimate, ...unestimated } = value.executionPlan.workItems[0]!;

@@ -99,6 +99,10 @@ export interface AgentActivityEvent {
 
 export interface ProviderRuntimeEventInput {
 	id: string;
+	leaseToken?: string;
+	runnerId?: string;
+	sequence?: number;
+	protectedPayload?: Record<string, unknown>;
 	eventType: `provider.${string}`;
 	status: 'recorded' | 'active' | 'completed' | 'warning' | 'error' | 'failed';
 	component: 'provider-manager' | 'provider-runner' | 'lease' | 'execution-provider' | 'recovery';

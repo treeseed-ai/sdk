@@ -25,6 +25,7 @@ export const executionNodeSchema = z.object({
 	projectId: identifier,
 	workdayId: identifier.optional(),
 	workItemId: slug.optional(),
+	priority: z.number().int().safe().optional(),
 	kind: z.enum(['planning', 'estimating', 'acting', 'reviewing', 'reporting', 'communication', 'condition']),
 	pairRole: z.enum(['actor', 'reviewer']).nullable(),
 	sourceRef: exactEntityReferenceSchema,

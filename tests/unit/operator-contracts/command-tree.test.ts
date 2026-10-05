@@ -17,6 +17,35 @@ function tree(): CommandTreeDescriptor {
 }
 
 describe('human command tree contract', () => {
+	it('excludes each retired execution authority command independently while retaining the current provider and graph surface without changing the generated tree', () => {
+		const before = structuredClone(TREESEED_COMMAND_TREE_V1), paths = listCommandPaths();
+		for (const path of ['agent-author', 'capacity-plan-create', 'checkpoint-integrate', 'content-integrate', 'content-abandon']) {
+			expect(paths.some(value => value === path || value.startsWith(`${path} `)), path).toBe(false);
+		}
+		for (const path of ['agents classes list', 'providers offers apply', 'execution graph show', 'execution reconcile',
+			'workdays plan', 'workdays start', 'assignments show', 'capacity ledger']) expect(paths, path).toContain(path);
+		expect(listCommandPaths()).toEqual(paths); expect(TREESEED_COMMAND_TREE_V1).toEqual(before);
+	});
+	it('binds exactly one repeatable CSV decision selector for direct planning and nested schedule creation without derived identity options', () => {
+		const leaves = new Map<string, Extract<(typeof TREESEED_COMMAND_TREE_V1.commands)[number], { nodeType: 'leaf' }>>();
+		const visit = (nodes: typeof TREESEED_COMMAND_TREE_V1.commands, parent: string[] = []) => nodes.forEach(node => {
+			const path = [...parent, node.segment];
+			if (node.nodeType === 'branch') visit(node.children, path); else leaves.set(path.join(' '), node);
+		});
+		const before = structuredClone(TREESEED_COMMAND_TREE_V1);
+		visit(TREESEED_COMMAND_TREE_V1.commands);
+		for (const [path, operationId, field] of [['workdays plan', 'workdays.plan', 'decisionIds'], ['workdays schedules start', 'workdays.schedules.create', 'intent.decisionIds']]) {
+			const leaf = leaves.get(path);
+			if (!leaf || leaf.execution.kind !== 'operation') throw new Error(`Missing original generated operation: ${path}`);
+			expect(leaf.execution.operationId).toBe(operationId);
+			expect(leaf.options?.filter(option => option.name === '--decision')).toEqual([expect.objectContaining({ name: '--decision', type: 'string[]' })]);
+			expect(leaf.execution.input?.filter(input => input.name === 'decision' || input.field === field)).toEqual([{ target: 'body', field, source: 'option', name: 'decision', required: false, transform: 'csv' }]);
+			for (const prohibited of ['executionPlanId', 'capacityPlanId', 'executionInputId', 'demandSetId']) {
+				expect(leaf.execution.input?.some(input => input.field === prohibited || input.field === `intent.${prohibited}` || input.name === prohibited)).toBe(false);
+			}
+		}
+		expect(TREESEED_COMMAND_TREE_V1).toEqual(before);
+	});
 	it('exposes the existing workday event operation with exact run scope and complete cursor pagination', () => {
 		const leaves: Extract<(typeof TREESEED_COMMAND_TREE_V1.commands)[number], { nodeType: 'leaf' }>[] = [];
 		function visit(nodes: typeof TREESEED_COMMAND_TREE_V1.commands): void {

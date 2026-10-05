@@ -20,6 +20,16 @@ export interface CapabilityAccountingObservation {
 	reservedSeconds: number;
 }
 
+function validateObservation(observation: CapabilityAccountingObservation) {
+	if (!observation || typeof observation.healthy !== 'boolean' || typeof observation.observedAt !== 'string'
+		|| !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u.test(observation.observedAt)
+		|| !Number.isFinite(Date.parse(observation.observedAt)) || typeof observation.day !== 'string'
+		|| observation.day !== new Date(Date.parse(observation.observedAt)).toISOString().slice(0, 10)
+		|| [observation.activeSeconds, observation.reservedSeconds].some(value => !Number.isFinite(value) || value < 0)) {
+		throw new Error('capability_accounting_invalid');
+	}
+}
+
 /** Totals must cover the same accounting scope: provider/model or capability. */
 export function remainingCapabilitySeconds(input: {
 	now: string;
@@ -31,6 +41,8 @@ export function remainingCapabilitySeconds(input: {
 	/** Unconsumed portions of outstanding reservations; active portions are already usage. */
 	ledgerReservedSeconds: number;
 }) {
+	validateObservation(input.observation);
+	if (input.previousObservation !== undefined) validateObservation(input.previousObservation);
 	const now = Date.parse(input.now), observed = Date.parse(input.observation.observedAt);
 	const numbers = [input.maximumObservationAgeSeconds, input.dailyLimitSeconds, input.observation.activeSeconds,
 		input.observation.reservedSeconds, input.ledgerActiveSeconds, input.ledgerReservedSeconds];

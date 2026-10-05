@@ -169,8 +169,8 @@ export function validateWorkdayIntent(intent: WorkdayIntent): WorkdayLifecycleDi
 		code: 'field_forbidden', path: key, message: 'Derived execution state is not portable workday intent.',
 	});
 	if (intent.schemaVersion !== 'treeseed.workday-intent/v1') diagnostics.push({ code: 'schema_version_invalid', path: 'schemaVersion', message: 'Unsupported workday intent schema.' });
-	if (!intent.teamId.trim()) diagnostics.push({ code: 'team_required', path: 'teamId', message: 'Team identity is required.' });
-	if (!intent.profileId.trim()) diagnostics.push({ code: 'profile_required', path: 'profileId', message: 'Allocation profile identity is required.' });
+	if (typeof intent.teamId !== 'string' || !intent.teamId.trim()) diagnostics.push({ code: 'team_required', path: 'teamId', message: 'Team identity is required.' });
+	if (typeof intent.profileId !== 'string' || !intent.profileId.trim()) diagnostics.push({ code: 'profile_required', path: 'profileId', message: 'Allocation profile identity is required.' });
 	if (intent.executionMode !== undefined && !['simulation', 'production'].includes(intent.executionMode)) diagnostics.push({ code: 'execution_mode_invalid', path: 'executionMode', message: 'Select simulation or production custody.' });
 	if (intent.endsAt !== undefined && intent.durationSeconds !== undefined) diagnostics.push({ code: 'time_range_ambiguous', path: 'endsAt', message: 'Specify endsAt or durationSeconds, not both; omission uses the team policy duration.' });
 	const start = Date.parse(intent.startsAt);
@@ -183,7 +183,8 @@ export function validateWorkdayIntent(intent: WorkdayIntent): WorkdayLifecycleDi
 		diagnostics.push({ code: 'proposal_selection_invalid', path: 'proposalIds', message: 'Proposal selection must be a bounded nonempty array of proposal identities.' });
 	}
 	if (intent.decisionIds !== undefined && (!Array.isArray(intent.decisionIds) || intent.decisionIds.length === 0 || intent.decisionIds.length > 64
-		|| intent.decisionIds.some((entry) => typeof entry !== 'string' || !entry.trim() || entry.length > 128))) {
+		|| intent.decisionIds.some((entry) => typeof entry !== 'string' || !entry.trim() || entry.length > 128)
+		|| new Set(intent.decisionIds.map(entry => typeof entry === 'string' ? entry.trim() : entry)).size !== intent.decisionIds.length)) {
 		diagnostics.push({ code: 'decision_selection_invalid', path: 'decisionIds', message: 'Decision selection must be a bounded nonempty array of decision identities.' });
 	}
 	if (intent.agentSelection !== undefined) diagnostics.push(...validateWorkdayIntentSelection(intent.agentSelection));
@@ -199,6 +200,19 @@ export function validateWorkdayIntent(intent: WorkdayIntent): WorkdayLifecycleDi
 			path: `allocation.${issue.path.join('.')}`, message: issue.message })));
 	}
 	return diagnostics;
+}
+
+/** Validate the original caller bytes before canonicalizing portable intent. */
+export function normalizeWorkdayIntent(intent: WorkdayIntent): WorkdayIntent {
+	const diagnostics = validateWorkdayIntent(intent);
+	if (diagnostics.length) throw new Error(`Invalid workday intent: ${diagnostics.map(value => `${value.path}: ${value.message}`).join('; ')}`);
+	if (intent.decisionIds === undefined) return { ...intent };
+	const compare = (left: string, right: string) => {
+		const a = Array.from(left, character => character.codePointAt(0)!), b = Array.from(right, character => character.codePointAt(0)!);
+		for (let index = 0; index < Math.min(a.length, b.length); index++) if (a[index] !== b[index]) return a[index]! - b[index]!;
+		return a.length - b.length;
+	};
+	return { ...intent, decisionIds: intent.decisionIds.map(value => value.trim()).sort(compare) };
 }
 
 export function validateWorkdayIntentSelection(value: unknown): WorkdayLifecycleDiagnostic[] {

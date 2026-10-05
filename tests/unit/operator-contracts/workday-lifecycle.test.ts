@@ -1,7 +1,48 @@
 import { describe, expect, it } from 'vitest';
-import { validateSelectedDemand, validateWorkdayIntent, validateWorkdayPreflight, validateWorkdayPreflightFreshness, validateWorkdaySettlement, validateWorkdayIntentSelection, normalizeWorkdayAgentSelection, type WorkdayPreflightReceipt } from '../../../src/operator-contracts/index.ts';
+import { validateSelectedDemand, validateWorkdayIntent, validateWorkdayPreflight, validateWorkdayPreflightFreshness, validateWorkdaySettlement, validateWorkdayIntentSelection, normalizeWorkdayAgentSelection, type WorkdayPreflightReceipt, type WorkdayIntent } from '../../../src/operator-contracts/index.ts';
 
 describe('time-based workday lifecycle contracts', () => {
+	it('rejects duplicate trimmed decision identities and every malformed explicit selection without changing intent', () => {
+		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default', projects: 'all' as const, startsAt: '2026-09-16T12:00:00Z', durationSeconds: 3600 };
+		for (const decisionIds of [[], [''], [' \t\n '], ['one', ' one '], ['same', 'same'], [null], [1], 'one', null, Array.from({ length: 65 }, (_, i) => `decision-${i}`), ['x'.repeat(129)]]) {
+			const intent: WorkdayIntent = { ...base };
+			Object.assign(intent, { decisionIds });
+			const before = structuredClone(intent);
+			expect(validateWorkdayIntent(intent)).toContainEqual(expect.objectContaining({ code: 'decision_selection_invalid', path: 'decisionIds' }));
+			expect(intent).toEqual(before);
+		}
+		for (const decisionIds of [['A', 'a'], ['é', 'e\u0301'], Array.from({ length: 64 }, (_, i) => `decision-${i}`), ['x'.repeat(128)]]) {
+			const intent = { ...base, decisionIds };
+			const before = structuredClone(intent);
+			expect(validateWorkdayIntent(intent)).toEqual([]);
+			expect(intent).toEqual(before);
+		}
+	});
+
+	it('rejects each named derived identity even when its supplied value would disappear during JSON serialization', () => {
+		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default', projects: 'all' as const, startsAt: '2026-09-16T12:00:00Z', durationSeconds: 3600 };
+		for (const field of ['executionPlanId', 'capacityPlanId', 'executionInputId', 'demandSetId']) {
+			for (const value of [undefined, null, '', 'derived-identity']) {
+				const intent = Object.assign({}, base, { [field]: value });
+				const before = structuredClone(intent);
+				expect(validateWorkdayIntent(intent)).toContainEqual({ code: 'field_forbidden', path: field, message: 'Derived execution state is not portable workday intent.' });
+				expect(intent).toEqual(before);
+				expect(Object.hasOwn(intent, field)).toBe(true);
+			}
+		}
+	});
+
+	it('preserves omitted decisions and independent planning proposal agent and allocation controls', () => {
+		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default', projects: ['sdk'], startsAt: '2026-09-16T12:00:00Z', durationSeconds: 3600,
+			proposalIds: ['proposal-original'], agentSelection: { agentSlugs: ['configured-arbitrary-agent'], activityTypes: ['planning'] }, allocation: { planningPercent: 20, allocationWeight: 2 } };
+		for (const planningOnly of [false, true]) {
+			const intent = { ...base, planningOnly };
+			const before = structuredClone(intent);
+			expect(validateWorkdayIntent(intent)).toEqual([]);
+			expect(intent).toEqual(before);
+			expect(Object.hasOwn(intent, 'decisionIds')).toBe(false);
+		}
+	});
 	it('validates explicit custody mode without granting free simulation capacity', () => {
 		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default',
 			projects: 'all' as const, startsAt: '2026-09-16T12:00:00Z' };
