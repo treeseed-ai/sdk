@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { conditionalFields, uniqueArray as unique } from './schema-constraints.ts';
+import { conditionalFields, requiredProperties, uniqueArray as unique } from './schema-constraints.ts';
 import { agentClassSchema as agentClass, agentDefinitionSchema, permissionSetSchema } from '../../agent-capacity/validation/agent-definition-schema.ts';
 import { PROPOSAL_TYPE_ID_PATTERN } from '../../agent-capacity/validation/proposal-type.ts';
 import {
@@ -22,16 +22,12 @@ const identifiers = z.array(identifier);
 const date = z.coerce.date();
 const lifecycleStatus = z.enum(['live', 'in progress', 'exploratory', 'planned', 'speculative']);
 const exactRefs = z.array(exactEntityReferenceSchema);
+const exactWorkItemReferenceSchema = z.intersection(exactEntityReferenceSchema, requiredProperties(z.object({
+	store: z.literal('treedx'), model: z.literal('proposal'), anchor: z.string().regex(new RegExp('^work-item/[a-z0-9]+(?:-[a-z0-9]+)*$', 'u')),
+}).passthrough(), ['store', 'model', 'id', 'revision', 'digest', 'repository', 'commit', 'path', 'anchor'],
+'A dependency endpoint must identify an exact proposal work item.'));
 export const exactDependencyLinkSchema = z.object({ relation: z.literal('depends_on'),
-	from: exactEntityReferenceSchema, to: exactEntityReferenceSchema }).strict().superRefine((link, context) => {
-	for (const end of ['from', 'to'] as const) {
-		const ref = link[end];
-		if (ref.store !== 'treedx' || ref.model !== 'proposal' || !ref.repository || !ref.commit || !ref.path
-			|| !ref.digest || !ref.revision || !/^work-item\/[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(ref.anchor ?? '')) {
-			context.addIssue({ code: z.ZodIssueCode.custom, path: [end],
-				message: 'A dependency endpoint must identify an exact proposal work item.' });
-		}
-	}
+	from: exactWorkItemReferenceSchema, to: exactWorkItemReferenceSchema }).strict().superRefine((link, context) => {
 	if (JSON.stringify(link.from) === JSON.stringify(link.to)) context.addIssue({ code: z.ZodIssueCode.custom,
 		message: 'A work item cannot depend on itself.' });
 });

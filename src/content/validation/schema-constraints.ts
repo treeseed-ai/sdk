@@ -1,10 +1,24 @@
 import { z } from 'zod';
-import type { PostProcessCallback } from 'zod-to-json-schema';
+import { zodToJsonSchema, type PostProcessCallback } from 'zod-to-json-schema';
 
 // Zod's exporter cannot infer custom refinements. Register the definition
 // created by the owning check; never borrow assertions from the target.
 type ExportedSchema = NonNullable<Parameters<PostProcessCallback>[0]>;
 const exporters = new WeakMap<z.ZodTypeDef, (schema: ExportedSchema) => ExportedSchema>();
+
+/** Preserve inherited validation while requiring represented properties. */
+export function requiredProperties<T extends z.AnyZodObject>(object: T, fields: readonly string[], message: string) {
+	const schema = object.superRefine((value, context) => {
+		for (const field of fields) if (Object.getOwnPropertyDescriptor(value, field)?.value === undefined)
+			context.addIssue({ code: z.ZodIssueCode.custom, path: [field], message });
+	});
+	exporters.set(schema._def, exported => {
+		if (!('type' in exported) || exported.type !== 'object') throw new Error('Required properties must export an object schema.');
+		const required = 'required' in exported && Array.isArray(exported.required) ? exported.required : [];
+		return { ...exported, required: [...new Set([...fields, ...required])] };
+	});
+	return schema;
+}
 
 export function uniqueArray<T extends z.ZodTypeAny>(array: z.ZodArray<T>) {
 	const schema = array.superRefine((values, context) => {
@@ -108,8 +122,23 @@ export function conditionalFields<T extends z.AnyZodObject>(object: T,
 }
 
 export const exportSchemaConstraints: PostProcessCallback = (schema, definition) => {
+	// The upstream intersection exporter flattens allOf and loses sibling
+	// object constraints. Export each actual validator intact, not the target.
+	if ('typeName' in definition && definition.typeName === z.ZodFirstPartyTypeKind.ZodIntersection && 'left' in definition && 'right' in definition
+		&& definition.left instanceof z.ZodType && definition.right instanceof z.ZodType) {
+		return { allOf: [definition.left, definition.right].map(part => {
+			const { $schema: _dialect, ...branch } = zodToJsonSchema(part, { $refStrategy: 'none', postProcess: exportSchemaConstraints });
+			return branch;
+		}) };
+	}
 	const exportConstraint = exporters.get(definition);
-	if (!exportConstraint) return schema;
+	if (!exportConstraint) {
+		// A slash escape protects a JavaScript regex delimiter; JSON Schema
+		// patterns have no delimiter. Preserve the same regex grammar directly.
+		if (schema && 'pattern' in schema && typeof schema.pattern === 'string')
+			return { ...schema, pattern: schema.pattern.replace(/\\\//gu, '/') };
+		return schema;
+	}
 	if (!schema) throw new Error('An owning constraint has no exported schema.');
 	return exportConstraint(schema);
 };
