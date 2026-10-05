@@ -85,6 +85,9 @@ describe('human command tree contract', () => {
 		expect(leaves.get('agents show')?.execution).toMatchObject({ kind: 'operation', operationId: 'agents.show' });
 		expect(leaves.get('execution graph show')?.execution).toMatchObject({ kind: 'operation', operationId: 'execution.graph.show' });
 		expect(leaves.get('execution reconcile')?.execution).toMatchObject({ kind: 'operation', operationId: 'execution.reconcile' });
+		expect(leaves.get('execution reconcile')?.execution).toMatchObject({ input: expect.arrayContaining([
+			{ target: 'body', field: 'plan', source: 'option', name: 'plan', required: false, transform: 'identity' },
+		]) });
 		expect(leaves.get('ai status')?.execution).toMatchObject({ kind: 'operation', operationId: 'ai.instances.show' });
 		expect(leaves.get('ai storage connect')?.execution).toMatchObject({ kind: 'operation', operationId: 'ai.instances.storage.put', input: expect.arrayContaining([
 			{ target: 'path', field: 'teamId', source: 'context', name: 'team', required: true, transform: 'identity' },

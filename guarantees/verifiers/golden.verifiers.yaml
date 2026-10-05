@@ -1,6 +1,11 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-reconcile-plan-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/command-tree.test.ts
+    testName: "classifies supported, local, protocol, and intentionally unavailable execution without URL metadata"
   sdk.golden.execution-governed-collections-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

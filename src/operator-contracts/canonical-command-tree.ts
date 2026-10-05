@@ -172,7 +172,7 @@ const operationBindings: Record<string, CommandLeafDescriptor['execution']> = {
 	'execution graph watch': operation('execution.graph.watch', [field('path', 'teamId', 'context', 'team', true), field('query', 'cursor', 'option'), field('query', 'waitSeconds', 'option', 'wait', false, 'integer')]),
 	'execution node show': operation('execution.nodes.show', [field('path', 'teamId', 'context', 'team', true), field('path', 'nodeId', 'argument', 'node', true)]),
 	'execution node explain': operation('execution.nodes.explain', [field('path', 'teamId', 'context', 'team', true), field('path', 'nodeId', 'argument', 'node', true)]),
-	'execution reconcile': operation('execution.reconcile', [field('path', 'teamId', 'context', 'team', true), field('body', 'projectId', 'option', 'project'), field('body', 'plan', 'option', 'plan', false, 'boolean')]),
+	'execution reconcile': operation('execution.reconcile', [field('path', 'teamId', 'context', 'team', true), field('body', 'projectId', 'option', 'project'), field('body', 'plan', 'option', 'plan')]),
 	'execution assignments list': operation('execution.assignments.list', [field('path', 'teamId', 'context', 'team', true), ...page()]),
 	'projects treedx show': operation('treedx.library.show', [field('path', 'projectId', 'argument', 'project', true)]),
 	'projects treedx bind': operation('treedx.library.bind', [field('path', 'projectId', 'argument', 'project', true), field('body', 'connectionId', 'option', 'connection', true)]),

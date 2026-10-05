@@ -3,6 +3,9 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: execution-reconcile-plan-unit
+    action: { verifier: sdk.golden.execution-reconcile-plan-unit }
+    expect: { status: passed }
   - id: execution-governed-collections-unit
     action: { verifier: sdk.golden.execution-governed-collections-unit }
     expect: { status: passed }
