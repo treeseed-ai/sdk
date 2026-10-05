@@ -436,6 +436,11 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/contract/standards/package-archive.test.ts
     testName: "public archive acceptance rejects changed export and declaration identity against the same untouched candidate"
+  sdk.golden.execution-installed-report-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/standards/package-archive.test.ts
+    testName: "installed native SDK archive enforces exact report Note identifier and subject authority without changing packaged bytes"
   sdk.golden.architecture-intent-unit-1:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

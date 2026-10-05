@@ -12,6 +12,9 @@ workflow:
   - id: architecture-release-archive-native-1
     action: { verifier: sdk.golden.architecture-release-archive-native-1 }
     expect: { status: passed }
+  - id: execution-installed-report-native
+    action: { verifier: sdk.golden.execution-installed-report-native }
+    expect: { status: passed }
   - id: current-source
     action: { verifier: sdk.golden.current-frozen-source }
     expect: { status: passed }

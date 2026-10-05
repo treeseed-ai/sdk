@@ -7,6 +7,53 @@ import { createHash } from 'node:crypto';
 import { assertPackageCandidateOutputs, assertPackageExportTargets } from '../../../scripts/standards/acceptance/package-exports.ts';
 
 describe('portable packed SDK exports and declarations', () => {
+	it('installed native SDK archive enforces exact report Note identifier and subject authority without changing packaged bytes', () => {
+		const candidate = resolve(import.meta.dirname, '../../..');
+		const manifest = readFileSync(join(candidate, 'package.json'));
+		const native = join(candidate, 'tests/unit/content/architecture/closeout-native.ts'), nativeBytes = readFileSync(native);
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-sdk-installed-report-'));
+		const subject = { store: 'postgresql', model: 'workday', id: 'bounded-workday' };
+		const note = { schemaVersion: 'treeseed.note/v1', id: 'report', projectId: 'sdk', classification: 'workday-report',
+			subjectRefs: [subject], body: 'Controlled archived public validator input, not a managed report.', createdAt: '2026-10-05T00:00:00.000Z' };
+		const entries: Array<{ data: Record<string, unknown>; valid: boolean }> = [...['id', 'projectId'].flatMap(field => [
+			{ data: { ...note, [field]: 'a'.repeat(200) }, valid: true },
+			...['a'.repeat(201), ' padded ', '', null].map(value => ({ data: { ...note, [field]: value }, valid: false })),
+			{ data: Object.fromEntries(Object.entries(note).filter(([key]) => key !== field)), valid: false },
+		]),
+			{ data: note, valid: true },
+			{ data: { ...note, subjectRefs: [subject, subject] }, valid: false },
+			{ data: { ...note, subjectRefs: [] }, valid: false },
+			{ data: { ...note, createdAt: 'not-a-clock' }, valid: false },
+			{ data: { ...note, unknownAuthority: true }, valid: false },
+		], held = structuredClone(entries);
+		try {
+			const packed = JSON.parse(execFileSync('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', root],
+				{ cwd: candidate, encoding: 'utf8', timeout: 15000 })) as Array<{ filename: string; files: Array<{ path: string }> }>;
+			expect(packed).toHaveLength(1);
+			const archive = join(root, packed[0]!.filename), bytes = readFileSync(archive);
+			const extracted = join(root, 'extracted'); mkdirSync(extracted);
+			execFileSync('tar', ['-xzf', archive, '-C', extracted], { timeout: 15000 });
+			const install = join(root, 'installed'); mkdirSync(install);
+			execFileSync('npm', ['install', '--prefix', install, '--no-save', '--package-lock=false', '--ignore-scripts',
+				'--offline', '--no-audit', '--no-fund', archive], { encoding: 'utf8', timeout: 15000 });
+			const installed = join(install, 'node_modules/@treeseed/sdk');
+			const child = spawnSync(process.execPath, ['--import', resolve(candidate, 'node_modules/tsx/dist/loader.mjs'),
+				native, 'installed-note-inventory', join(install, 'package.json')], {
+				input: JSON.stringify(entries.map(entry => entry.data)), encoding: 'utf8', timeout: 15000,
+			});
+			expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+			const output: unknown = JSON.parse(child.stdout);
+			if (!output || typeof output !== 'object' || !('entry' in output) || !('observations' in output) || !Array.isArray(output.observations)) {
+				throw new Error('Installed public entry and actual native validator observations required.');
+			}
+			expect(output.entry).toBe(join(installed, 'dist/content/validation/index.js'));
+			expect(output.observations).toHaveLength(entries.length);
+			for (const [index, entry] of entries.entries()) expect(output.observations[index]).toMatchObject(entry.valid ? { ok: true, data: entry.data } : { ok: false });
+			for (const file of packed[0]!.files) expect(readFileSync(join(installed, file.path))).toEqual(readFileSync(join(extracted, 'package', file.path)));
+			expect(readFileSync(archive)).toEqual(bytes); expect(readFileSync(native)).toEqual(nativeBytes);
+			expect(readFileSync(join(candidate, 'package.json'))).toEqual(manifest); expect(entries).toEqual(held);
+		} finally { rmSync(root, { recursive: true, force: true }); }
+	}, 45000);
 	it('public archive acceptance rejects changed export and declaration identity against the same untouched candidate', () => {
 		const candidate = resolve(import.meta.dirname, '../../..');
 		const manifestBytes = readFileSync(join(candidate, 'package.json'));

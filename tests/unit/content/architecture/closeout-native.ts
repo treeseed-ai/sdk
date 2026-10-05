@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import { appliedWorkdaySchema, estimateSchema } from '../../../../src/capacity/agents/agent-capacity.ts';
 import * as publicContracts from '../../../../src/capacity/agents/agent-capacity.ts';
 import { z } from 'zod';
@@ -11,6 +13,16 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 // generated result is substituted for the validator's real observation.
 const input: unknown = JSON.parse(readFileSync(0, 'utf8'));
 const kind = process.argv[2];
+if (kind === 'installed-note-inventory') {
+	if (!Array.isArray(input) || !process.argv[3]) throw new Error('Installed workspace and native Note inventory required.');
+	const require = createRequire(process.argv[3]);
+	const entry = require.resolve('@treeseed/sdk/content-validation');
+	const contracts: typeof import('../../../../src/content/validation/index.ts') = await import(pathToFileURL(entry).href);
+	const held = JSON.stringify(input);
+	const observations = input.map(value => contracts.validatePortableContentData('note', value));
+	if (JSON.stringify(input) !== held) throw new Error('Installed validator changed supplied Note bytes.');
+	process.stdout.write(JSON.stringify({ entry, observations })); process.exit(0);
+}
 if (kind === 'decision-inventory' || kind === 'note-inventory' || kind === 'proposal-inventory') {
 	const model = kind === 'decision-inventory' ? 'decision' : kind === 'note-inventory' ? 'note' : 'proposal';
 	if (!Array.isArray(input)) throw new Error('Native governed content inventory required.');
