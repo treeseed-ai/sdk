@@ -475,7 +475,6 @@ export const CONTROL_PLANE_OPERATIONS = {
 		reportUsage: providerPath('providers.assignments.usage', 'POST', '/v1/provider/assignments/{assignmentId}/usage', { assignmentId: z.string().min(1) }),
 		settleAssignment: providerPath('providers.assignments.settle', 'POST', '/v1/provider/assignments/{assignmentId}/settle', { assignmentId: z.string().min(1) }),
 		createEvent: providerPath('providers.assignments.event.create', 'POST', '/v1/provider/assignments/{assignmentId}/events', { assignmentId: z.string().min(1) }, { body: providerEventRequest }),
-		publishSignal: providerPath('providers.assignments.signal.publish', 'POST', '/v1/provider/assignments/{assignmentId}/signals', { assignmentId: z.string().min(1) }),
 		dispatchWorkflow: providerPath('providers.assignments.workflow.dispatch', 'POST', '/v1/provider/assignments/{assignmentId}/workflow-operations/{operationId}/dispatch', { assignmentId: z.string().min(1), operationId: z.string().min(1) }),
 		workflowRun: providerPath('providers.assignments.workflow.show', 'GET', '/v1/provider/assignments/{assignmentId}/workflow-runs/{runId}', { assignmentId: z.string().min(1), runId: z.string().min(1) }, { read: true }),
 	},

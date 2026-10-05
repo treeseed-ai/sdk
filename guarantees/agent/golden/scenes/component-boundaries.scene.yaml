@@ -3,6 +3,9 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: execution-signal-cutover-unit
+    action: { verifier: sdk.golden.execution-signal-cutover-unit }
+    expect: { status: passed }
   - id: execution-union-semantics-unit
     action: { verifier: sdk.golden.execution-union-semantics-unit }
     expect: { status: passed }

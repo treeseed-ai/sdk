@@ -1,6 +1,11 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-signal-cutover-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/providers/capacity-provider.test.ts
+    testName: "has no frozen signal publisher or catalog route while retaining ordinary assignment events and execution operations"
   sdk.golden.execution-union-semantics-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { ProviderProtocolClient, CapacityProviderApiError } from '../../../../../src/capacity/providers/capacity-provider.ts';
 import { createServer } from 'node:http';
-import { CONTROL_PLANE_OPERATIONS } from '../../../../../src/operator-contracts/index.ts';
+import { CONTROL_PLANE_OPERATIONS, CONTROL_PLANE_OPERATION_LIST, controlPlaneOperation } from '../../../../../src/operator-contracts/index.ts';
 import { sandboxEnvironmentCatalogDigest, sandboxEnvironmentCatalogSchema, sandboxEnvironmentCatalogSigningBytes, verifySandboxEnvironmentCatalog } from '../../../../../src/capacity-provider/environment-catalog.ts';
 import { validateProviderSupplyOffer } from '../../../../../src/capacity-provider/validation.ts';
 
@@ -32,6 +32,17 @@ function retirementRequests(client: ProviderProtocolClient) {
 }
 
 describe('capacity provider membership protocol', () => {
+	it('has no frozen signal publisher or catalog route while retaining ordinary assignment events and execution operations', () => {
+		expect({ publisher: Reflect.has(ProviderProtocolClient.prototype, 'publishAssignmentSignal'),
+			operations: CONTROL_PLANE_OPERATION_LIST.filter(operation => operation.descriptor.operationId === 'providers.assignments.signal.publish'
+				|| operation.descriptor.rest?.path === '/v1/provider/assignments/{assignmentId}/signals').map(operation => operation.descriptor.operationId) })
+			.toEqual({ publisher: false, operations: [] });
+		expect(() => controlPlaneOperation('providers.assignments.signal.publish')).toThrow('Unknown control-plane operation');
+		for (const operation of [CONTROL_PLANE_OPERATIONS.providers.nextAssignment, CONTROL_PLANE_OPERATIONS.providers.startExecution,
+			CONTROL_PLANE_OPERATIONS.providers.completeAssignment, CONTROL_PLANE_OPERATIONS.providers.settleAssignment, CONTROL_PLANE_OPERATIONS.providers.createEvent]) {
+			expect(controlPlaneOperation(operation.descriptor.operationId)).toBe(operation);
+		}
+	});
 	it('validates missing malformed and numeric supply offers without throwing coercing or changing the original registration inputs', () => {
 		const valid = { capabilities: ['renamed.execution'], weight: 1, maxConcurrentRunners: 1 };
 		const values: unknown[] = [undefined, null, '', 'offer', false, true, 0, 1, [], {}, { capabilities: null }, { capabilities: 'renamed.execution' }];
