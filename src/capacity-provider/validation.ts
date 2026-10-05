@@ -8,7 +8,7 @@ type CapacityProviderManifestV5,
 type CapacityProviderProofPayload,
 type CapacityProviderPublicJwk,
 type ProviderSupplyOffer,
-} from './contracts/index.ts';
+} from './contracts/governance.ts';
 import { validateExecutionProviderRuntimeConfiguration } from '../ai-appliance/validation.ts';
 import { CORE_CAPABILITY_DEFINITIONS } from './core-capability-catalog.ts';
 import { capabilityOfferSchema } from './capability-ontology.ts';

@@ -1,6 +1,16 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-provider-contract-entry-native-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/capacity-configuration.test.ts
+    testName: "native public provider contracts validate immutable signed-proof inputs without loading control-plane clients or operator catalogs"
+  sdk.golden.execution-provider-contract-entry-unit-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/capacity-configuration.test.ts
+    testName: "exposes the original provider manifest validator and offer schemas through the client-free contracts boundary"
   sdk.golden.execution-qualification-unit-1:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

@@ -5,6 +5,10 @@ import { validateProjectAgentClassConfiguration } from '../../../src/agent-capac
 import { CAPACITY_CONFIGURATION_DESCRIPTORS, CAPACITY_CONFIGURATION_FAMILIES } from '../../../src/agent-capacity/contracts/configuration/configuration.ts';
 import { validateCapacityProviderManifestV5, validateProviderSupplyOffer } from '../../../src/capacity-provider/validation.ts';
 import { validateAgentDefinitionModel } from '../../../src/agent-capacity/validation/agent-definition-schema.ts';
+import * as providerContracts from '../../../src/capacity-provider/contracts/index.ts';
+import { capabilityOfferDigest, capabilityOfferSchema } from '../../../src/capacity-provider/capability-ontology.ts';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const validators = {
 	'provider-manifest': validateCapacityProviderManifestV5,
@@ -15,6 +19,38 @@ const validators = {
 } as const;
 
 describe('capacity configuration inventory', () => {
+	it('native public provider contracts validate immutable signed-proof inputs without loading control-plane clients or operator catalogs', () => {
+		const output = execFileSync(process.execPath, ['--input-type=module', '-e', `
+			import { registerHooks } from 'node:module';
+			import assert from 'node:assert/strict';
+			registerHooks({ resolve(specifier, context, next) {
+				const resolved = next(specifier, context);
+				assert.doesNotMatch(resolved.url, /(?:control-plane-client|operator-contracts|capacity-provider\\/client\\.js)/u);
+				return resolved;
+			} });
+			const contracts = await import('@treeseed/sdk/capacity-provider/contracts');
+			assert.equal(typeof contracts.validateCapacityProviderManifestV5, 'function');
+			assert.equal(typeof contracts.capabilityOfferSchema.parse, 'function');
+			const proof = { schemaVersion: 1, algorithm: 'Ed25519', providerFingerprint: 'fingerprint',
+				identityVersion: 1, method: 'POST', path: '/proof', bodySha256: 'digest', audience: 'https://isolated.invalid',
+				jti: 'nonce', issuedAt: '2026-10-04T00:00:00.000Z', expiresAt: '2026-10-04T00:00:03.000Z' };
+			const original = structuredClone(proof), options = { now: new Date('2026-10-04T00:00:01.000Z'), expectedPath: '/proof' };
+			assert.deepEqual(contracts.validateCapacityProviderProofPayload(proof, options), { ok: true, diagnostics: [] });
+			const changed = { ...proof, identityVersion: 0 }, retained = structuredClone(changed);
+			const denied = contracts.validateCapacityProviderProofPayload(changed, options);
+			assert.deepEqual(denied.diagnostics.map(value => value.code), ['provider_proof_identity_version_invalid']);
+			assert.equal(denied.ok, false); assert.deepEqual(changed, retained); assert.deepEqual(proof, original);
+			assert.deepEqual(contracts.validateCapacityProviderProofPayload(proof, options), { ok: true, diagnostics: [] });
+			process.stdout.write(JSON.stringify({ valid: true, invalid: false, retry: true }));
+		`], { cwd: fileURLToPath(new URL('../../../', import.meta.url)), encoding: 'utf8', timeout: 15_000 });
+		expect(JSON.parse(output)).toEqual({ valid: true, invalid: false, retry: true });
+	});
+	it('exposes the original provider manifest validator and offer schemas through the client-free contracts boundary', () => {
+		expect(Reflect.get(providerContracts, 'validateCapacityProviderManifestV5')).toBe(validateCapacityProviderManifestV5);
+		expect(Reflect.get(providerContracts, 'capabilityOfferSchema')).toBe(capabilityOfferSchema);
+		expect(Reflect.get(providerContracts, 'capabilityOfferDigest')).toBe(capabilityOfferDigest);
+		for (const client of ['ProviderProtocolClient', 'ControlPlaneClient']) expect(Object.hasOwn(providerContracts, client)).toBe(false);
+	});
 	it('has one SDK-owned descriptor and validator for every declarative family', () => {
 		expect(CAPACITY_CONFIGURATION_DESCRIPTORS.map((entry) => entry.id)).toEqual(CAPACITY_CONFIGURATION_FAMILIES);
 		for (const descriptor of CAPACITY_CONFIGURATION_DESCRIPTORS) {
