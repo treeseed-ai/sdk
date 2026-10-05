@@ -17,7 +17,7 @@ export * from './agent-operational-content-schemas.ts';
 const nonEmpty = z.string().trim().min(1);
 const strings = z.array(z.string());
 const identifier = z.string().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
-const slug = z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:[._/-][a-z0-9]+)*$/u);
+const slug = z.string().min(1).max(100).regex(/^[a-z0-9]+(?:[._/-][a-z0-9]+)*$/u);
 const identifiers = z.array(identifier);
 const date = z.coerce.date();
 const lifecycleStatus = z.enum(['live', 'in progress', 'exploratory', 'planned', 'speculative']);
@@ -71,7 +71,7 @@ const proposalLinks = {
 };
 
 const executionPlanWorkItemSchema = conditionalFields(z.object({
-	id: nonEmpty.max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u),
+	id: slug,
 	priority: z.number().int().safe().optional(),
 	activity: z.literal('acting'),
 	agentClass,
@@ -81,7 +81,7 @@ const executionPlanWorkItemSchema = conditionalFields(z.object({
 	estimate: estimateSchema.optional(),
 	reviewEstimate: estimateSchema.optional(),
 	maximumReviewCycles: z.number().int().positive().optional(),
-	dependsOn: unique(z.array(nonEmpty.max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u))),
+	dependsOn: unique(z.array(slug)),
 	requestedPermissions: permissionSetSchema,
 	output: z.object({
 		model: z.enum(['agent','book','knowledge','objective','discussion','discussion-message','proposal','question','note','decision']),

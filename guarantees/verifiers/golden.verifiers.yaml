@@ -1,6 +1,16 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-work-item-slugs-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposal-execution-plan.test.ts
+    testName: "retains exact canonical work-item slugs and dependency identities without trimming padding or accepting malformed separators"
+  sdk.golden.execution-work-item-slugs-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposal-execution-plan.test.ts
+    testName: "native public Proposal validation and schema preserve canonical work-item slug grammar and reject malformed identity bytes without repair"
   sdk.golden.execution-finite-enum-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

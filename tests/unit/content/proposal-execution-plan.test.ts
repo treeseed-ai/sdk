@@ -25,6 +25,44 @@ function proposal() {
 	};
 }
 
+function observeWorkItemSlugs(native: boolean) {
+	const base = proposal(), item = base.executionPlan.workItems[0]!;
+	const valid = ['a', '0', 'work.part', 'work_part', 'work/part', 'work-part', 'work.part/next_part-last', 'a'.repeat(100)];
+	const malformed: unknown[] = ['', ' ', ' padded', 'padded ', 'Upper', 'é', '-first', 'last-',
+		'work..part', 'work__part', 'work//part', 'work--part', 'work._part', 'work part', 'a'.repeat(101), null, 1, {}, []];
+	const entries = [...valid.map(id => ({ valid: true, data: { ...base, executionPlan: { workItems: [
+		{ ...item, id, dependsOn: ['final'] }, { ...item, id: 'final', dependsOn: [] },
+	] } } })), ...malformed.map(id => ({ valid: false, data: { ...base, executionPlan: { workItems: [Object.assign({}, item, { id })] } } })),
+		...malformed.map(id => ({ valid: false, data: { ...base, executionPlan: { workItems: [Object.assign({}, item, { dependsOn: [id] })] } } }))];
+	const held = structuredClone(entries);
+	if (native) {
+		const path = fileURLToPath(new URL('./architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+		const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'proposal-inventory'], {
+			input: JSON.stringify(entries.map(entry => entry.data)), encoding: 'utf8', timeout: 15_000,
+		});
+		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+		const output: unknown = JSON.parse(child.stdout);
+		if (!output || typeof output !== 'object' || !('schema' in output) || !('observations' in output) || !Array.isArray(output.observations))
+			throw new Error('Native Proposal schema and slug observations required.');
+		expect(output.observations).toHaveLength(entries.length);
+		expect(output.observations.map(value => value.ok)).toEqual(entries.map(entry => entry.valid));
+		for (const [index, entry] of entries.entries()) if (entry.valid) expect(output.observations[index]).toMatchObject({ data: entry.data });
+		expect(output.schema).toMatchObject({ properties: { executionPlan: { properties: { workItems: { items: { properties: {
+			id: { minLength: 1, maxLength: 100, pattern: '^[a-z0-9]+(?:[._/-][a-z0-9]+)*$' },
+			dependsOn: { uniqueItems: true, items: { minLength: 1, maxLength: 100, pattern: '^[a-z0-9]+(?:[._/-][a-z0-9]+)*$' } },
+		} } } } } } });
+		expect(readFileSync(path)).toEqual(bytes);
+	} else {
+		const results = entries.map(entry => validatePortableContentData('proposal', entry.data));
+		expect(results.map(result => result.ok)).toEqual(entries.map(entry => entry.valid));
+		for (const [index, entry] of entries.entries()) if (entry.valid) expect(results[index]).toMatchObject({ data: entry.data });
+	}
+	const dependency = { ...base, executionPlan: { workItems: [{ ...item, id: 'dependent', dependsOn: ['work.part'] }, { ...item, id: 'work.part', dependsOn: [] }] } };
+	const before = structuredClone(dependency);
+	expect(validatePortableContentData('proposal', dependency)).toMatchObject({ ok: true, data: dependency });
+	expect(dependency).toEqual(before); expect(entries).toEqual(held);
+}
+
 function boundedWorkItemEntries() {
 	const value = proposal(), item = value.executionPlan.workItems[0]!;
 	const input = (patch: Record<string, unknown>) => ({ ...value, executionPlan: { workItems: [Object.assign({}, item, patch)] } });
@@ -145,6 +183,8 @@ function observeReadyProposal(native: boolean) {
 }
 
 describe('proposal-owned execution plan', () => {
+	it('retains exact canonical work-item slugs and dependency identities without trimming padding or accepting malformed separators', () => observeWorkItemSlugs(false));
+	it('native public Proposal validation and schema preserve canonical work-item slug grammar and reject malformed identity bytes without repair', () => observeWorkItemSlugs(true));
 	it('exports the same independent review cycle requirement and absence of unreviewed estimates enforced on governed executable work', () => observeWorkItemReview(false));
 	it('native public Proposal work-item review validation and schema agree on bounded required review and denial of unreviewed authority without input repair', () => observeWorkItemReview(true));
 	it('exports the same ready and decided proposal summary plan and independent estimate requirements enforced by native execution intake', () => observeReadyProposal(false));
