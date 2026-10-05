@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assignmentAttemptSchema, assignmentResultSchema, validateProviderAssignment } from '../../../../src/capacity/agents/agent-capacity.ts';
+import { assignmentAttemptSchema, assignmentResultSchema, usageSettlementSchema, validateProviderAssignment } from '../../../../src/capacity/agents/agent-capacity.ts';
 
 // Complete isolated public-schema inputs, not a compiled API admission or a
 // live Lease/Reservation/Settlement. Never convert operational rows into them.
@@ -30,6 +30,28 @@ function supplied() {
 	return { item, attempt, result };
 }
 describe('public assignment whole immutable record custody', () => {
+	it('validates exact canonical settlement identities native units and clocks without normalizing supplied evidence', () => {
+		const f = supplied(), original = { schemaVersion: 'treeseed.usage-settlement/v1', id: 'settlement', idempotencyKey: 'original-key',
+			assignmentId: f.attempt.id, reservationId: f.attempt.reservationId, workdayId: f.attempt.workdayId,
+			teamId: f.attempt.teamId, projectId: f.attempt.projectId, agentClass: f.attempt.agentClass,
+			providerId: f.attempt.provider.providerId, actualSeconds: 2, nativeUsage: { input_tokens: 7, cpuSeconds: 0.125 }, settledAt: f.result.completedAt };
+		const before = structuredClone(original); expect(usageSettlementSchema.parse(original)).toEqual(original);
+		for (const field of Object.keys(original)) for (const value of [undefined, null, '', [], {}]) {
+			const input = { ...original, [field]: value }, retained = structuredClone(input);
+			// Empty native usage is valid for an explicitly measured zero-unit provider.
+			if (field === 'nativeUsage' && value && typeof value === 'object' && !Array.isArray(value)) continue;
+			expect(usageSettlementSchema.safeParse(input).success, field).toBe(false); expect(input).toEqual(retained);
+		}
+		for (const patch of [{ actualSeconds: '2' }, { actualSeconds: -1 }, { actualSeconds: 0.5 }, { actualSeconds: Infinity },
+			{ nativeUsage: { tokens: '7' } }, { nativeUsage: { tokens: null } }, { nativeUsage: { tokens: NaN } },
+			{ nativeUsage: { tokens: -1 } }, { nativeUsage: { provenance: 'execution-provider' } }, { settledAt: 'invalid' },
+			{ agentClass: 'Named Role' }, { providerId: ' padded ' }, { cost: -1 }, { currency: 'usd' }, { legacy: true }]) {
+			const input = { ...original, ...patch }, retained = structuredClone(input);
+			expect(usageSettlementSchema.safeParse(input).success).toBe(false); expect(input).toEqual(retained);
+		}
+		expect(usageSettlementSchema.parse({ ...original, actualSeconds: 0, nativeUsage: {}, cost: 0.125, currency: 'USD' })).toEqual({
+			...original, actualSeconds: 0, nativeUsage: {}, cost: 0.125, currency: 'USD' }); expect(original).toEqual(before);
+	});
 	it('retains a complete renamed canonical attempt and result without mutating public input', () => {
 		const f = supplied(), before = structuredClone(f); expect(validateProviderAssignment(f.item)).toEqual({ ok: true, diagnostics: [] }); expect(f).toEqual(before);
 		expect(f.item.projectAgentClassId).not.toBe(f.attempt.agentClass);

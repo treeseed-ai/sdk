@@ -3,6 +3,9 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: execution-settlement-record-unit
+    action: { verifier: sdk.golden.execution-settlement-record-unit }
+    expect: { status: passed }
   - id: execution-provider-contract-entry-native-1
     action: { verifier: sdk.golden.execution-provider-contract-entry-native-1 }
     expect: { status: passed }

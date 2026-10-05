@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { activityProfileSchema } from '../../../validation/agent-definition-schema.ts';
 
 const identifier = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
+const canonicalIdentifier = z.string().refine(value => value === value.trim()).pipe(identifier);
 const timestamp = z.string().datetime({ offset: true });
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
 const commit = z.string().regex(/^[a-f0-9]{40}$/u);
@@ -160,6 +161,25 @@ export const assignmentResultSchema = z.object({
 	completedAt: timestamp,
 }).strict();
 
+/** Stored exactly-once accounting authority; native provider units stay distinct. */
+export const usageSettlementSchema = z.object({
+	schemaVersion: z.literal('treeseed.usage-settlement/v1'),
+	id: canonicalIdentifier,
+	idempotencyKey: canonicalIdentifier,
+	assignmentId: canonicalIdentifier,
+	reservationId: canonicalIdentifier,
+	workdayId: canonicalIdentifier,
+	teamId: canonicalIdentifier,
+	projectId: canonicalIdentifier,
+	agentClass: z.string().min(1).max(100).regex(/^[a-z][a-z0-9-]*$/u),
+	providerId: canonicalIdentifier,
+	actualSeconds: z.number().int().nonnegative(),
+	nativeUsage: z.record(z.number().finite().nonnegative()),
+	cost: z.number().finite().nonnegative().optional(),
+	currency: z.string().regex(/^[A-Z]{3}$/u).optional(),
+	settledAt: timestamp,
+}).strict();
+
 export const authorizedContextItemSchema = z.object({
 	ref: exactEntityReferenceSchema,
 	mediaType: z.string().min(1),
@@ -181,4 +201,5 @@ export type EffectiveActivityProfile = z.infer<typeof effectiveActivityProfileSc
 export type AssignmentAttempt = z.infer<typeof assignmentAttemptSchema>;
 export type AssignmentTimingAwarenessReceipt = z.infer<typeof assignmentTimingAwarenessReceiptSchema>;
 export type AssignmentResult = z.infer<typeof assignmentResultSchema>;
+export type UsageSettlement = z.infer<typeof usageSettlementSchema>;
 export type AssignmentContext = z.infer<typeof assignmentContextSchema>;

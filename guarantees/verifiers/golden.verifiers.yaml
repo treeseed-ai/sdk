@@ -506,3 +506,8 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/communication-addressing.test.ts
     testName: "requires the exact committed response reference instead of a path-only completion claim"
+  sdk.golden.execution-settlement-record-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: "validates exact canonical settlement identities native units and clocks without normalizing supplied evidence"
