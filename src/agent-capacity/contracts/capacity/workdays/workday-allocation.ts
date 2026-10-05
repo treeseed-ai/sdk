@@ -68,10 +68,14 @@ export interface FairUsage {
 function weightedAmount(amount: number, weight: number, weights: Record<string, number>): number {
 	const values = Object.values(weights), total = values.reduce((sum, value) => sum + value, 0) || 1;
 	const product = amount * weight;
-	if (Number.isFinite(total) && Number.isFinite(product)) return product / total;
+	if (amount === 0) return 0;
+	const minimumNormal = 2 ** -1022;
+	if (Number.isFinite(total) && Number.isFinite(product)
+		&& total >= minimumNormal && Math.abs(product) >= minimumNormal) return product / total;
 	// Finite positive weights express relative shares. Scaling by their largest
 	// value preserves those shares when their sum or the intermediate product
-	// would overflow; neither the policy nor any admitted commitment is changed.
+	// would overflow or lose precision through subnormal multiplication;
+	// neither the policy nor any admitted commitment is changed.
 	const scale = Math.max(...values);
 	return amount * (weight / scale) / values.reduce((sum, value) => sum + value / scale, 0);
 }

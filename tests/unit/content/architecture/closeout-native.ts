@@ -11,14 +11,15 @@ const kind = process.argv[2];
 if (kind === 'fair-ready-weights') {
 	if (!Array.isArray(input)) throw new Error('Native fair selection inventory required.');
 	const result = input.map(entry => {
-		if (!entry || typeof entry !== 'object' || !('policy' in entry) || !('layer' in entry)) throw new Error('Native policy and fairness layer required.');
+		if (!entry || typeof entry !== 'object' || !('policy' in entry) || !('layer' in entry)
+			|| !('seconds' in entry) || typeof entry.seconds !== 'number') throw new Error('Native policy fairness layer and usage required.');
 		const policy = publicContracts.workdayPolicySchema.parse(entry.policy);
 		if (entry.layer !== 'project' && entry.layer !== 'class') throw new Error('Unknown native fairness layer.');
 		const nodes = [
 			{ id: 'first', projectId: 'a', agentClass: 'a', readyAt: '2026-10-03T00:00:00Z' },
 			{ id: 'second', projectId: entry.layer === 'project' ? 'b' : 'a', agentClass: 'b', readyAt: '2026-10-03T00:00:00Z' },
 		];
-		return publicContracts.selectFairReadyNode(nodes, [{ projectId: 'a', agentClass: 'a', seconds: 3 }], policy);
+		return publicContracts.selectFairReadyNode(nodes, [{ projectId: 'a', agentClass: 'a', seconds: entry.seconds }], policy);
 	});
 	process.stdout.write(JSON.stringify(result)); process.exit(0);
 }

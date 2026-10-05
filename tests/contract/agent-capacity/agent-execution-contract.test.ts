@@ -22,10 +22,10 @@ const timingAwareness = {
 describe('canonical agent execution contract', () => {
 	it('native public fairness selection preserves finite proportional project and class weights without concealing overflow in JSON', () => {
 		const input = (['project', 'class'] as const).flatMap(layer =>
-			[1, Number.MAX_VALUE / 4, Number.MAX_VALUE / 2, Number.MIN_VALUE].map(weight => ({ layer,
+			[3, 0.375].flatMap(seconds => [1, Number.MAX_VALUE / 4, Number.MAX_VALUE / 2, Number.MIN_VALUE].map(weight => ({ layer, seconds,
 				policy: { ...DEFAULT_WORKDAY_POLICY, projectPercentages: layer === 'project' ? { a: weight, b: weight * 2 } : { a: 1 },
 					agentClassPercentages: layer === 'class' ? { a: { a: weight, b: weight * 2 } } : {} },
-			})));
+			}))));
 		const held = structuredClone(input), path = fileURLToPath(new URL('../../unit/content/architecture/closeout-native.ts', import.meta.url));
 		const bytes = readFileSync(path), child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'fair-ready-weights'], {
 			input: JSON.stringify(input), encoding: 'utf8', timeout: 15_000,
@@ -35,8 +35,8 @@ describe('canonical agent execution contract', () => {
 		expect(observations).toHaveLength(input.length);
 		for (const [index, entry] of input.entries()) {
 			expect(observations[index]).toMatchObject({ id: 'second', explanation: entry.layer === 'project'
-				? { projectTargetPercent: 100 * 2 / 3, projectDeficitSeconds: 2 }
-				: { classTargetPercent: 100 * 2 / 3, classDeficitSeconds: 2 } });
+				? { projectTargetPercent: 100 * 2 / 3, projectDeficitSeconds: entry.seconds * 2 / 3 }
+				: { classTargetPercent: 100 * 2 / 3, classDeficitSeconds: entry.seconds * 2 / 3 } });
 			for (const value of Object.values(observations[index].explanation)) { expect(typeof value).toBe('number'); expect(Number.isFinite(value)).toBe(true); }
 		}
 		expect(input).toEqual(held); expect(readFileSync(path)).toEqual(bytes);

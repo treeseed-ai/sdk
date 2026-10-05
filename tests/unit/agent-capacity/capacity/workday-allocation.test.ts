@@ -12,23 +12,25 @@ describe('minimal workday allocation', () => {
 				{ id: 'first', projectId: 'a', agentClass: 'a', readyAt: '2026-10-03T00:00:00Z' },
 				{ id: 'second', projectId: layer === 'project' ? 'b' : 'a', agentClass: 'b', readyAt: '2026-10-03T00:00:00Z' },
 			];
-			const usage = [{ projectId: 'a', agentClass: 'a', seconds: 3 }];
-			for (const weight of [1, Number.MAX_VALUE / 4, Number.MAX_VALUE / 2, Number.MIN_VALUE]) {
-				const weights = { a: weight, b: weight * 2 };
-				const supplied = workdayPolicySchema.parse({ ...DEFAULT_WORKDAY_POLICY,
-					projectPercentages: layer === 'project' ? weights : { a: 1 },
-					agentClassPercentages: layer === 'class' ? { a: weights } : {},
-				});
-				const held = structuredClone({ nodes, usage, supplied });
-				for (const candidates of [nodes, [...nodes].reverse()]) {
-					const selected = selectFairReadyNode(candidates, usage, supplied);
-					expect(selected).toMatchObject({ id: 'second', explanation: layer === 'project'
-						? { projectTargetPercent: 100 * 2 / 3, projectDeficitSeconds: 2 }
-						: { classTargetPercent: 100 * 2 / 3, classDeficitSeconds: 2 } });
-					if (!selected) throw new Error('Fair ready selection required.');
-					for (const value of Object.values(selected.explanation)) expect(Number.isFinite(value)).toBe(true);
+			for (const seconds of [3, 0.375]) {
+				const usage = [{ projectId: 'a', agentClass: 'a', seconds }];
+				for (const weight of [1, Number.MAX_VALUE / 4, Number.MAX_VALUE / 2, Number.MIN_VALUE]) {
+					const weights = { a: weight, b: weight * 2 };
+					const supplied = workdayPolicySchema.parse({ ...DEFAULT_WORKDAY_POLICY,
+						projectPercentages: layer === 'project' ? weights : { a: 1 },
+						agentClassPercentages: layer === 'class' ? { a: weights } : {},
+					});
+					const held = structuredClone({ nodes, usage, supplied });
+					for (const candidates of [nodes, [...nodes].reverse()]) {
+						const selected = selectFairReadyNode(candidates, usage, supplied);
+						expect(selected).toMatchObject({ id: 'second', explanation: layer === 'project'
+							? { projectTargetPercent: 100 * 2 / 3, projectDeficitSeconds: seconds * 2 / 3 }
+							: { classTargetPercent: 100 * 2 / 3, classDeficitSeconds: seconds * 2 / 3 } });
+						if (!selected) throw new Error('Fair ready selection required.');
+						for (const value of Object.values(selected.explanation)) expect(Number.isFinite(value)).toBe(true);
+					}
+					expect({ nodes, usage, supplied }).toEqual(held);
 				}
-				expect({ nodes, usage, supplied }).toEqual(held);
 			}
 		}
 	});
