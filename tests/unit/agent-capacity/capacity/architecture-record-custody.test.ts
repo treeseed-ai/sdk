@@ -129,7 +129,8 @@ describe('public assignment whole immutable record custody', () => {
 	it('denies missing malformed foreign or contradictory completed results while retaining the same original attempt', () => {
 		const f = supplied(), inputs = [undefined, null, [], {}, { ...f.result, assignmentId: 'foreign' }, { ...f.result, status: 'failed' },
 			{ ...f.result, completedAt: 'not-a-clock' }, { ...f.result, completedAt: '2026-10-02T23:59:59.999Z' },
-			{ ...f.result, completedAt: '2026-10-03T00:00:02.001Z' }];
+			{ ...f.result, completedAt: '2026-10-03T00:00:02.001Z' },
+			...[NaN, Infinity, -Infinity, -1, '1', null, true].map(value => ({ ...f.result, usage: { elapsedSeconds: 1, native: { providerUnit: value } } }))];
 		const outcomes = inputs.map(value => { const item = structuredClone(f.item); item.assignmentResult = value; const before = structuredClone(item);
 			const valid = validateProviderAssignment(item).ok; expect(item).toEqual(before); return valid; });
 		expect(outcomes).toEqual(inputs.map(() => false));

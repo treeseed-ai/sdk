@@ -132,7 +132,7 @@ export const verificationRecordSchema = z.object({
 }).strict();
 export const usageSchema = z.object({
 	elapsedSeconds: z.number().int().nonnegative(), modelInputTokens: z.number().int().nonnegative().optional(),
-	modelOutputTokens: z.number().int().nonnegative().optional(), native: z.record(z.number().nonnegative()).optional(),
+	modelOutputTokens: z.number().int().nonnegative().optional(), native: z.record(z.number().finite().nonnegative()).optional(),
 }).strict();
 export const diagnosticSchema = z.object({
 	code: identifier, severity: z.enum(['info', 'warning', 'error']), message: z.string().min(1), ref: exactEntityReferenceSchema.optional(),

@@ -1,6 +1,11 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-result-native-usage:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/agent-execution-contract.test.ts
+    testName: "native public result validation retains measured provider fractions and rejects nonfinite usage before serialization can conceal it"
   sdk.golden.execution-uniqueness-export-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

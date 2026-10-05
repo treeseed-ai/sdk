@@ -20,6 +20,24 @@ const timingAwareness = {
 };
 
 describe('canonical agent execution contract', () => {
+	it('native public result validation retains measured provider fractions and rejects nonfinite usage before serialization can conceal it', () => {
+		const record = { schemaVersion: 'treeseed.assignment-result/v1', id: 'result', assignmentId: 'attempt', status: 'completed',
+			summary: 'Controlled native validation input, not measured provider evidence.', references: [], verification: [],
+			usage: { elapsedSeconds: 1 }, diagnostics: [], completedAt: '2026-10-03T00:00:01.000Z' };
+		const valid = [0, 0.125, 1, Number.MAX_VALUE], invalid = ['nan', 'positive-infinity', 'negative-infinity', -1, '1', null, true];
+		const input = [...valid, ...invalid].map(value => ({ record, value })), held = structuredClone(input);
+		const path = fileURLToPath(new URL('../../unit/content/architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+		const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'result-native-usage'], {
+			input: JSON.stringify(input), encoding: 'utf8', timeout: 15_000,
+		});
+		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+		const observations: unknown = JSON.parse(child.stdout); if (!Array.isArray(observations)) throw new Error('Native usage observations required.');
+		expect(observations).toHaveLength(input.length);
+		expect(observations.slice(0, valid.length)).toEqual(valid.map(value => ({ success: true,
+			data: { ...record, usage: { elapsedSeconds: 1, native: { providerUnit: value } } } })));
+		for (const observation of observations.slice(valid.length)) expect(observation).toMatchObject({ success: false });
+		expect(input).toEqual(held); expect(readFileSync(path)).toEqual(bytes);
+	});
 	it('native public workday resource derivation rejects absent and mutating REST authority with the owning error and retains exact inputs', () => {
 		const input = [{}, { rest: null }, { kind: 'mutation' }, { rest: { method: 'POST', path: '/v1/teams/{teamId}/workday-runs/{runId}' } },
 			{ rest: null, surfaces: ['cli'] }], held = structuredClone(input);
