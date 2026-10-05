@@ -35,10 +35,11 @@ export function minimumProperties<T extends z.AnyZodObject>(object: T, minimum: 
 }
 
 type ConditionalRequirement<Field extends string> = {
-	field: Field; equals?: unknown; notEquals?: unknown;
+	field: Field; equals?: unknown; notEquals?: unknown; in?: readonly unknown[];
 	message: string; path?: readonly (string | number)[];
-} & ({ alternatives: readonly (readonly Field[])[]; forbidden?: never }
-	| { alternatives?: never; forbidden: { field: Field; key: string } });
+} & ({ alternatives: readonly (readonly Field[])[]; forbidden?: never; allowed?: never }
+	| { alternatives?: never; forbidden: { field: Field; key: string }; allowed?: never }
+	| { alternatives?: never; forbidden?: never; allowed: { field: Field; values: readonly unknown[] } });
 
 /** The same owning field rules drive runtime validation and schema export. */
 export function conditionalFields<T extends z.AnyZodObject>(object: T,
@@ -48,9 +49,11 @@ export function conditionalFields<T extends z.AnyZodObject>(object: T,
 			const selected = Object.getOwnPropertyDescriptor(value, rule.field)?.value;
 			if (selected === undefined || (Object.hasOwn(rule, 'equals') && selected !== rule.equals)) continue;
 			if (Object.hasOwn(rule, 'notEquals') && selected === rule.notEquals) continue;
+			if (rule.in && !rule.in.includes(selected)) continue;
 			const nested = rule.forbidden ? Object.getOwnPropertyDescriptor(value, rule.forbidden.field)?.value : undefined;
 			const invalid = rule.forbidden ? nested && typeof nested === 'object'
 				&& Object.getOwnPropertyDescriptor(nested, rule.forbidden.key)?.value !== undefined
+				: rule.allowed ? !rule.allowed.values.includes(Object.getOwnPropertyDescriptor(value, rule.allowed.field)?.value)
 				: !rule.alternatives.some(fields => fields.every(field => Object.getOwnPropertyDescriptor(value, field)?.value !== undefined));
 			if (invalid) {
 				context.addIssue({ code: z.ZodIssueCode.custom, path: [...(rule.path ?? [])], message: rule.message });
@@ -62,8 +65,10 @@ export function conditionalFields<T extends z.AnyZodObject>(object: T,
 		const required = (fields: readonly string[]) => ({ type: 'object', required: [...fields] });
 		return { ...exported, allOf: rules.map(rule => ({
 			if: { ...required([rule.field]), ...(Object.hasOwn(rule, 'equals') ? { properties: { [rule.field]: { const: rule.equals } } }
-				: Object.hasOwn(rule, 'notEquals') ? { properties: { [rule.field]: { not: { const: rule.notEquals } } } } : {}) },
+				: Object.hasOwn(rule, 'notEquals') ? { properties: { [rule.field]: { not: { const: rule.notEquals } } } }
+				: rule.in ? { properties: { [rule.field]: { enum: [...rule.in] } } } : {}) },
 			then: rule.forbidden ? { type: 'object', properties: { [rule.forbidden.field]: { not: required([rule.forbidden.key]) } } }
+				: rule.allowed ? { type: 'object', properties: { [rule.allowed.field]: { enum: [...rule.allowed.values] } } }
 				: rule.alternatives.length === 1 ? required(rule.alternatives[0]!)
 				: { type: 'object', anyOf: rule.alternatives.map(required) },
 		})) };

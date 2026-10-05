@@ -3,12 +3,20 @@ import { appliedWorkdaySchema, estimateSchema } from '../../../../src/capacity/a
 import * as publicContracts from '../../../../src/capacity/agents/agent-capacity.ts';
 import { z } from 'zod';
 import { CONTROL_PLANE_OPERATIONS, buildMcpResources } from '../../../../src/operator-contracts/index.ts';
-import { validatePortableContentData } from '../../../../src/content/validation/index.ts';
+import { describeContentFrontmatterSchema, validatePortableContentData } from '../../../../src/content/validation/index.ts';
+import { exportSchemaConstraints } from '../../../../src/content/validation/schema-constraints.ts';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 
 // Independent native process, actual public owning SDK entry point. No mock or
 // generated result is substituted for the validator's real observation.
 const input: unknown = JSON.parse(readFileSync(0, 'utf8'));
 const kind = process.argv[2];
+if (kind === 'decision-inventory') {
+	if (!Array.isArray(input)) throw new Error('Native Decision inventory required.');
+	process.stdout.write(JSON.stringify({ schema: zodToJsonSchema(describeContentFrontmatterSchema('decision'),
+		{ $refStrategy: 'none', postProcess: exportSchemaConstraints }), observations: input.map(value => validatePortableContentData('decision', value)) }));
+	process.exit(0);
+}
 if (kind === 'content-records') {
 	if (!Array.isArray(input)) throw new Error('Native content inventory required.');
 	const result = input.map(entry => {

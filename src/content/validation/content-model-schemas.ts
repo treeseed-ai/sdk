@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { uniqueArray as unique } from './schema-constraints.ts';
+import { conditionalFields, uniqueArray as unique } from './schema-constraints.ts';
 import { agentDefinitionSchema, permissionSetSchema } from '../../agent-capacity/validation/agent-definition-schema.ts';
 import { PROPOSAL_TYPE_ID_PATTERN } from '../../agent-capacity/validation/proposal-type.ts';
 import {
@@ -173,7 +173,7 @@ const schemas = {
 		evidenceRefs: unique(exactRefs).optional(),
 	}).strict(),
 	proposal: proposalSchema,
-	decision: z.object({
+	decision: conditionalFields(z.object({
 		schemaVersion: z.literal('treeseed.decision/v1'), id: identifier, projectId: identifier,
 		decisionClass: z.enum(['proposal', 'work-review', 'publication']),
 		decisionMethod: z.enum(['authority', 'approval', 'vote']), subjectRef: exactEntityReferenceSchema,
@@ -181,11 +181,15 @@ const schemas = {
 		findingRefs: unique(exactRefs).optional(), authorityRefs: unique(exactRefs.min(1)), decidedByRefs: unique(exactRefs.min(1)),
 		positions: z.array(z.object({ actorRef: exactEntityReferenceSchema, position: z.enum(['approve', 'reject', 'abstain']), rationale: z.string().optional(), recordedAt: z.string().datetime({ offset: true }) }).strict()).min(1).optional(),
 		decidedAt: z.string().datetime({ offset: true }),
-	}).strict().superRefine((value, context) => {
-		if (value.decisionMethod !== 'authority' && !value.positions?.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['positions'], message: 'Approval and vote decisions require signed positions.' });
-		if (value.decisionClass === 'work-review' && !['approved', 'request-changes'].includes(value.disposition)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['disposition'], message: 'Work review must approve or request changes.' });
-		if (value.decisionClass !== 'work-review' && value.disposition === 'request-changes') context.addIssue({ code: z.ZodIssueCode.custom, path: ['disposition'], message: 'Only work review may request changes.' });
-	}),
+	}).strict(), [
+		{ field: 'decisionMethod', in: ['approval', 'vote'], alternatives: [['positions']], path: ['positions'], message: 'Approval and vote decisions require signed positions.' },
+		{ field: 'decisionClass', equals: 'work-review', allowed: { field: 'disposition', values: ['approved', 'request-changes'] },
+			path: ['disposition'], message: 'Work review must approve or request changes.' },
+		{ field: 'decisionClass', equals: 'proposal', allowed: { field: 'disposition', values: ['approved', 'rejected', 'deferred', 'superseded'] },
+			path: ['disposition'], message: 'Only work review may request changes.' },
+		{ field: 'decisionClass', equals: 'publication', allowed: { field: 'disposition', values: ['approved', 'rejected', 'deferred', 'superseded'] },
+			path: ['disposition'], message: 'Only work review may request changes.' },
+	]),
 	book: z.object({
 		schemaVersion: z.literal(BOOK_SCHEMA_VERSION), id: identifier, projectId: identifier,
 		revision: z.number().int().positive(),
