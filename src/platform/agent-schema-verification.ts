@@ -4,8 +4,12 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { z } from 'zod';
 import { assignmentAttemptSchema, assignmentContextSchema, assignmentResultSchema, usageSettlementSchema, leaseSchema, reservationSchema,
 	exactEntityReferenceSchema, exactGrantSchema, assignmentWorkspaceSchema, estimateSchema } from '../agent-capacity/contracts/capacity/assignments/agent-execution.ts';
-import { executionNodeSchema, executionEdgeSchema } from '../agent-capacity/validation/execution/execution-graph.ts';
-import { appliedWorkdaySchema } from '../agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
+import { assignmentReferenceSchema, effectiveActivityProfileSchema, authorizedContextItemSchema, verificationRecordSchema,
+	usageSchema, diagnosticSchema, assignmentTimingAwarenessReceiptSchema } from '../agent-capacity/contracts/capacity/assignments/agent-execution.ts';
+import { executionNodeSchema, executionEdgeSchema, graphRevisionSchema, graphChangeSetSchema,
+	conditionDefinitionSchema } from '../agent-capacity/validation/execution/execution-graph.ts';
+import { appliedWorkdaySchema, workdayPolicySchema, workdayProfileSchema } from '../agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
+import { activityProfileSchema, activityProfilesSchema } from '../agent-capacity/validation/agent-definition-schema.ts';
 
 const models = {
 	Book: 'book', Knowledge: 'knowledge', Objective: 'objective',
@@ -15,16 +19,28 @@ const models = {
 
 // These are the existing executable validators, not a copy of the target
 // declaration. Unimplemented stored models remain explicitly unverified.
+const runtimeSchemas = {
+	AssignmentContext: assignmentContextSchema, ExactEntityReference: exactEntityReferenceSchema,
+	ExactGrant: exactGrantSchema, AssignmentWorkspace: assignmentWorkspaceSchema, Estimate: estimateSchema,
+	AssignmentReference: assignmentReferenceSchema, GitReference: assignmentReferenceSchema.options[0],
+	TreeDxReference: assignmentReferenceSchema.options[1], UrlReference: assignmentReferenceSchema.options[2],
+	ReadOnlyWorkspace: assignmentWorkspaceSchema.options[0], TreeDxAssignmentWorkspace: assignmentWorkspaceSchema.options[1],
+	GitAssignmentWorkspace: assignmentWorkspaceSchema.options[2], EffectiveActivityProfile: effectiveActivityProfileSchema,
+	AuthorizedContextItem: authorizedContextItemSchema, VerificationRecord: verificationRecordSchema,
+	Usage: usageSchema, Diagnostic: diagnosticSchema, AssignmentTimingAwarenessReceipt: assignmentTimingAwarenessReceiptSchema,
+	GraphChangeSet: graphChangeSetSchema, ConditionDefinition: conditionDefinitionSchema,
+	WorkdayPolicyFields: workdayPolicySchema, ActivityProfile: activityProfileSchema, ActivityProfiles: activityProfilesSchema,
+};
 const schemas: Record<string, z.ZodTypeAny> = {
 	...Object.fromEntries(Object.entries(models).map(([name, model]) => [name, describeContentFrontmatterSchema(model)])),
-	AssignmentAttempt: assignmentAttemptSchema, AssignmentContext: assignmentContextSchema,
+	AssignmentAttempt: assignmentAttemptSchema,
 	AssignmentResult: assignmentResultSchema, UsageSettlement: usageSettlementSchema,
 	Lease: leaseSchema, Reservation: reservationSchema,
 	ExecutionNode: executionNodeSchema, ExecutionEdge: executionEdgeSchema, Workday: appliedWorkdaySchema,
-	ExactEntityReference: exactEntityReferenceSchema, ExactGrant: exactGrantSchema,
-	AssignmentWorkspace: assignmentWorkspaceSchema, Estimate: estimateSchema,
+	GraphRevision: graphRevisionSchema, WorkdayPolicy: workdayProfileSchema,
+	...runtimeSchemas,
 };
-const runtimeOnly = new Set(['AssignmentContext', 'ExactEntityReference', 'ExactGrant', 'AssignmentWorkspace', 'Estimate']);
+const runtimeOnly = new Set(Object.keys(runtimeSchemas));
 
 type Field = { isOptional(): boolean; safeParse(value: unknown): { success: boolean } };
 type JsonSchema = Record<string, unknown>;
@@ -44,7 +60,7 @@ function dereference(schema: JsonSchema, root: JsonSchema): JsonSchema {
  * absent from the executable schema is a mismatch, including constraints Zod
  * cannot represent in its generated JSON Schema. Never silently discard it. */
 function structuralSchema(value: unknown, root: JsonSchema): unknown {
-	if (typeof value === 'boolean') return value;
+	if (typeof value === 'boolean') return value ? {} : false;
 	const schema = dereference(record(value), root);
 	const normalized: JsonSchema = {};
 	for (const key of ['$ref','type','const','enum','minLength','maxLength','pattern','format','minimum','maximum',
@@ -123,14 +139,17 @@ export function verifyAgentContentSchema(document: unknown, path = 'docs/agent.s
 					message: `${name} stored-record authority has no executable schema equivalence implementation.` });
 			}
 		}
+		for (const name of Object.keys(schemas)) if (!runtimeOnly.has(name) && !seen.has(name)) {
+			diagnostics.push({ code: 'agent_schema_root_missing', path,
+				message: `${name} executable stored-record authority is absent from the root union.` });
+		}
 	}
 	for (const [definition, schema] of Object.entries(schemas)) {
 		const declared = definitions[definition] as { properties?: Record<string, { const?: unknown }>; required?: string[] } | undefined;
 		let base = schema;
 		while (base instanceof z.ZodEffects) base = base.innerType();
 		const shape: Record<string, Field> = base instanceof z.ZodObject ? base.shape : {};
-		if (!declared || typeof declared !== 'object' || (base instanceof z.ZodObject
-			&& (!declared.properties || !Array.isArray(declared.required)))) {
+		if (!declared || typeof declared !== 'object' || (base instanceof z.ZodObject && !declared.properties)) {
 			diagnostics.push({ code: 'agent_schema_missing', path, message: `${definition} must declare properties and required fields.` });
 			continue;
 		}

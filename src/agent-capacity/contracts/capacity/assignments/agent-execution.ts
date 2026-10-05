@@ -208,7 +208,7 @@ export const authorizedContextItemSchema = z.object({
 	ref: exactEntityReferenceSchema,
 	mediaType: z.string().min(1),
 	digest,
-	value: z.any(),
+	value: z.unknown().refine(value => value !== undefined, { message: 'Authorized context requires its value payload.' }),
 }).strict();
 
 export const assignmentContextSchema = z.object({

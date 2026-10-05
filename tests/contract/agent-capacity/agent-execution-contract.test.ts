@@ -19,6 +19,23 @@ const timingAwareness = {
 };
 
 describe('canonical agent execution contract', () => {
+	it('native public SDK context item validation requires the payload field without inventing content or another authority', () => {
+		const original = { ref: { store: 'git', model: 'source', id: 'source', repository: 'source', commit: sha },
+			mediaType: 'application/json', digest };
+		const valid = [null, false, 0, '', [], {}, { evidence: ['exact', 1] }].map(value => ({ ...original, value }));
+		const input = [...valid, original, { ...original, value: {}, grant: {} }], before = structuredClone(input);
+		const path = fileURLToPath(new URL('../../unit/content/architecture/closeout-native.ts', import.meta.url)), source = readFileSync(path);
+		const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'context-item'], {
+			input: JSON.stringify(input), encoding: 'utf8', timeout: 15_000,
+		});
+		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+		const observations: unknown = JSON.parse(child.stdout);
+		if (!Array.isArray(observations)) throw new Error('Actual native context item observations required.');
+		expect(observations).toHaveLength(input.length);
+		expect(observations.slice(0, valid.length)).toEqual(valid.map(data => ({ success: true, data })));
+		for (const observation of observations.slice(valid.length)) expect(observation).toMatchObject({ success: false });
+		expect(input).toEqual(before); expect(readFileSync(path)).toEqual(source);
+	});
 	function nativeRecord(kind: 'lease' | 'reservation') {
 		const clock = '2026-10-03T00:00:00.000Z', optional = kind === 'lease' ? 'releasedAt' : 'closedAt';
 		const original = kind === 'lease'

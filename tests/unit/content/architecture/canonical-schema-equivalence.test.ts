@@ -17,6 +17,17 @@ function mutationDetected(document: CanonicalSchema, change: (copy: CanonicalSch
 }
 
 describe('exact canonical architecture schema equivalence', () => {
+	it('rejects omission of an implemented stored execution record from the root union despite unchanged complete definitions', () => {
+		const { document } = canonicalAuthority();
+		for (const name of ['AgentProfile', 'AssignmentAttempt', 'Lease', 'Reservation']) {
+			const changed = structuredClone(document);
+			changed.oneOf = changed.oneOf.filter(entry => entry.$ref !== `#/$defs/${name}`);
+			const before = JSON.stringify(changed);
+			expect(verify(changed)).toContainEqual(expect.objectContaining({ code: 'agent_schema_root_missing',
+				message: `${name} executable stored-record authority is absent from the root union.` }));
+			expect(JSON.stringify(changed)).toBe(before);
+		}
+	});
 	it('CI binds complete canonical execution verification to one exact Platform checkout before the original suites and coded scenes', () => {
 		const workflow = parse(readFileSync('.github/workflows/verify.yml', 'utf8')) as { jobs: { verify: {
 			env: Record<string, string>; steps: Array<{ name?: string; uses?: string; run?: string; with?: Record<string, unknown> }>;

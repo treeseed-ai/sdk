@@ -32,6 +32,18 @@ function supplied() {
 	return { item, attempt, result };
 }
 describe('public assignment whole immutable record custody', () => {
+	it('requires the authorized context value field while retaining null scalar and structured payload bytes without changing authority', () => {
+		const f = supplied(), schema = publicContracts.authorizedContextItemSchema;
+		const original = { ref: f.attempt.sourceRef, mediaType: 'application/json', digest: `sha256:${'a'.repeat(64)}` };
+		for (const value of [null, false, 0, '', [], {}, { evidence: ['exact', 1] }]) {
+			const input = { ...original, value }, before = structuredClone(input);
+			expect(schema.parse(input)).toEqual(input); expect(input).toEqual(before);
+		}
+		for (const input of [original, { ...original, value: undefined }, { ...original, value: {}, grant: {} }]) {
+			const before = structuredClone(input);
+			expect(schema.safeParse(input).success).toBe(false); expect(input).toEqual(before);
+		}
+	});
 	function verifyCanonicalRecord(kind: 'lease' | 'reservation') {
 		const exports: Record<string, unknown> = publicContracts, schema = exports[`${kind}Schema`];
 		expect(schema).toBeInstanceOf(z.ZodType);

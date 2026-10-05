@@ -28,6 +28,22 @@ function repository(document: unknown) {
 }
 
 describe('native Platform architecture-schema custody', () => {
+	it('native public verification denies an omitted executable stored root while retaining the committed declaration and complete definitions', () => {
+		const { document } = canonicalAuthority();
+		for (const name of ['AgentProfile', 'AssignmentAttempt', 'Lease', 'Reservation']) {
+			const changed = structuredClone(document);
+			changed.oneOf = changed.oneOf.filter(entry => entry.$ref !== `#/$defs/${name}`);
+			const root = repository(changed), path = resolve(root, 'docs/agent.schema.yml');
+			const before = readFileSync(path, 'utf8'), commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+			const result = verifyPlatformRepository(root);
+			expect(result.ok).toBe(false);
+			expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'agent_schema_root_missing',
+				message: `${name} executable stored-record authority is absent from the root union.` }));
+			expect(readFileSync(path, 'utf8')).toBe(before);
+			expect(execFileSync('git', ['show', `${commit}:docs/agent.schema.yml`], { cwd: root, encoding: 'utf8' })).toBe(before);
+			expect(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()).toBe(commit);
+		}
+	});
 	it('the declared CI Platform commit independently resolves the exact held canonical execution bytes without a moving ref or generated replacement', () => {
 		const source = readFileSync('.github/workflows/verify.yml', 'utf8');
 		const workflow = parse(source) as { jobs: { verify: { steps: Array<{ with?: { repository?: string; ref?: string } }> } } };

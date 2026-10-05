@@ -1,6 +1,26 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-context-value-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: "requires the authorized context value field while retaining null scalar and structured payload bytes without changing authority"
+  sdk.golden.execution-context-value-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/agent-execution-contract.test.ts
+    testName: "native public SDK context item validation requires the payload field without inventing content or another authority"
+  sdk.golden.execution-stored-root-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/canonical-schema-equivalence.test.ts
+    testName: "rejects omission of an implemented stored execution record from the root union despite unchanged complete definitions"
+  sdk.golden.execution-stored-root-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "native public verification denies an omitted executable stored root while retaining the committed declaration and complete definitions"
   sdk.golden.execution-canonical-ci-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
