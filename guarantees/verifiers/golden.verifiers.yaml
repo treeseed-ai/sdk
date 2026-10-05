@@ -1,6 +1,11 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-reference-inventory-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/assignments/assignment-record-validation.test.ts
+    testName: "retains distinct canonical reference inventories and rejects exact duplicate authority context grants and result references without normalization"
   sdk.golden.execution-reference-conditions-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

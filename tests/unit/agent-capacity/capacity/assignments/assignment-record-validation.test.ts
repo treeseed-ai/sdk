@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { validateProviderAssignment } from '../../../../../src/agent-capacity/validation/assignment-records.ts';
-import { assignmentAttemptSchema } from '../../../../../src/agent-capacity/contracts/capacity/assignments/agent-execution.ts';
+import { assignmentAttemptSchema, assignmentResultSchema, exactGrantSchema } from '../../../../../src/agent-capacity/contracts/capacity/assignments/agent-execution.ts';
 
 function assignment(overrides: Record<string, unknown> = {}) {
 	const at = '2026-07-18T00:00:00.000Z', ref = { store: 'treedx', model: 'agent', id: 'configured-builder',
@@ -34,6 +34,31 @@ function assignment(overrides: Record<string, unknown> = {}) {
 }
 
 describe('assignment record validation', () => {
+	it('retains distinct canonical reference inventories and rejects exact duplicate authority context grants and result references without normalization', () => {
+		const original = assignment().assignmentAttempt, first = original.authorityRefs[0]!, second = { ...first, id: 'second-evidence' };
+		const observed: Array<{ field: string; distinct: boolean; duplicated: boolean }> = [];
+		for (const field of ['authorityRefs', 'contextRefs'] as const) {
+			const valid = { ...original, [field]: [first, second] }, invalid = { ...original, [field]: [first, structuredClone(first)] };
+			const held = structuredClone({ valid, invalid });
+			observed.push({ field, distinct: assignmentAttemptSchema.safeParse(valid).success, duplicated: assignmentAttemptSchema.safeParse(invalid).success });
+			expect({ valid, invalid }).toEqual(held);
+		}
+		for (const field of ['contentRead', 'contentWrite'] as const) {
+			const valid = { ...original.grant, [field]: [first, second] }, invalid = { ...original.grant, [field]: [first, structuredClone(first)] };
+			const held = structuredClone({ valid, invalid });
+			observed.push({ field, distinct: exactGrantSchema.safeParse(valid).success, duplicated: exactGrantSchema.safeParse(invalid).success });
+			expect({ valid, invalid }).toEqual(held);
+		}
+		const reference = { kind: 'url', url: 'https://example.test/one' }, other = { kind: 'url', url: 'https://example.test/two' };
+		const result = { schemaVersion: 'treeseed.assignment-result/v1', id: 'result', assignmentId: original.id, status: 'completed',
+			summary: 'Supplied parser input, not provider evidence.', references: [reference, other], verification: [],
+			usage: { elapsedSeconds: 1 }, diagnostics: [], completedAt: original.createdAt };
+		const invalid = { ...result, references: [reference, { url: reference.url, kind: reference.kind }] }, held = structuredClone({ result, invalid });
+		observed.push({ field: 'references', distinct: assignmentResultSchema.safeParse(result).success, duplicated: assignmentResultSchema.safeParse(invalid).success });
+		expect({ result, invalid }).toEqual(held);
+		expect(observed).toEqual(['authorityRefs', 'contextRefs', 'contentRead', 'contentWrite', 'references']
+			.map(field => ({ field, distinct: true, duplicated: false })));
+	});
 	it('accepts complete canonical durable records', () => {
 		expect(validateProviderAssignment(assignment())).toEqual({ ok: true, diagnostics: [] });
 		expect(validateProviderAssignment(assignment({ assignmentAttempt: null })).ok).toBe(false);

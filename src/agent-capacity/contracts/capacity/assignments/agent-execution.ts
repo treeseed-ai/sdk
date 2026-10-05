@@ -35,9 +35,11 @@ export const assignmentReferenceSchema = z.discriminatedUnion('kind', [
 	z.object({ kind: z.literal('url'), url: z.string().url(), digest: digest.optional() }).strict(),
 ]);
 
+const exactReferences = uniqueArray(z.array(exactEntityReferenceSchema));
+
 export const exactGrantSchema = z.object({
-	contentRead: z.array(exactEntityReferenceSchema),
-	contentWrite: z.array(exactEntityReferenceSchema),
+	contentRead: exactReferences,
+	contentWrite: exactReferences,
 	sourceRead: uniqueStrings,
 	sourceWrite: uniqueStrings,
 	tools: uniqueStrings,
@@ -87,12 +89,12 @@ export const assignmentAttemptSchema = z.object({
 	nodeRevision: z.number().int().positive(),
 	graphRevision: z.number().int().positive(),
 	sourceRef: exactEntityReferenceSchema,
-	authorityRefs: z.array(exactEntityReferenceSchema).min(1),
+	authorityRefs: uniqueArray(z.array(exactEntityReferenceSchema).min(1)),
 	effectiveProfile: effectiveActivityProfileSchema,
 	requiredCapabilities: uniqueStrings,
 	grant: exactGrantSchema,
 	provider: providerSelectionSchema,
-	contextRefs: z.array(exactEntityReferenceSchema),
+	contextRefs: exactReferences,
 	predecessorResultIds: uniqueStrings,
 	acceptanceCriteria: z.array(z.string().trim().min(1)).min(1).optional(),
 	workspace: assignmentWorkspaceSchema,
@@ -152,7 +154,7 @@ export const assignmentResultSchema = z.object({
 	assignmentId: identifier,
 	status: z.enum(['completed', 'blocked', 'failed']),
 	summary: z.string().min(1),
-	references: z.array(assignmentReferenceSchema),
+	references: uniqueArray(z.array(assignmentReferenceSchema)),
 	verification: z.array(verificationRecordSchema),
 	usage: usageSchema,
 	diagnostics: z.array(diagnosticSchema),
