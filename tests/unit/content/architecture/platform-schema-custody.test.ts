@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { stringify } from 'yaml';
+import { parse, stringify } from 'yaml';
 import { verifyPlatformRepository } from '../../../../src/platform/index.ts';
 import { partialSdkDocument } from './schema-verification-fixture.ts';
 import { assertCanonicalAuthorityUnchanged, canonicalAuthority, constraintPaths, removeConstraint, storedDefinitions } from './canonical-schema-fixture.ts';
@@ -28,6 +28,19 @@ function repository(document: unknown) {
 }
 
 describe('native Platform architecture-schema custody', () => {
+	it('the declared CI Platform commit independently resolves the exact held canonical execution bytes without a moving ref or generated replacement', () => {
+		const source = readFileSync('.github/workflows/verify.yml', 'utf8');
+		const workflow = parse(source) as { jobs: { verify: { steps: Array<{ with?: { repository?: string; ref?: string } }> } } };
+		const checkouts = workflow.jobs.verify.steps.filter(step => step.with?.repository === 'treeseed-ai/platform');
+		expect(checkouts).toHaveLength(1); const ref = checkouts[0]!.with?.ref;
+		expect(ref).toMatch(/^[a-f0-9]{40}$/u); if (!ref) throw new Error('Exact native Platform commit required');
+		const held = canonicalAuthority(); expect(ref).toBe(held.commit);
+		const actual = execFileSync('git', ['show', `${ref}:docs/agent.schema.yml`], { cwd: held.root, encoding: 'utf8' });
+		expect(actual).toBe(held.bytes);
+		expect(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: held.root, encoding: 'utf8' }).trim()).toBe(ref);
+		expect(readFileSync(resolve(held.root, 'docs/agent.schema.yml'), 'utf8')).toBe(actual);
+		expect(readFileSync('.github/workflows/verify.yml', 'utf8')).toBe(source);
+	});
 	for (const group of ['stored', 'runtime/shared'] as const) {
 		it(`detects each ${group} canonical definition replacement through real committed public repository read-back`, () => {
 			const { document } = canonicalAuthority();

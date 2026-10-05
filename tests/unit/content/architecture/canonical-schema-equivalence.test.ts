@@ -1,4 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { parse } from 'yaml';
 import { verifyAgentContentSchema } from '../../../../src/platform/agent-schema-verification.ts';
 import { assertCanonicalAuthorityUnchanged, canonicalAuthority, constraintPaths,
 	removeConstraint, schemaRecord, storedDefinitions, type CanonicalSchema } from './canonical-schema-fixture.ts';
@@ -15,6 +17,20 @@ function mutationDetected(document: CanonicalSchema, change: (copy: CanonicalSch
 }
 
 describe('exact canonical architecture schema equivalence', () => {
+	it('CI binds complete canonical execution verification to one exact Platform checkout before the original suites and coded scenes', () => {
+		const workflow = parse(readFileSync('.github/workflows/verify.yml', 'utf8')) as { jobs: { verify: {
+			env: Record<string, string>; steps: Array<{ name?: string; uses?: string; run?: string; with?: Record<string, unknown> }>;
+		} } };
+		const job = workflow.jobs.verify, bound = job.steps.filter(step => step.with?.repository === 'treeseed-ai/platform');
+		expect(bound).toHaveLength(1); const checkout = bound[0]!;
+		expect(checkout.uses).toMatch(/^actions\/checkout@[a-f0-9]{40}$/u);
+		expect(checkout.with).toEqual({ repository: 'treeseed-ai/platform', ref: canonicalAuthority().commit,
+			path: '.treeseed/platform-authority', 'persist-credentials': false });
+		expect(job.env.TREESEED_DEVELOPMENT_WORKSPACE_ROOT).toBe('${{ github.workspace }}/.treeseed/platform-authority');
+		const index = job.steps.indexOf(checkout);
+		for (const name of ['Verify package', 'Execute coded golden component scenes']) expect(job.steps.findIndex(step => step.name === name)).toBeGreaterThan(index);
+		expect(job.steps.find(step => step.name === 'Verify package')?.run).toBe('npm run verify:direct');
+	});
 	it('accepts the exact complete canonical target without modifying its stored or runtime definitions', () => {
 		const { document } = canonicalAuthority();
 		const before = JSON.stringify(document);

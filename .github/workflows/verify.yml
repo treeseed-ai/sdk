@@ -17,9 +17,18 @@ jobs:
       TREESEED_STAGE_WAIT_MODE: skip
       TREESEED_AGENT_DISABLE_GIT: "true"
       TREESEED_FIXTURE_ID: treeseed-working-site
+      TREESEED_DEVELOPMENT_WORKSPACE_ROOT: ${{ github.workspace }}/.treeseed/platform-authority
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Checkout exact canonical execution authority
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: treeseed-ai/platform
+          ref: 42a67d98207211f3b84018d04af8c58090645d97
+          path: .treeseed/platform-authority
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
