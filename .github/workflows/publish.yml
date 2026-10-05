@@ -1,32 +1,58 @@
-name: Publish TreeSeed SDK
+name: Promote TreeSeed SDK Candidate
 
 on:
   push:
-    tags:
-      - "*.*.*"
-  workflow_dispatch:
+    tags: ["*.*.*"]
 
 jobs:
-  publish:
-    if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-')
+  promote:
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: write
-    environment: production
+      id-token: write
+    environment: ${{ contains(github.ref_name, '-') && 'staging' || 'production' }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-      - run: npm run release:setup
-      - run: bash -lc 'npm run verify:local'
-      - run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - name: Create GitHub release
+      - name: Require the exact protected staging candidate
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "${GITHUB_REF_NAME}" --generate-notes --verify-tag
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            candidate_branch="staging"
+          else
+            candidate_branch="main"
+          fi
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "origin/${candidate_branch}")"
+          run_id="$(gh run list --workflow verify.yml --branch "$candidate_branch" --commit "$GITHUB_SHA" --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$run_id"
+          gh run download "$run_id" --name "sdk-candidate-${GITHUB_SHA}" --dir candidate
+          mkdir -p .treeseed/standards
+          cp -a candidate/. .treeseed/standards/
+      - name: Install publication tooling without lifecycle builds
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run release:check-tag
+      - name: Verify sealed custody without building
+        run: npm run release:verify-custody
+      - name: Publish accepted tarball directly
+        run: npm run release:publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: npm run release:readback
+      - name: Publish unchanged custody assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          release_flags=()
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then release_flags+=(--prerelease); fi
+          gh release create "${GITHUB_REF_NAME}" candidate/package/*.tgz \
+            candidate/sbom.cdx.json \
+            candidate/contract-bundle.json \
+            candidate/compatibility-attestation.json \
+            candidate/release-evidence-v1.json \
+            --generate-notes --verify-tag "${release_flags[@]}"

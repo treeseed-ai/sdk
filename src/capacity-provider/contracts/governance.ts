@@ -1,4 +1,6 @@
 import type { ResearchSourcePolicy } from '../../agent-capacity/contracts/support/research-source-policy.ts';
+import type { CapabilityOffer } from '../capability-ontology.ts';
+import type { CapabilityAccountingObservation } from '../../agent-capacity/contracts/capacity/workdays/capability-accounting.ts';
 
 export const CAPACITY_PROVIDER_IDENTITY_ALGORITHM = 'Ed25519' as const;
 export const CAPACITY_PROVIDER_PROOF_TTL_SECONDS = 300;
@@ -267,17 +269,21 @@ export interface CapacityExecutionProvider {
 
 /** Optional provider-global lane that narrows an execution provider's limits. */
 export interface CapacityProviderLane {
-	schemaVersion: 1;
+	schemaVersion: 2;
 	id: string;
 	providerId: string;
-	executionProviderId: string;
 	displayName: string;
 	purpose: import('../../agent-capacity/contracts/capacity/communication/communication-records.ts').ProviderLanePurpose;
 	status: CapacityProviderLaneStatus;
+	priority: number;
+	reservedConcurrentWorkers: number;
+	borrowWhenIdle: boolean;
+	lendWhenIdle: boolean;
+	reclaimPolicy: 'admission';
+	queueLimit: number;
+	timeoutSeconds: number;
 	capabilities: string[];
-	maxConcurrentRunners: number;
-	minimumAssignmentDuration?: MinimumAssignmentDuration;
-	nativeLimits: CapacityExecutionProviderNativeLimit[];
+	maxConcurrentWorkers: number;
 	metadata?: Record<string, unknown>;
 	createdAt: string;
 	updatedAt: string;
@@ -285,40 +291,30 @@ export interface CapacityProviderLane {
 
 export interface ProviderLaneSnapshot {
 	id: string;
-	executionProviderId: string;
 	purpose: import('../../agent-capacity/contracts/capacity/communication/communication-records.ts').ProviderLanePurpose;
 	status: CapacityProviderLaneStatus;
+	priority: number;
+	reservedConcurrentWorkers: number;
+	borrowedWorkers: number;
+	lentWorkers: number;
+	queuedAssignments: number;
 	capabilities: string[];
-	maxConcurrentRunners: number;
-	activeRunners: number;
-	minimumAssignmentDuration?: MinimumAssignmentDuration;
-	preferred?: boolean;
-	nativeLimits: Record<string, unknown>;
+	maxConcurrentWorkers: number;
+	activeWorkers: number;
 }
 
-export type MinimumAssignmentDuration =
-	| { amount: number; unit: 'seconds' }
-	| {
-		amount: number;
-		unit: 'business-days';
-		calendar: {
-			timeZone: string;
-			weekdays?: number[];
-			holidayDates?: string[];
-		};
-	};
-
-export interface ProviderExecutionProviderSnapshot {
+export interface ProviderExecutionAdapterSnapshot {
 	id: string;
 	adapter: string;
+	isolation: 'microvm' | 'process' | 'worker';
 	status: 'available' | 'degraded' | 'unavailable';
 	capabilities: string[];
-	maxConcurrentRunners: number;
-	activeRunners: number;
-	minimumAssignmentDuration?: MinimumAssignmentDuration;
+	laneIds: string[];
+	maxConcurrentWorkers: number;
+	activeWorkers: number;
 	nativeLimits: Record<string, unknown>;
 	observations?: Record<string, unknown>;
-	lanes: ProviderLaneSnapshot[];
+	accountingObservation?: { modelUsage: CapabilityAccountingObservation; capabilityUsage: Record<string, CapabilityAccountingObservation> };
 }
 
 export interface ProviderAvailabilitySnapshot {
@@ -326,11 +322,13 @@ export interface ProviderAvailabilitySnapshot {
 	availableFrom: string;
 	availableUntil?: string | null;
 	pressure: 'idle' | 'normal' | 'busy' | 'throttled' | 'exhausted';
-	maxConcurrentAssignments: number;
+	maxConcurrentWorkers: number;
 	activeAssignmentIds: string[];
-	executionProviders: ProviderExecutionProviderSnapshot[];
-	communicationReady:boolean;
-	communicationBlockers:string[];
+	reservedWorkers: number;
+	borrowedWorkers: number;
+	availableWorkers: number;
+	adapters: ProviderExecutionAdapterSnapshot[];
+	lanes: ProviderLaneSnapshot[];
 	capabilities: string[];
 	constraints?: Record<string, unknown>;
 }
@@ -351,9 +349,9 @@ export interface ProviderAvailabilitySession {
 
 export interface ProviderConnectionConfig {
 	id: string;
-	marketProfile?: string;
-	marketUrl?: string;
-	marketAudience?: string;
+	serverProfile?: string;
+	controlPlaneUrl?: string;
+	controlPlaneAudience?: string;
 	teamId: string;
 	providerId: string;
 	membershipId: string;
@@ -366,72 +364,50 @@ export interface ProviderConnectionConfig {
 /** One-time onboarding input. It is never valid durable provider runtime configuration. */
 export interface CapacityProviderJoinInput {
 	id: string;
-	marketProfile?: string;
-	marketUrl?: string;
-	marketAudience?: string;
+	serverProfile?: string;
+	controlPlaneUrl?: string;
+	controlPlaneAudience?: string;
 	registrationKeyRef: string;
 	offer: ProviderSupplyOffer;
 }
 
-export interface CapacityProviderManifestV2 {
-	schemaVersion: 2;
-	providerClass: 'agent' | 'platform-operation';
-	ownership: {
-		type: 'team' | 'external';
-		teamId?: string;
+export interface CapacityProviderSandboxProfile {
+	id: string;
+	contract?: { id: string; version: string; digest: string; capabilities: string[] };
+	guestImage: string;
+	guestImageDigest: string;
+	lineage: { baseImageDigest: string; provenanceDigest: string; architectures: Array<'amd64' | 'arm64'>; signature: { keyId: string; algorithm: 'cosign' | 'Ed25519'; value: string } };
+	defaultDenyNetwork: true;
+	resources: { cpuCores: number; memoryBytes: number; diskBytes: number; processLimit: number; outputBytes: number };
+}
+
+export interface CapacityProviderManifestV5 {
+	schemaVersion: 5;
+	ownership: { type: 'team' | 'external'; teamId?: string };
+	configuration: { generation: string; sourceManifestDigest?: string };
+	identity: { privateKeyRef: string; displayName: string };
+	ontology: { generation: number; digest: string };
+	capacity: {
+		maxConcurrentWorkers: number; cpuCores?: number; memoryBytes?: number;
+		accelerators?: Array<{ kind: string; count: number; memoryBytes?: number }>;
+		maxActiveSeconds?: number; maxInputTokens?: number; maxOutputTokens?: number; maxCost?: number; currency?: string; maxAttempts?: number;
 	};
-	configuration: {
-		generation: string;
-		sourceManifestDigest?: string;
-	};
-	identity: {
-		privateKeyRef: string;
-		displayName: string;
-	};
-	supplyCeilings: {
-		maxConcurrentAssignments: number;
-		maxActiveSeconds?: number;
-		maxInputTokens?: number;
-		maxOutputTokens?: number;
-		maxCost?: number;
-		currency?: string;
-		maxAttempts?: number;
-	};
-	credentialBindings?: Array<{
-		id: string;
-		source: 'service-vault' | 'process-environment';
-		reference: string;
-		required: boolean;
+	credentialProfiles?: Array<{ id: string; source: 'service-vault'; reference: string; required: boolean }>;
+	lanes: Array<{
+		id: string; purpose: import('../../agent-capacity/contracts/capacity/communication/communication-records.ts').ProviderLanePurpose;
+		priority: number; reservedConcurrentWorkers: number; maxConcurrentWorkers: number; borrowWhenIdle: boolean; lendWhenIdle: boolean;
+		reclaimPolicy: 'admission'; queueLimit: number; timeoutSeconds: number; capabilities?: string[];
 	}>;
-	defaultExecutionProviderId?: string;
-	executionProviders: Array<{
-		id: string;
-		adapter: string;
-		profile?: string;
-		module?: string;
-		protocol?: 'responses' | 'chat-completions';
-		model?: {
-			endpointRef?: string;
-			baseUrl?: string;
-			model?: string;
-		};
-		credentialBindings?: string[];
-		healthProbe?: string;
-		versionConstraint?: string;
-		configurationDigest?: string;
-		minimumAssignmentDuration?: MinimumAssignmentDuration;
-		nativeLimits: Record<string, unknown>;
-		researchSourcePolicy?: ResearchSourcePolicy;
-		capabilities?: string[];
-		lanes?: Array<{
-			id: string;
-			purpose: import('../../agent-capacity/contracts/capacity/communication/communication-records.ts').ProviderLanePurpose;
-			maxConcurrentRunners: number;
-			minimumAssignmentDuration?: MinimumAssignmentDuration;
-			capabilities?: string[];
-			nativeLimits?: Record<string, unknown>;
-		}>;
+	sandbox: { required: true; brokerSocket: string; runtime: 'kata-runtime-rs-qemu'; profiles: CapacityProviderSandboxProfile[] };
+	adapters: Array<{
+		id: string; adapter: string; isolation: 'microvm'; profile?: string; module?: string; protocol?: 'responses' | 'chat-completions';
+		model?: { endpointRef?: string; baseUrl?: string; model?: string; reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' }; credentialProfiles?: string[]; laneIds: string[]; maxConcurrentWorkers: number;
+		healthProbe?: string; versionConstraint?: string; configurationDigest?: string;
+		nativeLimits: Record<string, unknown>; researchSourcePolicy?: ResearchSourcePolicy;
+		offers: Array<{ offer: CapabilityOffer; sandboxProfileId: string }>;
 	}>;
 	connections: ProviderConnectionConfig[];
 	metadata?: Record<string, unknown>;
 }
+
+export type CapacityProviderManifest = CapacityProviderManifestV5;

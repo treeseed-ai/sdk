@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertPackageReleaseTag } from './release-version.ts';
 
-const semverTagPattern = /^\d+\.\d+\.\d+$/;
 const packageRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const packageJsonPath = resolve(packageRoot, 'package.json');
 const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
@@ -15,20 +15,10 @@ if (!tagName) {
 	process.exit(1);
 }
 
-if (!semverTagPattern.test(tagName)) {
-	console.error(
-		`Release tag "${tagName}" must use the "{MAJOR}.{MINOR}.{PATCH}" format, for example "${packageVersion}".`,
-	);
+try {
+	const release = assertPackageReleaseTag(tagName, packageVersion);
+	console.log(`Release tag "${tagName}" matches @treeseed/sdk version "${packageVersion}" for npm dist-tag "${release.npmDistTag}".`);
+} catch (error) {
+	console.error(error instanceof Error ? error.message : String(error));
 	process.exit(1);
 }
-
-const taggedVersion = tagName;
-
-if (taggedVersion !== packageVersion) {
-	console.error(
-		`Release tag version "${taggedVersion}" does not match @treeseed/sdk version "${packageVersion}".`,
-	);
-	process.exit(1);
-}
-
-console.log(`Release tag "${tagName}" matches @treeseed/sdk version "${packageVersion}".`);

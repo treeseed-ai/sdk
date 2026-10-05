@@ -1,5 +1,5 @@
-export const BOOK_SCHEMA_VERSION = 'treeseed.book/v2' as const;
-export const KNOWLEDGE_PAGE_SCHEMA_VERSION = 'treeseed.knowledge-page/v1' as const;
+export const BOOK_SCHEMA_VERSION = 'treeseed.book/v3' as const;
+export const KNOWLEDGE_PAGE_SCHEMA_VERSION = 'treeseed.knowledge-page/v2' as const;
 export const BOOK_COLLECTION_SCHEMA_VERSION = 'treeseed.book-collection/v1' as const;
 export const KNOWLEDGE_PACK_SCHEMA_VERSION = 'treeseed.knowledge-pack/v2' as const;
 export const EDITORIAL_CONTEXT_SCHEMA_VERSION = 'treeseed.editorial-context/v1' as const;
@@ -14,6 +14,10 @@ export type SanitizedKnowledgeHtml = string & { readonly __sanitizedKnowledgeHtm
 export interface BookDefinition {
 	schemaVersion: typeof BOOK_SCHEMA_VERSION;
 	id: string;
+	projectId: string;
+	revision: number;
+	sourceDigest?: string;
+	sourcePath?: string;
 	slug: string;
 	title: string;
 	summary: string;
@@ -47,6 +51,8 @@ export interface KnowledgeContextBindings {
 export interface KnowledgePageDefinition {
 	schemaVersion: typeof KNOWLEDGE_PAGE_SCHEMA_VERSION;
 	id: string;
+	projectId: string;
+	bookRef: import('../agent-capacity/contracts/capacity/assignments/agent-execution.ts').ExactEntityReference;
 	bookId: string;
 	slug: string;
 	title: string;
@@ -64,6 +70,7 @@ export interface KnowledgePageDefinition {
 	relatedObjectiveIds: string[];
 	relatedProposalIds: string[];
 	relatedDecisionIds: string[];
+	relatedRefs?: import('../agent-capacity/contracts/capacity/assignments/agent-execution.ts').ExactEntityReference[];
 	guaranteeIds: string[];
 	audiences: KnowledgeAudienceDeclaration;
 	context: KnowledgeContextBindings;

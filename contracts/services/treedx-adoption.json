@@ -1,0 +1,11 @@
+{
+  "schema": "treeseed.external-service-adoption/v1",
+  "package": "@treeseed/treedx",
+  "packageVersion": "0.3.0-rc.17",
+  "packageArtifactDigest": "sha256:7bbee8d24700b2066f0df5f4906e0a5d809466c827e6136b4ad23a7e3c97e8a3",
+  "sourceCommit": "07b25f226743e7718b52813e87ea929cb82c32ca",
+  "openapiVersion": "0.11.1",
+  "openapiDigest": "sha256:90b040cc8372e1359e77c1a4e7c23c930365202c5eb0a9d4ca865d2f11eb48e1",
+  "operationInventoryDigest": "sha256:4f481063ad858cbade4d5fa19c529aca4f108c3e70f12c55ed645c8b412bb17b",
+  "generatedTypesDigest": "sha256:b920eba21f37637c5907d2377a5c55ea5084f5c92100dceeb10b03f7749a74b2"
+}

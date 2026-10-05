@@ -1,0 +1,68 @@
+schemaVersion: treeseed.scene/v1
+id: sdk.golden.component-boundaries
+title: sdk golden component boundaries
+scope: local-component-tests
+workflow:
+  - id: current-frozen-source
+    action: { verifier: sdk.golden.current-frozen-source }
+    expect: { status: passed }
+  - id: archive-measured-review
+    action: { verifier: sdk.golden.archive-measured-review }
+    expect: { status: passed }
+  - id: release-owned-suite
+    action: { verifier: sdk.golden.release-owned-suite }
+    expect: { status: passed }
+  - id: release-aggregate
+    action: { verifier: sdk.golden.release-aggregate }
+    expect: { status: passed }
+  - id: archive-current-directory
+    action: { verifier: sdk.golden.archive-current-directory }
+    expect: { status: passed }
+  - id: archive-portable
+    action: { verifier: sdk.golden.archive-portable }
+    expect: { status: passed }
+  - id: archive-targets
+    action: { verifier: sdk.golden.archive-targets }
+    expect: { status: passed }
+  - id: continuation-intent
+    action: { verifier: sdk.golden.continuation-intent }
+    expect: { status: passed }
+  - id: production-runtime-imports
+    action: { verifier: sdk.golden.production-runtime-imports }
+    expect: { status: passed }
+  - id: complete-usage-pagination
+    action: { verifier: sdk.golden.complete-usage-pagination }
+    expect: { status: passed }
+  - id: recursive-workspace-grant
+    action: { verifier: sdk.golden.recursive-workspace-grant }
+    expect: { status: passed }
+  - id: planning-cycles
+    action: { verifier: sdk.golden.planning-cycles }
+    expect: { status: passed }
+  - id: response-reference
+    action: { verifier: sdk.golden.response-reference }
+    expect: { status: passed }
+  - id: phase-boundary
+    action: { verifier: sdk.golden.phase-boundary }
+    expect: { status: passed }
+  - id: target-shares
+    action: { verifier: sdk.golden.target-shares }
+    expect: { status: passed }
+  - id: concurrent-fairness
+    action: { verifier: sdk.golden.concurrent-fairness }
+    expect: { status: passed }
+  - id: calibration
+    action: { verifier: sdk.golden.calibration }
+    expect: { status: passed }
+  - id: calibration-task-size
+    action: { verifier: sdk.golden.calibration-task-size }
+    expect: { status: passed }
+  - id: caps
+    action: { verifier: sdk.golden.caps }
+    expect: { status: passed }
+  - id: bounded-turns
+    action: { verifier: sdk.golden.bounded-turns }
+    expect: { status: passed }
+  - id: cycles-denied
+    action: { verifier: sdk.golden.cycles-denied }
+    expect: { status: passed }

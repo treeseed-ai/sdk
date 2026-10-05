@@ -3,52 +3,58 @@ import {
 	CREDENTIAL_AUTHORITY_SCHEMES,
 	SERVICE_CAPABILITY_TYPES,
 	SERVICE_PROVIDER_CATALOG,
-	normalizeProjectRepositoryTopology,
-} from '../../../src/index.ts';
+} from '../../../src/configuration/secrets-capability.ts';
+
 
 describe('provider operation contracts', () => {
 	it('keeps repository and workflow GitHub authority least-privilege and independently selectable', () => {
 		const github = SERVICE_PROVIDER_CATALOG.find((provider) => provider.id === 'github');
 		expect(github).toBeDefined();
 		expect(github?.capabilities.map((capability) => capability.type)).toEqual([
-			'repository-hosting', 'workflow-execution', 'workflow-configuration', 'secret-enclave',
+			'repository-hosting', 'workflow-execution',
 		]);
 		expect(github?.credentialProfiles.find((profile) => profile.id === 'github-repository-app')?.capabilities)
 			.toEqual(['repository-hosting']);
 		expect(github?.credentialProfiles.find((profile) => profile.id === 'github-repository-app'))
-			.toMatchObject({ fields: [], authoritySchemes: ['app-installation'] });
+			.toMatchObject({ fields: [], authoritySchemes: ['app-installation'], permissions: [
+				'Metadata: read', 'Contents: read and write', 'Checks: read', 'Administration: read and write',
+			] });
 		expect(github?.credentialProfiles.find((profile) => profile.id === 'github-workflow-app')?.capabilities)
-			.toEqual(['workflow-execution', 'workflow-configuration', 'secret-enclave']);
+			.toEqual(['workflow-execution']);
 		expect(github?.credentialProfiles.find((profile) => profile.id === 'github-workflow-app'))
 			.toMatchObject({ fields: [], authoritySchemes: ['app-installation'] });
 		expect(github?.connectionFields.map((field) => field.key)).toEqual(['organization']);
 	});
 
-	it('preserves app, token, environment, encrypted, and workload authority schemes', () => {
+	it('exposes App installation and managed OpenBao authority only', () => {
 		expect(CREDENTIAL_AUTHORITY_SCHEMES).toEqual(expect.arrayContaining([
-			'app-installation', 'api-token', 'environment-reference', 'client-encrypted', 'external-vault', 'workload-identity',
+			'app-installation', 'openbao',
 		]));
-		expect(SERVICE_CAPABILITY_TYPES).toContain('workflow-configuration');
+		expect(SERVICE_CAPABILITY_TYPES).not.toContain('workflow-configuration');
+		expect(SERVICE_CAPABILITY_TYPES).not.toContain('secret-enclave');
+		expect(SERVICE_CAPABILITY_TYPES).toContain('state-encryption');
 	});
 
-	it('normalizes a complete remote repository binding and fails incomplete input closed', () => {
-		const base = {
-			contentRepository: {
-				accessMode: 'treedx', contentPath: 'docs/src/content',
-				treeDx: { instanceId: 'node-1', libraryId: 'team/project' },
-				remote: {
-					bindingId: 'binding-1', serviceConnectionId: 'connection-1', capabilityBindingId: 'capability-1',
-					providerId: 'github', providerRepositoryId: '123', owner: 'treeseed-ai', name: 'admin',
-					cloneUrl: 'https://github.com/treeseed-ai/admin.git', defaultRef: 'main', publicationRef: 'staging',
-					authorityId: 'authority-1', grantStatus: 'ready', drift: 'none', version: 1,
-				},
-			},
-			siteRepository: { accessMode: 'filesystem', name: 'docs' },
-		};
-		expect(normalizeProjectRepositoryTopology(base).contentRepository.remote?.providerRepositoryId).toBe('123');
-		expect(() => normalizeProjectRepositoryTopology({
-			...base,
-			contentRepository: { ...base.contentRepository, remote: { bindingId: 'partial' } },
-		})).toThrow(/missing/i);
+	it('exposes non-secret hosted adoption targets without embedding installation identities', () => {
+		const cloudflare = SERVICE_PROVIDER_CATALOG.find((provider) => provider.id === 'cloudflare');
+		const railway = SERVICE_PROVIDER_CATALOG.find((provider) => provider.id === 'railway');
+		expect(cloudflare?.connectionFields).toMatchObject([
+			{ key: 'accountId', required: true, sensitive: false },
+			{ key: 'domain', required: false, sensitive: false, requiredForCapabilities: ['dns-management'] },
+		]);
+		expect(cloudflare?.connectionFields.some(({key}) => ['zoneId', 'deploymentEnvironment'].includes(key))).toBe(false);
+		expect(railway?.connectionFields).toMatchObject([{ key: 'deploymentEnvironment', required: true, sensitive: false }, { key: 'workspaceId', required: true, sensitive: false }, { key: 'projectId', required: false, sensitive: false }, { key: 'environmentId', required: false, sensitive: false }]);
+		expect(cloudflare?.credentialProfiles.find(({ id }) => id === 'cloudflare-storage')?.fields.map(({ key, sensitive }) => ({ key, sensitive }))).toEqual([
+			{ key: 'apiToken', sensitive: true },
+		]);
+		expect(cloudflare?.capabilities.find(({ type }) => type === 'object-storage')?.credentialProfileIds).toEqual(['cloudflare-storage']);
+		expect(cloudflare?.capabilities.find(({ type }) => type === 'state-encryption')).toBeUndefined();
+		for (const provider of [cloudflare, railway]) {
+			expect(provider?.connectionFields.some(field => field.key.startsWith('state'))).toBe(false);
+			expect(provider?.credentialProfiles.some(profile => ['s3-state-session', 'opentofu-state-encryption'].includes(profile.id))).toBe(false);
+		}
+		expect(cloudflare?.credentialProfiles.filter(({ id }) => id.startsWith('cloudflare-')).every(({ authoritySchemes }) => authoritySchemes?.includes('openbao'))).toBe(true);
+		expect(railway?.credentialProfiles.find(({ id }) => id === 'railway-workspace')?.authoritySchemes).toContain('openbao');
 	});
+
 });

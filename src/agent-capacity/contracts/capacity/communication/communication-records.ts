@@ -1,4 +1,4 @@
-export type ProviderLanePurpose = 'communication' | 'operation';
+export type ProviderLanePurpose = 'communication' | 'platform' | 'workday';
 export type CapacityExecutionKind = 'workday' | 'conversation' | 'simulation' | 'recovery';
 export type CapacityTriggerKind = 'scheduled' | 'manual' | 'discussion' | 'agent-handoff';
 export type CommunicationPriorityClass = 'human-interactive' | 'workday-blocking-agent' | 'agent-asynchronous' | 'operational';

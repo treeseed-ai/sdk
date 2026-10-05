@@ -8,4 +8,5 @@ export * from './configuration.ts';
 export * from './research/citation.ts';
 export * from './research/source-policy.ts';
 export * from './research/workflow.ts';
-export * from './workflow-promotion.ts';
+export * from './execution/execution-graph.ts';
+export * from '../contracts/capacity/assignments/agent-execution.ts';

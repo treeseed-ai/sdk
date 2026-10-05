@@ -1,0 +1,26 @@
+schemaVersion: treeseed.scene/v1
+id: sdk.golden.product-custody
+title: SDK product and archive custody
+scope: local-component-tests
+workflow:
+  - id: current-source
+    action: { verifier: sdk.golden.current-frozen-source }
+    expect: { status: passed }
+  - id: measured-independent-review
+    action: { verifier: sdk.golden.archive-measured-review }
+    expect: { status: passed }
+  - id: release-owned-suite
+    action: { verifier: sdk.golden.release-owned-suite }
+    expect: { status: passed }
+  - id: release-aggregate
+    action: { verifier: sdk.golden.release-aggregate }
+    expect: { status: passed }
+  - id: archive-current-directory
+    action: { verifier: sdk.golden.archive-current-directory }
+    expect: { status: passed }
+  - id: portable-inspection
+    action: { verifier: sdk.golden.archive-portable }
+    expect: { status: passed }
+  - id: export-targets
+    action: { verifier: sdk.golden.archive-targets }
+    expect: { status: passed }

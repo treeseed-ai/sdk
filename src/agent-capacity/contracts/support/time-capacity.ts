@@ -180,19 +180,6 @@ export interface AssignmentPerformanceSummary {
 	downstreamOutcomes: AssignmentDownstreamOutcome[];
 }
 
-export interface WorkdayTimePolicy {
-	cooperativePlanningPercent: number;
-	governedExecutionPercent: number;
-	reservePercent: number;
-}
-
-export function validateWorkdayTimePolicy(policy: WorkdayTimePolicy): { ok: boolean; diagnostics: Array<{ code: string; path: string; message: string }>; value?: WorkdayTimePolicy } {
-	const values = [policy.cooperativePlanningPercent, policy.governedExecutionPercent, policy.reservePercent];
-	if (values.some((value) => !Number.isFinite(value) || value < 0 || value > 100)) return { ok: false, diagnostics: [{ code: 'workday_time_percent_invalid', path: 'timePolicy', message: 'Workday time percentages must be finite values from 0 through 100.' }] };
-	if (Math.abs(values.reduce((sum, value) => sum + value, 0) - 100) >= 0.000001) return { ok: false, diagnostics: [{ code: 'workday_time_total_invalid', path: 'timePolicy', message: 'Workday time percentages must total exactly 100%.' }] };
-	return { ok: true, diagnostics: [], value: policy };
-}
-
 export function emptyCapacityBudget(deadline: string, requestedSeconds: number): CapacityBudgetV2 {
 	return {
 		schemaVersion: CAPACITY_BUDGET_SCHEMA,

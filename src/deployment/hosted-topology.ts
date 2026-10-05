@@ -1,0 +1,424 @@
+import { z } from 'zod';
+import { deploymentDigest } from './canonical.ts';
+
+const identifier = z.string().regex(/^[a-z][a-z0-9.-]{1,63}$/u);
+const custodyIdentifier = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u);
+const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
+const gitCommit = z.string().regex(/^[a-f0-9]{40}$/u);
+const timestamp = z.string().datetime();
+const hostedEnvironmentSchema = z.enum(['staging', 'production']);
+
+export function hostedTopologyStateKey(input: { teamId: string; deploymentId: string; environment: 'staging' | 'production'; stackId: string }) {
+	const teamId = custodyIdentifier.parse(input.teamId), deploymentId = custodyIdentifier.parse(input.deploymentId), stackId = custodyIdentifier.parse(input.stackId);
+	const environment = hostedEnvironmentSchema.parse(input.environment);
+	return `teams/${teamId}/opentofu/v1/deployments/${deploymentId}/environments/${environment}/stacks/${stackId}/terraform.tfstate`;
+}
+
+const hostedStateBackendCoreSchema = z.object({
+	schemaVersion: z.literal('treeseed.hosted-state-backend/v1'),
+	type: z.literal('s3'),
+	teamId: custodyIdentifier,
+	deploymentId: custodyIdentifier,
+	environment: hostedEnvironmentSchema,
+	stackId: custodyIdentifier,
+	connectionRef: identifier,
+	bucket: z.string().trim().min(3).max(255),
+	key: z.string().trim().min(1).max(1_024),
+	region: z.string().trim().min(1).max(128),
+	endpoint: z.string().url().optional(),
+	usePathStyle: z.boolean().optional(),
+	encryptionKeyRef: custodyIdentifier,
+}).strict();
+
+export const hostedStateBackendSchema = hostedStateBackendCoreSchema.extend({ bindingDigest: digest }).strict().superRefine((backend, context) => {
+	const { bindingDigest: _bindingDigest, ...core } = backend;
+	if (backend.key !== hostedTopologyStateKey(backend)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['key'], message: 'Hosted state backend key must be the canonical team deployment stack key.' });
+	if (deploymentDigest(core) !== backend.bindingDigest) context.addIssue({ code: z.ZodIssueCode.custom, path: ['bindingDigest'], message: 'Hosted state backend digest must bind its complete custody and storage identity.' });
+});
+
+export function bindHostedStateBackend(input: z.input<typeof hostedStateBackendCoreSchema>) {
+	const core = hostedStateBackendCoreSchema.parse(input);
+	if (core.key !== hostedTopologyStateKey(core)) throw new Error('Hosted state backend key must be the canonical team deployment stack key.');
+	return hostedStateBackendSchema.parse({ ...core, bindingDigest: deploymentDigest(core) });
+}
+
+export const hostedProviderSchema = z.enum(['cloudflare', 'railway']);
+export const hostedResourceKindSchema = z.enum([
+	'admin-application', 'pages-application', 'dns-record', 'tls-policy', 'api-proxy',
+	'control-plane-api', 'postgresql', 'operations-runner', 'treedx-service',
+]);
+
+const hostedArchiveArtifactSchema = z.object({ kind: z.literal('archive'), format: z.literal('tar+gzip'), digest, source: z.string().url() }).strict();
+const hostedFileArtifactSchema = z.object({ kind: z.literal('file'), mediaType: z.string().trim().min(1).max(255), digest, source: z.string().url() }).strict();
+const hostedOciArtifactSchema = z.object({ kind: z.literal('oci-image'), digest, identity: z.string().regex(/^[a-z0-9][a-z0-9._/-]*@sha256:[a-f0-9]{64}$/u) }).strict()
+	.superRefine((artifact, context) => {
+		if (!artifact.identity.endsWith(`@${artifact.digest}`)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['identity'], message: 'Hosted OCI identity must bind the declared digest.' });
+	});
+export const hostedArtifactSchema = z.union([hostedArchiveArtifactSchema, hostedFileArtifactSchema, hostedOciArtifactSchema]);
+
+const parameterSchema = z.union([
+	z.object({ input: identifier }).strict(),
+	z.object({ artifact: identifier }).strict(),
+	z.object({ resourceOutput: z.object({ resourceId: identifier, output: identifier }).strict() }).strict(),
+	z.object({ literal: z.union([z.string().max(4_096), z.number().finite(), z.boolean()]) }).strict(),
+]);
+const parameterName = z.union([identifier, z.string().regex(/^variable\.[A-Z][A-Z0-9_]{1,127}$/u)]);
+
+const resourceProviderKinds = {
+	cloudflare: new Set(['admin-application', 'pages-application', 'dns-record', 'tls-policy', 'api-proxy']),
+	railway: new Set(['control-plane-api', 'postgresql', 'operations-runner', 'treedx-service']),
+} as const;
+
+const sensitiveKey = /(?:credential|password|private.?key|registration.?code|secret|token)/iu;
+const personalPath = /(?:^|[\s'"`:=])(?:\/home\/[^/\s]+|\/Users\/[^/\s]+|[A-Za-z]:\\Users\\[^\\\s]+)/u;
+const runtimeScalar = z.union([z.string().max(4_096), z.number().finite(), z.boolean()]);
+const runtimeInputName = z.string().regex(/^[A-Za-z][A-Za-z0-9._-]{0,63}$/u);
+const hostedConnectionSnapshotSchema = z.object({
+	connectionRef: identifier,
+	nonSecretConfig: z.record(runtimeInputName, runtimeScalar),
+}).strict().superRefine((snapshot, context) => {
+	for (const key of Object.keys(snapshot.nonSecretConfig)) if (sensitiveKey.test(key))
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['nonSecretConfig', key], message: 'Hosted provider snapshots cannot contain credential-like fields.' });
+});
+
+export const hostedResourceDeclarationSchema = z.object({
+	id: identifier,
+	provider: hostedProviderSchema,
+	kind: hostedResourceKindSchema,
+	dependsOn: z.array(identifier).default([]),
+	parameters: z.record(parameterName, parameterSchema).default({}),
+	adoption: z.object({ mode: z.literal('adopt-or-create'), externalIdInput: identifier.optional(), replacement: z.literal('forbidden') }).strict(),
+}).strict();
+
+export const hostedTopologyDeclarationSchema = z.object({
+	schemaVersion: z.literal('treeseed.hosted-topology/v1'),
+	id: identifier,
+	teamId: custodyIdentifier,
+	deploymentId: custodyIdentifier,
+	stackId: custodyIdentifier,
+	environment: hostedEnvironmentSchema,
+	mutation: z.literal('agent-authorized'),
+	platform: z.object({ repository: z.literal('treeseed-ai/platform'), commit: gitCommit }).strict(),
+	stateBackend: z.object({ connectionRef: identifier }).strict(),
+	providerConnections: z.record(hostedProviderSchema, z.object({ connectionRef: identifier }).strict()),
+	artifacts: z.record(identifier, hostedArtifactSchema),
+	resources: z.array(hostedResourceDeclarationSchema),
+}).strict().superRefine((declaration, context) => {
+	const ids = declaration.resources.map(({ id }) => id);
+	if (new Set(ids).size !== ids.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['resources'], message: 'Hosted topology resource identities must be unique.' });
+	for (const [index, resource] of declaration.resources.entries()) {
+		if (!resourceProviderKinds[resource.provider].has(resource.kind as never)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['resources', index, 'kind'], message: `${resource.kind} is not owned by ${resource.provider}.` });
+		if (resource.kind === 'pages-application') for (const key of ['artifact', 'artifact-format', 'name', 'production-branch', 'destination-dir'])
+			if (!resource.parameters[key]) context.addIssue({ code: z.ZodIssueCode.custom, path: ['resources', index, 'parameters', key], message: `Cloudflare Pages applications require ${key}.` });
+		for (const dependency of resource.dependsOn) if (!ids.includes(dependency)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['resources', index, 'dependsOn'], message: `Unknown hosted resource dependency ${dependency}.` });
+		for (const key of Object.keys(resource.parameters)) if (sensitiveKey.test(key)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['resources', index, 'parameters', key], message: 'Hosted topology parameters cannot carry credential-like values.' });
+		for (const [key, parameter] of Object.entries(resource.parameters)) if ('literal' in parameter && typeof parameter.literal === 'string' && personalPath.test(parameter.literal)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['resources', index, 'parameters', key], message: 'Hosted topology parameters cannot contain personal filesystem paths.' });
+	}
+});
+
+export const hostedResourceObservationSchema = z.object({
+	resourceId: identifier,
+	provider: hostedProviderSchema,
+	kind: hostedResourceKindSchema,
+	providerResourceId: z.string().min(1).max(512).nullable(),
+	state: z.enum(['missing', 'healthy', 'degraded']),
+	managedBy: z.enum(['treeseed', 'external']).nullable(),
+	observedDigest: digest.nullable(),
+	observedAt: timestamp,
+}).strict();
+
+const hostedTopologyPlanShape = {
+	schemaVersion: z.literal('treeseed.hosted-topology-plan/v1'),
+	planId: z.string().regex(/^topology-plan-[a-f0-9]{16}$/u),
+	planDigest: digest,
+	declarationDigest: digest,
+	topologyId: identifier,
+	teamId: custodyIdentifier,
+	deploymentId: custodyIdentifier,
+	stackId: custodyIdentifier,
+	environment: hostedEnvironmentSchema,
+	platformCommit: gitCommit,
+	stateBackend: hostedStateBackendSchema.nullable(),
+	artifacts: z.record(identifier, hostedArtifactSchema),
+	providerConnections: z.record(hostedProviderSchema, hostedConnectionSnapshotSchema),
+	actions: z.array(z.object({
+		resourceId: identifier,
+		provider: hostedProviderSchema,
+		kind: hostedResourceKindSchema,
+		action: z.enum(['create', 'adopt', 'update', 'noop']),
+		desiredResource: hostedResourceDeclarationSchema,
+		desiredDigest: digest,
+		previousDigest: digest.nullable(),
+		providerResourceId: z.string().min(1).max(512).nullable(),
+	}).strict()),
+	blockers: z.array(z.object({ code: z.enum(['connection-unavailable', 'state-backend-unavailable', 'dependency-cycle', 'observation-unhealthy', 'adoption-drift']), resourceId: identifier.optional(), message: z.string().min(1) }).strict()),
+	authorization: z.literal('authenticated-agent'),
+	executable: z.literal(false),
+} as const;
+
+function verifyPlanBinding(plan: {
+	planId: string; planDigest: string; declarationDigest: string; topologyId: string; teamId: string; deploymentId: string; stackId: string; environment: 'staging' | 'production';
+	stateBackend: z.infer<typeof hostedStateBackendSchema> | null;
+	artifacts: Record<string, unknown>; providerConnections: Record<string, { connectionRef: string }>;
+	platformCommit: string; actions: Array<{ resourceId: string; provider: string; kind: string; desiredResource: unknown; desiredDigest: string }>;
+	blockers: unknown[]; authorization: 'authenticated-agent';
+}, context: z.RefinementCtx) {
+	for (const [index, action] of plan.actions.entries()) {
+		const desired = hostedResourceDeclarationSchema.parse(action.desiredResource);
+		if (desired.id !== action.resourceId || desired.provider !== action.provider || desired.kind !== action.kind)
+			context.addIssue({ code: z.ZodIssueCode.custom, path: ['actions', index, 'desiredResource'], message: 'Hosted plan action identity must match its desired resource specification.' });
+		if (deploymentDigest(desired) !== action.desiredDigest)
+			context.addIssue({ code: z.ZodIssueCode.custom, path: ['actions', index, 'desiredDigest'], message: 'Hosted plan desired digest must bind its complete desired resource specification.' });
+		if (!plan.providerConnections[action.provider] && !plan.blockers.some((blocker: any) => blocker.code === 'connection-unavailable'))
+			context.addIssue({ code: z.ZodIssueCode.custom, path: ['providerConnections', action.provider], message: `Hosted plan is missing the selected ${action.provider} connection snapshot.` });
+	}
+	if (plan.stateBackend && [plan.teamId !== plan.stateBackend.teamId, plan.deploymentId !== plan.stateBackend.deploymentId, plan.stackId !== plan.stateBackend.stackId, plan.environment !== plan.stateBackend.environment].some(Boolean))
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['stateBackend'], message: 'Hosted topology plan and state backend custody identities must match.' });
+	const core = { declarationDigest: plan.declarationDigest, topologyId: plan.topologyId, teamId: plan.teamId, deploymentId: plan.deploymentId, stackId: plan.stackId, environment: plan.environment,
+		stateBackend: plan.stateBackend,
+		platformCommit: plan.platformCommit, artifacts: plan.artifacts, providerConnections: plan.providerConnections,
+		actions: plan.actions, blockers: plan.blockers, authorization: plan.authorization };
+	const expected = deploymentDigest(core);
+	if (expected !== plan.planDigest || plan.planId !== `topology-plan-${expected.slice(7, 23)}`)
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['planDigest'], message: 'Hosted topology plan identity must bind the exact canonical plan.' });
+}
+
+export const hostedTopologyPlanSchema = z.object(hostedTopologyPlanShape).strict().superRefine(verifyPlanBinding);
+
+export const authorizedHostedTopologyPlanSchema = z.object({ ...hostedTopologyPlanShape,
+	executable: z.literal(true),
+}).strict().superRefine(verifyPlanBinding);
+
+export const hostedTopologyReceiptSchema = z.object({
+	schemaVersion: z.literal('treeseed.hosted-topology-receipt/v1'),
+	receiptId: z.string().regex(/^topology-receipt-[a-f0-9]{16}$/u),
+	planDigest: digest,
+	declarationDigest: digest,
+	topologyId: identifier,
+	teamId: custodyIdentifier,
+	deploymentId: custodyIdentifier,
+	stackId: custodyIdentifier,
+	environment: hostedEnvironmentSchema,
+	backendBindingDigest: digest,
+	platformCommit: gitCommit,
+	resources: z.array(hostedResourceObservationSchema),
+	previousResources: z.array(hostedResourceObservationSchema),
+	state: z.literal('known-good'),
+	completedAt: timestamp,
+}).strict();
+
+export const hostedTopologyRollbackSchema = z.object({
+	schemaVersion: z.literal('treeseed.hosted-topology-rollback/v1'),
+	rollbackId: z.string().regex(/^topology-rollback-[a-f0-9]{16}$/u),
+	sourceReceiptId: z.string().regex(/^topology-receipt-[a-f0-9]{16}$/u),
+	teamId: custodyIdentifier,
+	deploymentId: custodyIdentifier,
+	stackId: custodyIdentifier,
+	environment: hostedEnvironmentSchema,
+	backendBindingDigest: digest,
+	operations: z.array(z.object({
+		resourceId: identifier,
+		action: z.enum(['restore', 'delete-created', 'noop']),
+		providerResourceId: z.string().min(1).max(512),
+		targetDigest: digest.nullable(),
+	}).strict()),
+	rollbackDigest: digest,
+}).strict().superRefine((rollback, context) => {
+	const core = { sourceReceiptId: rollback.sourceReceiptId, teamId: rollback.teamId, deploymentId: rollback.deploymentId,
+		stackId: rollback.stackId, environment: rollback.environment, backendBindingDigest: rollback.backendBindingDigest, operations: rollback.operations };
+	if (deploymentDigest(core) !== rollback.rollbackDigest || rollback.rollbackId !== `topology-rollback-${rollback.rollbackDigest.slice(7, 23)}`)
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['rollbackDigest'], message: 'Hosted topology rollback identity must bind the exact rollback custody and operations.' });
+});
+
+export const hostedTopologyRollbackExecutionSchema = z.object({
+	schemaVersion: z.literal('treeseed.hosted-topology-rollback-execution/v1'),
+	rollback: hostedTopologyRollbackSchema,
+	sourceReceiptId: z.string().regex(/^topology-receipt-[a-f0-9]{16}$/u),
+	topologyId: identifier,
+	teamId: custodyIdentifier,
+	deploymentId: custodyIdentifier,
+	stackId: custodyIdentifier,
+	environment: hostedEnvironmentSchema,
+	backendBindingDigest: digest,
+	sourcePlanDigest: digest,
+	targetPlanDigest: digest,
+	executionDigest: digest,
+}).strict().superRefine((execution, context) => {
+	const core = { rollback: execution.rollback, sourceReceiptId: execution.sourceReceiptId, topologyId: execution.topologyId,
+		teamId: execution.teamId, deploymentId: execution.deploymentId, stackId: execution.stackId, environment: execution.environment,
+		backendBindingDigest: execution.backendBindingDigest, sourcePlanDigest: execution.sourcePlanDigest, targetPlanDigest: execution.targetPlanDigest };
+	if (deploymentDigest(core) !== execution.executionDigest) context.addIssue({ code: z.ZodIssueCode.custom, path: ['executionDigest'], message: 'Hosted rollback execution digest does not bind its complete source and target closure.' });
+});
+
+export type HostedTopologyDeclaration = z.infer<typeof hostedTopologyDeclarationSchema>;
+export type HostedStateBackend = z.infer<typeof hostedStateBackendSchema>;
+export type HostedResourceObservation = z.infer<typeof hostedResourceObservationSchema>;
+export type HostedTopologyPlan = z.infer<typeof hostedTopologyPlanSchema>;
+export type AuthorizedHostedTopologyPlan = z.infer<typeof authorizedHostedTopologyPlanSchema>;
+export type HostedTopologyReceipt = z.infer<typeof hostedTopologyReceiptSchema>;
+export type HostedTopologyRollbackExecution = z.infer<typeof hostedTopologyRollbackExecutionSchema>;
+
+function observationMap(items: HostedResourceObservation[], declaration: HostedTopologyDeclaration) {
+	const resources = new Map(declaration.resources.map((resource) => [resource.id, resource]));
+	const observations = new Map<string, HostedResourceObservation>();
+	for (const input of items) {
+		const item = hostedResourceObservationSchema.parse(input), resource = resources.get(item.resourceId);
+		if (observations.has(item.resourceId)) throw new Error(`Duplicate hosted resource observation ${item.resourceId}.`);
+		if (!resource) throw new Error(`Unknown hosted resource observation ${item.resourceId}.`);
+		if (item.provider !== resource.provider || item.kind !== resource.kind) throw new Error(`Hosted resource observation identity mismatch for ${item.resourceId}.`);
+		observations.set(item.resourceId, item);
+	}
+	return observations;
+}
+
+function cycleMembers(declaration: HostedTopologyDeclaration) {
+	const dependencies = new Map(declaration.resources.map(({ id, dependsOn }) => [id, dependsOn]));
+	const visiting = new Set<string>(), visited = new Set<string>(), cycles = new Set<string>();
+	const visit = (id: string) => {
+		if (visiting.has(id)) { cycles.add(id); return; }
+		if (visited.has(id)) return;
+		visiting.add(id);
+		for (const dependency of dependencies.get(id) ?? []) { visit(dependency); if (cycles.has(dependency)) cycles.add(id); }
+		visiting.delete(id); visited.add(id);
+	};
+	for (const id of dependencies.keys()) visit(id);
+	return [...cycles].sort();
+}
+
+export function planHostedTopology(input: {
+	declaration: HostedTopologyDeclaration;
+	observations: HostedResourceObservation[];
+	connections: Partial<Record<z.infer<typeof hostedProviderSchema>, z.input<typeof hostedConnectionSnapshotSchema>>>;
+	stateBackend?: z.input<typeof hostedStateBackendSchema>;
+}): HostedTopologyPlan {
+	const declaration = hostedTopologyDeclarationSchema.parse(input.declaration);
+	const normalizedDeclaration = {
+		...declaration,
+		resources: [...declaration.resources]
+			.map((resource) => ({ ...resource, dependsOn: [...resource.dependsOn].sort() }))
+			.sort((left, right) => left.id.localeCompare(right.id)),
+	};
+	const observations = observationMap(input.observations, normalizedDeclaration);
+	const blockers: HostedTopologyPlan['blockers'] = [];
+	let stateBackend: HostedStateBackend | null = null;
+	if (!input.stateBackend) blockers.push({ code: 'state-backend-unavailable', message: `State backend connection ${normalizedDeclaration.stateBackend.connectionRef} is unavailable.` });
+	else {
+		stateBackend = hostedStateBackendSchema.parse(input.stateBackend);
+		if (stateBackend.connectionRef !== normalizedDeclaration.stateBackend.connectionRef) blockers.push({ code: 'state-backend-unavailable', message: `State backend connection ${normalizedDeclaration.stateBackend.connectionRef} is unavailable.` });
+		if (stateBackend.teamId !== normalizedDeclaration.teamId || stateBackend.deploymentId !== normalizedDeclaration.deploymentId || stateBackend.stackId !== normalizedDeclaration.stackId || stateBackend.environment !== normalizedDeclaration.environment)
+			throw new Error('Hosted state backend custody identity does not match the topology declaration.');
+	}
+	const providerConnections: Record<string, z.infer<typeof hostedConnectionSnapshotSchema>> = {};
+	for (const [provider, binding] of Object.entries(normalizedDeclaration.providerConnections)) {
+		const snapshot = input.connections[provider as z.infer<typeof hostedProviderSchema>];
+		if (!snapshot || snapshot.connectionRef !== binding.connectionRef) blockers.push({ code: 'connection-unavailable', message: `${provider} connection ${binding.connectionRef} is unavailable.` });
+		else providerConnections[provider] = hostedConnectionSnapshotSchema.parse(snapshot);
+	}
+	for (const resourceId of cycleMembers(normalizedDeclaration)) blockers.push({ code: 'dependency-cycle', resourceId, message: `Hosted resource ${resourceId} participates in a dependency cycle.` });
+	const actions = normalizedDeclaration.resources.map((resource) => {
+		const desiredDigest = deploymentDigest(resource);
+		const observation = observations.get(resource.id);
+		let action: 'create' | 'adopt' | 'update' | 'noop' = 'create';
+		if (observation?.state === 'degraded') blockers.push({ code: 'observation-unhealthy', resourceId: resource.id, message: `Hosted resource ${resource.id} is degraded and cannot be reconciled automatically.` });
+		if (observation?.state === 'healthy') {
+			if (observation.observedDigest === desiredDigest) action = observation.managedBy === 'external' ? 'adopt' : 'noop';
+			else if (observation.managedBy === 'external') blockers.push({ code: 'adoption-drift', resourceId: resource.id, message: `External resource ${resource.id} differs from the declaration and cannot be replaced.` });
+			else action = 'update';
+		}
+		return { resourceId: resource.id, provider: resource.provider, kind: resource.kind, action, desiredResource: resource,
+			desiredDigest, previousDigest: observation?.observedDigest ?? null, providerResourceId: observation?.providerResourceId ?? null };
+	});
+	const declarationDigest = deploymentDigest(normalizedDeclaration);
+	const core = { declarationDigest, topologyId: declaration.id, teamId: declaration.teamId, deploymentId: declaration.deploymentId, stackId: declaration.stackId, environment: declaration.environment,
+		stateBackend, platformCommit: declaration.platform.commit,
+		artifacts: normalizedDeclaration.artifacts, providerConnections, actions, blockers, authorization: 'authenticated-agent' as const };
+	const planDigest = deploymentDigest(core);
+	return hostedTopologyPlanSchema.parse({ schemaVersion: 'treeseed.hosted-topology-plan/v1', planId: `topology-plan-${planDigest.slice(7, 23)}`, planDigest, ...core, executable: false });
+}
+
+export function authorizeHostedTopologyPlan(planInput: HostedTopologyPlan): AuthorizedHostedTopologyPlan {
+	const plan = hostedTopologyPlanSchema.parse(planInput);
+	if (plan.blockers.length) throw new Error('Hosted topology plan has unresolved blockers.');
+	if (!plan.stateBackend) throw new Error('Hosted topology plan has no state backend authority.');
+	return authorizedHostedTopologyPlanSchema.parse({ ...plan, executable: true });
+}
+
+export function verifyHostedTopologyReadback(input: {
+	plan: AuthorizedHostedTopologyPlan;
+	previousResources: HostedResourceObservation[];
+	resources: HostedResourceObservation[];
+	completedAt: string;
+}): HostedTopologyReceipt {
+	const plan = authorizedHostedTopologyPlanSchema.parse(input.plan);
+	const expectedIds = new Set(plan.actions.map(({ resourceId }) => resourceId));
+	const resources = input.resources.map((item) => hostedResourceObservationSchema.parse(item)).sort((left, right) => left.resourceId.localeCompare(right.resourceId));
+	if (resources.length !== expectedIds.size || new Set(resources.map(({ resourceId }) => resourceId)).size !== resources.length || resources.some(({ resourceId }) => !expectedIds.has(resourceId))) throw new Error('Authoritative read-back must contain each planned hosted resource exactly once.');
+	const observed = new Map(resources.map((item) => [item.resourceId, item]));
+	for (const action of plan.actions) {
+		const item = observed.get(action.resourceId);
+		if (!item || item.provider !== action.provider || item.kind !== action.kind || item.state !== 'healthy' || !item.providerResourceId || item.observedDigest !== action.desiredDigest) throw new Error(`Authoritative read-back failed for hosted resource ${action.resourceId}.`);
+	}
+	const completedAt = timestamp.parse(input.completedAt);
+	const receiptDigest = deploymentDigest({ planDigest: plan.planDigest, resources, completedAt });
+	return hostedTopologyReceiptSchema.parse({ schemaVersion: 'treeseed.hosted-topology-receipt/v1', receiptId: `topology-receipt-${receiptDigest.slice(7, 23)}`, planDigest: plan.planDigest, declarationDigest: plan.declarationDigest, topologyId: plan.topologyId,
+		teamId: plan.teamId, deploymentId: plan.deploymentId, stackId: plan.stackId, environment: plan.environment, backendBindingDigest: plan.stateBackend!.bindingDigest,
+		platformCommit: plan.platformCommit, resources, previousResources: input.previousResources.map((item) => hostedResourceObservationSchema.parse(item)).sort((left, right) => left.resourceId.localeCompare(right.resourceId)), state: 'known-good', completedAt });
+}
+
+export function planHostedTopologyRollback(receiptInput: HostedTopologyReceipt) {
+	const receipt = hostedTopologyReceiptSchema.parse(receiptInput);
+	const previous = new Map(receipt.previousResources.map((item) => [item.resourceId, item]));
+	const operations = receipt.resources.map((resource) => {
+		const prior = previous.get(resource.resourceId);
+		return { resourceId: resource.resourceId, action: !prior || prior.state === 'missing' ? 'delete-created' as const : prior.observedDigest === resource.observedDigest ? 'noop' as const : 'restore' as const, providerResourceId: resource.providerResourceId!, targetDigest: prior?.observedDigest ?? null };
+	}).sort((left, right) => left.resourceId.localeCompare(right.resourceId));
+	const custody = { teamId: receipt.teamId, deploymentId: receipt.deploymentId, stackId: receipt.stackId, environment: receipt.environment, backendBindingDigest: receipt.backendBindingDigest };
+	const rollbackDigest = deploymentDigest({ sourceReceiptId: receipt.receiptId, ...custody, operations });
+	return hostedTopologyRollbackSchema.parse({ schemaVersion: 'treeseed.hosted-topology-rollback/v1', rollbackId: `topology-rollback-${rollbackDigest.slice(7, 23)}`, sourceReceiptId: receipt.receiptId, ...custody, operations, rollbackDigest });
+}
+
+export function authorizeHostedTopologyRollback(rollbackInput: z.input<typeof hostedTopologyRollbackSchema>) {
+	return { rollback: hostedTopologyRollbackSchema.parse(rollbackInput) };
+}
+
+export function planHostedTopologyRollbackExecution(input: {
+	rollback: z.input<typeof hostedTopologyRollbackSchema>;
+	sourceReceipt: z.input<typeof hostedTopologyReceiptSchema>;
+	sourcePlan: z.input<typeof hostedTopologyPlanSchema> | z.input<typeof authorizedHostedTopologyPlanSchema>;
+	targetPlan: z.input<typeof hostedTopologyPlanSchema>;
+}) {
+	const rollback = hostedTopologyRollbackSchema.parse(input.rollback), sourceReceipt = hostedTopologyReceiptSchema.parse(input.sourceReceipt);
+	const sourcePlan = input.sourcePlan && typeof input.sourcePlan === 'object' && input.sourcePlan.executable === true
+		? authorizedHostedTopologyPlanSchema.parse(input.sourcePlan)
+		: hostedTopologyPlanSchema.parse(input.sourcePlan);
+	const targetPlan = hostedTopologyPlanSchema.parse(input.targetPlan);
+	if (sourceReceipt.receiptId !== rollback.sourceReceiptId || sourceReceipt.planDigest !== sourcePlan.planDigest) throw new Error('Hosted rollback execution source receipt is stale.');
+	const custody = { teamId: rollback.teamId, deploymentId: rollback.deploymentId, stackId: rollback.stackId, environment: rollback.environment, backendBindingDigest: rollback.backendBindingDigest };
+	for (const candidate of [sourceReceipt, sourcePlan, targetPlan]) {
+		if (candidate.teamId !== custody.teamId || candidate.deploymentId !== custody.deploymentId || candidate.stackId !== custody.stackId || candidate.environment !== custody.environment) throw new Error('Hosted rollback execution custody identity does not match its source and target plans.');
+		const backendDigest = 'backendBindingDigest' in candidate ? candidate.backendBindingDigest : candidate.stateBackend?.bindingDigest;
+		if (backendDigest !== custody.backendBindingDigest) throw new Error('Hosted rollback execution state backend changed.');
+	}
+	if (sourceReceipt.topologyId !== sourcePlan.topologyId || sourcePlan.topologyId !== targetPlan.topologyId) throw new Error('Hosted rollback execution topology identity changed.');
+	const sourceActions = new Map(sourcePlan.actions.map((action) => [action.resourceId, action]));
+	const sourceResources = new Map(sourceReceipt.resources.map((resource) => [resource.resourceId, resource]));
+	const targetActions = new Map(targetPlan.actions.map((action) => [action.resourceId, action]));
+	if (sourceResources.size !== sourceActions.size || rollback.operations.length !== sourceActions.size || new Set(rollback.operations.map(({ resourceId }) => resourceId)).size !== sourceActions.size) throw new Error('Hosted rollback execution does not cover the complete source resource set.');
+	for (const operation of rollback.operations) {
+		const source = sourceActions.get(operation.resourceId), observed = sourceResources.get(operation.resourceId), target = targetActions.get(operation.resourceId);
+		if (!source || !observed || observed.providerResourceId !== operation.providerResourceId) throw new Error(`Hosted rollback execution source mismatch for ${operation.resourceId}.`);
+		if (operation.action === 'delete-created') {
+			if (target) throw new Error(`Hosted rollback execution target must remove created resource ${operation.resourceId}.`);
+		} else if (!target || !operation.targetDigest || target.desiredDigest !== operation.targetDigest || target.provider !== source.provider || target.kind !== source.kind) {
+			throw new Error(`Hosted rollback execution target specification mismatch for ${operation.resourceId}.`);
+		}
+	}
+	if ([...targetActions.keys()].some((resourceId) => !sourceActions.has(resourceId))) throw new Error('Hosted rollback execution target introduces an unauthorized resource.');
+	const core = { rollback, sourceReceiptId: sourceReceipt.receiptId, topologyId: sourceReceipt.topologyId, ...custody,
+		sourcePlanDigest: sourcePlan.planDigest, targetPlanDigest: targetPlan.planDigest };
+	return hostedTopologyRollbackExecutionSchema.parse({ schemaVersion: 'treeseed.hosted-topology-rollback-execution/v1', ...core, executionDigest: deploymentDigest(core) });
+}
+
+export function authorizeHostedTopologyRollbackExecution(executionInput: z.input<typeof hostedTopologyRollbackExecutionSchema>) {
+	return { execution: hostedTopologyRollbackExecutionSchema.parse(executionInput) };
+}

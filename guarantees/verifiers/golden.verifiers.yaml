@@ -1,0 +1,113 @@
+schemaVersion: treeseed.guarantee-verifiers/v1
+ownerPackage: "@treeseed/sdk"
+verifiers:
+  sdk.golden.current-frozen-source:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/unit/operator-contracts/golden-product.test.ts
+    testName: uses the exact current campaign source and rejects missing moving or unrelated freeze authority
+  sdk.golden.archive-measured-review:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/unit/operator-contracts/golden-product.test.ts
+    testName: rejects narrative archive inspection without a measured standalone archive command
+  sdk.golden.archive-portable:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/contract/standards/package-archive.test.ts
+    testName: replays archive inspection in independent npm workspaces and rejects an omitted declaration
+  sdk.golden.archive-targets:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/contract/standards/package-archive.test.ts
+    testName: uses one export validation path for source and archive and rejects unsafe or absent targets
+  sdk.golden.release-owned-suite:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/unit/operator-contracts/golden-product.test.ts
+    testName: keeps standards generation and the full contract suite owned by release verification
+  sdk.golden.release-aggregate:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/unit/operator-contracts/golden-product.test.ts
+    testName: accepts measured passing command evidence and rejects a missing full release gate
+  sdk.golden.archive-current-directory:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/unit/operator-contracts/golden-product.test.ts
+    testName: accepts measured current-directory archives and rejects unsafe paths and invalid evidence
+  sdk.golden.continuation-intent:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/unit/operator-contracts/workday-lifecycle.test.ts
+    testName: requires explicit accepted decisions for continuation, without changing fresh intent
+  sdk.golden.live.product:
+    kind: nodeTestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/acceptance/golden-product.test.ts
+    testName: SDK golden retains exact source and passing measured candidate release gates
+  sdk.golden.production-runtime-imports:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/standards/runtime-dependencies.test.ts
+    testName: "declares every handwritten SDK runtime import as a production dependency"
+  sdk.golden.complete-usage-pagination:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/control-plane-operation.test.ts
+    testName: "exposes usage pagination without losing exact workday filtering"
+  sdk.golden.recursive-workspace-grant:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/assignment-workspace-authority.test.ts
+    testName: "accepts recursive discussion grants without granting sibling collections"
+  sdk.golden.planning-cycles:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/workday-allocation.test.ts
+    testName: "creates one deterministic cycle and can compile successive collaboration turns"
+  sdk.golden.phase-boundary:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/workday-allocation.test.ts
+    testName: "uses the percentage as a minimum planning window and returns to planning when acting has no ready work"
+  sdk.golden.target-shares:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/workday-allocation.test.ts
+    testName: "selects project then class by weighted deficit and uses stable node ties"
+  sdk.golden.concurrent-fairness:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/assignment-allocation.test.ts
+    testName: "shares capacity across concurrent production/simulation workdays by weight"
+  sdk.golden.calibration:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/assignment-allocation.test.ts
+    testName: "starts conservatively, reduces gradually, and treats expiration as censored"
+  sdk.golden.calibration-task-size:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/assignment-allocation.test.ts
+    testName: "does not starve small reviews by replaying full reductions from much larger tasks"
+  sdk.golden.caps:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/assignment-allocation.test.ts
+    testName: "checks both capability and shared model ceilings without charging additional requirements twice"
+  sdk.golden.bounded-turns:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/assignment-allocation.test.ts
+    testName: "admits any positive bounded turn and obeys maximum ceilings"
+  sdk.golden.cycles-denied:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/execution-graph.test.ts
+    testName: "rejects cycles, missing endpoints, and duplicate identities"
+  sdk.golden.response-reference:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/communication-addressing.test.ts
+    testName: "requires the exact committed response reference instead of a path-only completion claim"

@@ -21,6 +21,7 @@ const isExecutable = (path: string) => executableExtensions.test(path) && !isExc
 const directFileCounts = new Map<string, number>();
 
 function brandedIdentifier(name: string) {
+	if (name === 'TreeSeedTreeDxClient' || name === 'TreeSeedTreeDxResourceLink' || name === 'TreeSeedTreeAiClient') return false;
 	if (/^TREESEED_[A-Z0-9_]+$/u.test(name)) return false;
 	if (/^__TREESEED_[A-Z0-9_]+__$/u.test(name)) return false;
 	return /(?:KnowledgeCoop|TreeSeed|Treeseed|TREESEED_)/u.test(name);
@@ -91,9 +92,6 @@ for (const path of repositoryFiles()) {
 	if (/-\d{1,2}\.(?:scenarios|spec|test)\.[^.]+$/u.test(basename)) {
 		violations.push(`${path}: ordinal test or scenario suffix`);
 	}
-	if (path.startsWith('src/api/routes/') && basename.includes('-through-')) {
-		violations.push(`${path}: route-order range name`);
-	}
 	if (/split-(?:class-methods|large-tests|module-declarations)\.[^.]+$/u.test(basename)) {
 		violations.push(`${path}: mechanical split script`);
 	}
@@ -102,6 +100,23 @@ for (const path of repositoryFiles()) {
 	}
 	if (/\.(?:astro|js|jsx|ts|tsx)$/u.test(path)) {
 		const source = readFileSync(path, 'utf8');
+		if (path.startsWith('src/')
+			&& !isExcluded(path)
+			&& path !== 'src/operator-contracts/control-plane-operation.ts'
+			&& path !== 'src/operator-contracts/control-plane-operations.ts'
+			&& path !== 'src/operator-contracts/operation-builder.ts'
+			&& !path.startsWith('src/operator-contracts/catalog/')
+			&& path !== 'src/entrypoints/clients/control-plane-client.ts'
+			&& /(?:['"`])\/v1\//u.test(source)) {
+			violations.push(`${path}: raw control-plane route belongs in the authoritative operation catalog`);
+		}
+		if (path.startsWith('src/treedx/') && /(?:['"`])\/api\/v1(?:\/|['"`])/u.test(source)) {
+			violations.push(`${path}: raw TreeDX route belongs to the independently generated TreeDX transport`);
+		}
+		if (path.startsWith('src/treedx/')
+			&& /@treeseed\/treedx\/treedx\/client|\bTreeDxClient\b|\bFetchTransport\b/u.test(source)) {
+			violations.push(`${path}: direct TreeDX transport cannot be exposed through the TreeSeed proxy facade`);
+		}
 		if (/\b(?:CLI_COMMAND_OVERLAYS|CLI_ONLY_OPERATION_SPECS|MODULE|PART)_\d+\b/u.test(source)) {
 			violations.push(`${path}: ordinal partition symbol`);
 		}

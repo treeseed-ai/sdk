@@ -1,0 +1,53 @@
+import { describe, expect, it } from 'vitest';
+import { sourceWorkspaceAuthorizationSchema, sourceWorkspaceKeySchema, sourceWorkspaceRequestSchema, sourceWorkspaceResponseSchema } from '../../../src/capacity-provider/source-workspace.ts';
+
+const source = { controlPlaneId: 'control-plane', teamId: 'team', projectId: 'project', repositoryId: 'source-repository',
+	commit: 'a'.repeat(40), formatVersion: 1, profile: 'source-only' };
+const authorization = { schemaVersion: 'treeseed.source-workspace-authorization/v1', id: 'grant', providerId: 'provider',
+	assignmentId: 'assignment', attempt: 1, source, mode: 'analysis', acquisition: 'upstream-authorized', publication: 'denied', credentialBindingId: 'binding',
+	issuedAt: '2026-01-01T00:00:00Z', expiresAt: '2026-01-01T00:10:00Z' };
+
+describe('exact-source workspace public contracts', () => {
+	it('correlates sealed host credential delivery and refuses alternate transports', () => {
+		const key = Buffer.alloc(32, 1).toString('base64');
+		expect(sourceWorkspaceRequestSchema.safeParse({ runnerId: 'runner', leaseToken: 'lease', recipientPublicKey: key }).success).toBe(true);
+		const response = { authorization, repository: { provider: 'github', owner: 'fixture', name: 'source', cloneUrl: 'https://github.com/fixture/source.git', ref: 'staging' },
+			credential: { schemaVersion: 'treeseed.source-credential-delivery/v1', id: 'delivery', authorizationId: 'grant',
+				algorithm: 'x25519-hkdf-sha256-chacha20-poly1305', ephemeralPublicKey: key,
+				nonce: Buffer.alloc(12).toString('base64'), tag: Buffer.alloc(16).toString('base64'), ciphertext: 'AAAA', expiresAt: authorization.expiresAt } };
+		expect(sourceWorkspaceResponseSchema.safeParse(response).success).toBe(true);
+		expect(sourceWorkspaceResponseSchema.safeParse({ ...response, credential: { ...response.credential, authorizationId: 'other' } }).success).toBe(false);
+		expect(sourceWorkspaceResponseSchema.safeParse({ ...response, repository: { ...response.repository, cloneUrl: 'https://github.com/other/source.git' } }).success).toBe(false);
+		expect(sourceWorkspaceResponseSchema.safeParse({ ...response, token: 'must-not-be-plaintext' }).success).toBe(false);
+	});
+	it('requires an immutable commit, not a branch or abbreviated ref', () => {
+		expect(sourceWorkspaceKeySchema.safeParse(source).success).toBe(true);
+		for (const commit of ['staging', 'main', 'abc1234', '../repository', 'a'.repeat(41)]) {
+			expect(sourceWorkspaceKeySchema.safeParse({ ...source, commit }).success).toBe(false);
+		}
+	});
+	it('keys predecessor access by distinct exact commits', () => {
+		const predecessor = 'b'.repeat(40);
+		expect(sourceWorkspaceKeySchema.safeParse({ ...source, additionalCommits: [predecessor] }).success).toBe(true);
+		for (const additionalCommits of [[predecessor, predecessor], [source.commit], ['staging'], Array(17).fill(predecessor)]) {
+			expect(sourceWorkspaceKeySchema.safeParse({ ...source, additionalCommits }).success).toBe(false);
+		}
+	});
+	it('does not expose backend paths, secret values, or storage implementation', () => {
+		for (const field of ['path', 'qcow2', 'token', 'password', 'cloneUrl']) {
+			expect(sourceWorkspaceKeySchema.safeParse({ ...source, [field]: 'untrusted' }).success).toBe(false);
+			expect(sourceWorkspaceAuthorizationSchema.safeParse({ ...authorization, [field]: 'untrusted' }).success).toBe(false);
+		}
+	});
+	it('separates disposable writes from publication and denies publication in analysis', () => {
+		expect(sourceWorkspaceAuthorizationSchema.safeParse(authorization).success).toBe(true);
+		expect(sourceWorkspaceAuthorizationSchema.safeParse({ ...authorization, publication: 'assignment-branch' }).success).toBe(false);
+		expect(sourceWorkspaceAuthorizationSchema.safeParse({ ...authorization, mode: 'work' }).success).toBe(true);
+		expect(sourceWorkspaceAuthorizationSchema.safeParse({ ...authorization, mode: 'work', publication: 'assignment-branch', publicationRef: 'treeseed/assignments/assignment' }).success).toBe(true);
+		expect(sourceWorkspaceAuthorizationSchema.safeParse({ ...authorization, mode: 'work', acquisition: 'upstream-public', publication: 'simulation-branch', publicationRef: 'simulation/campaign/workday/assignment', credentialBindingId: undefined }).success).toBe(true);
+		expect(sourceWorkspaceAuthorizationSchema.safeParse({ ...authorization, mode: 'work', publication: 'main' }).success).toBe(false);
+	});
+	it('rejects inverted authority lifetimes', () => {
+		expect(sourceWorkspaceAuthorizationSchema.safeParse({ ...authorization, expiresAt: authorization.issuedAt }).success).toBe(false);
+	});
+});

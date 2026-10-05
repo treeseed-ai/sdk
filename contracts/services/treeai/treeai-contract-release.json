@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "treeai.contract-release/v1",
+  "release": "0.11.0-rc2",
+  "source": {
+    "repository": "treeseed-ai/ai",
+    "commit": "9770c99ba3a2f91ce916b48efafa45b0e971bbf0"
+  },
+  "openapiVersion": "3.1.1",
+  "operationCount": 111,
+  "artifacts": {
+    "openapi.inference": {
+      "file": "treeai-inference-openapi.json",
+      "sha256": "3a00f1d91635d87d0aad2c6d329f495ff210f393bc9851570aa3e3ad1f5c1db4"
+    },
+    "openapi.training": {
+      "file": "treeai-training-openapi.json",
+      "sha256": "89dc70cecc85079853e4f177827d681e66f4b24b93ef17713051b99f07c2fe00"
+    },
+    "openapi.lab": {
+      "file": "treeai-lab-openapi.json",
+      "sha256": "bccafa27b00a63b9fb22b132b850f9af6e77d44047dbc8966344088266d65898"
+    },
+    "openapi.qualification": {
+      "file": "treeai-qualification-openapi.json",
+      "sha256": "3f68b78845ec19c5de389663f1cb677ab4df0683ecd113c4f5780885a89370b7"
+    },
+    "operationInventory": {
+      "file": "treeai-operation-inventory.json",
+      "sha256": "dc60eb514e11a4b867b3353830d886205df6254c7c4ecfab9a06b1b4dcb4e1fc"
+    },
+    "sdkManifest": {
+      "file": "treeai-sdk-manifest.yaml",
+      "sha256": "032fcc4a96d6fca185b23d6b98a778bb438d833b6e077818eab100ab2ef1d849"
+    },
+    "sdk": {
+      "file": "treeseed-treeai-0.11.0-rc2.tgz",
+      "sha256": "90d695d499088f2788da36863128efe57079915d3999cc876888ceb091cb95f2"
+    }
+  }
+}

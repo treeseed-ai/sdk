@@ -185,21 +185,7 @@ export interface SdkDispatchCapability {
 	summary?: string;
 }
 
-export const COMMERCE_PRODUCT_KINDS = [
-	'template',
-	'knowledge_pack',
-	'ui_library',
-	'admin_interface',
-	'api_platform',
-	'hosted_project',
-	'professional_hosting',
-	'scoped_service',
-	'capacity_listing',
-] as const;
-
-export type CommerceProductKind = typeof COMMERCE_PRODUCT_KINDS[number];
-
-export const COMMERCE_OFFER_MODES = [
+export const PUBLICATION_ACCESS_MODES = [
 	'free',
 	'private',
 	'contact',
@@ -212,16 +198,5 @@ export const COMMERCE_OFFER_MODES = [
 	'external',
 ] as const;
 
-export type CommerceOfferMode = typeof COMMERCE_OFFER_MODES[number];
-
-export type CatalogItemOfferMode = CommerceOfferMode;
-
-export const COMMERCE_VENDOR_TRUST_LEVELS = [
-	'public_publisher',
-	'verified_seller',
-	'trusted_service_vendor',
-	'trusted_capacity_vendor',
-	'integration_partner',
-] as const;
-
-export type CommerceVendorTrustLevel = typeof COMMERCE_VENDOR_TRUST_LEVELS[number];
+export type PublicationAccessMode = typeof PUBLICATION_ACCESS_MODES[number];
+export type CatalogItemOfferMode = PublicationAccessMode;

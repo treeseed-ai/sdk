@@ -1,0 +1,269 @@
+import type { WorkdayAgentSelection } from '../agent-capacity/workday.ts';
+import { workdayAllocationOverridesSchema } from '../agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
+export { normalizeWorkdayAgentSelection } from '../agent-capacity/workday.ts';
+
+export type WorkdayDemandMode = 'planning' | 'acting';
+
+export interface WorkdayIntent {
+	schemaVersion: 'treeseed.workday-intent/v1';
+	teamId: string;
+	profileId: string;
+	projects: 'all' | string[];
+	/** Selects the existing execution custody mode; omission defaults safely to simulation. */
+	executionMode?: 'simulation' | 'production';
+	startsAt: string;
+	endsAt?: string;
+	durationSeconds?: number;
+	objectiveFilters?: string[];
+	/** Runs cooperative planning profiles without admitting accepted acting work. */
+	planningOnly?: boolean;
+	/** Selects exact governed proposals for cooperative planning and estimating. */
+	proposalIds?: string[];
+	/** Selects accepted decisions for API-derived acting work; it does not grant acting authority. */
+	decisionIds?: string[];
+	/** Continue exact accepted work from a settled workday; omission starts a fresh simulation. */
+	continueFromWorkdayId?: string;
+	/** Limits cooperative planning; acting still requires accepted decision/estimate authority. */
+	agentSelection?: Partial<WorkdayAgentSelection>;
+	/** High-level overrides of the canonical workday allocation policy. */
+	allocation?: Partial<Pick<import('../agent-capacity/contracts/capacity/workdays/workday-allocation.ts').WorkdayPolicy,
+		'planningPercent' | 'allocationWeight' | 'planningTurnMaximumSeconds' | 'projectPercentages' | 'agentClassPercentages'>>;
+	operatorConstraints?: {
+		providerIds?: string[];
+		maxConcurrency?: number;
+	};
+}
+
+export interface WorkdayActingAuthorityEvidence {
+	decisionId: string;
+	decisionRevision: number;
+	executionNodeId: string;
+	executionNodeRevision: number;
+	graphRevision: number;
+	sourceDigest: string;
+}
+
+export interface WorkdaySelectedDemand {
+	id: string;
+	projectId: string;
+	sourceType: string;
+	sourceId: string;
+	mode: WorkdayDemandMode;
+	classSlug: string;
+	requestedSeconds: number;
+	priority: number;
+	actingAuthority?: WorkdayActingAuthorityEvidence;
+}
+
+export interface WorkdayClassAccounting {
+	classSlug: string;
+	allocatedSeconds: number;
+	idleSeconds: number;
+	reservedSeconds: number;
+	activeSeconds: number;
+	releasedSeconds: number;
+	overrunSeconds: number;
+}
+
+export interface WorkdayPreflightReceipt {
+	schemaVersion: 'treeseed.workday-preflight/v1';
+	id: string;
+	teamId: string;
+	intentDigest: string;
+	profileId: string;
+	profileVersion: string;
+	profileGeneration: number;
+	profileDigest: string;
+	demandSetDigest: string;
+	providerCapacityDigest: string;
+	authorizationDigest: string;
+	reservationDigest: string;
+	selectedDemands: WorkdaySelectedDemand[];
+	classAccounting: WorkdayClassAccounting[];
+	startsAt: string;
+	endsAt: string;
+	maxConcurrency: number;
+	preflightDigest: string;
+	expiresAt: string;
+}
+
+export interface WorkdayPreflightObservation {
+	profileGeneration: number;
+	profileDigest: string;
+	demandSetDigest: string;
+	providerCapacityDigest: string;
+	authorizationDigest: string;
+	reservationDigest: string;
+}
+
+export interface WorkdayStartRequest {
+	preflightId: string;
+	preflightDigest: string;
+	idempotencyKey: string;
+}
+
+export interface WorkdayStartReceipt {
+	schemaVersion: 'treeseed.workday-start-receipt/v1';
+	workdayId: string;
+	preflightId: string;
+	preflightDigest: string;
+	acceptedExecutionNodeIds: string[];
+	assignmentIds: string[];
+	reservationIds: string[];
+	startedAt: string;
+	providerReceiptRefs: string[];
+	transactionReceiptId: string;
+}
+
+export interface WorkdaySettlement {
+	schemaVersion: 'treeseed.workday-settlement/v1';
+	workdayId: string;
+	status: 'completed' | 'cancelled' | 'failed' | 'degraded';
+	preflightDigest: string;
+	classAccounting: WorkdayClassAccounting[];
+	assignmentIds: string[];
+	releasedReservationIds: string[];
+	artifactRefs: string[];
+	startedAt: string;
+	completedAt: string;
+	settlementDigest: string;
+}
+
+export interface RepositoryProfileGenerationReceipt {
+	schemaVersion: 'treeseed.repository-profile-generation/v1';
+	repository: string;
+	ref: string;
+	commit: string;
+	path: string;
+	profileId: string;
+	profileVersion: string;
+	profileDigest: string;
+	generation: number;
+	indexedAt: string;
+}
+
+export interface RepositoryProfileReconciliationReceipt {
+	schemaVersion: 'treeseed.repository-profile-reconciliation/v1';
+	repository: string;
+	observedCommit: string;
+	previousGeneration: number | null;
+	acceptedGeneration: number;
+	profileDigests: string[];
+	status: 'created' | 'updated' | 'unchanged' | 'rejected';
+	diagnostics: string[];
+	receiptDigest: string;
+}
+
+export interface WorkdayLifecycleDiagnostic {
+	code: string;
+	path: string;
+	message: string;
+}
+
+export function validateWorkdayIntent(intent: WorkdayIntent): WorkdayLifecycleDiagnostic[] {
+	const diagnostics: WorkdayLifecycleDiagnostic[] = [];
+	const fields = new Set(['schemaVersion', 'teamId', 'profileId', 'projects', 'executionMode', 'startsAt',
+		'endsAt', 'durationSeconds', 'objectiveFilters', 'planningOnly', 'proposalIds', 'decisionIds',
+		'continueFromWorkdayId', 'agentSelection', 'allocation', 'operatorConstraints']);
+	for (const key of Object.keys(intent)) if (!fields.has(key)) diagnostics.push({
+		code: 'field_forbidden', path: key, message: 'Derived execution state is not portable workday intent.',
+	});
+	if (intent.schemaVersion !== 'treeseed.workday-intent/v1') diagnostics.push({ code: 'schema_version_invalid', path: 'schemaVersion', message: 'Unsupported workday intent schema.' });
+	if (!intent.teamId.trim()) diagnostics.push({ code: 'team_required', path: 'teamId', message: 'Team identity is required.' });
+	if (!intent.profileId.trim()) diagnostics.push({ code: 'profile_required', path: 'profileId', message: 'Allocation profile identity is required.' });
+	if (intent.executionMode !== undefined && !['simulation', 'production'].includes(intent.executionMode)) diagnostics.push({ code: 'execution_mode_invalid', path: 'executionMode', message: 'Select simulation or production custody.' });
+	if (intent.endsAt !== undefined && intent.durationSeconds !== undefined) diagnostics.push({ code: 'time_range_ambiguous', path: 'endsAt', message: 'Specify endsAt or durationSeconds, not both; omission uses the team policy duration.' });
+	const start = Date.parse(intent.startsAt);
+	if (!Number.isFinite(start)) diagnostics.push({ code: 'start_invalid', path: 'startsAt', message: 'startsAt must be an ISO timestamp.' });
+	if (intent.endsAt !== undefined && (!Number.isFinite(Date.parse(intent.endsAt)) || Date.parse(intent.endsAt) <= start)) diagnostics.push({ code: 'end_invalid', path: 'endsAt', message: 'endsAt must be a valid timestamp after startsAt.' });
+	if (intent.durationSeconds !== undefined && (!Number.isInteger(intent.durationSeconds) || intent.durationSeconds <= 0)) diagnostics.push({ code: 'duration_invalid', path: 'durationSeconds', message: 'durationSeconds must be a positive integer.' });
+	if (intent.planningOnly !== undefined && typeof intent.planningOnly !== 'boolean') diagnostics.push({ code: 'planning_only_invalid', path: 'planningOnly', message: 'planningOnly must be boolean.' });
+	if (intent.proposalIds !== undefined && (!Array.isArray(intent.proposalIds) || intent.proposalIds.length === 0 || intent.proposalIds.length > 64
+		|| intent.proposalIds.some((entry) => typeof entry !== 'string' || !entry.trim() || entry.length > 128))) {
+		diagnostics.push({ code: 'proposal_selection_invalid', path: 'proposalIds', message: 'Proposal selection must be a bounded nonempty array of proposal identities.' });
+	}
+	if (intent.decisionIds !== undefined && (!Array.isArray(intent.decisionIds) || intent.decisionIds.length === 0 || intent.decisionIds.length > 64
+		|| intent.decisionIds.some((entry) => typeof entry !== 'string' || !entry.trim() || entry.length > 128))) {
+		diagnostics.push({ code: 'decision_selection_invalid', path: 'decisionIds', message: 'Decision selection must be a bounded nonempty array of decision identities.' });
+	}
+	if (intent.agentSelection !== undefined) diagnostics.push(...validateWorkdayIntentSelection(intent.agentSelection));
+	if (intent.continueFromWorkdayId !== undefined && (typeof intent.continueFromWorkdayId !== 'string'
+		|| !intent.continueFromWorkdayId.trim() || intent.continueFromWorkdayId.length > 128
+		|| !intent.decisionIds?.length || intent.proposalIds !== undefined || intent.planningOnly === true)) diagnostics.push({
+		code: 'continuation_invalid', path: 'continueFromWorkdayId',
+		message: 'Continuation requires a settled workday identity and exact decisions, not new proposal planning.',
+	});
+	if (intent.allocation !== undefined) {
+		const result = workdayAllocationOverridesSchema.safeParse(intent.allocation);
+		if (!result.success) diagnostics.push(...result.error.issues.map((issue) => ({ code: 'allocation_invalid',
+			path: `allocation.${issue.path.join('.')}`, message: issue.message })));
+	}
+	return diagnostics;
+}
+
+export function validateWorkdayIntentSelection(value: unknown): WorkdayLifecycleDiagnostic[] {
+	const invalid = (path: string, message: string) => ({ code: 'agent_selection_invalid', path: `agentSelection${path ? `.${path}` : ''}`, message });
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return [invalid('', 'Agent selection must be an object.')];
+	const selection = value as Record<string, unknown>, diagnostics: WorkdayLifecycleDiagnostic[] = [];
+	const fields = ['classIds', 'classSlugs', 'agentSlugs', 'activityTypes'];
+	for (const key of Object.keys(selection)) if (![...fields, 'mode'].includes(key)) diagnostics.push(invalid(key, 'Unknown selection field.'));
+	if (selection.mode !== undefined && !['intersection', 'union'].includes(String(selection.mode))) diagnostics.push(invalid('mode', 'Select intersection or union.'));
+	let selected = 0;
+	for (const field of fields) {
+		const entries = selection[field];
+		if (entries === undefined) continue;
+		if (!Array.isArray(entries) || entries.length > 128 || entries.some(entry => typeof entry !== 'string' || !entry.trim() || entry.length > 128)) {
+			diagnostics.push(invalid(field, 'Selectors must be a bounded array of nonempty strings.')); continue;
+		}
+		selected += entries.length;
+		if (field === 'activityTypes' && entries.some(entry => !['planning', 'estimating', 'reviewing', 'reporting', 'chat'].includes(String(entry).trim()))) diagnostics.push(invalid(field, 'Select a planning activity; acting is controlled by accepted decisions and estimates.'));
+	}
+	if (!selected) diagnostics.push(invalid('', 'Explicit selection must select an agent, class, or activity; omit it to select all.'));
+	return diagnostics;
+}
+
+export function validateSelectedDemand(demand: WorkdaySelectedDemand): WorkdayLifecycleDiagnostic[] {
+	const diagnostics: WorkdayLifecycleDiagnostic[] = [];
+	if (demand.requestedSeconds <= 0 || !Number.isInteger(demand.requestedSeconds)) diagnostics.push({ code: 'requested_seconds_invalid', path: 'requestedSeconds', message: 'Demand duration must be a positive integer.' });
+	if (demand.mode === 'acting' && !demand.actingAuthority) diagnostics.push({ code: 'acting_authority_required', path: 'actingAuthority', message: 'Acting demand requires an exact accepted decision and living execution-node revision.' });
+	if (demand.mode === 'acting' && demand.actingAuthority && [demand.actingAuthority.decisionId, demand.actingAuthority.executionNodeId, demand.actingAuthority.sourceDigest].some((value) => typeof value !== 'string' || !value.trim())) diagnostics.push({ code: 'acting_authority_identity_missing', path: 'actingAuthority', message: 'Acting authority must bind non-empty decision, execution-node, and source identities.' });
+	if (demand.mode === 'acting' && demand.actingAuthority && [demand.actingAuthority.decisionRevision, demand.actingAuthority.executionNodeRevision, demand.actingAuthority.graphRevision].some((value) => !Number.isInteger(value) || value <= 0)) diagnostics.push({ code: 'acting_authority_revision_invalid', path: 'actingAuthority', message: 'Acting authority must bind positive decision, node, and graph revisions.' });
+	return diagnostics;
+}
+
+export function validateWorkdayPreflight(receipt: WorkdayPreflightReceipt, now = new Date()): WorkdayLifecycleDiagnostic[] {
+	const diagnostics = receipt.selectedDemands.flatMap((demand, index) => validateSelectedDemand(demand).map((diagnostic) => ({ ...diagnostic, path: `selectedDemands.${index}.${diagnostic.path}` })));
+	if (receipt.schemaVersion !== 'treeseed.workday-preflight/v1') diagnostics.push({ code: 'schema_version_invalid', path: 'schemaVersion', message: 'Unsupported workday preflight schema.' });
+	if (!Number.isInteger(receipt.profileGeneration) || receipt.profileGeneration <= 0) diagnostics.push({ code: 'profile_generation_invalid', path: 'profileGeneration', message: 'Profile generation must be a positive integer.' });
+	for (const field of ['intentDigest', 'profileDigest', 'demandSetDigest', 'providerCapacityDigest', 'authorizationDigest', 'reservationDigest', 'preflightDigest'] as const) {
+		if (!receipt[field].trim()) diagnostics.push({ code: 'digest_required', path: field, message: `${field} is required.` });
+	}
+	const expiry = Date.parse(receipt.expiresAt);
+	if (!Number.isFinite(expiry)) diagnostics.push({ code: 'preflight_expiry_invalid', path: 'expiresAt', message: 'Preflight expiry must be a valid timestamp.' });
+	else if (expiry <= now.getTime()) diagnostics.push({ code: 'preflight_expired', path: 'expiresAt', message: 'Workday preflight has expired and must be regenerated.' });
+	if (!Number.isFinite(Date.parse(receipt.startsAt)) || !Number.isFinite(Date.parse(receipt.endsAt)) || Date.parse(receipt.endsAt) <= Date.parse(receipt.startsAt)) diagnostics.push({ code: 'preflight_time_range_invalid', path: 'endsAt', message: 'Preflight must bind a valid time range.' });
+	if (!Number.isInteger(receipt.maxConcurrency) || receipt.maxConcurrency <= 0) diagnostics.push({ code: 'preflight_concurrency_invalid', path: 'maxConcurrency', message: 'Preflight concurrency must be a positive integer.' });
+	if (new Set(receipt.selectedDemands.map((demand) => demand.id)).size !== receipt.selectedDemands.length) diagnostics.push({ code: 'preflight_demand_duplicate', path: 'selectedDemands', message: 'Preflight demand identities must be unique.' });
+	return diagnostics;
+}
+
+export function validateWorkdayPreflightFreshness(receipt: WorkdayPreflightReceipt, observed: WorkdayPreflightObservation): WorkdayLifecycleDiagnostic[] {
+	const diagnostics: WorkdayLifecycleDiagnostic[] = [];
+	for (const field of ['profileGeneration', 'profileDigest', 'demandSetDigest', 'providerCapacityDigest', 'authorizationDigest', 'reservationDigest'] as const) {
+		if (receipt[field] !== observed[field]) diagnostics.push({ code: 'preflight_state_changed', path: field, message: `${field} changed after preflight; generate a fresh plan.` });
+	}
+	return diagnostics;
+}
+
+export function validateWorkdaySettlement(settlement: WorkdaySettlement): WorkdayLifecycleDiagnostic[] {
+	const diagnostics: WorkdayLifecycleDiagnostic[] = [];
+	if (settlement.schemaVersion !== 'treeseed.workday-settlement/v1') diagnostics.push({ code: 'schema_version_invalid', path: 'schemaVersion', message: 'Unsupported workday settlement schema.' });
+	for (const [index, accounting] of settlement.classAccounting.entries()) {
+		for (const [field, value] of Object.entries(accounting).filter(([field]) => field !== 'classSlug')) {
+			if (!Number.isFinite(value) || value < 0) diagnostics.push({ code: 'settlement_accounting_invalid', path: `classAccounting.${index}.${field}`, message: 'Settlement seconds must be finite and non-negative.' });
+		}
+	}
+	if (!settlement.preflightDigest.trim() || !settlement.settlementDigest.trim()) diagnostics.push({ code: 'settlement_digest_required', path: 'settlementDigest', message: 'Settlement must bind its preflight and final accounting digests.' });
+	if (!Number.isFinite(Date.parse(settlement.startedAt)) || !Number.isFinite(Date.parse(settlement.completedAt)) || Date.parse(settlement.completedAt) < Date.parse(settlement.startedAt)) diagnostics.push({ code: 'settlement_time_range_invalid', path: 'completedAt', message: 'Settlement must bind a valid completion time at or after workday start.' });
+	return diagnostics;
+}

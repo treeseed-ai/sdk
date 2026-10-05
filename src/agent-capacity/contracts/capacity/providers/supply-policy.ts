@@ -8,9 +8,7 @@ export interface CapacitySupplyPolicy {
 	allowPlanningFailover: boolean;
 	allowActingFailover: boolean;
 	preferredCapacityProviderIds?: string[];
-	preferredExecutionProviderIds?: string[];
 	disallowedCapacityProviderIds?: string[];
-	disallowedExecutionProviderIds?: string[];
 }
 
 export interface CapacitySupplyCandidate {
@@ -26,7 +24,6 @@ export interface CapacitySupplyCandidate {
 	availableConcurrency: number;
 	preferred?: boolean;
 	estimatedCost?: number | null;
-	minimumAssignmentDuration?: import('../../../../capacity-provider/contracts/governance.ts').MinimumAssignmentDuration;
 }
 
 export interface CapacitySupplySelection {

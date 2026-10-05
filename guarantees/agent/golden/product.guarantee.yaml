@@ -1,0 +1,12 @@
+schemaVersion: treeseed.guarantee/v1
+id: guarantee.sdk.golden.product
+journey: Verify the SDK golden product
+ownerPackage: "@treeseed/sdk"
+type: agent
+subtype: execution
+status: planned
+gates: [core]
+summary: Exact source custody and measured passing release build tests and local package candidate; not all campaign boundaries.
+scene:
+  required: true
+  manifest: guarantees/agent/golden/scenes/product.scene.yaml

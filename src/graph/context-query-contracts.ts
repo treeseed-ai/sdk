@@ -40,9 +40,18 @@ export interface DeclarativeContextQuery {
 	resultLimit?: number;
 	contextBudget?: { maxItems:number; maxCharacters?:number };
 	tokenBudget?: number;
+	sources?: Array<
+		| { scope:'current-project'|'team-library' }
+		| { scope:'same-team'; projectIds?:string[]; projectSlugs?:string[] }
+		| { scope:'shared-team'; teamId:string; projectIds?:string[] }
+	>;
+	requirement?: 'required'|'preferred';
+	priority?: number;
+	minimumBudget?: number;
+	maximumBudget?: number;
+	summarization?: 'none'|'deterministic'|'provider';
 	format?: DeclarativeContextQueryFormat;
 	filters?: Record<string, unknown>;
-	required?: boolean;
 }
 
 export type HandlerContextPackSource =
@@ -164,6 +173,11 @@ export function compileDeclarativeContextQuery(
 	}
 	if (query.resultLimit !== undefined && !asPositiveInteger(query.resultLimit)) errors.push(`Context query "${id || '<unknown>'}" resultLimit must be a positive integer.`);
 	if (query.tokenBudget !== undefined && !asPositiveInteger(query.tokenBudget)) errors.push(`Context query "${id || '<unknown>'}" tokenBudget must be a positive integer.`);
+	if (query.minimumBudget !== undefined && !asPositiveInteger(query.minimumBudget)) errors.push(`Context query "${id || '<unknown>'}" minimumBudget must be a positive integer.`);
+	if (query.maximumBudget !== undefined && !asPositiveInteger(query.maximumBudget)) errors.push(`Context query "${id || '<unknown>'}" maximumBudget must be a positive integer.`);
+	if (query.minimumBudget !== undefined && query.maximumBudget !== undefined && query.minimumBudget > query.maximumBudget) errors.push(`Context query "${id || '<unknown>'}" minimumBudget cannot exceed maximumBudget.`);
+	if (query.priority !== undefined && (!Number.isInteger(query.priority) || query.priority < 0 || query.priority > 100)) errors.push(`Context query "${id || '<unknown>'}" priority must be an integer from 0 through 100.`);
+	if (query.sources?.some((source) => source.scope === 'shared-team' && !source.teamId.trim())) errors.push(`Context query "${id || '<unknown>'}" shared-team sources require a teamId.`);
 
 	const scope = query.scope === undefined ? undefined : normalizeString(query.scope);
 	if (scope !== undefined && (!scope || !scope.startsWith('/'))) {

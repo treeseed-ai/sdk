@@ -1,17 +1,62 @@
-export * from './features/ui-feature-contract.ts';
-export * from './features/ui-scene-runtime-trust.ts';
-export * from './contracts/agent-guarantee-contracts.ts';
-export * from './contracts/parse-agent-guarantee-contract.ts';
-export * from './contracts/parse-agent-guarantee-proof.ts';
-export * from './contracts/create-agent-guarantee-proof-template.ts';
-export * from './contracts/agent-guarantee-status.ts';
-export * from './index/build-guarantee-dependency-graph.ts';
-export * from './index/export-guarantees-csv.ts';
-export * from './index/guarantee-journey-audit-item.ts';
-export * from './index/guarantee-schema-version.ts';
-export * from './index/parse-verifier-registry.ts';
-export * from './index/plan-guarantees.ts';
-export * from './index/run-guarantees.ts';
-export * from './index/run-verifier-command.ts';
-export * from './index/scene-report-evidence-paths.ts';
-export * from './index/walk-files.ts';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { relative, resolve } from 'node:path';
+import { parse } from 'yaml';
+export { runUiEvidenceTrustVerifier, validateUiEvidenceTrust } from './evidence-trust.ts';
+
+export type GuaranteeRunStatus = 'passed' | 'failed' | 'skipped' | 'blocked';
+export interface GuaranteeFilter { ownerPackage?: string; type?: string; subtype?: string; gate?: string; status?: string; ids?: string[]; journeyIndexes?: number[]; }
+export interface GuaranteeDiagnostic { severity: 'error' | 'warning' | 'info'; code: string; message: string; path?: string; sourcePath?: string; }
+export interface GuaranteeRunStep { id: string; kind: string; status: GuaranteeRunStatus; summary?: string; ref?: string; evidence?: string[]; diagnostics?: GuaranteeDiagnostic[]; [key: string]: unknown; }
+export interface GuaranteePlanEntry { id: string; journey: string; ownerPackage: string; type: string; subtype: string; status: string; gates: string[]; sourcePath: string; selected: boolean; dependency: boolean; sceneManifest?: string; verifierRefs?: string[]; sceneVerifierRefs?: string[]; journeyIndex?: number; [key: string]: unknown; }
+export interface GuaranteePlanReport { ok: boolean; entries: GuaranteePlanEntry[]; diagnostics: GuaranteeDiagnostic[]; [key: string]: unknown; }
+export interface GuaranteeRunResult { id: string; journey: string; ownerPackage: string; type: string; subtype: string; status: GuaranteeRunStatus; selected: boolean; dependency: boolean; sourcePath: string; journeyIndex?: number; steps: GuaranteeRunStep[]; diagnostics: GuaranteeDiagnostic[]; evidence: string[]; [key: string]: unknown; }
+export interface GuaranteeRunReport { runId: string; environment: string; startedAt: string; completedAt?: string; ok: boolean; filter: GuaranteeFilter; counts: { passed: number; failed: number; skipped: number; blocked: number; releaseBlockingFailures: number }; results: GuaranteeRunResult[]; diagnostics?: GuaranteeDiagnostic[]; [key: string]: unknown; }
+
+export interface ArtifactGuaranteeVerifier {
+	kind: 'artifact'; ownerPackage: string; artifactId: string; entrypoint: string; exportName?: string; caseId: string; description?: string;
+}
+export interface CatalogOperationGuaranteeVerifier {
+	kind: 'catalogOperation'; ownerPackage: string; operationId: string; caseId: string; description?: string;
+}
+/** Local development verification against package-owned tests, never release-artifact proof. */
+export interface DevelopmentTestGuaranteeVerifier {
+	kind: 'vitestCase' | 'nodeTestCase'; ownerPackage: string; testFile: string; testName: string;
+	/** Test-process watchdog only; milliseconds, 1..86_400_000. Default: 120_000. Never an assignment budget. */
+	timeoutMs?: number;
+}
+export type GuaranteeVerifierDefinition = ArtifactGuaranteeVerifier | CatalogOperationGuaranteeVerifier | DevelopmentTestGuaranteeVerifier;
+export interface GuaranteeVerifierCheck { id: string; status: 'passed' | 'failed'; durationMs: number; diagnostics?: GuaranteeDiagnostic[]; error?: string; evidence?: string[]; }
+export interface GuaranteeVerifierResult {
+	schemaVersion: 'treeseed.guarantee-verifier-result/v1'; verifierId: string; startedAt: string; completedAt: string; ok: boolean; checks: GuaranteeVerifierCheck[]; [key: string]: unknown;
+}
+
+interface GuaranteeManifest { id: string; journey: string; ownerPackage: string; type: string; subtype: string; status: string; gates: string[]; [key: string]: unknown; }
+interface LoadedGuarantee { sourcePath: string; relativePath: string; manifest: GuaranteeManifest | null; }
+
+function walk(root: string, out: string[] = []) {
+	if (!existsSync(root)) return out;
+	for (const name of readdirSync(root)) {
+		if (['.git', 'node_modules', 'dist'].includes(name)) continue;
+		const path = resolve(root, name); const stat = statSync(path);
+		if (stat.isDirectory()) walk(path, out); else if (name.endsWith('.guarantee.yaml') || name.endsWith('.guarantee.yml')) out.push(path);
+	}
+	return out;
+}
+
+export function discoverGuarantees(input: { workspaceRoot: string; filter?: GuaranteeFilter }) {
+	const diagnostics: GuaranteeDiagnostic[] = [];
+	const guarantees: LoadedGuarantee[] = walk(resolve(input.workspaceRoot)).map((sourcePath) => {
+		try {
+			const value = parse(readFileSync(sourcePath, 'utf8')) as Record<string, unknown>;
+			const manifest: GuaranteeManifest = { ...value, id: String(value.id ?? ''), journey: String(value.journey ?? value.id ?? ''),
+				ownerPackage: String(value.ownerPackage ?? ''), type: String(value.type ?? ''), subtype: String(value.subtype ?? ''),
+				status: String(value.status ?? 'planned'), gates: Array.isArray(value.gates) ? value.gates.map(String) : [] };
+			if (!manifest.id) throw new Error('id is required');
+			return { sourcePath, relativePath: relative(input.workspaceRoot, sourcePath).replaceAll('\\', '/'), manifest };
+		} catch (cause) {
+			diagnostics.push({ severity: 'error', code: 'guarantee.invalid_manifest', message: cause instanceof Error ? cause.message : 'Invalid guarantee manifest.', sourcePath });
+			return { sourcePath, relativePath: relative(input.workspaceRoot, sourcePath).replaceAll('\\', '/'), manifest: null };
+		}
+	});
+	return { ok: diagnostics.every((entry) => entry.severity !== 'error'), guarantees, diagnostics, counts: { total: guarantees.length } };
+}

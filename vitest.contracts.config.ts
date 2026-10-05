@@ -1,0 +1,31 @@
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+	test: {
+		fileParallelism: true,
+		maxWorkers: 2,
+		testTimeout: 15_000,
+		include: [
+			'tests/unit/content/**/*.test.ts',
+			'tests/unit/identity/**/*.test.ts',
+			'tests/contract/operator-contracts/**/*.test.ts',
+			'tests/contract/standards/**/*.test.ts',
+			'tests/contract/agent-capacity/capacity-configuration.test.ts',
+			'tests/contract/agent-capacity/agent-execution-contract.test.ts',
+			'tests/contract/agent-capacity/assignment-workspace-authority.test.ts',
+			'tests/contract/agent-capacity/source-workspace.test.ts',
+			'tests/contract/agent-capacity/source-client.test.ts',
+			'tests/contract/agent-capacity/source-candidate.test.ts',
+			'tests/unit/deployment/**/*.test.ts',
+			'tests/unit/development/**/*.test.ts',
+			'tests/unit/operator-contracts/**/*.test.ts',
+			'tests/unit/platform-contracts.test.ts',
+			'tests/unit/control-plane-client.test.ts',
+			'tests/unit/treedx-proxy.test.ts',
+			'tests/unit/treeai-proxy.test.ts',
+			'tests/unit/security/**/*.test.ts',
+			'tests/unit/secrets-capability/**/*.test.ts',
+			'tests/unit/agent-capacity/capacity/**/*.test.ts',
+		],
+	},
+});

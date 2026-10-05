@@ -1,0 +1,12 @@
+schemaVersion: treeseed.guarantee/v1
+id: guarantee.sdk.golden.product-custody
+journey: Verify frozen SDK source and independently replayable local archive inspection
+ownerPackage: '@treeseed/sdk'
+type: agent
+subtype: execution
+status: planned
+gates: [core]
+summary: Require exact campaign source, measured packed exports/types for Actor and approved Reviewer, and one export validation path for source and tarball.
+scene:
+  required: true
+  manifest: guarantees/agent/golden/scenes/product-custody.scene.yaml

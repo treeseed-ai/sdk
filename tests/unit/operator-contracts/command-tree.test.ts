@@ -1,0 +1,197 @@
+import { describe, expect, it } from 'vitest';
+import { CONTROL_PLANE_OPERATION_LIST, createCommandResult, listCommandPaths, TREESEED_COMMAND_TREE_V1, validateCommandOperationBindings, validateCommandTree, type CommandTreeDescriptor } from '../../../src/operator-contracts/index.ts';
+
+const unavailable = { kind: 'unavailable' as const, code: 'test_unavailable', reason: 'Test command.' };
+
+function tree(): CommandTreeDescriptor {
+	return {
+		schemaVersion: 'treeseed.command-tree/v1',
+		executable: 'trsd',
+		commands: [{
+			nodeType: 'branch',
+			segment: 'workdays',
+			description: 'Manage workday envelopes.',
+			children: [{ nodeType: 'leaf', segment: 'start', description: 'Start an exact preflight.', kind: 'mutation', options: [{ name: '--plan', description: 'Return the exact proposed outcome.', type: 'boolean' }], resultSchemaId: 'treeseed.workday-start-receipt/v1', execution: unavailable }],
+		}],
+	};
+}
+
+describe('human command tree contract', () => {
+	it('publishes the complete canonical surface without legacy internal actions', () => {
+		expect(validateCommandTree(TREESEED_COMMAND_TREE_V1)).toEqual([]);
+		expect(validateCommandOperationBindings(TREESEED_COMMAND_TREE_V1, CONTROL_PLANE_OPERATION_LIST)).toEqual([]);
+		const paths = listCommandPaths();
+		expect(paths).toEqual(expect.arrayContaining(['send', 'users create', 'agents classes list', 'providers offers apply', 'workdays profiles update', 'workdays schedules retire', 'assignments artifacts', 'save', 'stage', 'release']));
+		expect(paths).not.toEqual(expect.arrayContaining(['agent-author', 'capacity-plan-create', 'checkpoint-integrate', 'content-integrate', 'content-abandon']));
+		expect(paths).toEqual(expect.arrayContaining(['ai status', 'ai storage show', 'ai storage connect', 'ai storage disconnect', 'ai mode show', 'ai mode set']));
+		expect(paths.some(path => path.startsWith('ai qualify'))).toBe(false);
+		const release = TREESEED_COMMAND_TREE_V1.commands.find((node) => node.segment === 'release');
+		expect(release).toMatchObject({ nodeType: 'leaf', authorization: { confirmation: 'production' } });
+	});
+
+	it('classifies supported, local, protocol, and intentionally unavailable execution without URL metadata', () => {
+		const leaves = new Map<string, Extract<(typeof TREESEED_COMMAND_TREE_V1.commands)[number], { nodeType: 'leaf' }>>();
+		const visit = (nodes: typeof TREESEED_COMMAND_TREE_V1.commands, parent: string[] = []) => nodes.forEach((node) => {
+			const path = [...parent, node.segment];
+			if (node.nodeType === 'branch') visit(node.children, path);
+			else leaves.set(path.join(' '), node);
+		});
+		visit(TREESEED_COMMAND_TREE_V1.commands);
+		expect(leaves.get('agents show')?.execution).toMatchObject({ kind: 'operation', operationId: 'agents.show' });
+		expect(leaves.get('execution graph show')?.execution).toMatchObject({ kind: 'operation', operationId: 'execution.graph.show' });
+		expect(leaves.get('execution reconcile')?.execution).toMatchObject({ kind: 'operation', operationId: 'execution.reconcile' });
+		expect(leaves.get('ai status')?.execution).toMatchObject({ kind: 'operation', operationId: 'ai.instances.show' });
+		expect(leaves.get('ai storage connect')?.execution).toMatchObject({ kind: 'operation', operationId: 'ai.instances.storage.put', input: expect.arrayContaining([
+			{ target: 'path', field: 'teamId', source: 'context', name: 'team', required: true, transform: 'identity' },
+			{ target: 'path', field: 'instanceId', source: 'context', name: 'node', required: true, transform: 'identity' },
+		]) });
+		expect(leaves.get('auth login')?.execution).toEqual({ kind: 'protocol', handlerId: 'protocol.identity.login' });
+		expect(leaves.get('capacity ledger')?.execution).toMatchObject({ kind: 'operation', operationId: 'capacity.ledger', input: expect.arrayContaining([
+			{ target: 'query', field: 'projectId', source: 'option', name: 'project', required: true, transform: 'identity' },
+			{ target: 'query', field: 'workDayId', source: 'option', name: 'workday', required: false, transform: 'identity' },
+		]) });
+		expect(leaves.get('capacity ledger')?.options?.map((option) => option.name)).toContain('--workday');
+		expect(leaves.get('workdays profiles update')?.options?.find((option) => option.name === '--input')).toMatchObject({ required: true, type: 'string' });
+		expect(leaves.get('workdays profiles update')?.execution).toMatchObject({ kind: 'operation', operationId: 'workdays.profiles.update', input: expect.arrayContaining([
+			{ target: 'body', field: 'file', source: 'option', name: 'input', required: true, transform: 'identity' },
+		]) });
+		expect(leaves.get('users create')?.execution).toEqual({ kind: 'protocol', handlerId: 'protocol.accounts.create' });
+		expect(leaves.get('users create')?.options?.map((option) => option.name)).toEqual(['--plan', '--email', '--username', '--display-name', '--timeout']);
+		expect(leaves.get('users create')?.authorization?.confirmation).toBe('never');
+		expect(leaves.get('auth login')?.authorization?.confirmation).toBe('never');
+		expect(leaves.get('auth login')?.options?.map((option) => option.name)).toEqual(['--plan', '--timeout', '--device', '--issuer', '--scope']);
+		expect(leaves.get('secrets status')?.execution).toEqual({ kind: 'local', handlerId: 'local.secrets.status' });
+		expect(leaves.get('host provider limits show')?.execution).toEqual({ kind: 'local', handlerId: 'local.host.provider.limits.show' });
+		expect(leaves.get('host provider limits set')).toMatchObject({ kind: 'mutation', execution: { kind: 'local', handlerId: 'local.host.provider.limits.set' }, authorization: { confirmation: 'authority' } });
+		expect(leaves.get('host provider limits set')?.options?.map(option => option.name)).toEqual(['--plan', '--daily-active-seconds', '--capability', '--expected-generation']);
+		expect(leaves.get('ai storage verify')).toMatchObject({ kind: 'mutation', execution: {kind: 'local', handlerId: 'local.host.ai.storage.verify'}, authorization: {confirmation: 'authority'} });
+		expect(leaves.get('ai storage verify')?.options?.map(option => option.name)).toContain('--plan');
+		for (const [path, handlerId] of [
+			['host start', 'local.host.start'], ['host stop', 'local.host.stop'],
+			['host config stage', 'local.host.config.stage'],
+		] as const) expect(leaves.get(path)).toMatchObject({ kind: 'mutation', execution: { kind: 'local', handlerId }, authorization: { confirmation: 'authority' } });
+		expect(leaves.get('release')?.execution).toMatchObject({ kind: 'unavailable', code: 'standards_migration_not_enabled' });
+		expect(JSON.stringify(TREESEED_COMMAND_TREE_V1)).not.toContain('/v1/');
+		expect(listCommandPaths()).toEqual(expect.arrayContaining([
+			'platform topology plan', 'platform topology apply', 'platform topology status', 'platform topology rollback',
+			'host initialize', 'host status', 'host doctor', 'host config adopt', 'host topology', 'host connections', 'host provider status', 'host storage connect', 'host storage status', 'host storage reconcile', 'host storage rotate', 'host fleet status', 'host update channel', 'host component enable', 'host recovery restore', 'host bootstrap enroll', 'host reset',
+			'projects treedx show',
+			'projects treedx bind',
+			'projects treedx status',
+			'projects treedx diagnose',
+			'projects treedx capabilities',
+			'projects treedx workspaces list',
+			'projects treedx workspaces show',
+			'projects treedx workspaces abandon',
+		]));
+		expect(listCommandPaths()).toEqual(expect.arrayContaining([
+			'providers registration code status', 'providers registration code reveal', 'providers registration code rotate',
+			'providers environments list', 'providers environments show', 'providers environments grant', 'providers environments revoke',
+			'host provider environment list', 'host provider environment show', 'host provider environment status', 'host provider environment set',
+			'host provider environment import', 'host provider environment unset', 'host provider environment rotate', 'host provider environment verify',
+		]));
+		const environmentSet = leaves.get('host provider environment set');
+		expect(environmentSet?.options?.map((option) => option.name)).toEqual(['--plan', '--stdin']);
+		expect(environmentSet?.arguments?.map((argument) => argument.name)).toEqual(['profile', 'name']);
+		expect(JSON.stringify(environmentSet)).not.toContain('--value');
+		const initialize = leaves.get('host initialize');
+		expect(initialize?.execution).toEqual({ kind: 'local', handlerId: 'local.host.initialize' });
+		expect(initialize?.options?.map((option) => option.name)).toEqual(['--plan', '--input-file', '--profile', '--confirm', '--yes']);
+	});
+
+	it('maps workday planning options to the versioned intent wire contract', () => {
+		const workdays = TREESEED_COMMAND_TREE_V1.commands.find((node) => node.nodeType === 'branch' && node.segment === 'workdays');
+		const plan = workdays?.nodeType === 'branch' ? workdays.children.find((node) => node.nodeType === 'leaf' && node.segment === 'plan') : null;
+		expect(plan?.nodeType === 'leaf' ? plan.execution : null).toEqual(expect.objectContaining({
+			kind: 'operation',
+			operationId: 'workdays.plan',
+			input: expect.arrayContaining([
+				expect.objectContaining({ target: 'body', field: 'profileId', source: 'option', name: 'profile' }),
+				expect.objectContaining({ target: 'body', field: 'startsAt', source: 'option', name: 'start' }),
+				expect.objectContaining({ target: 'body', field: 'endsAt', source: 'option', name: 'end' }),
+				expect.objectContaining({ target: 'body', field: 'durationSeconds', source: 'option', name: 'duration', transform: 'integer' }),
+				expect.objectContaining({ target: 'body', field: 'objectiveFilters', source: 'option', name: 'objective', transform: 'csv' }),
+				expect.objectContaining({ target: 'body', field: 'proposalIds', source: 'option', name: 'proposal', transform: 'csv' }),
+				expect.objectContaining({ target: 'body', field: 'decisionIds', source: 'option', name: 'decision', transform: 'csv' }),
+				expect.objectContaining({ target: 'body', field: 'continueFromWorkdayId', source: 'option', name: 'continueFrom' }),
+			]),
+		}));
+	});
+
+	it('maps workday start to the digest-bound API request', () => {
+		const workdays = TREESEED_COMMAND_TREE_V1.commands.find((node) => node.nodeType === 'branch' && node.segment === 'workdays');
+		const start = workdays?.nodeType === 'branch' ? workdays.children.find((node) => node.nodeType === 'leaf' && node.segment === 'start') : null;
+		expect(start?.nodeType === 'leaf' ? start.execution : null).toEqual(expect.objectContaining({
+			kind: 'operation',
+			operationId: 'workdays.start',
+			input: expect.arrayContaining([
+				expect.objectContaining({ target: 'body', field: 'preflightId', source: 'option', name: 'preflight' }),
+				expect.objectContaining({ target: 'body', field: 'preflightDigest', source: 'option', name: 'digest' }),
+			]),
+		}));
+	});
+
+	it('exposes team policy replacement separately from workday admission', () => {
+		const workdays = TREESEED_COMMAND_TREE_V1.commands.find((node) => node.nodeType === 'branch' && node.segment === 'workdays');
+		const profiles = workdays?.nodeType === 'branch' ? workdays.children.find((node) => node.segment === 'profiles') : null;
+		const update = profiles?.nodeType === 'branch' ? profiles.children.find((node) => node.segment === 'update') : null;
+		expect(update?.nodeType === 'leaf' ? update.execution : null).toMatchObject({ kind: 'operation',
+			operationId: 'workdays.profiles.update', input: expect.arrayContaining([
+				expect.objectContaining({ target: 'path', field: 'profileId', source: 'argument', name: 'profile', required: true }),
+				expect.objectContaining({ target: 'path', field: 'teamId', source: 'context', name: 'team', required: true }),
+			]) });
+	});
+
+	it('rejects mapped fields on strict empty and undefined operation inputs', () => {
+		const value = structuredClone(TREESEED_COMMAND_TREE_V1);
+		const status = value.commands.find((node) => node.nodeType === 'leaf' && node.segment === 'status');
+		if (!status || status.nodeType !== 'leaf') throw new Error('Missing status command fixture.');
+		status.execution = { kind: 'operation', operationId: 'status.show', input: [
+			{ target: 'query', field: 'invented', source: 'option', name: 'invented' },
+			{ target: 'body', field: 'invented', source: 'option', name: 'invented' },
+		] };
+		expect(validateCommandOperationBindings(value, CONTROL_PLANE_OPERATION_LIST).map((entry) => entry.code)).toEqual(['command_operation_input_unknown', 'command_operation_input_unknown']);
+	});
+
+	it('accepts arbitrary-depth canonical trees', () => {
+		const value = tree();
+		(value.commands[0] as Extract<(typeof value.commands)[number], { nodeType: 'branch' }>).children = [{ nodeType: 'branch', segment: 'schedules', description: 'Schedules.', children: [{ nodeType: 'leaf', segment: 'start', description: 'Start schedule.', kind: 'mutation', options: [{ name: '--plan', description: 'Plan only.', type: 'boolean' }], resultSchemaId: 'schedule-start/v1', execution: unavailable }] }];
+		expect(validateCommandTree(value)).toEqual([]);
+	});
+
+	it.each([
+		['colon path', 'workdays:start', 'command_segment_invalid'],
+		['compound action', 'capacity-plan-create', 'command_segment_invalid'],
+	])('rejects %s', (_name, segment, code) => {
+		const value = tree();
+		value.commands[0]!.segment = segment;
+		expect(validateCommandTree(value).map((item) => item.code)).toContain(code);
+	});
+
+	it('rejects aliases, duplicate paths, --execute, and mutations without --plan', () => {
+		const value = tree();
+		const root = value.commands[0] as Extract<(typeof value.commands)[number], { nodeType: 'branch' }> & { aliases?: string[] };
+		root.aliases = ['day'];
+		root.children.push({ nodeType: 'leaf', segment: 'start', description: 'Duplicate.', kind: 'mutation', options: [{ name: '--execute', description: 'Old switch.', type: 'boolean' }], resultSchemaId: 'duplicate/v1', execution: unavailable });
+		const codes = validateCommandTree(value).map((item) => item.code);
+		expect(codes).toEqual(expect.arrayContaining(['command_alias_forbidden', 'command_path_duplicate', 'execute_option_forbidden', 'mutation_plan_option_required']));
+	});
+
+	it('rejects nodes that ambiguously combine branches and leaves', () => {
+		const value = tree();
+		const root = value.commands[0] as unknown as Record<string, unknown>;
+		root.kind = 'read';
+		expect(validateCommandTree(value).map((item) => item.code)).toContain('command_node_ambiguous');
+	});
+
+	it('requires trsd and rejects repository mechanics on agent commands', () => {
+		const value = tree();
+		(value as { executable: string }).executable = 'treeseed';
+		value.commands = [{ nodeType: 'branch', segment: 'agents', description: 'Agents.', children: [{ nodeType: 'leaf', segment: 'validate', description: 'Validate.', kind: 'read', options: [{ name: '--source-ref', description: 'Forbidden.', type: 'string' }], resultSchemaId: 'agents/v1', execution: unavailable }] }];
+		expect(validateCommandTree(value).map((item) => item.code)).toEqual(expect.arrayContaining(['executable_invalid', 'agent_internal_option_forbidden']));
+	});
+
+	it('creates one stable human and machine result envelope', () => {
+		expect(createCommandResult({ commandPath: ['capacity', 'status'], mode: 'execute', ok: true, result: { availableSeconds: 10 }, error: null, warnings: [], blockers: [], receipts: [], nextActions: [] })).toMatchObject({ schemaVersion: 'treeseed.command-result/v1', ok: true });
+	});
+});

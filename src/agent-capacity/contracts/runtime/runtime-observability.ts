@@ -1,11 +1,8 @@
 import type { CapacityPageInfo } from '../../../capacity/capacity-core/capacity-pagination.ts';
 import type { ExecutionCapabilityDemand,ExecutionCapabilitySupply } from '../../../types/agents.ts';
-import type { AgentCapacityEnvelope,AgentExecutionMode,AgentModeRun,DecisionExecutionInput,ProviderAssignment,ProviderAssignmentSynthesisSource,TreeDxProxyHandle,WorkdayCapacityEnvelope } from '../capacity/assignments/assignment-records.ts';
-import type { AgentKernelPolicy,AgentKernelProfile } from '../projects/agents/project-agent-class.ts';
-import type { CapacityLedgerEntry,CapacityReservation,CapacityUsageActual } from '../support/financial-records.ts';
-import type { WorkdayCapacityEnvelopeRecord } from '../support/planning-records.ts';
+import type { AgentExecutionMode,ProviderAssignment,ProviderAssignmentSynthesisSource,TreeDxProxyHandle } from '../capacity/assignments/assignment-records.ts';
+import type { CapacityLedgerEntry } from '../support/financial-records.ts';
 
-export type AgentKernelModeExecutionStatus = 'completed' | 'waiting' | 'failed' | 'returned';
 export type AgentKernelModeFallbackCode =
 	| 'assignment_missing_project_or_agent'
 	| 'assignment_governance_provenance_missing'
@@ -32,104 +29,10 @@ export type AgentKernelModeFallbackCode =
 	| 'assignment_fallback_quota_exceeded'
 	| 'assignment_output_invalid';
 
-export interface AgentCapacityPlan {
-	teamId: string;
-	projectId: string;
-	environment: string;
-	allocationSetId?: string | null;
-	workday: WorkdayCapacityEnvelope;
-	assignableProviders: Array<{
-		capacityProviderId: string;
-		executionProviderId?: string | null;
-		availableAgentSeconds?: number | null;
-		reasons?: string[];
-		metadata?: Record<string, unknown>;
-	}>;
-	metadata?: Record<string, unknown>;
-}
-
 export interface AgentKernelModeFallback {
 	code: AgentKernelModeFallbackCode | string;
 	reason: string;
 	retryable: boolean;
-	metadata?: Record<string, unknown>;
-}
-
-export interface AgentKernelModeExecutionInput {
-	assignment: ProviderAssignment;
-	modeRunId?: string | null;
-	projectAgentClass?: ProjectAgentClass | null;
-	kernelProfile?: AgentKernelProfile | null;
-	kernelPolicy?: AgentKernelPolicy | null;
-	capacityEnvelope?: AgentCapacityEnvelope | null;
-	decisionInput?: DecisionExecutionInput | null;
-	leaseToken?: string | null;
-	runnerId?: string | null;
-	readiness?: DecisionPlanningStatus | null;
-	treedxProxyHandle?: TreeDxProxyHandle | null;
-	now?: string | Date;
-	metadata?: Record<string, unknown>;
-}
-
-export interface AgentKernelModeExecutionResult {
-	status: AgentKernelModeExecutionStatus;
-	mode: AgentExecutionMode;
-	assignmentId: string;
-	projectId: string;
-	projectAgentClassId: string;
-	agentId?: string | null;
-	handlerId?: string | null;
-	summary: string;
-	outputs?: Record<string, unknown>;
-	selectedInput: Record<string, unknown>;
-	capacityEnvelope: AgentCapacityEnvelope;
-	traceRefs?: Record<string, unknown>;
-	usageActual?: AgentModeRunUsageSettlement | Record<string, unknown> | null;
-	artifactManifest?: import('../../artifacts.ts').AgentArtifactManifest | null;
-	fallback?: AgentKernelModeFallback | null;
-	metadata?: Record<string, unknown>;
-}
-
-export interface AgentKernelQueueObservation {
-	planningReady?: number | null;
-	actingReady?: number | null;
-	fallbackReady?: number | null;
-	planningBudgetSeconds?: number | null;
-	actingBudgetSeconds?: number | null;
-	modePreference?: AgentExecutionMode | 'fallback' | null;
-	metadata?: Record<string, unknown>;
-}
-
-export interface AgentKernelModeDecision {
-	kind: 'mode' | 'fallback' | 'idle';
-	mode?: AgentExecutionMode | null;
-	reason: string;
-	metadata?: Record<string, unknown>;
-}
-
-export interface AgentKernelOutputValidationResult {
-	ok: boolean;
-	reason?: string | null;
-	metadata?: Record<string, unknown>;
-}
-
-export interface ProviderAssignmentSynthesisCandidate {
-	id?: string;
-	teamId: string;
-	projectId: string;
-	capacityProviderId: string;
-	executionProviderId?: string | null;
-	projectAgentClassId: string;
-	mode: AgentExecutionMode;
-	source: ProviderAssignmentSynthesisSource | string;
-	sourceId: string;
-	synthesisKey: string;
-	priority?: number | null;
-	readiness?: DecisionPlanningStatus | null;
-	capacityEnvelope: AgentCapacityEnvelope;
-	decisionInput: DecisionExecutionInput;
-	workspaceContext?: Record<string, unknown>;
-	explanation?: ProviderAssignmentExplanation | Record<string, unknown>;
 	metadata?: Record<string, unknown>;
 }
 
@@ -238,14 +141,12 @@ export interface CapacityRuntimeDiagnosticsResponse {
 	generatedAt: string;
 	assignments: ProviderAssignment[];
 	explanations: ProviderAssignmentExplanation[];
-	modeRuns: AgentModeRun[];
 	treeDxProxyAudit: Array<Record<string, unknown>>;
 	ledgerEntries: CapacityLedgerEntry[];
 	fallbackOutputs: Array<Record<string, unknown>>;
 	diagnostics: CapacityRuntimeBlockerVm[];
 	windows: {
 		assignments: CapacityPageInfo & { total: number };
-		modeRuns: CapacityPageInfo & { total: number };
 		treeDxProxyAudit: CapacityPageInfo & { total: number };
 		ledgerEntries: CapacityPageInfo & { total: number };
 		fallbackOutputs: CapacityPageInfo & { total: number };
@@ -311,66 +212,4 @@ export interface AgentFallbackOutput {
 	quota: Record<string, unknown>;
 	metadata?: Record<string, unknown>;
 	createdAt?: string;
-}
-
-export interface CapacitySettlementSummary {
-	id?: string;
-	teamId: string;
-	projectId?: string | null;
-	workDayId?: string | null;
-	allocationSetId?: string | null;
-	policyVersion?: string | null;
-	requestedSeconds: number;
-	reservedSeconds: number;
-	activeSeconds: number;
-	elapsedSeconds: number;
-	releasedSeconds: number;
-	overrunSeconds: number;
-	nativeUsage: Record<string, unknown>;
-	providerConfidence: 'high' | 'medium' | 'low' | 'blocked' | string;
-	warnings: string[];
-	metadata?: Record<string, unknown>;
-	createdAt?: string;
-}
-
-export interface CapacityEvidenceWindow<T> {
-	items: T[];
-	page: CapacityPageInfo;
-	total: number;
-}
-
-export interface WorkdayCapacitySummaryTotals {
-	assignments: {
-		total: number;
-		pending: number;
-		leased: number;
-		completed: number;
-		failed: number;
-		returned: number;
-		cancelled: number;
-	};
-	modeRuns: {
-		total: number;
-		queued: number;
-		running: number;
-		succeeded: number;
-		failed: number;
-		usageReported: number;
-	};
-	reservations: number;
-	usageActuals: number;
-	ledgerEntries: number;
-}
-
-export interface WorkdayCapacitySummaryPayload {
-	workday: WorkdayCapacityEnvelopeRecord;
-	totals: WorkdayCapacitySummaryTotals;
-	settlement: CapacitySettlementSummary;
-	evidence: {
-		assignments?: CapacityEvidenceWindow<ProviderAssignment>;
-		modeRuns?: CapacityEvidenceWindow<AgentModeRun>;
-		reservations?: CapacityEvidenceWindow<CapacityReservation>;
-		usageActuals?: CapacityEvidenceWindow<CapacityUsageActual>;
-		ledgerEntries?: CapacityEvidenceWindow<CapacityLedgerEntry>;
-	} | null;
 }

@@ -1,10 +1,12 @@
 name: Verify
 
+# Feature branches verify through pull requests; protected branches reverify merged heads.
 on:
   push:
+    branches: [staging, main]
     paths-ignore: ["docs/src/content/**"]
   pull_request:
-    paths-ignore: ["docs/src/content/**"]
+    # Required verification also covers ancestry-only reconciliation PRs.
   workflow_dispatch:
 
 jobs:
@@ -17,12 +19,10 @@ jobs:
       TREESEED_FIXTURE_ID: treeseed-working-site
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24.12.0
           cache: npm
@@ -32,17 +32,45 @@ jobs:
         timeout-minutes: 20
         run: npm ci --no-audit --no-fund
 
-      - name: Install scene browser
-        run: npx playwright install --with-deps chromium
-
       - name: Verify package
         run: npm run verify:direct
+      - name: Execute coded golden component scenes
+        uses: treeseed-ai/reviewer/.github/actions/run-scenes@e29c5bf2db97188c47fdc67a7a098e81a95ced22
+        with:
+          ids: guarantee.sdk.golden.component-boundaries
 
       - name: Pack verified artifact
         run: mkdir -p artifacts && npm pack --json --ignore-scripts --pack-destination artifacts
 
-      - uses: actions/upload-artifact@v4
+      - name: Seal protected staging candidate
+        if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+        run: |
+          npm run standards:baseline
+          npm run standards:compatibility -- \
+            --baseline .treeseed/standards/baseline/contract-models.json \
+            --candidate .treeseed/standards/contract-models.json \
+            --baseline-bundle .treeseed/standards/baseline/contract-bundle.json \
+            --candidate-bundle .treeseed/standards/contract-bundle.json \
+            --output .treeseed/standards/compatibility-attestation.json
+          npm run standards:compose
+          npm sbom --sbom-format cyclonedx > .treeseed/standards/sbom.cdx.json
+          npm run standards:release-evidence
+          npm run release:verify-custody
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: sdk-${{ github.sha }}
           path: artifacts/*.tgz
           if-no-files-found: error
+
+      - name: Upload sealed staging custody
+        if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: sdk-candidate-${{ github.sha }}
+          path: |
+            .treeseed/standards/*.json
+            .treeseed/standards/baseline/*.json
+            .treeseed/standards/package/*.tgz
+          if-no-files-found: error
+          retention-days: 30

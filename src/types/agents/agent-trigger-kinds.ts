@@ -67,18 +67,6 @@ export const EXECUTION_PROVIDER_KINDS = [
 	'ai_model',
 	'human_issue_queue',
 	'deterministic_workflow',
-	'local_process',
-] as const;
-
-export const BUILT_IN_AGENT_EXECUTION_PROVIDER_IDS = [
-	'codex',
-	'opencode',
-	'copilot',
-	'jira',
-	'github_issues',
-	'discord',
-	'workflow',
-	'platform-operation',
 ] as const;
 
 export const EXECUTION_RUN_STATUSES = [
@@ -118,6 +106,8 @@ export type AgentHandlerKind = string;
 
 export type AgentActivityType = (typeof AGENT_ACTIVITY_TYPES)[number];
 
+export type AgentReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+
 export type EngineeringHandlerKind = (typeof ENGINEERING_HANDLER_KINDS)[number];
 
 export type AgentCliAllowTool = (typeof AGENT_CLI_ALLOW_TOOLS)[number];
@@ -126,7 +116,6 @@ export type ExecutionResourceNeedKind = (typeof EXECUTION_RESOURCE_NEED_KINDS)[n
 
 export type ExecutionProviderKind = (typeof EXECUTION_PROVIDER_KINDS)[number] | string;
 
-export type BuiltInAgentExecutionProviderId = (typeof BUILT_IN_AGENT_EXECUTION_PROVIDER_IDS)[number];
 
 export type ExecutionRunStatus = (typeof EXECUTION_RUN_STATUSES)[number];
 
@@ -191,7 +180,7 @@ export interface AgentToolPolicy {
 
 export interface AgentContentScope {
 	models: string[];
-	actions?: import('../../operations/content-operations.ts').ContentAction[];
+	actions?: import('../../content/contracts.ts').ContentAction[];
 	books?: string[];
 	paths?: string[];
 	relations?: string[];
@@ -206,7 +195,7 @@ export interface AgentContentAccessPolicy {
 }
 
 export interface AgentActivityPermissions {
-	content?: Record<string,{ operations: import('../../operations/content-operations.ts').ContentAction[]; filters?: Record<string,unknown> }>;
+	content?: Record<string,{ operations: import('../../content/contracts.ts').ContentAction[]; filters?: Record<string,unknown> }>;
 	commit?: { allowed:boolean };
 	repository?: AgentExecutionBoundaryPolicy['repository'];
 	network?: AgentExecutionBoundaryPolicy['network'];
@@ -247,7 +236,7 @@ export interface AgentActivityPromptConfig {
 }
 
 export interface AgentActivityExecutionConfig {
-	requiredCapabilities?: string[];
+	reasoningEffort?: AgentReasoningEffort;
 	maxRuntimeSeconds?: number;
 	closeoutWarningSeconds?: number;
 	maxRetries?: number;
@@ -277,5 +266,4 @@ export interface AgentActivityPlanningIntent {
 		signals?: AgentSignalPolicy;
 	}>;
 	requiresArtifactKinds?: string[];
-	proposalTypes?: string[];
 }

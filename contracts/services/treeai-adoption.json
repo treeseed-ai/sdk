@@ -1,0 +1,19 @@
+{
+  "schema": "treeseed.external-service-adoption/v1",
+  "package": "@treeseed/treeai",
+  "packageVersion": "0.11.0",
+  "release": "0.11.0-rc2",
+  "releaseUrl": "https://github.com/treeseed-ai/ai/releases/tag/0.11.0-rc2",
+  "packageArtifactDigest": "sha256:90d695d499088f2788da36863128efe57079915d3999cc876888ceb091cb95f2",
+  "contractReleaseDigest": "sha256:59b5fe6f0f766fa730943ae90301a3aac2e751fe6a528ea0e5271972941dc2ae",
+  "sourceCommit": "9770c99ba3a2f91ce916b48efafa45b0e971bbf0",
+  "openapiVersion": "3.1.1",
+  "openapiDigests": {
+    "inference": "sha256:3a00f1d91635d87d0aad2c6d329f495ff210f393bc9851570aa3e3ad1f5c1db4",
+    "training": "sha256:89dc70cecc85079853e4f177827d681e66f4b24b93ef17713051b99f07c2fe00",
+    "lab": "sha256:bccafa27b00a63b9fb22b132b850f9af6e77d44047dbc8966344088266d65898",
+    "qualification": "sha256:3f68b78845ec19c5de389663f1cb677ab4df0683ecd113c4f5780885a89370b7"
+  },
+  "operationInventoryDigest": "sha256:dc60eb514e11a4b867b3353830d886205df6254c7c4ecfab9a06b1b4dcb4e1fc",
+  "operationCount": 111
+}

@@ -11,21 +11,137 @@ githubEnvironments:
 requiredSecrets:
   - NPM_TOKEN
 verify:
-  fast: npm run verify
-  local: npm run verify:local
+  fast: npm run test:contracts
+  local: npm run verify:direct
   release: npm run release:verify
 artifacts:
   - provider: npm
     name: "@treeseed/sdk"
 releaseGate:
   workflow: verify.yml
+development:
+  schemaVersion: treeseed.development-runtime/v1
+  project: { id: sdk, repository: treeseed-ai/sdk }
+  defaults: { leaseSeconds: 14400, restoreOnFailure: true }
+  targets:
+    - id: package
+      kind: package-watch
+      platforms: [linux-amd64, linux-arm64, darwin-arm64, darwin-amd64]
+      runtimeRequirements: [node>=22]
+      sourceRoots: [src, scripts/build, scripts/development]
+      ignoredPaths: [dist, node_modules]
+      operations:
+        watch: { command: node, args: [--watch-path=src, --watch-path=package.json, --import, tsx, scripts/development/build-watch.ts], environment: {}, timeoutSeconds: 86400 }
+        build: { command: node, args: [--import, tsx, scripts/development/build-watch.ts], environment: {}, timeoutSeconds: 900 }
+        verify: { command: npm, args: [run, test:contracts], environment: {}, timeoutSeconds: 900 }
+      ready: { kind: marker, path: dist/.treeseed-build-complete.json, timeoutSeconds: 120 }
+      outputs: [{ path: dist, mediaType: application/vnd.treeseed.node-package, completionMarker: dist/.treeseed-build-complete.json, digestAlgorithm: sha256 }]
+      endpoints: []
+      dependencies: []
+      statePolicy: stateless
+      migrationPolicy: none
+      secretRefs: {}
+      shutdown: { graceSeconds: 10, activeWorkPolicy: block }
+      resources: {}
+      logs: [.treeseed/development/package.log]
+      forbiddenOperations: [publish, production-tag]
+      freeze:
+        kind: npm-package
+        operation: { command: npm, args: [pack, --json], environment: {}, timeoutSeconds: 900 }
+        artifacts: [treeseed-sdk-*.tgz]
+        contractOperations:
+          - { command: npm, args: [run, standards:build], environment: {}, timeoutSeconds: 900 }
+          - { command: npm, args: [run, standards:compatibility], environment: {}, timeoutSeconds: 900 }
+      promotion: { liveAdmissible: false, candidateRequiresVerification: true }
+standards:
+  schemaVersion: 1
+  workflow:
+    enabled: true
+  acceptedBaseline:
+    packageName: "@treeseed/sdk"
+    packageVersion: "0.12.62"
+    sourceCommit: "d12a97fdd3fdca1358895a7a64fa2012197b2942"
+    npmIntegrity: "sha512-wR5ukK2pqw0fUE9gJMYgJmIUlMTy4NoYKJrHEo6NAN/QFNrpru+9vilaS4kCPrcZQl/YAleuv962Z8c/pwwrBQ=="
+    artifactDigest: "sha256:9ccef82ccd452905e5a1733a5ced81d6d629b0c0f0d893cf19ea1a3ed53bc9f5"
+    openApiSourceDigest: "sha256:53b87f22ad3b3e4a24f4050f764e9f27081c3968130431909a366b16baa9bebd"
+  produced:
+    - id: "@treeseed/sdk/typescript-public-api"
+      family: typescript
+      version: "1.0.0"
+      semanticRange: "^1.0.0"
+      source: dist
+      artifact: .treeseed/standards/typescript-public-api.json
+      verifier: scripts/standards/compare-compatibility.ts
+    - id: "@treeseed/sdk/openapi"
+      family: openapi
+      version: "1.0.0"
+      semanticRange: "^1.0.0"
+      source: docs/api/openapi.json
+      artifact: .treeseed/standards/openapi.json
+      verifier: scripts/standards/compare-compatibility.ts
+    - id: "@treeseed/sdk/control-plane-catalog"
+      family: json-schema
+      version: "1.0.0"
+      semanticRange: "^1.0.0"
+      source: src/operator-contracts/control-plane-operations.ts
+      artifact: .treeseed/standards/control-plane-catalog.json
+      verifier: scripts/standards/compare-compatibility.ts
+    - id: "@treeseed/sdk/guarantee-verifier-contract"
+      family: behavioral
+      version: "1.0.0"
+      semanticRange: "^1.0.0"
+      source: src/guarantees
+      artifact: .treeseed/standards/guarantee-verifier-contract.json
+      verifier: runUiEvidenceTrustVerifier
+    - id: "@treeseed/sdk/mcp-catalog-input"
+      family: behavioral
+      version: "1.0.0"
+      semanticRange: "^1.0.0"
+      source: src/operator-contracts/mcp.ts
+      artifact: .treeseed/standards/mcp-catalog-input.json
+      verifier: scripts/standards/compare-compatibility.ts
+    - id: "@treeseed/sdk/treedx-service-contract"
+      family: behavioral
+      version: "1.0.0"
+      semanticRange: "^1.0.0"
+      source: src/treedx/contract.ts
+      artifact: .treeseed/standards/treedx-service-contract.json
+      verifier: scripts/standards/compare-compatibility.ts
+    - id: "@treeseed/sdk/treeai-service-contract"
+      family: behavioral
+      version: "1.0.0"
+      semanticRange: "^1.0.0"
+      source: src/treeai/contract.ts
+      artifact: .treeseed/standards/treeai-service-contract.json
+      verifier: scripts/standards/compare-compatibility.ts
+  consumed:
+    - id: "@treeseed/treeai/openapi"
+      family: openapi
+      version: "0.11.0-rc2"
+      semanticRange: "0.11.0-rc2"
+      source: contracts/services/treeai/treeai-contract-release.json
+      artifact: contracts/services/treeai-adoption.json
+      verifier: scripts/standards/build-contract-bundle.ts
+    - id: "@treeseed/treedx/openapi"
+      family: openapi
+      version: "0.11.0"
+      semanticRange: "0.11.0"
+      source: node_modules/@treeseed/treedx/openapi.yaml
+      artifact: contracts/services/treedx-adoption.json
+      verifier: scripts/standards/build-contract-bundle.ts
+  guarantees:
+    - deterministic-contract-bundle
+    - exact-artifact-and-source-binding
+    - semantic-version-sufficiency
+    - artifact-bound-guarantee-evidence
+    - authoritative-treedx-service-adoption
+    - authoritative-treeai-service-adoption
+  deprecations: []
+  runtimes:
+    - node>=22
+  rollbackOperations:
+    - remove-prerelease-dist-tag
+    - restore-accepted-composition
 projectArchitecture:
-  topology: split_site_content
+  topology: package_only
   rootPath: .
-  sitePath: docs
-  contentPath: src/content
-  contentRuntimeSource: r2_preview_overlay
-  localContentMaterialization: none
-  contentPublishTarget:
-    kind: cloudflare_r2
-    prefix: packages/sdk
