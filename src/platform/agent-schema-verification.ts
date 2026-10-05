@@ -75,6 +75,28 @@ function dereference(schema: JsonSchema, root: JsonSchema, references: Set<strin
 	return schema;
 }
 
+// oneOf and anyOf agree only when a required literal discriminator proves
+// every branch mutually exclusive. Untagged or overlapping unions stay exact.
+function disjointTaggedBranches(value: unknown): value is JsonSchema[] {
+	if (!Array.isArray(value) || !value.length) return false;
+	const branches = value.map(record), first = branches[0]!;
+	if (branches.some(branch => branch.type !== 'object' || !Array.isArray(branch.required))) return false;
+	return (first.required as unknown[]).some(field => {
+		if (typeof field !== 'string') return false;
+		const tags: string[] = [];
+		for (const branch of branches) {
+			if (!(branch.required as unknown[]).includes(field)) return false;
+			const tag = record(record(branch.properties)[field]);
+			if (!Object.hasOwn(tag, 'const')) return false;
+			const literal = tag.const;
+			if (literal !== null && typeof literal !== 'string' && typeof literal !== 'boolean'
+				&& !(typeof literal === 'number' && Number.isFinite(literal))) return false;
+			tags.push(JSON.stringify(literal));
+		}
+		return new Set(tags).size === branches.length;
+	});
+}
+
 /** Compare validation assertions, not annotation text. A declaration assertion
  * absent from the executable schema is a mismatch, including constraints Zod
  * cannot represent in its generated JSON Schema. Never silently discard it. */
@@ -91,6 +113,9 @@ function structuralSchema(value: unknown, root: JsonSchema, ancestors: ReadonlyS
 	if (normalized.type === 'integer' && schema.exclusiveMinimum === 0 && normalized.minimum === undefined) {
 		normalized.minimum = 1; delete normalized.exclusiveMinimum;
 	}
+	if (!Object.hasOwn(normalized, 'const') && Array.isArray(normalized.enum) && normalized.enum.length === 1) {
+		normalized.const = normalized.enum[0]; delete normalized.enum;
+	}
 	if (normalized.const !== undefined || normalized.enum !== undefined) delete normalized.type;
 	for (const key of ['items','contains','not','if','then','else','propertyNames','unevaluatedItems','unevaluatedProperties'] as const) {
 		if (schema[key] !== undefined) normalized[key] = structuralSchema(schema[key], root, references);
@@ -99,6 +124,11 @@ function structuralSchema(value: unknown, root: JsonSchema, ancestors: ReadonlyS
 		if (schema[key] !== undefined) normalized[key] = Array.isArray(schema[key])
 			? schema[key].map(child => structuralSchema(child, root, references)) : schema[key];
 	}
+	if (normalized.anyOf === undefined && disjointTaggedBranches(normalized.oneOf)) {
+		normalized.anyOf = normalized.oneOf; delete normalized.oneOf;
+	}
+	if (disjointTaggedBranches(normalized.anyOf)) normalized.anyOf = [...normalized.anyOf]
+		.sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
 	for (const key of ['properties','patternProperties','dependentSchemas'] as const) {
 		if (schema[key] !== undefined) normalized[key] = Object.fromEntries(
 			Object.entries(record(schema[key])).sort(([left], [right]) => left.localeCompare(right))

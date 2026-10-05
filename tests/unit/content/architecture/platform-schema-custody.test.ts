@@ -28,6 +28,29 @@ function repository(document: unknown) {
 }
 
 describe('native Platform architecture-schema custody', () => {
+	it('native public verification recognizes disjoint union semantics and retains overlapping or untagged denied bytes before exact committed retry', () => {
+		const { document } = canonicalAuthority(), root = repository(document), path = resolve(root, 'docs/agent.schema.yml');
+		const bytes = readFileSync(path, 'utf8'), commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+		const baseline = verifyPlatformRepository(root), names = ['AssignmentWorkspace', 'AssignmentReference'];
+		expect(names.map(name => baseline.diagnostics.filter(entry => entry.message.startsWith(`${name} `)))).toEqual([[], []]);
+		for (const mutation of ['duplicate-branch', 'missing-tag', 'shared-tag', 'missing-required-tag', 'removed-bound'] as const) {
+			const changed = structuredClone(document), union = schemaRecord(changed.$defs.AssignmentWorkspace);
+			if (mutation === 'duplicate-branch') { if (!Array.isArray(union.oneOf)) throw new Error('Union required'); union.oneOf.push(union.oneOf[0]); }
+			else if (mutation === 'removed-bound') delete schemaRecord(schemaRecord(schemaRecord(changed.$defs.GitAssignmentWorkspace).properties).branch).minLength;
+			else { const branch = schemaRecord(changed.$defs.ReadOnlyWorkspace), properties = schemaRecord(branch.properties);
+				if (mutation === 'missing-tag') delete schemaRecord(properties.mode).const;
+				else if (mutation === 'shared-tag') schemaRecord(properties.mode).const = 'git';
+				else branch.required = []; }
+			const supplied = stringify(changed); writeFileSync(path, supplied);
+			const denied = verifyPlatformRepository(root); expect(denied.ok).toBe(false);
+			expect(denied.diagnostics).toContainEqual(expect.objectContaining({ code: 'agent_schema_structure_mismatch', message: expect.stringContaining('AssignmentWorkspace nested declarative constraints differ') }));
+			expect(readFileSync(path, 'utf8')).toBe(supplied);
+			expect(execFileSync('git', ['show', `${commit}:docs/agent.schema.yml`], { cwd: root, encoding: 'utf8' })).toBe(bytes);
+			expect(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()).toBe(commit);
+		}
+		writeFileSync(path, bytes); expect(verifyPlatformRepository(root)).toEqual(baseline);
+		// Other whole-target diagnostics remain fatal; this is not managed acceptance.
+	});
 	it('native public verification retains exact committed accounting identifier and writable-path authority through bounds denial and unchanged retry', () => {
 		const { document } = canonicalAuthority(), root = repository(document), path = resolve(root, 'docs/agent.schema.yml');
 		const bytes = readFileSync(path, 'utf8'), commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();

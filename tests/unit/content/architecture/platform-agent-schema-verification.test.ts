@@ -8,6 +8,35 @@ import { graphChangeSetSchema, appliedWorkdaySchema, exactEntityReferenceSchema 
 afterAll(assertCanonicalAuthorityUnchanged);
 
 describe('Platform agent content schema verification', () => {
+	it('compares only provably disjoint tagged union and singleton enum semantics while retaining overlapping missing-tag and branch-bound denials', () => {
+		const { document } = canonicalAuthority(), held = structuredClone(document);
+		const names = ['AssignmentWorkspace', 'AssignmentReference', 'ReadOnlyWorkspace'];
+		const observed = [document, structuredClone(document)];
+		for (const name of ['AssignmentWorkspace', 'AssignmentReference']) {
+			const union = schemaRecord(observed[1]!.$defs[name]);
+			if (!Array.isArray(union.oneOf)) throw new Error('Canonical tagged union required.');
+			union.anyOf = [...union.oneOf].reverse(); delete union.oneOf;
+		}
+		const tag = schemaRecord(schemaRecord(schemaRecord(observed[1]!.$defs.ReadOnlyWorkspace).properties).mode);
+		tag.enum = [tag.const]; delete tag.const;
+		const positives = observed.map(input => { const before = structuredClone(input), result = verifyAgentContentSchema(input);
+			expect(input).toEqual(before); return names.map(name => result.filter(entry => entry.message.startsWith(`${name} `))); });
+		for (const result of positives) expect(result).toEqual(names.map(() => []));
+		for (const mutation of ['duplicate-branch', 'missing-tag', 'shared-tag', 'missing-required-tag', 'removed-bound', 'overlapping-scalar'] as const) {
+			const changed = structuredClone(document), workspace = schemaRecord(changed.$defs.AssignmentWorkspace);
+			if (mutation === 'duplicate-branch') { if (!Array.isArray(workspace.oneOf)) throw new Error('Union required'); workspace.oneOf.push(workspace.oneOf[0]); }
+			else if (mutation === 'overlapping-scalar') schemaRecord(schemaRecord(changed.$defs.Book).properties).title = { oneOf: [{ type: 'string', minLength: 1 }, { type: 'string', minLength: 1 }] };
+			else if (mutation === 'removed-bound') delete schemaRecord(schemaRecord(schemaRecord(changed.$defs.GitAssignmentWorkspace).properties).branch).minLength;
+			else { const branch = schemaRecord(changed.$defs.ReadOnlyWorkspace), properties = schemaRecord(branch.properties);
+				if (mutation === 'missing-tag') delete schemaRecord(properties.mode).const;
+				else if (mutation === 'shared-tag') schemaRecord(properties.mode).const = 'git';
+				else branch.required = []; }
+			const before = structuredClone(changed), expected = mutation === 'overlapping-scalar' ? 'Book' : 'AssignmentWorkspace';
+			expect(verifyAgentContentSchema(changed)).toContainEqual(expect.objectContaining({ code: 'agent_schema_structure_mismatch', message: expect.stringContaining(`${expected} nested declarative constraints differ`) }));
+			expect(changed).toEqual(before);
+		}
+		expect(document).toEqual(held);
+	});
 	it('binds canonical accounting identifiers and writable path bounds to their owning executable schemas without pipe-only or hidden refinement constraints', () => {
 		const { document } = canonicalAuthority(), held = structuredClone(document);
 		const names = ['Lease', 'Reservation', 'UsageSettlement', 'TreeDxAssignmentWorkspace', 'GitAssignmentWorkspace'];
