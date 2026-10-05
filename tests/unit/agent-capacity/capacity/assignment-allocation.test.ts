@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { allocateWorkdayCapacity, calculateAssignmentAllocation, calibrateAssignmentSeconds, distributeAllocationSeconds,
  type AllocationMeasurement } from '../../../../src/agent-capacity/contracts/capacity/workdays/assignment-allocation.ts';
-import { compileWorkday } from '../../../../src/agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
+import { compileWorkday, DEFAULT_WORKDAY_POLICY } from '../../../../src/agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
 import * as capacity from '../../../../src/capacity/agents/agent-capacity.ts';
 
 const estimate = { expectedSeconds: 300, maximumSeconds: 600 };
@@ -17,7 +17,7 @@ describe('assignment allocation arithmetic unit contracts', () => {
  });
  it('admits bounded closeout through the same hard supply after stopping or ending productive work', () => {
   const plan = { ...compileWorkday({ id: 'closing', teamId: 'team', policyId: 'default', policyRevision: 1,
-   executionMode: 'simulation', policy: { durationSeconds: 1000, maximumConcurrency: 1, communicationConcurrency: 1 },
+   executionMode: 'simulation', policy: { ...DEFAULT_WORKDAY_POLICY, durationSeconds: 1000, maximumConcurrency: 1, communicationConcurrency: 1 },
    agentIds: [], startsAt: '2026-09-16T12:00:00Z' }), state: 'closing' as const };
   const workday = { plan, committedSeconds: 100, planningCommittedSeconds: 100, maximumAdditionalSeconds: 30, actingReady: false };
   for (const now of ['2026-09-16T12:00:30Z', '2026-09-16T12:30:00Z']) {
@@ -31,7 +31,7 @@ describe('assignment allocation arithmetic unit contracts', () => {
  it('keeps planning a minimum initial time window rather than a separate spending pool', () => {
   const workdays = ['production', 'simulation'].map((id, index) => ({
    plan: { ...compileWorkday({ id, teamId: 'team', policyId: 'default', policyRevision: 1,
-    executionMode: index ? 'simulation' : 'production', policy: { durationSeconds: 1000, maximumConcurrency: 1,
+    executionMode: index ? 'simulation' : 'production', policy: { ...DEFAULT_WORKDAY_POLICY, durationSeconds: 1000, maximumConcurrency: 1,
      communicationConcurrency: 1, allocationWeight: index ? 1 : 2 }, agentIds: ['sdk/architect'],
     startsAt: '2026-09-16T12:00:00Z' }), state: 'active' as const },
    committedSeconds: 0, planningCommittedSeconds: 0, maximumAdditionalSeconds: 900, actingReady: true,

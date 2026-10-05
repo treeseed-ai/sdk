@@ -8,8 +8,9 @@ import { z } from 'zod';
 const input: unknown = JSON.parse(readFileSync(0, 'utf8'));
 const kind = process.argv[2];
 const exports: Record<string, unknown> = publicContracts;
-const inventory = kind === 'lease' || kind === 'reservation' || kind === 'context-item';
+const inventory = kind === 'lease' || kind === 'reservation' || kind === 'context-item' || kind === 'policy';
 const schema = kind === 'context-item' ? exports.authorizedContextItemSchema
+	: kind === 'policy' ? exports.workdayProfileSchema
 	: inventory ? exports[`${kind}Schema`] : undefined;
 if (inventory && (!(schema instanceof z.ZodType) || !Array.isArray(input))) {
 	throw new Error(`Missing public ${kind} validator or native record inventory.`);

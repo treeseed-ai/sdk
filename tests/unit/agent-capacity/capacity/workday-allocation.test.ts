@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { compilePlanningRounds, compileWorkday, executionNodeSchema, selectFairReadyNode, workdayPolicySchema, workdayPhase } from '../../../../src/capacity/agents/agent-capacity.ts';
+import { DEFAULT_WORKDAY_POLICY, compilePlanningRounds, compileWorkday, executionNodeSchema, selectFairReadyNode, workdayPolicySchema, workdayPhase } from '../../../../src/capacity/agents/agent-capacity.ts';
 
-const policy = workdayPolicySchema.parse({ durationSeconds: 28_800, maximumConcurrency: 8,
+const policy = workdayPolicySchema.parse({ ...DEFAULT_WORKDAY_POLICY, durationSeconds: 28_800, maximumConcurrency: 8,
 	planningPercent: 20, planningTurnMaximumSeconds: 180, communicationConcurrency: 1,
 	projectPercentages: { sdk: 60, api: 40 }, agentClassPercentages: { sdk: { engineer: 60, reviewer: 40 } } });
 

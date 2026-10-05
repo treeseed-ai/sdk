@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { appliedWorkdaySchema, compileWorkday } from '../../../../src/agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
+import { DEFAULT_WORKDAY_POLICY, appliedWorkdaySchema, compileWorkday } from '../../../../src/agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
 import { estimateSchema } from '../../../../src/agent-capacity/contracts/capacity/assignments/agent-execution.ts';
 import { assertCanonicalAuthorityUnchanged, canonicalAuthority, schemaRecord } from './canonical-schema-fixture.ts';
 
@@ -10,7 +10,7 @@ const report = { kind: 'treedx', projectId: 'project-test', repository: 'test-li
 	commit: 'a'.repeat(40), path: 'notes/closeout.mdx' };
 function workday(state = 'planned') {
 	return { ...compileWorkday({ id: 'workday-test', teamId: 'team-test', policyId: 'default', policyRevision: 1,
-		executionMode: 'simulation', policy: { durationSeconds: 3600, maximumConcurrency: 5, communicationConcurrency: 5 },
+		executionMode: 'simulation', policy: { ...DEFAULT_WORKDAY_POLICY, durationSeconds: 3600, maximumConcurrency: 5, communicationConcurrency: 5 },
 		agentIds: ['project-test/arbitrary-agent'], startsAt: '2026-10-02T00:00:00Z' }), state };
 }
 function native(input: unknown, kind = 'workday') {

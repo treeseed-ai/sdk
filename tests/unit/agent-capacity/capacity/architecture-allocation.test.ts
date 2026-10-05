@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { allocateWorkdayCapacity, calculateAssignmentAllocation, compilePlanningRounds, compileWorkday,
+import { DEFAULT_WORKDAY_POLICY, allocateWorkdayCapacity, calculateAssignmentAllocation, compilePlanningRounds, compileWorkday,
 	selectFairReadyNode, workdayPolicySchema } from '../../../../src/capacity/agents/agent-capacity.ts';
 
-const policy = workdayPolicySchema.parse({ durationSeconds: 60, planningPercent: 20, maximumConcurrency: 2,
+const policy = workdayPolicySchema.parse({ ...DEFAULT_WORKDAY_POLICY, durationSeconds: 60, planningPercent: 20, maximumConcurrency: 2,
 	communicationConcurrency: 1, projectPercentages: { first: 1, second: 1 }, agentClassPercentages: { first: { author: 1, verifier: 1 } } });
 function plan(id: string, weight = 1) { return { ...compileWorkday({ id, teamId: 'team', policyId: 'default', policyRevision: 1,
 	executionMode: 'simulation', policy: { ...policy, allocationWeight: weight }, agentIds: ['configured/a', 'configured/b'],

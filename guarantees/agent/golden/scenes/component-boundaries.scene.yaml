@@ -315,6 +315,12 @@ workflow:
   - id: target-shares
     action: { verifier: sdk.golden.target-shares }
     expect: { status: passed }
+  - id: execution-policy-completeness-unit
+    action: { verifier: sdk.golden.execution-policy-completeness-unit }
+    expect: { status: passed }
+  - id: execution-policy-completeness-native
+    action: { verifier: sdk.golden.execution-policy-completeness-native }
+    expect: { status: passed }
   - id: concurrent-fairness
     action: { verifier: sdk.golden.concurrent-fairness }
     expect: { status: passed }

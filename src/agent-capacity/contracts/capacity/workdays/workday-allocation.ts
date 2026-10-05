@@ -8,12 +8,12 @@ const positiveWeights = z.record(z.number().positive());
 export const workdayPolicySchema = z.object({
 	durationSeconds: z.number().int().positive(),
 	maximumConcurrency: z.number().int().positive(),
-	planningPercent: z.number().min(0).max(100).default(20),
-	allocationWeight: z.number().positive().default(1),
-	planningTurnMaximumSeconds: z.number().int().positive().default(180),
+	planningPercent: z.number().min(0).max(100),
+	allocationWeight: z.number().positive(),
+	planningTurnMaximumSeconds: z.number().int().positive(),
 	communicationConcurrency: z.number().int().positive(),
-	projectPercentages: positiveWeights.default({}),
-	agentClassPercentages: z.record(positiveWeights).default({}),
+	projectPercentages: positiveWeights,
+	agentClassPercentages: z.record(positiveWeights),
 }).strict();
 
 export const workdayAllocationOverridesSchema = workdayPolicySchema.pick({ planningPercent: true, allocationWeight: true,
@@ -22,6 +22,8 @@ export const workdayAllocationOverridesSchema = workdayPolicySchema.pick({ plann
 /** One canonical default; team-owned overrides use this same policy contract. */
 export const DEFAULT_WORKDAY_POLICY = Object.freeze(workdayPolicySchema.parse({
 	durationSeconds: 28_800, maximumConcurrency: 1, communicationConcurrency: 1,
+	planningPercent: 20, allocationWeight: 1, planningTurnMaximumSeconds: 180,
+	projectPercentages: {}, agentClassPercentages: {},
 }));
 export const workdayProfileSchema = z.object({
 	id: z.literal('default'), teamId: identifier, revision: z.number().int().positive(), policy: workdayPolicySchema,

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_WORKDAY_POLICY } from '../../../src/capacity/agents/agent-capacity.ts';
 import {
 	assignmentContextSchema,
 	assignmentResultSchema,
@@ -19,6 +20,22 @@ const timingAwareness = {
 };
 
 describe('canonical agent execution contract', () => {
+	it('native public SDK policy validation retains complete snapshots and denies every missing field without synthesizing authority', () => {
+		const original = { id: 'default', teamId: 'team', revision: 1, policy: structuredClone(DEFAULT_WORKDAY_POLICY) };
+		const invalid = Object.keys(original.policy).map(field => ({ ...original,
+			policy: Object.fromEntries(Object.entries(original.policy).filter(([key]) => key !== field)) }));
+		const input = [original, ...invalid], held = structuredClone(input);
+		const path = fileURLToPath(new URL('../../unit/content/architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+		const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'policy'], {
+			input: JSON.stringify(input), encoding: 'utf8', timeout: 15_000,
+		});
+		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+		const observations: unknown = JSON.parse(child.stdout);
+		if (!Array.isArray(observations)) throw new Error('Actual native policy inventory required');
+		expect(observations).toHaveLength(input.length); expect(observations[0]).toEqual({ success: true, data: original });
+		expect(observations.slice(1).map(value => value.success)).toEqual(invalid.map(() => false));
+		expect(input).toEqual(held); expect(readFileSync(path)).toEqual(bytes);
+	});
 	it('native public SDK context item validation requires the payload field without inventing content or another authority', () => {
 		const original = { ref: { store: 'git', model: 'source', id: 'source', repository: 'source', commit: sha },
 			mediaType: 'application/json', digest };

@@ -531,6 +531,16 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/agent-capacity/capacity/workday-allocation.test.ts
     testName: "selects project then class by weighted deficit and uses stable node ties"
+  sdk.golden.execution-policy-completeness-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/workday-profile.test.ts
+    testName: "requires every stored policy field without inserting defaults or rewriting exact supplied policy snapshots"
+  sdk.golden.execution-policy-completeness-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/agent-execution-contract.test.ts
+    testName: "native public SDK policy validation retains complete snapshots and denies every missing field without synthesizing authority"
   sdk.golden.concurrent-fairness:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
