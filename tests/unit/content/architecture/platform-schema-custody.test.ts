@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { parse, stringify } from 'yaml';
 import { verifyPlatformRepository } from '../../../../src/platform/index.ts';
-import { partialSdkDocument } from './schema-verification-fixture.ts';
+import { definition, partialSdkDocument } from './schema-verification-fixture.ts';
 import { assertCanonicalAuthorityUnchanged, canonicalAuthority, constraintPaths, removeConstraint, storedDefinitions, schemaRecord } from './canonical-schema-fixture.ts';
 
 const roots: string[] = [];
@@ -28,6 +28,31 @@ function repository(document: unknown) {
 }
 
 describe('native Platform architecture-schema custody', () => {
+	it('native public repository verification resolves exact nested schema references while retaining committed bytes through missing moved and cyclic denial', () => {
+		const document = partialSdkDocument();
+		document.$defs['reference~/namespace'] = { properties: { title: structuredClone(definition(document, 'Book').properties.title!) }, required: [] };
+		definition(document, 'Book').properties.title = { $ref: '#/$defs/reference~0~1namespace/properties/title' };
+		const root = repository(document), path = resolve(root, 'docs/agent.schema.yml'), bytes = readFileSync(path, 'utf8');
+		const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+		const baseline = verifyPlatformRepository(root); expect(baseline.ok).toBe(false);
+		expect(baseline.diagnostics.filter(entry => entry.message.startsWith('Book '))).toEqual([]);
+		for (const mutation of ['missing', 'moved', 'cyclic'] as const) {
+			const supplied = structuredClone(document);
+			if (mutation === 'missing') delete definition(supplied, 'reference~/namespace').properties.title;
+			else if (mutation === 'moved') definition(supplied, 'reference~/namespace').properties.title!.maxLength = 1;
+			else definition(supplied, 'reference~/namespace').properties.title = { $ref: '#/$defs/Book/properties/title' };
+			const input = stringify(supplied); writeFileSync(path, input);
+			const denied = verifyPlatformRepository(root); expect(denied.ok).toBe(false);
+			expect(denied.diagnostics).toContainEqual(expect.objectContaining({ code: 'agent_schema_structure_mismatch',
+				message: expect.stringContaining('Book nested declarative constraints differ') }));
+			expect(readFileSync(path, 'utf8')).toBe(input);
+			expect(execFileSync('git', ['show', `${commit}:docs/agent.schema.yml`], { cwd: root, encoding: 'utf8' })).toBe(bytes);
+			expect(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()).toBe(commit);
+		}
+		writeFileSync(path, bytes); expect(verifyPlatformRepository(root)).toEqual(baseline);
+		// The supplied five-model declaration remains incomplete and denied;
+		// this is exact reference resolution, not whole canonical acceptance.
+	});
 	it('native public repository verification binds graph and planning uniqueness and retains exact committed inputs through denial and retry', () => {
 		const { document, bytes } = canonicalAuthority(), root = repository(document), path = resolve(root, 'docs/agent.schema.yml');
 		const original = readFileSync(path, 'utf8'), commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();

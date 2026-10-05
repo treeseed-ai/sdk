@@ -53,19 +53,35 @@ function record(value: unknown): JsonSchema {
 	return value && typeof value === 'object' && !Array.isArray(value) ? value as JsonSchema : {};
 }
 
-function dereference(schema: JsonSchema, root: JsonSchema): JsonSchema {
-	const reference = typeof schema.$ref === 'string' ? schema.$ref : '';
-	if (!reference.startsWith('#/$defs/')) return schema;
-	return { ...record(record(root.$defs)[reference.slice('#/$defs/'.length)]),
-		...Object.fromEntries(Object.entries(schema).filter(([key]) => key !== '$ref')) };
+function dereference(schema: JsonSchema, root: JsonSchema, references: Set<string>): JsonSchema | false {
+	while (typeof schema.$ref === 'string' && schema.$ref.startsWith('#/')) {
+		const reference = schema.$ref;
+		if (references.has(reference)) return schema;
+		references.add(reference);
+		const parts = reference.slice(2).split('/');
+		if (parts.some(part => /~(?![01])/u.test(part))) return schema;
+		let selected: unknown = root;
+		for (const part of parts) {
+			const key = part.replace(/~1/gu, '/').replace(/~0/gu, '~');
+			if (!selected || typeof selected !== 'object' || !Object.hasOwn(selected, key)) return schema;
+			selected = Object.getOwnPropertyDescriptor(selected, key)?.value;
+		}
+		if (selected === false) return false;
+		if (selected !== true && (!selected || typeof selected !== 'object' || Array.isArray(selected))) return schema;
+		schema = { ...record(selected), ...Object.fromEntries(Object.entries(schema).filter(([key]) => key !== '$ref')) };
+	}
+	// Missing, external and recursive references remain explicit assertions;
+	// never erase them into an unconstrained schema or fetch moving authority.
+	return schema;
 }
 
 /** Compare validation assertions, not annotation text. A declaration assertion
  * absent from the executable schema is a mismatch, including constraints Zod
  * cannot represent in its generated JSON Schema. Never silently discard it. */
-function structuralSchema(value: unknown, root: JsonSchema): unknown {
+function structuralSchema(value: unknown, root: JsonSchema, ancestors: ReadonlySet<string> = new Set()): unknown {
 	if (typeof value === 'boolean') return value ? {} : false;
-	const schema = dereference(record(value), root);
+	const references = new Set(ancestors), schema = dereference(record(value), root, references);
+	if (schema === false) return false;
 	const normalized: JsonSchema = {};
 	for (const key of ['$ref','type','const','enum','minLength','maxLength','pattern','format','minimum','maximum',
 		'exclusiveMinimum','exclusiveMaximum','multipleOf','minItems','maxItems','minProperties','maxProperties',
@@ -77,16 +93,16 @@ function structuralSchema(value: unknown, root: JsonSchema): unknown {
 	}
 	if (normalized.const !== undefined || normalized.enum !== undefined) delete normalized.type;
 	for (const key of ['items','contains','not','if','then','else','propertyNames','unevaluatedItems','unevaluatedProperties'] as const) {
-		if (schema[key] !== undefined) normalized[key] = structuralSchema(schema[key], root);
+		if (schema[key] !== undefined) normalized[key] = structuralSchema(schema[key], root, references);
 	}
 	for (const key of ['allOf','anyOf','oneOf','prefixItems'] as const) {
 		if (schema[key] !== undefined) normalized[key] = Array.isArray(schema[key])
-			? schema[key].map(child => structuralSchema(child, root)) : schema[key];
+			? schema[key].map(child => structuralSchema(child, root, references)) : schema[key];
 	}
 	for (const key of ['properties','patternProperties','dependentSchemas'] as const) {
 		if (schema[key] !== undefined) normalized[key] = Object.fromEntries(
 			Object.entries(record(schema[key])).sort(([left], [right]) => left.localeCompare(right))
-				.map(([name, child]) => [name, structuralSchema(child, root)]));
+				.map(([name, child]) => [name, structuralSchema(child, root, references)]));
 	}
 	if (schema.dependentRequired !== undefined) normalized.dependentRequired = Object.fromEntries(
 		Object.entries(record(schema.dependentRequired)).sort(([left], [right]) => left.localeCompare(right))
@@ -94,7 +110,7 @@ function structuralSchema(value: unknown, root: JsonSchema): unknown {
 	if (Array.isArray(schema.required)) normalized.required = [...schema.required].sort();
 	if (schema.additionalProperties === false) normalized.additionalProperties = false;
 	else if (schema.additionalProperties && Object.keys(record(schema.additionalProperties)).length) {
-		normalized.additionalProperties = structuralSchema(schema.additionalProperties, root);
+		normalized.additionalProperties = structuralSchema(schema.additionalProperties, root, references);
 	}
 	return normalized;
 }

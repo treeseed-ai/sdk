@@ -1,6 +1,16 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-schema-reference-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "resolves exact nested escaped local schema references and rejects missing external or cyclic references without changing supplied authority"
+  sdk.golden.execution-schema-reference-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "native public repository verification resolves exact nested schema references while retaining committed bytes through missing moved and cyclic denial"
   sdk.golden.execution-finite-fairness-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

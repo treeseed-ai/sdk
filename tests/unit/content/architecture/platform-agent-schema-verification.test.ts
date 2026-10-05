@@ -8,6 +8,24 @@ import { graphChangeSetSchema, appliedWorkdaySchema } from '../../../../src/capa
 afterAll(assertCanonicalAuthorityUnchanged);
 
 describe('Platform agent content schema verification', () => {
+	it('resolves exact nested escaped local schema references and rejects missing external or cyclic references without changing supplied authority', () => {
+		const document = partialSdkDocument(), original = structuredClone(definition(document, 'Book').properties.title!);
+		document.$defs['reference~/namespace'] = { properties: { title: original,
+			alias: { $ref: '#/$defs/reference~0~1namespace/properties/title' } }, required: [] };
+		const baseline = verifyAgentContentSchema(document);
+		expect(baseline.filter(entry => entry.message.startsWith('Book '))).toEqual([]);
+		for (const reference of ['#/$defs/reference~0~1namespace/properties/title', '#/$defs/reference~0~1namespace/properties/alias']) {
+			const supplied = structuredClone(document); definition(supplied, 'Book').properties.title = { $ref: reference };
+			const held = structuredClone(supplied); expect(verifyAgentContentSchema(supplied)).toEqual(baseline); expect(supplied).toEqual(held);
+		}
+		for (const reference of ['#/$defs/reference~0~1namespace/properties/absent', 'https://example.test/schema', '#/$defs/Book/properties/title']) {
+			const supplied = structuredClone(document); definition(supplied, 'Book').properties.title = { $ref: reference };
+			const held = structuredClone(supplied);
+			expect(verifyAgentContentSchema(supplied)).toContainEqual(expect.objectContaining({ code: 'agent_schema_structure_mismatch',
+				message: expect.stringContaining('Book nested declarative constraints differ') }));
+			expect(supplied).toEqual(held);
+		}
+	});
 	it('binds graph change and planning identity uniqueness to the same executable validators and detects removed declaration rules', () => {
 		const { document } = canonicalAuthority(), held = structuredClone(document);
 		for (const name of ['GraphChangeSet', 'PlanningRound']) {

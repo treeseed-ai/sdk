@@ -3,6 +3,12 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: execution-schema-reference-unit
+    action: { verifier: sdk.golden.execution-schema-reference-unit }
+    expect: { status: passed }
+  - id: execution-schema-reference-native
+    action: { verifier: sdk.golden.execution-schema-reference-native }
+    expect: { status: passed }
   - id: execution-finite-fairness-unit
     action: { verifier: sdk.golden.execution-finite-fairness-unit }
     expect: { status: passed }
