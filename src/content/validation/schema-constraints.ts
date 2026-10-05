@@ -37,7 +37,9 @@ export function minimumProperties<T extends z.AnyZodObject>(object: T, minimum: 
 type ConditionalRequirement<Field extends string> = {
 	field: Field; equals?: unknown; notEquals?: unknown; in?: readonly unknown[];
 	message: string; path?: readonly (string | number)[];
-} & ({ alternatives: readonly (readonly Field[])[]; forbidden?: never; allowed?: never; contains?: never }
+} & ({ alternatives: readonly (readonly Field[])[]; forbidden?: never; allowed?: never; contains?: never;
+	items?: { field: Field; key: string; required: readonly string[];
+		conditional?: { field: string; equals: unknown; required: readonly string[] } } }
 	| { alternatives?: never; forbidden: { field: Field; key: string }; allowed?: never; contains?: never }
 	| { alternatives?: never; forbidden?: never; allowed: { field: Field; values: readonly unknown[] }; contains?: never }
 	| { alternatives?: never; forbidden?: never; allowed?: never; contains: { field: Field; properties: Readonly<Record<string, unknown>> } });
@@ -62,6 +64,18 @@ export function conditionalFields<T extends z.AnyZodObject>(object: T,
 			if (invalid) {
 				context.addIssue({ code: z.ZodIssueCode.custom, path: [...(rule.path ?? [])], message: rule.message });
 			}
+			const requirement = 'items' in rule ? rule.items : undefined;
+			if (requirement) {
+				const parent = Object.getOwnPropertyDescriptor(value, requirement.field)?.value;
+				const children: unknown = parent && typeof parent === 'object' ? Object.getOwnPropertyDescriptor(parent, requirement.key)?.value : undefined;
+				if (Array.isArray(children)) for (const [index, child] of children.entries()) {
+					if (!child || typeof child !== 'object') continue;
+					const conditional = requirement.conditional;
+					const fields = [...requirement.required, ...(conditional && Object.getOwnPropertyDescriptor(child, conditional.field)?.value === conditional.equals ? conditional.required : [])];
+					for (const field of fields) if (Object.getOwnPropertyDescriptor(child, field)?.value === undefined)
+						context.addIssue({ code: z.ZodIssueCode.custom, path: [requirement.field, requirement.key, index, field], message: rule.message });
+				}
+			}
 		}
 	});
 	exporters.set(schema._def, exported => {
@@ -76,7 +90,14 @@ export function conditionalFields<T extends z.AnyZodObject>(object: T,
 				: rule.contains ? { type: 'object', properties: { [rule.contains.field]: { type: 'array', contains: {
 					...required(Object.keys(rule.contains.properties)), properties: Object.fromEntries(Object.entries(rule.contains.properties).map(([key, value]) => [key, { const: value }])),
 				} } } }
-				: rule.alternatives.length === 1 ? required(rule.alternatives[0]!)
+				: rule.alternatives.length === 1 ? { ...required(rule.alternatives[0]!), ...(rule.items ? { properties: {
+					[rule.items.field]: { type: 'object', properties: { [rule.items.key]: { type: 'array', items: {
+						...required(rule.items.required), ...(rule.items.conditional ? { allOf: [{
+							if: { properties: { [rule.items.conditional.field]: { const: rule.items.conditional.equals } }, required: [rule.items.conditional.field] },
+							then: { required: [...rule.items.conditional.required] },
+						}] } : {}),
+					} } } },
+				} } : {}) }
 				: { type: 'object', anyOf: rule.alternatives.map(required) },
 		})) };
 	});

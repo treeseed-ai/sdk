@@ -4,6 +4,9 @@ import type { ExactEntityReference } from '../../../src/agent-capacity/contracts
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { describeContentFrontmatterSchema } from '../../../src/content/validation/index.ts';
+import { zodToJsonSchema } from 'zod-to-json-schema';
+import { exportSchemaConstraints } from '../../../src/content/validation/schema-constraints.ts';
 
 function proposal() {
 	const dependsOn: string[] = [], write: string[] = [];
@@ -57,8 +60,50 @@ function observeBoundedWorkItems(native: boolean) {
 	}
 		expect(entries).toEqual(before);
 }
+function observeReadyProposal(native: boolean) {
+	const original = proposal(), item = original.executionPlan.workItems[0]!;
+	const { estimate: _estimate, reviewEstimate: _reviewEstimate, ...unestimated } = item;
+	const { reviewEstimate: _review, maximumReviewCycles: _cycles, ...withoutReview } = item;
+	const plans = [undefined, { workItems: [unestimated] }, { workItems: [{ ...item, reviewEstimate: undefined }] },
+		{ workItems: [item] }, { workItems: [{ ...withoutReview, review: 'none' }] }];
+	const entries = ['draft', 'discussing', 'ready', 'decided', 'withdrawn'].flatMap(status => [undefined, original.summary].flatMap(summary =>
+		plans.map((plan, index) => ({ data: { schemaVersion: original.schemaVersion, id: original.id, projectId: original.projectId,
+			title: original.title, request: original.request, status, ...(summary === undefined ? {} : { summary }),
+			...(plan === undefined ? {} : { executionPlan: JSON.parse(JSON.stringify(plan)) }) },
+			valid: !['ready', 'decided'].includes(status) || (summary !== undefined && index >= 3) }))));
+	const held = structuredClone(entries), expected = [{
+		if: { type: 'object', required: ['status'], properties: { status: { enum: ['ready', 'decided'] } } },
+		then: { type: 'object', required: ['summary', 'executionPlan'], properties: { executionPlan: { type: 'object', properties: {
+			workItems: { type: 'array', items: { type: 'object', required: ['estimate'], allOf: [{
+				if: { properties: { review: { const: 'required' } }, required: ['review'] }, then: { required: ['reviewEstimate'] },
+			}] } },
+		} } } },
+	}];
+	if (native) {
+		const path = fileURLToPath(new URL('./architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+		const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'proposal-inventory'], {
+			input: JSON.stringify(entries.map(entry => entry.data)), encoding: 'utf8', timeout: 15_000,
+		});
+		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+		const output: unknown = JSON.parse(child.stdout);
+		if (!output || typeof output !== 'object' || !('schema' in output) || !('observations' in output) || !Array.isArray(output.observations))
+			throw new Error('Native Proposal schema and observations required.');
+		expect(output.observations).toHaveLength(entries.length);
+		for (const [index, entry] of entries.entries()) expect(output.observations[index]).toMatchObject(entry.valid ? { ok: true, data: entry.data } : { ok: false });
+		expect(output.schema).toMatchObject({ allOf: expected }); expect(readFileSync(path)).toEqual(bytes);
+	} else {
+		const observed = entries.map(entry => validatePortableContentData('proposal', entry.data));
+		expect(observed.map(value => value.ok)).toEqual(entries.map(entry => entry.valid));
+		for (const [index, entry] of entries.entries()) if (entry.valid) expect(observed[index]).toMatchObject({ data: entry.data });
+		expect(zodToJsonSchema(describeContentFrontmatterSchema('proposal'),
+			{ $refStrategy: 'none', postProcess: exportSchemaConstraints })).toMatchObject({ allOf: expected });
+	}
+		expect(entries).toEqual(held);
+}
 
 describe('proposal-owned execution plan', () => {
+	it('exports the same ready and decided proposal summary plan and independent estimate requirements enforced by native execution intake', () => observeReadyProposal(false));
+	it('native public Proposal schema and validation agree on draft estimation and fail closed ready execution authority without rewriting supplied requests', () => observeReadyProposal(true));
 	it('bounds governed work-item identities and denies duplicated capability permission and context authority without normalizing request bytes', () => observeBoundedWorkItems(false));
 	it('native public proposal validation retains exact bounded work-item authority and rejects duplicated or malformed demand inventories', () => observeBoundedWorkItems(true));
 	it('retains optional governed work-item integer priority in draft ready and decided proposals without coercion or an independent node authority', () => {

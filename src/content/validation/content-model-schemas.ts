@@ -123,25 +123,15 @@ const executionPlanSchema = z.object({ workItems: z.array(executionPlanWorkItemS
 	if ([...ids].some(cyclic)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['workItems'], message: 'Work-item dependencies must be acyclic.' });
 });
 
-const proposalSchema = z.object({
+const proposalSchema = conditionalFields(z.object({
 	schemaVersion: z.literal('treeseed.proposal/v1'), id: identifier, projectId: identifier, title: nonEmpty,
 	request: nonEmpty, summary: nonEmpty.optional(), status: z.enum(['draft', 'discussing', 'ready', 'decided', 'withdrawn']),
 	objectiveRefs: unique(exactRefs).optional(), evidenceRefs: unique(exactRefs).optional(),
 	discussionRef: exactEntityReferenceSchema.optional(), executionPlan: executionPlanSchema.optional(),
-}).strict().superRefine((value, context) => {
-	if (['ready', 'decided'].includes(value.status)) for (const [index, item] of (value.executionPlan?.workItems ?? []).entries()) {
-		if (!item.estimate) context.addIssue({ code: z.ZodIssueCode.custom,
-			path: ['executionPlan', 'workItems', index, 'estimate'], message: 'Ready work requires its agent-authored estimate.' });
-		if (item.review === 'required' && !item.reviewEstimate) context.addIssue({ code: z.ZodIssueCode.custom,
-			path: ['executionPlan', 'workItems', index, 'reviewEstimate'], message: 'Ready reviewed work requires its Reviewer-authored estimate.' });
-	}
-	if (['ready', 'decided'].includes(value.status) && !value.summary) {
-		context.addIssue({ code: z.ZodIssueCode.custom, path: ['summary'], message: 'A ready proposal requires a summary.' });
-	}
-	if (['ready', 'decided'].includes(value.status) && !value.executionPlan) {
-		context.addIssue({ code: z.ZodIssueCode.custom, path: ['executionPlan'], message: 'A ready proposal requires an execution plan.' });
-	}
-});
+}).strict(), [{ field: 'status', in: ['ready', 'decided'], alternatives: [['summary', 'executionPlan']],
+	items: { field: 'executionPlan', key: 'workItems', required: ['estimate'],
+		conditional: { field: 'review', equals: 'required', required: ['reviewEstimate'] } },
+	message: 'Ready proposals require a summary, an execution plan, and each required independent estimate.' }]);
 
 const schemas = {
 	page: z.object({
