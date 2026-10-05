@@ -65,11 +65,21 @@ export interface FairUsage {
 	seconds: number;
 }
 
+function weightedAmount(amount: number, weight: number, weights: Record<string, number>): number {
+	const values = Object.values(weights), total = values.reduce((sum, value) => sum + value, 0) || 1;
+	const product = amount * weight;
+	if (Number.isFinite(total) && Number.isFinite(product)) return product / total;
+	// Finite positive weights express relative shares. Scaling by their largest
+	// value preserves those shares when their sum or the intermediate product
+	// would overflow; neither the policy nor any admitted commitment is changed.
+	const scale = Math.max(...values);
+	return amount * (weight / scale) / values.reduce((sum, value) => sum + value / scale, 0);
+}
+
 function shareDebt(id: string, weights: Record<string, number>, actual: Map<string, number>): number {
 	const weight = weights[id] ?? 1;
-	const totalWeight = Object.values(weights).reduce((sum, value) => sum + value, 0) || 1;
 	const totalActual = [...actual.values()].reduce((sum, value) => sum + value, 0);
-	return (totalActual * weight / totalWeight) - (actual.get(id) ?? 0);
+	return weightedAmount(totalActual, weight, weights) - (actual.get(id) ?? 0);
 }
 
 /** Select work only; provider selection is a later hard-gated admission step. */
@@ -104,9 +114,9 @@ export function selectFairReadyNode(nodes: FairReadyNode[], usage: FairUsage[], 
 		usage: [...usage].sort((left, right) => left.projectId.localeCompare(right.projectId)
 			|| left.agentClass.localeCompare(right.agentClass) || left.seconds - right.seconds),
 	}), explanation: {
-		projectTargetPercent: 100 * projectWeights[projectId]! / Object.values(projectWeights).reduce((sum, weight) => sum + weight, 0),
+		projectTargetPercent: weightedAmount(100, projectWeights[projectId]!, projectWeights),
 		projectDeficitSeconds: shareDebt(projectId, projectWeights, projectActual),
-		classTargetPercent: 100 * classWeights[selected.agentClass]! / Object.values(classWeights).reduce((sum, weight) => sum + weight, 0),
+		classTargetPercent: weightedAmount(100, classWeights[selected.agentClass]!, classWeights),
 		classDeficitSeconds: shareDebt(selected.agentClass, classWeights, projectClassActual),
 		readyNodeCount: nodes.length,
 	} } : null;

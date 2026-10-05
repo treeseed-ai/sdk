@@ -1,6 +1,16 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-finite-fairness-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/workday-allocation.test.ts
+    testName: "retains project and class fairness under finite proportional weight scaling without overflowing selection or its explanation"
+  sdk.golden.execution-finite-fairness-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/agent-execution-contract.test.ts
+    testName: "native public fairness selection preserves finite proportional project and class weights without concealing overflow in JSON"
   sdk.golden.execution-result-native-usage:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

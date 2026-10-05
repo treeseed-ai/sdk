@@ -20,6 +20,27 @@ const timingAwareness = {
 };
 
 describe('canonical agent execution contract', () => {
+	it('native public fairness selection preserves finite proportional project and class weights without concealing overflow in JSON', () => {
+		const input = (['project', 'class'] as const).flatMap(layer =>
+			[1, Number.MAX_VALUE / 4, Number.MAX_VALUE / 2, Number.MIN_VALUE].map(weight => ({ layer,
+				policy: { ...DEFAULT_WORKDAY_POLICY, projectPercentages: layer === 'project' ? { a: weight, b: weight * 2 } : { a: 1 },
+					agentClassPercentages: layer === 'class' ? { a: { a: weight, b: weight * 2 } } : {} },
+			})));
+		const held = structuredClone(input), path = fileURLToPath(new URL('../../unit/content/architecture/closeout-native.ts', import.meta.url));
+		const bytes = readFileSync(path), child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'fair-ready-weights'], {
+			input: JSON.stringify(input), encoding: 'utf8', timeout: 15_000,
+		});
+		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+		const observations: unknown = JSON.parse(child.stdout); if (!Array.isArray(observations)) throw new Error('Native fair selection observations required.');
+		expect(observations).toHaveLength(input.length);
+		for (const [index, entry] of input.entries()) {
+			expect(observations[index]).toMatchObject({ id: 'second', explanation: entry.layer === 'project'
+				? { projectTargetPercent: 100 * 2 / 3, projectDeficitSeconds: 2 }
+				: { classTargetPercent: 100 * 2 / 3, classDeficitSeconds: 2 } });
+			for (const value of Object.values(observations[index].explanation)) { expect(typeof value).toBe('number'); expect(Number.isFinite(value)).toBe(true); }
+		}
+		expect(input).toEqual(held); expect(readFileSync(path)).toEqual(bytes);
+	});
 	it('native public result validation retains measured provider fractions and rejects nonfinite usage before serialization can conceal it', () => {
 		const record = { schemaVersion: 'treeseed.assignment-result/v1', id: 'result', assignmentId: 'attempt', status: 'completed',
 			summary: 'Controlled native validation input, not measured provider evidence.', references: [], verification: [],

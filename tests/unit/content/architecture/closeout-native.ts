@@ -8,6 +8,20 @@ import { CONTROL_PLANE_OPERATIONS, buildMcpResources } from '../../../../src/ope
 // generated result is substituted for the validator's real observation.
 const input: unknown = JSON.parse(readFileSync(0, 'utf8'));
 const kind = process.argv[2];
+if (kind === 'fair-ready-weights') {
+	if (!Array.isArray(input)) throw new Error('Native fair selection inventory required.');
+	const result = input.map(entry => {
+		if (!entry || typeof entry !== 'object' || !('policy' in entry) || !('layer' in entry)) throw new Error('Native policy and fairness layer required.');
+		const policy = publicContracts.workdayPolicySchema.parse(entry.policy);
+		if (entry.layer !== 'project' && entry.layer !== 'class') throw new Error('Unknown native fairness layer.');
+		const nodes = [
+			{ id: 'first', projectId: 'a', agentClass: 'a', readyAt: '2026-10-03T00:00:00Z' },
+			{ id: 'second', projectId: entry.layer === 'project' ? 'b' : 'a', agentClass: 'b', readyAt: '2026-10-03T00:00:00Z' },
+		];
+		return publicContracts.selectFairReadyNode(nodes, [{ projectId: 'a', agentClass: 'a', seconds: 3 }], policy);
+	});
+	process.stdout.write(JSON.stringify(result)); process.exit(0);
+}
 if (kind === 'result-native-usage') {
 	if (!Array.isArray(input)) throw new Error('Native provider usage inventory required.');
 	const values: Record<string, unknown> = { nan: NaN, 'positive-infinity': Infinity, 'negative-infinity': -Infinity };
