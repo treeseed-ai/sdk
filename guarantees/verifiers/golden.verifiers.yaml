@@ -1,6 +1,21 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-tool-grant-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/assignments/assignment-record-validation.test.ts
+    testName: "retains every canonical tool group and rejects undeclared malformed or duplicate grant tools without changing caller bytes"
+  sdk.golden.execution-authority-bounds-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "binds canonical accounting identifiers and writable path bounds to their owning executable schemas without pipe-only or hidden refinement constraints"
+  sdk.golden.execution-authority-bounds-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "native public verification retains exact committed accounting identifier and writable-path authority through bounds denial and unchanged retry"
   sdk.golden.execution-reference-inventory-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

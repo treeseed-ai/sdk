@@ -8,6 +8,22 @@ import { graphChangeSetSchema, appliedWorkdaySchema, exactEntityReferenceSchema 
 afterAll(assertCanonicalAuthorityUnchanged);
 
 describe('Platform agent content schema verification', () => {
+	it('binds canonical accounting identifiers and writable path bounds to their owning executable schemas without pipe-only or hidden refinement constraints', () => {
+		const { document } = canonicalAuthority(), held = structuredClone(document);
+		const names = ['Lease', 'Reservation', 'UsageSettlement', 'TreeDxAssignmentWorkspace', 'GitAssignmentWorkspace'];
+		const diagnostics = verifyAgentContentSchema(document);
+		expect(names.map(name => ({ name, diagnostics: diagnostics.filter(entry => entry.message.startsWith(`${name} `)) })))
+			.toEqual(names.map(name => ({ name, diagnostics: [] })));
+		for (const name of ['TreeDxAssignmentWorkspace', 'GitAssignmentWorkspace']) {
+			const changed = structuredClone(document);
+			delete schemaRecord(schemaRecord(schemaRecord(changed.$defs[name]).properties).writablePaths).minItems;
+			const before = structuredClone(changed);
+			expect(verifyAgentContentSchema(changed)).toContainEqual(expect.objectContaining({ code: 'agent_schema_structure_mismatch',
+				message: expect.stringContaining(`${name} nested declarative constraints differ`) }));
+			expect(changed).toEqual(before);
+		}
+		expect(document).toEqual(held);
+	});
 	it('exports the same store-specific exact reference requirements enforced by the owning validator without borrowing declaration constraints', () => {
 		const { document } = canonicalAuthority(), held = structuredClone(document);
 		const base = { model: 'evidence', id: 'evidence' }, commit = 'a'.repeat(40), digest = `sha256:${'b'.repeat(64)}`;

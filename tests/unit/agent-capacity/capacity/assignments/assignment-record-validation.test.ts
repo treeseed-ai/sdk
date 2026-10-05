@@ -34,6 +34,20 @@ function assignment(overrides: Record<string, unknown> = {}) {
 }
 
 describe('assignment record validation', () => {
+	it('retains every canonical tool group and rejects undeclared malformed or duplicate grant tools without changing caller bytes', () => {
+		const grant = assignment().assignmentAttempt.grant;
+		const valid = ['discussion', 'source.read', 'source.write', 'verification', 'release'];
+		for (const tools of [[], valid, ...valid.map(tool => [tool])]) {
+			const input = { ...grant, tools }, held = structuredClone(input);
+			expect(exactGrantSchema.parse(input)).toEqual(input); expect(input).toEqual(held);
+		}
+		const outcomes = [];
+		for (const tools of [['invented-authority'], ['source.read', 'invented-authority'], ['source.read', 'source.read'], [''], [' '], [null], [1], null, 'source.read']) {
+			const input = { ...grant, tools }, held = structuredClone(input);
+			outcomes.push(exactGrantSchema.safeParse(input).success); expect(input).toEqual(held);
+		}
+		expect(outcomes).toEqual(Array(9).fill(false));
+	});
 	it('retains distinct canonical reference inventories and rejects exact duplicate authority context grants and result references without normalization', () => {
 		const original = assignment().assignmentAttempt, first = original.authorityRefs[0]!, second = { ...first, id: 'second-evidence' };
 		const observed: Array<{ field: string; distinct: boolean; duplicated: boolean }> = [];

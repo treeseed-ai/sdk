@@ -1,13 +1,16 @@
 import { z } from 'zod';
 import { conditionalFields, uniqueArray } from '../../../../content/validation/schema-constraints.ts';
 import { activityProfileSchema } from '../../../validation/agent-definition-schema.ts';
+import { AGENT_TOOL_GROUPS } from '../../../../types/agents.ts';
 
-const identifier = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
-const canonicalIdentifier = z.string().refine(value => value === value.trim()).pipe(identifier);
+const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u;
+const identifier = z.string().trim().min(1).max(200).regex(identifierPattern);
+const canonicalIdentifier = z.string().min(1).max(200).regex(identifierPattern);
 const timestamp = z.string().datetime({ offset: true });
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
 const commit = z.string().regex(/^[a-f0-9]{40}$/u);
 const uniqueStrings = uniqueArray(z.array(z.string().min(1)));
+const writablePaths = uniqueArray(z.array(z.string().min(1)).min(1));
 
 export const exactEntityReferenceSchema = conditionalFields(z.object({
 	store: z.enum(['treedx', 'postgresql', 'git', 'url']),
@@ -42,13 +45,13 @@ export const exactGrantSchema = z.object({
 	contentWrite: exactReferences,
 	sourceRead: uniqueStrings,
 	sourceWrite: uniqueStrings,
-	tools: uniqueStrings,
+	tools: uniqueArray(z.array(z.enum(AGENT_TOOL_GROUPS))),
 }).strict();
 
 export const assignmentWorkspaceSchema = z.discriminatedUnion('mode', [
 	z.object({ mode: z.literal('read-only') }).strict(),
-	z.object({ mode: z.literal('treedx'), workspaceId: identifier, repository: z.string().min(1), baseCommit: commit, writablePaths: uniqueStrings.refine((paths) => paths.length > 0) }).strict(),
-	z.object({ mode: z.literal('git'), repository: z.string().min(1), baseCommit: commit, branch: z.string().min(1), writablePaths: uniqueStrings.refine((paths) => paths.length > 0) }).strict(),
+	z.object({ mode: z.literal('treedx'), workspaceId: identifier, repository: z.string().min(1), baseCommit: commit, writablePaths }).strict(),
+	z.object({ mode: z.literal('git'), repository: z.string().min(1), baseCommit: commit, branch: z.string().min(1), writablePaths }).strict(),
 ]);
 
 export const estimateSchema = z.object({

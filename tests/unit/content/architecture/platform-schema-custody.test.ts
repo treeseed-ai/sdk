@@ -28,6 +28,26 @@ function repository(document: unknown) {
 }
 
 describe('native Platform architecture-schema custody', () => {
+	it('native public verification retains exact committed accounting identifier and writable-path authority through bounds denial and unchanged retry', () => {
+		const { document } = canonicalAuthority(), root = repository(document), path = resolve(root, 'docs/agent.schema.yml');
+		const bytes = readFileSync(path, 'utf8'), commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+		const baseline = verifyPlatformRepository(root), names = ['Lease', 'Reservation', 'UsageSettlement', 'TreeDxAssignmentWorkspace', 'GitAssignmentWorkspace'];
+		expect(names.map(name => ({ name, diagnostics: baseline.diagnostics.filter(entry => entry.message.startsWith(`${name} `)) })))
+			.toEqual(names.map(name => ({ name, diagnostics: [] })));
+		for (const name of ['TreeDxAssignmentWorkspace', 'GitAssignmentWorkspace']) {
+			const changed = structuredClone(document);
+			delete schemaRecord(schemaRecord(schemaRecord(changed.$defs[name]).properties).writablePaths).minItems;
+			const supplied = stringify(changed); writeFileSync(path, supplied);
+			const denied = verifyPlatformRepository(root); expect(denied.ok).toBe(false);
+			expect(denied.diagnostics).toContainEqual(expect.objectContaining({ code: 'agent_schema_structure_mismatch',
+				message: expect.stringContaining(`${name} nested declarative constraints differ`) }));
+			expect(readFileSync(path, 'utf8')).toBe(supplied);
+			expect(execFileSync('git', ['show', `${commit}:docs/agent.schema.yml`], { cwd: root, encoding: 'utf8' })).toBe(bytes);
+			expect(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()).toBe(commit);
+		}
+		writeFileSync(path, bytes); expect(verifyPlatformRepository(root)).toEqual(baseline);
+		// Other unresolved whole canonical definitions still block acceptance.
+	});
 	it('native public repository verification binds every exact reference condition to the owning validator and retains committed authority through denial and retry', () => {
 		const { document } = canonicalAuthority(), root = repository(document), path = resolve(root, 'docs/agent.schema.yml');
 		const bytes = readFileSync(path, 'utf8'), commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
