@@ -66,8 +66,8 @@ if (kind === 'workday-resource') {
 	process.exit(0);
 }
 const exports: Record<string, unknown> = publicContracts;
-const inventory = kind === 'lease' || kind === 'reservation' || kind === 'context-item' || kind === 'policy' || kind === 'attempt' || kind === 'graph-revision' || kind === 'node';
-const schema = kind === 'node' ? exports.executionNodeSchema : kind === 'context-item' ? exports.authorizedContextItemSchema
+const inventory = kind === 'lease' || kind === 'reservation' || kind === 'context-item' || kind === 'policy' || kind === 'attempt' || kind === 'graph-revision' || kind === 'node' || kind === 'node-inventory';
+const schema = kind === 'node' || kind === 'node-inventory' ? exports.executionNodeSchema : kind === 'context-item' ? exports.authorizedContextItemSchema
 	: kind === 'policy' ? exports.workdayProfileSchema
 	: kind === 'attempt' ? exports.assignmentAttemptSchema
 	: kind === 'graph-revision' ? exports.graphRevisionSchema
@@ -77,4 +77,5 @@ if (inventory && (!(schema instanceof z.ZodType) || !Array.isArray(input))) {
 }
 const result = schema instanceof z.ZodType && Array.isArray(input) ? input.map(record => schema.safeParse(record))
 	: kind === 'estimate' ? estimateSchema.safeParse(input) : appliedWorkdaySchema.safeParse(input);
-process.stdout.write(JSON.stringify(result));
+process.stdout.write(JSON.stringify(kind === 'node-inventory' && schema instanceof z.ZodType
+	? { schema: zodToJsonSchema(schema, { $refStrategy: 'none', postProcess: exportSchemaConstraints }), observations: result } : result));

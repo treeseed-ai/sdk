@@ -3,6 +3,8 @@ import { executionNodeSchema, graphRevisionSchema, validateExecutionGraph, type 
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { zodToJsonSchema } from 'zod-to-json-schema';
+import { exportSchemaConstraints } from '../../../../src/content/validation/schema-constraints.ts';
 
 const digest = `sha256:${'a'.repeat(64)}`;
 const sourceRef = { store: 'treedx' as const, model: 'proposal', id: 'proposal-1', revision: 1, digest };
@@ -23,6 +25,56 @@ function edge(fromNodeId: string, toNodeId: string): ExecutionEdge {
 }
 
 describe('living execution graph contracts', () => {
+	function conditionalNodeInputs() {
+		const base = node('bounded-node'), fields = ['agentClass', 'estimate', 'requiredCapabilities', 'requestedPermissions', 'workspace'];
+		const condition = { ...Object.fromEntries(Object.entries(base).filter(([key]) => !fields.includes(key))), kind: 'condition', pairRole: null,
+			condition: { conditionType: 'lifecycle', subjectRef: sourceRef, expectedState: 'workday-closing' } };
+		return [
+			{ valid: true, input: base }, { valid: true, input: { ...base, pairRole: 'reviewer' } },
+			{ valid: true, input: condition }, { valid: true, input: { ...base, pairRole: null, workItemId: undefined, maximumReviewCycles: undefined } },
+			{ valid: false, input: { ...condition, condition: undefined } },
+			...fields.map(field => ({ valid: false, input: { ...condition, [field]: Object.getOwnPropertyDescriptor(base, field)?.value } })),
+			...['planning', 'estimating', 'acting', 'reviewing', 'reporting', 'communication'].flatMap(kind => [
+				{ valid: true, input: { ...base, kind } },
+				{ valid: false, input: { ...base, kind, condition: condition.condition } },
+				...fields.map(field => ({ valid: false, input: Object.fromEntries(Object.entries({ ...base, kind }).filter(([key]) => key !== field)) })),
+			]),
+			...['actor', 'reviewer'].flatMap(pairRole => ['workItemId', 'maximumReviewCycles'].map(field => ({ valid: false,
+				input: Object.fromEntries(Object.entries({ ...base, pairRole }).filter(([key]) => key !== field)) }))),
+		];
+	}
+	function observeNodeConditions(native: boolean) {
+		const entries = conditionalNodeInputs(), held = structuredClone(entries);
+		const assignable = ['agentClass', 'estimate', 'requiredCapabilities', 'requestedPermissions', 'workspace'];
+		const expected = { allOf: [
+			{ if: { type: 'object', required: ['kind'], properties: { kind: { const: 'condition' } } }, then: { type: 'object', required: ['condition'] } },
+			...assignable.map(field => ({ if: { type: 'object', required: ['kind'], properties: { kind: { const: 'condition' } } }, then: { type: 'object', not: { type: 'object', anyOf: [{ type: 'object', required: [field] }] } } })),
+			...assignable.map(field => ({ if: { type: 'object', required: ['kind'], properties: { kind: { not: { const: 'condition' } } } }, then: { type: 'object', required: [field] } })),
+			{ if: { type: 'object', required: ['kind'], properties: { kind: { not: { const: 'condition' } } } }, then: { type: 'object', not: { type: 'object', anyOf: [{ type: 'object', required: ['condition'] }] } } },
+			{ if: { type: 'object', required: ['pairRole'], properties: { pairRole: { enum: ['actor', 'reviewer'] } } }, then: { type: 'object', required: ['workItemId', 'maximumReviewCycles'] } },
+		] };
+		if (native) {
+			const path = fileURLToPath(new URL('../../content/architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+			const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'node-inventory'], {
+				input: JSON.stringify(entries.map(entry => entry.input)), encoding: 'utf8', timeout: 15_000,
+			});
+			expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+			const output: unknown = JSON.parse(child.stdout);
+			if (!output || typeof output !== 'object' || !('schema' in output) || !('observations' in output) || !Array.isArray(output.observations))
+				throw new Error('Native public node schema and validation observations required.');
+			expect(output.observations).toHaveLength(entries.length);
+			for (const [index, entry] of entries.entries()) expect(output.observations[index]).toMatchObject(entry.valid ? { success: true,
+				data: JSON.parse(JSON.stringify(entry.input)) } : { success: false });
+			expect(output.schema).toMatchObject(expected); expect(readFileSync(path)).toEqual(bytes);
+		} else {
+			const observations = entries.map(entry => executionNodeSchema.safeParse(entry.input));
+			expect(observations.map(value => value.success)).toEqual(entries.map(entry => entry.valid));
+			expect(zodToJsonSchema(executionNodeSchema, { $refStrategy: 'none', postProcess: exportSchemaConstraints })).toMatchObject(expected);
+		}
+		expect(entries).toEqual(held);
+	}
+	it('exports the exact condition assignable and review-pair field requirements enforced by the owning execution node validator', () => observeNodeConditions(false));
+	it('native public execution node schema and validation retain all valid kinds and reject missing or contradictory scheduling authority without repairing inputs', () => observeNodeConditions(true));
 	function nodeAuthorityInputs() {
 		const base = node('bounded-node'), second = { ...sourceRef, id: 'second-proposal' };
 		return [{ valid: true, input: base }, { valid: true, input: { ...base, agentClass: 'a'.repeat(100), authorityRefs: [sourceRef, second] } },

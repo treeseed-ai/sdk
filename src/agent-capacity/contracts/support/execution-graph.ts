@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { uniqueArray } from '../../../content/validation/schema-constraints.ts';
+import { conditionalFields, uniqueArray } from '../../../content/validation/schema-constraints.ts';
 import { activityProfileSchema, agentClassSchema } from '../../validation/agent-definition-schema.ts';
 import { estimateSchema, exactEntityReferenceSchema } from '../capacity/assignments/agent-execution.ts';
 
@@ -17,7 +17,8 @@ export const conditionDefinitionSchema = z.object({
 	expectedState: identifier,
 }).strict();
 
-export const executionNodeSchema = z.object({
+const assignable = ['agentClass', 'estimate', 'requiredCapabilities', 'requestedPermissions', 'workspace'] as const;
+export const executionNodeSchema = conditionalFields(z.object({
 	schemaVersion: z.literal('treeseed.execution-node/v1'),
 	id: identifier,
 	teamId: identifier,
@@ -43,19 +44,16 @@ export const executionNodeSchema = z.object({
 	condition: conditionDefinitionSchema.optional(),
 	graphRevisionCreated: z.number().int().positive(),
 	graphRevisionUpdated: z.number().int().positive(),
-}).strict().superRefine((node, context) => {
-	const assignable = ['agentClass', 'estimate', 'requiredCapabilities', 'requestedPermissions', 'workspace'] as const;
-	if (node.kind === 'condition') {
-		if (!node.condition) context.addIssue({ code: z.ZodIssueCode.custom, path: ['condition'], message: 'Condition nodes require condition.' });
-		for (const key of assignable) if (node[key] !== undefined) context.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `Condition nodes cannot define ${key}.` });
-	} else {
-		for (const key of assignable) if (node[key] === undefined) context.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `Assignable nodes require ${key}.` });
-		if (node.condition) context.addIssue({ code: z.ZodIssueCode.custom, path: ['condition'], message: 'Assignable nodes cannot define condition.' });
-	}
+}).strict(), [
+	{ field: 'kind', equals: 'condition', alternatives: [['condition']], path: ['condition'], message: 'Condition nodes require condition.' },
+	...assignable.map(key => ({ field: 'kind' as const, equals: 'condition', forbidden: { fields: [key] }, path: [key], message: `Condition nodes cannot define ${key}.` })),
+	...assignable.map(key => ({ field: 'kind' as const, notEquals: 'condition', alternatives: [[key]], path: [key], message: `Assignable nodes require ${key}.` })),
+	{ field: 'kind', notEquals: 'condition', forbidden: { fields: ['condition'] }, path: ['condition'], message: 'Assignable nodes cannot define condition.' },
+	{ field: 'pairRole', in: ['actor', 'reviewer'], alternatives: [['workItemId', 'maximumReviewCycles']], message: 'Actor and Reviewer nodes require workItemId and maximumReviewCycles.' },
+]).superRefine((node, context) => {
 	if (node.output && (node.workspace !== 'treedx' || !node.requestedPermissions?.content.write.includes(node.output.model))) {
 		context.addIssue({ code: z.ZodIssueCode.custom, path: ['output'], message: 'A content output requires a TreeDX workspace and matching content-write authority.' });
 	}
-	if (node.pairRole && !(node.workItemId && node.maximumReviewCycles)) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Actor and Reviewer nodes require workItemId and maximumReviewCycles.' });
 	if (node.graphRevisionUpdated < node.graphRevisionCreated) context.addIssue({ code: z.ZodIssueCode.custom, path: ['graphRevisionUpdated'], message: 'Updated revision cannot precede created revision.' });
 });
 
