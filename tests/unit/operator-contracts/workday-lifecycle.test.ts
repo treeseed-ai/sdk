@@ -2,6 +2,38 @@ import { describe, expect, it } from 'vitest';
 import { validateSelectedDemand, validateWorkdayIntent, validateWorkdayPreflight, validateWorkdayPreflightFreshness, validateWorkdaySettlement, validateWorkdayIntentSelection, normalizeWorkdayAgentSelection, type WorkdayPreflightReceipt, type WorkdayIntent } from '../../../src/operator-contracts/index.ts';
 
 describe('time-based workday lifecycle contracts', () => {
+	it('retains bounded provider constraints and rejects malformed unknown or duplicate supply selectors without changing workday authority', () => {
+		const base: WorkdayIntent = { schemaVersion: 'treeseed.workday-intent/v1', teamId: 'team', profileId: 'default',
+			projects: 'all', startsAt: '2026-09-16T12:00:00Z' };
+		for (const operatorConstraints of [{}, { providerIds: [] }, { providerIds: ['provider', 'second'], maxConcurrency: 1 },
+			{ providerIds: ['x'.repeat(200)] }, { maxConcurrency: 2 }]) {
+			const intent = { ...base, operatorConstraints }, before = structuredClone(intent);
+			expect(validateWorkdayIntent(intent)).toEqual([]); expect(intent).toEqual(before);
+		}
+		for (const operatorConstraints of [null, [], '', true, { unknown: 1 }, ...[null, '', [''], [' '], ['same', 'same'],
+			[null], [1], ['x'.repeat(201)], ['provider?']].map(providerIds => ({ providerIds })),
+			...[null, '', '1', 0, -1, 0.5, true, Number.NaN, Number.POSITIVE_INFINITY].map(maxConcurrency => ({ maxConcurrency }))]) {
+			const intent = Object.assign({}, base, { operatorConstraints }), before = structuredClone(intent);
+			expect(validateWorkdayIntent(intent)).toContainEqual(expect.objectContaining({ code: 'operator_constraints_invalid', path: 'operatorConstraints' }));
+			expect(intent).toEqual(before);
+		}
+	});
+	it('requires explicit all or unique canonical project identities without broadening missing malformed or repeated project scope', () => {
+		const base: WorkdayIntent = { schemaVersion: 'treeseed.workday-intent/v1', teamId: 'team', profileId: 'default',
+			projects: 'all', startsAt: '2026-09-16T12:00:00Z' };
+		for (const projects of ['all', ['sdk', 'api'], ['A', 'a'], ['x'.repeat(200)]]) {
+			const intent = Object.assign({}, base, { projects }), before = structuredClone(intent);
+			expect(validateWorkdayIntent(intent)).toEqual([]); expect(intent).toEqual(before);
+		}
+		const missing = { ...base }; Reflect.deleteProperty(missing, 'projects');
+		for (const intent of [missing, ...[undefined, null, [], '', 'sdk', 1, true, [null], [[]], [{}], [''], [' '],
+			['sdk', 'sdk'], ['sdk', ' sdk '], ['sdk', null], ['x'.repeat(201)], ['sdk?']]
+			.map(projects => Object.assign({}, base, { projects }))]) {
+			const before = structuredClone(intent);
+			expect(validateWorkdayIntent(intent)).toContainEqual(expect.objectContaining({ code: 'project_selection_invalid', path: 'projects' }));
+			expect(intent).toEqual(before);
+		}
+	});
 	it('rejects duplicate trimmed decision identities and every malformed explicit selection without changing intent', () => {
 		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default', projects: 'all' as const, startsAt: '2026-09-16T12:00:00Z', durationSeconds: 3600 };
 		for (const decisionIds of [[], [''], [' \t\n '], ['one', ' one '], ['same', 'same'], [null], [1], 'one', null, Array.from({ length: 65 }, (_, i) => `decision-${i}`), ['x'.repeat(129)]]) {

@@ -113,6 +113,12 @@ describe('ControlPlaneClient', () => {
 				}
 				const binding = nested ? CONTROL_PLANE_OPERATIONS.workdays.createSchedule : CONTROL_PLANE_OPERATIONS.workdays.preflight;
 				const invalid = [
+					...[null, [], '', true, { unknown: 1 }, ...[null, '', [''], [' '], ['same', 'same'], [null], [1],
+						['x'.repeat(201)], ['provider?']].map(providerIds => ({ providerIds })),
+						...[null, '', '1', 0, -1, 0.5, true, Number.NaN, Number.POSITIVE_INFINITY].map(maxConcurrency => ({ maxConcurrency }))]
+						.map(operatorConstraints => Object.assign({}, base, { operatorConstraints })),
+					...[undefined, null, [], '', 'sdk', 1, true, [null], [[]], [{}], [''], [' '], ['sdk', 'sdk'],
+						['sdk', ' sdk '], ['sdk', null], ['x'.repeat(201)], ['sdk?']].map(projects => Object.assign({}, base, { projects })),
 					...[[], [''], [' \t\n '], ['one', ' one '], ['same', 'same'], [null], [1], 'one', null, Array.from({ length: 65 }, (_, i) => `decision-${i}`), ['x'.repeat(129)]].map(decisionIds => Object.assign({}, base, { decisionIds })),
 					...['executionPlanId', 'capacityPlanId', 'executionInputId', 'demandSetId'].flatMap(field => [undefined, null, '', 'derived-identity'].map(value => Object.assign({}, base, { [field]: value }))),
 				];

@@ -162,6 +162,8 @@ export interface WorkdayLifecycleDiagnostic {
 
 export function validateWorkdayIntent(intent: WorkdayIntent): WorkdayLifecycleDiagnostic[] {
 	const diagnostics: WorkdayLifecycleDiagnostic[] = [];
+	const canonicalId = (value: unknown) => typeof value === 'string' && value.length <= 200
+		&& /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u.test(value);
 	const fields = new Set(['schemaVersion', 'teamId', 'profileId', 'projects', 'executionMode', 'startsAt',
 		'endsAt', 'durationSeconds', 'objectiveFilters', 'planningOnly', 'proposalIds', 'decisionIds',
 		'continueFromWorkdayId', 'agentSelection', 'allocation', 'operatorConstraints']);
@@ -171,6 +173,25 @@ export function validateWorkdayIntent(intent: WorkdayIntent): WorkdayLifecycleDi
 	if (intent.schemaVersion !== 'treeseed.workday-intent/v1') diagnostics.push({ code: 'schema_version_invalid', path: 'schemaVersion', message: 'Unsupported workday intent schema.' });
 	if (typeof intent.teamId !== 'string' || !intent.teamId.trim()) diagnostics.push({ code: 'team_required', path: 'teamId', message: 'Team identity is required.' });
 	if (typeof intent.profileId !== 'string' || !intent.profileId.trim()) diagnostics.push({ code: 'profile_required', path: 'profileId', message: 'Allocation profile identity is required.' });
+	if (intent.projects !== 'all' && (!Array.isArray(intent.projects) || !intent.projects.length
+		|| intent.projects.some(project => !canonicalId(project))
+		|| new Set(intent.projects).size !== intent.projects.length)) diagnostics.push({
+		code: 'project_selection_invalid', path: 'projects',
+		message: 'Select all projects or a nonempty unique array of canonical project identities.',
+	});
+	if (intent.operatorConstraints !== undefined) {
+		const constraints = intent.operatorConstraints;
+		if (!constraints || typeof constraints !== 'object' || Array.isArray(constraints)
+			|| Object.keys(constraints).some(key => !['providerIds', 'maxConcurrency'].includes(key))
+			|| (constraints.providerIds !== undefined && (!Array.isArray(constraints.providerIds)
+				|| constraints.providerIds.some(provider => !canonicalId(provider))
+				|| new Set(constraints.providerIds).size !== constraints.providerIds.length))
+			|| (constraints.maxConcurrency !== undefined && (!Number.isInteger(constraints.maxConcurrency)
+				|| constraints.maxConcurrency < 1))) diagnostics.push({
+			code: 'operator_constraints_invalid', path: 'operatorConstraints',
+			message: 'Provider constraints require only unique canonical provider identities and positive integer concurrency.',
+		});
+	}
 	if (intent.executionMode !== undefined && !['simulation', 'production'].includes(intent.executionMode)) diagnostics.push({ code: 'execution_mode_invalid', path: 'executionMode', message: 'Select simulation or production custody.' });
 	if (intent.endsAt !== undefined && intent.durationSeconds !== undefined) diagnostics.push({ code: 'time_range_ambiguous', path: 'endsAt', message: 'Specify endsAt or durationSeconds, not both; omission uses the team policy duration.' });
 	const start = Date.parse(intent.startsAt);

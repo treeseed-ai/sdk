@@ -1,6 +1,16 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-provider-constraints-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/workday-lifecycle.test.ts
+    testName: "retains bounded provider constraints and rejects malformed unknown or duplicate supply selectors without changing workday authority"
+  sdk.golden.execution-project-selection-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/workday-lifecycle.test.ts
+    testName: "requires explicit all or unique canonical project identities without broadening missing malformed or repeated project scope"
   sdk.golden.execution-context-value-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
