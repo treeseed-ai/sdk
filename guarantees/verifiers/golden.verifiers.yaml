@@ -1,6 +1,11 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-governed-collections-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/note-dependency-links.test.ts
+    testName: "registers the existing governed Note and Decision collections for execution authority without introducing another model"
   sdk.golden.execution-work-dependencies-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

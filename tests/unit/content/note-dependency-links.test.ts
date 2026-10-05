@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { validatePortableContentData } from '../../../src/content/validation/portable-content-data.ts';
+import { AGENT_OPERATIONAL_CONTENT_COLLECTIONS } from '../../../src/content/validation/agent-operational-content-schemas.ts';
 
 const ref = (id: string, anchor: string) => ({
 	store: 'treedx', model: 'proposal', id, revision: 1,
@@ -13,6 +14,14 @@ const note = { schemaVersion: 'treeseed.note/v1', id: 'cross-project-dependency'
 	createdAt: '2026-09-20T00:00:00Z', links: [{ relation: 'depends_on', from, to }] };
 
 describe('exact dependency links on an ordinary TreeDX note', () => {
+	it('registers the existing governed Note and Decision collections for execution authority without introducing another model', () => {
+		const collections: Readonly<Record<string, string>> = AGENT_OPERATIONAL_CONTENT_COLLECTIONS;
+		expect(collections.note).toBe('notes');
+		expect(collections.decision).toBe('decisions');
+		expect(Object.values(collections).filter((collection) => collection === 'notes')).toEqual(['notes']);
+		expect(Object.values(collections).filter((collection) => collection === 'decisions')).toEqual(['decisions']);
+		expect(validatePortableContentData('note', note).ok).toBe(true);
+	});
 	it('accepts a directional exact work-item link', () => {
 		expect(validatePortableContentData('note', note).ok).toBe(true);
 	});
