@@ -60,6 +60,49 @@ function observeBoundedWorkItems(native: boolean) {
 	}
 		expect(entries).toEqual(before);
 }
+function observeWorkItemReview(native: boolean) {
+	const base = proposal(), item = base.executionPlan.workItems[0]!;
+	const { reviewEstimate: _review, maximumReviewCycles: _cycles, ...withoutReview } = item;
+	const variants = [
+		{ item, valid: true }, { item: { ...withoutReview, review: 'none' }, valid: true },
+		{ item: { ...item, maximumReviewCycles: 1 }, valid: true },
+		...[undefined, null, 0, -1, 0.5, '1'].map(maximumReviewCycles => ({ item: { ...item, maximumReviewCycles }, valid: false })),
+		...[{ reviewEstimate: item.reviewEstimate }, { maximumReviewCycles: 1 },
+			{ reviewEstimate: item.reviewEstimate, maximumReviewCycles: 1 }].map(extra => ({ item: { ...withoutReview, review: 'none', ...extra }, valid: false })),
+	];
+	const entries = ['draft', 'ready', 'decided'].flatMap(status => variants.map(variant => ({
+		data: JSON.parse(JSON.stringify({ ...base, status, executionPlan: { workItems: [variant.item] } })), valid: variant.valid,
+	}))), held = structuredClone(entries);
+	const expected = [
+		{ if: { type: 'object', required: ['review'], properties: { review: { const: 'required' } } },
+			then: { type: 'object', required: ['maximumReviewCycles'] } },
+		{ if: { type: 'object', required: ['review'], properties: { review: { const: 'none' } } },
+			then: { type: 'object', not: { type: 'object', anyOf: [
+				{ type: 'object', required: ['reviewEstimate'] }, { type: 'object', required: ['maximumReviewCycles'] },
+			] } } },
+	];
+	if (native) {
+		const path = fileURLToPath(new URL('./architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+		const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'proposal-inventory'], {
+			input: JSON.stringify(entries.map(entry => entry.data)), encoding: 'utf8', timeout: 15_000,
+		});
+		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+		const output: unknown = JSON.parse(child.stdout);
+		if (!output || typeof output !== 'object' || !('schema' in output) || !('observations' in output) || !Array.isArray(output.observations))
+			throw new Error('Native work-item review schema and observations required.');
+		expect(output.observations).toHaveLength(entries.length);
+		for (const [index, entry] of entries.entries()) expect(output.observations[index]).toMatchObject(entry.valid ? { ok: true, data: entry.data } : { ok: false });
+		expect(output.schema).toMatchObject({ properties: { executionPlan: { properties: { workItems: { items: { allOf: expected } } } } } });
+		expect(readFileSync(path)).toEqual(bytes);
+	} else {
+		const results = entries.map(entry => validatePortableContentData('proposal', entry.data));
+		expect(results.map(result => result.ok)).toEqual(entries.map(entry => entry.valid));
+		for (const [index, entry] of entries.entries()) if (entry.valid) expect(results[index]).toMatchObject({ data: entry.data });
+		expect(zodToJsonSchema(describeContentFrontmatterSchema('proposal'), { $refStrategy: 'none', postProcess: exportSchemaConstraints }))
+			.toMatchObject({ properties: { executionPlan: { properties: { workItems: { items: { allOf: expected } } } } } });
+	}
+	expect(entries).toEqual(held);
+}
 function observeReadyProposal(native: boolean) {
 	const original = proposal(), item = original.executionPlan.workItems[0]!;
 	const { estimate: _estimate, reviewEstimate: _reviewEstimate, ...unestimated } = item;
@@ -102,6 +145,8 @@ function observeReadyProposal(native: boolean) {
 }
 
 describe('proposal-owned execution plan', () => {
+	it('exports the same independent review cycle requirement and absence of unreviewed estimates enforced on governed executable work', () => observeWorkItemReview(false));
+	it('native public Proposal work-item review validation and schema agree on bounded required review and denial of unreviewed authority without input repair', () => observeWorkItemReview(true));
 	it('exports the same ready and decided proposal summary plan and independent estimate requirements enforced by native execution intake', () => observeReadyProposal(false));
 	it('native public Proposal schema and validation agree on draft estimation and fail closed ready execution authority without rewriting supplied requests', () => observeReadyProposal(true));
 	it('bounds governed work-item identities and denies duplicated capability permission and context authority without normalizing request bytes', () => observeBoundedWorkItems(false));

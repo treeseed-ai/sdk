@@ -40,7 +40,7 @@ type ConditionalRequirement<Field extends string> = {
 } & ({ alternatives: readonly (readonly Field[])[]; forbidden?: never; allowed?: never; contains?: never;
 	items?: { field: Field; key: string; required: readonly string[];
 		conditional?: { field: string; equals: unknown; required: readonly string[] } } }
-	| { alternatives?: never; forbidden: { field: Field; key: string }; allowed?: never; contains?: never }
+	| { alternatives?: never; forbidden: { field: Field; key: string } | { fields: readonly Field[] }; allowed?: never; contains?: never }
 	| { alternatives?: never; forbidden?: never; allowed: { field: Field; values: readonly unknown[] }; contains?: never }
 	| { alternatives?: never; forbidden?: never; allowed?: never; contains: { field: Field; properties: Readonly<Record<string, unknown>> } });
 
@@ -53,10 +53,11 @@ export function conditionalFields<T extends z.AnyZodObject>(object: T,
 			if (selected === undefined || (Object.hasOwn(rule, 'equals') && selected !== rule.equals)) continue;
 			if (Object.hasOwn(rule, 'notEquals') && selected === rule.notEquals) continue;
 			if (rule.in && !rule.in.includes(selected)) continue;
-			const nested = rule.forbidden ? Object.getOwnPropertyDescriptor(value, rule.forbidden.field)?.value : undefined;
+			const nested = rule.forbidden && 'field' in rule.forbidden ? Object.getOwnPropertyDescriptor(value, rule.forbidden.field)?.value : undefined;
 			const entries: unknown = rule.contains ? Object.getOwnPropertyDescriptor(value, rule.contains.field)?.value : undefined;
-			const invalid = rule.forbidden ? nested && typeof nested === 'object'
-				&& Object.getOwnPropertyDescriptor(nested, rule.forbidden.key)?.value !== undefined
+			const invalid = rule.forbidden ? 'fields' in rule.forbidden
+				? rule.forbidden.fields.some(field => Object.getOwnPropertyDescriptor(value, field)?.value !== undefined)
+				: nested && typeof nested === 'object' && Object.getOwnPropertyDescriptor(nested, rule.forbidden.key)?.value !== undefined
 				: rule.allowed ? !rule.allowed.values.includes(Object.getOwnPropertyDescriptor(value, rule.allowed.field)?.value)
 				: rule.contains ? !Array.isArray(entries) || !entries.some(entry => entry && typeof entry === 'object'
 					&& Object.entries(rule.contains.properties).every(([key, expected]) => Object.getOwnPropertyDescriptor(entry, key)?.value === expected))
@@ -85,7 +86,9 @@ export function conditionalFields<T extends z.AnyZodObject>(object: T,
 			if: { ...required([rule.field]), ...(Object.hasOwn(rule, 'equals') ? { properties: { [rule.field]: { const: rule.equals } } }
 				: Object.hasOwn(rule, 'notEquals') ? { properties: { [rule.field]: { not: { const: rule.notEquals } } } }
 				: rule.in ? { properties: { [rule.field]: { enum: [...rule.in] } } } : {}) },
-			then: rule.forbidden ? { type: 'object', properties: { [rule.forbidden.field]: { not: required([rule.forbidden.key]) } } }
+			then: rule.forbidden ? 'fields' in rule.forbidden
+				? { type: 'object', not: { type: 'object', anyOf: rule.forbidden.fields.map(field => required([field])) } }
+				: { type: 'object', properties: { [rule.forbidden.field]: { not: required([rule.forbidden.key]) } } }
 				: rule.allowed ? { type: 'object', properties: { [rule.allowed.field]: { enum: [...rule.allowed.values] } } }
 				: rule.contains ? { type: 'object', properties: { [rule.contains.field]: { type: 'array', contains: {
 					...required(Object.keys(rule.contains.properties)), properties: Object.fromEntries(Object.entries(rule.contains.properties).map(([key, value]) => [key, { const: value }])),

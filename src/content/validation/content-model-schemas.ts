@@ -74,7 +74,7 @@ const proposalLinks = {
 	...linked,
 };
 
-const executionPlanWorkItemSchema = z.object({
+const executionPlanWorkItemSchema = conditionalFields(z.object({
 	id: nonEmpty.max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u),
 	priority: z.number().int().safe().optional(),
 	activity: z.literal('acting'),
@@ -94,9 +94,10 @@ const executionPlanWorkItemSchema = z.object({
 	requiredCapabilities: unique(z.array(identifier).min(1)),
 	contextRefs: unique(exactRefs).optional(),
 	acceptanceCriteria: z.array(nonEmpty).min(1),
-}).strict().superRefine((value, context) => {
-	if (value.review === 'required' && !value.maximumReviewCycles) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Required review needs a maximum cycle count.' });
-	if (value.review === 'none' && (value.reviewEstimate || value.maximumReviewCycles)) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Unreviewed work cannot define review estimates or cycles.' });
+}).strict(), [
+	{ field: 'review', equals: 'required', alternatives: [['maximumReviewCycles']], message: 'Required review needs a maximum cycle count.' },
+	{ field: 'review', equals: 'none', forbidden: { fields: ['reviewEstimate', 'maximumReviewCycles'] }, message: 'Unreviewed work cannot define review estimates or cycles.' },
+]).superRefine((value, context) => {
 	if (value.workspace !== 'read-only') {
 		const mutable = (value.contextRefs ?? []).filter((reference) => reference.store === value.workspace && reference.model === 'repository');
 		if (mutable.length !== 1) context.addIssue({ code: z.ZodIssueCode.custom, path: ['contextRefs'], message: `${value.workspace} work requires exactly one exact ${value.workspace} workspace reference.` });
