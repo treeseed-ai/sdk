@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { uniqueArray } from '../../../../content/validation/schema-constraints.ts';
 import { activityProfileSchema } from '../../../validation/agent-definition-schema.ts';
 
 const identifier = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
@@ -6,9 +7,7 @@ const canonicalIdentifier = z.string().refine(value => value === value.trim()).p
 const timestamp = z.string().datetime({ offset: true });
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
 const commit = z.string().regex(/^[a-f0-9]{40}$/u);
-const uniqueStrings = z.array(z.string().min(1)).superRefine((items, context) => {
-	if (new Set(items).size !== items.length) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Values must be unique.' });
-});
+const uniqueStrings = uniqueArray(z.array(z.string().min(1)));
 
 export const exactEntityReferenceSchema = z.object({
 	store: z.enum(['treedx', 'postgresql', 'git', 'url']),

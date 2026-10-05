@@ -1,8 +1,36 @@
 import { describe, expect, it } from 'vitest';
 import { verifyAgentContentSchema } from '../../../../src/platform/agent-schema-verification.ts';
 import { definition, partialSdkDocument } from './schema-verification-fixture.ts';
+import { canonicalAuthority, schemaRecord, assertCanonicalAuthorityUnchanged } from './canonical-schema-fixture.ts';
+import { afterAll } from 'vitest';
+import { graphChangeSetSchema, appliedWorkdaySchema } from '../../../../src/capacity/agents/agent-capacity.ts';
+
+afterAll(assertCanonicalAuthorityUnchanged);
 
 describe('Platform agent content schema verification', () => {
+	it('binds graph change and planning identity uniqueness to the same executable validators and detects removed declaration rules', () => {
+		const { document } = canonicalAuthority(), held = structuredClone(document);
+		for (const name of ['GraphChangeSet', 'PlanningRound']) {
+			const diagnostics = verifyAgentContentSchema(document).filter(entry => entry.message.startsWith(`${name} `));
+			expect(diagnostics, name).toEqual([]);
+			const properties = schemaRecord(schemaRecord(document.$defs[name]).properties);
+			for (const [field, value] of Object.entries(properties)) if (schemaRecord(value).uniqueItems === true) {
+				const changed = structuredClone(document);
+				delete schemaRecord(schemaRecord(schemaRecord(changed.$defs[name]).properties)[field]).uniqueItems;
+				const before = structuredClone(changed);
+				expect(verifyAgentContentSchema(changed)).toContainEqual(expect.objectContaining({
+					code: 'agent_schema_structure_mismatch', message: expect.stringContaining(`${name} nested declarative constraints differ`) }));
+				expect(changed).toEqual(before);
+			}
+		}
+		const original = { added: ['one', 'two'], changed: [], completed: [], blocked: [], stale: [], removedEdges: [], addedEdges: [] };
+		expect(graphChangeSetSchema.parse(original)).toEqual(original);
+		for (const field of Object.keys(original)) expect(graphChangeSetSchema.safeParse({ ...original, [field]: ['one', 'one'] }).success).toBe(false);
+		const round = appliedWorkdaySchema.innerType().shape.planningRounds.element;
+		expect(round.parse({ round: 1, state: 'active', assignmentIds: ['one', 'two'] })).toEqual({ round: 1, state: 'active', assignmentIds: ['one', 'two'] });
+		expect(round.safeParse({ round: 1, state: 'active', assignmentIds: ['one', 'one'] }).success).toBe(false);
+		expect(document).toEqual(held);
+	});
 	it('rejects an implementation-generated five-model subset as complete canonical authority', () => {
 		expect(verifyAgentContentSchema(partialSdkDocument())).not.toEqual([]);
 	});

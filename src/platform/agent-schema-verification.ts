@@ -2,6 +2,7 @@ import type { PlatformDiagnostic } from './schemas.ts';
 import { describeContentFrontmatterSchema } from '../content/validation/content-model-schemas.ts';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { z } from 'zod';
+import { exportSchemaConstraints } from '../content/validation/schema-constraints.ts';
 import { assignmentAttemptSchema, assignmentContextSchema, assignmentResultSchema, usageSettlementSchema, leaseSchema, reservationSchema,
 	exactEntityReferenceSchema, exactGrantSchema, assignmentWorkspaceSchema, estimateSchema } from '../agent-capacity/contracts/capacity/assignments/agent-execution.ts';
 import { assignmentReferenceSchema, effectiveActivityProfileSchema, authorizedContextItemSchema, verificationRecordSchema,
@@ -112,7 +113,7 @@ function structuralDifferences(expected: unknown, actual: unknown, path = ''): s
 // The executable side is immutable for this module lifetime. Avoid repeatedly
 // compiling it for every independently supplied declaration and mutation.
 const executableStructures = new Map(Object.entries(schemas).map(([name, schema]) => {
-	const generated = record(zodToJsonSchema(schema, { name, $refStrategy: 'none' }));
+	const generated = record(zodToJsonSchema(schema, { name, $refStrategy: 'none', postProcess: exportSchemaConstraints }));
 	return [name, structuralSchema(record(record(generated.definitions)[name]), generated)] as const;
 }));
 

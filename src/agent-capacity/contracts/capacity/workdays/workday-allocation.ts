@@ -1,15 +1,16 @@
 import { z } from 'zod';
+import { uniqueArray } from '../../../../content/validation/schema-constraints.ts';
 import { AGENT_WORK_EXECUTION_MODES, type AgentWorkExecutionMode } from '../../support/authority/execution-mode.ts';
 import { assignmentReferenceSchema } from '../assignments/agent-execution.ts';
 
 const identifier = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
-const positiveWeights = z.record(z.number().positive());
+const positiveWeights = z.record(z.number().finite().positive());
 
 export const workdayPolicySchema = z.object({
 	durationSeconds: z.number().int().positive(),
 	maximumConcurrency: z.number().int().positive(),
 	planningPercent: z.number().min(0).max(100),
-	allocationWeight: z.number().positive(),
+	allocationWeight: z.number().finite().positive(),
 	planningTurnMaximumSeconds: z.number().int().positive(),
 	communicationConcurrency: z.number().int().positive(),
 	projectPercentages: positiveWeights,
@@ -37,8 +38,7 @@ export const appliedWorkdaySchema = z.object({
 	state: z.enum(['planned', 'active', 'closing', 'ended']), startsAt: z.string().datetime({ offset: true }),
 	endsAt: z.string().datetime({ offset: true }),
 	planningRounds: z.array(z.object({ round: z.number().int().positive(),
-		state: z.enum(['pending', 'active', 'complete']), assignmentIds: z.array(identifier)
-			.refine(ids => new Set(ids).size === ids.length, 'Planning assignment identities must be unique.'),
+		state: z.enum(['pending', 'active', 'complete']), assignmentIds: uniqueArray(z.array(identifier)),
 		startedAt: z.string().datetime({ offset: true }).optional(), completedAt: z.string().datetime({ offset: true }).optional() }).strict()),
 	admittedSecondsByProject: z.record(z.number().int().nonnegative()),
 	admittedSecondsByAgentClass: z.record(z.number().int().nonnegative()),

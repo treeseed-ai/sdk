@@ -6,7 +6,7 @@ import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { parse, stringify } from 'yaml';
 import { verifyPlatformRepository } from '../../../../src/platform/index.ts';
 import { partialSdkDocument } from './schema-verification-fixture.ts';
-import { assertCanonicalAuthorityUnchanged, canonicalAuthority, constraintPaths, removeConstraint, storedDefinitions } from './canonical-schema-fixture.ts';
+import { assertCanonicalAuthorityUnchanged, canonicalAuthority, constraintPaths, removeConstraint, storedDefinitions, schemaRecord } from './canonical-schema-fixture.ts';
 
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
@@ -28,6 +28,31 @@ function repository(document: unknown) {
 }
 
 describe('native Platform architecture-schema custody', () => {
+	it('native public repository verification binds graph and planning uniqueness and retains exact committed inputs through denial and retry', () => {
+		const { document, bytes } = canonicalAuthority(), root = repository(document), path = resolve(root, 'docs/agent.schema.yml');
+		const original = readFileSync(path, 'utf8'), commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+		const baseline = verifyPlatformRepository(root);
+		for (const name of ['GraphChangeSet', 'PlanningRound']) {
+			expect(baseline.diagnostics.filter(entry => entry.message.startsWith(`${name} `)), name).toEqual([]);
+			const properties = schemaRecord(schemaRecord(document.$defs[name]).properties);
+			for (const [field, value] of Object.entries(properties)) if (schemaRecord(value).uniqueItems === true) {
+				const changed = structuredClone(document);
+				delete schemaRecord(schemaRecord(schemaRecord(changed.$defs[name]).properties)[field]).uniqueItems;
+				const supplied = stringify(changed); writeFileSync(path, supplied);
+				const denied = verifyPlatformRepository(root);
+				expect(denied.ok).toBe(false);
+				expect(denied.diagnostics).toContainEqual(expect.objectContaining({ code: 'agent_schema_structure_mismatch',
+					message: expect.stringContaining(`${name} nested declarative constraints differ`) }));
+				expect(readFileSync(path, 'utf8')).toBe(supplied);
+				expect(execFileSync('git', ['show', `${commit}:docs/agent.schema.yml`], { cwd: root, encoding: 'utf8' })).toBe(original);
+				expect(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()).toBe(commit);
+			}
+		}
+		writeFileSync(path, original); expect(verifyPlatformRepository(root)).toEqual(baseline);
+		expect(canonicalAuthority().bytes).toBe(bytes);
+		// Other unresolved canonical records remain fatal; this proves only the
+		// actual owning uniqueness export and native declaration custody.
+	});
 	it('native public verification denies an omitted executable stored root while retaining the committed declaration and complete definitions', () => {
 		const { document } = canonicalAuthority();
 		for (const name of ['AgentProfile', 'AssignmentAttempt', 'Lease', 'Reservation']) {

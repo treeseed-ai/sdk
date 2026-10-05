@@ -91,6 +91,16 @@ describe('minimal workday allocation', () => {
 		expect(workdayPhase(workday, '2026-09-13T12:03:21Z', true)).toBe('acting');
 		expect(workdayPhase(workday, workday.endsAt, false)).toBe('ended');
 		expect(workdayPolicySchema.safeParse({ ...policy, planningSecondsPerAgent: 900 }).success).toBe(false);
+		for (const value of [NaN, Infinity, -Infinity, 0, -1, '1', null, true]) {
+			for (const patch of [{ allocationWeight: value }, { projectPercentages: { sdk: value } },
+				{ agentClassPercentages: { sdk: { engineer: value } } }]) {
+				const input = { ...policy, ...patch }, held = structuredClone(input);
+				expect(workdayPolicySchema.safeParse(input).success).toBe(false); expect(input).toEqual(held);
+			}
+		}
+		expect(workdayPolicySchema.parse({ ...policy, allocationWeight: 0.5, projectPercentages: { sdk: 0.5 },
+			agentClassPercentages: { sdk: { engineer: 0.5 } } })).toEqual({ ...policy, allocationWeight: 0.5,
+			projectPercentages: { sdk: 0.5 }, agentClassPercentages: { sdk: { engineer: 0.5 } } });
 	});
 
 	it('selects project then class by weighted deficit and uses stable node ties', () => {

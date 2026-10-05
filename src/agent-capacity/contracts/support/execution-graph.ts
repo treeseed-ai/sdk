@@ -1,12 +1,11 @@
 import { z } from 'zod';
+import { uniqueArray } from '../../../content/validation/schema-constraints.ts';
 import { activityProfileSchema } from '../../validation/agent-definition-schema.ts';
 import { estimateSchema, exactEntityReferenceSchema } from '../capacity/assignments/agent-execution.ts';
 
 const identifier = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
 const slug = z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:[._/-][a-z0-9]+)*$/u);
-const uniqueIds = z.array(identifier).superRefine((items, context) => {
-	if (new Set(items).size !== items.length) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Values must be unique.' });
-});
+const uniqueIds = uniqueArray(z.array(identifier));
 const contentOutputSchema = z.object({
 	model: z.enum(['agent','book','knowledge','objective','discussion','discussion-message','proposal','question','note','decision']),
 	id: identifier,
