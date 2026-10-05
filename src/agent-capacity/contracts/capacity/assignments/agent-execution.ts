@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { uniqueArray } from '../../../../content/validation/schema-constraints.ts';
+import { conditionalFields, uniqueArray } from '../../../../content/validation/schema-constraints.ts';
 import { activityProfileSchema } from '../../../validation/agent-definition-schema.ts';
 
 const identifier = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
@@ -9,7 +9,7 @@ const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
 const commit = z.string().regex(/^[a-f0-9]{40}$/u);
 const uniqueStrings = uniqueArray(z.array(z.string().min(1)));
 
-export const exactEntityReferenceSchema = z.object({
+export const exactEntityReferenceSchema = conditionalFields(z.object({
 	store: z.enum(['treedx', 'postgresql', 'git', 'url']),
 	model: z.string().min(1),
 	id: identifier,
@@ -22,12 +22,12 @@ export const exactEntityReferenceSchema = z.object({
 	startLine: z.number().int().positive().optional(),
 	endLine: z.number().int().positive().optional(),
 	url: z.string().url().optional(),
-}).strict().superRefine((reference, context) => {
-	if (reference.endLine && !reference.startLine) context.addIssue({ code: z.ZodIssueCode.custom, path: ['startLine'], message: 'startLine is required with endLine.' });
-	if (reference.store === 'treedx' && !(reference.commit || (reference.revision && reference.digest))) context.addIssue({ code: z.ZodIssueCode.custom, message: 'TreeDX references require commit or revision and digest.' });
-	if (reference.store === 'git' && !(reference.repository && reference.commit)) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Git references require repository and commit.' });
-	if (reference.store === 'url' && !reference.url) context.addIssue({ code: z.ZodIssueCode.custom, message: 'URL references require url.' });
-});
+}).strict(), [
+	{ field: 'endLine', alternatives: [['startLine']], path: ['startLine'], message: 'startLine is required with endLine.' },
+	{ field: 'store', equals: 'treedx', alternatives: [['revision', 'digest'], ['commit']], message: 'TreeDX references require commit or revision and digest.' },
+	{ field: 'store', equals: 'git', alternatives: [['repository', 'commit']], message: 'Git references require repository and commit.' },
+	{ field: 'store', equals: 'url', alternatives: [['url']], message: 'URL references require url.' },
+]);
 
 export const assignmentReferenceSchema = z.discriminatedUnion('kind', [
 	z.object({ kind: z.literal('git'), repository: z.string().min(1), commit, branch: z.string().min(1).optional(), path: z.string().min(1).optional() }).strict(),

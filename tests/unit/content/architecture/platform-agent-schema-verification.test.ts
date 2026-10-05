@@ -3,11 +3,35 @@ import { verifyAgentContentSchema } from '../../../../src/platform/agent-schema-
 import { definition, partialSdkDocument } from './schema-verification-fixture.ts';
 import { canonicalAuthority, schemaRecord, assertCanonicalAuthorityUnchanged } from './canonical-schema-fixture.ts';
 import { afterAll } from 'vitest';
-import { graphChangeSetSchema, appliedWorkdaySchema } from '../../../../src/capacity/agents/agent-capacity.ts';
+import { graphChangeSetSchema, appliedWorkdaySchema, exactEntityReferenceSchema } from '../../../../src/capacity/agents/agent-capacity.ts';
 
 afterAll(assertCanonicalAuthorityUnchanged);
 
 describe('Platform agent content schema verification', () => {
+	it('exports the same store-specific exact reference requirements enforced by the owning validator without borrowing declaration constraints', () => {
+		const { document } = canonicalAuthority(), held = structuredClone(document);
+		const base = { model: 'evidence', id: 'evidence' }, commit = 'a'.repeat(40), digest = `sha256:${'b'.repeat(64)}`;
+		const valid = [{ ...base, store: 'postgresql' }, { ...base, store: 'git', repository: 'source', commit },
+			{ ...base, store: 'treedx', commit }, { ...base, store: 'treedx', revision: 1, digest },
+			{ ...base, store: 'url', url: 'https://example.test/evidence' }, { ...base, store: 'postgresql', startLine: 1, endLine: 1 }];
+		const invalid = [{ ...base, store: 'git', repository: 'source' }, { ...base, store: 'git', commit },
+			{ ...base, store: 'treedx' }, { ...base, store: 'treedx', revision: 1 }, { ...base, store: 'treedx', digest },
+			{ ...base, store: 'url' }, { ...base, store: 'postgresql', endLine: 1 }];
+		for (const input of valid) expect(exactEntityReferenceSchema.parse(input)).toEqual(input);
+		for (const input of invalid) expect(exactEntityReferenceSchema.safeParse(input).success).toBe(false);
+		expect(verifyAgentContentSchema(document).filter(entry => entry.message.startsWith('ExactEntityReference '))).toEqual([]);
+		const constraints = schemaRecord(document.$defs.ExactEntityReference).allOf;
+		if (!Array.isArray(constraints)) throw new Error('Exact reference conditional authority required.');
+		for (let index = 0; index < constraints.length; index++) {
+			const changed = structuredClone(document);
+			schemaRecord(changed.$defs.ExactEntityReference).allOf = constraints.filter((_, position) => position !== index);
+			const supplied = structuredClone(changed);
+			expect(verifyAgentContentSchema(changed)).toContainEqual(expect.objectContaining({ code: 'agent_schema_structure_mismatch',
+				message: expect.stringContaining('ExactEntityReference nested declarative constraints differ') }));
+			expect(changed).toEqual(supplied);
+		}
+		expect(document).toEqual(held);
+	});
 	it('resolves exact nested escaped local schema references and rejects missing external or cyclic references without changing supplied authority', () => {
 		const document = partialSdkDocument(), original = structuredClone(definition(document, 'Book').properties.title!);
 		document.$defs['reference~/namespace'] = { properties: { title: original,

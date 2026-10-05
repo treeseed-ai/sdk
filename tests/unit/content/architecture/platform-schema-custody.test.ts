@@ -28,6 +28,28 @@ function repository(document: unknown) {
 }
 
 describe('native Platform architecture-schema custody', () => {
+	it('native public repository verification binds every exact reference condition to the owning validator and retains committed authority through denial and retry', () => {
+		const { document } = canonicalAuthority(), root = repository(document), path = resolve(root, 'docs/agent.schema.yml');
+		const bytes = readFileSync(path, 'utf8'), commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+		const baseline = verifyPlatformRepository(root);
+		expect(baseline.ok).toBe(false);
+		expect(baseline.diagnostics.filter(entry => entry.message.startsWith('ExactEntityReference '))).toEqual([]);
+		const constraints = schemaRecord(document.$defs.ExactEntityReference).allOf;
+		if (!Array.isArray(constraints)) throw new Error('Exact reference conditions required.');
+		for (let index = 0; index < constraints.length; index++) {
+			const changed = structuredClone(document);
+			schemaRecord(changed.$defs.ExactEntityReference).allOf = constraints.filter((_, position) => position !== index);
+			const supplied = stringify(changed); writeFileSync(path, supplied);
+			const denied = verifyPlatformRepository(root); expect(denied.ok).toBe(false);
+			expect(denied.diagnostics).toContainEqual(expect.objectContaining({ code: 'agent_schema_structure_mismatch',
+				message: expect.stringContaining('ExactEntityReference nested declarative constraints differ') }));
+			expect(readFileSync(path, 'utf8')).toBe(supplied);
+			expect(execFileSync('git', ['show', `${commit}:docs/agent.schema.yml`], { cwd: root, encoding: 'utf8' })).toBe(bytes);
+			expect(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()).toBe(commit);
+		}
+		writeFileSync(path, bytes); expect(verifyPlatformRepository(root)).toEqual(baseline);
+		// Unimplemented canonical models remain denied, not relabelled complete.
+	});
 	it('native public repository verification resolves exact nested schema references while retaining committed bytes through missing moved and cyclic denial', () => {
 		const document = partialSdkDocument();
 		document.$defs['reference~/namespace'] = { properties: { title: structuredClone(definition(document, 'Book').properties.title!) }, required: [] };
