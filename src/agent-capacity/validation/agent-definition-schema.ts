@@ -14,7 +14,7 @@ const dependenciesSchema = z.object({
 	message: 'At least one dependency selector is required.',
 });
 
-const permissionSetSchema = z.object({
+export const permissionSetSchema = z.object({
 	content: z.object({
 		read: unique(z.enum(AGENT_CONTENT_MODELS)),
 		write: unique(z.enum(AGENT_CONTENT_MODELS)),

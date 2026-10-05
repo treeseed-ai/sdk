@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { describeContentFrontmatterContract, describeContentFrontmatterJsonSchema, validatePortableContentData } from '../../../src/content/validation/index.ts';
 import type { ExactEntityReference } from '../../../src/agent-capacity/contracts/capacity/assignments/agent-execution.ts';
+import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 function proposal() {
 	const dependsOn: string[] = [], write: string[] = [];
@@ -19,7 +22,45 @@ function proposal() {
 	};
 }
 
+function boundedWorkItemEntries() {
+	const value = proposal(), item = value.executionPlan.workItems[0]!;
+	const input = (patch: Record<string, unknown>) => ({ ...value, executionPlan: { workItems: [Object.assign({}, item, patch)] } });
+	const duplicate = item.contextRefs[0]!;
+	return [
+		{ data: value, valid: true },
+		{ data: input({ id: 'a'.repeat(100), agentClass: 'a'.repeat(100), requiredCapabilities: ['a'.repeat(200), 'source.read'] }), valid: true },
+		...[{ id: 'a'.repeat(101) }, { agentClass: 'a'.repeat(101) },
+			...['', ' padded ', 'internal space', 'é', 'a'.repeat(201), null].map(value => ({ requiredCapabilities: ['source.read', value] })),
+			{ requiredCapabilities: ['source.read', 'source.read'] }, { contextRefs: [duplicate, Object.fromEntries(Object.entries(duplicate).reverse())] },
+			...['read', 'write'].map(field => ({ requestedPermissions: { ...item.requestedPermissions,
+				content: { ...item.requestedPermissions.content, [field]: ['proposal', 'proposal'] } } })),
+			{ requestedPermissions: { ...item.requestedPermissions, tools: ['source.read', 'source.read'] } }]
+			.map(patch => ({ data: input(patch), valid: false })),
+	];
+}
+function observeBoundedWorkItems(native: boolean) {
+	const entries = boundedWorkItemEntries(), before = structuredClone(entries);
+	if (native) {
+		const path = fileURLToPath(new URL('./architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+		const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'content-records'], {
+			input: JSON.stringify(entries.map(({ data }) => ({ model: 'proposal', data }))), encoding: 'utf8', timeout: 15_000,
+		});
+		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+		const results: unknown = JSON.parse(child.stdout); if (!Array.isArray(results)) throw new Error('Native work-item observations required.');
+		expect(results).toHaveLength(entries.length);
+		for (const [index, entry] of entries.entries()) expect(results[index]).toMatchObject(entry.valid ? { ok: true, data: entry.data } : { ok: false });
+		expect(readFileSync(path)).toEqual(bytes);
+	} else {
+		const results = entries.map(entry => validatePortableContentData('proposal', entry.data));
+		expect(results.map(result => result.ok)).toEqual(entries.map(entry => entry.valid));
+		for (const [index, entry] of entries.entries()) if (entry.valid) expect(results[index]).toMatchObject({ data: entry.data });
+	}
+		expect(entries).toEqual(before);
+}
+
 describe('proposal-owned execution plan', () => {
+	it('bounds governed work-item identities and denies duplicated capability permission and context authority without normalizing request bytes', () => observeBoundedWorkItems(false));
+	it('native public proposal validation retains exact bounded work-item authority and rejects duplicated or malformed demand inventories', () => observeBoundedWorkItems(true));
 	it('retains optional governed work-item integer priority in draft ready and decided proposals without coercion or an independent node authority', () => {
 		for (const status of ['draft', 'ready', 'decided']) {
 			const original = { ...proposal(), status }, before = structuredClone(original);

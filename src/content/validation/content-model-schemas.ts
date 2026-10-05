@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { uniqueArray as unique } from './schema-constraints.ts';
-import { agentDefinitionSchema } from '../../agent-capacity/validation/agent-definition-schema.ts';
+import { agentDefinitionSchema, permissionSetSchema } from '../../agent-capacity/validation/agent-definition-schema.ts';
 import { PROPOSAL_TYPE_ID_PATTERN } from '../../agent-capacity/validation/proposal-type.ts';
 import {
 	BOOK_SCHEMA_VERSION,
@@ -76,27 +76,24 @@ const proposalLinks = {
 };
 
 const executionPlanWorkItemSchema = z.object({
-	id: nonEmpty.regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u),
+	id: nonEmpty.max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u),
 	priority: z.number().int().safe().optional(),
 	activity: z.literal('acting'),
-	agentClass: nonEmpty.regex(/^[a-z][a-z0-9-]*$/u),
+	agentClass,
 	workspace: z.enum(['read-only', 'treedx', 'git']),
 	review: z.enum(['required', 'none']),
 	objective: nonEmpty,
 	estimate: estimateSchema.optional(),
 	reviewEstimate: estimateSchema.optional(),
 	maximumReviewCycles: z.number().int().positive().optional(),
-	dependsOn: unique(z.array(nonEmpty.regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u))),
-	requestedPermissions: z.object({
-		content: z.object({ read: z.array(z.enum(['agent','book','knowledge','objective','discussion','discussion-message','proposal','question','note','decision'])), write: z.array(z.enum(['agent','book','knowledge','objective','discussion','discussion-message','proposal','question','note','decision'])) }).strict(),
-		tools: z.array(z.enum(['discussion','source.read','source.write','verification','release'])),
-	}).strict(),
+	dependsOn: unique(z.array(nonEmpty.max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u))),
+	requestedPermissions: permissionSetSchema,
 	output: z.object({
 		model: z.enum(['agent','book','knowledge','objective','discussion','discussion-message','proposal','question','note','decision']),
 		id: identifier,
 	}).strict().optional(),
-	requiredCapabilities: z.array(nonEmpty).min(1),
-	contextRefs: z.array(exactEntityReferenceSchema).optional(),
+	requiredCapabilities: unique(z.array(identifier).min(1)),
+	contextRefs: unique(exactRefs).optional(),
 	acceptanceCriteria: z.array(nonEmpty).min(1),
 }).strict().superRefine((value, context) => {
 	if (value.review === 'required' && !value.maximumReviewCycles) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Required review needs a maximum cycle count.' });
