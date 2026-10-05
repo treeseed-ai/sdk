@@ -161,6 +161,30 @@ export const assignmentResultSchema = z.object({
 	completedAt: timestamp,
 }).strict();
 
+export const leaseSchema = z.object({
+	schemaVersion: z.literal('treeseed.lease/v1'),
+	id: canonicalIdentifier,
+	assignmentId: canonicalIdentifier,
+	providerId: canonicalIdentifier,
+	state: z.enum(['active', 'released', 'expired', 'revoked']),
+	acquiredAt: timestamp,
+	expiresAt: timestamp,
+	releasedAt: timestamp.optional(),
+	revision: z.number().int().positive(),
+}).strict();
+
+export const reservationSchema = z.object({
+	schemaVersion: z.literal('treeseed.reservation/v1'),
+	id: canonicalIdentifier,
+	assignmentId: canonicalIdentifier,
+	workdayId: canonicalIdentifier,
+	providerId: canonicalIdentifier,
+	estimatedSeconds: z.number().int().positive(),
+	state: z.enum(['held', 'consumed', 'released', 'expired']),
+	reservedAt: timestamp,
+	closedAt: timestamp.optional(),
+}).strict();
+
 /** Stored exactly-once accounting authority; native provider units stay distinct. */
 export const usageSettlementSchema = z.object({
 	schemaVersion: z.literal('treeseed.usage-settlement/v1'),
@@ -201,5 +225,7 @@ export type EffectiveActivityProfile = z.infer<typeof effectiveActivityProfileSc
 export type AssignmentAttempt = z.infer<typeof assignmentAttemptSchema>;
 export type AssignmentTimingAwarenessReceipt = z.infer<typeof assignmentTimingAwarenessReceiptSchema>;
 export type AssignmentResult = z.infer<typeof assignmentResultSchema>;
+export type Lease = z.infer<typeof leaseSchema>;
+export type Reservation = z.infer<typeof reservationSchema>;
 export type UsageSettlement = z.infer<typeof usageSettlementSchema>;
 export type AssignmentContext = z.infer<typeof assignmentContextSchema>;

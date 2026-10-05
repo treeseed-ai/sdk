@@ -2,7 +2,7 @@ import type { PlatformDiagnostic } from './schemas.ts';
 import { describeContentFrontmatterSchema } from '../content/validation/content-model-schemas.ts';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { z } from 'zod';
-import { assignmentAttemptSchema, assignmentContextSchema, assignmentResultSchema, usageSettlementSchema,
+import { assignmentAttemptSchema, assignmentContextSchema, assignmentResultSchema, usageSettlementSchema, leaseSchema, reservationSchema,
 	exactEntityReferenceSchema, exactGrantSchema, assignmentWorkspaceSchema, estimateSchema } from '../agent-capacity/contracts/capacity/assignments/agent-execution.ts';
 import { executionNodeSchema, executionEdgeSchema } from '../agent-capacity/validation/execution/execution-graph.ts';
 import { appliedWorkdaySchema } from '../agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
@@ -19,6 +19,7 @@ const schemas: Record<string, z.ZodTypeAny> = {
 	...Object.fromEntries(Object.entries(models).map(([name, model]) => [name, describeContentFrontmatterSchema(model)])),
 	AssignmentAttempt: assignmentAttemptSchema, AssignmentContext: assignmentContextSchema,
 	AssignmentResult: assignmentResultSchema, UsageSettlement: usageSettlementSchema,
+	Lease: leaseSchema, Reservation: reservationSchema,
 	ExecutionNode: executionNodeSchema, ExecutionEdge: executionEdgeSchema, Workday: appliedWorkdaySchema,
 	ExactEntityReference: exactEntityReferenceSchema, ExactGrant: exactGrantSchema,
 	AssignmentWorkspace: assignmentWorkspaceSchema, Estimate: estimateSchema,

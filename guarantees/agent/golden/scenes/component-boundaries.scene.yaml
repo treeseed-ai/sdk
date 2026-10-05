@@ -306,3 +306,15 @@ workflow:
   - id: cycles-denied
     action: { verifier: sdk.golden.cycles-denied }
     expect: { status: passed }
+  - id: execution-lease-record-unit
+    action: { verifier: sdk.golden.execution-lease-record-unit }
+    expect: { status: passed }
+  - id: execution-reservation-record-unit
+    action: { verifier: sdk.golden.execution-reservation-record-unit }
+    expect: { status: passed }
+  - id: execution-lease-record-native
+    action: { verifier: sdk.golden.execution-lease-record-native }
+    expect: { status: passed }
+  - id: execution-reservation-record-native
+    action: { verifier: sdk.golden.execution-reservation-record-native }
+    expect: { status: passed }

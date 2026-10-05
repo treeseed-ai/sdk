@@ -526,3 +526,23 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
     testName: "validates exact canonical settlement identities native units and clocks without normalizing supplied evidence"
+  sdk.golden.execution-lease-record-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: "validates exact canonical lease states identifiers clocks and numeric boundaries without rewriting supplied records"
+  sdk.golden.execution-reservation-record-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: "validates exact canonical reservation states identifiers clocks and numeric boundaries without rewriting supplied records"
+  sdk.golden.execution-lease-record-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/agent-execution-contract.test.ts
+    testName: "native public SDK lease validation retains complete records and denies every missing field malformed value and unknown authority"
+  sdk.golden.execution-reservation-record-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/agent-execution-contract.test.ts
+    testName: "native public SDK reservation validation retains complete records and denies every missing field malformed value and unknown authority"

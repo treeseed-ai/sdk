@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
+import * as publicContracts from '../../../../src/capacity/agents/agent-capacity.ts';
 import { assignmentAttemptSchema, assignmentResultSchema, usageSettlementSchema, validateProviderAssignment } from '../../../../src/capacity/agents/agent-capacity.ts';
 
 // Complete isolated public-schema inputs, not a compiled API admission or a
@@ -30,6 +32,49 @@ function supplied() {
 	return { item, attempt, result };
 }
 describe('public assignment whole immutable record custody', () => {
+	function verifyCanonicalRecord(kind: 'lease' | 'reservation') {
+		const exports: Record<string, unknown> = publicContracts, schema = exports[`${kind}Schema`];
+		expect(schema).toBeInstanceOf(z.ZodType);
+		if (!(schema instanceof z.ZodType)) throw new Error(`Missing public ${kind} validator.`);
+		const clock = '2026-10-03T00:00:00.000Z';
+		const original = kind === 'lease'
+			? { schemaVersion: 'treeseed.lease/v1', id: 'lease', assignmentId: 'attempt', providerId: 'provider', state: 'active', acquiredAt: clock, expiresAt: clock, revision: 1 }
+			: { schemaVersion: 'treeseed.reservation/v1', id: 'reservation', assignmentId: 'attempt', providerId: 'provider', workdayId: 'workday', estimatedSeconds: 1, state: 'held', reservedAt: clock };
+		const retained = structuredClone(original), optional = kind === 'lease' ? 'releasedAt' : 'closedAt';
+		for (const state of kind === 'lease' ? ['active', 'released', 'expired', 'revoked'] : ['held', 'consumed', 'released', 'expired']) {
+			for (const input of [{ ...original, state }, { ...original, state, [optional]: clock }]) {
+				const before = structuredClone(input); expect(schema.parse(input)).toEqual(input); expect(input).toEqual(before);
+			}
+		}
+		for (const field of Object.keys(original)) {
+			const absent = Object.fromEntries(Object.entries(original).filter(([key]) => key !== field));
+			expect(schema.safeParse(absent).success, `absent ${field}`).toBe(false);
+			for (const value of [undefined, null, '', [], {}]) {
+				const input = { ...original, [field]: value }, before = structuredClone(input);
+				expect(schema.safeParse(input).success, field).toBe(false); expect(input).toEqual(before);
+			}
+		}
+		const numeric = kind === 'lease' ? 'revision' : 'estimatedSeconds';
+		for (const value of ['1', true, 0, -1, 0.5, NaN, Infinity, -Infinity]) {
+			const input = { ...original, [numeric]: value }, before = structuredClone(input);
+			expect(schema.safeParse(input).success).toBe(false); expect(input).toEqual(before);
+		}
+		for (const field of kind === 'lease' ? ['id', 'assignmentId', 'providerId'] : ['id', 'assignmentId', 'providerId', 'workdayId']) {
+			for (const value of [' padded ', 'a'.repeat(201), '!invalid']) expect(schema.safeParse({ ...original, [field]: value }).success).toBe(false);
+			expect(schema.parse({ ...original, [field]: 'a'.repeat(200) })).toEqual({ ...original, [field]: 'a'.repeat(200) });
+		}
+		for (const field of kind === 'lease' ? ['acquiredAt', 'expiresAt', optional] : ['reservedAt', optional]) {
+			for (const value of [null, '', '2026-99-03T00:00:00Z', '2026-10-03', 1]) expect(schema.safeParse({ ...original, [field]: value }).success).toBe(false);
+			expect(schema.parse({ ...original, [field]: '2026-10-03T00:00:00+01:00' })).toEqual({ ...original, [field]: '2026-10-03T00:00:00+01:00' });
+		}
+		for (const patch of [{ state: 'unknown' }, { schemaVersion: 'legacy/v1' }, { token: 'forbidden' }, { leaseSeconds: 1 }, { legacy: true }]) {
+			const input = { ...original, ...patch }, before = structuredClone(input);
+			expect(schema.safeParse(input).success).toBe(false); expect(input).toEqual(before);
+		}
+		expect(original).toEqual(retained);
+	}
+	it('validates exact canonical lease states identifiers clocks and numeric boundaries without rewriting supplied records', () => verifyCanonicalRecord('lease'));
+	it('validates exact canonical reservation states identifiers clocks and numeric boundaries without rewriting supplied records', () => verifyCanonicalRecord('reservation'));
 	it('validates exact canonical settlement identities native units and clocks without normalizing supplied evidence', () => {
 		const f = supplied(), original = { schemaVersion: 'treeseed.usage-settlement/v1', id: 'settlement', idempotencyKey: 'original-key',
 			assignmentId: f.attempt.id, reservationId: f.attempt.reservationId, workdayId: f.attempt.workdayId,

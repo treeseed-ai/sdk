@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
 	assignmentContextSchema,
 	assignmentResultSchema,
@@ -16,6 +19,38 @@ const timingAwareness = {
 };
 
 describe('canonical agent execution contract', () => {
+	function nativeRecord(kind: 'lease' | 'reservation') {
+		const clock = '2026-10-03T00:00:00.000Z', optional = kind === 'lease' ? 'releasedAt' : 'closedAt';
+		const original = kind === 'lease'
+			? { schemaVersion: 'treeseed.lease/v1', id: 'lease', assignmentId: 'attempt', providerId: 'provider', state: 'active', acquiredAt: clock, expiresAt: clock, revision: 1 }
+			: { schemaVersion: 'treeseed.reservation/v1', id: 'reservation', assignmentId: 'attempt', providerId: 'provider', workdayId: 'workday', estimatedSeconds: 1, state: 'held', reservedAt: clock };
+		const valid = (kind === 'lease' ? ['active', 'released', 'expired', 'revoked'] : ['held', 'consumed', 'released', 'expired'])
+			.flatMap(state => [{ ...original, state }, { ...original, state, [optional]: clock }]);
+		const invalid = Object.keys(original).flatMap(field => [
+			Object.fromEntries(Object.entries(original).filter(([key]) => key !== field)),
+			...[null, '', [], {}].map(value => ({ ...original, [field]: value })),
+		]);
+		invalid.push(...[{ state: 'unknown' }, { schemaVersion: 'legacy/v1' }, { id: ' padded ' }, { id: 'a'.repeat(201) },
+			{ [optional]: null }, { [optional]: 'not-a-clock' }, { token: 'forbidden' }, { leaseSeconds: 1 },
+			...[0, -1, 0.5, '1', true].map(value => ({ [kind === 'lease' ? 'revision' : 'estimatedSeconds']: value }))]
+			.map(patch => ({ ...original, ...patch })));
+		const input = [...valid, ...invalid], before = structuredClone(input);
+		const path = fileURLToPath(new URL('../../unit/content/architecture/closeout-native.ts', import.meta.url));
+		const bytes = readFileSync(path);
+		const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, kind], {
+			input: JSON.stringify(input), encoding: 'utf8', timeout: 15_000,
+		});
+		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+		const observations: unknown = JSON.parse(child.stdout);
+		expect(Array.isArray(observations)).toBe(true);
+		if (!Array.isArray(observations)) throw new Error('Native public SDK record inventory missing.');
+		expect(observations).toHaveLength(input.length);
+		expect(observations.slice(0, valid.length)).toEqual(valid.map(data => ({ success: true, data })));
+		for (const observation of observations.slice(valid.length)) expect(observation).toMatchObject({ success: false });
+		expect(input).toEqual(before); expect(readFileSync(path)).toEqual(bytes);
+	}
+	it('native public SDK lease validation retains complete records and denies every missing field malformed value and unknown authority', () => nativeRecord('lease'));
+	it('native public SDK reservation validation retains complete records and denies every missing field malformed value and unknown authority', () => nativeRecord('reservation'));
 	it('accepts exactly the three workspace modes and one mutable workspace', () => {
 		expect(assignmentWorkspaceSchema.parse({ mode: 'read-only' })).toEqual({ mode: 'read-only' });
 		expect(assignmentWorkspaceSchema.parse({ mode: 'git', repository: 'treeseed-ai/sdk', baseCommit: sha, branch: 'assignment/one', writablePaths: ['src'] }).mode).toBe('git');
