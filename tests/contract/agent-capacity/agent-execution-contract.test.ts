@@ -20,6 +20,22 @@ const timingAwareness = {
 };
 
 describe('canonical agent execution contract', () => {
+	it('native public workday resource derivation rejects absent and mutating REST authority with the owning error and retains exact inputs', () => {
+		const input = [{}, { rest: null }, { kind: 'mutation' }, { rest: { method: 'POST', path: '/v1/teams/{teamId}/workday-runs/{runId}' } },
+			{ rest: null, surfaces: ['cli'] }], held = structuredClone(input);
+		const path = fileURLToPath(new URL('../../unit/content/architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+		const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'workday-resource'], {
+			input: JSON.stringify(input), encoding: 'utf8', timeout: 15_000,
+		});
+		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+		const observations: unknown = JSON.parse(child.stdout);
+		if (!Array.isArray(observations)) throw new Error('Native workday resource observations required.');
+		expect(observations).toHaveLength(input.length);
+		expect(observations[0]).toMatchObject({ resources: [{ operationId: 'workdays.show', uriTemplate: 'treeseed://teams/{teamId}/workdays/{runId}', subscribable: true }] });
+		expect(observations.slice(1, 4)).toEqual(Array.from({ length: 3 }, () => ({ error: { name: 'Error',
+			message: 'MCP resource operation workdays.show must be a read-only GET operation.' } })));
+		expect(observations[4]).toEqual({ resources: [] }); expect(input).toEqual(held); expect(readFileSync(path)).toEqual(bytes);
+	});
 	it('native public SDK policy validation retains complete snapshots and denies every missing field without synthesizing authority', () => {
 		const original = { id: 'default', teamId: 'team', revision: 1, policy: structuredClone(DEFAULT_WORKDAY_POLICY) };
 		const invalid = Object.keys(original.policy).map(field => ({ ...original,

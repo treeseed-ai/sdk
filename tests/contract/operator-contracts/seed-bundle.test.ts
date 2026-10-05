@@ -50,12 +50,12 @@ describe('portable seed bundle', () => {
 	it('requires primary and exactly one matching library repository', async () => {
 		const input = bundle();
 		delete input.resources.projects[0]!.primaryRepository;
-		(input.resources.repositories as Array<Record<string, unknown>>).push({
+		input.resources.repositories.push(Object.assign({
 			...input.resources.repositories[0],
 			key: 'repository:treeseed/sdk-content', project: 'project:treeseed/sdk',
-			role: 'content',
-		});
-		delete input.resources.projects[0]!.libraryRepository;
+		}, { role: 'content' }));
+		const { libraryRepository: _library, ...withoutLibrary } = input.resources.projects[0]!;
+		Object.assign(input.resources.projects, { 0: withoutLibrary });
 		const value = { ...input, digest: await digestSeedBundle(input) } as SeedBundleV3;
 		expect(validateSeedBundle(value).map((entry) => entry.code)).toEqual(expect.arrayContaining([
 			'seed_bundle_primary_repository_required',

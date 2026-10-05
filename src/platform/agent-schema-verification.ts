@@ -30,6 +30,9 @@ const runtimeSchemas = {
 	Usage: usageSchema, Diagnostic: diagnosticSchema, AssignmentTimingAwarenessReceipt: assignmentTimingAwarenessReceiptSchema,
 	GraphChangeSet: graphChangeSetSchema, ConditionDefinition: conditionDefinitionSchema,
 	WorkdayPolicyFields: workdayPolicySchema, ActivityProfile: activityProfileSchema, ActivityProfiles: activityProfilesSchema,
+	PlanningRound: appliedWorkdaySchema.innerType().shape.planningRounds.element,
+	AssignmentLimits: assignmentAttemptSchema.innerType().shape.limits,
+	ProviderOfferSelection: assignmentAttemptSchema.innerType().shape.provider,
 };
 const schemas: Record<string, z.ZodTypeAny> = {
 	...Object.fromEntries(Object.entries(models).map(([name, model]) => [name, describeContentFrontmatterSchema(model)])),

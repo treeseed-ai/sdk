@@ -1,6 +1,26 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-planning-round-identity-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: "retains exact canonical planning rounds and rejects duplicate assignment identities instead of normalizing stored authority"
+  sdk.golden.execution-planning-round-identity-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: "native public workday parsing denies duplicate planning assignment identities while retaining distinct original round bytes"
+  sdk.golden.execution-workday-resource-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/control-plane-operation.test.ts
+    testName: "derives exact workday read resources and rejects missing or mutation REST bindings without changing operation authority"
+  sdk.golden.execution-workday-resource-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/agent-execution-contract.test.ts
+    testName: "native public workday resource derivation rejects absent and mutating REST authority with the owning error and retains exact inputs"
   sdk.golden.execution-reconcile-plan-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

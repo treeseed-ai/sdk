@@ -37,7 +37,8 @@ export const appliedWorkdaySchema = z.object({
 	state: z.enum(['planned', 'active', 'closing', 'ended']), startsAt: z.string().datetime({ offset: true }),
 	endsAt: z.string().datetime({ offset: true }),
 	planningRounds: z.array(z.object({ round: z.number().int().positive(),
-		state: z.enum(['pending', 'active', 'complete']), assignmentIds: z.array(identifier),
+		state: z.enum(['pending', 'active', 'complete']), assignmentIds: z.array(identifier)
+			.refine(ids => new Set(ids).size === ids.length, 'Planning assignment identities must be unique.'),
 		startedAt: z.string().datetime({ offset: true }).optional(), completedAt: z.string().datetime({ offset: true }).optional() }).strict()),
 	admittedSecondsByProject: z.record(z.number().int().nonnegative()),
 	admittedSecondsByAgentClass: z.record(z.number().int().nonnegative()),

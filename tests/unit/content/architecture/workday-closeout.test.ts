@@ -24,6 +24,30 @@ function native(input: unknown, kind = 'workday') {
 }
 
 describe('canonical single workday closeout and expected maximum estimates', () => {
+	it('retains exact canonical planning rounds and rejects duplicate assignment identities instead of normalizing stored authority', () => {
+		const base = workday(), held = structuredClone(base);
+		for (const state of ['pending', 'active', 'complete']) for (const assignmentIds of [[], ['first'], ['first', 'second']]) {
+			const input = { ...base, planningRounds: [{ round: 1, state, assignmentIds }] }, before = structuredClone(input);
+			expect(appliedWorkdaySchema.parse(input)).toEqual(input); expect(input).toEqual(before);
+		}
+		const original = { round: 1, state: 'pending', assignmentIds: ['first', 'second'] };
+		const invalid: Record<string, unknown>[] = Object.keys(original).map(field => Object.fromEntries(Object.entries(original).filter(([key]) => key !== field)));
+		invalid.push(...[{ assignmentIds: ['first', 'first'] }, { assignmentIds: ['first', '', 'second'] },
+			{ assignmentIds: ['first', null] }, { assignmentIds: 'first' }, { state: 'unknown' }, { round: 0 }, { round: 0.5 }, { legacy: true }]
+			.map(patch => ({ ...original, ...patch })));
+		for (const round of invalid) { const input = { ...base, planningRounds: [round] }, before = structuredClone(input);
+			expect(appliedWorkdaySchema.safeParse(input).success).toBe(false); expect(input).toEqual(before); }
+		expect(base).toEqual(held);
+	});
+	it('native public workday parsing denies duplicate planning assignment identities while retaining distinct original round bytes', () => {
+		const base = workday(), valid = { ...base, planningRounds: [{ round: 1, state: 'active', assignmentIds: ['first', 'second'] }] };
+		const held = structuredClone(valid); expect(native(valid)).toEqual({ success: true, data: valid });
+		for (const assignmentIds of [['first', 'first'], ['first', '', 'second'], ['first', null]]) {
+			const input = { ...valid, planningRounds: [{ ...valid.planningRounds[0]!, assignmentIds }] }, before = structuredClone(input);
+			expect(native(input).success).toBe(false); expect(input).toEqual(before);
+		}
+		expect(native(valid)).toEqual({ success: true, data: valid }); expect(valid).toEqual(held);
+	});
 	it('retains one exact TreeDX closeout reference and ended-only requirement in the canonical target', () => {
 		const definition = schemaRecord(canonicalAuthority().document.$defs.Workday);
 		expect(schemaRecord(definition.properties).reportRef).toEqual({ $ref: '#/$defs/TreeDxReference' });

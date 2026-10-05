@@ -188,7 +188,7 @@ export function compileDeclarativeContextQuery(
 		: Array.isArray(query.codeScopes)
 			? [...new Set(query.codeScopes.map((entry) => typeof entry === 'string' ? entry.trim() : '').filter(Boolean))]
 			: [];
-	if (query.codeScopes !== undefined && (!Array.isArray(query.codeScopes) || codeScopes.length === 0)) {
+	if (codeScopes !== undefined && (!Array.isArray(query.codeScopes) || codeScopes.length === 0)) {
 		errors.push(`Context query "${id || '<unknown>'}" codeScopes must be a non-empty array of strings.`);
 	}
 	const targetPaths = [...new Set((query.target?.paths ?? []).map((entry) => entry.trim()).filter(Boolean))];

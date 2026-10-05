@@ -43,6 +43,18 @@ function catalog(...operations: ControlPlaneOperationDescriptor[]): ControlPlane
 }
 
 describe('control-plane operation catalog', () => {
+	it('derives exact workday read resources and rejects missing or mutation REST bindings without changing operation authority', () => {
+		const base = CONTROL_PLANE_OPERATIONS.workdays.show.descriptor, held = structuredClone(base);
+		expect(buildMcpResources([base])).toEqual([{ uriTemplate: 'treeseed://teams/{teamId}/workdays/{runId}',
+			name: base.operationId, description: base.description, mimeType: 'application/json', operationId: base.operationId, subscribable: true }]);
+		for (const patch of [{ rest: undefined }, { rest: null }, { kind: 'mutation' }, { rest: { method: 'POST', path: base.rest!.path } }]) {
+			const invalid = Object.assign({}, base, patch), before = structuredClone(invalid);
+			expect(() => buildMcpResources([invalid])).toThrow(`MCP resource operation ${base.operationId} must be a read-only GET operation.`);
+			expect(invalid).toEqual(before);
+		}
+		expect(buildMcpResources([Object.assign({}, base, { rest: undefined, surfaces: ['cli'] })])).toEqual([]);
+		expect(base).toEqual(held);
+	});
 	it('exposes usage pagination without losing exact workday filtering', () => {
 		expect(CONTROL_PLANE_OPERATIONS.capacity.usage.descriptor.pagination).toBe('cursor');
 		const capacity = TREESEED_COMMAND_TREE_V1.commands.find(node => node.segment === 'capacity');

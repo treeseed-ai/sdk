@@ -112,12 +112,13 @@ function resourcePath(restPath: string) {
 
 export function operationToMcpResource(operation: ControlPlaneOperationDescriptor): McpResourceDescriptor | null {
 	if (!operation.surfaces.includes('mcp_resource')) return null;
-	if (operation.kind !== 'read' || operation.rest.method !== 'GET') {
+	const rest = operation.rest;
+	if (operation.kind !== 'read' || !rest || rest.method !== 'GET') {
 		throw new Error(`MCP resource operation ${operation.operationId} must be a read-only GET operation.`);
 	}
-	const uriTemplate = `treeseed://${resourcePath(operation.rest.path)}` as const;
+	const uriTemplate = `treeseed://${resourcePath(rest.path)}` as const;
 	const parameters = (value: string) => [...value.matchAll(/\{([^}]+)\}/gu)].map((match) => match[1]).sort();
-	if (JSON.stringify(parameters(uriTemplate)) !== JSON.stringify(parameters(operation.rest.path))) {
+	if (JSON.stringify(parameters(uriTemplate)) !== JSON.stringify(parameters(rest.path))) {
 		throw new Error(`MCP resource ${operation.operationId} must preserve its REST path parameter names.`);
 	}
 	return {
