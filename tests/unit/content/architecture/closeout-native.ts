@@ -65,8 +65,8 @@ if (kind === 'workday-resource') {
 	process.exit(0);
 }
 const exports: Record<string, unknown> = publicContracts;
-const inventory = kind === 'lease' || kind === 'reservation' || kind === 'context-item' || kind === 'policy' || kind === 'attempt' || kind === 'graph-revision';
-const schema = kind === 'context-item' ? exports.authorizedContextItemSchema
+const inventory = kind === 'lease' || kind === 'reservation' || kind === 'context-item' || kind === 'policy' || kind === 'attempt' || kind === 'graph-revision' || kind === 'node';
+const schema = kind === 'node' ? exports.executionNodeSchema : kind === 'context-item' ? exports.authorizedContextItemSchema
 	: kind === 'policy' ? exports.workdayProfileSchema
 	: kind === 'attempt' ? exports.assignmentAttemptSchema
 	: kind === 'graph-revision' ? exports.graphRevisionSchema

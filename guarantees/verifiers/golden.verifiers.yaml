@@ -1,6 +1,26 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-node-authority-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/execution-graph.test.ts
+    testName: "bounds execution node class authority and denies duplicate or malformed exact refs while retaining distinct ordered source inputs"
+  sdk.golden.execution-node-authority-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/execution-graph.test.ts
+    testName: "native public execution node validation retains bounded class and exact distinct authority while rejecting duplicated observations"
+  sdk.golden.execution-class-identity-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture/profiles/profile-authority.test.ts
+    testName: "denies padded or overlong configured and dependency agent classes instead of silently normalizing governed identities"
+  sdk.golden.execution-class-identity-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture/profiles/profile-authority.test.ts
+    testName: "native governed YAML retains exact bounded configured class identities and refuses padded dependency selectors"
   sdk.golden.execution-decision-conditions-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

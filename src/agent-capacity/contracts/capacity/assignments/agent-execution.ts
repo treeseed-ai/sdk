@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { conditionalFields, uniqueArray } from '../../../../content/validation/schema-constraints.ts';
-import { activityProfileSchema } from '../../../validation/agent-definition-schema.ts';
+import { activityProfileSchema, agentClassSchema } from '../../../validation/agent-definition-schema.ts';
 import { AGENT_TOOL_GROUPS } from '../../../../types/agents.ts';
 
 const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u;
@@ -199,7 +199,7 @@ export const usageSettlementSchema = z.object({
 	workdayId: canonicalIdentifier,
 	teamId: canonicalIdentifier,
 	projectId: canonicalIdentifier,
-	agentClass: z.string().min(1).max(100).regex(/^[a-z][a-z0-9-]*$/u),
+	agentClass: agentClassSchema,
 	providerId: canonicalIdentifier,
 	actualSeconds: z.number().int().nonnegative(),
 	nativeUsage: z.record(z.number().finite().nonnegative()),

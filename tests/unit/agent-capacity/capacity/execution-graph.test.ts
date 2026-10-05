@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { graphRevisionSchema, validateExecutionGraph, type ExecutionEdge, type ExecutionNode } from '../../../../src/capacity/agents/agent-capacity.ts';
+import { executionNodeSchema, graphRevisionSchema, validateExecutionGraph, type ExecutionEdge, type ExecutionNode } from '../../../../src/capacity/agents/agent-capacity.ts';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +23,36 @@ function edge(fromNodeId: string, toNodeId: string): ExecutionEdge {
 }
 
 describe('living execution graph contracts', () => {
+	function nodeAuthorityInputs() {
+		const base = node('bounded-node'), second = { ...sourceRef, id: 'second-proposal' };
+		return [{ valid: true, input: base }, { valid: true, input: { ...base, agentClass: 'a'.repeat(100), authorityRefs: [sourceRef, second] } },
+			{ valid: true, input: { ...base, authorityRefs: [second, sourceRef] } },
+			...[{ agentClass: 'a'.repeat(101) }, { agentClass: ' padded' }, { agentClass: 'padded ' },
+				{ authorityRefs: [sourceRef, structuredClone(sourceRef)] },
+				{ authorityRefs: [sourceRef, Object.fromEntries(Object.entries(sourceRef).reverse())] },
+				{ authorityRefs: [sourceRef, null] }]
+				.map(patch => ({ valid: false, input: Object.assign({}, base, patch) }))];
+	}
+	it('bounds execution node class authority and denies duplicate or malformed exact refs while retaining distinct ordered source inputs', () => {
+		const entries = nodeAuthorityInputs(), held = structuredClone(entries);
+		const results = entries.map(({ valid, input }) => {
+			const parsed = executionNodeSchema.safeParse(input); if (valid) expect(parsed).toEqual({ success: true, data: input });
+			return parsed.success;
+		});
+		expect(results).toEqual(entries.map(entry => entry.valid)); expect(entries).toEqual(held);
+	});
+	it('native public execution node validation retains bounded class and exact distinct authority while rejecting duplicated observations', () => {
+		const entries = nodeAuthorityInputs(), held = structuredClone(entries);
+		const path = fileURLToPath(new URL('../../content/architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+		const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'node'], {
+			input: JSON.stringify(entries.map(entry => entry.input)), encoding: 'utf8', timeout: 15_000,
+		});
+		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+		const result: unknown = JSON.parse(child.stdout); if (!Array.isArray(result)) throw new Error('Native node observations required.');
+		expect(result).toHaveLength(entries.length);
+		for (const [index, entry] of entries.entries()) expect(result[index]).toMatchObject(entry.valid ? { success: true, data: entry.input } : { success: false });
+		expect(entries).toEqual(held); expect(readFileSync(path)).toEqual(bytes);
+	});
 	function revisionInputs() {
 		const original = { schemaVersion: 'treeseed.graph-revision/v1', teamId: 'team-1', revision: 1, ruleRevision: 1,
 			changedSourceRefs: [sourceRef], graphDigest: digest,

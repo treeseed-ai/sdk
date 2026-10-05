@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { conditionalFields, uniqueArray as unique } from './schema-constraints.ts';
-import { agentDefinitionSchema, permissionSetSchema } from '../../agent-capacity/validation/agent-definition-schema.ts';
+import { agentClassSchema as agentClass, agentDefinitionSchema, permissionSetSchema } from '../../agent-capacity/validation/agent-definition-schema.ts';
 import { PROPOSAL_TYPE_ID_PATTERN } from '../../agent-capacity/validation/proposal-type.ts';
 import {
 	BOOK_SCHEMA_VERSION,
@@ -18,7 +18,6 @@ const nonEmpty = z.string().trim().min(1);
 const strings = z.array(z.string());
 const identifier = z.string().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
 const slug = z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:[._/-][a-z0-9]+)*$/u);
-const agentClass = z.string().trim().min(1).max(100).regex(/^[a-z][a-z0-9-]*$/u);
 const identifiers = z.array(identifier);
 const date = z.coerce.date();
 const lifecycleStatus = z.enum(['live', 'in progress', 'exploratory', 'planned', 'speculative']);

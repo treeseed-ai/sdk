@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { uniqueArray } from '../../../content/validation/schema-constraints.ts';
-import { activityProfileSchema } from '../../validation/agent-definition-schema.ts';
+import { activityProfileSchema, agentClassSchema } from '../../validation/agent-definition-schema.ts';
 import { estimateSchema, exactEntityReferenceSchema } from '../capacity/assignments/agent-execution.ts';
 
 const identifier = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
@@ -28,10 +28,10 @@ export const executionNodeSchema = z.object({
 	kind: z.enum(['planning', 'estimating', 'acting', 'reviewing', 'reporting', 'communication', 'condition']),
 	pairRole: z.enum(['actor', 'reviewer']).nullable(),
 	sourceRef: exactEntityReferenceSchema,
-	authorityRefs: z.array(exactEntityReferenceSchema).optional(),
+	authorityRefs: uniqueArray(z.array(exactEntityReferenceSchema)).optional(),
 	ruleRevision: z.number().int().positive(),
 	nodeRevision: z.number().int().positive(),
-	agentClass: z.string().regex(/^[a-z][a-z0-9-]*$/u).optional(),
+	agentClass: agentClassSchema.optional(),
 	status: z.enum(['proposed', 'blocked', 'ready', 'assigned', 'running', 'completed', 'failed', 'cancelled', 'stale']),
 	estimate: estimateSchema.optional(),
 	requiredCapabilities: uniqueIds.optional(),

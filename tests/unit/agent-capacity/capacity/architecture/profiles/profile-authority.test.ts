@@ -26,6 +26,32 @@ function native(value: unknown) {
 	return JSON.parse(child.stdout);
 }
 describe('governed profile complete authority boundaries', () => {
+	function classInputs() {
+		const value = profile(), acting = value.activityProfiles.acting;
+		return [{ valid: true, input: value }, { valid: true, input: { ...value, agentClass: 'a'.repeat(100) } },
+			{ valid: true, input: { ...value, activityProfiles: { ...value.activityProfiles, acting: { ...acting, dependsOn: { agents: ['a'.repeat(100)] } } } } },
+			...[' padded', 'padded ', 'a'.repeat(101), '', 'UPPER', 'a b'].flatMap(agentClass => [
+				{ valid: false, input: { ...value, agentClass } },
+				{ valid: false, input: { ...value, activityProfiles: { ...value.activityProfiles, acting: { ...acting, dependsOn: { agents: [agentClass] } } } } },
+			])];
+	}
+	it('denies padded or overlong configured and dependency agent classes instead of silently normalizing governed identities', () => {
+		const entries = classInputs(), held = structuredClone(entries);
+		const outcomes = entries.map(entry => { const observed = validateAgentDefinitionModel(entry.input);
+			if (entry.valid) expect(observed).toMatchObject({ ok: true, data: entry.input }); return observed.ok; });
+		expect(outcomes).toEqual(entries.map(entry => entry.valid)); expect(entries).toEqual(held);
+	});
+	it('native governed YAML retains exact bounded configured class identities and refuses padded dependency selectors', () => {
+		const entries = classInputs(), held = structuredClone(entries);
+		const child = spawnSync(process.execPath, ['--import', 'tsx', fileURLToPath(new URL('./profile-boundary.ts', import.meta.url)), '--inventory'],
+			{ input: stringify(entries.map(entry => entry.input)), encoding: 'utf8' });
+		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+		const result: unknown = JSON.parse(child.stdout);
+		if (!result || typeof result !== 'object' || !('observations' in result) || !Array.isArray(result.observations)) throw new Error('Native class observations required.');
+		expect(result.observations).toHaveLength(entries.length);
+		for (const [index, entry] of entries.entries()) expect(result.observations[index]).toMatchObject(entry.valid ? { ok: true, data: entry.input } : { ok: false });
+		expect(entries).toEqual(held);
+	});
 	it('exports the same nonempty configured capability context and activity inventories enforced by the owning profile validator', () => {
 		const schema = zodToJsonSchema(describeContentFrontmatterSchema('agent'), { $refStrategy: 'none', postProcess: exportSchemaConstraints });
 		expect(schema).toMatchObject({ properties: { capabilities: { minItems: 1, uniqueItems: true },

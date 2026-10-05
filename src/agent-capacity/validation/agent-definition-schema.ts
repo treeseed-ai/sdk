@@ -3,12 +3,12 @@ import { conditionalFields, minimumProperties, uniqueArray } from '../../content
 import { AGENT_CONTENT_MODELS, AGENT_TOOL_GROUPS } from '../../types/agents.ts';
 
 const identifier = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
-const agentClass = z.string().trim().min(1).max(100).regex(/^[a-z][a-z0-9-]*$/u);
+export const agentClassSchema = z.string().min(1).max(100).regex(/^[a-z][a-z0-9-]*$/u);
 const nonEmpty = z.string().trim().min(1);
 const unique = <T extends z.ZodTypeAny>(item: T) => uniqueArray(z.array(item));
 
 const dependenciesSchema = z.object({
-	agents: unique(agentClass).optional(),
+	agents: unique(agentClassSchema).optional(),
 	events: unique(z.literal('workday-closing')).optional(),
 }).strict().refine((value) => Boolean(value.agents?.length || value.events?.length), {
 	message: 'At least one dependency selector is required.',
@@ -49,7 +49,7 @@ export const agentDefinitionSchema = conditionalFields(z.object({
 	schemaVersion: z.literal('treeseed.agent/v1'),
 	id: identifier,
 	name: nonEmpty,
-	agentClass,
+	agentClass: agentClassSchema,
 	purpose: nonEmpty,
 	responsibilities: z.array(nonEmpty).min(1),
 	capabilities: uniqueArray(z.array(identifier).min(1, 'At least one capability is required.')),

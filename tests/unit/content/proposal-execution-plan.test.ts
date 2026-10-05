@@ -29,7 +29,7 @@ function boundedWorkItemEntries() {
 	return [
 		{ data: value, valid: true },
 		{ data: input({ id: 'a'.repeat(100), agentClass: 'a'.repeat(100), requiredCapabilities: ['a'.repeat(200), 'source.read'] }), valid: true },
-		...[{ id: 'a'.repeat(101) }, { agentClass: 'a'.repeat(101) },
+		...[{ id: 'a'.repeat(101) }, { agentClass: 'a'.repeat(101) }, { agentClass: ' padded' }, { agentClass: 'padded ' },
 			...['', ' padded ', 'internal space', 'é', 'a'.repeat(201), null].map(value => ({ requiredCapabilities: ['source.read', value] })),
 			{ requiredCapabilities: ['source.read', 'source.read'] }, { contextRefs: [duplicate, Object.fromEntries(Object.entries(duplicate).reverse())] },
 			...['read', 'write'].map(field => ({ requestedPermissions: { ...item.requestedPermissions,
