@@ -35,7 +35,7 @@ describe('portable packed SDK exports and declarations', () => {
 			execFileSync('tar', ['-xzf', archive, '-C', extracted], { timeout: 15000 });
 			const install = join(root, 'installed'); mkdirSync(install);
 			execFileSync('npm', ['install', '--prefix', install, '--no-save', '--package-lock=false', '--ignore-scripts',
-				'--offline', '--no-audit', '--no-fund', archive], { encoding: 'utf8', timeout: 15000 });
+				'--cache', join(root, 'npm-cache'), '--no-audit', '--no-fund', archive], { encoding: 'utf8', timeout: 15000 });
 			const installed = join(install, 'node_modules/@treeseed/sdk');
 			const child = spawnSync(process.execPath, ['--import', resolve(candidate, 'node_modules/tsx/dist/loader.mjs'),
 				native, 'installed-note-inventory', join(install, 'package.json')], {
