@@ -8,6 +8,33 @@ import { graphChangeSetSchema, appliedWorkdaySchema, exactEntityReferenceSchema 
 afterAll(assertCanonicalAuthorityUnchanged);
 
 describe('Platform agent content schema verification', () => {
+	it('recognizes only redundant object kinds under established object authority while retaining contradictory branch and nested field assertions', () => {
+		const { document } = canonicalAuthority(), held = structuredClone(document);
+		const original = verifyAgentContentSchema(document).filter(entry => entry.message.startsWith('ExactEntityReference '));
+		expect(original).toEqual([]);
+		const changed = structuredClone(document), constraints = schemaRecord(changed.$defs.ExactEntityReference).allOf;
+		if (!Array.isArray(constraints)) throw new Error('Canonical object conditional constraints required.');
+		for (const entry of constraints) {
+			delete schemaRecord(schemaRecord(entry).if).type; delete schemaRecord(schemaRecord(entry).then).type;
+			const alternatives = schemaRecord(schemaRecord(entry).then).anyOf;
+			if (Array.isArray(alternatives)) for (const alternative of alternatives) delete schemaRecord(alternative).type;
+		}
+		const before = structuredClone(changed);
+		expect(verifyAgentContentSchema(changed).filter(entry => entry.message.startsWith('ExactEntityReference '))).toEqual([]);
+		expect(changed).toEqual(before);
+		for (const variant of ['contradictory-kind', 'nested-field-kind'] as const) {
+			const denied = structuredClone(document), definition = schemaRecord(denied.$defs.ExactEntityReference);
+			if (variant === 'contradictory-kind') {
+				if (!Array.isArray(definition.allOf)) throw new Error('Object conditional required.');
+				schemaRecord(schemaRecord(definition.allOf[0]).then).type = 'string';
+			} else schemaRecord(schemaRecord(definition.properties).model).type = 'number';
+			const bytes = structuredClone(denied);
+			expect(verifyAgentContentSchema(denied)).toContainEqual(expect.objectContaining({ code: 'agent_schema_structure_mismatch',
+				message: expect.stringContaining('ExactEntityReference nested declarative constraints differ') }));
+			expect(denied).toEqual(bytes);
+		}
+		expect(document).toEqual(held);
+	});
 	it('exports exact assignment identifier inventories and unique graph revision source authority from the same executable validators', () => {
 		const { document } = canonicalAuthority(), held = structuredClone(document);
 		const names = ['AssignmentAttempt', 'AssignmentContext', 'GraphRevision'];

@@ -28,6 +28,30 @@ function repository(document: unknown) {
 }
 
 describe('native Platform architecture-schema custody', () => {
+	it('native public repository verification binds ended workday report authority and preserves original conditional bytes through denial and retry', () => {
+		const { document } = canonicalAuthority(), root = repository(document), path = resolve(root, 'docs/agent.schema.yml');
+		const bytes = readFileSync(path, 'utf8'), commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+		const baseline = verifyPlatformRepository(root);
+		expect(baseline.diagnostics.filter(entry => entry.message.startsWith('Workday '))).toEqual([]);
+		for (const mode of ['missing-condition', 'changed-state', 'changed-required-field', 'contradictory-kind'] as const) {
+			const changed = structuredClone(document), definition = schemaRecord(changed.$defs.Workday);
+			if (!Array.isArray(definition.allOf)) throw new Error('Canonical Workday conditional required.');
+			const first = schemaRecord(definition.allOf[0]);
+			if (mode === 'missing-condition') delete definition.allOf;
+			else if (mode === 'changed-state') schemaRecord(schemaRecord(schemaRecord(first.if).properties).state).const = 'closing';
+			else if (mode === 'changed-required-field') schemaRecord(first.then).required = ['endedAt'];
+			else schemaRecord(first.then).type = 'string';
+			const supplied = stringify(changed); writeFileSync(path, supplied);
+			const denied = verifyPlatformRepository(root); expect(denied.ok).toBe(false);
+			expect(denied.diagnostics).toContainEqual(expect.objectContaining({ code: 'agent_schema_structure_mismatch',
+				message: expect.stringContaining('Workday nested declarative constraints differ') }));
+			expect(readFileSync(path, 'utf8')).toBe(supplied);
+			expect(execFileSync('git', ['show', `${commit}:docs/agent.schema.yml`], { cwd: root, encoding: 'utf8' })).toBe(bytes);
+			expect(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()).toBe(commit);
+		}
+		writeFileSync(path, bytes); expect(verifyPlatformRepository(root)).toEqual(baseline);
+		// Other full canonical defects remain denied; this is no managed closure.
+	});
 	it('native public repository verification retains canonical assignment identifiers and graph revision uniqueness through denied substitutions and exact retry', () => {
 		const { document } = canonicalAuthority(), root = repository(document), path = resolve(root, 'docs/agent.schema.yml');
 		const bytes = readFileSync(path, 'utf8'), commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();

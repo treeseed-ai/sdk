@@ -26,7 +26,7 @@ type ConditionalRequirement<Field extends string> = {
 
 /** The same owning field rules drive runtime validation and schema export. */
 export function conditionalFields<T extends z.AnyZodObject>(object: T,
-	rules: readonly ConditionalRequirement<keyof z.infer<T> & string>[]) {
+	rules: readonly ConditionalRequirement<keyof z.infer<NoInfer<T>> & string>[]): z.ZodEffects<T, z.output<T>, z.input<T>> {
 	const schema = object.superRefine((value, context) => {
 		for (const rule of rules) {
 			const selected = Object.getOwnPropertyDescriptor(value, rule.field)?.value;

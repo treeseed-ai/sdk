@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { uniqueArray } from '../../../../content/validation/schema-constraints.ts';
+import { conditionalFields, uniqueArray } from '../../../../content/validation/schema-constraints.ts';
 import { AGENT_WORK_EXECUTION_MODES, type AgentWorkExecutionMode } from '../../support/authority/execution-mode.ts';
 import { assignmentReferenceSchema } from '../assignments/agent-execution.ts';
 
@@ -31,7 +31,7 @@ export const workdayProfileSchema = z.object({
 }).strict();
 export type WorkdayProfile = z.infer<typeof workdayProfileSchema>;
 
-export const appliedWorkdaySchema = z.object({
+export const appliedWorkdaySchema = conditionalFields(z.object({
 	schemaVersion: z.literal('treeseed.workday/v1'), id: identifier, teamId: identifier,
 	executionMode: z.enum(AGENT_WORK_EXECUTION_MODES),
 	policyId: identifier, policyRevision: z.number().int().positive(), policySnapshot: workdayPolicySchema,
@@ -45,11 +45,8 @@ export const appliedWorkdaySchema = z.object({
 	activatedAt: z.string().datetime({ offset: true }).optional(), closingAt: z.string().datetime({ offset: true }).optional(),
 	endedAt: z.string().datetime({ offset: true }).optional(),
 	reportRef: assignmentReferenceSchema.options[1].optional(),
-}).strict().superRefine((workday, context) => {
-	if (workday.state === 'ended' && !workday.reportRef) context.addIssue({
-		code: z.ZodIssueCode.custom, path: ['reportRef'], message: 'An ended workday requires its exact TreeDX closeout report.',
-	});
-});
+}).strict(), [{ field: 'state', equals: 'ended', alternatives: [['reportRef']], path: ['reportRef'],
+	message: 'An ended workday requires its exact TreeDX closeout report.' }]);
 
 export interface FairReadyNode {
 	id: string;

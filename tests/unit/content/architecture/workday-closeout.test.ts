@@ -4,6 +4,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { DEFAULT_WORKDAY_POLICY, appliedWorkdaySchema, compileWorkday } from '../../../../src/agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
 import { estimateSchema } from '../../../../src/agent-capacity/contracts/capacity/assignments/agent-execution.ts';
 import { assertCanonicalAuthorityUnchanged, canonicalAuthority, schemaRecord } from './canonical-schema-fixture.ts';
+import { verifyAgentContentSchema } from '../../../../src/platform/agent-schema-verification.ts';
 
 afterAll(assertCanonicalAuthorityUnchanged);
 const report = { kind: 'treedx', projectId: 'project-test', repository: 'test-library',
@@ -53,6 +54,7 @@ describe('canonical single workday closeout and expected maximum estimates', () 
 		expect(schemaRecord(definition.properties).reportRef).toEqual({ $ref: '#/$defs/TreeDxReference' });
 		expect(definition.allOf).toContainEqual({ if: { required: ['state'], properties: { state: { const: 'ended' } } }, then: { required: ['reportRef'] } });
 		expect(definition.additionalProperties).toBe(false);
+		expect(verifyAgentContentSchema(canonicalAuthority().document).filter(entry => entry.message.startsWith('Workday '))).toEqual([]);
 	});
 	it('permits planned active and closing workdays without inventing premature report authority', () => {
 		for (const state of ['planned', 'active', 'closing']) {

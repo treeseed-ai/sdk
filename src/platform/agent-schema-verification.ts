@@ -100,7 +100,7 @@ function disjointTaggedBranches(value: unknown): value is JsonSchema[] {
 /** Compare validation assertions, not annotation text. A declaration assertion
  * absent from the executable schema is a mismatch, including constraints Zod
  * cannot represent in its generated JSON Schema. Never silently discard it. */
-function structuralSchema(value: unknown, root: JsonSchema, ancestors: ReadonlySet<string> = new Set()): unknown {
+function structuralSchema(value: unknown, root: JsonSchema, ancestors: ReadonlySet<string> = new Set(), inheritedObject = false): unknown {
 	if (typeof value === 'boolean') return value ? {} : false;
 	const references = new Set(ancestors), schema = dereference(record(value), root, references);
 	if (schema === false) return false;
@@ -110,6 +110,11 @@ function structuralSchema(value: unknown, root: JsonSchema, ancestors: ReadonlyS
 		'uniqueItems','minContains','maxContains'] as const) {
 		if (schema[key] !== undefined) normalized[key] = schema[key];
 	}
+	// Conditional and intersection/union branches see the same instance as
+	// their parent. Only an already established object kind is redundant;
+	// property/item schemas and contradictory branch kinds remain independent.
+	const objectAuthority = inheritedObject || schema.type === 'object';
+	if (inheritedObject && normalized.type === 'object') delete normalized.type;
 	if (normalized.type === 'integer' && schema.exclusiveMinimum === 0 && normalized.minimum === undefined) {
 		normalized.minimum = 1; delete normalized.exclusiveMinimum;
 	}
@@ -118,11 +123,12 @@ function structuralSchema(value: unknown, root: JsonSchema, ancestors: ReadonlyS
 	}
 	if (normalized.const !== undefined || normalized.enum !== undefined) delete normalized.type;
 	for (const key of ['items','contains','not','if','then','else','propertyNames','unevaluatedItems','unevaluatedProperties'] as const) {
-		if (schema[key] !== undefined) normalized[key] = structuralSchema(schema[key], root, references);
+		if (schema[key] !== undefined) normalized[key] = structuralSchema(schema[key], root, references,
+			objectAuthority && ['not', 'if', 'then', 'else'].includes(key));
 	}
 	for (const key of ['allOf','anyOf','oneOf','prefixItems'] as const) {
 		if (schema[key] !== undefined) normalized[key] = Array.isArray(schema[key])
-			? schema[key].map(child => structuralSchema(child, root, references)) : schema[key];
+			? schema[key].map(child => structuralSchema(child, root, references, objectAuthority && key !== 'prefixItems')) : schema[key];
 	}
 	if (normalized.anyOf === undefined && disjointTaggedBranches(normalized.oneOf)) {
 		normalized.anyOf = normalized.oneOf; delete normalized.oneOf;
