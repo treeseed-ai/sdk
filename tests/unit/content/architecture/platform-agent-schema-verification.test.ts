@@ -8,6 +8,24 @@ import { graphChangeSetSchema, appliedWorkdaySchema, exactEntityReferenceSchema 
 afterAll(assertCanonicalAuthorityUnchanged);
 
 describe('Platform agent content schema verification', () => {
+	it('exports exact assignment identifier inventories and unique graph revision source authority from the same executable validators', () => {
+		const { document } = canonicalAuthority(), held = structuredClone(document);
+		const names = ['AssignmentAttempt', 'AssignmentContext', 'GraphRevision'];
+		const diagnostics = verifyAgentContentSchema(document);
+		expect(names.map(name => ({ name, diagnostics: diagnostics.filter(entry => entry.message.startsWith(`${name} `)) })))
+			.toEqual(names.map(name => ({ name, diagnostics: [] })));
+		for (const field of ['requiredCapabilities', 'predecessorResultIds']) {
+			const changed = structuredClone(document);
+			delete schemaRecord(schemaRecord(schemaRecord(changed.$defs.AssignmentAttempt).properties)[field]).uniqueItems;
+			expect(verifyAgentContentSchema(changed)).toContainEqual(expect.objectContaining({ code: 'agent_schema_structure_mismatch',
+				message: expect.stringContaining('AssignmentAttempt nested declarative constraints differ') }));
+		}
+		const changed = structuredClone(document);
+		delete schemaRecord(schemaRecord(schemaRecord(changed.$defs.GraphRevision).properties).changedSourceRefs).uniqueItems;
+		expect(verifyAgentContentSchema(changed)).toContainEqual(expect.objectContaining({ code: 'agent_schema_structure_mismatch',
+			message: expect.stringContaining('GraphRevision nested declarative constraints differ') }));
+		expect(document).toEqual(held);
+	});
 	it('compares only provably disjoint tagged union and singleton enum semantics while retaining overlapping missing-tag and branch-bound denials', () => {
 		const { document } = canonicalAuthority(), held = structuredClone(document);
 		const names = ['AssignmentWorkspace', 'AssignmentReference', 'ReadOnlyWorkspace'];

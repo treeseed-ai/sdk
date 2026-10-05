@@ -86,7 +86,7 @@ export const graphRevisionSchema = z.object({
 	teamId: identifier,
 	revision: z.number().int().positive(),
 	ruleRevision: z.number().int().positive(),
-	changedSourceRefs: z.array(exactEntityReferenceSchema).min(1),
+	changedSourceRefs: uniqueArray(z.array(exactEntityReferenceSchema).min(1)),
 	graphDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
 	changes: graphChangeSetSchema,
 	createdAt: z.string().datetime({ offset: true }),

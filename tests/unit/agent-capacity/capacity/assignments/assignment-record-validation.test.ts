@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { validateProviderAssignment } from '../../../../../src/agent-capacity/validation/assignment-records.ts';
 import { assignmentAttemptSchema, assignmentResultSchema, exactGrantSchema } from '../../../../../src/agent-capacity/contracts/capacity/assignments/agent-execution.ts';
+import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 function assignment(overrides: Record<string, unknown> = {}) {
 	const at = '2026-07-18T00:00:00.000Z', ref = { store: 'treedx', model: 'agent', id: 'configured-builder',
@@ -34,6 +37,38 @@ function assignment(overrides: Record<string, unknown> = {}) {
 }
 
 describe('assignment record validation', () => {
+	function identifierInputs() {
+		const original = assignment().assignmentAttempt;
+		const valid = [[], ['A'], ['a'.repeat(200)], ['A._:/-z', 'a._:/-z']];
+		const invalid = [[''], [' '], [' padded '], ['a b'], ['é'], ['a'.repeat(201)], ['same', 'same'], ['valid', null], [1], null, 'id'];
+		return (['requiredCapabilities', 'predecessorResultIds'] as const).flatMap(field => [
+			...valid.map(value => ({ valid: true, input: { ...original, [field]: value } })),
+			...invalid.map(value => ({ valid: false, input: { ...original, [field]: value } })),
+			{ valid: false, input: Object.fromEntries(Object.entries(original).filter(([key]) => key !== field)) },
+		]);
+	}
+	it('requires exact bounded canonical capability and predecessor identifiers while retaining empty inventories and caller bytes', () => {
+		const inputs = identifierInputs(), held = structuredClone(inputs);
+		const observations = inputs.map(({ valid, input }) => {
+			const result = assignmentAttemptSchema.safeParse(input);
+			if (valid) expect(result).toEqual({ success: true, data: input });
+			return result.success;
+		});
+		expect(observations).toEqual(inputs.map(({ valid }) => valid)); expect(inputs).toEqual(held);
+	});
+	it('native public assignment validation preserves bounded identifiers and denies malformed capability and predecessor inventories without repair', () => {
+		const entries = identifierInputs(), input = entries.map(entry => entry.input), held = structuredClone(input);
+		const path = fileURLToPath(new URL('../../../content/architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+		const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'attempt'], {
+			input: JSON.stringify(input), encoding: 'utf8', timeout: 15_000,
+		});
+		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+		const observed: unknown = JSON.parse(child.stdout); if (!Array.isArray(observed)) throw new Error('Native assignment observations required.');
+		expect(observed).toHaveLength(entries.length);
+		for (const [index, entry] of entries.entries()) expect(observed[index]).toMatchObject(entry.valid
+			? { success: true, data: entry.input } : { success: false });
+		expect(input).toEqual(held); expect(readFileSync(path)).toEqual(bytes);
+	});
 	it('retains every canonical tool group and rejects undeclared malformed or duplicate grant tools without changing caller bytes', () => {
 		const grant = assignment().assignmentAttempt.grant;
 		const valid = ['discussion', 'source.read', 'source.write', 'verification', 'release'];

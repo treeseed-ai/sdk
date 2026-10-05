@@ -46,9 +46,11 @@ if (kind === 'workday-resource') {
 	process.exit(0);
 }
 const exports: Record<string, unknown> = publicContracts;
-const inventory = kind === 'lease' || kind === 'reservation' || kind === 'context-item' || kind === 'policy';
+const inventory = kind === 'lease' || kind === 'reservation' || kind === 'context-item' || kind === 'policy' || kind === 'attempt' || kind === 'graph-revision';
 const schema = kind === 'context-item' ? exports.authorizedContextItemSchema
 	: kind === 'policy' ? exports.workdayProfileSchema
+	: kind === 'attempt' ? exports.assignmentAttemptSchema
+	: kind === 'graph-revision' ? exports.graphRevisionSchema
 	: inventory ? exports[`${kind}Schema`] : undefined;
 if (inventory && (!(schema instanceof z.ZodType) || !Array.isArray(input))) {
 	throw new Error(`Missing public ${kind} validator or native record inventory.`);

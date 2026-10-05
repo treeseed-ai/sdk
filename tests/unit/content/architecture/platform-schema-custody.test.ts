@@ -28,6 +28,27 @@ function repository(document: unknown) {
 }
 
 describe('native Platform architecture-schema custody', () => {
+	it('native public repository verification retains canonical assignment identifiers and graph revision uniqueness through denied substitutions and exact retry', () => {
+		const { document } = canonicalAuthority(), root = repository(document), path = resolve(root, 'docs/agent.schema.yml');
+		const bytes = readFileSync(path, 'utf8'), commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+		const baseline = verifyPlatformRepository(root), names = ['AssignmentAttempt', 'AssignmentContext', 'GraphRevision'];
+		expect(names.map(name => ({ name, diagnostics: baseline.diagnostics.filter(entry => entry.message.startsWith(`${name} `)) })))
+			.toEqual(names.map(name => ({ name, diagnostics: [] })));
+		for (const [name, field] of [['AssignmentAttempt', 'requiredCapabilities'], ['AssignmentAttempt', 'predecessorResultIds'], ['GraphRevision', 'changedSourceRefs']]) {
+			if (!name || !field) throw new Error('Native inventory identity required.');
+			const changed = structuredClone(document);
+			delete schemaRecord(schemaRecord(schemaRecord(changed.$defs[name]).properties)[field]).uniqueItems;
+			const supplied = stringify(changed); writeFileSync(path, supplied);
+			const denied = verifyPlatformRepository(root); expect(denied.ok).toBe(false);
+			expect(denied.diagnostics).toContainEqual(expect.objectContaining({ code: 'agent_schema_structure_mismatch',
+				message: expect.stringContaining(`${name} nested declarative constraints differ`) }));
+			expect(readFileSync(path, 'utf8')).toBe(supplied);
+			expect(execFileSync('git', ['show', `${commit}:docs/agent.schema.yml`], { cwd: root, encoding: 'utf8' })).toBe(bytes);
+			expect(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()).toBe(commit);
+		}
+		writeFileSync(path, bytes); expect(verifyPlatformRepository(root)).toEqual(baseline);
+		// Other whole-canonical diagnostics remain fatal, not a managed PASS.
+	});
 	it('native public verification recognizes disjoint union semantics and retains overlapping or untagged denied bytes before exact committed retry', () => {
 		const { document } = canonicalAuthority(), root = repository(document), path = resolve(root, 'docs/agent.schema.yml');
 		const bytes = readFileSync(path, 'utf8'), commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();

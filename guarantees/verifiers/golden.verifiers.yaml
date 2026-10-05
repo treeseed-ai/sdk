@@ -1,6 +1,36 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-inventory-schema-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "native public repository verification retains canonical assignment identifiers and graph revision uniqueness through denied substitutions and exact retry"
+  sdk.golden.execution-identifier-inventory-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/assignments/assignment-record-validation.test.ts
+    testName: "requires exact bounded canonical capability and predecessor identifiers while retaining empty inventories and caller bytes"
+  sdk.golden.execution-identifier-inventory-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/assignments/assignment-record-validation.test.ts
+    testName: "native public assignment validation preserves bounded identifiers and denies malformed capability and predecessor inventories without repair"
+  sdk.golden.execution-revision-source-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/execution-graph.test.ts
+    testName: "retains ordered distinct changed-source references and rejects empty malformed missing and semantic duplicates without normalizing revisions"
+  sdk.golden.execution-revision-source-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/execution-graph.test.ts
+    testName: "native public graph revision validation preserves exact distinct source order and denies duplicate or incomplete change authority"
+  sdk.golden.execution-inventory-schema-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "exports exact assignment identifier inventories and unique graph revision source authority from the same executable validators"
   sdk.golden.execution-signal-cutover-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
