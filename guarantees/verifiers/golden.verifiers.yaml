@@ -1,6 +1,16 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-profile-inventory-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture/profiles/profile-authority.test.ts
+    testName: "exports the same nonempty configured capability context and activity inventories enforced by the owning profile validator"
+  sdk.golden.execution-profile-inventory-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture/profiles/profile-authority.test.ts
+    testName: "native public YAML profile validation and executable schema retain identical nonempty inventory bounds without adding runtime role configuration"
   sdk.golden.execution-content-identity-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

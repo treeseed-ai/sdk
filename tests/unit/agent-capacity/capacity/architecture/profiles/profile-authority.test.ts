@@ -3,6 +3,9 @@ import { fileURLToPath } from 'node:url';
 import { stringify } from 'yaml';
 import { describe, expect, it } from 'vitest';
 import { validateAgentDefinitionModel } from '../../../../../../src/capacity/agents/agent-capacity.ts';
+import { describeContentFrontmatterSchema } from '../../../../../../src/content/validation/index.ts';
+import { exportSchemaConstraints } from '../../../../../../src/content/validation/schema-constraints.ts';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 
 function profile() {
 	return { schemaVersion: 'treeseed.agent/v1', id: 'configured/renamed-author', name: 'Renamed Author', agentClass: 'renamed-author',
@@ -23,6 +26,35 @@ function native(value: unknown) {
 	return JSON.parse(child.stdout);
 }
 describe('governed profile complete authority boundaries', () => {
+	it('exports the same nonempty configured capability context and activity inventories enforced by the owning profile validator', () => {
+		const schema = zodToJsonSchema(describeContentFrontmatterSchema('agent'), { $refStrategy: 'none', postProcess: exportSchemaConstraints });
+		expect(schema).toMatchObject({ properties: { capabilities: { minItems: 1, uniqueItems: true },
+			context: { properties: { include: { minItems: 1, uniqueItems: true } } }, activityProfiles: { minProperties: 1 } },
+			allOf: [{ if: { properties: { agentClass: { not: { const: 'reviewer' } } }, required: ['agentClass'] },
+				then: { properties: { activityProfiles: { not: { required: ['reviewing'] } } } } }] });
+		const input = profile(), original = structuredClone(input);
+		for (const value of [{ ...input, capabilities: [] }, { ...input, context: { include: [] } },
+			{ ...input, activityProfiles: {} }, { ...input, activityProfiles: { acting: undefined } }]) {
+			const before = structuredClone(value); expect(validateAgentDefinitionModel(value).ok).toBe(false); expect(value).toEqual(before);
+		}
+		expect(validateAgentDefinitionModel(input)).toMatchObject({ ok: true, data: input }); expect(input).toEqual(original);
+	});
+	it('native public YAML profile validation and executable schema retain identical nonempty inventory bounds without adding runtime role configuration', () => {
+		const input = profile(), values = [input, { ...input, capabilities: [] }, { ...input, context: { include: [] } }, { ...input, activityProfiles: {} }];
+		values.push({ ...input, activityProfiles: { ...input.activityProfiles, reviewing: input.activityProfiles.acting } },
+			{ ...input, agentClass: 'reviewer', activityProfiles: { ...input.activityProfiles, reviewing: input.activityProfiles.acting } });
+		const before = structuredClone(values);
+		const child = spawnSync(process.execPath, ['--import', 'tsx', fileURLToPath(new URL('./profile-boundary.ts', import.meta.url)), '--inventory'],
+			{ input: stringify(values), encoding: 'utf8' });
+		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+		const observed: unknown = JSON.parse(child.stdout);
+		expect(observed).toMatchObject({ schema: { properties: { capabilities: { minItems: 1, uniqueItems: true },
+			context: { properties: { include: { minItems: 1, uniqueItems: true } } }, activityProfiles: { minProperties: 1 } },
+			allOf: [{ if: { properties: { agentClass: { not: { const: 'reviewer' } } }, required: ['agentClass'] },
+				then: { properties: { activityProfiles: { not: { required: ['reviewing'] } } } } }] },
+			observations: [{ ok: true, data: input }, { ok: false }, { ok: false }, { ok: false }, { ok: false }, { ok: true, data: values[5] }] });
+		expect(values).toEqual(before);
+	});
 	it('preserves arbitrary identities compiled handlers prompts parameters and independent chat without role dispatch', () => {
 		const original = profile(), before = structuredClone(original), changed = structuredClone(original);
 		changed.id = 'different/portable-author'; changed.name = 'Another Author'; changed.agentClass = 'portable-author';
