@@ -115,13 +115,18 @@ export function validateCapacityProviderProofPayload(
 	return result(diagnostics);
 }
 
-export function validateProviderSupplyOffer(offer: ProviderSupplyOffer, path = 'offer'): CapacityProviderContractValidation {
+export function validateProviderSupplyOffer(offer: unknown, path = 'offer'): CapacityProviderContractValidation {
 	const diagnostics: CapacityProviderContractDiagnostic[] = [];
-	if (offer.weight !== undefined && (!Number.isFinite(offer.weight) || offer.weight <= 0)) add(diagnostics, 'provider_offer_weight_invalid', `${path}.weight`, 'Offer weight must be greater than zero.');
-	if (offer.sharePercent !== undefined && (!Number.isFinite(offer.sharePercent) || offer.sharePercent <= 0 || offer.sharePercent > 100)) add(diagnostics, 'provider_offer_share_invalid', `${path}.sharePercent`, 'Offer share must be greater than zero and no more than 100.');
-	if (offer.weight !== undefined && offer.sharePercent !== undefined) add(diagnostics, 'provider_offer_distribution_ambiguous', path, 'Use either weight or sharePercent for one offer, not both.');
-	if (offer.maxConcurrentRunners !== undefined && (!Number.isInteger(offer.maxConcurrentRunners) || offer.maxConcurrentRunners < 1)) add(diagnostics, 'provider_offer_concurrency_invalid', `${path}.maxConcurrentRunners`, 'Connection concurrency must be a positive integer.');
-	if (!Array.isArray(offer.capabilities) || offer.capabilities.some((entry) => !nonEmpty(entry))) add(diagnostics, 'provider_offer_capabilities_invalid', `${path}.capabilities`, 'Offer capabilities must be non-empty strings.');
+	if (!offer || typeof offer !== 'object' || Array.isArray(offer)) {
+		add(diagnostics, 'provider_offer_invalid', path, 'A supply offer object is required.'); return result(diagnostics);
+	}
+	const weight = 'weight' in offer ? offer.weight : undefined, share = 'sharePercent' in offer ? offer.sharePercent : undefined;
+	const concurrency = 'maxConcurrentRunners' in offer ? offer.maxConcurrentRunners : undefined;
+	if (weight !== undefined && (typeof weight !== 'number' || !Number.isFinite(weight) || weight <= 0)) add(diagnostics, 'provider_offer_weight_invalid', `${path}.weight`, 'Offer weight must be greater than zero.');
+	if (share !== undefined && (typeof share !== 'number' || !Number.isFinite(share) || share <= 0 || share > 100)) add(diagnostics, 'provider_offer_share_invalid', `${path}.sharePercent`, 'Offer share must be greater than zero and no more than 100.');
+	if (weight !== undefined && share !== undefined) add(diagnostics, 'provider_offer_distribution_ambiguous', path, 'Use either weight or sharePercent for one offer, not both.');
+	if (concurrency !== undefined && (typeof concurrency !== 'number' || !Number.isInteger(concurrency) || concurrency < 1)) add(diagnostics, 'provider_offer_concurrency_invalid', `${path}.maxConcurrentRunners`, 'Connection concurrency must be a positive integer.');
+	if (!('capabilities' in offer) || !Array.isArray(offer.capabilities) || offer.capabilities.some((entry: unknown) => !nonEmpty(entry))) add(diagnostics, 'provider_offer_capabilities_invalid', `${path}.capabilities`, 'Offer capabilities must be non-empty strings.');
 	return result(diagnostics);
 }
 

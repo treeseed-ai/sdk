@@ -1,11 +1,29 @@
 import type { PlatformDiagnostic } from './schemas.ts';
 import { describeContentFrontmatterSchema } from '../content/validation/content-model-schemas.ts';
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import { z } from 'zod';
+import { assignmentAttemptSchema, assignmentContextSchema, assignmentResultSchema, usageSettlementSchema,
+	exactEntityReferenceSchema, exactGrantSchema, assignmentWorkspaceSchema, estimateSchema } from '../agent-capacity/contracts/capacity/assignments/agent-execution.ts';
+import { executionNodeSchema, executionEdgeSchema } from '../agent-capacity/validation/execution/execution-graph.ts';
+import { appliedWorkdaySchema } from '../agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
 
 const models = {
 	Book: 'book', Knowledge: 'knowledge', Objective: 'objective',
 	Discussion: 'discussion', DiscussionMessage: 'discussion_message',
+	AgentProfile: 'agent', Proposal: 'proposal', Question: 'question', Note: 'note', Decision: 'decision',
 } as const;
+
+// These are the existing executable validators, not a copy of the target
+// declaration. Unimplemented stored models remain explicitly unverified.
+const schemas: Record<string, z.ZodTypeAny> = {
+	...Object.fromEntries(Object.entries(models).map(([name, model]) => [name, describeContentFrontmatterSchema(model)])),
+	AssignmentAttempt: assignmentAttemptSchema, AssignmentContext: assignmentContextSchema,
+	AssignmentResult: assignmentResultSchema, UsageSettlement: usageSettlementSchema,
+	ExecutionNode: executionNodeSchema, ExecutionEdge: executionEdgeSchema, Workday: appliedWorkdaySchema,
+	ExactEntityReference: exactEntityReferenceSchema, ExactGrant: exactGrantSchema,
+	AssignmentWorkspace: assignmentWorkspaceSchema, Estimate: estimateSchema,
+};
+const runtimeOnly = new Set(['AssignmentContext', 'ExactEntityReference', 'ExactGrant', 'AssignmentWorkspace', 'Estimate']);
 
 type Field = { isOptional(): boolean; safeParse(value: unknown): { success: boolean } };
 type JsonSchema = Record<string, unknown>;
@@ -21,23 +39,37 @@ function dereference(schema: JsonSchema, root: JsonSchema): JsonSchema {
 		...Object.fromEntries(Object.entries(schema).filter(([key]) => key !== '$ref')) };
 }
 
-/** Normalize the declarative constraints represented directly by Zod. Cross-field
- * refinements (for example exact-reference custody and unique arrays) remain in
- * focused semantic tests because JSON Schema conditionals do not round-trip
- * through Zod's refinement API. */
+/** Compare validation assertions, not annotation text. A declaration assertion
+ * absent from the executable schema is a mismatch, including constraints Zod
+ * cannot represent in its generated JSON Schema. Never silently discard it. */
 function structuralSchema(value: unknown, root: JsonSchema): unknown {
+	if (typeof value === 'boolean') return value;
 	const schema = dereference(record(value), root);
 	const normalized: JsonSchema = {};
-	for (const key of ['type','const','enum','minLength','maxLength','pattern','format','minimum','maximum','minItems','maxItems'] as const) {
+	for (const key of ['$ref','type','const','enum','minLength','maxLength','pattern','format','minimum','maximum',
+		'exclusiveMinimum','exclusiveMaximum','multipleOf','minItems','maxItems','minProperties','maxProperties',
+		'uniqueItems','minContains','maxContains'] as const) {
 		if (schema[key] !== undefined) normalized[key] = schema[key];
 	}
-	if (normalized.type === 'integer' && schema.exclusiveMinimum === 0 && normalized.minimum === undefined) normalized.minimum = 1;
+	if (normalized.type === 'integer' && schema.exclusiveMinimum === 0 && normalized.minimum === undefined) {
+		normalized.minimum = 1; delete normalized.exclusiveMinimum;
+	}
 	if (normalized.const !== undefined || normalized.enum !== undefined) delete normalized.type;
-	if (schema.items !== undefined) normalized.items = structuralSchema(schema.items, root);
-	if (schema.properties !== undefined) normalized.properties = Object.fromEntries(
-		Object.entries(record(schema.properties)).sort(([left], [right]) => left.localeCompare(right))
-			.map(([key, child]) => [key, structuralSchema(child, root)]),
-	);
+	for (const key of ['items','contains','not','if','then','else','propertyNames','unevaluatedItems','unevaluatedProperties'] as const) {
+		if (schema[key] !== undefined) normalized[key] = structuralSchema(schema[key], root);
+	}
+	for (const key of ['allOf','anyOf','oneOf','prefixItems'] as const) {
+		if (schema[key] !== undefined) normalized[key] = Array.isArray(schema[key])
+			? schema[key].map(child => structuralSchema(child, root)) : schema[key];
+	}
+	for (const key of ['properties','patternProperties','dependentSchemas'] as const) {
+		if (schema[key] !== undefined) normalized[key] = Object.fromEntries(
+			Object.entries(record(schema[key])).sort(([left], [right]) => left.localeCompare(right))
+				.map(([name, child]) => [name, structuralSchema(child, root)]));
+	}
+	if (schema.dependentRequired !== undefined) normalized.dependentRequired = Object.fromEntries(
+		Object.entries(record(schema.dependentRequired)).sort(([left], [right]) => left.localeCompare(right))
+			.map(([key, child]) => [key, Array.isArray(child) ? [...child].sort() : child]));
 	if (Array.isArray(schema.required)) normalized.required = [...schema.required].sort();
 	if (schema.additionalProperties === false) normalized.additionalProperties = false;
 	else if (schema.additionalProperties && Object.keys(record(schema.additionalProperties)).length) {
@@ -49,46 +81,78 @@ function structuralSchema(value: unknown, root: JsonSchema): unknown {
 function structuralDifferences(expected: unknown, actual: unknown, path = ''): string[] {
 	if (JSON.stringify(expected) === JSON.stringify(actual)) return [];
 	if (!expected || !actual || typeof expected !== 'object' || typeof actual !== 'object'
-		|| Array.isArray(expected) || Array.isArray(actual)) return [path || '<root>'];
+		|| Array.isArray(expected) !== Array.isArray(actual)) return [
+		`${path || '<root>'}: declaration ${JSON.stringify(expected)}, executable ${JSON.stringify(actual)}`,
+	];
 	const left = expected as JsonSchema, right = actual as JsonSchema;
 	return [...new Set([...Object.keys(left), ...Object.keys(right)])].sort()
 		.flatMap((key) => structuralDifferences(left[key], right[key], path ? `${path}.${key}` : key));
 }
 
+// The executable side is immutable for this module lifetime. Avoid repeatedly
+// compiling it for every independently supplied declaration and mutation.
+const executableStructures = new Map(Object.entries(schemas).map(([name, schema]) => {
+	const generated = record(zodToJsonSchema(schema, { name, $refStrategy: 'none' }));
+	return [name, structuralSchema(record(record(generated.definitions)[name]), generated)] as const;
+}));
+
 /** Compare the authored architecture declaration with its executable content validators. */
 export function verifyAgentContentSchema(document: unknown, path = 'docs/agent.schema.yml'): PlatformDiagnostic[] {
 	const definitions = (document as { $defs?: Record<string, unknown> })?.$defs ?? {};
 	const diagnostics: PlatformDiagnostic[] = [];
-	for (const [definition, model] of Object.entries(models)) {
+	const union = record(document).oneOf;
+	if (!Array.isArray(union) || !union.length) diagnostics.push({ code: 'agent_schema_root_missing', path,
+		message: 'The stored-record root must declare a nonempty oneOf union; a content-model subset is not complete authority.' });
+	else {
+		const seen = new Set<string>();
+		for (const entry of union) {
+			const reference = record(entry).$ref;
+			const match = typeof reference === 'string' ? /^#\/\$defs\/([^/]+)$/u.exec(reference) : null;
+			const name = match?.[1];
+			if (!name || Object.keys(record(entry)).length !== 1) diagnostics.push({ code: 'agent_schema_root_invalid', path,
+				message: `Stored-record root reference ${String(reference)} must identify one exact local definition.` });
+			else {
+				if (seen.has(name)) diagnostics.push({ code: 'agent_schema_root_duplicate', path, message: `Stored-record root repeats ${name}.` });
+				seen.add(name);
+				if (!Object.hasOwn(definitions, name) || !Object.keys(record(definitions[name])).length) diagnostics.push({
+					code: 'agent_schema_missing', path, message: `${name} root authority is missing or unconstrained.` });
+				else if (runtimeOnly.has(name)) diagnostics.push({ code: 'agent_schema_root_invalid', path,
+					message: `${name} is a runtime/shared contract, not a stored-record root member.` });
+				else if (!Object.hasOwn(schemas, name)) diagnostics.push({ code: 'agent_schema_unverified', path,
+					message: `${name} stored-record authority has no executable schema equivalence implementation.` });
+			}
+		}
+	}
+	for (const [definition, schema] of Object.entries(schemas)) {
 		const declared = definitions[definition] as { properties?: Record<string, { const?: unknown }>; required?: string[] } | undefined;
-		const schema = describeContentFrontmatterSchema(model);
-		const shape = 'shape' in schema ? schema.shape as Record<string, Field> : {};
-		if (!declared?.properties || !Array.isArray(declared.required)) {
+		let base = schema;
+		while (base instanceof z.ZodEffects) base = base.innerType();
+		const shape: Record<string, Field> = base instanceof z.ZodObject ? base.shape : {};
+		if (!declared || typeof declared !== 'object' || (base instanceof z.ZodObject
+			&& (!declared.properties || !Array.isArray(declared.required)))) {
 			diagnostics.push({ code: 'agent_schema_missing', path, message: `${definition} must declare properties and required fields.` });
 			continue;
 		}
-		const declaredKeys = Object.keys(declared.properties).sort();
+		const declaredKeys = Object.keys(declared.properties ?? {}).sort();
 		const actualKeys = Object.keys(shape).sort();
 		const missing = actualKeys.filter((key) => !declaredKeys.includes(key));
 		const extra = declaredKeys.filter((key) => !actualKeys.includes(key));
 		if (missing.length || extra.length) diagnostics.push({ code: 'agent_schema_fields_mismatch', path,
-			message: `${definition} differs from SDK ${model} fields; missing: ${missing.join(', ') || 'none'}; extra: ${extra.join(', ') || 'none'}.` });
+			message: `${definition} differs from SDK executable fields; missing: ${missing.join(', ') || 'none'}; extra: ${extra.join(', ') || 'none'}.` });
 		const required = actualKeys.filter((key) => !shape[key]!.isOptional()).sort();
-		const declaredRequired = [...declared.required].sort();
+		const declaredRequired = [...(declared.required ?? [])].sort();
 		if (JSON.stringify(required) !== JSON.stringify(declaredRequired)) diagnostics.push({ code: 'agent_schema_required_mismatch', path,
 			message: `${definition} required fields differ; SDK: ${required.join(', ') || 'none'}; declaration: ${declaredRequired.join(', ') || 'none'}.` });
-		for (const [field, specification] of Object.entries(declared.properties)) {
+		for (const [field, specification] of Object.entries(declared.properties ?? {})) {
 			if (specification && Object.hasOwn(specification, 'const') && shape[field]
 				&& !shape[field].safeParse(specification.const).success) diagnostics.push({ code: 'agent_schema_constant_mismatch', path,
 					message: `${definition}.${field} constant is rejected by the SDK validator.` });
 		}
-		const generated = record(zodToJsonSchema(schema, { name: definition, $refStrategy: 'none' }));
-		const generatedDefinition = record(record(generated.definitions)[definition]);
 		const expectedStructure = JSON.stringify(structuralSchema(declared, document as JsonSchema));
-		const actualStructure = JSON.stringify(structuralSchema(generatedDefinition, generated));
+		const actualStructure = JSON.stringify(executableStructures.get(definition));
 		if (expectedStructure !== actualStructure) diagnostics.push({ code: 'agent_schema_structure_mismatch', path,
 			message: `${definition} nested declarative constraints differ from the SDK validator at ${
-				structuralDifferences(JSON.parse(expectedStructure), JSON.parse(actualStructure)).slice(0, 8).join(', ')}.` });
+				structuralDifferences(JSON.parse(expectedStructure), JSON.parse(actualStructure)).join('; ')}.` });
 	}
 	return diagnostics;
 }

@@ -4,6 +4,7 @@ import { ProviderProtocolClient, CapacityProviderApiError } from '../../../../..
 import { createServer } from 'node:http';
 import { CONTROL_PLANE_OPERATIONS } from '../../../../../src/operator-contracts/index.ts';
 import { sandboxEnvironmentCatalogDigest, sandboxEnvironmentCatalogSchema, sandboxEnvironmentCatalogSigningBytes, verifySandboxEnvironmentCatalog } from '../../../../../src/capacity-provider/environment-catalog.ts';
+import { validateProviderSupplyOffer } from '../../../../../src/capacity-provider/validation.ts';
 
 type LifecycleBody = NonNullable<Parameters<ProviderProtocolClient['renewAssignment']>[1]> & Record<string, unknown>;
 type EventBody = Parameters<ProviderProtocolClient['createAssignmentEvent']>[1] & Record<string, unknown>;
@@ -31,6 +32,21 @@ function retirementRequests(client: ProviderProtocolClient) {
 }
 
 describe('capacity provider membership protocol', () => {
+	it('validates missing malformed and numeric supply offers without throwing coercing or changing the original registration inputs', () => {
+		const valid = { capabilities: ['renamed.execution'], weight: 1, maxConcurrentRunners: 1 };
+		const values: unknown[] = [undefined, null, '', 'offer', false, true, 0, 1, [], {}, { capabilities: null }, { capabilities: 'renamed.execution' }];
+		for (const capabilities of [[null], [1], [''], [' '], [{}]]) values.push({ ...valid, capabilities });
+		for (const field of ['weight', 'sharePercent', 'maxConcurrentRunners']) for (const value of [null, '', '1', false, 0, -1, NaN, Infinity]) values.push({ ...valid, [field]: value });
+		const outcomes: boolean[] = [];
+		for (const value of values) { const before = structuredClone(value);
+			outcomes.push(validateProviderSupplyOffer(value).ok);
+			expect(value).toEqual(before);
+		}
+		expect(outcomes).toEqual(values.map(() => false));
+		for (const offer of [valid, { capabilities: ['renamed.execution'], sharePercent: 100, maxConcurrentRunners: 2 }]) {
+			const before = structuredClone(offer); expect(validateProviderSupplyOffer(offer)).toEqual({ ok: true, diagnostics: [] }); expect(offer).toEqual(before);
+		}
+	});
 	it('validates protected ordinary event authority before JSON serialization while preserving exact private and public requests without caller mutation', async () => {
 		const calls: string[] = [], values = protectedEventBodies();
 		const client = new ProviderProtocolClient({ controlPlaneUrl: 'https://server.test', accessToken: 'isolated-provider-input',
