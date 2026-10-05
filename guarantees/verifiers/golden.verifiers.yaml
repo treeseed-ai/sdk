@@ -1,6 +1,11 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-work-dependencies-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposal-execution-plan.test.ts
+    testName: "rejects missing and cyclic work-item dependencies"
   sdk.golden.execution-provider-constraints-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

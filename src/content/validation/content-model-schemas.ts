@@ -90,7 +90,7 @@ const executionPlanWorkItemSchema = z.object({
 	estimate: estimateSchema.optional(),
 	reviewEstimate: estimateSchema.optional(),
 	maximumReviewCycles: z.number().int().positive().optional(),
-	dependsOn: z.array(nonEmpty.regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u)),
+	dependsOn: unique(z.array(nonEmpty.regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u))),
 	requestedPermissions: z.object({
 		content: z.object({ read: z.array(z.enum(['agent','book','knowledge','objective','discussion','discussion-message','proposal','question','note','decision'])), write: z.array(z.enum(['agent','book','knowledge','objective','discussion','discussion-message','proposal','question','note','decision'])) }).strict(),
 		tools: z.array(z.enum(['discussion','source.read','source.write','verification','release'])),

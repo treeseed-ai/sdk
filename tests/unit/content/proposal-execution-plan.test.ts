@@ -84,6 +84,12 @@ describe('proposal-owned execution plan', () => {
 		const missing = proposal(); missing.executionPlan.workItems[0]!.dependsOn.push('missing'); expect(validatePortableContentData('proposal', missing).ok).toBe(false);
 		const cyclic = proposal(); cyclic.executionPlan.workItems.push({ ...structuredClone(cyclic.executionPlan.workItems[0]!), id: 'verify', dependsOn: ['implement'] }); cyclic.executionPlan.workItems[0]!.dependsOn = ['verify'];
 		expect(validatePortableContentData('proposal', cyclic).ok).toBe(false);
+		const repeated = proposal(); repeated.executionPlan.workItems.push({ ...structuredClone(repeated.executionPlan.workItems[0]!), id: 'verify', dependsOn: ['implement', 'implement'] });
+		const before = structuredClone(repeated);
+		expect(validatePortableContentData('proposal', repeated).ok).toBe(false); expect(repeated).toEqual(before);
+		repeated.executionPlan.workItems[1]!.dependsOn = ['implement'];
+		const restored = structuredClone(repeated);
+		expect(validatePortableContentData('proposal', repeated).ok).toBe(true); expect(repeated).toEqual(restored);
 	});
 	it('rejects retired work-product and dependency taxonomies', () => {
 		const value = proposal();
