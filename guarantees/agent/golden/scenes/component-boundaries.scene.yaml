@@ -627,3 +627,6 @@ workflow:
   - id: execution-schema-archive-native
     action: { verifier: sdk.golden.execution-schema-archive-native }
     expect: { status: passed }
+  - id: provider-scoped-freeze-descriptor-unit
+    action: { verifier: sdk.golden.provider-scoped-freeze-descriptor-unit }
+    expect: { status: passed }
