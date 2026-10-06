@@ -11,6 +11,18 @@ const relationship = {
 };
 
 describe('identity public contracts', () => {
+	it('returns canonical validation failures for malformed provider issuer and resource URLs without throwing native parser errors', () => {
+		for (const endpoint of ['', 'not-a-url', 'https://', 'http://identity.example', 'https://user:secret@identity.example',
+			'https://identity.example?query=value', 'https://identity.example#fragment', null, undefined, 1, {}, []]) {
+			expect(identityEndpointSchema.safeParse(endpoint).success).toBe(false);
+			expect(externalIdentitySchema.safeParse({ issuer: endpoint, subject: 'provider-1' }).success).toBe(false);
+			expect(resourceTokenRequestSchema.safeParse({ resource: endpoint, scopes: ['provider:read'] }).success).toBe(false);
+			expect(identityPrincipalSchema.safeParse({ principalId: 'provider-1', kind: 'provider',
+				identity: { issuer: endpoint, subject: 'provider-1' }, audience: endpoint, scopes: ['provider:read'] }).success).toBe(false);
+		}
+		for (const endpoint of [issuer, 'https://identity.example:8443/realms/local'])
+			expect(identityEndpointSchema.parse(endpoint)).toBe(endpoint);
+	});
 	it('keeps exact issuer/subject identity and does not accept email-based linking', () => {
 		expect(externalIdentitySchema.parse(identity)).toEqual(identity);
 		expect(externalIdentitySchema.safeParse({ email: 'person@example.org' }).success).toBe(false);
