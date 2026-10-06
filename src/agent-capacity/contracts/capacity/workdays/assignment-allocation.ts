@@ -1,5 +1,6 @@
 /** Pure allocation arithmetic. Admission must reserve the returned amount atomically. */
 import { workdayPhase, type AppliedWorkday } from './workday-allocation.ts';
+import { z } from 'zod';
 
 export interface AllocationShare {
 	id: string;
@@ -93,13 +94,19 @@ export function calibrateAssignmentSeconds(estimate: { expectedSeconds: number; 
 	measurements: AllocationMeasurement[]) {
 	if (!Number.isFinite(estimate.expectedSeconds) || estimate.expectedSeconds <= 0
 		|| !Number.isFinite(estimate.maximumSeconds) || estimate.maximumSeconds < estimate.expectedSeconds) throw new Error('allocation_estimate_invalid');
-	const eligible = measurements.filter((entry) => entry.outcome === 'completed' || entry.outcome === 'expired')
-		.sort((a, b) => Date.parse(a.completedAt) - Date.parse(b.completedAt) || a.id.localeCompare(b.id)).slice(-20);
+	const eligibleHistory = measurements.filter((entry) => entry.outcome === 'completed' || entry.outcome === 'expired');
+	const ids = new Set<string>();
+	for (const entry of eligibleHistory) {
+		if (typeof entry.id !== 'string' || !entry.id || entry.id !== entry.id.trim() || ids.has(entry.id)
+			|| !z.string().datetime({ offset: true }).safeParse(entry.completedAt).success
+			|| !Number.isFinite(entry.expectedSeconds) || entry.expectedSeconds <= 0
+			|| !Number.isFinite(entry.allocatedSeconds) || entry.allocatedSeconds <= 0) throw new Error('allocation_measurement_invalid');
+		ids.add(entry.id); nonnegative(entry.activeSeconds);
+	}
+	const eligible = eligibleHistory.sort((a, b) => Date.parse(a.completedAt) - Date.parse(b.completedAt)
+		|| a.id.localeCompare(b.id)).slice(-20);
 	let multiplier = estimate.maximumSeconds / estimate.expectedSeconds;
 	for (const entry of eligible) {
-		if (!Number.isFinite(Date.parse(entry.completedAt)) || !Number.isFinite(entry.expectedSeconds) || entry.expectedSeconds <= 0
-			|| !Number.isFinite(entry.allocatedSeconds) || entry.allocatedSeconds <= 0) throw new Error('allocation_measurement_invalid');
-		nonnegative(entry.activeSeconds);
 		const ratio = entry.activeSeconds / entry.expectedSeconds;
 		// Task-size normalization does not make a tiny content review equivalent
 		// to a full release replay. Distant estimates give weaker evidence for

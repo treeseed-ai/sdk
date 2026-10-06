@@ -1,4 +1,5 @@
 import type { ControlPlaneClient, ControlPlaneOperationCallOptions } from '../entrypoints/clients/control-plane-client.ts';
+import type { ControlPlaneOperationBinding } from '../operator-contracts/control-plane-operation.ts';
 import { treeAiControlPlaneOperation } from './catalog.ts';
 import { TREEAI_UPSTREAM_OPERATIONS } from './generated/upstream.ts';
 
@@ -23,7 +24,9 @@ export class TreeSeedTreeAiClient {
 		const operation = TREEAI_UPSTREAM_OPERATIONS.find((item) => item.operationId === operationId);
 		if (!operation) throw new Error(`Unknown TreeAI operation ${operationId}.`);
 		if (this.controlPlane) {
-			const binding = treeAiControlPlaneOperation(operationId);
+			// This generic facade accepts untrusted JSON; the same authoritative
+			// binding is still parsed exactly once by ControlPlaneClient.invoke.
+			const binding: ControlPlaneOperationBinding<unknown, unknown, unknown, Record<string, unknown>> = treeAiControlPlaneOperation(operationId);
 			return this.controlPlane.invoke(binding, { path: { nodeId: this.nodeId!, ...(input.path ?? {}) }, query: input.query ?? {}, body: operation.kind === 'read' ? undefined : input.body ?? {} }, options);
 		}
 		if (!this.direct) throw new Error('TreeAI transport is not configured.');

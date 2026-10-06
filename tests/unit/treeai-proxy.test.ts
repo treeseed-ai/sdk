@@ -15,16 +15,16 @@ describe('TreeAI SDK adoption', () => {
 
 	it('binds every operation to a node-scoped route and its exact upstream digest', () => {
 		for (const operation of TREEAI_CONTROL_PLANE_OPERATION_LIST) {
-			expect(operation.descriptor.rest.path).toMatch(/^\/v1\/ai\/nodes\/\{nodeId\}\/(inference|training|lab)\//u);
+			expect(operation.descriptor.rest?.path).toMatch(/^\/v1\/ai\/nodes\/\{nodeId\}\/(inference|training|lab)\//u);
 			expect(operation.descriptor.upstream).toMatchObject({ service: 'treeai', contractVersion: '3.1.1' });
 		}
 	});
 
 	it('supports the generic direct transport without TreeSeed implementation coupling', async () => {
-		const request = vi.fn(async () => new Response(JSON.stringify({ mode: 'awake' }), { status: 200, headers: { 'content-type': 'application/json' } }));
+		const request = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ mode: 'awake' }), { status: 200, headers: { 'content-type': 'application/json' } }));
 		const client = TreeSeedTreeAiClient.direct({ endpoints: { inference: 'https://inference.test', training: 'https://training.test', lab: 'https://lab.test' }, token: 'secret', fetch: request });
 		await expect(client.invoke('lab.get.status')).resolves.toEqual({ mode: 'awake' });
-		expect(request.mock.calls[0]?.[0].toString()).toBe('https://lab.test/v1/status');
+		expect(request.mock.calls[0]?.[0]?.toString()).toBe('https://lab.test/v1/status');
 		expect((request.mock.calls[0]?.[1]?.headers as Headers).get('authorization')).toBe('Bearer secret');
 	});
 

@@ -8,7 +8,7 @@ export function normalizeMcpCatalog(
 	operations: readonly ControlPlaneOperationDescriptor[],
 	schemas: Readonly<Record<string, unknown>>,
 ): McpContractModel {
-	const operationById = new Map(operations.map((operation) => [operation.operationId, operation]));
+	const operationById = new Map<string, ControlPlaneOperationDescriptor>(operations.map((operation) => [operation.operationId, operation]));
 	return {
 		schemaVersion: 1,
 		protocolVersion: catalog.protocolVersion,

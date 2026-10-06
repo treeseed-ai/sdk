@@ -1,4 +1,5 @@
 import { validateResearchSourcePolicy } from '../agent-capacity/validation/research/source-policy.ts';
+import { capabilityAccountingLimitsSchema } from '../agent-capacity/contracts/capacity/workdays/capability-accounting.ts';
 import {
 CAPACITY_PROVIDER_ACCESS_TOKEN_REFRESH_SECONDS,
 CAPACITY_PROVIDER_ACCESS_TOKEN_TTL_SECONDS,
@@ -7,8 +8,10 @@ type CapacityProviderManifestV5,
 type CapacityProviderProofPayload,
 type CapacityProviderPublicJwk,
 type ProviderSupplyOffer,
-} from './contracts/index.ts';
+} from './contracts/governance.ts';
 import { validateExecutionProviderRuntimeConfiguration } from '../ai-appliance/validation.ts';
+import { CORE_CAPABILITY_DEFINITIONS } from './core-capability-catalog.ts';
+import { capabilityOfferSchema, capabilityOfferDigest, type CapabilityDefinition } from './capability-ontology.ts';
 
 export interface CapacityProviderContractDiagnostic {
 	code: string;
@@ -31,6 +34,48 @@ export function add(diagnostics: CapacityProviderContractDiagnostic[], code: str
 
 export function nonEmpty(value: unknown): value is string {
 	return typeof value === 'string' && value.trim().length > 0;
+}
+
+/** Qualification semantics shared by advertisement and admission. Signature
+ * verification still belongs to the registered-identity publication boundary. */
+export function validateCapabilityOfferQualification(value: unknown,
+	options: { now?: Date; providerId?: string; definitions?: readonly CapabilityDefinition[] } = {}): CapacityProviderContractValidation {
+	const diagnostics: CapacityProviderContractDiagnostic[] = [], parsed = capabilityOfferSchema.safeParse(value);
+	if (!parsed.success) {
+		add(diagnostics, 'provider_offer_invalid', 'offer', 'A complete canonical capability offer is required.');
+		return result(diagnostics);
+	}
+	const offer = parsed.data, { offerDigest, ...material } = offer;
+	if (capabilityOfferDigest(material) !== offerDigest) add(diagnostics, 'provider_offer_digest_mismatch', 'offer.offerDigest', 'Offer digest does not bind its exact material.');
+	const now = (options.now ?? new Date()).getTime(), definitions = options.definitions ?? CORE_CAPABILITY_DEFINITIONS;
+	const tiers = ['signed-attestation', 'automated-suite', 'reviewed-certification'], keys = new Set<string>();
+	const matches = (left: typeof offer.capabilities[number], right: typeof offer.capabilities[number]) =>
+		left.id === right.id && left.version === right.version && left.digest === right.digest;
+	for (const reference of offer.capabilities) {
+		const key = `${reference.id}@${reference.version}`, receipts = offer.conformance.filter(receipt => matches(receipt.capability, reference));
+		const definition = definitions.find(entry => entry.id === reference.id && entry.version === reference.version);
+		if (keys.has(key) || !Number.isFinite(now) || receipts.length !== 1
+			|| (definition && (definition.status === 'revoked' || definition.digest !== reference.digest))
+			|| (!definition && (options.definitions !== undefined || reference.id.startsWith('treeseed.')))) {
+			add(diagnostics, 'provider_offer_conformance_invalid', 'offer.conformance', 'Qualification requires unique exact current capability authority.');
+		}
+		keys.add(key);
+		for (const receipt of receipts) {
+			if (receipt.status !== 'passed' || (options.providerId !== undefined && receipt.providerId !== options.providerId)
+				|| (receipt.tier !== 'signed-attestation' && receipt.suite === null)
+				|| Date.parse(receipt.issuedAt) > now || (receipt.expiresAt !== null
+					&& (Date.parse(receipt.expiresAt) <= now || Date.parse(receipt.expiresAt) <= Date.parse(receipt.issuedAt)))) {
+				add(diagnostics, 'provider_offer_conformance_invalid', 'offer.conformance', 'Qualification must be passed, current and bind its provider and suite.');
+			}
+			if (definition && tiers.indexOf(receipt.tier) < tiers.indexOf(definition.qualificationTier)) {
+				add(diagnostics, 'provider_offer_qualification_insufficient', 'offer.conformance', 'Qualification is below the declared capability tier.');
+			}
+		}
+	}
+	if (offer.conformance.some(receipt => !offer.capabilities.some(reference => matches(receipt.capability, reference)))) {
+		add(diagnostics, 'provider_offer_conformance_invalid', 'offer.conformance', 'Orphan qualification receipts cannot be advertised.');
+	}
+	return result(diagnostics);
 }
 
 export function validateCapacityProviderPublicJwk(jwk: CapacityProviderPublicJwk): CapacityProviderContractValidation {
@@ -70,13 +115,18 @@ export function validateCapacityProviderProofPayload(
 	return result(diagnostics);
 }
 
-export function validateProviderSupplyOffer(offer: ProviderSupplyOffer, path = 'offer'): CapacityProviderContractValidation {
+export function validateProviderSupplyOffer(offer: unknown, path = 'offer'): CapacityProviderContractValidation {
 	const diagnostics: CapacityProviderContractDiagnostic[] = [];
-	if (offer.weight !== undefined && (!Number.isFinite(offer.weight) || offer.weight <= 0)) add(diagnostics, 'provider_offer_weight_invalid', `${path}.weight`, 'Offer weight must be greater than zero.');
-	if (offer.sharePercent !== undefined && (!Number.isFinite(offer.sharePercent) || offer.sharePercent <= 0 || offer.sharePercent > 100)) add(diagnostics, 'provider_offer_share_invalid', `${path}.sharePercent`, 'Offer share must be greater than zero and no more than 100.');
-	if (offer.weight !== undefined && offer.sharePercent !== undefined) add(diagnostics, 'provider_offer_distribution_ambiguous', path, 'Use either weight or sharePercent for one offer, not both.');
-	if (offer.maxConcurrentRunners !== undefined && (!Number.isInteger(offer.maxConcurrentRunners) || offer.maxConcurrentRunners < 1)) add(diagnostics, 'provider_offer_concurrency_invalid', `${path}.maxConcurrentRunners`, 'Connection concurrency must be a positive integer.');
-	if (!Array.isArray(offer.capabilities) || offer.capabilities.some((entry) => !nonEmpty(entry))) add(diagnostics, 'provider_offer_capabilities_invalid', `${path}.capabilities`, 'Offer capabilities must be non-empty strings.');
+	if (!offer || typeof offer !== 'object' || Array.isArray(offer)) {
+		add(diagnostics, 'provider_offer_invalid', path, 'A supply offer object is required.'); return result(diagnostics);
+	}
+	const weight = 'weight' in offer ? offer.weight : undefined, share = 'sharePercent' in offer ? offer.sharePercent : undefined;
+	const concurrency = 'maxConcurrentRunners' in offer ? offer.maxConcurrentRunners : undefined;
+	if (weight !== undefined && (typeof weight !== 'number' || !Number.isFinite(weight) || weight <= 0)) add(diagnostics, 'provider_offer_weight_invalid', `${path}.weight`, 'Offer weight must be greater than zero.');
+	if (share !== undefined && (typeof share !== 'number' || !Number.isFinite(share) || share <= 0 || share > 100)) add(diagnostics, 'provider_offer_share_invalid', `${path}.sharePercent`, 'Offer share must be greater than zero and no more than 100.');
+	if (weight !== undefined && share !== undefined) add(diagnostics, 'provider_offer_distribution_ambiguous', path, 'Use either weight or sharePercent for one offer, not both.');
+	if (concurrency !== undefined && (typeof concurrency !== 'number' || !Number.isInteger(concurrency) || concurrency < 1)) add(diagnostics, 'provider_offer_concurrency_invalid', `${path}.maxConcurrentRunners`, 'Connection concurrency must be a positive integer.');
+	if (!('capabilities' in offer) || !Array.isArray(offer.capabilities) || offer.capabilities.some((entry: unknown) => !nonEmpty(entry))) add(diagnostics, 'provider_offer_capabilities_invalid', `${path}.capabilities`, 'Offer capabilities must be non-empty strings.');
 	return result(diagnostics);
 }
 
@@ -149,7 +199,9 @@ export function validateCapacityProviderManifestV5(manifest: CapacityProviderMan
 		if (!Array.isArray(adapter.laneIds) || adapter.laneIds.length === 0) add(diagnostics, 'provider_adapter_lanes_required', `${path}.laneIds`, 'Every adapter must serve at least one lane.');
 		for (const laneId of adapter.laneIds ?? []) if (!laneIds.has(laneId)) add(diagnostics, 'provider_adapter_lane_unknown', `${path}.laneIds`, `Adapter references unknown lane ${laneId}.`);
 		for (const bindingId of adapter.credentialProfiles ?? []) if (!bindingIds.has(bindingId)) add(diagnostics, 'provider_adapter_credential_unknown', `${path}.credentialProfiles`, `Adapter references unknown credential profile ${bindingId}.`);
-		if (!adapter.nativeLimits || typeof adapter.nativeLimits !== 'object' || Array.isArray(adapter.nativeLimits)) add(diagnostics, 'provider_adapter_limits_invalid', `${path}.nativeLimits`, 'Adapter nativeLimits must be an object.');
+		if (!adapter.nativeLimits || typeof adapter.nativeLimits !== 'object' || Array.isArray(adapter.nativeLimits)
+			|| ((adapter.offers?.length || ['modelConfigurationId', 'dailyActiveSecondsLimit', 'capabilityLimits'].some(key => Object.hasOwn(adapter.nativeLimits, key)))
+				&& !capabilityAccountingLimitsSchema.safeParse(adapter.nativeLimits).success)) add(diagnostics, 'provider_adapter_limits_invalid', `${path}.nativeLimits`, 'Adapter nativeLimits must contain valid shared-model and capability accounting bounds.');
 		for (const entry of validateExecutionProviderRuntimeConfiguration(adapter, path).diagnostics) add(diagnostics, entry.code, entry.path, entry.message);
 		if (adapter.researchSourcePolicy !== undefined) for (const diagnostic of validateResearchSourcePolicy(adapter.researchSourcePolicy).diagnostics) add(diagnostics, diagnostic.code, `${path}.researchSourcePolicy.${diagnostic.path}`, diagnostic.message);
 	}
@@ -209,6 +261,9 @@ export function validateCapacityProviderManifestV5(manifest: CapacityProviderMan
 			if (!profiles.has(binding.sandboxProfileId)) add(diagnostics, 'provider_offer_sandbox_unknown', `${path}.sandboxProfileId`, 'Offer references an unknown provider-local sandbox profile.');
 			if (binding.offer.capabilities.some((reference) => !reference.id.startsWith('treeseed.') && !reference.id.startsWith('provider.'))) add(diagnostics, 'provider_offer_capability_namespace_invalid', `${path}.offer.capabilities`, 'Offers require standardized TreeSeed or provider capability references.');
 			if (binding.offer.conformance.some((entry) => entry.status !== 'passed')) add(diagnostics, 'provider_offer_conformance_failed', `${path}.offer.conformance`, 'Only passing capability conformance may be advertised.');
+			if (!validateCapabilityOfferQualification(binding.offer).ok) {
+				add(diagnostics, 'provider_offer_conformance_invalid', `${path}.offer.conformance`, 'Capability qualification must be unique, current, and satisfy its declared tier and suite.');
+			}
 		}
 	}
 	return result(diagnostics);

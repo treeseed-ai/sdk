@@ -159,6 +159,7 @@ export interface ProviderAssignment {
 	parentWorkdayId?: string | null;
 	parentAssignmentId?: string | null;
 	handoffRootId?: string | null;
+	operationHandoffId?: string | null;
 	handoffParentId?: string | null;
 	handoffDepth?: number;
 	sourceMessageRefs?: string[];

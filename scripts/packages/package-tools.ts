@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { existsSync } from 'node:fs';
 import { dirname, extname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn, spawnSync, type SpawnOptions, type SpawnSyncOptions } from 'node:child_process';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -16,7 +16,7 @@ export const packageScriptRoot = packageCandidate.endsWith('/dist')
 	? resolve(packageCandidate, 'scripts')
 	: resolve(packageRoot, 'scripts');
 
-function resolvePackageBinary(packageName, binName = packageName) {
+function resolvePackageBinary(packageName: string, binName = packageName) {
 	const packageJsonPath = require.resolve(`${packageName}/package.json`);
 	const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
 	const binField = packageJson.bin;
@@ -40,7 +40,7 @@ export function resolveWranglerBin() {
 	return resolvePackageBinary('wrangler', 'wrangler');
 }
 
-export function createProductionBuildEnv(extraEnv = {}) {
+export function createProductionBuildEnv(extraEnv: NodeJS.ProcessEnv = {}) {
 	return {
 		LOCAL_DEV_MODE: 'cloudflare',
 		FORMS_LOCAL_BYPASS_CLOUDFLARE_GUARDS: '',
@@ -49,7 +49,7 @@ export function createProductionBuildEnv(extraEnv = {}) {
 	};
 }
 
-export function packageScriptPath(scriptName) {
+export function packageScriptPath(scriptName: string) {
 	if (extname(scriptName)) {
 		return resolve(packageScriptRoot, scriptName);
 	}
@@ -64,7 +64,7 @@ export function packageScriptPath(scriptName) {
 	throw new Error(`Unable to resolve package script "${scriptName}".`);
 }
 
-export function runNodeBinary(binPath, args, options = {}) {
+export function runNodeBinary(binPath: string, args: string[], options: SpawnSyncOptions = {}) {
 	const result = spawnSync(process.execPath, [binPath, ...args], {
 		stdio: options.stdio ?? 'inherit',
 		cwd: options.cwd ?? process.cwd(),
@@ -76,7 +76,7 @@ export function runNodeBinary(binPath, args, options = {}) {
 	}
 }
 
-export function runNodeScript(scriptPath, args = [], options = {}) {
+export function runNodeScript(scriptPath: string, args: string[] = [], options: SpawnSyncOptions = {}) {
 	if (scriptPath.endsWith('.ts')) {
 		const result = spawnSync('tsx', [scriptPath, ...args], {
 			stdio: options.stdio ?? 'inherit',
@@ -91,7 +91,7 @@ export function runNodeScript(scriptPath, args = [], options = {}) {
 	return runNodeBinary(scriptPath, args, options);
 }
 
-export function spawnNodeBinary(binPath, args, options = {}) {
+export function spawnNodeBinary(binPath: string, args: string[], options: SpawnOptions = {}) {
 	return spawn(process.execPath, [binPath, ...args], {
 		stdio: options.stdio ?? 'inherit',
 		cwd: options.cwd ?? process.cwd(),

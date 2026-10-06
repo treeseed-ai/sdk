@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { standardsSha256 } from '../../src/standards/index.ts';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { assertPackageExportTargets } from './acceptance/package-exports.ts';
+import { assertPackageCandidateOutputs, assertPackageExportTargets } from './acceptance/package-exports.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 const required = [
@@ -40,6 +40,9 @@ for (const forbidden of ['./treedx/auth', './treedx/transport', './treedx/openap
 const exists = (target: string) => archiveFiles ? archiveFiles.has(`package/${target.replace(/^\.\//u, '')}`) : existsSync(resolve(root, target));
 const exportTargets = assertPackageExportTargets(packageJson.exports, exists);
 if (archive) {
+	assertPackageCandidateOutputs(packageJson.exports, localManifest.exports,
+		target => execFileSync('tar', ['-xOzf', archive, `package/${target.slice(2)}`], { timeout: 30000 }),
+		target => readFileSync(resolve(root, target)));
 	for (const [specifier, entry] of Object.entries(packageJson.exports)) {
 		const types = entry && typeof entry === 'object' ? (entry as { types?: unknown }).types : null;
 		if (typeof types !== 'string' || !types.endsWith('.d.ts'))

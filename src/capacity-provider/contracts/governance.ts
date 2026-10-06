@@ -306,6 +306,8 @@ export interface ProviderLaneSnapshot {
 export interface ProviderExecutionAdapterSnapshot {
 	id: string;
 	adapter: string;
+	runtimeBuild: string;
+	offers: CapabilityOffer[];
 	isolation: 'microvm' | 'process' | 'worker';
 	status: 'available' | 'degraded' | 'unavailable';
 	capabilities: string[];

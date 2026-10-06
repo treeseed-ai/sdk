@@ -67,6 +67,8 @@ export type CapacityLedgerPhase =
 	| 'overrun_hold';
 
 export interface CapacityLedgerEntry {
+	/** Original canonical record persisted by the owning settlement transaction. */
+	usageSettlement?: import('../capacity/assignments/agent-execution.ts').UsageSettlement;
 	id: string;
 	settlementKey: string;
 	membershipId: string;

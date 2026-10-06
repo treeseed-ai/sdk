@@ -1,4 +1,6 @@
 import type { ProviderAssignment } from '../contracts/capacity/assignments/assignment-records.ts';
+import { assignmentAttemptSchema, assignmentResultSchema } from '../contracts/capacity/assignments/agent-execution.ts';
+import { isDeepStrictEqual } from 'node:util';
 
 export interface AssignmentRecordDiagnostic {
 	code: string;
@@ -64,6 +66,39 @@ export function validateProviderAssignment(value: unknown) {
 	validateCapacityEnvelope(assignment.capacityEnvelope, 'capacityEnvelope', diagnostics);
 	if (!timestamp(assignment.createdAt)) push(diagnostics, 'provider_assignment_timestamp_invalid', 'createdAt', 'createdAt must be an ISO timestamp.');
 	if (!timestamp(assignment.updatedAt)) push(diagnostics, 'provider_assignment_timestamp_invalid', 'updatedAt', 'updatedAt must be an ISO timestamp.');
+	const parsed = assignmentAttemptSchema.safeParse(assignment.assignmentAttempt);
+	if (!parsed.success || !isDeepStrictEqual(parsed.data, assignment.assignmentAttempt)) {
+		push(diagnostics, 'provider_assignment_contract_invalid', 'assignmentAttempt', 'A complete unchanged canonical attempt is required.');
+	} else {
+		const attempt = parsed.data, envelope = record(assignment.capacityEnvelope);
+		const expected = { id: attempt.id, teamId: attempt.teamId, projectId: attempt.projectId, workDayId: attempt.workdayId,
+			capacityProviderId: attempt.provider.providerId, executionProviderId: attempt.provider.executionProviderId,
+			reservationId: attempt.reservationId, executionNodeId: attempt.nodeId, executionNodeRevision: attempt.nodeRevision,
+			graphRevision: attempt.graphRevision, attemptCount: attempt.attempt, createdAt: attempt.createdAt };
+		for (const [field, value] of Object.entries(expected)) if (assignment[field] !== value) {
+			push(diagnostics, 'provider_assignment_contract_invalid', field, 'Operational identity contradicts its immutable canonical attempt.');
+		}
+		// A project-agent-class row ID is opaque, not the agent-class slug. Its
+		// original admitted envelope carries that row ID; native API authority
+		// separately resolves the row to the governed class and profile.
+		for (const field of ['teamId', 'projectId', 'workDayId', 'mode', 'projectAgentClassId',
+			'capacityProviderId', 'executionProviderId', 'reservationId']) if (envelope[field] !== assignment[field]) {
+			push(diagnostics, 'provider_assignment_contract_invalid', `capacityEnvelope.${field}`, 'The admitted capacity envelope contradicts its owning record.');
+		}
+		const suppliedResult = assignment.assignmentResult;
+		if (assignment.status === 'completed' || suppliedResult !== undefined && suppliedResult !== null) {
+			const result = assignmentResultSchema.safeParse(suppliedResult);
+			if (!result.success || !isDeepStrictEqual(result.data, suppliedResult) || result.data.assignmentId !== attempt.id
+				|| (assignment.status === 'completed' ? result.data.status !== 'completed'
+					: ['failed', 'returned', 'expired', 'cancelled'].includes(String(assignment.status)) && result.data.status === 'completed')
+				|| Date.parse(result.data.completedAt) < Date.parse(attempt.startedAt ?? attempt.createdAt)
+				|| Date.parse(result.data.completedAt) > Date.parse(attempt.finishedAt ?? attempt.deadline)
+				|| Date.parse(result.data.completedAt) > Date.parse(attempt.deadline)
+				|| (timestamp(assignment.completedAt) && Date.parse(result.data.completedAt) > Date.parse(String(assignment.completedAt)))) {
+				push(diagnostics, 'provider_assignment_contract_invalid', 'assignmentResult', 'The canonical result must belong to this attempt and its original interval and disposition.');
+			}
+		}
+	}
 	return { ok: diagnostics.length === 0, diagnostics };
 }
 

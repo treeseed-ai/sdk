@@ -1,0 +1,169 @@
+import { afterAll, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { parse } from 'yaml';
+import { verifyAgentContentSchema } from '../../../../src/platform/agent-schema-verification.ts';
+import { assertCanonicalAuthorityUnchanged, canonicalAuthority, constraintPaths,
+	removeConstraint, schemaRecord, storedDefinitions, type CanonicalSchema } from './canonical-schema-fixture.ts';
+
+afterAll(assertCanonicalAuthorityUnchanged);
+const verify = (document: CanonicalSchema) => verifyAgentContentSchema(document);
+const baselines = new WeakMap<CanonicalSchema, ReturnType<typeof verify>>();
+function baseline(document: CanonicalSchema) {
+	let result = baselines.get(document);
+	if (!result) { result = verify(document); baselines.set(document, result); }
+	return result;
+}
+function mutationDetected(document: CanonicalSchema, change: (copy: CanonicalSchema) => void) {
+	const copy = structuredClone(document);
+	change(copy);
+	const before = JSON.stringify(copy);
+	const diagnostics = verify(copy);
+	if (JSON.stringify(copy) !== before) throw new Error('Schema verification changed the supplied mutation bytes.');
+	return diagnostics.length > 0 && JSON.stringify(diagnostics) !== JSON.stringify(baseline(document));
+}
+
+// JSON Schema evaluates these applicators on the SAME instance. A nested
+// property/item starts new instance authority. Derive redundancy from the
+// authored declaration, never from the verifier's observed acceptance.
+function equivalentRemoval(definition: unknown, path: string[]) {
+	let value = definition, inheritedObject = false;
+	for (let index = 0; index < path.length - 1; index++) {
+		const key = path[index]!;
+		if (key === 'properties' || key === 'patternProperties') {
+			value = schemaRecord(schemaRecord(value)[key])[path[++index]!]; inheritedObject = false;
+		} else if (key === 'items' || key === 'contains' || key === 'additionalProperties') {
+			value = schemaRecord(value)[key]; inheritedObject = false;
+		} else {
+			if (!Array.isArray(value) && schemaRecord(value).type === 'object') inheritedObject = true;
+			value = Array.isArray(value) ? value[Number(key)] : schemaRecord(value)[key];
+		}
+	}
+	const field = path.at(-1)!;
+	const current = schemaRecord(value);
+	const types = Array.isArray(current.type) ? current.type : [current.type];
+	const enumerated = Array.isArray(current.enum) ? current.enum : Object.hasOwn(current, 'const') ? [current.const] : [];
+	const enumImpliesType = enumerated.length > 0 && enumerated.every(entry => types.includes(entry === null ? 'null'
+		: Array.isArray(entry) ? 'array' : typeof entry === 'number' && Number.isInteger(entry) && types.includes('integer') ? 'integer' : typeof entry));
+	return field === 'type' && inheritedObject && schemaRecord(value).type === 'object'
+		|| field === 'type' && enumImpliesType
+		|| field === 'additionalProperties' && schemaRecord(value).additionalProperties === true;
+}
+
+describe('exact canonical architecture schema equivalence', () => {
+	it('rejects omission of an implemented stored execution record from the root union despite unchanged complete definitions', () => {
+		const { document } = canonicalAuthority();
+		for (const name of ['AgentProfile', 'AssignmentAttempt', 'Lease', 'Reservation']) {
+			const changed = structuredClone(document);
+			changed.oneOf = changed.oneOf.filter(entry => entry.$ref !== `#/$defs/${name}`);
+			const before = JSON.stringify(changed);
+			expect(verify(changed)).toContainEqual(expect.objectContaining({ code: 'agent_schema_root_missing',
+				message: `${name} executable stored-record authority is absent from the root union.` }));
+			expect(JSON.stringify(changed)).toBe(before);
+		}
+	});
+	it('CI binds complete canonical execution verification to one exact Platform checkout before the original suites and coded scenes', () => {
+		const workflow = parse(readFileSync('.github/workflows/verify.yml', 'utf8')) as { jobs: { verify: {
+			env: Record<string, string>; steps: Array<{ name?: string; uses?: string; run?: string; with?: Record<string, unknown> }>;
+		} } };
+		const job = workflow.jobs.verify, bound = job.steps.filter(step => step.with?.repository === 'treeseed-ai/platform');
+		expect(bound).toHaveLength(1); const checkout = bound[0]!;
+		expect(checkout.uses).toMatch(/^actions\/checkout@[a-f0-9]{40}$/u);
+		expect(checkout.with).toEqual({ repository: 'treeseed-ai/platform', ref: canonicalAuthority().commit,
+			path: '.treeseed/platform-authority', 'persist-credentials': false });
+		expect(job.env.TREESEED_DEVELOPMENT_WORKSPACE_ROOT).toBe('${{ github.workspace }}/.treeseed/platform-authority');
+		const index = job.steps.indexOf(checkout);
+		for (const name of ['Verify package', 'Execute coded golden component scenes']) expect(job.steps.findIndex(step => step.name === name)).toBeGreaterThan(index);
+		expect(job.steps.find(step => step.name === 'Verify package')?.run).toBe('npm run verify:direct');
+	});
+	it('accepts the exact complete canonical target without modifying its stored or runtime definitions', () => {
+		const { document } = canonicalAuthority();
+		const before = JSON.stringify(document);
+		const diagnostics = verify(document);
+		expect(JSON.stringify(document)).toBe(before);
+		expect(diagnostics).toEqual([]);
+	});
+	it('detects deletion and unconstrained replacement of every canonical stored record', () => {
+		const { document } = canonicalAuthority();
+		const missed: string[] = [];
+		for (const name of storedDefinitions(document)) {
+			for (const operation of ['delete', 'unconstrained'] as const) {
+				if (!mutationDetected(document, copy => {
+					if (operation === 'delete') delete copy.$defs[name];
+					else copy.$defs[name] = true;
+				})) missed.push(`${name}:${operation}`);
+			}
+		}
+		expect(missed).toEqual([]);
+	});
+	it('detects deletion and unconstrained replacement of every canonical runtime and shared definition', () => {
+		const { document } = canonicalAuthority();
+		const stored = new Set(storedDefinitions(document));
+		const missed: string[] = [];
+		for (const name of Object.keys(document.$defs).filter(name => !stored.has(name))) {
+			for (const operation of ['delete', 'unconstrained'] as const) {
+				if (!mutationDetected(document, copy => {
+					if (operation === 'delete') delete copy.$defs[name];
+					else copy.$defs[name] = true;
+				})) missed.push(`${name}:${operation}`);
+			}
+		}
+		expect(missed).toEqual([]);
+	});
+	it('detects omitted duplicated and runtime-only members of the canonical stored-record union', () => {
+		const { document } = canonicalAuthority();
+		const missed: string[] = [];
+		for (const name of storedDefinitions(document)) {
+			if (!mutationDetected(document, copy => { copy.oneOf = copy.oneOf.filter(entry => entry.$ref !== `#/$defs/${name}`); })) missed.push(`omitted:${name}`);
+		}
+		if (!mutationDetected(document, copy => { copy.oneOf.push(structuredClone(copy.oneOf[0]!)); })) missed.push('duplicate');
+		if (!mutationDetected(document, copy => { copy.oneOf.push({ $ref: '#/$defs/AssignmentContext' }); })) missed.push('runtime-only');
+		expect(missed).toEqual([]);
+	});
+	it('detects field removal required-field removal and open-record drift across every canonical object', () => {
+		const { document } = canonicalAuthority();
+		const missed: string[] = [];
+		for (const [name, definition] of Object.entries(document.$defs)) {
+			if (typeof definition === 'boolean' || !definition.properties) continue;
+			for (const field of Object.keys(schemaRecord(definition.properties))) {
+				if (!mutationDetected(document, copy => { delete schemaRecord(schemaRecord(copy.$defs[name]).properties)[field]; })) missed.push(`${name}.properties.${field}`);
+			}
+			for (const field of (definition.required ?? []) as string[]) {
+				if (!mutationDetected(document, copy => {
+					const target = schemaRecord(copy.$defs[name]);
+					target.required = (target.required as string[]).filter(value => value !== field);
+				})) missed.push(`${name}.required.${field}`);
+			}
+			if (definition.additionalProperties === false && !mutationDetected(document, copy => {
+				schemaRecord(copy.$defs[name]).additionalProperties = true;
+			})) missed.push(`${name}.additionalProperties`);
+		}
+		expect(missed).toEqual([]);
+	});
+	// All three partitions are independently bound in the component scene.
+	// Partition by definition index only: no assertion keyword is filtered out.
+	it.each([0, 1, 2])('detects removed reference bounds uniqueness union and conditional assertions throughout the canonical target (partition %i)', partition => {
+		const { document } = canonicalAuthority();
+		const missed: string[] = [];
+		const definitions = Object.entries(document.$defs), selected = definitions.filter((_, index) => index % 3 === partition);
+		expect(selected.length).toBeGreaterThan(0);
+		for (const [name, definition] of selected) {
+			for (const path of constraintPaths(definition)) {
+				if (equivalentRemoval(definition, path)) {
+					const copy = structuredClone(document); removeConstraint(copy, name, path); const held = JSON.stringify(copy);
+					expect(verify(copy)).toEqual(baseline(document)); expect(JSON.stringify(copy)).toBe(held);
+					if (!mutationDetected(document, changed => {
+						let parent: unknown = changed.$defs[name];
+						for (const key of path.slice(0, -1)) parent = Array.isArray(parent) ? parent[Number(key)] : schemaRecord(parent)[key];
+						const target = schemaRecord(parent), originalTypes = Array.isArray(target.type) ? target.type : [target.type];
+						target[path.at(-1)!] = path.at(-1) === 'type' ? originalTypes.includes('object') ? 'string' : 'object' : false;
+					})) missed.push(`${name}.${path.join('.')}:contradiction`);
+					continue;
+				}
+				if (!mutationDetected(document, copy => removeConstraint(copy, name, path))) {
+					missed.push(`${name}.${path.join('.')}`);
+				}
+			}
+		}
+		expect(missed).toEqual([]);
+	});
+});

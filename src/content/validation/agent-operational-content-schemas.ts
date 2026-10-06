@@ -69,6 +69,7 @@ export const agentOperationalContentSchemas = {
 } satisfies Record<string,z.ZodTypeAny>;
 
 export const AGENT_OPERATIONAL_CONTENT_COLLECTIONS = {
+	note:'notes',decision:'decisions',
 	agent_context_query:'agent-context-queries',agent_context_query_set:'agent-context-query-sets',
 	agent_instruction_template:'agent-instruction-templates',discussion_topic:'discussion-topics',
 	agent_evaluation:'agent-evaluations',

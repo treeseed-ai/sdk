@@ -13,6 +13,8 @@ const put = z.object({ expectedVersion: version,
 }).strict();
 function operation(name: 'show' | 'put' | 'delete' | 'validate', method: 'GET' | 'PUT' | 'DELETE' | 'POST') {
   const read = method === 'GET';
+  const output: z.ZodType<z.infer<typeof descriptor> | { ok: boolean }> = name === 'validate'
+    ? z.object({ ok: z.boolean() }).strict() : descriptor;
   return defineOperation({
     operationId: `services.credentials.${name}`, description: `${name} managed service credentials.`,
     rest: { method, path: `/v1/teams/{teamId}/services/{connectionId}/credentials/{profileId}${name === 'validate' ? '/validate' : ''}` },
@@ -24,7 +26,7 @@ function operation(name: 'show' | 'put' | 'delete' | 'validate', method: 'GET' |
     redactedPaths: ['body.values'],
   }, { path, query: z.object({}).strict(), body: read ? z.undefined() : name === 'put' ? put
     : z.object({ expectedVersion: version }).strict(),
-    output: name === 'validate' ? z.object({ ok: z.boolean() }).strict() : descriptor });
+    output });
 }
 export const SECRET_OPERATIONS = {
   credentialStatus: operation('show', 'GET'),

@@ -1,6 +1,891 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-shared-weights-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: validates canonical shared integer weights without converting percentage policy or creating another allocator
+  sdk.golden.execution-shared-weights-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: native shared weight validators preserve supplied scope and deny missing fractional coerced or duplicated policy fields
+  sdk.golden.execution-portfolio-custody-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: validates canonical portfolio and arbitrary governed registration records without duplicated scheduling authority
+  sdk.golden.execution-portfolio-custody-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: native public portfolio records retain exact bindings and reject unpinned malformed or duplicate registration scope
+  sdk.golden.execution-schedule-custody-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: stores recurring schedules with the same canonical intent without derived state or a second allocation path
+  sdk.golden.execution-schedule-custody-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: native public schedules deny malformed recurrence and continuation while retaining original intent bytes
+  sdk.golden.execution-intent-identifiers-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/workday-lifecycle.test.ts
+    testName: requires canonical ASCII identities across normalized intent without narrowing the 200 character boundary
+  sdk.golden.execution-unbounded-definitions-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: denies unbounded shared definitions even when no stored record currently references them without inventing a scheduling path
+  sdk.golden.execution-treedx-custody-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: validates exact public workspace review and publication custody while denying missing malformed and duplicated authority
+  sdk.golden.execution-treedx-custody-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: native public TreeDX custody rejects malformed records and retains exact supplied candidate and decision bytes
+  sdk.golden.execution-treedx-schema-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: native repository verification binds TreeDX workspace review and publication schemas while retaining changed source denial and exact retry
+  sdk.golden.execution-work-item-capability-optionality-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposal-execution-plan.test.ts
+    testName: retains omitted or represented empty governed work-item capabilities without inventing provider admission authority
+  sdk.golden.execution-work-item-capability-optionality-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposal-execution-plan.test.ts
+    testName: native public Proposal validation preserves optional capability declarations while rejecting malformed or duplicate demands
+  sdk.golden.execution-output-retirement-proposal-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposal-execution-plan.test.ts
+    testName: uses exact TreeDX context and permissions without accepting the retired work item output selector
+  sdk.golden.execution-output-retirement-proposal-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposal-execution-plan.test.ts
+    testName: native public Proposal validation retains exact grant context and denies retired output selectors without repairing supplied authority
+  sdk.golden.execution-output-retirement-node-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/execution-graph.test.ts
+    testName: retains exact node permission authority and rejects every represented retired output selector
+  sdk.golden.execution-output-retirement-node-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/execution-graph.test.ts
+    testName: native public execution nodes reject retired output selectors without changing exact permission authority
+  sdk.golden.profile-dependency-properties-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture/profiles/profile-authority.test.ts
+    testName: exports and enforces represented canonical dependency selector properties without inventing nonempty arrays or runtime role configuration
+  sdk.golden.profile-dependency-properties-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture/profiles/profile-authority.test.ts
+    testName: native public governed YAML preserves represented empty dependency selectors and denies malformed duplicate or prohibited authority
+  sdk.golden.execution-provider-offer-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: "validates exact canonical provider offer supply without normalizing malformed or prohibited fields"
+  sdk.golden.execution-provider-offer-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: "native public provider offer validation retains complete supply bytes and denies malformed or duplicate authority"
+  sdk.golden.execution-provider-state-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: "validates exact canonical provider state without coercing health native units or assignment inventory"
+  sdk.golden.execution-provider-state-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: "native public provider state validation retains actual supplied units and denies noncanonical observations"
+  sdk.golden.execution-provider-schema-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "binds canonical provider supply records and shared bounds to the actual public validators without copying target assertions"
+  sdk.golden.execution-provider-schema-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "native public repository verification binds canonical provider supply bytes and retains denied constraint drift before exact retry"
+  sdk.golden.execution-question-answer-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/note-dependency-links.test.ts
+    testName: "exports the canonical answered Question field alternatives without inventing an answer or changing supplied evidence"
+  sdk.golden.execution-question-answer-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/note-dependency-links.test.ts
+    testName: "native public Question validation and schema preserve canonical answer alternatives and deny missing malformed or duplicate evidence"
+  sdk.golden.execution-work-item-slugs-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposal-execution-plan.test.ts
+    testName: "retains exact canonical work-item slugs and dependency identities without trimming padding or accepting malformed separators"
+  sdk.golden.execution-work-item-slugs-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposal-execution-plan.test.ts
+    testName: "native public Proposal validation and schema preserve canonical work-item slug grammar and reject malformed identity bytes without repair"
+  sdk.golden.execution-finite-enum-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "recognizes only exact finite enum unions including nullable pair roles while retaining changed overlapping and qualified scalar denials"
+  sdk.golden.execution-finite-enum-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "native public repository verification preserves finite enum equivalence without accepting changed overlapping or qualified committed scalar authority"
+  sdk.golden.execution-node-conditions-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/execution-graph.test.ts
+    testName: "exports the exact condition assignable and review-pair field requirements enforced by the owning execution node validator"
+  sdk.golden.execution-node-conditions-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/execution-graph.test.ts
+    testName: "native public execution node schema and validation retain all valid kinds and reject missing or contradictory scheduling authority without repairing inputs"
+  sdk.golden.execution-dependency-endpoint-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/note-dependency-links.test.ts
+    testName: "exports complete exact work-item endpoint requirements rather than silently omitting the dependency authority refinement"
+  sdk.golden.execution-dependency-endpoint-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/note-dependency-links.test.ts
+    testName: "native public Note validation and schema retain both exact work-item endpoints and deny every missing or malformed authority without repairing request bytes"
+  sdk.golden.execution-work-item-review-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposal-execution-plan.test.ts
+    testName: "exports the same independent review cycle requirement and absence of unreviewed estimates enforced on governed executable work"
+  sdk.golden.execution-work-item-review-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposal-execution-plan.test.ts
+    testName: "native public Proposal work-item review validation and schema agree on bounded required review and denial of unreviewed authority without input repair"
+  sdk.golden.execution-ready-proposal-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposal-execution-plan.test.ts
+    testName: "exports the same ready and decided proposal summary plan and independent estimate requirements enforced by native execution intake"
+  sdk.golden.execution-ready-proposal-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposal-execution-plan.test.ts
+    testName: "native public Proposal schema and validation agree on draft estimation and fail closed ready execution authority without rewriting supplied requests"
+  sdk.golden.execution-report-subject-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/note-dependency-links.test.ts
+    testName: "exports the same exact workday subject requirement that the owning report Note validator enforces"
+  sdk.golden.execution-report-subject-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/note-dependency-links.test.ts
+    testName: "native public report Note validation and schema retain exact workday subjects and deny missing duplicated or malformed authority"
+  sdk.golden.execution-node-authority-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/execution-graph.test.ts
+    testName: "bounds execution node class authority and denies duplicate or malformed exact refs while retaining distinct ordered source inputs"
+  sdk.golden.execution-node-authority-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/execution-graph.test.ts
+    testName: "native public execution node validation retains bounded class and exact distinct authority while rejecting duplicated observations"
+  sdk.golden.execution-class-identity-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture/profiles/profile-authority.test.ts
+    testName: "denies padded or overlong configured and dependency agent classes instead of silently normalizing governed identities"
+  sdk.golden.execution-class-identity-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture/profiles/profile-authority.test.ts
+    testName: "native governed YAML retains exact bounded configured class identities and refuses padded dependency selectors"
+  sdk.golden.execution-decision-conditions-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/note-dependency-links.test.ts
+    testName: "exports the same classed Decision dispositions and required approval or vote positions enforced by the owning validator"
+  sdk.golden.execution-decision-conditions-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/note-dependency-links.test.ts
+    testName: "native public Decision validation and schema agree across every class disposition method and retained position inventory"
+  sdk.golden.execution-work-item-inventory-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposal-execution-plan.test.ts
+    testName: "bounds governed work-item identities and denies duplicated capability permission and context authority without normalizing request bytes"
+  sdk.golden.execution-work-item-inventory-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposal-execution-plan.test.ts
+    testName: "native public proposal validation retains exact bounded work-item authority and rejects duplicated or malformed demand inventories"
+  sdk.golden.execution-profile-inventory-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture/profiles/profile-authority.test.ts
+    testName: "exports the same nonempty configured capability context and activity inventories enforced by the owning profile validator"
+  sdk.golden.execution-profile-inventory-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture/profiles/profile-authority.test.ts
+    testName: "native public YAML profile validation and executable schema retain identical nonempty inventory bounds without adding runtime role configuration"
+  sdk.golden.execution-content-identity-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/note-dependency-links.test.ts
+    testName: "retains exact bounded governed execution content identifiers and denies malformed or missing identities without normalization"
+  sdk.golden.execution-content-identity-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/note-dependency-links.test.ts
+    testName: "native public governed content validation denies malformed identities while retaining exact valid source bytes"
+  sdk.golden.execution-content-inventory-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/note-dependency-links.test.ts
+    testName: "retains distinct governed evidence and agent addresses but denies duplicated malformed or empty required inventories"
+  sdk.golden.execution-content-inventory-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/note-dependency-links.test.ts
+    testName: "native public governed content validation preserves distinct evidence and rejects duplicate refs or malformed addressed agent classes"
+  sdk.golden.execution-object-conditional-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "recognizes only redundant object kinds under established object authority while retaining contradictory branch and nested field assertions"
+  sdk.golden.execution-workday-closeout-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "native public repository verification binds ended workday report authority and preserves original conditional bytes through denial and retry"
+  sdk.golden.execution-inventory-schema-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "native public repository verification retains canonical assignment identifiers and graph revision uniqueness through denied substitutions and exact retry"
+  sdk.golden.execution-identifier-inventory-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/assignments/assignment-record-validation.test.ts
+    testName: "requires exact bounded canonical capability and predecessor identifiers while retaining empty inventories and caller bytes"
+  sdk.golden.execution-identifier-inventory-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/assignments/assignment-record-validation.test.ts
+    testName: "native public assignment validation preserves bounded identifiers and denies malformed capability and predecessor inventories without repair"
+  sdk.golden.execution-revision-source-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/execution-graph.test.ts
+    testName: "retains ordered distinct changed-source references and rejects empty malformed missing and semantic duplicates without normalizing revisions"
+  sdk.golden.execution-revision-source-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/execution-graph.test.ts
+    testName: "native public graph revision validation preserves exact distinct source order and denies duplicate or incomplete change authority"
+  sdk.golden.execution-inventory-schema-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "exports exact assignment identifier inventories and unique graph revision source authority from the same executable validators"
+  sdk.golden.execution-signal-cutover-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/providers/capacity-provider.test.ts
+    testName: "has no frozen signal publisher or catalog route while retaining ordinary assignment events and execution operations"
+  sdk.golden.execution-union-semantics-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "compares only provably disjoint tagged union and singleton enum semantics while retaining overlapping missing-tag and branch-bound denials"
+  sdk.golden.execution-union-semantics-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "native public verification recognizes disjoint union semantics and retains overlapping or untagged denied bytes before exact committed retry"
+  sdk.golden.execution-tool-grant-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/assignments/assignment-record-validation.test.ts
+    testName: "retains every canonical tool group and rejects undeclared malformed or duplicate grant tools without changing caller bytes"
+  sdk.golden.execution-authority-bounds-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "binds canonical accounting identifiers and writable path bounds to their owning executable schemas without pipe-only or hidden refinement constraints"
+  sdk.golden.execution-authority-bounds-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "native public verification retains exact committed accounting identifier and writable-path authority through bounds denial and unchanged retry"
+  sdk.golden.execution-reference-inventory-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/assignments/assignment-record-validation.test.ts
+    testName: "retains distinct canonical reference inventories and rejects exact duplicate authority context grants and result references without normalization"
+  sdk.golden.execution-reference-conditions-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "exports the same store-specific exact reference requirements enforced by the owning validator without borrowing declaration constraints"
+  sdk.golden.execution-reference-conditions-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "native public repository verification binds every exact reference condition to the owning validator and retains committed authority through denial and retry"
+  sdk.golden.execution-schema-reference-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "resolves exact nested escaped local schema references and rejects missing external or cyclic references without changing supplied authority"
+  sdk.golden.execution-schema-reference-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "native public repository verification resolves exact nested schema references while retaining committed bytes through missing moved and cyclic denial"
+  sdk.golden.execution-finite-fairness-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/workday-allocation.test.ts
+    testName: "retains project and class fairness under finite proportional weight scaling without overflowing selection or its explanation"
+  sdk.golden.execution-finite-fairness-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/agent-execution-contract.test.ts
+    testName: "native public fairness selection preserves finite proportional project and class weights without concealing overflow in JSON"
+  sdk.golden.execution-result-native-usage:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/agent-execution-contract.test.ts
+    testName: "native public result validation retains measured provider fractions and rejects nonfinite usage before serialization can conceal it"
+  sdk.golden.execution-uniqueness-export-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "binds graph change and planning identity uniqueness to the same executable validators and detects removed declaration rules"
+  sdk.golden.execution-uniqueness-export-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "native public repository verification binds graph and planning uniqueness and retains exact committed inputs through denial and retry"
+  sdk.golden.execution-planning-round-identity-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: "retains exact canonical planning rounds and rejects duplicate assignment identities instead of normalizing stored authority"
+  sdk.golden.execution-planning-round-identity-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: "native public workday parsing denies duplicate planning assignment identities while retaining distinct original round bytes"
+  sdk.golden.execution-workday-resource-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/control-plane-operation.test.ts
+    testName: "derives exact workday read resources and rejects missing or mutation REST bindings without changing operation authority"
+  sdk.golden.execution-workday-resource-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/agent-execution-contract.test.ts
+    testName: "native public workday resource derivation rejects absent and mutating REST authority with the owning error and retains exact inputs"
+  sdk.golden.execution-reconcile-plan-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/command-tree.test.ts
+    testName: "classifies supported, local, protocol, and intentionally unavailable execution without URL metadata"
+  sdk.golden.execution-governed-collections-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/note-dependency-links.test.ts
+    testName: "registers the existing governed Note and Decision collections for execution authority without introducing another model"
+  sdk.golden.execution-work-dependencies-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposal-execution-plan.test.ts
+    testName: "rejects missing and cyclic work-item dependencies"
+  sdk.golden.execution-provider-constraints-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/workday-lifecycle.test.ts
+    testName: "retains bounded provider constraints and rejects malformed unknown or duplicate supply selectors without changing workday authority"
+  sdk.golden.execution-project-selection-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/workday-lifecycle.test.ts
+    testName: "requires explicit all or unique canonical project identities without broadening missing malformed or repeated project scope"
+  sdk.golden.execution-context-value-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: "requires the authorized context value field while retaining null scalar and structured payload bytes without changing authority"
+  sdk.golden.execution-context-value-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/agent-execution-contract.test.ts
+    testName: "native public SDK context item validation requires the payload field without inventing content or another authority"
+  sdk.golden.execution-stored-root-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/canonical-schema-equivalence.test.ts
+    testName: "rejects omission of an implemented stored execution record from the root union despite unchanged complete definitions"
+  sdk.golden.execution-stored-root-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "native public verification denies an omitted executable stored root while retaining the committed declaration and complete definitions"
+  sdk.golden.execution-canonical-ci-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/canonical-schema-equivalence.test.ts
+    testName: "CI binds complete canonical execution verification to one exact Platform checkout before the original suites and coded scenes"
+  sdk.golden.execution-canonical-ci-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "the declared CI Platform commit independently resolves the exact held canonical execution bytes without a moving ref or generated replacement"
+  sdk.golden.execution-supply-validation-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/providers/capacity-provider.test.ts
+    testName: "validates missing malformed and numeric supply offers without throwing coercing or changing the original registration inputs"
+  sdk.golden.execution-provider-contract-entry-native-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/capacity-configuration.test.ts
+    testName: "native public provider contracts validate immutable signed-proof inputs without loading control-plane clients or operator catalogs"
+  sdk.golden.execution-provider-contract-entry-unit-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/capacity-configuration.test.ts
+    testName: "exposes the original provider manifest validator and offer schemas through the client-free contracts boundary"
+  sdk.golden.execution-qualification-unit-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/providers/capability-ontology.test.ts
+    testName: "requires current unique qualification at the declared core tier before advertising any unchanged provider offer"
+  sdk.golden.execution-work-priority-unit-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposal-execution-plan.test.ts
+    testName: "retains optional governed work-item integer priority in draft ready and decided proposals without coercion or an independent node authority"
+  sdk.golden.execution-node-priority-unit-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/workday-allocation.test.ts
+    testName: "validates one canonical integer node priority without coercion and retains omission as zero selection rather than another authority"
+  sdk.golden.execution-node-priority-unit-2:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/workday-allocation.test.ts
+    testName: "selects higher canonical graph priority only after project and class fairness then uses oldest readiness and stable identity without changing eligible inputs"
+  sdk.golden.execution-selection-input-unit-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/workday-allocation.test.ts
+    testName: "retains exact eligible selector inputs in the existing selection explanation so later admission history can be replayed without reconstructing candidates"
+  sdk.golden.execution-protected-observation-native-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/providers/capacity-provider.test.ts
+    testName: "native original event transport rejects malformed protected authority without HTTP and retries exact private then public bytes through the original catalog route"
+  sdk.golden.execution-protected-observation-unit-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/providers/capacity-provider.test.ts
+    testName: "validates protected ordinary event authority before JSON serialization while preserving exact private and public requests without caller mutation"
+  sdk.golden.execution-retired-mode-unit-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/providers/capacity-provider.test.ts
+    testName: "rejects every own retired mode-run value before serialization through all six original provider mutation bindings without hiding undefined or changing a valid retry"
+  sdk.golden.execution-retired-mode-native-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/providers/capacity-provider.test.ts
+    testName: "native original provider transport denies retired identities before any HTTP request and preserves exact six current requests after all denials"
+  sdk.golden.execution-retired-command-unit-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/command-tree.test.ts
+    testName: "excludes each retired execution authority command independently while retaining the current provider and graph surface without changing the generated tree"
+  sdk.golden.execution-weighted-opportunity-unit-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-allocation.test.ts
+    testName: "normalizes active weights with exact integer residual ties while preserving commitments and redistributing only graph-ready demand"
+  sdk.golden.execution-retained-quota-unit-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/capability-accounting.test.ts
+    testName: "rejects malformed retained observation fields before a new report can hide them behind unhealthy or fresh supply"
+  sdk.golden.execution-accounting-continuity-unit-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/capability-accounting.test.ts
+    testName: "rejects every nonboolean observation health value without coercing supply or rewriting original accounting evidence"
+  sdk.golden.execution-accounting-continuity-unit-2:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/capability-accounting.test.ts
+    testName: "retains exact fractional measured supply and applies the stricter independent ledger without rounding native observations upward"
+  sdk.golden.architecture-release-review-unit-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/golden-product.test.ts
+    testName: "requires independent measured replay of all three public release commands and rejects every invalid reviewer receipt"
+  sdk.golden.architecture-release-review-unit-2:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/golden-product.test.ts
+    testName: "binds independent release review to the exact actor result candidate repository and predecessor without rewriting history"
+  sdk.golden.architecture-release-archive-native-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/standards/package-archive.test.ts
+    testName: "public archive acceptance rejects changed export and declaration identity against the same untouched candidate"
+  sdk.golden.execution-installed-report-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/standards/package-archive.test.ts
+    testName: "installed native SDK archive enforces exact report Note identifier and subject authority without changing packaged bytes"
+  sdk.golden.architecture-intent-unit-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/workday-lifecycle.test.ts
+    testName: "rejects duplicate trimmed decision identities and every malformed explicit selection without changing intent"
+  sdk.golden.architecture-intent-unit-2:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/workday-lifecycle.test.ts
+    testName: "rejects each named derived identity even when its supplied value would disappear during JSON serialization"
+  sdk.golden.architecture-intent-unit-3:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/workday-lifecycle.test.ts
+    testName: "preserves omitted decisions and independent planning proposal agent and allocation controls"
+  sdk.golden.architecture-intent-unit-4:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/command-tree.test.ts
+    testName: "binds exactly one repeatable CSV decision selector for direct planning and nested schedule creation without derived identity options"
+  sdk.golden.architecture-intent-transport-unit-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/control-plane-client.test.ts
+    testName: "normalizes decision permutations into identical direct and nested request bytes while preserving independent controls"
+  sdk.golden.architecture-intent-transport-unit-2:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/control-plane-client.test.ts
+    testName: "rejects malformed decisions and all named derived identities before either workday transport without stripping caller evidence"
+  sdk.golden.architecture-intent-native-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/control-plane-client.test.ts
+    testName: "native HTTP carries canonical decision bytes through concurrent calls denial retry and abort without transmitting invalid intent"
+  sdk.golden.architecture-record-custody-unit-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: "retains a complete renamed canonical attempt and result without mutating public input"
+  sdk.golden.architecture-record-custody-unit-2:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: "denies root identity provider class graph revision reservation and ordinal contradictions against the same frozen attempt"
+  sdk.golden.architecture-record-custody-unit-3:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: "denies missing malformed or incomplete frozen attempts instead of certifying an executable public record"
+  sdk.golden.architecture-record-custody-unit-4:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: "denies missing malformed foreign or contradictory completed results while retaining the same original attempt"
+  sdk.golden.architecture-profile-authority-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture/profiles/profile-authority.test.ts
+    testName: "preserves arbitrary identities compiled handlers prompts parameters and independent chat without role dispatch"
+  sdk.golden.architecture-profile-authority-2:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture/profiles/profile-authority.test.ts
+    testName: "rejects every named provider scheduling workspace estimate and output concept at profile root"
+  sdk.golden.architecture-profile-authority-3:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture/profiles/profile-authority.test.ts
+    testName: "rejects every removed handler compatibility path and permission-side authority field"
+  sdk.golden.architecture-profile-authority-4:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture/profiles/profile-authority.test.ts
+    testName: "denies missing empty malformed and duplicate profile inputs without silently creating permissions or dependencies"
+  sdk.golden.architecture-profile-authority-5:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture/profiles/profile-authority.test.ts
+    testName: "rejects producer reviewing while retaining one independent reviewer class and exact lifecycle selector"
+  sdk.golden.architecture-profile-authority-6:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture/profiles/profile-authority.test.ts
+    testName: "native public SDK YAML boundary retains changed governed inputs with no provider runtime configuration"
+  sdk.golden.architecture-profile-authority-7:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture/profiles/profile-authority.test.ts
+    testName: "native public SDK YAML boundary fails closed on malformed content permissions and prohibited scheduling authority"
+  sdk.golden.architecture-shared-allocation-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-allocation.test.ts
+    testName: "redistributes idle supply across weighted workdays without resizing prior commitments or changing execution mode entitlement"
+  sdk.golden.architecture-shared-allocation-2:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-allocation.test.ts
+    testName: "denies future planned and ended work while preserving the initial planning boundary and exact final deadline"
+  sdk.golden.architecture-shared-allocation-3:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-allocation.test.ts
+    testName: "selects underserved projects then classes and stable old ready nodes without changing input or depending on permutation"
+  sdk.golden.architecture-shared-allocation-4:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-allocation.test.ts
+    testName: "compiles each collaborative cycle from all prior contributors without inventing a fixed global number of cycles"
+  sdk.golden.architecture-shared-allocation-5:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-allocation.test.ts
+    testName: "retains every hard supply profile provider and productive-window boundary without adding a minimum estimate"
+  sdk.golden.architecture-shared-allocation-6:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-allocation.test.ts
+    testName: "denies invalid supply duplicate shares malformed clocks and impossible planning commitments without usable allocation"
+  sdk.golden.architecture-workday-event-command:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/command-tree.test.ts
+    testName: "exposes the existing workday event operation with exact run scope and complete cursor pagination"
+  sdk.golden.calibration-exact-window:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/calibration-architecture.test.ts
+    testName: "replays the exact latest twenty eligible samples with stable ties and unchanged inputs"
+  sdk.golden.calibration-failure-exclusion:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/calibration-architecture.test.ts
+    testName: "does not let newer cancellation credential infrastructure or invalid results displace eligible history"
+  sdk.golden.calibration-malformed:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/calibration-architecture.test.ts
+    testName: "denies malformed eligible timing and accounting rather than calibrating a usable deadline"
+  sdk.golden.calibration-public-ceilings:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/calibration-architecture.test.ts
+    testName: "uses public SDK calibration without moving provider profile planning or supply ceilings"
+  sdk.golden.calibration-public-deferral:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/calibration-architecture.test.ts
+    testName: "defers exhausted or malformed supply through the independent public SDK boundary"
+  sdk.golden.closeout-canonical:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: retains one exact TreeDX closeout reference and ended-only requirement in the canonical target
+  sdk.golden.closeout-preterminal:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: permits planned active and closing workdays without inventing premature report authority
+  sdk.golden.closeout-ended:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: accepts an ended workday with exactly one immutable report reference without modifying input
+  sdk.golden.closeout-missing:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: denies ended workdays missing the required closeout report rather than accepting silent closure
+  sdk.golden.closeout-invalid:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: denies malformed moving duplicate map and retired plural report authorities
+  sdk.golden.estimate-no-minimum:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: keeps expected maximum bounds and rejects caller authored minimum authority
+  sdk.golden.closeout-public:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: admits exact single closeout report through the independent native public SDK boundary
+  sdk.golden.closeout-public-missing:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: denies missing ended report through the independent native public SDK boundary
+  sdk.golden.estimate-public-no-minimum:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/workday-closeout.test.ts
+    testName: rejects minimum estimate authority through the independent native public SDK boundary
+  sdk.golden.canonical-target:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/canonical-schema-equivalence.test.ts
+    testName: "accepts the exact complete canonical target without modifying its stored or runtime definitions"
+  sdk.golden.canonical-stored-definitions:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/canonical-schema-equivalence.test.ts
+    testName: "detects deletion and unconstrained replacement of every canonical stored record"
+  sdk.golden.canonical-runtime-definitions:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/canonical-schema-equivalence.test.ts
+    testName: "detects deletion and unconstrained replacement of every canonical runtime and shared definition"
+  sdk.golden.canonical-root-union:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/canonical-schema-equivalence.test.ts
+    testName: "detects omitted duplicated and runtime-only members of the canonical stored-record union"
+  sdk.golden.canonical-fields:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/canonical-schema-equivalence.test.ts
+    testName: "detects field removal required-field removal and open-record drift across every canonical object"
+  sdk.golden.canonical-constraints:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/canonical-schema-equivalence.test.ts
+    testName: "detects removed reference bounds uniqueness union and conditional assertions throughout the canonical target (partition 0)"
+  sdk.golden.canonical-constraints-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/canonical-schema-equivalence.test.ts
+    testName: "detects removed reference bounds uniqueness union and conditional assertions throughout the canonical target (partition 1)"
+  sdk.golden.canonical-constraints-2:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/canonical-schema-equivalence.test.ts
+    testName: "detects removed reference bounds uniqueness union and conditional assertions throughout the canonical target (partition 2)"
+  sdk.golden.canonical-git-stored:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "detects each stored canonical definition replacement through real committed public repository read-back"
+  sdk.golden.canonical-git-runtime:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "detects each runtime/shared canonical definition replacement through real committed public repository read-back"
+  sdk.golden.canonical-git-target:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "accepts exact complete canonical schema bytes through native public repository verification"
+  sdk.golden.canonical-git-assignment:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "detects committed assignment authority drift independently of existing canonical baseline diagnostics"
+  sdk.golden.schema-completeness:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "rejects an implementation-generated five-model subset as complete canonical authority"
+  sdk.golden.schema-field-drift:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "detects drift in fields, required fields, and constants"
+  sdk.golden.schema-nested-drift:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "detects nested declarative constraint drift"
+  sdk.golden.schema-reference-completeness:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "reports unresolved stored and runtime model references instead of skipping the root union"
+  sdk.golden.schema-union-drift:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "detects union and exclusion constraints rather than discarding declaration semantics"
+  sdk.golden.schema-unconstrained-assignment:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "rejects unconstrained assignment authority without mutating the submitted declaration"
+  sdk.golden.schema-root-reference-denial:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "rejects malformed or moving root references before declaring equivalence"
+  sdk.golden.schema-retired-model-denial:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "rejects every retired model instead of accepting a compatibility root union"
+  sdk.golden.schema-git-completeness:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "rejects an incomplete SDK-generated architecture declaration through native Git repository verification"
+  sdk.golden.schema-git-change:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "read-backs a committed runtime-contract change without accepting unchecked definitions"
+  sdk.golden.schema-git-missing:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "retains missing tracked schema denial instead of treating absent authority as a passing replay"
   sdk.golden.current-frozen-source:
     kind: vitestCase
     ownerPackage: '@treeseed/sdk'
@@ -76,6 +961,16 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/agent-capacity/capacity/workday-allocation.test.ts
     testName: "selects project then class by weighted deficit and uses stable node ties"
+  sdk.golden.execution-policy-completeness-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/workday-profile.test.ts
+    testName: "requires every stored policy field without inserting defaults or rewriting exact supplied policy snapshots"
+  sdk.golden.execution-policy-completeness-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/agent-execution-contract.test.ts
+    testName: "native public SDK policy validation retains complete snapshots and denies every missing field without synthesizing authority"
   sdk.golden.concurrent-fairness:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
@@ -111,3 +1006,28 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/communication-addressing.test.ts
     testName: "requires the exact committed response reference instead of a path-only completion claim"
+  sdk.golden.execution-settlement-record-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: "validates exact canonical settlement identities native units and clocks without normalizing supplied evidence"
+  sdk.golden.execution-lease-record-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: "validates exact canonical lease states identifiers clocks and numeric boundaries without rewriting supplied records"
+  sdk.golden.execution-reservation-record-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: "validates exact canonical reservation states identifiers clocks and numeric boundaries without rewriting supplied records"
+  sdk.golden.execution-lease-record-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/agent-execution-contract.test.ts
+    testName: "native public SDK lease validation retains complete records and denies every missing field malformed value and unknown authority"
+  sdk.golden.execution-reservation-record-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/agent-execution-contract.test.ts
+    testName: "native public SDK reservation validation retains complete records and denies every missing field malformed value and unknown authority"

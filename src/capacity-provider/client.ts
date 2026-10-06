@@ -215,10 +215,6 @@ export class ProviderProtocolClient {
 		return this.invoke<Record<string, unknown>>(CONTROL_PLANE_OPERATIONS.providers.createEvent, { path: { assignmentId }, body: request });
 	}
 
-	publishAssignmentSignal(assignmentId: string, request: Record<string, unknown>) {
-		return this.invoke<Record<string, unknown>>(CONTROL_PLANE_OPERATIONS.providers.publishSignal, { path: { assignmentId }, body: request });
-	}
-
 	dispatchAssignmentWorkflowOperation(assignmentId: string, operationId: string, request: Record<string, unknown>) {
 		return this.invoke<Record<string, unknown>>(CONTROL_PLANE_OPERATIONS.providers.dispatchWorkflow, { path: { assignmentId, operationId }, body: request });
 	}

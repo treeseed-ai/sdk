@@ -15,9 +15,25 @@ import { SECRET_OPERATIONS } from './catalog/services/secret-operations.ts';
 import { buildControlPlaneCatalog, flattenControlPlaneOperations } from './catalog/control-plane-catalog.ts';
 import { EXECUTION_OPERATIONS } from './catalog/execution/execution-operations.ts';
 import { AGENT_TEAM_CLONE_OPERATIONS } from './catalog/agents/agent-team-clone-operations.ts';
+import { normalizeWorkdayIntent, type WorkdayIntent } from './workday-lifecycle.ts';
 const empty = z.object({}).strict(), none = z.undefined(), record = z.record(z.unknown()), payload = record;
+const workdayIntent = z.custom<WorkdayIntent>(value => Boolean(value && typeof value === 'object' && !Array.isArray(value))).transform(normalizeWorkdayIntent);
+const scheduledWorkdayIntent = record.transform(value => ({ ...value, intent: workdayIntent.parse(value.intent) }));
+const providerRequest = record.superRefine((value, context) => {
+	if (Object.hasOwn(value, 'modeRunId')) context.addIssue({ code: z.ZodIssueCode.custom, path: ['modeRunId'], message: 'Mode-run identity is retired; use assignment and attempt identity.' });
+});
+const providerEventRequest = providerRequest.superRefine((value, context) => {
+	if (!Object.hasOwn(value, 'protectedPayload')) return;
+	const protectedPayload = value.protectedPayload;
+	if (!protectedPayload || typeof protectedPayload !== 'object' || Array.isArray(protectedPayload) || Object.keys(protectedPayload).length === 0)
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['protectedPayload'], message: 'Protected evidence must be a nonempty object.' });
+	for (const field of ['leaseToken', 'runnerId']) if (typeof value[field] !== 'string' || !value[field].trim())
+		context.addIssue({ code: z.ZodIssueCode.custom, path: [field], message: 'Protected evidence requires exact lease and runner authority.' });
+	if (!Number.isSafeInteger(value.sequence) || Number(value.sequence) < 0)
+		context.addIssue({ code: z.ZodIssueCode.custom, path: ['sequence'], message: 'Protected evidence requires a nonnegative integer sequence.' });
+});
 function providerPath<T extends z.ZodRawShape>(operationId: `${string}.${string}`, method: 'GET' | 'POST' | 'PUT', path: `/v1/${string}`, pathShape: T,
-	options: { read?: boolean; redactedPaths?: string[]; authentication?: ControlPlaneOperationDescriptor['authentication'] } = {},
+	options: { read?: boolean; redactedPaths?: string[]; authentication?: ControlPlaneOperationDescriptor['authentication']; body?: z.ZodType<Record<string, unknown>> } = {},
 ) {
 	const kind = options.read ? 'read' : 'mutation';
 	return define({
@@ -25,7 +41,7 @@ function providerPath<T extends z.ZodRawShape>(operationId: `${string}.${string}
 		parameters: `treeseed.${operationId}.parameters/v1`, capability: 'providers.execute', authentication: options.authentication ?? 'provider', oauthScopes: [],
 		kind, riskClass: 'ordinary', confirmation: 'never', surfaces: ['rest'], cacheScope: 'none', pagination: 'none',
 		redactedPaths: options.redactedPaths,
-	}, { path: z.object(pathShape).strict(), query: empty, body: method === 'GET' ? none : record, output: payload });
+	}, { path: z.object(pathShape).strict(), query: empty, body: method === 'GET' ? none : options.body ?? providerRequest, output: payload });
 }
 const noPathProvider = (operationId: `${string}.${string}`, method: 'GET' | 'POST' | 'PUT', path: `/v1/${string}`, options: { read?: boolean; redactedPaths?: string[]; authentication?: ControlPlaneOperationDescriptor['authentication'] } = {}) =>
 	define({
@@ -63,6 +79,7 @@ function resource<T extends z.ZodRawShape>(
 		pagination?: ControlPlaneOperationDescriptor['pagination']; cacheScope?: ControlPlaneOperationDescriptor['cacheScope'];
 		redactedPaths?: string[];
 		authentication?: ControlPlaneOperationDescriptor['authentication'];
+		body?: z.ZodType<unknown>;
 	} = { capability: 'control-plane.use' },
 ) {
 	const kind = method === 'GET' ? 'read' : 'mutation';
@@ -76,7 +93,7 @@ function resource<T extends z.ZodRawShape>(
 		kind, riskClass, confirmation: riskClass === 'ordinary' ? 'never' : 'input_required',
 		surfaces: options.surfaces ?? ['rest'], cacheScope: options.cacheScope ?? (kind === 'read' ? 'principal' : 'none'),
 		pagination: options.pagination ?? 'none', concurrencyRequired: options.concurrency, redactedPaths: options.redactedPaths,
-	}, { path: z.object(pathShape).strict(), query: kind === 'read' ? record : empty, body: kind === 'read' ? none : record, output: payload });
+	}, { path: z.object(pathShape).strict(), query: kind === 'read' ? record : empty, body: kind === 'read' ? none : options.body ?? record, output: payload });
 }
 export const CONTROL_PLANE_OPERATIONS = {
 	aiInstances: AI_INSTANCE_OPERATIONS,
@@ -270,13 +287,13 @@ export const CONTROL_PLANE_OPERATIONS = {
 	workdays: {
 		...WORKDAY_PROFILE_OPERATIONS,
 		list: resource('workdays.list', 'GET', '/v1/teams/{teamId}/workday-runs', { teamId: z.string().min(1) }, { capability: 'workdays.read', surfaces: ['rest', 'cli', 'mcp_tool'], pagination: 'cursor' }),
-		preflight: resource('workdays.plan', 'POST', '/v1/teams/{teamId}/workday-runs/preflight', { teamId: z.string().min(1) }, { capability: 'workdays.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli', 'mcp_tool'] }),
+		preflight: resource('workdays.plan', 'POST', '/v1/teams/{teamId}/workday-runs/preflight', { teamId: z.string().min(1) }, { capability: 'workdays.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli', 'mcp_tool'], body: workdayIntent }),
 		start: resource('workdays.start', 'POST', '/v1/teams/{teamId}/workday-runs', { teamId: z.string().min(1) }, { capability: 'workdays.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli', 'mcp_tool'], risk: 'authority' }),
 		show: resource('workdays.show', 'GET', '/v1/teams/{teamId}/workday-runs/{runId}', { teamId: z.string().min(1), runId: z.string().min(1) }, { capability: 'workdays.read', surfaces: ['rest', 'cli', 'mcp_resource'] }),
 		stop: resource('workdays.stop', 'POST', '/v1/teams/{teamId}/workday-runs/{runId}/stop', { teamId: z.string().min(1), runId: z.string().min(1) }, { capability: 'workdays.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli', 'mcp_tool'], risk: 'authority' }),
-		events: resource('workdays.events.list', 'GET', '/v1/teams/{teamId}/workday-runs/{runId}/events', { teamId: z.string().min(1), runId: z.string().min(1) }, { capability: 'workdays.read', pagination: 'cursor' }),
+		events: resource('workdays.events.list', 'GET', '/v1/teams/{teamId}/workday-runs/{runId}/events', { teamId: z.string().min(1), runId: z.string().min(1) }, { capability: 'workdays.read', surfaces: ['rest', 'cli'], pagination: 'cursor' }),
 		schedules: resource('workdays.schedules.list', 'GET', '/v1/teams/{teamId}/workday-schedules', { teamId: z.string().min(1) }, { capability: 'workdays.read', surfaces: ['rest', 'cli'], pagination: 'cursor' }),
-		createSchedule: resource('workdays.schedules.create', 'POST', '/v1/teams/{teamId}/workday-schedules', { teamId: z.string().min(1) }, { capability: 'workdays.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli'], risk: 'authority' }),
+		createSchedule: resource('workdays.schedules.create', 'POST', '/v1/teams/{teamId}/workday-schedules', { teamId: z.string().min(1) }, { capability: 'workdays.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli'], risk: 'authority', body: scheduledWorkdayIntent }),
 		updateSchedule: resource('workdays.schedules.update', 'PATCH', '/v1/teams/{teamId}/workday-schedules/{scheduleId}', { teamId: z.string().min(1), scheduleId: z.string().min(1) }, { capability: 'workdays.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli'], concurrency: true }),
 	},
 	assignments: {
@@ -457,8 +474,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 		failAssignment: providerPath('providers.assignments.fail', 'POST', '/v1/provider/assignments/{assignmentId}/fail', { assignmentId: z.string().min(1) }),
 		reportUsage: providerPath('providers.assignments.usage', 'POST', '/v1/provider/assignments/{assignmentId}/usage', { assignmentId: z.string().min(1) }),
 		settleAssignment: providerPath('providers.assignments.settle', 'POST', '/v1/provider/assignments/{assignmentId}/settle', { assignmentId: z.string().min(1) }),
-		createEvent: providerPath('providers.assignments.event.create', 'POST', '/v1/provider/assignments/{assignmentId}/events', { assignmentId: z.string().min(1) }),
-		publishSignal: providerPath('providers.assignments.signal.publish', 'POST', '/v1/provider/assignments/{assignmentId}/signals', { assignmentId: z.string().min(1) }),
+		createEvent: providerPath('providers.assignments.event.create', 'POST', '/v1/provider/assignments/{assignmentId}/events', { assignmentId: z.string().min(1) }, { body: providerEventRequest }),
 		dispatchWorkflow: providerPath('providers.assignments.workflow.dispatch', 'POST', '/v1/provider/assignments/{assignmentId}/workflow-operations/{operationId}/dispatch', { assignmentId: z.string().min(1), operationId: z.string().min(1) }),
 		workflowRun: providerPath('providers.assignments.workflow.show', 'GET', '/v1/provider/assignments/{assignmentId}/workflow-runs/{runId}', { assignmentId: z.string().min(1), runId: z.string().min(1) }, { read: true }),
 	},

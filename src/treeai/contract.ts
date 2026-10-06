@@ -11,7 +11,7 @@ export const TREEAI_ADOPTION = {
 } as const;
 
 export function validateTreeAiOperationMapping() {
-	const authoritative = new Set(TREEAI_UPSTREAM_OPERATIONS.map(({ operationId }) => operationId));
+	const authoritative = new Set<string>(TREEAI_UPSTREAM_OPERATIONS.map(({ operationId }) => operationId));
 	const mapped = TREEAI_CONTROL_PLANE_OPERATION_LIST.map(({ descriptor }) => descriptor.upstream?.operationId).filter(Boolean) as string[];
 	return [
 		...mapped.filter((id) => !authoritative.has(id)).map((id) => `unknown_upstream_operation:${id}`),

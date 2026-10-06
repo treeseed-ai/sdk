@@ -71,9 +71,11 @@ describe('TreeSeed TreeDX proxy facade', () => {
 			(resource) => resource.operationId === 'treedx.service.contract',
 		);
 		expect(serviceContractResource?.uriTemplate).toBe('treeseed://dx/projects/{projectId}/service-contract');
+		const template: `treeseed://dx/projects/${string}/${string}` = 'treeseed://dx/projects/{projectId}/service-contract';
+		expect(serviceContractResource!.uriTemplate).toBe(template);
 		const link: TreeSeedTreeDxResourceLink = {
 			type: 'resource_link',
-			uri: serviceContractResource!.uriTemplate.replace('{projectId}', 'project-123'),
+			uri: `treeseed://dx/projects/${'project-123'}/service-contract`,
 			name: 'TreeDX service contract',
 		};
 		expect(link.uri).toBe('treeseed://dx/projects/project-123/service-contract');

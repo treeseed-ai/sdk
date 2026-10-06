@@ -6,6 +6,44 @@ const input = { now: '2026-09-16T12:00:00Z', maximumObservationAgeSeconds: 90,
  observation: { day: '2026-09-16', observedAt: '2026-09-16T11:59:59Z', healthy: true, activeSeconds: 100, reservedSeconds: 200 } };
 
 describe('capability daily accounting', () => {
+ it('rejects malformed retained observation fields before a new report can hide them behind unhealthy or fresh supply', () => {
+  const previous = { ...input.observation }, mutations: Array<Record<string, unknown>> = [];
+  for (const reservedSeconds of [undefined, null, '0', false, -1, NaN, Infinity, -Infinity]) mutations.push({ reservedSeconds });
+  for (const healthy of [undefined, null, 'true', 0, 1, [], {}]) mutations.push({ healthy });
+  for (const day of [undefined, null, '', 'not-a-day', '2026-02-30', '2026-09-15', 20260916]) mutations.push({ day });
+  for (const observedAt of [undefined, null, '', 'not-a-clock', 0]) mutations.push({ observedAt });
+  for (const patch of mutations) for (const healthy of [true, false]) {
+   const supplied = { ...structuredClone(input), observation: { ...input.observation, healthy },
+    previousObservation: Object.assign({}, previous, patch) }, before = structuredClone(supplied);
+   expect(() => remainingCapabilitySeconds(supplied)).toThrow('capability_accounting_invalid'); expect(supplied).toEqual(before);
+  }
+  for (const healthy of [true, false]) {
+   const supplied = { ...structuredClone(input), previousObservation: { ...previous, healthy } }, before = structuredClone(supplied);
+   expect(remainingCapabilitySeconds(supplied)).toEqual({ availableSeconds: 3300, reason: 'accounted', activeSeconds: 100,
+    reservedSeconds: 200, day: '2026-09-16' }); expect(supplied).toEqual(before);
+  }
+ });
+ it('rejects every nonboolean observation health value without coercing supply or rewriting original accounting evidence', () => {
+  for (const value of [undefined, null, '', 'true', 'false', 0, 1, [], {}, ['true']]) {
+   const supplied = { ...structuredClone(input), observation: Object.assign({}, input.observation, { healthy: value }) };
+   const before = structuredClone(supplied);
+   expect(() => remainingCapabilitySeconds(supplied)).toThrow('capability_accounting_invalid'); expect(supplied).toEqual(before);
+  }
+  for (const healthy of [true, false]) {
+   const supplied = { ...structuredClone(input), observation: { ...input.observation, healthy } }, before = structuredClone(supplied);
+   expect(remainingCapabilitySeconds(supplied)).toEqual(healthy
+    ? { availableSeconds: 3300, reason: 'accounted', activeSeconds: 100, reservedSeconds: 200, day: '2026-09-16' }
+    : { availableSeconds: 0, reason: 'unhealthy' }); expect(supplied).toEqual(before);
+  }
+ });
+ it('retains exact fractional measured supply and applies the stricter independent ledger without rounding native observations upward', () => {
+  const supplied = { ...structuredClone(input), dailyLimitSeconds: 400.75, ledgerActiveSeconds: 100.125, ledgerReservedSeconds: 200.5,
+   observation: { ...input.observation, activeSeconds: 99.75, reservedSeconds: 200.25 } }, before = structuredClone(supplied);
+  expect(remainingCapabilitySeconds(supplied)).toEqual({ availableSeconds: 100, reason: 'accounted', activeSeconds: 100.125,
+   reservedSeconds: 200.5, day: '2026-09-16' }); expect(supplied).toEqual(before);
+  expect(remainingCapabilitySeconds({ ...supplied, dailyLimitSeconds: 300.625 })).toEqual({ availableSeconds: 0,
+   reason: 'accounted', activeSeconds: 100.125, reservedSeconds: 200.5, day: '2026-09-16' });
+ });
  it('requires explicit shared-model and capability caps without assignment minimums', () => {
   const limits = { modelConfigurationId: 'codex-terra', dailyActiveSecondsLimit: 28800,
    capabilityLimits: { implementation: { dailyActiveSecondsLimit: 28800, maximumAssignmentSeconds: 3600 } } };

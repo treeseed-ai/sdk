@@ -1,6 +1,9 @@
 /** Portable durable records shared by workday control-plane and operator consumers. */
 import type { WorkdayAgentSelection } from '../../../workday.ts';
 import type { AgentWorkExecutionMode } from '../../support/authority/execution-mode.ts';
+import { z } from 'zod';
+import { leaseSchema } from '../assignments/agent-execution.ts';
+import { workdayIntentSchema } from '../../../../operator-contracts/workday-lifecycle.ts';
 
 export type CapacityWorkdayRunStatus =
 	| 'queued'
@@ -99,6 +102,10 @@ export interface AgentActivityEvent {
 
 export interface ProviderRuntimeEventInput {
 	id: string;
+	leaseToken?: string;
+	runnerId?: string;
+	sequence?: number;
+	protectedPayload?: Record<string, unknown>;
 	eventType: `provider.${string}`;
 	status: 'recorded' | 'active' | 'completed' | 'warning' | 'error' | 'failed';
 	component: 'provider-manager' | 'provider-runner' | 'lease' | 'execution-provider' | 'recovery';
@@ -109,16 +116,10 @@ export interface ProviderRuntimeEventInput {
 	metrics?: Record<string, unknown>;
 }
 
-export interface CapacityWorkdayScheduleRecord {
-	id: string;
-	teamId: string;
-	status: 'active' | 'paused' | 'completed' | 'failed';
-	purpose: string;
-	cadenceSeconds: number;
-	intent: import('../../../../operator-contracts/workday-lifecycle.ts').WorkdayIntent;
-	lastRunId: string | null;
-	nextRunAt: string;
-	stateVersion: number;
-	createdAt: string;
-	updatedAt: string;
-}
+export const workdayScheduleSchema = z.object({
+	id: leaseSchema.shape.id, teamId: leaseSchema.shape.id, status: z.enum(['active', 'paused', 'completed', 'failed']),
+	purpose: z.string(), cadenceSeconds: z.number().int().min(60), intent: workdayIntentSchema,
+	lastRunId: z.string().nullable(), nextRunAt: leaseSchema.shape.acquiredAt, stateVersion: z.number().int().positive(),
+	createdAt: leaseSchema.shape.acquiredAt, updatedAt: leaseSchema.shape.acquiredAt,
+}).strict();
+export type CapacityWorkdayScheduleRecord = z.infer<typeof workdayScheduleSchema>;
