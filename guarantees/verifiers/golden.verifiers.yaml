@@ -1051,3 +1051,18 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/control-plane-client.test.ts
     testName: "validates manual and recurring public intent fields without inventing route-owned normalized metadata"
+  sdk.golden.execution-schema-projection-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/control-plane-operation.test.ts
+    testName: "projects owning operation schemas into exact reference-free OpenAPI JSON without changing native validation"
+  sdk.golden.execution-schema-bindings-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/control-plane-operation.test.ts
+    testName: "preserves exact provider and workday schema bindings and semantic denials across repeated projection"
+  sdk.golden.execution-schema-archive-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/standards/package-archive.test.ts
+    testName: "installed native SDK owns operation projection and strict consumer declarations while retaining archive and validation bytes"
