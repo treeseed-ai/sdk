@@ -618,3 +618,12 @@ workflow:
   - id: execution-public-intent-unit
     action: { verifier: sdk.golden.execution-public-intent-unit }
     expect: { status: passed }
+  - id: execution-schema-projection-unit
+    action: { verifier: sdk.golden.execution-schema-projection-unit }
+    expect: { status: passed }
+  - id: execution-schema-bindings-unit
+    action: { verifier: sdk.golden.execution-schema-bindings-unit }
+    expect: { status: passed }
+  - id: execution-schema-archive-native
+    action: { verifier: sdk.golden.execution-schema-archive-native }
+    expect: { status: passed }

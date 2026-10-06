@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import {
 	CONTROL_PLANE_OPERATION_SCHEMA_VERSION,
 	CONTROL_PLANE_CATALOG,
@@ -9,6 +10,7 @@ import {
 	buildMcpResources,
 	buildMcpTools,
 	validateControlPlaneCatalog,
+	controlPlaneSchemaJson,
 	type ControlPlaneCatalog,
 	type ControlPlaneOperationDescriptor,
 } from '../../../src/operator-contracts/index.ts';
@@ -43,6 +45,50 @@ function catalog(...operations: ControlPlaneOperationDescriptor[]): ControlPlane
 }
 
 describe('control-plane operation catalog', () => {
+	it('projects owning operation schemas into exact reference-free OpenAPI JSON without changing native validation', () => {
+		const schema = z.object({ id: z.string().min(1).max(200).regex(/^[A-Za-z0-9_-]+$/u), priority: z.number().int(),
+			mode: z.enum(['simulation', 'production']).optional(), subject: z.object({ id: z.string().min(1) }).strict() }).strict();
+		const valid = { id: 'a'.repeat(200), priority: -7, subject: { id: 'native-subject' } }, held = structuredClone(valid);
+		const expected = { type: 'object', properties: { id: { type: 'string', minLength: 1, maxLength: 200, pattern: '^[A-Za-z0-9_-]+$' },
+			priority: { type: 'integer' }, mode: { type: 'string', enum: ['simulation', 'production'] },
+			subject: { type: 'object', properties: { id: { type: 'string', minLength: 1 } }, required: ['id'], additionalProperties: false } },
+			required: ['id', 'priority', 'subject'], additionalProperties: false };
+		expect(controlPlaneSchemaJson(schema)).toEqual(expected);
+		expect(schema.parse(valid)).toEqual(valid);
+		for (const invalid of [null, {}, { ...valid, id: '' }, { ...valid, id: 'é' }, { ...valid, id: 'a'.repeat(201) },
+			{ ...valid, priority: 0.5 }, { ...valid, mode: 'other' }, { ...valid, subject: {} }, { ...valid, callerAuthority: true }]) {
+			const before = structuredClone(invalid);
+			expect(schema.safeParse(invalid).success).toBe(false);
+			expect(invalid).toEqual(before);
+		}
+		const changed = controlPlaneSchemaJson(schema); Object.assign(changed, { type: 'substituted' });
+		expect(controlPlaneSchemaJson(schema)).toEqual(expected); expect(valid).toEqual(held);
+	});
+	it('preserves exact provider and workday schema bindings and semantic denials across repeated projection', () => {
+		const bindings = [CONTROL_PLANE_OPERATIONS.providers.assignment, CONTROL_PLANE_OPERATIONS.workdays.preflight];
+		const descriptors = bindings.map(binding => structuredClone(binding.descriptor));
+		for (const binding of bindings) for (const schema of Object.values(binding.schema)) {
+			const first = controlPlaneSchemaJson(schema);
+			expect(controlPlaneSchemaJson(schema)).toEqual(first);
+			expect(JSON.stringify(first)).not.toContain('"$ref"');
+		}
+		expect(controlPlaneSchemaJson(bindings[0]!.schema.path)).toEqual({ type: 'object',
+			properties: { assignmentId: { type: 'string', minLength: 1 } }, required: ['assignmentId'], additionalProperties: false });
+		expect(controlPlaneSchemaJson(bindings[1]!.schema.path)).toEqual({ type: 'object',
+			properties: { teamId: { type: 'string', minLength: 1 } }, required: ['teamId'], additionalProperties: false });
+		const intent = { profileId: 'arbitrary-profile', projects: ['sdk'], startsAt: '2026-10-06T00:00:00.000Z', durationSeconds: 60,
+			decisionIds: ['exact-decision'], planningOnly: false }, held = structuredClone(intent);
+		const schema = CONTROL_PLANE_OPERATIONS.workdays.preflight.schema.body;
+		expect(schema.parse(intent)).toEqual(intent);
+		for (const field of ['executionPlanId', 'capacityPlanId', 'executionInputId', 'demandSetId']) {
+			const invalid = { ...intent, [field]: 'caller-derived' }, before = structuredClone(invalid);
+			expect(schema.safeParse(invalid).success).toBe(false); expect(invalid).toEqual(before);
+		}
+		for (const decisionIds of [[], ['é'], ['a'.repeat(201)], ['exact-decision', 'exact-decision'], ['valid', null]])
+			expect(schema.safeParse({ ...intent, decisionIds }).success).toBe(false);
+		expect(schema.parse({ ...intent, decisionIds: ['a'.repeat(200)] })).toMatchObject({ decisionIds: ['a'.repeat(200)] });
+		expect(bindings.map(binding => binding.descriptor)).toEqual(descriptors); expect(intent).toEqual(held);
+	});
 	it('derives exact workday read resources and rejects missing or mutation REST bindings without changing operation authority', () => {
 		const base = CONTROL_PLANE_OPERATIONS.workdays.show.descriptor, held = structuredClone(base);
 		expect(buildMcpResources([base])).toEqual([{ uriTemplate: 'treeseed://teams/{teamId}/workdays/{runId}',
