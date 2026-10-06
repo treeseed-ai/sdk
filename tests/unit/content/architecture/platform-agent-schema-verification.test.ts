@@ -44,6 +44,8 @@ describe('Platform agent content schema verification', () => {
 			expect(changed).toEqual(before);
 		}
 		const invalid = [
+			{ type: 'number', enum: choices },
+			{ type: 'object', const: 'general' },
 			{ anyOf: choices.slice(1).map(value => ({ const: value })) },
 			{ anyOf: [...choices.map(value => ({ const: value })), { const: 'foreign' }] },
 			{ anyOf: [...choices.map(value => ({ const: value })), { type: 'null' }] },
@@ -52,6 +54,12 @@ describe('Platform agent content schema verification', () => {
 			{ anyOf: [{ enum: choices, maxLength: 6 }] },
 			{ anyOf: [] },
 		];
+		const reused = structuredClone(document), classification = schemaRecord(schemaRecord(schemaRecord(reused.$defs.Note).properties).classification);
+		expect(verifyAgentContentSchema(reused)).toEqual([]);
+		const originalType = classification.type; classification.type = 'number';
+		expect(verifyAgentContentSchema(reused)).toContainEqual(expect.objectContaining({ code: 'agent_schema_structure_mismatch',
+			message: expect.stringContaining('Note nested declarative constraints differ') }));
+		classification.type = originalType; expect(verifyAgentContentSchema(reused)).toEqual([]); expect(reused).toEqual(held);
 		for (const field of invalid) {
 			const changed = structuredClone(document); schemaRecord(schemaRecord(changed.$defs.Note).properties).classification = field;
 			const before = structuredClone(changed);

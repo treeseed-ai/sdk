@@ -1,10 +1,17 @@
 import { z } from 'zod';
-import { conditionalFields, uniqueArray } from '../../../../content/validation/schema-constraints.ts';
+import { conditionalFields, minimumProperties, uniqueArray } from '../../../../content/validation/schema-constraints.ts';
 import { AGENT_WORK_EXECUTION_MODES, type AgentWorkExecutionMode } from '../../support/authority/execution-mode.ts';
-import { assignmentReferenceSchema } from '../assignments/agent-execution.ts';
+import { assignmentReferenceSchema, leaseSchema } from '../assignments/agent-execution.ts';
+import { agentClassSchema } from '../../../validation/agent-definition-schema.ts';
 
 const identifier = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
 const positiveWeights = z.record(z.number().finite().positive());
+
+// Canonical shared integer values; they do not replace the numeric percentage
+// policy, create a scheduler, or authorize a second allocation path.
+export const weightMapSchema = minimumProperties(z.record(z.number().int().positive()), 1, 'At least one integer weight is required.');
+export const projectWeightSchema = z.object({ projectId: leaseSchema.shape.id, weight: z.number().int().positive() }).strict();
+export const agentClassWeightSchema = z.object({ agentClass: agentClassSchema, weight: z.number().int().positive() }).strict();
 
 export const workdayPolicySchema = z.object({
 	durationSeconds: z.number().int().positive(),

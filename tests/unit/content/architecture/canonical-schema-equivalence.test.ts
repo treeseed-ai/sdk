@@ -7,13 +7,46 @@ import { assertCanonicalAuthorityUnchanged, canonicalAuthority, constraintPaths,
 
 afterAll(assertCanonicalAuthorityUnchanged);
 const verify = (document: CanonicalSchema) => verifyAgentContentSchema(document);
+const baselines = new WeakMap<CanonicalSchema, ReturnType<typeof verify>>();
+function baseline(document: CanonicalSchema) {
+	let result = baselines.get(document);
+	if (!result) { result = verify(document); baselines.set(document, result); }
+	return result;
+}
 function mutationDetected(document: CanonicalSchema, change: (copy: CanonicalSchema) => void) {
 	const copy = structuredClone(document);
 	change(copy);
 	const before = JSON.stringify(copy);
 	const diagnostics = verify(copy);
-	expect(JSON.stringify(copy)).toBe(before);
-	return diagnostics.length > 0 && JSON.stringify(diagnostics) !== JSON.stringify(verify(document));
+	if (JSON.stringify(copy) !== before) throw new Error('Schema verification changed the supplied mutation bytes.');
+	return diagnostics.length > 0 && JSON.stringify(diagnostics) !== JSON.stringify(baseline(document));
+}
+
+// JSON Schema evaluates these applicators on the SAME instance. A nested
+// property/item starts new instance authority. Derive redundancy from the
+// authored declaration, never from the verifier's observed acceptance.
+function equivalentRemoval(definition: unknown, path: string[]) {
+	let value = definition, inheritedObject = false;
+	for (let index = 0; index < path.length - 1; index++) {
+		const key = path[index]!;
+		if (key === 'properties' || key === 'patternProperties') {
+			value = schemaRecord(schemaRecord(value)[key])[path[++index]!]; inheritedObject = false;
+		} else if (key === 'items' || key === 'contains' || key === 'additionalProperties') {
+			value = schemaRecord(value)[key]; inheritedObject = false;
+		} else {
+			if (!Array.isArray(value) && schemaRecord(value).type === 'object') inheritedObject = true;
+			value = Array.isArray(value) ? value[Number(key)] : schemaRecord(value)[key];
+		}
+	}
+	const field = path.at(-1)!;
+	const current = schemaRecord(value);
+	const types = Array.isArray(current.type) ? current.type : [current.type];
+	const enumerated = Array.isArray(current.enum) ? current.enum : Object.hasOwn(current, 'const') ? [current.const] : [];
+	const enumImpliesType = enumerated.length > 0 && enumerated.every(entry => types.includes(entry === null ? 'null'
+		: Array.isArray(entry) ? 'array' : typeof entry === 'number' && Number.isInteger(entry) && types.includes('integer') ? 'integer' : typeof entry));
+	return field === 'type' && inheritedObject && schemaRecord(value).type === 'object'
+		|| field === 'type' && enumImpliesType
+		|| field === 'additionalProperties' && schemaRecord(value).additionalProperties === true;
 }
 
 describe('exact canonical architecture schema equivalence', () => {
@@ -111,6 +144,17 @@ describe('exact canonical architecture schema equivalence', () => {
 		const missed: string[] = [];
 		for (const [name, definition] of Object.entries(document.$defs)) {
 			for (const path of constraintPaths(definition)) {
+				if (equivalentRemoval(definition, path)) {
+					const copy = structuredClone(document); removeConstraint(copy, name, path); const held = JSON.stringify(copy);
+					expect(verify(copy)).toEqual(baseline(document)); expect(JSON.stringify(copy)).toBe(held);
+					if (!mutationDetected(document, changed => {
+						let parent: unknown = changed.$defs[name];
+						for (const key of path.slice(0, -1)) parent = Array.isArray(parent) ? parent[Number(key)] : schemaRecord(parent)[key];
+						const target = schemaRecord(parent), originalTypes = Array.isArray(target.type) ? target.type : [target.type];
+						target[path.at(-1)!] = path.at(-1) === 'type' ? originalTypes.includes('object') ? 'string' : 'object' : false;
+					})) missed.push(`${name}.${path.join('.')}:contradiction`);
+					continue;
+				}
 				if (!mutationDetected(document, copy => removeConstraint(copy, name, path))) {
 					missed.push(`${name}.${path.join('.')}`);
 				}

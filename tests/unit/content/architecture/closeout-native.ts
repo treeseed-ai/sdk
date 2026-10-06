@@ -80,6 +80,11 @@ if (kind === 'workday-resource') {
 	process.exit(0);
 }
 const exports: Record<string, unknown> = publicContracts;
+if (kind === 'weight-map' || kind === 'project-weight' || kind === 'agent-class-weight') {
+	const selected = exports[kind === 'weight-map' ? 'weightMapSchema' : kind === 'project-weight' ? 'projectWeightSchema' : 'agentClassWeightSchema'];
+	if (!(selected instanceof z.ZodType) || !Array.isArray(input)) throw new Error('Exact shared weight validator required.');
+	process.stdout.write(JSON.stringify(input.map(record => selected.safeParse(record)))); process.exit(0);
+}
 if (kind === 'team' || kind === 'project' || kind === 'agent-registration') {
 	const exported: Record<string, unknown> = kind === 'agent-registration' ? publicContracts : portfolioContracts;
 	const selected = exported[kind === 'team' ? 'teamRecordSchema' : kind === 'project' ? 'projectRecordSchema' : 'agentRegistrationSchema'];

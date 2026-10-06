@@ -71,6 +71,8 @@ describe('native Platform architecture-schema custody', () => {
 			expect(execFileSync('git', ['show', `${commit}:docs/agent.schema.yml`], { cwd: root, encoding: 'utf8' })).toBe(bytes);
 		}
 		for (const field of [
+			{ type: 'number', enum: choices },
+			{ type: 'object', const: 'general' },
 			{ anyOf: choices.slice(1).map(value => ({ const: value })) },
 			{ anyOf: [...choices.map(value => ({ const: value })), { type: 'null' }] },
 			{ oneOf: [...choices.map(value => ({ const: value })), { const: 'general' }] },

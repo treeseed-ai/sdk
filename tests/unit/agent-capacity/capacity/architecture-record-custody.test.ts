@@ -37,6 +37,31 @@ function supplied() {
 	return { item, attempt, result };
 }
 describe('public assignment whole immutable record custody', () => {
+	function verifySharedWeights(native: boolean) {
+		for (const [kind, name, valid, invalid] of [
+			['weight-map', 'weightMapSchema', [{ project: 1 }, { project: 2, second: 1 }], [{}, { project: 0 }, { project: -1 }, { project: .5 }, { project: '1' }, { project: null }]],
+			['project-weight', 'projectWeightSchema', [{ projectId: 'project', weight: 1 }, { projectId: 'x'.repeat(200), weight: 2 }], [{ weight: 1 }, { projectId: 'project' }, { projectId: 'é', weight: 1 }, { projectId: 'x'.repeat(201), weight: 1 }, { projectId: 'project', weight: 0 }, { projectId: 'project', weight: .5 }, { projectId: 'project', weight: '1' }, { projectId: 'project', weight: 1, priority: 1 }]],
+			['agent-class-weight', 'agentClassWeightSchema', [{ agentClass: 'arbitrary-renamed', weight: 1 }, { agentClass: 'x'.repeat(100), weight: 2 }], [{ weight: 1 }, { agentClass: 'arbitrary-renamed' }, { agentClass: 'NamedRole', weight: 1 }, { agentClass: 'x'.repeat(101), weight: 1 }, { agentClass: 'arbitrary-renamed', weight: 0 }, { agentClass: 'arbitrary-renamed', weight: .5 }, { agentClass: 'arbitrary-renamed', weight: '1' }, { agentClass: 'arbitrary-renamed', weight: 1, maximumSeconds: 2 }]],
+		] as const) {
+			const entries = [...valid, ...invalid], held = structuredClone(entries);
+			if (native) {
+				const path = fileURLToPath(new URL('../../content/architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+				const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, kind], { input: JSON.stringify(entries), encoding: 'utf8', timeout: 15_000 });
+				expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+				const observed: unknown = JSON.parse(child.stdout); if (!Array.isArray(observed)) throw new Error('Native shared weight observations required.');
+				expect(observed).toHaveLength(entries.length);
+				for (const [index, entry] of entries.entries()) expect(observed[index]).toMatchObject(index < valid.length ? { success: true, data: entry } : { success: false });
+				expect(readFileSync(path)).toEqual(bytes);
+			} else {
+				const exports: Record<string, unknown> = publicContracts, schema = exports[name];
+				if (!(schema instanceof z.ZodType)) throw new Error('Actual shared integer weight validator required.');
+				for (const [index, entry] of entries.entries()) expect(schema.safeParse(entry)).toMatchObject(index < valid.length ? { success: true, data: entry } : { success: false });
+			}
+			expect(entries).toEqual(held);
+		}
+	}
+	it('validates canonical shared integer weights without converting percentage policy or creating another allocator', () => verifySharedWeights(false));
+	it('native shared weight validators preserve supplied scope and deny missing fractional coerced or duplicated policy fields', () => verifySharedWeights(true));
 	function verifyScheduleRecord(native: boolean) {
 		const clock = '2026-10-03T00:00:00.000Z', intent = { schemaVersion: 'treeseed.workday-intent/v1', teamId: 'team', profileId: 'default', projects: 'all', startsAt: clock };
 		const record = { id: 'schedule', teamId: 'team', status: 'active', purpose: '', cadenceSeconds: 60, intent, lastRunId: null, nextRunAt: clock, stateVersion: 1, createdAt: clock, updatedAt: clock };

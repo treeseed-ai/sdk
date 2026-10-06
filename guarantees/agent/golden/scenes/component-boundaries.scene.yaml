@@ -3,6 +3,12 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: execution-shared-weights-unit
+    action: { verifier: sdk.golden.execution-shared-weights-unit }
+    expect: { status: passed }
+  - id: execution-shared-weights-native
+    action: { verifier: sdk.golden.execution-shared-weights-native }
+    expect: { status: passed }
   - id: execution-portfolio-custody-unit
     action: { verifier: sdk.golden.execution-portfolio-custody-unit }
     expect: { status: passed }

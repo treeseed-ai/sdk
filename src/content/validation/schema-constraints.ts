@@ -34,7 +34,7 @@ export function uniqueArray<T extends z.ZodTypeAny>(array: z.ZodArray<T>) {
 }
 
 /** Count represented properties once for both validation and schema export. */
-export function minimumProperties<T extends z.AnyZodObject>(object: T, minimum: number,
+export function minimumProperties<T extends z.ZodTypeAny>(object: T, minimum: number,
 	message: string): z.ZodEffects<T, z.output<T>, z.input<T>> {
 	const schema = object.superRefine((value, context) => {
 		if (Object.values(value).filter(entry => entry !== undefined).length < minimum) {
