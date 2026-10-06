@@ -17,6 +17,21 @@ function tree(): CommandTreeDescriptor {
 }
 
 describe('human command tree contract', () => {
+	it('declares one optional repeatable exact target selector for scoped development freeze without another execution path', () => {
+		const before = structuredClone(TREESEED_COMMAND_TREE_V1);
+		const dev = TREESEED_COMMAND_TREE_V1.commands.find(node => node.segment === 'dev');
+		expect(dev?.nodeType).toBe('branch');
+		if (!dev || dev.nodeType !== 'branch') throw new Error('Original development branch required');
+		const freeze = dev.children.find(node => node.segment === 'freeze');
+		expect(freeze?.nodeType).toBe('leaf');
+		if (!freeze || freeze.nodeType !== 'leaf') throw new Error('Original freeze leaf required');
+		expect(freeze.options.filter(option => option.name === '--target')).toEqual([
+			{ name: '--target', description: 'Freeze only these exact project.target roots and their declared dependencies.', type: 'string[]' },
+		]);
+		expect(freeze.execution).toEqual({ kind: 'local', handlerId: 'local.dev.freeze' });
+		expect(freeze.options.some(option => option.name === '--allow-dirty')).toBe(true);
+		expect(TREESEED_COMMAND_TREE_V1).toEqual(before);
+	});
 	it('excludes each retired execution authority command independently while retaining the current provider and graph surface without changing the generated tree', () => {
 		const before = structuredClone(TREESEED_COMMAND_TREE_V1), paths = listCommandPaths();
 		for (const path of ['agent-author', 'capacity-plan-create', 'checkpoint-integrate', 'content-integrate', 'content-abandon']) {

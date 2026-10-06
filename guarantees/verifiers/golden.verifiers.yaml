@@ -1066,3 +1066,8 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/contract/standards/package-archive.test.ts
     testName: "installed native SDK owns operation projection and strict consumer declarations while retaining archive and validation bytes"
+  sdk.golden.provider-scoped-freeze-descriptor-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/command-tree.test.ts
+    testName: "declares one optional repeatable exact target selector for scoped development freeze without another execution path"

@@ -292,7 +292,7 @@ const commandTree: CommandTreeDescriptor = {
 			developmentCommand('status', 'read', undefined, [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--all', description: 'Include stopped sessions.', type: 'boolean' }]),
 			developmentCommand('logs', 'read', undefined, [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--target', description: 'Development target identity.', type: 'string' }, { name: '--follow', description: 'Follow target logs.', type: 'boolean' }]),
 			developmentCommand('plan', 'read', undefined, [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--affected', description: 'Show the smallest affected closure.', type: 'boolean' }]),
-			developmentCommand('freeze', 'mutation', undefined, [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--allow-dirty', description: 'Create a non-promotable dirty-source candidate.', type: 'boolean' }]),
+			developmentCommand('freeze', 'mutation', undefined, [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--target', description: 'Freeze only these exact project.target roots and their declared dependencies.', type: 'string[]' }, { name: '--allow-dirty', description: 'Create a non-promotable dirty-source candidate.', type: 'boolean' }]),
 			developmentCommand('verify', 'mutation', undefined, [{ name: '--session', description: 'Development session identity.', type: 'string' }, { name: '--candidate', description: 'Candidate identity.', type: 'string' }]),
 		]),
 		branch('host', [
