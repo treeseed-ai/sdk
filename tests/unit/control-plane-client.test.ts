@@ -2,9 +2,28 @@ import { describe, expect, it, vi } from 'vitest';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { ControlPlaneClient, ControlPlaneClientError, normalizeControlPlaneServerRegistry, resolveControlPlaneServer } from '../../src/entrypoints/clients/control-plane-client.ts';
-import { CONTROL_PLANE_OPERATIONS, encodeConfirmationState } from '../../src/operator-contracts/index.ts';
+import { CONTROL_PLANE_OPERATIONS, encodeConfirmationState, validateWorkdayIntent } from '../../src/operator-contracts/index.ts';
 
 describe('ControlPlaneClient', () => {
+	it('validates manual and recurring public intent fields without inventing route-owned normalized metadata', async () => {
+		const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () => new Response(JSON.stringify({ data: {} }), { status: 200, headers: { 'content-type': 'application/json' } }));
+		const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002' }, fetchImpl });
+		const intent = { profileId: 'default', projects: ['sdk'], startsAt: '2030-01-01T00:00:00Z', durationSeconds: 600, decisionIds: [' b ', 'a'] };
+		for (const nested of [false, true]) {
+			const body = nested ? { intent, cadenceSeconds: 3600 } : intent, held = structuredClone(body);
+			await expect(client.invoke(nested ? CONTROL_PLANE_OPERATIONS.workdays.createSchedule : CONTROL_PLANE_OPERATIONS.workdays.preflight,
+				{ path: { teamId: 'route-team' }, query: {}, body })).resolves.toEqual({ data: {} });
+			const expected = { ...intent, decisionIds: ['a', 'b'] };
+			expect(fetchImpl.mock.calls.at(-1)![1]!.body).toBe(JSON.stringify(nested ? { intent: expected, cadenceSeconds: 3600 } : expected));
+			expect(body).toEqual(held);
+		}
+		const canonical = { ...intent, decisionIds: ['a', 'b'], schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'route-team' };
+		expect(validateWorkdayIntent(canonical)).toEqual([]);
+		for (const field of ['schemaVersion', 'teamId'] as const) {
+			const missing = { ...canonical }; Reflect.deleteProperty(missing, field);
+			expect(validateWorkdayIntent(missing).some(value => value.path === field)).toBe(true);
+		}
+	});
 	it('normalizes decision permutations into identical direct and nested request bytes while preserving independent controls', async () => {
 		const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () => new Response(JSON.stringify({ data: { marker: 'controlled-response' } }), { status: 200, headers: { 'content-type': 'application/json' } }));
 		const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002' }, fetchImpl });
@@ -141,6 +160,18 @@ describe('ControlPlaneClient', () => {
 			expect(received.at(-1)!.body).toBe(JSON.stringify(body)); expect(body).toEqual(held);
 		}
 		expect(received).toHaveLength(30);
+		for (const nested of [false, true]) {
+			const intent = { profileId: 'default', projects: ['sdk'], startsAt: '2030-01-01T00:00:00Z', durationSeconds: 600, decisionIds: [' b ', 'a'] };
+			const body = nested ? { intent, cadenceSeconds: 3600 } : intent, held = structuredClone(body);
+			const address = server.address(); if (!address || typeof address === 'string') throw new Error('Native TCP binding required.');
+			const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: `http://127.0.0.1:${address.port}` } });
+			await expect(client.invoke(nested ? CONTROL_PLANE_OPERATIONS.workdays.createSchedule : CONTROL_PLANE_OPERATIONS.workdays.preflight,
+				{ path: { teamId: 'team' }, query: {}, body })).resolves.toEqual({ data: { marker: 'controlled-response' } });
+			const expected = { ...intent, decisionIds: ['a', 'b'] };
+			expect(received.at(-1)!.body).toBe(JSON.stringify(nested ? { intent: expected, cadenceSeconds: 3600 } : expected));
+			expect(body).toEqual(held);
+		}
+		expect(received).toHaveLength(32);
 		} finally {
 			await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
 		}
