@@ -270,9 +270,26 @@ describe('proposal-owned execution plan', () => {
 		expect(result.data).toMatchObject({ evidenceRefs: value.evidenceRefs });
 	});
 	it('rejects invalid estimate ordering', () => { const value = proposal(); value.executionPlan.workItems[0]!.estimate.expectedSeconds = 300; expect(validatePortableContentData('proposal', value).ok).toBe(false); });
-	it('rejects executable work without a provider capability demand', () => {
+	it('retains omitted or represented empty governed work-item capabilities without inventing provider admission authority', () => {
 		const value = proposal(), { requiredCapabilities: _required, ...missing } = value.executionPlan.workItems[0]!;
-		expect(validatePortableContentData('proposal', { ...value, executionPlan: { workItems: [missing] } }).ok).toBe(false);
+		for (const item of [missing, { ...missing, requiredCapabilities: [] }]) {
+			const input = { ...value, executionPlan: { workItems: [item] } }, held = structuredClone(input);
+			expect(validatePortableContentData('proposal', input)).toMatchObject({ ok: true, data: input }); expect(input).toEqual(held);
+		}
+	});
+	it('native public Proposal validation preserves optional capability declarations while rejecting malformed or duplicate demands', () => {
+		const base = proposal(), { requiredCapabilities: _required, ...missing } = base.executionPlan.workItems[0]!;
+		const items = [missing, { ...missing, requiredCapabilities: [] }, { ...missing, requiredCapabilities: ['code-change'] },
+			...[null, '', [''], ['code-change', 'code-change']].map(requiredCapabilities => Object.assign({}, missing, { requiredCapabilities }))];
+		const inputs = items.map(item => ({ ...base, executionPlan: { workItems: [item] } })), held = structuredClone(inputs);
+		const path = fileURLToPath(new URL('./architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+		const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'proposal-inventory'], { input: JSON.stringify(inputs), encoding: 'utf8', timeout: 15_000 });
+		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+		const result: unknown = JSON.parse(child.stdout);
+		if (!result || typeof result !== 'object' || !('observations' in result) || !Array.isArray(result.observations)) throw new Error('Native Proposal observations required.');
+		expect(result.observations).toHaveLength(inputs.length);
+		for (const [index, input] of inputs.entries()) expect(result.observations[index]).toMatchObject(index < 3 ? { ok: true, data: input } : { ok: false });
+		expect(inputs).toEqual(held); expect(readFileSync(path)).toEqual(bytes);
 	});
 	it('rejects missing and cyclic work-item dependencies', () => {
 		const missing = proposal(); missing.executionPlan.workItems[0]!.dependsOn.push('missing'); expect(validatePortableContentData('proposal', missing).ok).toBe(false);

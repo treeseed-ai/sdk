@@ -83,7 +83,7 @@ const executionPlanWorkItemSchema = conditionalFields(z.object({
 	maximumReviewCycles: z.number().int().positive().optional(),
 	dependsOn: unique(z.array(slug)),
 	requestedPermissions: permissionSetSchema,
-	requiredCapabilities: unique(z.array(identifier).min(1)),
+	requiredCapabilities: unique(z.array(identifier)).optional(),
 	contextRefs: unique(exactRefs).optional(),
 	acceptanceCriteria: z.array(nonEmpty).min(1),
 }).strict(), [

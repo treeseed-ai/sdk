@@ -40,10 +40,9 @@ export const executionNodeSchema = conditionalFields(z.object({
 	graphRevisionCreated: z.number().int().positive(),
 	graphRevisionUpdated: z.number().int().positive(),
 }).strict(), [
-	{ field: 'kind', equals: 'condition', alternatives: [['condition']], path: ['condition'], message: 'Condition nodes require condition.' },
-	...assignable.map(key => ({ field: 'kind' as const, equals: 'condition', forbidden: { fields: [key] }, path: [key], message: `Condition nodes cannot define ${key}.` })),
-	...assignable.map(key => ({ field: 'kind' as const, notEquals: 'condition', alternatives: [[key]], path: [key], message: `Assignable nodes require ${key}.` })),
-	{ field: 'kind', notEquals: 'condition', forbidden: { fields: ['condition'] }, path: ['condition'], message: 'Assignable nodes cannot define condition.' },
+	{ field: 'kind', equals: 'condition', alternatives: [['condition']], forbidden: { fields: ['agentClass', 'estimate', 'requestedPermissions', 'workspace'] },
+		message: 'Condition nodes require condition and cannot define assignable execution authority.' },
+	{ field: 'kind', notEquals: 'condition', alternatives: [assignable], message: 'Assignable nodes require complete scheduling authority.' },
 	{ field: 'pairRole', in: ['actor', 'reviewer'], alternatives: [['workItemId', 'maximumReviewCycles']], message: 'Actor and Reviewer nodes require workItemId and maximumReviewCycles.' },
 ]).superRefine((node, context) => {
 	if (node.graphRevisionUpdated < node.graphRevisionCreated) context.addIssue({ code: z.ZodIssueCode.custom, path: ['graphRevisionUpdated'], message: 'Updated revision cannot precede created revision.' });

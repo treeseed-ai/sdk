@@ -3,6 +3,12 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: execution-work-item-capability-optionality-unit
+    action: { verifier: sdk.golden.execution-work-item-capability-optionality-unit }
+    expect: { status: passed }
+  - id: execution-work-item-capability-optionality-native
+    action: { verifier: sdk.golden.execution-work-item-capability-optionality-native }
+    expect: { status: passed }
   - id: execution-output-retirement-proposal-unit
     action: { verifier: sdk.golden.execution-output-retirement-proposal-unit }
     expect: { status: passed }

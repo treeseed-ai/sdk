@@ -27,16 +27,19 @@ function edge(fromNodeId: string, toNodeId: string): ExecutionEdge {
 describe('living execution graph contracts', () => {
 	function conditionalNodeInputs() {
 		const base = node('bounded-node'), fields = ['agentClass', 'estimate', 'requiredCapabilities', 'requestedPermissions', 'workspace'];
+		const forbidden = fields.filter(field => field !== 'requiredCapabilities');
 		const condition = { ...Object.fromEntries(Object.entries(base).filter(([key]) => !fields.includes(key))), kind: 'condition', pairRole: null,
 			condition: { conditionType: 'lifecycle', subjectRef: sourceRef, expectedState: 'workday-closing' } };
 		return [
 			{ valid: true, input: base }, { valid: true, input: { ...base, pairRole: 'reviewer' } },
 			{ valid: true, input: condition }, { valid: true, input: { ...base, pairRole: null, workItemId: undefined, maximumReviewCycles: undefined } },
 			{ valid: false, input: { ...condition, condition: undefined } },
-			...fields.map(field => ({ valid: false, input: { ...condition, [field]: Object.getOwnPropertyDescriptor(base, field)?.value } })),
+			{ valid: true, input: { ...condition, requiredCapabilities: [] } },
+			{ valid: true, input: { ...condition, requiredCapabilities: ['code-change'] } },
+			...forbidden.map(field => ({ valid: false, input: { ...condition, [field]: Object.getOwnPropertyDescriptor(base, field)?.value } })),
 			...['planning', 'estimating', 'acting', 'reviewing', 'reporting', 'communication'].flatMap(kind => [
 				{ valid: true, input: { ...base, kind } },
-				{ valid: false, input: { ...base, kind, condition: condition.condition } },
+				{ valid: true, input: { ...base, kind, condition: condition.condition } },
 				...fields.map(field => ({ valid: false, input: Object.fromEntries(Object.entries({ ...base, kind }).filter(([key]) => key !== field)) })),
 			]),
 			...['actor', 'reviewer'].flatMap(pairRole => ['workItemId', 'maximumReviewCycles'].map(field => ({ valid: false,
@@ -47,10 +50,9 @@ describe('living execution graph contracts', () => {
 		const entries = conditionalNodeInputs(), held = structuredClone(entries);
 		const assignable = ['agentClass', 'estimate', 'requiredCapabilities', 'requestedPermissions', 'workspace'];
 		const expected = { allOf: [
-			{ if: { type: 'object', required: ['kind'], properties: { kind: { const: 'condition' } } }, then: { type: 'object', required: ['condition'] } },
-			...assignable.map(field => ({ if: { type: 'object', required: ['kind'], properties: { kind: { const: 'condition' } } }, then: { type: 'object', not: { type: 'object', anyOf: [{ type: 'object', required: [field] }] } } })),
-			...assignable.map(field => ({ if: { type: 'object', required: ['kind'], properties: { kind: { not: { const: 'condition' } } } }, then: { type: 'object', required: [field] } })),
-			{ if: { type: 'object', required: ['kind'], properties: { kind: { not: { const: 'condition' } } } }, then: { type: 'object', not: { type: 'object', anyOf: [{ type: 'object', required: ['condition'] }] } } },
+			{ if: { type: 'object', required: ['kind'], properties: { kind: { const: 'condition' } } }, then: { type: 'object', required: ['condition'],
+				not: { type: 'object', anyOf: assignable.filter(field => field !== 'requiredCapabilities').map(field => ({ type: 'object', required: [field] })) } } },
+			{ if: { type: 'object', required: ['kind'], properties: { kind: { not: { const: 'condition' } } } }, then: { type: 'object', required: assignable } },
 			{ if: { type: 'object', required: ['pairRole'], properties: { pairRole: { enum: ['actor', 'reviewer'] } } }, then: { type: 'object', required: ['workItemId', 'maximumReviewCycles'] } },
 		] };
 		if (native) {
