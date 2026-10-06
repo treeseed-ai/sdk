@@ -1,6 +1,11 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-provider-endpoint-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/identity/contracts.test.ts
+    testName: returns canonical validation failures for malformed provider issuer and resource URLs without throwing native parser errors
   sdk.golden.execution-shared-weights-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

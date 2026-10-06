@@ -2,7 +2,9 @@ import { z } from 'zod';
 
 /** Discovery descriptors are identifiers, not permission to fetch arbitrary URLs. */
 export const identityEndpointSchema = z.string().url().superRefine((value, context) => {
-	const url = new URL(value);
+	let url: URL;
+	try { url = new URL(value); }
+	catch { return; } // The preceding canonical URL check already records this failure.
 	if (url.protocol !== 'https:' || url.username || url.password || url.hash || url.search) {
 		context.addIssue({ code: z.ZodIssueCode.custom, message: 'Identity endpoints require HTTPS without credentials, query, or fragment.' });
 	}
