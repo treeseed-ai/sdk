@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as publicContracts from '../../../../src/capacity/agents/agent-capacity.ts';
+import * as treeDxContracts from '../../../../src/treedx/index.ts';
 import { assignmentAttemptSchema, assignmentResultSchema, usageSettlementSchema, validateProviderAssignment } from '../../../../src/capacity/agents/agent-capacity.ts';
 
 // Complete isolated public-schema inputs, not a compiled API admission or a
@@ -35,6 +36,49 @@ function supplied() {
 	return { item, attempt, result };
 }
 describe('public assignment whole immutable record custody', () => {
+	function verifyTreeDxRecords(native: boolean) {
+		const commit = 'a'.repeat(40), clock = '2026-10-03T00:00:00.000Z';
+		const decisionRef = { store: 'treedx', model: 'decision', id: 'decision', repository: 'library', commit, path: 'decisions/approval.md' };
+		const records = [
+			{ kind: 'workspace', name: 'treeDxWorkspaceSchema', record: { schemaVersion: 'treeseed.treedx-workspace/v1', id: 'workspace', teamId: 'team', projectId: 'project', repository: 'library', baseCommit: commit, headCommit: commit, assignmentId: 'attempt', status: 'open', createdAt: clock } },
+			{ kind: 'workspace-review', name: 'treeDxWorkspaceReviewSchema', record: { schemaVersion: 'treeseed.treedx-workspace-review/v1', id: 'review', workspaceId: 'workspace', candidateCommit: commit, decisionRef, status: 'request-changes', decidedAt: clock } },
+			{ kind: 'publication-receipt', name: 'treeDxPublicationReceiptSchema', record: { schemaVersion: 'treeseed.treedx-publication-receipt/v1', id: 'receipt', projectId: 'project', repository: 'library', sourceCommit: commit, publishedCommit: commit, destination: 'staging', decisionRef, publishedAt: clock } },
+		];
+		for (const { kind, name, record } of records) {
+			const entries: Array<{ record: Record<string, unknown>; valid: boolean }> = [{ record, valid: true }];
+			for (const field of Object.keys(record)) {
+				entries.push({ record: Object.fromEntries(Object.entries(record).filter(([key]) => key !== field)), valid: false });
+				for (const value of [null, '', {}, []]) entries.push({ record: { ...record, [field]: value }, valid: false });
+			}
+			for (const patch of [{ id: ' padded ' }, { id: 'a'.repeat(201) }, { schemaVersion: 'legacy/v1' }, { status: 'completed' }, { token: 'forbidden' }, { output: { id: 'duplicate-selector' } }])
+				entries.push({ record: { ...record, ...patch }, valid: false });
+			if (kind === 'workspace') {
+				for (const status of ['open', 'submitted', 'accepted', 'rejected', 'abandoned']) entries.push({ record: { ...record, status, submittedAt: clock, closedAt: clock }, valid: true });
+				for (const patch of [{ baseCommit: 'main' }, { headCommit: 'b'.repeat(39) }, { submittedAt: 'invalid' }, { closedAt: null }]) entries.push({ record: { ...record, ...patch }, valid: false });
+			} else {
+				entries.push({ record: kind === 'workspace-review' ? { ...record, status: 'approved' } : { ...record, url: 'https://example.invalid/exact/receipt' }, valid: true });
+				for (const decisionRef of [null, {}, { store: 'treedx', model: 'decision', id: 'decision' }, { store: 'git', model: 'repository', id: 'source', repository: 'source', commit: 'main' }]) entries.push({ record: { ...record, decisionRef }, valid: false });
+				entries.push({ record: { ...record, [kind === 'workspace-review' ? 'candidateCommit' : 'publishedCommit']: 'main' }, valid: false });
+				if (kind === 'publication-receipt') entries.push({ record: { ...record, url: 'not-a-uri' }, valid: false });
+			}
+			entries.push({ record: { ...record, id: 'a'.repeat(200) }, valid: true }); const held = structuredClone(entries);
+			if (native) {
+				const path = fileURLToPath(new URL('../../content/architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+				const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, kind], { input: JSON.stringify(entries.map(entry => entry.record)), encoding: 'utf8', timeout: 15_000 });
+				expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+				const observed: unknown = JSON.parse(child.stdout); if (!Array.isArray(observed)) throw new Error('Native TreeDX custody observations required.');
+				expect(observed).toHaveLength(entries.length);
+				for (const [index, entry] of entries.entries()) expect(observed[index]).toMatchObject(entry.valid ? { success: true, data: entry.record } : { success: false });
+				expect(readFileSync(path)).toEqual(bytes);
+			} else {
+				const exports: Record<string, unknown> = treeDxContracts, schema = exports[name]; if (!(schema instanceof z.ZodType)) throw new Error('Public TreeDX custody validator required.');
+				for (const entry of entries) expect(schema.safeParse(entry.record)).toMatchObject(entry.valid ? { success: true, data: entry.record } : { success: false });
+			}
+			expect(entries).toEqual(held);
+		}
+	}
+	it('validates exact public workspace review and publication custody while denying missing malformed and duplicated authority', () => verifyTreeDxRecords(false));
+	it('native public TreeDX custody rejects malformed records and retains exact supplied candidate and decision bytes', () => verifyTreeDxRecords(true));
 	function verifySupplyRecord(kind: 'provider-offer' | 'provider-state', native: boolean) {
 		const clock = '2026-10-03T00:00:00.000Z';
 		const original: Record<string, unknown> = kind === 'provider-offer'

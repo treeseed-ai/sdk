@@ -1,6 +1,21 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-treedx-custody-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: validates exact public workspace review and publication custody while denying missing malformed and duplicated authority
+  sdk.golden.execution-treedx-custody-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: native public TreeDX custody rejects malformed records and retains exact supplied candidate and decision bytes
+  sdk.golden.execution-treedx-schema-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: native repository verification binds TreeDX workspace review and publication schemas while retaining changed source denial and exact retry
   sdk.golden.execution-work-item-capability-optionality-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

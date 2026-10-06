@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { appliedWorkdaySchema, estimateSchema } from '../../../../src/capacity/agents/agent-capacity.ts';
 import * as publicContracts from '../../../../src/capacity/agents/agent-capacity.ts';
+import * as treeDxContracts from '../../../../src/treedx/index.ts';
 import { z } from 'zod';
 import { CONTROL_PLANE_OPERATIONS, buildMcpResources } from '../../../../src/operator-contracts/index.ts';
 import { describeContentFrontmatterSchema, validatePortableContentData } from '../../../../src/content/validation/index.ts';
@@ -78,6 +79,12 @@ if (kind === 'workday-resource') {
 	process.exit(0);
 }
 const exports: Record<string, unknown> = publicContracts;
+if (kind === 'workspace' || kind === 'workspace-review' || kind === 'publication-receipt') {
+	const exported: Record<string, unknown> = treeDxContracts;
+	const selected = exported[kind === 'workspace' ? 'treeDxWorkspaceSchema' : kind === 'workspace-review' ? 'treeDxWorkspaceReviewSchema' : 'treeDxPublicationReceiptSchema'];
+	if (!(selected instanceof z.ZodType) || !Array.isArray(input)) throw new Error('Exact public TreeDX custody validator required.');
+	process.stdout.write(JSON.stringify(input.map(record => selected.safeParse(record)))); process.exit(0);
+}
 const inventory = kind === 'lease' || kind === 'reservation' || kind === 'context-item' || kind === 'policy' || kind === 'attempt' || kind === 'graph-revision' || kind === 'node' || kind === 'node-inventory' || kind === 'provider-offer' || kind === 'provider-state';
 const schema = kind === 'provider-offer' ? exports.providerOfferSchema : kind === 'provider-state' ? exports.providerStateSchema
 	: kind === 'node' || kind === 'node-inventory' ? exports.executionNodeSchema : kind === 'context-item' ? exports.authorizedContextItemSchema

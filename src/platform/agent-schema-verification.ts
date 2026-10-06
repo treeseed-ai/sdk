@@ -12,6 +12,7 @@ import { executionNodeSchema, executionEdgeSchema, graphRevisionSchema, graphCha
 import { appliedWorkdaySchema, workdayPolicySchema, workdayProfileSchema } from '../agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
 import { activityProfileSchema, activityProfilesSchema } from '../agent-capacity/validation/agent-definition-schema.ts';
 import { providerOfferSchema, providerStateSchema, availabilityWindowSchema, nativeLimitSchema } from '../agent-capacity/contracts/capacity/providers/supply-policy.ts';
+import { treeDxWorkspaceSchema, treeDxWorkspaceReviewSchema, treeDxPublicationReceiptSchema } from '../treedx/types.ts';
 
 const models = {
 	Book: 'book', Knowledge: 'knowledge', Objective: 'objective',
@@ -40,6 +41,7 @@ const runtimeSchemas = {
 const schemas: Record<string, z.ZodTypeAny> = {
 	...Object.fromEntries(Object.entries(models).map(([name, model]) => [name, describeContentFrontmatterSchema(model)])),
 	ProviderOffer: providerOfferSchema, ProviderState: providerStateSchema,
+	TreeDxWorkspace: treeDxWorkspaceSchema, TreeDxWorkspaceReview: treeDxWorkspaceReviewSchema, TreeDxPublicationReceipt: treeDxPublicationReceiptSchema,
 	AssignmentAttempt: assignmentAttemptSchema,
 	AssignmentResult: assignmentResultSchema, UsageSettlement: usageSettlementSchema,
 	Lease: leaseSchema, Reservation: reservationSchema,
