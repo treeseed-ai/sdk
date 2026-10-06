@@ -3,6 +3,24 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: execution-provider-offer-unit
+    action: { verifier: sdk.golden.execution-provider-offer-unit }
+    expect: { status: passed }
+  - id: execution-provider-offer-native
+    action: { verifier: sdk.golden.execution-provider-offer-native }
+    expect: { status: passed }
+  - id: execution-provider-state-unit
+    action: { verifier: sdk.golden.execution-provider-state-unit }
+    expect: { status: passed }
+  - id: execution-provider-state-native
+    action: { verifier: sdk.golden.execution-provider-state-native }
+    expect: { status: passed }
+  - id: execution-provider-schema-unit
+    action: { verifier: sdk.golden.execution-provider-schema-unit }
+    expect: { status: passed }
+  - id: execution-provider-schema-native
+    action: { verifier: sdk.golden.execution-provider-schema-native }
+    expect: { status: passed }
   - id: execution-question-answer-unit
     action: { verifier: sdk.golden.execution-question-answer-unit }
     expect: { status: passed }

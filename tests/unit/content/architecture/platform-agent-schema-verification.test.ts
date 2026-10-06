@@ -8,6 +8,19 @@ import { graphChangeSetSchema, appliedWorkdaySchema, exactEntityReferenceSchema 
 afterAll(assertCanonicalAuthorityUnchanged);
 
 describe('Platform agent content schema verification', () => {
+	it('binds canonical provider supply records and shared bounds to the actual public validators without copying target assertions', () => {
+		const { document } = canonicalAuthority(), held = structuredClone(document);
+		const names = ['ProviderOffer', 'ProviderState', 'AvailabilityWindow', 'NativeLimit'];
+		expect(names.map(name => verifyAgentContentSchema(document).filter(entry => entry.message.startsWith(`${name} `))))
+			.toEqual(names.map(() => []));
+		for (const [name, field, constraint] of [['ProviderOffer', 'capabilities', 'uniqueItems'], ['ProviderState', 'activeAssignmentIds', 'uniqueItems'],
+			['NativeLimit', 'maximum', 'exclusiveMinimum']]) {
+			if (!name || !field || !constraint) throw new Error('Exact supply constraint required.');
+			const changed = structuredClone(document); delete schemaRecord(schemaRecord(schemaRecord(changed.$defs[name]).properties)[field])[constraint];
+			expect(verifyAgentContentSchema(changed)).toContainEqual(expect.objectContaining({ code: 'agent_schema_structure_mismatch', message: expect.stringContaining(`${name} nested declarative constraints differ`) }));
+		}
+		expect(document).toEqual(held);
+	});
 	it('recognizes only exact finite enum unions including nullable pair roles while retaining changed overlapping and qualified scalar denials', () => {
 		const { document } = canonicalAuthority(), held = structuredClone(document);
 		const choices = ['general', 'feedback', 'research', 'workday-report'];

@@ -1,6 +1,36 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-provider-offer-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: "validates exact canonical provider offer supply without normalizing malformed or prohibited fields"
+  sdk.golden.execution-provider-offer-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: "native public provider offer validation retains complete supply bytes and denies malformed or duplicate authority"
+  sdk.golden.execution-provider-state-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: "validates exact canonical provider state without coercing health native units or assignment inventory"
+  sdk.golden.execution-provider-state-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: "native public provider state validation retains actual supplied units and denies noncanonical observations"
+  sdk.golden.execution-provider-schema-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: "binds canonical provider supply records and shared bounds to the actual public validators without copying target assertions"
+  sdk.golden.execution-provider-schema-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
+    testName: "native public repository verification binds canonical provider supply bytes and retains denied constraint drift before exact retry"
   sdk.golden.execution-question-answer-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

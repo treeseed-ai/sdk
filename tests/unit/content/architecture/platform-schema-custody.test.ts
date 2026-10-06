@@ -28,6 +28,20 @@ function repository(document: unknown) {
 }
 
 describe('native Platform architecture-schema custody', () => {
+	it('native public repository verification binds canonical provider supply bytes and retains denied constraint drift before exact retry', () => {
+		const { document } = canonicalAuthority(), root = repository(document), path = resolve(root, 'docs/agent.schema.yml');
+		const bytes = readFileSync(path, 'utf8'), commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+		const baseline = verifyPlatformRepository(root), names = ['ProviderOffer', 'ProviderState', 'AvailabilityWindow', 'NativeLimit'];
+		expect(names.map(name => baseline.diagnostics.filter(entry => entry.message.startsWith(`${name} `)))).toEqual(names.map(() => []));
+		for (const name of names) {
+			const changed = structuredClone(document); schemaRecord(changed.$defs[name]).additionalProperties = true;
+			const supplied = stringify(changed); writeFileSync(path, supplied); const denied = verifyPlatformRepository(root);
+			expect(denied.ok).toBe(false); expect(denied.diagnostics).toContainEqual(expect.objectContaining({ code: 'agent_schema_structure_mismatch', message: expect.stringContaining(`${name} nested declarative constraints differ`) }));
+			expect(readFileSync(path, 'utf8')).toBe(supplied); expect(execFileSync('git', ['show', `${commit}:docs/agent.schema.yml`], { cwd: root, encoding: 'utf8' })).toBe(bytes);
+			expect(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()).toBe(commit);
+		}
+		writeFileSync(path, bytes); expect(verifyPlatformRepository(root)).toEqual(baseline);
+	});
 	it('native public repository verification preserves finite enum equivalence without accepting changed overlapping or qualified committed scalar authority', () => {
 		const { document } = canonicalAuthority(), root = repository(document), path = resolve(root, 'docs/agent.schema.yml');
 		const bytes = readFileSync(path, 'utf8'), commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();

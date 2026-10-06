@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import * as publicContracts from '../../../../src/capacity/agents/agent-capacity.ts';
 import { assignmentAttemptSchema, assignmentResultSchema, usageSettlementSchema, validateProviderAssignment } from '../../../../src/capacity/agents/agent-capacity.ts';
 
@@ -32,6 +35,65 @@ function supplied() {
 	return { item, attempt, result };
 }
 describe('public assignment whole immutable record custody', () => {
+	function verifySupplyRecord(kind: 'provider-offer' | 'provider-state', native: boolean) {
+		const clock = '2026-10-03T00:00:00.000Z';
+		const original: Record<string, unknown> = kind === 'provider-offer'
+			? { schemaVersion: 'treeseed.provider-offer/v1', id: 'offer', providerId: 'provider', revision: 1,
+				runtimeBuild: `sha256:${'b'.repeat(64)}`, capabilities: ['implementation'], toolGroups: ['source.read'],
+				maximumConcurrency: 1, availability: [{ startsAt: clock, endsAt: clock }], nativeLimits: [{ name: 'tokens', unit: 'tokens', maximum: .5 }], validFrom: clock }
+			: { schemaVersion: 'treeseed.provider-state/v1', providerId: 'provider', offerId: 'offer', healthy: false,
+				activeAssignmentIds: [], observedNativeUsage: { tokens: .125 }, observedAt: clock };
+		const entries = [{ record: original, valid: true }];
+		for (const field of Object.keys(original)) {
+			entries.push({ record: Object.fromEntries(Object.entries(original).filter(([key]) => key !== field)), valid: false });
+			for (const value of [undefined, null, '', {}]) {
+				if (field === 'observedNativeUsage' && value && typeof value === 'object') continue;
+				entries.push({ record: { ...original, [field]: value }, valid: false });
+			}
+		}
+		const patches = kind === 'provider-offer'
+			? [{ revision: 0 }, { revision: .5 }, { maximumConcurrency: 0 }, { maximumConcurrency: '1' },
+				{ capabilities: ['implementation', 'implementation'] }, { toolGroups: ['unsafe-command'] }, { toolGroups: ['source.read', 'source.read'] },
+				{ availability: [] }, { availability: [{ startsAt: 'invalid', endsAt: clock }] }, { availability: [{ startsAt: clock, endsAt: clock, extended: true }] },
+				{ nativeLimits: [{ name: 'tokens', unit: 'tokens', maximum: 0 }] }, { nativeLimits: [{ name: 'tokens', unit: 'tokens', maximum: Infinity }] },
+				{ runtimeBuild: 'legacy-build' }, { validUntil: 'invalid' }]
+			: [{ activeAssignmentIds: ['attempt', 'attempt'] }, { healthy: 'false' }, { observedNativeUsage: { tokens: -1 } },
+				{ observedNativeUsage: { tokens: NaN } }, { observedNativeUsage: { tokens: Infinity } }, { observedNativeUsage: { tokens: '1' } }, { observedAt: 'invalid' }];
+		for (const patch of [...patches, { providerId: ' padded ' }, { providerId: 'a'.repeat(201) }, { schemaVersion: 'legacy/v1' },
+			{ token: 'prohibited' }, { minimumSeconds: 10 }, { legacy: true }]) entries.push({ record: { ...original, ...patch }, valid: false });
+		if (kind === 'provider-offer') {
+			for (const field of ['revision', 'maximumConcurrency']) for (const value of [-1, .5, NaN, Infinity, -Infinity, '1', true])
+				entries.push({ record: { ...original, [field]: value }, valid: false });
+			for (const availability of [[{ startsAt: clock }], [{ endsAt: clock }], [{ startsAt: null, endsAt: clock }]])
+				entries.push({ record: { ...original, availability }, valid: false });
+			for (const nativeLimits of [[{ name: 'tokens', maximum: 1 }], [{ unit: 'tokens', maximum: 1 }], [{ name: ' padded ', unit: 'tokens', maximum: 1 }], [{ name: 'tokens', unit: 'tokens', maximum: '1' }]])
+				entries.push({ record: { ...original, nativeLimits }, valid: false });
+		}
+		entries.push({ record: { ...original, providerId: 'a'.repeat(200) }, valid: true });
+		entries.push({ record: kind === 'provider-offer' ? { ...original, capabilities: [], toolGroups: [], nativeLimits: [], validUntil: clock }
+			: { ...original, healthy: true, activeAssignmentIds: ['attempt'], observedNativeUsage: {} }, valid: true });
+		const held = structuredClone(entries);
+		if (native) {
+			const path = fileURLToPath(new URL('../../content/architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+			const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, kind], {
+				input: JSON.stringify(entries.map(({ record }) => record)), encoding: 'utf8', timeout: 15_000,
+			});
+			expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+			const output: unknown = JSON.parse(child.stdout); if (!Array.isArray(output)) throw new Error('Native supply observations required.');
+			expect(output).toHaveLength(entries.length);
+			for (const [index, entry] of entries.entries()) expect(output[index]).toMatchObject(entry.valid ? { success: true, data: entry.record } : { success: false });
+			expect(readFileSync(path)).toEqual(bytes);
+		} else {
+			const exports: Record<string, unknown> = publicContracts, schema = exports[kind === 'provider-offer' ? 'providerOfferSchema' : 'providerStateSchema'];
+			if (!(schema instanceof z.ZodType)) throw new Error('Missing exact public supply validator.');
+			for (const entry of entries) expect(schema.safeParse(entry.record)).toMatchObject(entry.valid ? { success: true, data: entry.record } : { success: false });
+		}
+		expect(entries).toEqual(held);
+	}
+	it('validates exact canonical provider offer supply without normalizing malformed or prohibited fields', () => verifySupplyRecord('provider-offer', false));
+	it('native public provider offer validation retains complete supply bytes and denies malformed or duplicate authority', () => verifySupplyRecord('provider-offer', true));
+	it('validates exact canonical provider state without coercing health native units or assignment inventory', () => verifySupplyRecord('provider-state', false));
+	it('native public provider state validation retains actual supplied units and denies noncanonical observations', () => verifySupplyRecord('provider-state', true));
 	it('requires the authorized context value field while retaining null scalar and structured payload bytes without changing authority', () => {
 		const f = supplied(), schema = publicContracts.authorizedContextItemSchema;
 		const original = { ref: f.attempt.sourceRef, mediaType: 'application/json', digest: `sha256:${'a'.repeat(64)}` };
