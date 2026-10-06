@@ -1,4 +1,10 @@
 import type { z } from 'zod';
+import { zodToJsonSchema } from 'zod-to-json-schema';
+
+/** Project schemas using the SDK's owning Zod dependency; native validation remains authoritative. */
+export function controlPlaneSchemaJson(schema: z.ZodType<unknown>) {
+	return zodToJsonSchema<'openApi3'>(schema, { target: 'openApi3', $refStrategy: 'none' });
+}
 
 export const CONTROL_PLANE_OPERATION_SCHEMA_VERSION = 'treeseed.control-plane-operation/v1' as const;
 
