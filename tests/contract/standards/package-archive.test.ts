@@ -7,6 +7,55 @@ import { createHash } from 'node:crypto';
 import { assertPackageCandidateOutputs, assertPackageExportTargets } from '../../../scripts/standards/acceptance/package-exports.ts';
 
 describe('portable packed SDK exports and declarations', () => {
+	it('installed native SDK owns operation projection and strict consumer declarations while retaining archive and validation bytes', () => {
+		const candidate = resolve(import.meta.dirname, '../../..'), manifestBytes = readFileSync(join(candidate, 'package.json'));
+		const manifest = JSON.parse(manifestBytes.toString('utf8')) as { exports: Record<string, { types: string; default: string }> };
+		const targets = Object.values(manifest.exports).flatMap(entry => Object.values(entry));
+		const outputs = targets.map(target => ({ target, bytes: readFileSync(join(candidate, target)) }));
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-sdk-installed-operation-'));
+		const intent = { profileId: 'arbitrary-profile', projects: ['sdk'], startsAt: '2026-10-06T00:00:00.000Z', durationSeconds: 60,
+			decisionIds: ['exact-decision'], planningOnly: false }, held = structuredClone(intent);
+		try {
+			const packed = JSON.parse(execFileSync('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', root],
+				{ cwd: candidate, encoding: 'utf8', timeout: 15000 })) as Array<{ filename: string; files: Array<{ path: string }> }>;
+			expect(packed).toHaveLength(1);
+			const archive = join(root, packed[0]!.filename), archiveBytes = readFileSync(archive);
+			const extracted = join(root, 'extracted'), install = join(root, 'installed'); mkdirSync(extracted); mkdirSync(install);
+			execFileSync('tar', ['-xzf', archive, '-C', extracted], { timeout: 15000 });
+			execFileSync('npm', ['install', '--prefix', install, '--no-save', '--package-lock=false', '--ignore-scripts',
+				'--cache', join(root, 'npm-cache'), '--no-audit', '--no-fund', archive], { encoding: 'utf8', timeout: 15000 });
+			const installed = join(install, 'node_modules/@treeseed/sdk');
+			// This supplied TypeScript consumer imports the installed public contract,
+			// not a source fallback or a parallel validator/converter implementation.
+			const consumer = join(install, 'consumer.mts');
+			writeFileSync(consumer, `import { readFileSync } from 'node:fs';
+import { CONTROL_PLANE_OPERATIONS, controlPlaneSchemaJson } from '@treeseed/sdk/operator-contracts';
+const intent: unknown = JSON.parse(readFileSync(0, 'utf8'));
+const binding = CONTROL_PLANE_OPERATIONS.workdays.preflight;
+const held = JSON.stringify(intent);
+const projection = controlPlaneSchemaJson(binding.schema.path);
+const valid = binding.schema.body.safeParse(intent);
+const denied = binding.schema.body.safeParse(Object.assign({}, intent, { executionPlanId: 'caller-derived' }));
+if (JSON.stringify(intent) !== held) throw new Error('Native validator mutated input.');
+process.stdout.write(JSON.stringify({ projection, valid, denied, provider: controlPlaneSchemaJson(CONTROL_PLANE_OPERATIONS.providers.assignment.schema.path) }));
+`);
+			const typed = spawnSync(process.execPath, [resolve(candidate, 'node_modules/typescript/lib/tsc.js'), '--strict', '--noEmit',
+				'--module', 'NodeNext', '--moduleResolution', 'NodeNext', '--target', 'ES2022', '--types', 'node',
+				'--typeRoots', resolve(candidate, 'node_modules/@types'), consumer],
+				{ cwd: install, encoding: 'utf8', timeout: 15000 });
+			expect(typed.error).toBeUndefined(); expect(typed.signal).toBeNull(); expect(typed.status, typed.stdout + typed.stderr).toBe(0);
+			const child = spawnSync(process.execPath, ['--import', resolve(candidate, 'node_modules/tsx/dist/loader.mjs'), consumer],
+				{ cwd: install, input: JSON.stringify(intent), encoding: 'utf8', timeout: 15000 });
+			expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+			expect(JSON.parse(child.stdout)).toMatchObject({ projection: { type: 'object', properties: { teamId: { type: 'string', minLength: 1 } },
+				required: ['teamId'], additionalProperties: false }, valid: { success: true, data: intent }, denied: { success: false },
+				provider: { type: 'object', properties: { assignmentId: { type: 'string', minLength: 1 } }, required: ['assignmentId'], additionalProperties: false } });
+			for (const file of packed[0]!.files) expect(readFileSync(join(installed, file.path))).toEqual(readFileSync(join(extracted, 'package', file.path)));
+			for (const { target, bytes } of outputs) expect(readFileSync(join(candidate, target))).toEqual(bytes);
+			expect(readFileSync(archive)).toEqual(archiveBytes); expect(readFileSync(join(candidate, 'package.json'))).toEqual(manifestBytes);
+			expect(intent).toEqual(held);
+		} finally { rmSync(root, { recursive: true, force: true }); }
+	}, 45000);
 	it('installed native SDK archive enforces exact report Note identifier and subject authority without changing packaged bytes', () => {
 		const candidate = resolve(import.meta.dirname, '../../..');
 		const manifest = readFileSync(join(candidate, 'package.json'));
