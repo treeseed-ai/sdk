@@ -143,14 +143,13 @@ const schemas = {
 	}).strict(), [{ field: 'classification', equals: 'workday-report',
 		contains: { field: 'subjectRefs', properties: { store: 'postgresql', model: 'workday' } },
 		path: ['subjectRefs'], message: 'Workday reports must reference their exact workday.' }]),
-	question: z.object({
+	question: conditionalFields(z.object({
 		schemaVersion: z.literal('treeseed.question/v1'), id: identifier, projectId: identifier,
 		subjectRef: exactEntityReferenceSchema, question: nonEmpty, status: z.enum(['open', 'answered', 'withdrawn']),
 		addressedTo: unique(z.array(agentClass)).optional(), answer: nonEmpty.optional(), answerRefs: unique(exactRefs).optional(),
 		askedAt: z.string().datetime({ offset: true }), answeredAt: z.string().datetime({ offset: true }).optional(),
-	}).strict().superRefine((value, context) => {
-		if (value.status === 'answered' && !(value.answer || value.answerRefs?.length)) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Answered questions require an answer or exact answer reference.' });
-	}),
+	}).strict(), [{ field: 'status', equals: 'answered', alternatives: [['answer'], ['answerRefs']],
+		message: 'Answered questions require an answer or exact answer reference.' }]),
 	objective: z.object({
 		schemaVersion: z.literal('treeseed.objective/v1'), id: identifier, projectId: identifier,
 		title: nonEmpty, outcome: nonEmpty, status: z.enum(['active', 'achieved', 'abandoned']),

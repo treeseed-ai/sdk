@@ -136,6 +136,39 @@ function observeDecisionRules(native: boolean) {
 		expect(entries).toEqual(held);
 }
 
+function observeQuestionRules(native: boolean) {
+	const base = records()[1]!.data;
+	const entries = ['open', 'answered', 'withdrawn'].flatMap(status => [
+		{ patch: {}, valid: status !== 'answered' }, { patch: { answer: undefined }, valid: status !== 'answered' },
+		{ patch: { answer: 'Exact controlled answer.' }, valid: true }, { patch: { answerRefs: [from] }, valid: true },
+		{ patch: { answerRefs: [] }, valid: true }, { patch: { answer: '' }, valid: false },
+		{ patch: { answer: null }, valid: false }, { patch: { answerRefs: null }, valid: false },
+		{ patch: { answerRefs: [from, from] }, valid: false }, { patch: { answerRefs: [{ ...from, commit: '' }] }, valid: false },
+	].map(({ patch, valid }) => ({ data: { ...base, status, ...patch }, valid })));
+	const held = structuredClone(entries), expected = [{
+		if: { type: 'object', required: ['status'], properties: { status: { const: 'answered' } } },
+		then: { type: 'object', anyOf: [{ type: 'object', required: ['answer'] }, { type: 'object', required: ['answerRefs'] }] },
+	}];
+	if (native) {
+		const path = fileURLToPath(new URL('./architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+		const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'question-inventory'], {
+			input: JSON.stringify(entries.map(entry => entry.data)), encoding: 'utf8', timeout: 15_000,
+		});
+		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+		const output: unknown = JSON.parse(child.stdout);
+		if (!output || typeof output !== 'object' || !('schema' in output) || !('observations' in output) || !Array.isArray(output.observations))
+			throw new Error('Native Question schema and exact observations required.');
+		expect(output.observations).toHaveLength(entries.length);
+		for (const [index, entry] of entries.entries()) expect(output.observations[index]).toMatchObject(entry.valid
+			? { ok: true, data: JSON.parse(JSON.stringify(entry.data)) } : { ok: false });
+		expect(output.schema).toMatchObject({ allOf: expected }); expect(readFileSync(path)).toEqual(bytes);
+	} else {
+		for (const entry of entries) expect(validatePortableContentData('question', entry.data)).toMatchObject(entry.valid ? { ok: true, data: entry.data } : { ok: false });
+		expect(zodToJsonSchema(describeContentFrontmatterSchema('question'), { $refStrategy: 'none', postProcess: exportSchemaConstraints })).toMatchObject({ allOf: expected });
+	}
+	expect(entries).toEqual(held);
+}
+
 function records(): Array<{ model: string; data: Record<string, unknown> }> {
 	return [{ model: 'note', data: note },
 		{ model: 'question', data: { schemaVersion: 'treeseed.question/v1', id: 'question', projectId: 'api', subjectRef: from,
@@ -192,6 +225,8 @@ function observations(entries: ReturnType<typeof identifierEntries>, native: boo
 }
 
 describe('exact dependency links on an ordinary TreeDX note', () => {
+	it('exports the canonical answered Question field alternatives without inventing an answer or changing supplied evidence', () => observeQuestionRules(false));
+	it('native public Question validation and schema preserve canonical answer alternatives and deny missing malformed or duplicate evidence', () => observeQuestionRules(true));
 	it('exports complete exact work-item endpoint requirements rather than silently omitting the dependency authority refinement', () => observeDependencyEndpoints(false));
 	it('native public Note validation and schema retain both exact work-item endpoints and deny every missing or malformed authority without repairing request bytes', () => observeDependencyEndpoints(true));
 	it('exports the same exact workday subject requirement that the owning report Note validator enforces', () => observeReportRules(false));

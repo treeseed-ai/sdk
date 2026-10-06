@@ -23,8 +23,8 @@ if (kind === 'installed-note-inventory') {
 	if (JSON.stringify(input) !== held) throw new Error('Installed validator changed supplied Note bytes.');
 	process.stdout.write(JSON.stringify({ entry, observations })); process.exit(0);
 }
-if (kind === 'decision-inventory' || kind === 'note-inventory' || kind === 'proposal-inventory') {
-	const model = kind === 'decision-inventory' ? 'decision' : kind === 'note-inventory' ? 'note' : 'proposal';
+if (kind === 'decision-inventory' || kind === 'note-inventory' || kind === 'proposal-inventory' || kind === 'question-inventory') {
+	const model = kind === 'decision-inventory' ? 'decision' : kind === 'note-inventory' ? 'note' : kind === 'question-inventory' ? 'question' : 'proposal';
 	if (!Array.isArray(input)) throw new Error('Native governed content inventory required.');
 	process.stdout.write(JSON.stringify({ schema: zodToJsonSchema(describeContentFrontmatterSchema(model),
 		{ $refStrategy: 'none', postProcess: exportSchemaConstraints }), observations: input.map(value => validatePortableContentData(model, value)) }));
