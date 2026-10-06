@@ -229,16 +229,39 @@ describe('proposal-owned execution plan', () => {
 		item.contextRefs.push({ store: 'treedx', model: 'repository', id: 'second-library', repository: 'treeseed-ai/second-library', commit: 'd'.repeat(40), path: '.' });
 		expect(validatePortableContentData('proposal', value).ok).toBe(false);
 	});
-	it('binds one exact TreeDX output identity without introducing an output taxonomy', () => {
+	it('uses exact TreeDX context and permissions without accepting the retired work item output selector', () => {
 		const value = proposal();
 		const item = value.executionPlan.workItems[0]!;
 		item.workspace = 'treedx';
 		item.requestedPermissions = { content: { read: ['proposal'], write: ['knowledge'] }, tools: ['source.read'] };
 		item.contextRefs = [{ store: 'treedx', model: 'repository', id: 'sdk-library', repository: 'treeseed-ai/sdk-library', commit: 'b'.repeat(40), path: '.' }];
-		Object.assign(item, { output: { model: 'knowledge', id: 'sdk-workday-contract-inventory-v1' } });
 		expect(validatePortableContentData('proposal', value).ok).toBe(true);
+		const held = structuredClone(value);
+		for (const output of [undefined, null, '', {}, [], 'knowledge', { model: 'knowledge', id: 'sdk-workday-contract-inventory-v1' }]) {
+			const supplied = { ...value, executionPlan: { workItems: [Object.assign({}, item, { output })] } }, before = structuredClone(supplied);
+			expect(validatePortableContentData('proposal', supplied).ok).toBe(false); expect(supplied).toEqual(before);
+		}
+		expect(value).toEqual(held);
 		item.workspace = 'git';
 		expect(validatePortableContentData('proposal', value).ok).toBe(false);
+	});
+	it('native public Proposal validation retains exact grant context and denies retired output selectors without repairing supplied authority', () => {
+		const base = proposal(), item = base.executionPlan.workItems[0]!;
+		item.workspace = 'treedx'; item.requestedPermissions = { content: { read: ['proposal'], write: ['knowledge'] }, tools: ['source.read'] };
+		item.contextRefs = [{ store: 'treedx', model: 'repository', id: 'sdk-library', repository: 'treeseed-ai/sdk-library', commit: 'b'.repeat(40), path: '.' }];
+		const entries = [base, ...[null, '', {}, [], 'knowledge', { model: 'knowledge', id: 'sdk-workday-contract-inventory-v1' }].map(output =>
+			({ ...base, executionPlan: { workItems: [Object.assign({}, item, { output })] } }))], held = structuredClone(entries);
+		const path = fileURLToPath(new URL('./architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+		const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'proposal-inventory'], {
+			input: JSON.stringify(entries), encoding: 'utf8', timeout: 15_000,
+		});
+		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+		const result: unknown = JSON.parse(child.stdout);
+		if (!result || typeof result !== 'object' || !('observations' in result) || !Array.isArray(result.observations) || !('schema' in result)) throw new Error('Native Proposal observations required.');
+		expect(result.observations).toHaveLength(entries.length); expect(result.observations[0]).toMatchObject({ ok: true, data: base });
+		for (const observed of result.observations.slice(1)) expect(observed).toMatchObject({ ok: false });
+		expect(result.schema).toMatchObject({ properties: { executionPlan: { properties: { workItems: { items: { additionalProperties: false } } } } } });
+		expect(entries).toEqual(held); expect(readFileSync(path)).toEqual(bytes);
 	});
 	it('preserves canonical exact evidence references without legacy registry translation', () => {
 		const value = { ...proposal(), evidenceRefs: [{ store: 'git', model: 'repository', id: 'sdk', repository: 'treeseed-ai/sdk', commit: 'b'.repeat(40) }] };

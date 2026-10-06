@@ -1,6 +1,26 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-output-retirement-proposal-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposal-execution-plan.test.ts
+    testName: uses exact TreeDX context and permissions without accepting the retired work item output selector
+  sdk.golden.execution-output-retirement-proposal-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposal-execution-plan.test.ts
+    testName: native public Proposal validation retains exact grant context and denies retired output selectors without repairing supplied authority
+  sdk.golden.execution-output-retirement-node-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/execution-graph.test.ts
+    testName: retains exact node permission authority and rejects every represented retired output selector
+  sdk.golden.execution-output-retirement-node-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/execution-graph.test.ts
+    testName: native public execution nodes reject retired output selectors without changing exact permission authority
   sdk.golden.profile-dependency-properties-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

@@ -6,10 +6,6 @@ import { estimateSchema, exactEntityReferenceSchema } from '../capacity/assignme
 const identifier = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
 const slug = z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:[._/-][a-z0-9]+)*$/u);
 const uniqueIds = uniqueArray(z.array(identifier));
-const contentOutputSchema = z.object({
-	model: z.enum(['agent','book','knowledge','objective','discussion','discussion-message','proposal','question','note','decision']),
-	id: identifier,
-}).strict();
 
 export const conditionDefinitionSchema = z.object({
 	conditionType: z.enum(['question', 'external', 'authority', 'lifecycle']),
@@ -37,7 +33,6 @@ export const executionNodeSchema = conditionalFields(z.object({
 	estimate: estimateSchema.optional(),
 	requiredCapabilities: uniqueIds.optional(),
 	requestedPermissions: activityProfileSchema.shape.permissions.optional(),
-	output: contentOutputSchema.optional(),
 	workspace: z.enum(['read-only', 'treedx', 'git']).optional(),
 	acceptanceCriteria: z.array(z.string().trim().min(1)).min(1).optional(),
 	maximumReviewCycles: z.number().int().positive().optional(),
@@ -51,9 +46,6 @@ export const executionNodeSchema = conditionalFields(z.object({
 	{ field: 'kind', notEquals: 'condition', forbidden: { fields: ['condition'] }, path: ['condition'], message: 'Assignable nodes cannot define condition.' },
 	{ field: 'pairRole', in: ['actor', 'reviewer'], alternatives: [['workItemId', 'maximumReviewCycles']], message: 'Actor and Reviewer nodes require workItemId and maximumReviewCycles.' },
 ]).superRefine((node, context) => {
-	if (node.output && (node.workspace !== 'treedx' || !node.requestedPermissions?.content.write.includes(node.output.model))) {
-		context.addIssue({ code: z.ZodIssueCode.custom, path: ['output'], message: 'A content output requires a TreeDX workspace and matching content-write authority.' });
-	}
 	if (node.graphRevisionUpdated < node.graphRevisionCreated) context.addIssue({ code: z.ZodIssueCode.custom, path: ['graphRevisionUpdated'], message: 'Updated revision cannot precede created revision.' });
 });
 

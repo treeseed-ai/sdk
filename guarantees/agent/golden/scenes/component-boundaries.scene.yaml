@@ -3,6 +3,18 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: execution-output-retirement-proposal-unit
+    action: { verifier: sdk.golden.execution-output-retirement-proposal-unit }
+    expect: { status: passed }
+  - id: execution-output-retirement-proposal-native
+    action: { verifier: sdk.golden.execution-output-retirement-proposal-native }
+    expect: { status: passed }
+  - id: execution-output-retirement-node-unit
+    action: { verifier: sdk.golden.execution-output-retirement-node-unit }
+    expect: { status: passed }
+  - id: execution-output-retirement-node-native
+    action: { verifier: sdk.golden.execution-output-retirement-node-native }
+    expect: { status: passed }
   - id: profile-dependency-properties-unit
     action: { verifier: sdk.golden.profile-dependency-properties-unit }
     expect: { status: passed }

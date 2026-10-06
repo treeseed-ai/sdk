@@ -144,6 +144,28 @@ describe('living execution graph contracts', () => {
 	it('accepts normalized nodes and edges without embedded output or assignment state', () => {
 		expect(validateExecutionGraph([node('actor-a'), node('actor-b')], [edge('actor-a', 'actor-b')])).toEqual({ ok: true, diagnostics: [] });
 	});
+	function observeRetiredOutput(native: boolean) {
+		const base = { ...node('exact-context'), workspace: 'treedx', requestedPermissions: { ...permissions, content: { read: ['proposal'], write: ['knowledge'] } } };
+		const entries = [base, ...[null, '', {}, [], 'knowledge', { model: 'knowledge', id: 'sdk-workday-contract-inventory-v1' }].map(output => Object.assign({}, base, { output }))], held = structuredClone(entries);
+		if (native) {
+			const path = fileURLToPath(new URL('../../content/architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+			const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'node-inventory'], { input: JSON.stringify(entries), encoding: 'utf8', timeout: 15_000 });
+			expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+			const result: unknown = JSON.parse(child.stdout);
+			if (!result || typeof result !== 'object' || !('observations' in result) || !Array.isArray(result.observations) || !('schema' in result)) throw new Error('Native node observations required.');
+			expect(result.observations).toHaveLength(entries.length); expect(result.observations[0]).toEqual({ success: true, data: base });
+			for (const observed of result.observations.slice(1)) expect(observed).toMatchObject({ success: false });
+			expect(result.schema).toMatchObject({ additionalProperties: false }); expect(readFileSync(path)).toEqual(bytes);
+		} else {
+			expect(executionNodeSchema.safeParse(base)).toEqual({ success: true, data: base });
+			for (const supplied of [...entries.slice(1), Object.assign({}, base, { output: undefined })]) {
+				const before = structuredClone(supplied); expect(executionNodeSchema.safeParse(supplied).success).toBe(false); expect(supplied).toEqual(before);
+			}
+		}
+		expect(entries).toEqual(held);
+	}
+	it('retains exact node permission authority and rejects every represented retired output selector', () => observeRetiredOutput(false));
+	it('native public execution nodes reject retired output selectors without changing exact permission authority', () => observeRetiredOutput(true));
 
 	it('rejects cycles, missing endpoints, and duplicate identities', () => {
 		const nodes = [node('actor-a'), node('actor-b'), node('actor-b')];
