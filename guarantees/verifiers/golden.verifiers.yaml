@@ -1041,3 +1041,8 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/content/architecture/platform-schema-custody.test.ts
     testName: "native canonical execution verification denies untracked held authority and admits only exact tracked retry without changing candidate history"
+  sdk.golden.execution-public-intent-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/control-plane-client.test.ts
+    testName: "validates manual and recurring public intent fields without inventing route-owned normalized metadata"

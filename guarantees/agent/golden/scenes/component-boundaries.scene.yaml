@@ -612,3 +612,6 @@ workflow:
   - id: execution-untracked-authority-native
     action: { verifier: sdk.golden.execution-untracked-authority-native }
     expect: { status: passed }
+  - id: execution-public-intent-unit
+    action: { verifier: sdk.golden.execution-public-intent-unit }
+    expect: { status: passed }

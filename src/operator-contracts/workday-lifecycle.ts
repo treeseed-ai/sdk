@@ -14,7 +14,7 @@ const intentAgentSelectionSchema = alternativeProperties(z.object({
 	mode: z.literal('intersection').optional(),
 }).strict(), ['agentSlugs', 'activityTypes', 'classIds', 'classSlugs']);
 /** One normalized high-level contract for manual and recurring execution. */
-export const workdayIntentSchema = exclusiveProperties(conditionalFields(z.object({
+const workdayIntentFields = z.object({
 	schemaVersion: z.literal('treeseed.workday-intent/v1'), teamId: identifier, profileId: identifier,
 	projects: exclusiveUnion(z.union([z.literal('all'), uniqueArray(z.array(identifier).min(1))])),
 	executionMode: z.enum(['simulation', 'production']).default('simulation').optional(),
@@ -24,9 +24,30 @@ export const workdayIntentSchema = exclusiveProperties(conditionalFields(z.objec
 	continueFromWorkdayId: z.string().min(1).max(128).regex(/\S/u).optional(),
 	allocation: workdayAllocationOverridesSchema.optional(), agentSelection: intentAgentSelectionSchema.optional(),
 	operatorConstraints: z.object({ providerIds: uniqueArray(z.array(identifier)).optional(), maxConcurrency: z.number().int().positive().optional() }).strict().optional(),
-}).strict(), [{ field: 'continueFromWorkdayId', alternatives: [['decisionIds']],
+}).strict();
+const continuationRules = [{ field: 'continueFromWorkdayId', alternatives: [['decisionIds']],
 	forbidden: { fields: ['proposalIds'], conditions: [{ field: 'planningOnly', equals: true }] },
-	path: ['continueFromWorkdayId'], message: 'Continuation requires exact decisions, not new proposal planning.' }]), ['endsAt', 'durationSeconds']);
+	path: ['continueFromWorkdayId'], message: 'Continuation requires exact decisions, not new proposal planning.' }] as const;
+export const workdayIntentSchema = exclusiveProperties(conditionalFields(workdayIntentFields, continuationRules), ['endsAt', 'durationSeconds']);
+
+/** Public request metadata is route-owned; every represented intent field retains its canonical rule. */
+const requestIntentFields = z.preprocess(value => {
+	if (!value || typeof value !== 'object' || Array.isArray(value) || !('decisionIds' in value) || !Array.isArray(value.decisionIds)) return value;
+	return { ...value, decisionIds: value.decisionIds.map(entry => typeof entry === 'string' ? entry.trim() : entry) };
+}, exclusiveProperties(conditionalFields(workdayIntentFields.partial({ schemaVersion: true, teamId: true }), continuationRules), ['endsAt', 'durationSeconds']))
+	.superRefine((intent, context) => {
+		if (!validIntentRange(intent)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['endsAt'], message: 'endsAt must be after startsAt.' });
+	});
+export const workdayIntentRequestSchema = z.custom<Record<string, unknown>>(value => Boolean(value && typeof value === 'object' && !Array.isArray(value)))
+	.transform((intent, context) => {
+		const parsed = requestIntentFields.safeParse(intent);
+		if (!parsed.success) { for (const issue of parsed.error.issues) context.addIssue(issue); return z.NEVER; }
+		return { ...intent, ...parsed.data, ...(parsed.data.decisionIds ? { decisionIds: [...parsed.data.decisionIds].sort() } : {}) };
+	});
+
+function validIntentRange(intent: { startsAt: string; endsAt?: string }) {
+	return intent.endsAt === undefined || Date.parse(intent.endsAt) > Date.parse(intent.startsAt);
+}
 
 export type WorkdayDemandMode = 'planning' | 'acting';
 
@@ -206,7 +227,7 @@ export function validateWorkdayIntent(intent: WorkdayIntent): WorkdayLifecycleDi
 			path: root === 'allocation' || root === 'agentSelection' ? issue.path.join('.') : root, message: issue.message }];
 	});
 	// Temporal admission is separate from the portable stored shape.
-	if (intent.endsAt !== undefined && Date.parse(intent.endsAt) <= Date.parse(intent.startsAt))
+	if (!validIntentRange(intent))
 		diagnostics.push({ code: 'end_invalid', path: 'endsAt', message: 'endsAt must be after startsAt.' });
 	return diagnostics;
 }
