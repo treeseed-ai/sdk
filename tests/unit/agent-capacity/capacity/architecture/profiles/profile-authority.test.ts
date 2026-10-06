@@ -26,6 +26,35 @@ function native(value: unknown) {
 	return JSON.parse(child.stdout);
 }
 describe('governed profile complete authority boundaries', () => {
+	function dependencyInputs() {
+		const value=profile(), acting=value.activityProfiles.acting;
+		return [...[{agents:[]},{events:[]},{agents:[],events:[]},{agents:['independent-verifier']},{events:['workday-closing']}].map(dependsOn=>({valid:true,dependsOn})),
+			...[{},null,[],{agents:undefined},{events:undefined},{agents:null},{agents:''},{events:1},
+				{agents:['independent-verifier','independent-verifier']},{events:['workday-closing','workday-closing']},
+				{agents:[' independent-verifier']},{events:['workday-ended']},{unknown:[]},{agents:[],minimumSeconds:1}].map(dependsOn=>({valid:false,dependsOn}))]
+			.map(entry=>({...entry,input:{...value,activityProfiles:{...value.activityProfiles,acting:{...acting,dependsOn:entry.dependsOn}}}}));
+	}
+	it('exports and enforces represented canonical dependency selector properties without inventing nonempty arrays or runtime role configuration',()=>{
+		const entries=dependencyInputs(), held=structuredClone(entries);
+		for(const entry of entries){const result=validateAgentDefinitionModel(entry.input);expect(result.ok,JSON.stringify(entry.dependsOn)).toBe(entry.valid);
+			if(entry.valid)expect(result).toMatchObject({data:entry.input});}
+		const schema=zodToJsonSchema(describeContentFrontmatterSchema('agent'),{$refStrategy:'none',postProcess:exportSchemaConstraints});
+		expect(schema).toMatchObject({properties:{activityProfiles:{properties:{acting:{properties:{dependsOn:{minProperties:1,
+			properties:{agents:{uniqueItems:true},events:{uniqueItems:true}},additionalProperties:false}}}}}}});
+		expect(entries).toEqual(held);
+	});
+	it('native public governed YAML preserves represented empty dependency selectors and denies malformed duplicate or prohibited authority',()=>{
+		const entries=dependencyInputs(), held=structuredClone(entries);
+		const child=spawnSync(process.execPath,['--import','tsx',fileURLToPath(new URL('./profile-boundary.ts',import.meta.url)),'--inventory'],
+			{input:stringify(entries.map(entry=>entry.input)),encoding:'utf8'});
+		expect(child.error).toBeUndefined();expect(child.signal).toBeNull();expect(child.status,child.stderr).toBe(0);
+		const observed:unknown=JSON.parse(child.stdout);
+		if(!observed||typeof observed!=='object'||!('observations' in observed)||!Array.isArray(observed.observations))throw new Error('Native dependency inventory required.');
+		expect(observed.observations).toHaveLength(entries.length);
+		for(const [index,entry] of entries.entries())expect(observed.observations[index]).toMatchObject(entry.valid?{ok:true,data:entry.input}:{ok:false});
+		expect(observed).toMatchObject({schema:{properties:{activityProfiles:{properties:{acting:{properties:{dependsOn:{minProperties:1}}}}}}}});
+		expect(entries).toEqual(held);
+	});
 	function classInputs() {
 		const value = profile(), acting = value.activityProfiles.acting;
 		return [{ valid: true, input: value }, { valid: true, input: { ...value, agentClass: 'a'.repeat(100) } },

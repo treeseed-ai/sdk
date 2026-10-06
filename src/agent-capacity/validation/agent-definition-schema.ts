@@ -7,12 +7,10 @@ export const agentClassSchema = z.string().min(1).max(100).regex(/^[a-z][a-z0-9-
 const nonEmpty = z.string().trim().min(1);
 const unique = <T extends z.ZodTypeAny>(item: T) => uniqueArray(z.array(item));
 
-const dependenciesSchema = z.object({
+const dependenciesSchema = minimumProperties(z.object({
 	agents: unique(agentClassSchema).optional(),
 	events: unique(z.literal('workday-closing')).optional(),
-}).strict().refine((value) => Boolean(value.agents?.length || value.events?.length), {
-	message: 'At least one dependency selector is required.',
-});
+}).strict(), 1, 'At least one dependency selector property is required.');
 
 export const permissionSetSchema = z.object({
 	content: z.object({

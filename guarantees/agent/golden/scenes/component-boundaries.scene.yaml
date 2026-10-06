@@ -3,6 +3,12 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: profile-dependency-properties-unit
+    action: { verifier: sdk.golden.profile-dependency-properties-unit }
+    expect: { status: passed }
+  - id: profile-dependency-properties-native
+    action: { verifier: sdk.golden.profile-dependency-properties-native }
+    expect: { status: passed }
   - id: execution-provider-offer-unit
     action: { verifier: sdk.golden.execution-provider-offer-unit }
     expect: { status: passed }
