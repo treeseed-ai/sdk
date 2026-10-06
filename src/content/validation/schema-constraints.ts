@@ -48,13 +48,46 @@ export function minimumProperties<T extends z.AnyZodObject>(object: T, minimum: 
 	return schema;
 }
 
+/** A represented selector, not a mode-only object, is required. */
+export function alternativeProperties<T extends z.AnyZodObject>(object: T, fields: readonly string[]) {
+	const schema = object.superRefine((value, context) => {
+		if (!fields.some(field => Object.getOwnPropertyDescriptor(value, field)?.value !== undefined))
+			context.addIssue({ code: z.ZodIssueCode.custom, message: 'At least one selector is required.' });
+	});
+	exporters.set(schema._def, exported => ({ ...exported, anyOf: fields.map(field => ({ required: [field] })) }));
+	return schema;
+}
+
+export function exclusiveProperties<T extends z.ZodTypeAny>(object: T, fields: readonly string[]) {
+	const schema = object.superRefine((value, context) => {
+		if (fields.every(field => Object.getOwnPropertyDescriptor(value, field)?.value !== undefined))
+			context.addIssue({ code: z.ZodIssueCode.custom, path: [fields[0]!], message: 'Specify only one alternative.' });
+	});
+	exporters.set(schema._def, exported => ({ ...exported, not: { required: [...fields] } }));
+	return schema;
+}
+
+/** Exactly one actual branch must accept; retain overlap denial in the export. */
+export function exclusiveUnion<T extends z.ZodUnion<[z.ZodTypeAny, ...z.ZodTypeAny[]]>>(union: T) {
+	const schema = union.superRefine((value, context) => {
+		if (union.options.filter(branch => branch.safeParse(value).success).length !== 1)
+			context.addIssue({ code: z.ZodIssueCode.custom, message: 'Exactly one union branch must accept.' });
+	});
+	exporters.set(schema._def, exported => {
+		if (!('anyOf' in exported)) throw new Error('Exclusive union must export its actual branches.');
+		const { anyOf, ...rest } = exported; return { ...rest, oneOf: anyOf };
+	});
+	return schema;
+}
+
+type ForbiddenFields<Field extends string> = { fields: readonly Field[]; conditions?: readonly { field: Field; equals: unknown }[] };
 type ConditionalRequirement<Field extends string> = {
 	field: Field; equals?: unknown; notEquals?: unknown; in?: readonly unknown[];
 	message: string; path?: readonly (string | number)[];
-} & ({ alternatives: readonly (readonly Field[])[]; forbidden?: { fields: readonly Field[] }; allowed?: never; contains?: never;
+} & ({ alternatives: readonly (readonly Field[])[]; forbidden?: ForbiddenFields<Field>; allowed?: never; contains?: never;
 	items?: { field: Field; key: string; required: readonly string[];
 		conditional?: { field: string; equals: unknown; required: readonly string[] } } }
-	| { alternatives?: never; forbidden: { field: Field; key: string } | { fields: readonly Field[] }; allowed?: never; contains?: never }
+	| { alternatives?: never; forbidden: { field: Field; key: string } | ForbiddenFields<Field>; allowed?: never; contains?: never }
 	| { alternatives?: never; forbidden?: never; allowed: { field: Field; values: readonly unknown[] }; contains?: never }
 	| { alternatives?: never; forbidden?: never; allowed?: never; contains: { field: Field; properties: Readonly<Record<string, unknown>> } });
 
@@ -71,6 +104,7 @@ export function conditionalFields<T extends z.AnyZodObject>(object: T,
 			const entries: unknown = rule.contains ? Object.getOwnPropertyDescriptor(value, rule.contains.field)?.value : undefined;
 			const forbidden = rule.forbidden ? 'fields' in rule.forbidden
 				? rule.forbidden.fields.some(field => Object.getOwnPropertyDescriptor(value, field)?.value !== undefined)
+					|| Boolean(rule.forbidden.conditions?.some(condition => Object.getOwnPropertyDescriptor(value, condition.field)?.value === condition.equals))
 				: nested && typeof nested === 'object' && Object.getOwnPropertyDescriptor(nested, rule.forbidden.key)?.value !== undefined
 				: false;
 			const invalid = forbidden || (rule.alternatives ? !rule.alternatives.some(fields => fields.every(field => Object.getOwnPropertyDescriptor(value, field)?.value !== undefined))
@@ -98,15 +132,19 @@ export function conditionalFields<T extends z.AnyZodObject>(object: T,
 	exporters.set(schema._def, exported => {
 		if (!('type' in exported) || exported.type !== 'object') throw new Error('Conditional fields must export an object schema.');
 		const required = (fields: readonly string[]) => ({ type: 'object', required: [...fields] });
+		const forbidden = (fields: ForbiddenFields<string>) => ({ type: 'object', anyOf: [
+			...fields.fields.map(field => required([field])),
+			...(fields.conditions ?? []).map(condition => ({ ...required([condition.field]), properties: { [condition.field]: { const: condition.equals } } })),
+		] });
 		return { ...exported, allOf: rules.map(rule => ({
 			if: { ...required([rule.field]), ...(Object.hasOwn(rule, 'equals') ? { properties: { [rule.field]: { const: rule.equals } } }
 				: Object.hasOwn(rule, 'notEquals') ? { properties: { [rule.field]: { not: { const: rule.notEquals } } } }
 				: rule.in ? { properties: { [rule.field]: { enum: [...rule.in] } } } : {}) },
 			then: rule.alternatives && rule.forbidden ? {
 				...(rule.alternatives.length === 1 ? required(rule.alternatives[0]!) : { type: 'object', anyOf: rule.alternatives.map(required) }),
-				not: { type: 'object', anyOf: rule.forbidden.fields.map(field => required([field])) },
+				not: forbidden(rule.forbidden),
 			} : rule.forbidden ? 'fields' in rule.forbidden
-				? { type: 'object', not: { type: 'object', anyOf: rule.forbidden.fields.map(field => required([field])) } }
+				? { type: 'object', not: forbidden(rule.forbidden) }
 				: { type: 'object', properties: { [rule.forbidden.field]: { not: required([rule.forbidden.key]) } } }
 				: rule.allowed ? { type: 'object', properties: { [rule.allowed.field]: { enum: [...rule.allowed.values] } } }
 				: rule.contains ? { type: 'object', properties: { [rule.contains.field]: { type: 'array', contains: {

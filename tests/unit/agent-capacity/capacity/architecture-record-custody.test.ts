@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as publicContracts from '../../../../src/capacity/agents/agent-capacity.ts';
 import * as treeDxContracts from '../../../../src/treedx/index.ts';
+import * as portfolioContracts from '../../../../src/platform/index.ts';
 import { assignmentAttemptSchema, assignmentResultSchema, usageSettlementSchema, validateProviderAssignment } from '../../../../src/capacity/agents/agent-capacity.ts';
 
 // Complete isolated public-schema inputs, not a compiled API admission or a
@@ -36,6 +37,85 @@ function supplied() {
 	return { item, attempt, result };
 }
 describe('public assignment whole immutable record custody', () => {
+	function verifyScheduleRecord(native: boolean) {
+		const clock = '2026-10-03T00:00:00.000Z', intent = { schemaVersion: 'treeseed.workday-intent/v1', teamId: 'team', profileId: 'default', projects: 'all', startsAt: clock };
+		const record = { id: 'schedule', teamId: 'team', status: 'active', purpose: '', cadenceSeconds: 60, intent, lastRunId: null, nextRunAt: clock, stateVersion: 1, createdAt: clock, updatedAt: clock };
+		const entries: Array<{ record: Record<string, unknown>; valid: boolean }> = [{ record, valid: true }];
+		for (const field of Object.keys(record)) {
+			entries.push({ record: Object.fromEntries(Object.entries(record).filter(([key]) => key !== field)), valid: false });
+			if (field !== 'purpose') entries.push({ record: { ...record, [field]: '' }, valid: field === 'lastRunId' });
+			if (field !== 'lastRunId') entries.push({ record: { ...record, [field]: null }, valid: false });
+		}
+		for (const status of ['active', 'paused', 'completed', 'failed']) entries.push({ record: { ...record, status, lastRunId: 'run' }, valid: true });
+		for (const patch of [{ cadenceSeconds: 59 }, { cadenceSeconds: 60.5 }, { cadenceSeconds: '60' }, { stateVersion: 0 }, { stateVersion: 1.5 }, { status: 'cancelled' }, { executionPlanId: 'derived' }, { schemaVersion: 'invented/v1' }]) entries.push({ record: { ...record, ...patch }, valid: false });
+		for (const patch of [{ decisionIds: ['x'.repeat(200)] }, { proposalIds: ['x'.repeat(200)] }, { objectiveFilters: [] }, { operatorConstraints: { providerIds: [] } }, { continueFromWorkdayId: 'prior', decisionIds: ['decision'] }, { agentSelection: { agentSlugs: ['arbitrary-renamed'], mode: 'intersection' } }]) entries.push({ record: { ...record, intent: { ...intent, ...patch } }, valid: true });
+		for (const patch of [{ decisionIds: ['é'] }, { proposalIds: ['proposal', 'proposal'] }, { teamId: 'é' }, { durationSeconds: 0 }, { endsAt: clock, durationSeconds: 1 }, { continueFromWorkdayId: 'prior' }, { continueFromWorkdayId: 'prior', decisionIds: ['decision'], planningOnly: true }, { continueFromWorkdayId: 'prior', decisionIds: ['decision'], proposalIds: ['new'] }, { agentSelection: { mode: 'intersection' } }, { agentSelection: { agentSlugs: [] } }, { agentSelection: { agentSlugs: ['agent'], mode: 'union' } }, { agentSelection: { activityTypes: ['acting'] } }, { output: {} }]) entries.push({ record: { ...record, intent: { ...intent, ...patch } }, valid: false });
+		const held = structuredClone(entries);
+		if (native) {
+			const path = fileURLToPath(new URL('../../content/architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+			const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'schedule'], { input: JSON.stringify(entries.map(entry => entry.record)), encoding: 'utf8', timeout: 15_000 });
+			expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+			const observed: unknown = JSON.parse(child.stdout); if (!Array.isArray(observed)) throw new Error('Native schedule observations required.');
+			expect(observed).toHaveLength(entries.length);
+			for (const [index, entry] of entries.entries()) expect(observed[index]).toMatchObject(entry.valid ? { success: true, data: entry.record } : { success: false });
+			expect(readFileSync(path)).toEqual(bytes);
+		} else {
+			const exports: Record<string, unknown> = publicContracts, schema = exports.workdayScheduleSchema;
+			if (!(schema instanceof z.ZodType)) throw new Error('Public recurring intent validator required.');
+			for (const entry of entries) expect(schema.safeParse(entry.record)).toMatchObject(entry.valid ? { success: true, data: entry.record } : { success: false });
+		}
+		expect(entries).toEqual(held);
+	}
+	it('stores recurring schedules with the same canonical intent without derived state or a second allocation path', () => verifyScheduleRecord(false));
+	it('native public schedules deny malformed recurrence and continuation while retaining original intent bytes', () => verifyScheduleRecord(true));
+	function verifyPortfolioRecords(native: boolean) {
+		const profileRef = { store: 'treedx', model: 'agent', id: 'profile', repository: 'library', commit: 'a'.repeat(40), path: 'agents/renamed.yaml' };
+		const records = [
+			{ kind: 'team', name: 'teamRecordSchema', record: { schemaVersion: 'treeseed.team/v1', id: 'team', slug: 'team', name: 'Team', active: true } },
+			{ kind: 'project', name: 'projectRecordSchema', record: { schemaVersion: 'treeseed.project/v1', id: 'project', teamId: 'team', slug: 'project', name: 'Project', source: { repository: 'source', defaultBranch: 'staging' }, treeDx: { repository: 'library', collection: 'agents', protectedRef: 'staging' }, active: false } },
+			{ kind: 'agent-registration', name: 'agentRegistrationSchema', record: { schemaVersion: 'treeseed.agent-registration/v1', id: 'registration', teamId: 'team', projectIds: ['project'], agentClass: 'arbitrary-renamed-agent', profileRef, active: true } },
+		];
+		for (const { kind, name, record } of records) {
+			const entries: Array<{ record: Record<string, unknown>; valid: boolean }> = [{ record, valid: true }, { record: { ...record, active: !record.active, id: 'x'.repeat(200) }, valid: true }];
+			for (const field of Object.keys(record)) {
+				entries.push({ record: Object.fromEntries(Object.entries(record).filter(([key]) => key !== field)), valid: false });
+				for (const value of [null, '', [], {}]) entries.push({ record: { ...record, [field]: value }, valid: false });
+			}
+			for (const patch of [{ id: 'é' }, { id: ' padded ' }, { id: 'x'.repeat(201) }, { active: 'true' }, { schemaVersion: 'legacy/v1' }, { output: {} }, { token: 'retired' }]) entries.push({ record: { ...record, ...patch }, valid: false });
+			if (kind === 'agent-registration') {
+				for (const patch of [{ projectIds: [] }, { projectIds: ['project', 'project'] }, { projectIds: ['é'] }, { agentClass: 'NamedAgent' }, { agentClass: 'x'.repeat(101) }, { profileRef: { ...profileRef, commit: 'staging' } }, { profileRef: { ...profileRef, path: '' } }]) entries.push({ record: { ...record, ...patch }, valid: false });
+			} else {
+				for (const slug of ['Uppercase', 'two--dashes', '-leading', 'trailing-', 'é', 'x'.repeat(101)]) entries.push({ record: { ...record, slug }, valid: false });
+				entries.push({ record: { ...record, slug: 'x'.repeat(100) }, valid: true });
+				for (const slug of ['a.b', 'a_b', 'a/b', 'a-b']) entries.push({ record: { ...record, slug }, valid: true });
+				if (kind === 'project') for (const field of ['source', 'treeDx'] as const) {
+					const binding = record[field]; if (!binding || typeof binding !== 'object') throw new Error('Exact project binding required.');
+					for (const key of Object.keys(binding)) {
+						entries.push({ record: { ...record, [field]: Object.fromEntries(Object.entries(binding).filter(([name]) => name !== key)) }, valid: false });
+						entries.push({ record: { ...record, [field]: { ...binding, [key]: '' } }, valid: false });
+					}
+					entries.push({ record: { ...record, [field]: { ...binding, branchOverride: 'foreign' } }, valid: false });
+				}
+			}
+			const held = structuredClone(entries);
+			if (native) {
+				const path = fileURLToPath(new URL('../../content/architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+				const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, kind], { input: JSON.stringify(entries.map(entry => entry.record)), encoding: 'utf8', timeout: 15_000 });
+				expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+				const observed: unknown = JSON.parse(child.stdout); if (!Array.isArray(observed)) throw new Error('Native portfolio observations required.');
+				expect(observed).toHaveLength(entries.length);
+				for (const [index, entry] of entries.entries()) expect(observed[index]).toMatchObject(entry.valid ? { success: true, data: entry.record } : { success: false });
+				expect(readFileSync(path)).toEqual(bytes);
+			} else {
+				const exports: Record<string, unknown> = kind === 'agent-registration' ? publicContracts : portfolioContracts;
+				const schema = exports[name]; if (!(schema instanceof z.ZodType)) throw new Error('Public portfolio custody validator required.');
+				for (const entry of entries) expect(schema.safeParse(entry.record)).toMatchObject(entry.valid ? { success: true, data: entry.record } : { success: false });
+			}
+			expect(entries).toEqual(held);
+		}
+	}
+	it('validates canonical portfolio and arbitrary governed registration records without duplicated scheduling authority', () => verifyPortfolioRecords(false));
+	it('native public portfolio records retain exact bindings and reject unpinned malformed or duplicate registration scope', () => verifyPortfolioRecords(true));
 	function verifyTreeDxRecords(native: boolean) {
 		const commit = 'a'.repeat(40), clock = '2026-10-03T00:00:00.000Z';
 		const decisionRef = { store: 'treedx', model: 'decision', id: 'decision', repository: 'library', commit, path: 'decisions/approval.md' };

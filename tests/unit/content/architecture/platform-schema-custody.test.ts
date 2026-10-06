@@ -65,7 +65,7 @@ describe('native Platform architecture-schema custody', () => {
 			schemaRecord(schemaRecord(changed.$defs.Note).properties).classification = { [keyword]: choices.map(value => ({ const: value })).reverse() };
 			schemaRecord(schemaRecord(changed.$defs.ExecutionNode).properties).pairRole = { [keyword]: [{ enum: ['reviewer', 'actor'] }, { type: 'null' }] };
 			const supplied = stringify(changed); writeFileSync(path, supplied);
-			const result = verifyPlatformRepository(root); expect(result.ok).toBe(false);
+			const result = verifyPlatformRepository(root); expect(result.ok).toBe(baseline.ok);
 			expect(result.diagnostics).toEqual(baseline.diagnostics);
 			expect(readFileSync(path, 'utf8')).toBe(supplied);
 			expect(execFileSync('git', ['show', `${commit}:docs/agent.schema.yml`], { cwd: root, encoding: 'utf8' })).toBe(bytes);
@@ -180,7 +180,7 @@ describe('native Platform architecture-schema custody', () => {
 		const { document } = canonicalAuthority(), root = repository(document), path = resolve(root, 'docs/agent.schema.yml');
 		const bytes = readFileSync(path, 'utf8'), commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
 		const baseline = verifyPlatformRepository(root);
-		expect(baseline.ok).toBe(false);
+		expect(baseline).toMatchObject({ ok: true, diagnostics: [] });
 		expect(baseline.diagnostics.filter(entry => entry.message.startsWith('ExactEntityReference '))).toEqual([]);
 		const constraints = schemaRecord(document.$defs.ExactEntityReference).allOf;
 		if (!Array.isArray(constraints)) throw new Error('Exact reference conditions required.');

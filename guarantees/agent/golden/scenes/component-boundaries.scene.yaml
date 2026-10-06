@@ -3,6 +3,24 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: execution-portfolio-custody-unit
+    action: { verifier: sdk.golden.execution-portfolio-custody-unit }
+    expect: { status: passed }
+  - id: execution-portfolio-custody-native
+    action: { verifier: sdk.golden.execution-portfolio-custody-native }
+    expect: { status: passed }
+  - id: execution-schedule-custody-unit
+    action: { verifier: sdk.golden.execution-schedule-custody-unit }
+    expect: { status: passed }
+  - id: execution-schedule-custody-native
+    action: { verifier: sdk.golden.execution-schedule-custody-native }
+    expect: { status: passed }
+  - id: execution-intent-identifiers-unit
+    action: { verifier: sdk.golden.execution-intent-identifiers-unit }
+    expect: { status: passed }
+  - id: execution-unbounded-definitions-unit
+    action: { verifier: sdk.golden.execution-unbounded-definitions-unit }
+    expect: { status: passed }
   - id: execution-treedx-custody-unit
     action: { verifier: sdk.golden.execution-treedx-custody-unit }
     expect: { status: passed }

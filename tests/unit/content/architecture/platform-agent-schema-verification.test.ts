@@ -8,6 +8,15 @@ import { graphChangeSetSchema, appliedWorkdaySchema, exactEntityReferenceSchema 
 afterAll(assertCanonicalAuthorityUnchanged);
 
 describe('Platform agent content schema verification', () => {
+	it('denies unbounded shared definitions even when no stored record currently references them without inventing a scheduling path', () => {
+		const { document } = canonicalAuthority(), held = structuredClone(document);
+		for (const name of ['WeightMap', 'ProjectWeight', 'AgentClassWeight']) for (const value of [true, false, null, {}, [], 1]) {
+			const changed = Object.assign({}, document, { $defs: { ...document.$defs, [name]: value } }), before = structuredClone(changed);
+			expect(verifyAgentContentSchema(changed)).toContainEqual({ code: 'agent_schema_missing', path: 'docs/agent.schema.yml', message: `${name} definition is missing or unconstrained.` });
+			expect(changed).toEqual(before);
+		}
+		expect(document).toEqual(held);
+	});
 	it('binds canonical provider supply records and shared bounds to the actual public validators without copying target assertions', () => {
 		const { document } = canonicalAuthority(), held = structuredClone(document);
 		const names = ['ProviderOffer', 'ProviderState', 'AvailabilityWindow', 'NativeLimit'];

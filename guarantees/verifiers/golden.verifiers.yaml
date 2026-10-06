@@ -1,6 +1,36 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-portfolio-custody-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: validates canonical portfolio and arbitrary governed registration records without duplicated scheduling authority
+  sdk.golden.execution-portfolio-custody-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: native public portfolio records retain exact bindings and reject unpinned malformed or duplicate registration scope
+  sdk.golden.execution-schedule-custody-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: stores recurring schedules with the same canonical intent without derived state or a second allocation path
+  sdk.golden.execution-schedule-custody-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/architecture-record-custody.test.ts
+    testName: native public schedules deny malformed recurrence and continuation while retaining original intent bytes
+  sdk.golden.execution-intent-identifiers-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/workday-lifecycle.test.ts
+    testName: requires canonical ASCII identities across normalized intent without narrowing the 200 character boundary
+  sdk.golden.execution-unbounded-definitions-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/platform-agent-schema-verification.test.ts
+    testName: denies unbounded shared definitions even when no stored record currently references them without inventing a scheduling path
   sdk.golden.execution-treedx-custody-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

@@ -36,19 +36,35 @@ describe('time-based workday lifecycle contracts', () => {
 	});
 	it('rejects duplicate trimmed decision identities and every malformed explicit selection without changing intent', () => {
 		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default', projects: 'all' as const, startsAt: '2026-09-16T12:00:00Z', durationSeconds: 3600 };
-		for (const decisionIds of [[], [''], [' \t\n '], ['one', ' one '], ['same', 'same'], [null], [1], 'one', null, Array.from({ length: 65 }, (_, i) => `decision-${i}`), ['x'.repeat(129)]]) {
+		for (const decisionIds of [[], [''], [' \t\n '], ['one', ' one '], ['same', 'same'], [null], [1], 'one', null, Array.from({ length: 65 }, (_, i) => `decision-${i}`), ['x'.repeat(201)], ['é'], ['e\u0301'], ['\uE000'], ['\u{10000}'], ['decision?']]) {
 			const intent: WorkdayIntent = { ...base };
 			Object.assign(intent, { decisionIds });
 			const before = structuredClone(intent);
 			expect(validateWorkdayIntent(intent)).toContainEqual(expect.objectContaining({ code: 'decision_selection_invalid', path: 'decisionIds' }));
 			expect(intent).toEqual(before);
 		}
-		for (const decisionIds of [['A', 'a'], ['é', 'e\u0301'], Array.from({ length: 64 }, (_, i) => `decision-${i}`), ['x'.repeat(128)]]) {
+		for (const decisionIds of [['A', 'a'], ['A', 'Z', 'a', 'a-1', 'a.1', 'a/1', 'a:1'], Array.from({ length: 64 }, (_, i) => `decision-${i}`), ['x'.repeat(200)]]) {
 			const intent = { ...base, decisionIds };
 			const before = structuredClone(intent);
 			expect(validateWorkdayIntent(intent)).toEqual([]);
 			expect(intent).toEqual(before);
 		}
+	});
+	it('requires canonical ASCII identities across normalized intent without narrowing the 200 character boundary', () => {
+		const base: WorkdayIntent = { schemaVersion: 'treeseed.workday-intent/v1', teamId: 'team', profileId: 'default', projects: 'all', startsAt: '2026-09-16T12:00:00Z' };
+		for (const field of ['teamId', 'profileId', 'objectiveFilters', 'proposalIds', 'decisionIds'] as const) {
+			for (const identity of ['A', 'a', 'id._:/-', 'x'.repeat(200)]) {
+				const intent = Object.assign({}, base, { [field]: field.endsWith('Ids') || field === 'objectiveFilters' ? [identity] : identity });
+				const before = structuredClone(intent); expect(validateWorkdayIntent(intent)).toEqual([]); expect(intent).toEqual(before);
+			}
+			for (const identity of ['', ' ', 'é', 'e\u0301', '\uE000', '\u{10000}', '?id', 'id?', 'x'.repeat(201)]) {
+				const intent = Object.assign({}, base, { [field]: field.endsWith('Ids') || field === 'objectiveFilters' ? [identity] : identity });
+				const before = structuredClone(intent); expect(validateWorkdayIntent(intent).length).toBeGreaterThan(0); expect(intent).toEqual(before);
+			}
+		}
+		const duplicate = { ...base, proposalIds: ['proposal', 'proposal'] };
+		expect(validateWorkdayIntent(duplicate)).toContainEqual(expect.objectContaining({ code: 'proposal_selection_invalid' }));
+		expect(validateWorkdayIntent({ ...base, objectiveFilters: ['objective', 'objective'] })).toEqual([]);
 	});
 
 	it('rejects each named derived identity even when its supplied value would disappear during JSON serialization', () => {

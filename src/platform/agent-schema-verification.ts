@@ -13,6 +13,10 @@ import { appliedWorkdaySchema, workdayPolicySchema, workdayProfileSchema } from 
 import { activityProfileSchema, activityProfilesSchema } from '../agent-capacity/validation/agent-definition-schema.ts';
 import { providerOfferSchema, providerStateSchema, availabilityWindowSchema, nativeLimitSchema } from '../agent-capacity/contracts/capacity/providers/supply-policy.ts';
 import { treeDxWorkspaceSchema, treeDxWorkspaceReviewSchema, treeDxPublicationReceiptSchema } from '../treedx/types.ts';
+import { teamRecordSchema, projectRecordSchema, repositoryBindingSchema, treeDxBindingSchema } from './schemas.ts';
+import { agentRegistrationSchema } from '../agent-capacity/contracts/projects/agents/project-agent-class.ts';
+import { workdayIntentSchema } from '../operator-contracts/workday-lifecycle.ts';
+import { workdayScheduleSchema } from '../agent-capacity/contracts/capacity/workdays/workday-records.ts';
 
 const models = {
 	Book: 'book', Knowledge: 'knowledge', Objective: 'objective',
@@ -23,6 +27,8 @@ const models = {
 // These are the existing executable validators, not a copy of the target
 // declaration. Unimplemented stored models remain explicitly unverified.
 const runtimeSchemas = {
+	WorkdayIntent: workdayIntentSchema,
+	RepositoryBinding: repositoryBindingSchema, TreeDxBinding: treeDxBindingSchema,
 	AvailabilityWindow: availabilityWindowSchema, NativeLimit: nativeLimitSchema,
 	AssignmentContext: assignmentContextSchema, ExactEntityReference: exactEntityReferenceSchema,
 	ExactGrant: exactGrantSchema, AssignmentWorkspace: assignmentWorkspaceSchema, Estimate: estimateSchema,
@@ -39,6 +45,8 @@ const runtimeSchemas = {
 	ProviderOfferSelection: assignmentAttemptSchema.innerType().shape.provider,
 };
 const schemas: Record<string, z.ZodTypeAny> = {
+	Team: teamRecordSchema, Project: projectRecordSchema, AgentRegistration: agentRegistrationSchema,
+	WorkdaySchedule: workdayScheduleSchema,
 	...Object.fromEntries(Object.entries(models).map(([name, model]) => [name, describeContentFrontmatterSchema(model)])),
 	ProviderOffer: providerOfferSchema, ProviderState: providerStateSchema,
 	TreeDxWorkspace: treeDxWorkspaceSchema, TreeDxWorkspaceReview: treeDxWorkspaceReviewSchema, TreeDxPublicationReceipt: treeDxPublicationReceiptSchema,
@@ -213,6 +221,8 @@ const executableStructures = new Map(Object.entries(schemas).map(([name, schema]
 export function verifyAgentContentSchema(document: unknown, path = 'docs/agent.schema.yml'): PlatformDiagnostic[] {
 	const definitions = (document as { $defs?: Record<string, unknown> })?.$defs ?? {};
 	const diagnostics: PlatformDiagnostic[] = [];
+	for (const [name, value] of Object.entries(definitions)) if (!Object.keys(record(value)).length)
+		diagnostics.push({ code: 'agent_schema_missing', path, message: `${name} definition is missing or unconstrained.` });
 	const union = record(document).oneOf;
 	if (!Array.isArray(union) || !union.length) diagnostics.push({ code: 'agent_schema_root_missing', path,
 		message: 'The stored-record root must declare a nonempty oneOf union; a content-model subset is not complete authority.' });

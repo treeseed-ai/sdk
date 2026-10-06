@@ -1,6 +1,32 @@
 import type { WorkdayAgentSelection } from '../agent-capacity/workday.ts';
 import { workdayAllocationOverridesSchema } from '../agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
+import { z } from 'zod';
+import { leaseSchema } from '../agent-capacity/contracts/capacity/assignments/agent-execution.ts';
+import { alternativeProperties, conditionalFields, exclusiveProperties, exclusiveUnion, uniqueArray } from '../content/validation/schema-constraints.ts';
 export { normalizeWorkdayAgentSelection } from '../agent-capacity/workday.ts';
+
+const identifier = leaseSchema.shape.id, timestamp = leaseSchema.shape.acquiredAt;
+const selectedIdentities = uniqueArray(z.array(identifier).min(1).max(64));
+const intentAgentSelectionSchema = alternativeProperties(z.object({
+	agentSlugs: z.array(identifier).min(1).optional(), classIds: z.array(identifier).min(1).optional(),
+	classSlugs: z.array(identifier).min(1).optional(),
+	activityTypes: z.array(z.enum(['planning', 'estimating', 'reviewing', 'reporting', 'chat'])).min(1).optional(),
+	mode: z.literal('intersection').optional(),
+}).strict(), ['agentSlugs', 'activityTypes', 'classIds', 'classSlugs']);
+/** One normalized high-level contract for manual and recurring execution. */
+export const workdayIntentSchema = exclusiveProperties(conditionalFields(z.object({
+	schemaVersion: z.literal('treeseed.workday-intent/v1'), teamId: identifier, profileId: identifier,
+	projects: exclusiveUnion(z.union([z.literal('all'), uniqueArray(z.array(identifier).min(1))])),
+	executionMode: z.enum(['simulation', 'production']).default('simulation').optional(),
+	startsAt: timestamp, endsAt: timestamp.optional(), durationSeconds: z.number().int().positive().optional(),
+	planningOnly: z.boolean().optional(), objectiveFilters: z.array(identifier).optional(),
+	proposalIds: selectedIdentities.optional(), decisionIds: selectedIdentities.optional(),
+	continueFromWorkdayId: z.string().min(1).max(128).regex(/\S/u).optional(),
+	allocation: workdayAllocationOverridesSchema.optional(), agentSelection: intentAgentSelectionSchema.optional(),
+	operatorConstraints: z.object({ providerIds: uniqueArray(z.array(identifier)).optional(), maxConcurrency: z.number().int().positive().optional() }).strict().optional(),
+}).strict(), [{ field: 'continueFromWorkdayId', alternatives: [['decisionIds']],
+	forbidden: { fields: ['proposalIds'], conditions: [{ field: 'planningOnly', equals: true }] },
+	path: ['continueFromWorkdayId'], message: 'Continuation requires exact decisions, not new proposal planning.' }]), ['endsAt', 'durationSeconds']);
 
 export type WorkdayDemandMode = 'planning' | 'acting';
 
@@ -160,101 +186,45 @@ export interface WorkdayLifecycleDiagnostic {
 	message: string;
 }
 
+function portableIntentInput(intent: WorkdayIntent) {
+	return { ...intent, ...(Array.isArray(intent.decisionIds) ? { decisionIds: intent.decisionIds.map(value => typeof value === 'string' ? value.trim() : value) } : {}) };
+}
+
 export function validateWorkdayIntent(intent: WorkdayIntent): WorkdayLifecycleDiagnostic[] {
-	const diagnostics: WorkdayLifecycleDiagnostic[] = [];
-	const canonicalId = (value: unknown) => typeof value === 'string' && value.length <= 200
-		&& /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u.test(value);
-	const fields = new Set(['schemaVersion', 'teamId', 'profileId', 'projects', 'executionMode', 'startsAt',
-		'endsAt', 'durationSeconds', 'objectiveFilters', 'planningOnly', 'proposalIds', 'decisionIds',
-		'continueFromWorkdayId', 'agentSelection', 'allocation', 'operatorConstraints']);
-	for (const key of Object.keys(intent)) if (!fields.has(key)) diagnostics.push({
-		code: 'field_forbidden', path: key, message: 'Derived execution state is not portable workday intent.',
+	const result = workdayIntentSchema.safeParse(portableIntentInput(intent));
+	const codes: Record<string, string> = { schemaVersion: 'schema_version_invalid', teamId: 'team_required', profileId: 'profile_required',
+		projects: 'project_selection_invalid', operatorConstraints: 'operator_constraints_invalid', executionMode: 'execution_mode_invalid',
+		startsAt: 'start_invalid', endsAt: 'end_invalid', durationSeconds: 'duration_invalid', planningOnly: 'planning_only_invalid',
+		objectiveFilters: 'objective_selection_invalid', proposalIds: 'proposal_selection_invalid', decisionIds: 'decision_selection_invalid',
+		continueFromWorkdayId: 'continuation_invalid', agentSelection: 'agent_selection_invalid', allocation: 'allocation_invalid' };
+	const diagnostics: WorkdayLifecycleDiagnostic[] = result.success ? [] : result.error.issues.flatMap(issue => {
+		if (issue.code === z.ZodIssueCode.unrecognized_keys && !issue.path.length)
+			return issue.keys.map(key => ({ code: 'field_forbidden', path: key, message: 'Derived execution state is not portable workday intent.' }));
+		const root = String(issue.path[0] ?? '');
+		return [{ code: root === 'endsAt' && intent.durationSeconds !== undefined && intent.endsAt !== undefined
+			? 'time_range_ambiguous' : codes[root] ?? 'intent_invalid',
+			path: root === 'allocation' || root === 'agentSelection' ? issue.path.join('.') : root, message: issue.message }];
 	});
-	if (intent.schemaVersion !== 'treeseed.workday-intent/v1') diagnostics.push({ code: 'schema_version_invalid', path: 'schemaVersion', message: 'Unsupported workday intent schema.' });
-	if (typeof intent.teamId !== 'string' || !intent.teamId.trim()) diagnostics.push({ code: 'team_required', path: 'teamId', message: 'Team identity is required.' });
-	if (typeof intent.profileId !== 'string' || !intent.profileId.trim()) diagnostics.push({ code: 'profile_required', path: 'profileId', message: 'Allocation profile identity is required.' });
-	if (intent.projects !== 'all' && (!Array.isArray(intent.projects) || !intent.projects.length
-		|| intent.projects.some(project => !canonicalId(project))
-		|| new Set(intent.projects).size !== intent.projects.length)) diagnostics.push({
-		code: 'project_selection_invalid', path: 'projects',
-		message: 'Select all projects or a nonempty unique array of canonical project identities.',
-	});
-	if (intent.operatorConstraints !== undefined) {
-		const constraints = intent.operatorConstraints;
-		if (!constraints || typeof constraints !== 'object' || Array.isArray(constraints)
-			|| Object.keys(constraints).some(key => !['providerIds', 'maxConcurrency'].includes(key))
-			|| (constraints.providerIds !== undefined && (!Array.isArray(constraints.providerIds)
-				|| constraints.providerIds.some(provider => !canonicalId(provider))
-				|| new Set(constraints.providerIds).size !== constraints.providerIds.length))
-			|| (constraints.maxConcurrency !== undefined && (!Number.isInteger(constraints.maxConcurrency)
-				|| constraints.maxConcurrency < 1))) diagnostics.push({
-			code: 'operator_constraints_invalid', path: 'operatorConstraints',
-			message: 'Provider constraints require only unique canonical provider identities and positive integer concurrency.',
-		});
-	}
-	if (intent.executionMode !== undefined && !['simulation', 'production'].includes(intent.executionMode)) diagnostics.push({ code: 'execution_mode_invalid', path: 'executionMode', message: 'Select simulation or production custody.' });
-	if (intent.endsAt !== undefined && intent.durationSeconds !== undefined) diagnostics.push({ code: 'time_range_ambiguous', path: 'endsAt', message: 'Specify endsAt or durationSeconds, not both; omission uses the team policy duration.' });
-	const start = Date.parse(intent.startsAt);
-	if (!Number.isFinite(start)) diagnostics.push({ code: 'start_invalid', path: 'startsAt', message: 'startsAt must be an ISO timestamp.' });
-	if (intent.endsAt !== undefined && (!Number.isFinite(Date.parse(intent.endsAt)) || Date.parse(intent.endsAt) <= start)) diagnostics.push({ code: 'end_invalid', path: 'endsAt', message: 'endsAt must be a valid timestamp after startsAt.' });
-	if (intent.durationSeconds !== undefined && (!Number.isInteger(intent.durationSeconds) || intent.durationSeconds <= 0)) diagnostics.push({ code: 'duration_invalid', path: 'durationSeconds', message: 'durationSeconds must be a positive integer.' });
-	if (intent.planningOnly !== undefined && typeof intent.planningOnly !== 'boolean') diagnostics.push({ code: 'planning_only_invalid', path: 'planningOnly', message: 'planningOnly must be boolean.' });
-	if (intent.proposalIds !== undefined && (!Array.isArray(intent.proposalIds) || intent.proposalIds.length === 0 || intent.proposalIds.length > 64
-		|| intent.proposalIds.some((entry) => typeof entry !== 'string' || !entry.trim() || entry.length > 128))) {
-		diagnostics.push({ code: 'proposal_selection_invalid', path: 'proposalIds', message: 'Proposal selection must be a bounded nonempty array of proposal identities.' });
-	}
-	if (intent.decisionIds !== undefined && (!Array.isArray(intent.decisionIds) || intent.decisionIds.length === 0 || intent.decisionIds.length > 64
-		|| intent.decisionIds.some((entry) => typeof entry !== 'string' || !entry.trim() || entry.length > 128)
-		|| new Set(intent.decisionIds.map(entry => typeof entry === 'string' ? entry.trim() : entry)).size !== intent.decisionIds.length)) {
-		diagnostics.push({ code: 'decision_selection_invalid', path: 'decisionIds', message: 'Decision selection must be a bounded nonempty array of decision identities.' });
-	}
-	if (intent.agentSelection !== undefined) diagnostics.push(...validateWorkdayIntentSelection(intent.agentSelection));
-	if (intent.continueFromWorkdayId !== undefined && (typeof intent.continueFromWorkdayId !== 'string'
-		|| !intent.continueFromWorkdayId.trim() || intent.continueFromWorkdayId.length > 128
-		|| !intent.decisionIds?.length || intent.proposalIds !== undefined || intent.planningOnly === true)) diagnostics.push({
-		code: 'continuation_invalid', path: 'continueFromWorkdayId',
-		message: 'Continuation requires a settled workday identity and exact decisions, not new proposal planning.',
-	});
-	if (intent.allocation !== undefined) {
-		const result = workdayAllocationOverridesSchema.safeParse(intent.allocation);
-		if (!result.success) diagnostics.push(...result.error.issues.map((issue) => ({ code: 'allocation_invalid',
-			path: `allocation.${issue.path.join('.')}`, message: issue.message })));
-	}
+	// Temporal admission is separate from the portable stored shape.
+	if (intent.endsAt !== undefined && Date.parse(intent.endsAt) <= Date.parse(intent.startsAt))
+		diagnostics.push({ code: 'end_invalid', path: 'endsAt', message: 'endsAt must be after startsAt.' });
 	return diagnostics;
 }
 
-/** Validate the original caller bytes before canonicalizing portable intent. */
+/** Preserve raw caller evidence; normalize only legitimate selector input. */
 export function normalizeWorkdayIntent(intent: WorkdayIntent): WorkdayIntent {
 	const diagnostics = validateWorkdayIntent(intent);
 	if (diagnostics.length) throw new Error(`Invalid workday intent: ${diagnostics.map(value => `${value.path}: ${value.message}`).join('; ')}`);
-	if (intent.decisionIds === undefined) return { ...intent };
-	const compare = (left: string, right: string) => {
-		const a = Array.from(left, character => character.codePointAt(0)!), b = Array.from(right, character => character.codePointAt(0)!);
-		for (let index = 0; index < Math.min(a.length, b.length); index++) if (a[index] !== b[index]) return a[index]! - b[index]!;
-		return a.length - b.length;
-	};
-	return { ...intent, decisionIds: intent.decisionIds.map(value => value.trim()).sort(compare) };
+	const normalized = workdayIntentSchema.parse(portableIntentInput(intent));
+	return { ...intent, ...normalized, ...(normalized.decisionIds ? { decisionIds: [...normalized.decisionIds].sort() } : {}) };
 }
 
 export function validateWorkdayIntentSelection(value: unknown): WorkdayLifecycleDiagnostic[] {
-	const invalid = (path: string, message: string) => ({ code: 'agent_selection_invalid', path: `agentSelection${path ? `.${path}` : ''}`, message });
-	if (!value || typeof value !== 'object' || Array.isArray(value)) return [invalid('', 'Agent selection must be an object.')];
-	const selection = value as Record<string, unknown>, diagnostics: WorkdayLifecycleDiagnostic[] = [];
-	const fields = ['classIds', 'classSlugs', 'agentSlugs', 'activityTypes'];
-	for (const key of Object.keys(selection)) if (![...fields, 'mode'].includes(key)) diagnostics.push(invalid(key, 'Unknown selection field.'));
-	if (selection.mode !== undefined && !['intersection', 'union'].includes(String(selection.mode))) diagnostics.push(invalid('mode', 'Select intersection or union.'));
-	let selected = 0;
-	for (const field of fields) {
-		const entries = selection[field];
-		if (entries === undefined) continue;
-		if (!Array.isArray(entries) || entries.length > 128 || entries.some(entry => typeof entry !== 'string' || !entry.trim() || entry.length > 128)) {
-			diagnostics.push(invalid(field, 'Selectors must be a bounded array of nonempty strings.')); continue;
-		}
-		selected += entries.length;
-		if (field === 'activityTypes' && entries.some(entry => !['planning', 'estimating', 'reviewing', 'reporting', 'chat'].includes(String(entry).trim()))) diagnostics.push(invalid(field, 'Select a planning activity; acting is controlled by accepted decisions and estimates.'));
-	}
-	if (!selected) diagnostics.push(invalid('', 'Explicit selection must select an agent, class, or activity; omit it to select all.'));
-	return diagnostics;
+	const input = value && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(
+		Object.entries(value).map(([key, entries]) => [key, Array.isArray(entries) ? entries.map(entry => typeof entry === 'string' ? entry.trim() : entry) : entries])) : value;
+	const result = intentAgentSelectionSchema.safeParse(input);
+	return result.success ? [] : result.error.issues.map(issue => ({ code: 'agent_selection_invalid',
+		path: ['agentSelection', ...issue.path].join('.'), message: issue.message }));
 }
 
 export function validateSelectedDemand(demand: WorkdaySelectedDemand): WorkdayLifecycleDiagnostic[] {

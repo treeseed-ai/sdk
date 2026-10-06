@@ -10,8 +10,7 @@ describe('ControlPlaneClient', () => {
 		const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002' }, fetchImpl });
 		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default', projects: ['sdk'], startsAt: '2026-09-16T12:00:00Z', durationSeconds: 3600,
 			proposalIds: ['proposal-original'], agentSelection: { agentSlugs: ['configured-arbitrary-agent'], activityTypes: ['planning'] }, allocation: { planningPercent: 20, allocationWeight: 2 } };
-		// U+E000 sorts before U+10000 by code point, but after it by UTF-16 code unit.
-		const normalized = ['A', 'Z', 'a', 'e\u0301', 'é', '\uE000', '\u{10000}'];
+		const normalized = ['A', 'Z', 'a', 'a-1', 'a.1', 'a/1', 'a:1'];
 		for (const nested of [false, true]) {
 			for (const planningOnly of [false, true]) {
 				for (const decisionIds of [undefined, normalized.map(id => ` ${id} `), [...normalized].reverse(), [normalized[3]!, normalized[6]!, normalized[0]!, normalized[5]!, normalized[2]!, normalized[4]!, normalized[1]!]]) {
@@ -40,7 +39,7 @@ describe('ControlPlaneClient', () => {
 		const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002' }, fetchImpl });
 		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default', projects: 'all' as const, startsAt: '2026-09-16T12:00:00Z', durationSeconds: 3600 };
 		const invalid = [
-			...[[], [''], [' \t\n '], ['one', ' one '], ['same', 'same'], [null], [1], 'one', null, Array.from({ length: 65 }, (_, i) => `decision-${i}`), ['x'.repeat(129)]].map(decisionIds => Object.assign({}, base, { decisionIds })),
+			...[[], [''], [' \t\n '], ['one', ' one '], ['same', 'same'], [null], [1], 'one', null, Array.from({ length: 65 }, (_, i) => `decision-${i}`), ['x'.repeat(201)], ['é'], ['e\u0301'], ['\uE000'], ['\u{10000}'], ['decision?']].map(decisionIds => Object.assign({}, base, { decisionIds })),
 			...['executionPlanId', 'capacityPlanId', 'executionInputId', 'demandSetId'].flatMap(field => [undefined, null, '', 'derived-identity'].map(value => Object.assign({}, base, { [field]: value }))),
 		];
 		for (const nested of [false, true]) {
@@ -74,7 +73,7 @@ describe('ControlPlaneClient', () => {
 			const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: `http://127.0.0.1:${address.port}` } });
 			const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default', projects: ['sdk'], startsAt: '2026-09-16T12:00:00Z', durationSeconds: 3600,
 				proposalIds: ['proposal-original'], agentSelection: { agentSlugs: ['configured-arbitrary-agent'], activityTypes: ['planning'] }, allocation: { planningPercent: 20, allocationWeight: 2 } };
-			const normalized = ['A', 'Z', 'a', 'e\u0301', 'é', '\uE000', '\u{10000}'];
+			const normalized = ['A', 'Z', 'a', 'a-1', 'a.1', 'a/1', 'a:1'];
 			for (const nested of [false, true]) {
 				for (const planningOnly of [false, true]) {
 					const binding = nested ? CONTROL_PLANE_OPERATIONS.workdays.createSchedule : CONTROL_PLANE_OPERATIONS.workdays.preflight;
@@ -119,7 +118,8 @@ describe('ControlPlaneClient', () => {
 						.map(operatorConstraints => Object.assign({}, base, { operatorConstraints })),
 					...[undefined, null, [], '', 'sdk', 1, true, [null], [[]], [{}], [''], [' '], ['sdk', 'sdk'],
 						['sdk', ' sdk '], ['sdk', null], ['x'.repeat(201)], ['sdk?']].map(projects => Object.assign({}, base, { projects })),
-					...[[], [''], [' \t\n '], ['one', ' one '], ['same', 'same'], [null], [1], 'one', null, Array.from({ length: 65 }, (_, i) => `decision-${i}`), ['x'.repeat(129)]].map(decisionIds => Object.assign({}, base, { decisionIds })),
+					...[[], [''], [' \t\n '], ['one', ' one '], ['same', 'same'], [null], [1], 'one', null, Array.from({ length: 65 }, (_, i) => `decision-${i}`), ['x'.repeat(201)], ['é'], ['e\u0301'], ['\uE000'], ['\u{10000}'], ['decision?']].map(decisionIds => Object.assign({}, base, { decisionIds })),
+					...['teamId', 'profileId', 'objectiveFilters', 'proposalIds'].flatMap(field => ['é', 'id?', 'x'.repeat(201)].map(identity => Object.assign({}, base, { [field]: field === 'objectiveFilters' || field === 'proposalIds' ? [identity] : identity }))),
 					...['executionPlanId', 'capacityPlanId', 'executionInputId', 'demandSetId'].flatMap(field => [undefined, null, '', 'derived-identity'].map(value => Object.assign({}, base, { [field]: value }))),
 				];
 				for (const intent of invalid) {
@@ -131,7 +131,16 @@ describe('ControlPlaneClient', () => {
 					expect(body).toEqual(before);
 				}
 			}
-			expect(received).toHaveLength(28);
+		expect(received).toHaveLength(28);
+		for (const nested of [false, true]) {
+			const intent = { schemaVersion: 'treeseed.workday-intent/v1', teamId: 'team', profileId: 'default', projects: 'all', startsAt: '2026-09-16T12:00:00Z', decisionIds: ['x'.repeat(200)] };
+			const body = nested ? { intent, cadenceSeconds: 3600 } : intent, held = structuredClone(body);
+			const address = server.address(); if (!address || typeof address === 'string') throw new Error('Native TCP binding required.');
+			const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: `http://127.0.0.1:${address.port}` } });
+			await expect(client.invoke(nested ? CONTROL_PLANE_OPERATIONS.workdays.createSchedule : CONTROL_PLANE_OPERATIONS.workdays.preflight, { path: { teamId: 'team' }, query: {}, body })).resolves.toEqual({ data: { marker: 'controlled-response' } });
+			expect(received.at(-1)!.body).toBe(JSON.stringify(body)); expect(body).toEqual(held);
+		}
+		expect(received).toHaveLength(30);
 		} finally {
 			await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
 		}
