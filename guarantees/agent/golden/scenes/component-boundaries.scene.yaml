@@ -474,6 +474,12 @@ workflow:
   - id: canonical-constraints
     action: { verifier: sdk.golden.canonical-constraints }
     expect: { status: passed }
+  - id: canonical-constraints-1
+    action: { verifier: sdk.golden.canonical-constraints-1 }
+    expect: { status: passed }
+  - id: canonical-constraints-2
+    action: { verifier: sdk.golden.canonical-constraints-2 }
+    expect: { status: passed }
   - id: canonical-git-stored
     action: { verifier: sdk.golden.canonical-git-stored }
     expect: { status: passed }

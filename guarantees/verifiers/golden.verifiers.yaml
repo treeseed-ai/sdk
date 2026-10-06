@@ -800,7 +800,17 @@ verifiers:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/content/architecture/canonical-schema-equivalence.test.ts
-    testName: "detects removed reference bounds uniqueness union and conditional assertions throughout the canonical target"
+    testName: "detects removed reference bounds uniqueness union and conditional assertions throughout the canonical target (partition 0)"
+  sdk.golden.canonical-constraints-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/canonical-schema-equivalence.test.ts
+    testName: "detects removed reference bounds uniqueness union and conditional assertions throughout the canonical target (partition 1)"
+  sdk.golden.canonical-constraints-2:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/architecture/canonical-schema-equivalence.test.ts
+    testName: "detects removed reference bounds uniqueness union and conditional assertions throughout the canonical target (partition 2)"
   sdk.golden.canonical-git-stored:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

@@ -139,10 +139,14 @@ describe('exact canonical architecture schema equivalence', () => {
 		}
 		expect(missed).toEqual([]);
 	});
-	it('detects removed reference bounds uniqueness union and conditional assertions throughout the canonical target', () => {
+	// All three partitions are independently bound in the component scene.
+	// Partition by definition index only: no assertion keyword is filtered out.
+	it.each([0, 1, 2])('detects removed reference bounds uniqueness union and conditional assertions throughout the canonical target (partition %i)', partition => {
 		const { document } = canonicalAuthority();
 		const missed: string[] = [];
-		for (const [name, definition] of Object.entries(document.$defs)) {
+		const definitions = Object.entries(document.$defs), selected = definitions.filter((_, index) => index % 3 === partition);
+		expect(selected.length).toBeGreaterThan(0);
+		for (const [name, definition] of selected) {
 			for (const path of constraintPaths(definition)) {
 				if (equivalentRemoval(definition, path)) {
 					const copy = structuredClone(document); removeConstraint(copy, name, path); const held = JSON.stringify(copy);
