@@ -101,6 +101,10 @@ export function verifyPlatformRepository(root = process.cwd()): PlatformVerifica
 		hash.update(relative(absoluteRoot, fullPath)).update('\0').update(source);
 		if (personalPath.test(source.toString('utf8'))) diagnostics.push({ code: 'personal_path_forbidden', path, message: 'Committed home-directory paths are forbidden.' });
 	}
+	const agentSchemaPath = 'docs/agent.schema.yml';
+	if (existsSync(resolve(absoluteRoot, agentSchemaPath)) && !listed.includes(agentSchemaPath)) {
+		diagnostics.push({ code: 'agent_schema_untracked', path: agentSchemaPath, message: 'Canonical execution authority must be tracked, never silently omitted.' });
+	}
 	diagnostics.push(...semanticDiagnostics(absoluteRoot, new Set(listed)));
 	return { schemaVersion: 'treeseed.platform-verification/v1', root: absoluteRoot, digest: `sha256:${hash.digest('hex')}`, ok: diagnostics.length === 0, diagnostics };
 }

@@ -28,6 +28,20 @@ function repository(document: unknown) {
 }
 
 describe('native Platform architecture-schema custody', () => {
+	it('native canonical execution verification denies untracked held authority and admits only exact tracked retry without changing candidate history', () => {
+		const { document } = canonicalAuthority(), root = repository(document), path = resolve(root, 'docs/agent.schema.yml');
+		const bytes = readFileSync(path), commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+		const baseline = verifyPlatformRepository(root); expect(baseline.ok).toBe(true);
+		execFileSync('git', ['rm', '--cached', '--', 'docs/agent.schema.yml'], { cwd: root });
+		const denied = verifyPlatformRepository(root); expect(denied.ok).toBe(false);
+		expect(denied.diagnostics).toContainEqual(expect.objectContaining({ code: 'agent_schema_untracked', path: 'docs/agent.schema.yml' }));
+		expect(readFileSync(path)).toEqual(bytes);
+		expect(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()).toBe(commit);
+		execFileSync('git', ['add', '--', 'docs/agent.schema.yml'], { cwd: root });
+		expect(verifyPlatformRepository(root)).toEqual(baseline);
+		expect(readFileSync(path)).toEqual(bytes);
+		expect(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' })).toBe('');
+	});
 	it('native repository verification binds TreeDX workspace review and publication schemas while retaining changed source denial and exact retry', () => {
 		const { document } = canonicalAuthority(), root = repository(document), path = resolve(root, 'docs/agent.schema.yml');
 		const bytes = readFileSync(path, 'utf8'), commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
