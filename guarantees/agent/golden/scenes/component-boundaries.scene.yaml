@@ -606,3 +606,12 @@ workflow:
   - id: execution-reservation-record-native
     action: { verifier: sdk.golden.execution-reservation-record-native }
     expect: { status: passed }
+  - id: execution-untracked-authority-unit
+    action: { verifier: sdk.golden.execution-untracked-authority-unit }
+    expect: { status: passed }
+  - id: execution-untracked-authority-native
+    action: { verifier: sdk.golden.execution-untracked-authority-native }
+    expect: { status: passed }
+  - id: execution-public-intent-unit
+    action: { verifier: sdk.golden.execution-public-intent-unit }
+    expect: { status: passed }

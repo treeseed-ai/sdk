@@ -15,9 +15,9 @@ import { SECRET_OPERATIONS } from './catalog/services/secret-operations.ts';
 import { buildControlPlaneCatalog, flattenControlPlaneOperations } from './catalog/control-plane-catalog.ts';
 import { EXECUTION_OPERATIONS } from './catalog/execution/execution-operations.ts';
 import { AGENT_TEAM_CLONE_OPERATIONS } from './catalog/agents/agent-team-clone-operations.ts';
-import { normalizeWorkdayIntent, type WorkdayIntent } from './workday-lifecycle.ts';
+import { workdayIntentRequestSchema } from './workday-lifecycle.ts';
 const empty = z.object({}).strict(), none = z.undefined(), record = z.record(z.unknown()), payload = record;
-const workdayIntent = z.custom<WorkdayIntent>(value => Boolean(value && typeof value === 'object' && !Array.isArray(value))).transform(normalizeWorkdayIntent);
+const workdayIntent = workdayIntentRequestSchema;
 const scheduledWorkdayIntent = record.transform(value => ({ ...value, intent: workdayIntent.parse(value.intent) }));
 const providerRequest = record.superRefine((value, context) => {
 	if (Object.hasOwn(value, 'modeRunId')) context.addIssue({ code: z.ZodIssueCode.custom, path: ['modeRunId'], message: 'Mode-run identity is retired; use assignment and attempt identity.' });

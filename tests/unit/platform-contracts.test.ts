@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -82,6 +82,16 @@ describe('Platform worksets', () => {
 });
 
 describe('Platform repository verification', () => {
+	it('denies present untracked canonical execution authority without rewriting input bytes', () => {
+		const root = temporary(), path = resolve(root, 'docs/agent.schema.yml'), bytes = '$defs: {}\noneOf: []\n';
+		execFileSync('git', ['init', '--quiet'], { cwd: root });
+		mkdirSync(resolve(root, 'docs')); writeFileSync(path, bytes);
+		const result = verifyPlatformRepository(root);
+		expect(result.ok).toBe(false);
+		expect(result.diagnostics).toEqual([{ code: 'agent_schema_untracked', path: 'docs/agent.schema.yml', message: 'Canonical execution authority must be tracked, never silently omitted.' }]);
+		expect(readFileSync(path, 'utf8')).toBe(bytes);
+		expect(execFileSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' })).toBe('');
+	});
 	it('accepts declarations and rejects implementation and personal paths', () => {
 		const root = temporary();
 		execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
