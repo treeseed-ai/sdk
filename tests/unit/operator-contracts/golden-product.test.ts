@@ -2,13 +2,55 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { sdkGoldenSource, verifySdkGoldenProduct } from '../../acceptance/golden-product.ts';
 const commit = 'a'.repeat(40);
-const release = { createdAt: 'now', status: 'completed', assignmentAttempt: { workItemId: 'simulate-release', effectiveProfile: { activity: 'acting' } },
+const release = { id: 'release-row', createdAt: 'now', status: 'completed', assignmentAttempt: { id: 'release-attempt', workdayId: 'workday-fixture', projectId: 'sdk-project', agentClass: 'renamed-releaser', workItemId: 'simulate-release', effectiveProfile: { activity: 'acting' } },
 	lifecycleOutput: { sourceReference: { kind: 'git', repository: 'treeseed-ai/sdk', commit } },
-	assignmentResult: { references: [{ kind: 'git', commit }], verification: ['npm run standards:build', 'npm run build', 'npm run release:verify', 'npm pack', 'npm run test:contracts', 'npm run standards:acceptance -- --archive treeseed-sdk-1.0.0.tgz']
+	assignmentResult: { id: 'release-result', assignmentId: 'release-attempt', references: [{ kind: 'git', repository: 'treeseed-ai/sdk', commit }], verification: ['npm run standards:build', 'npm run build', 'npm run release:verify', 'npm pack', 'npm run test:contracts', 'npm run standards:acceptance -- --archive treeseed-sdk-1.0.0.tgz']
 		.map(command => ({ command, status: 'passed', exitCode: 0, outputDigest: `sha256:${'b'.repeat(64)}`, durationSeconds: 1 })) } };
-const review = { ...release, assignmentAttempt: { ...release.assignmentAttempt, effectiveProfile: { activity: 'reviewing' } },
+const review = { ...release, id: 'review-row', assignmentAttempt: { ...release.assignmentAttempt, id: 'review-attempt', agentClass: 'renamed-reviewer', effectiveProfile: { activity: 'reviewing' },
+	contextRefs: [{ store: 'git', model: 'GitCommit', id: 'release-candidate', repository: 'treeseed-ai/sdk', commit }], predecessorResultIds: ['release-result'] },
+	assignmentResult: { ...release.assignmentResult, id: 'review-result', assignmentId: 'review-attempt' },
 	lifecycleOutput: { activityCompletion: { reviewDisposition: 'approved' } } };
 describe('SDK golden product gate (fixtures are not acceptance)', () => {
+	it('requires independent measured replay of all three public release commands and rejects every invalid reviewer receipt', () => {
+		const before = structuredClone([release, review]);
+		expect(() => verifySdkGoldenProduct([release, review], commit)).not.toThrow();
+		for (const command of ['npm run release:verify', 'npm pack', 'npm run standards:acceptance -- --archive treeseed-sdk-1.0.0.tgz']) {
+			const missing = structuredClone(review);
+			missing.assignmentResult.verification = missing.assignmentResult.verification.filter(item => item.command !== command);
+			expect(() => verifySdkGoldenProduct([release, missing], commit)).toThrow('ACCEPTANCE_SDK_ARCHIVE_REVIEW');
+			for (const patch of [{ command: `echo ${command}` }, { command: `${command} && true` }, { status: 'failed' }, { status: 'skipped' },
+				{ exitCode: 1 }, { exitCode: '0' }, { outputDigest: '' }, { outputDigest: `sha256:${'G'.repeat(64)}` },
+				{ durationSeconds: undefined }, { durationSeconds: null }, { durationSeconds: '1' }, { durationSeconds: -1 }, { durationSeconds: 1.5 },
+				{ durationSeconds: Number.NaN }, { durationSeconds: Number.POSITIVE_INFINITY }, { durationSeconds: Number.NEGATIVE_INFINITY }]) {
+				const invalid = structuredClone(review);
+				Object.assign(invalid.assignmentResult.verification.find(item => item.command === command)!, patch);
+				const invalidBefore = structuredClone(invalid);
+				expect(() => verifySdkGoldenProduct([release, invalid], commit)).toThrow('ACCEPTANCE_SDK_ARCHIVE_REVIEW');
+				expect(invalid).toEqual(invalidBefore);
+			}
+		}
+		expect([release, review]).toEqual(before);
+	});
+	it('binds independent release review to the exact actor result candidate repository and predecessor without rewriting history', () => {
+		const before = structuredClone([release, review]);
+		expect(() => verifySdkGoldenProduct([release, review], commit)).not.toThrow();
+		for (const patch of [{ contextRefs: [] }, { contextRefs: [{ ...review.assignmentAttempt.contextRefs[0]!, commit: 'c'.repeat(40) }] },
+			{ contextRefs: [{ ...review.assignmentAttempt.contextRefs[0]!, repository: 'other/sdk' }] },
+			{ predecessorResultIds: [] }, { predecessorResultIds: ['foreign-result'] }, { predecessorResultIds: ['release-result', 'release-result'] },
+			{ id: release.assignmentAttempt.id }, { workdayId: 'workday-foreign' }, { projectId: 'foreign-project' }, { agentClass: release.assignmentAttempt.agentClass }]) {
+			const invalid = structuredClone(review); Object.assign(invalid.assignmentAttempt, patch);
+			const invalidBefore = structuredClone(invalid);
+			expect(() => verifySdkGoldenProduct([release, invalid], commit)).toThrow('ACCEPTANCE_SDK_ARCHIVE_REVIEW');
+			expect(invalid).toEqual(invalidBefore);
+		}
+		for (const repository of ['other/sdk', '', undefined]) {
+			const invalid = structuredClone(release); Object.assign(invalid.assignmentResult.references[0]!, { repository });
+			const invalidBefore = structuredClone(invalid);
+			expect(() => verifySdkGoldenProduct([invalid, review], commit)).toThrow('ACCEPTANCE_SDK_CANDIDATE');
+			expect(invalid).toEqual(invalidBefore);
+		}
+		expect([release, review]).toEqual(before);
+	});
 	it('keeps standards generation and the full contract suite owned by release verification', () => {
 		const manifest = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8'));
 		const verifier = readFileSync(new URL('../../../scripts/packages/release-verify.ts', import.meta.url), 'utf8');

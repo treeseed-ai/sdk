@@ -172,8 +172,8 @@ describe('deployment contracts', () => {
 
 	it('selects only explicitly compatible development overlays', () => {
 		const api = release('api', 'stable', 'b'), agent = release('agent', 'development', 'c');
-		const stable: ReleaseCatalog = { schemaVersion: 'treeseed.release-catalog/v1', release: '1.0.0', generation: 1, track: 'stable', compatibilityId: 'linux-amd64-v1', catalogDigest: hash('a'), stableBase: null, components: [api], createdAt: '2026-08-23T00:00:00.000Z' };
-		const development: ReleaseCatalog = { schemaVersion: 'treeseed.release-catalog/v1', release: '1.1.0~rc1', generation: 2, track: 'development', compatibilityId: 'linux-amd64-v1', catalogDigest: hash('d'), stableBase: { release: stable.release, catalogDigest: stable.catalogDigest }, components: [agent], createdAt: '2026-08-23T00:00:00.000Z' };
+		const stable: ReleaseCatalog = { schemaVersion: 'treeseed.release-catalog/v1', release: '1.0.0', generation: 1, track: 'stable', compatibilityId: 'linux-amd64-v1', catalogDigest: hash('a'), stableBase: null, hostProfiles: [], components: [api], createdAt: '2026-08-23T00:00:00.000Z' };
+		const development: ReleaseCatalog = { schemaVersion: 'treeseed.release-catalog/v1', release: '1.1.0~rc1', generation: 2, track: 'development', compatibilityId: 'linux-amd64-v1', catalogDigest: hash('d'), stableBase: { release: stable.release, catalogDigest: stable.catalogDigest }, hostProfiles: [], components: [agent], createdAt: '2026-08-23T00:00:00.000Z' };
 		const selected = resolveMixedTrackCatalog({ host: host(), stable, development });
 		expect(selected.components.map((component) => `${component.componentId}:${component.track}`)).toEqual(['agent:development', 'api:stable']);
 		expect(selected.warnings).toEqual(['agent follows the continuous development track.']);

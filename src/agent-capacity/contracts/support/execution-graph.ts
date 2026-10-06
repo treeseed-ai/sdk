@@ -1,16 +1,11 @@
 import { z } from 'zod';
-import { activityProfileSchema } from '../../validation/agent-definition-schema.ts';
+import { conditionalFields, uniqueArray } from '../../../content/validation/schema-constraints.ts';
+import { activityProfileSchema, agentClassSchema } from '../../validation/agent-definition-schema.ts';
 import { estimateSchema, exactEntityReferenceSchema } from '../capacity/assignments/agent-execution.ts';
 
 const identifier = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
 const slug = z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:[._/-][a-z0-9]+)*$/u);
-const uniqueIds = z.array(identifier).superRefine((items, context) => {
-	if (new Set(items).size !== items.length) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Values must be unique.' });
-});
-const contentOutputSchema = z.object({
-	model: z.enum(['agent','book','knowledge','objective','discussion','discussion-message','proposal','question','note','decision']),
-	id: identifier,
-}).strict();
+const uniqueIds = uniqueArray(z.array(identifier));
 
 export const conditionDefinitionSchema = z.object({
 	conditionType: z.enum(['question', 'external', 'authority', 'lifecycle']),
@@ -18,44 +13,38 @@ export const conditionDefinitionSchema = z.object({
 	expectedState: identifier,
 }).strict();
 
-export const executionNodeSchema = z.object({
+const assignable = ['agentClass', 'estimate', 'requiredCapabilities', 'requestedPermissions', 'workspace'] as const;
+export const executionNodeSchema = conditionalFields(z.object({
 	schemaVersion: z.literal('treeseed.execution-node/v1'),
 	id: identifier,
 	teamId: identifier,
 	projectId: identifier,
 	workdayId: identifier.optional(),
 	workItemId: slug.optional(),
+	priority: z.number().int().safe().optional(),
 	kind: z.enum(['planning', 'estimating', 'acting', 'reviewing', 'reporting', 'communication', 'condition']),
 	pairRole: z.enum(['actor', 'reviewer']).nullable(),
 	sourceRef: exactEntityReferenceSchema,
-	authorityRefs: z.array(exactEntityReferenceSchema).optional(),
+	authorityRefs: uniqueArray(z.array(exactEntityReferenceSchema)).optional(),
 	ruleRevision: z.number().int().positive(),
 	nodeRevision: z.number().int().positive(),
-	agentClass: z.string().regex(/^[a-z][a-z0-9-]*$/u).optional(),
+	agentClass: agentClassSchema.optional(),
 	status: z.enum(['proposed', 'blocked', 'ready', 'assigned', 'running', 'completed', 'failed', 'cancelled', 'stale']),
 	estimate: estimateSchema.optional(),
 	requiredCapabilities: uniqueIds.optional(),
 	requestedPermissions: activityProfileSchema.shape.permissions.optional(),
-	output: contentOutputSchema.optional(),
 	workspace: z.enum(['read-only', 'treedx', 'git']).optional(),
 	acceptanceCriteria: z.array(z.string().trim().min(1)).min(1).optional(),
 	maximumReviewCycles: z.number().int().positive().optional(),
 	condition: conditionDefinitionSchema.optional(),
 	graphRevisionCreated: z.number().int().positive(),
 	graphRevisionUpdated: z.number().int().positive(),
-}).strict().superRefine((node, context) => {
-	const assignable = ['agentClass', 'estimate', 'requiredCapabilities', 'requestedPermissions', 'workspace'] as const;
-	if (node.kind === 'condition') {
-		if (!node.condition) context.addIssue({ code: z.ZodIssueCode.custom, path: ['condition'], message: 'Condition nodes require condition.' });
-		for (const key of assignable) if (node[key] !== undefined) context.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `Condition nodes cannot define ${key}.` });
-	} else {
-		for (const key of assignable) if (node[key] === undefined) context.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `Assignable nodes require ${key}.` });
-		if (node.condition) context.addIssue({ code: z.ZodIssueCode.custom, path: ['condition'], message: 'Assignable nodes cannot define condition.' });
-	}
-	if (node.output && (node.workspace !== 'treedx' || !node.requestedPermissions?.content.write.includes(node.output.model))) {
-		context.addIssue({ code: z.ZodIssueCode.custom, path: ['output'], message: 'A content output requires a TreeDX workspace and matching content-write authority.' });
-	}
-	if (node.pairRole && !(node.workItemId && node.maximumReviewCycles)) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Actor and Reviewer nodes require workItemId and maximumReviewCycles.' });
+}).strict(), [
+	{ field: 'kind', equals: 'condition', alternatives: [['condition']], forbidden: { fields: ['agentClass', 'estimate', 'requestedPermissions', 'workspace'] },
+		message: 'Condition nodes require condition and cannot define assignable execution authority.' },
+	{ field: 'kind', notEquals: 'condition', alternatives: [assignable], message: 'Assignable nodes require complete scheduling authority.' },
+	{ field: 'pairRole', in: ['actor', 'reviewer'], alternatives: [['workItemId', 'maximumReviewCycles']], message: 'Actor and Reviewer nodes require workItemId and maximumReviewCycles.' },
+]).superRefine((node, context) => {
 	if (node.graphRevisionUpdated < node.graphRevisionCreated) context.addIssue({ code: z.ZodIssueCode.custom, path: ['graphRevisionUpdated'], message: 'Updated revision cannot precede created revision.' });
 });
 
@@ -86,7 +75,7 @@ export const graphRevisionSchema = z.object({
 	teamId: identifier,
 	revision: z.number().int().positive(),
 	ruleRevision: z.number().int().positive(),
-	changedSourceRefs: z.array(exactEntityReferenceSchema).min(1),
+	changedSourceRefs: uniqueArray(z.array(exactEntityReferenceSchema).min(1)),
 	graphDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
 	changes: graphChangeSetSchema,
 	createdAt: z.string().datetime({ offset: true }),

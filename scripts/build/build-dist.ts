@@ -82,8 +82,8 @@ async function acquireBuildLock() {
 	}
 }
 
-function walkFiles(root) {
-	const files = [];
+function walkFiles(root: string): string[] {
+	const files: string[] = [];
 	for (const entry of readdirSync(root, { withFileTypes: true })) {
 		const fullPath = join(root, entry.name);
 		if (entry.isDirectory()) {
@@ -95,19 +95,19 @@ function walkFiles(root) {
 	return files;
 }
 
-function ensureDir(filePath) {
+function ensureDir(filePath: string) {
 	mkdirSync(dirname(filePath), { recursive: true });
 }
 
-function rewriteRuntimeSpecifiers(contents) {
+function rewriteRuntimeSpecifiers(contents: string) {
 	return contents.replace(/(['"`])(\.[^'"`\n]+?)(?<!\.d)\.(mjs|ts)\1/g, '$1$2.js$1');
 }
 
-function isTypeScriptSource(filePath) {
+function isTypeScriptSource(filePath: string) {
 	return filePath.endsWith('.ts') && !filePath.endsWith('.d.ts');
 }
 
-async function compileModule(filePath, sourceRoot, outputRoot) {
+async function compileModule(filePath: string, sourceRoot: string, outputRoot: string) {
 	const relativePath = relative(sourceRoot, filePath);
 	const outputFile = resolve(outputRoot, relativePath.replace(/\.ts$/u, '.js'));
 	ensureDir(outputFile);
@@ -125,7 +125,7 @@ async function compileModule(filePath, sourceRoot, outputRoot) {
 	writeFileSync(outputFile, rewriteRuntimeSpecifiers(builtSource), 'utf8');
 }
 
-function listRelativeFiles(root) {
+function listRelativeFiles(root: string) {
 	if (!existsSync(root)) {
 		return [];
 	}
@@ -133,7 +133,7 @@ function listRelativeFiles(root) {
 	return walkFiles(root).map((filePath) => relative(root, filePath));
 }
 
-function removeEmptyDirectories(root) {
+function removeEmptyDirectories(root: string) {
 	if (!existsSync(root)) {
 		return;
 	}
@@ -211,7 +211,7 @@ function reachableSourceFiles(rootNames: string[]) {
 		.filter((filePath) => filePath.startsWith(`${srcRoot}/`) && isTypeScriptSource(filePath));
 }
 
-function emitDeclarations(outputRoot, rootNames: string[]) {
+function emitDeclarations(outputRoot: string, rootNames: string[]) {
 	const program = ts.createProgram({
 		rootNames,
 		options: {
@@ -241,7 +241,7 @@ function emitDeclarations(outputRoot, rootNames: string[]) {
 	}
 }
 
-function rewriteDeclarations(outputRoot) {
+function rewriteDeclarations(outputRoot: string) {
 	for (const filePath of walkFiles(outputRoot)) {
 		if (!filePath.endsWith('.d.ts')) continue;
 		const contents = readFileSync(filePath, 'utf8');

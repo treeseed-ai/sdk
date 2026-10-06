@@ -1,15 +1,18 @@
 import { z } from 'zod';
-import { activityProfileSchema } from '../../../validation/agent-definition-schema.ts';
+import { conditionalFields, uniqueArray } from '../../../../content/validation/schema-constraints.ts';
+import { activityProfileSchema, agentClassSchema } from '../../../validation/agent-definition-schema.ts';
+import { AGENT_TOOL_GROUPS } from '../../../../types/agents.ts';
 
-const identifier = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
+const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u;
+const identifier = z.string().trim().min(1).max(200).regex(identifierPattern);
+const canonicalIdentifier = z.string().min(1).max(200).regex(identifierPattern);
 const timestamp = z.string().datetime({ offset: true });
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
 const commit = z.string().regex(/^[a-f0-9]{40}$/u);
-const uniqueStrings = z.array(z.string().min(1)).superRefine((items, context) => {
-	if (new Set(items).size !== items.length) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Values must be unique.' });
-});
+const uniqueStrings = uniqueArray(z.array(z.string().min(1)));
+const writablePaths = uniqueArray(z.array(z.string().min(1)).min(1));
 
-export const exactEntityReferenceSchema = z.object({
+export const exactEntityReferenceSchema = conditionalFields(z.object({
 	store: z.enum(['treedx', 'postgresql', 'git', 'url']),
 	model: z.string().min(1),
 	id: identifier,
@@ -22,12 +25,12 @@ export const exactEntityReferenceSchema = z.object({
 	startLine: z.number().int().positive().optional(),
 	endLine: z.number().int().positive().optional(),
 	url: z.string().url().optional(),
-}).strict().superRefine((reference, context) => {
-	if (reference.endLine && !reference.startLine) context.addIssue({ code: z.ZodIssueCode.custom, path: ['startLine'], message: 'startLine is required with endLine.' });
-	if (reference.store === 'treedx' && !(reference.commit || (reference.revision && reference.digest))) context.addIssue({ code: z.ZodIssueCode.custom, message: 'TreeDX references require commit or revision and digest.' });
-	if (reference.store === 'git' && !(reference.repository && reference.commit)) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Git references require repository and commit.' });
-	if (reference.store === 'url' && !reference.url) context.addIssue({ code: z.ZodIssueCode.custom, message: 'URL references require url.' });
-});
+}).strict(), [
+	{ field: 'endLine', alternatives: [['startLine']], path: ['startLine'], message: 'startLine is required with endLine.' },
+	{ field: 'store', equals: 'treedx', alternatives: [['revision', 'digest'], ['commit']], message: 'TreeDX references require commit or revision and digest.' },
+	{ field: 'store', equals: 'git', alternatives: [['repository', 'commit']], message: 'Git references require repository and commit.' },
+	{ field: 'store', equals: 'url', alternatives: [['url']], message: 'URL references require url.' },
+]);
 
 export const assignmentReferenceSchema = z.discriminatedUnion('kind', [
 	z.object({ kind: z.literal('git'), repository: z.string().min(1), commit, branch: z.string().min(1).optional(), path: z.string().min(1).optional() }).strict(),
@@ -35,18 +38,20 @@ export const assignmentReferenceSchema = z.discriminatedUnion('kind', [
 	z.object({ kind: z.literal('url'), url: z.string().url(), digest: digest.optional() }).strict(),
 ]);
 
+const exactReferences = uniqueArray(z.array(exactEntityReferenceSchema));
+
 export const exactGrantSchema = z.object({
-	contentRead: z.array(exactEntityReferenceSchema),
-	contentWrite: z.array(exactEntityReferenceSchema),
+	contentRead: exactReferences,
+	contentWrite: exactReferences,
 	sourceRead: uniqueStrings,
 	sourceWrite: uniqueStrings,
-	tools: uniqueStrings,
+	tools: uniqueArray(z.array(z.enum(AGENT_TOOL_GROUPS))),
 }).strict();
 
 export const assignmentWorkspaceSchema = z.discriminatedUnion('mode', [
 	z.object({ mode: z.literal('read-only') }).strict(),
-	z.object({ mode: z.literal('treedx'), workspaceId: identifier, repository: z.string().min(1), baseCommit: commit, writablePaths: uniqueStrings.refine((paths) => paths.length > 0) }).strict(),
-	z.object({ mode: z.literal('git'), repository: z.string().min(1), baseCommit: commit, branch: z.string().min(1), writablePaths: uniqueStrings.refine((paths) => paths.length > 0) }).strict(),
+	z.object({ mode: z.literal('treedx'), workspaceId: identifier, repository: z.string().min(1), baseCommit: commit, writablePaths }).strict(),
+	z.object({ mode: z.literal('git'), repository: z.string().min(1), baseCommit: commit, branch: z.string().min(1), writablePaths }).strict(),
 ]);
 
 export const estimateSchema = z.object({
@@ -87,13 +92,13 @@ export const assignmentAttemptSchema = z.object({
 	nodeRevision: z.number().int().positive(),
 	graphRevision: z.number().int().positive(),
 	sourceRef: exactEntityReferenceSchema,
-	authorityRefs: z.array(exactEntityReferenceSchema).min(1),
+	authorityRefs: uniqueArray(z.array(exactEntityReferenceSchema).min(1)),
 	effectiveProfile: effectiveActivityProfileSchema,
-	requiredCapabilities: uniqueStrings,
+	requiredCapabilities: uniqueArray(z.array(canonicalIdentifier)),
 	grant: exactGrantSchema,
 	provider: providerSelectionSchema,
-	contextRefs: z.array(exactEntityReferenceSchema),
-	predecessorResultIds: uniqueStrings,
+	contextRefs: exactReferences,
+	predecessorResultIds: uniqueArray(z.array(canonicalIdentifier)),
 	acceptanceCriteria: z.array(z.string().trim().min(1)).min(1).optional(),
 	workspace: assignmentWorkspaceSchema,
 	estimate: estimateSchema,
@@ -132,7 +137,7 @@ export const verificationRecordSchema = z.object({
 }).strict();
 export const usageSchema = z.object({
 	elapsedSeconds: z.number().int().nonnegative(), modelInputTokens: z.number().int().nonnegative().optional(),
-	modelOutputTokens: z.number().int().nonnegative().optional(), native: z.record(z.number().nonnegative()).optional(),
+	modelOutputTokens: z.number().int().nonnegative().optional(), native: z.record(z.number().finite().nonnegative()).optional(),
 }).strict();
 export const diagnosticSchema = z.object({
 	code: identifier, severity: z.enum(['info', 'warning', 'error']), message: z.string().min(1), ref: exactEntityReferenceSchema.optional(),
@@ -152,7 +157,7 @@ export const assignmentResultSchema = z.object({
 	assignmentId: identifier,
 	status: z.enum(['completed', 'blocked', 'failed']),
 	summary: z.string().min(1),
-	references: z.array(assignmentReferenceSchema),
+	references: uniqueArray(z.array(assignmentReferenceSchema)),
 	verification: z.array(verificationRecordSchema),
 	usage: usageSchema,
 	diagnostics: z.array(diagnosticSchema),
@@ -160,11 +165,54 @@ export const assignmentResultSchema = z.object({
 	completedAt: timestamp,
 }).strict();
 
+export const leaseSchema = z.object({
+	schemaVersion: z.literal('treeseed.lease/v1'),
+	id: canonicalIdentifier,
+	assignmentId: canonicalIdentifier,
+	providerId: canonicalIdentifier,
+	state: z.enum(['active', 'released', 'expired', 'revoked']),
+	acquiredAt: timestamp,
+	expiresAt: timestamp,
+	releasedAt: timestamp.optional(),
+	revision: z.number().int().positive(),
+}).strict();
+
+export const reservationSchema = z.object({
+	schemaVersion: z.literal('treeseed.reservation/v1'),
+	id: canonicalIdentifier,
+	assignmentId: canonicalIdentifier,
+	workdayId: canonicalIdentifier,
+	providerId: canonicalIdentifier,
+	estimatedSeconds: z.number().int().positive(),
+	state: z.enum(['held', 'consumed', 'released', 'expired']),
+	reservedAt: timestamp,
+	closedAt: timestamp.optional(),
+}).strict();
+
+/** Stored exactly-once accounting authority; native provider units stay distinct. */
+export const usageSettlementSchema = z.object({
+	schemaVersion: z.literal('treeseed.usage-settlement/v1'),
+	id: canonicalIdentifier,
+	idempotencyKey: canonicalIdentifier,
+	assignmentId: canonicalIdentifier,
+	reservationId: canonicalIdentifier,
+	workdayId: canonicalIdentifier,
+	teamId: canonicalIdentifier,
+	projectId: canonicalIdentifier,
+	agentClass: agentClassSchema,
+	providerId: canonicalIdentifier,
+	actualSeconds: z.number().int().nonnegative(),
+	nativeUsage: z.record(z.number().finite().nonnegative()),
+	cost: z.number().finite().nonnegative().optional(),
+	currency: z.string().regex(/^[A-Z]{3}$/u).optional(),
+	settledAt: timestamp,
+}).strict();
+
 export const authorizedContextItemSchema = z.object({
 	ref: exactEntityReferenceSchema,
 	mediaType: z.string().min(1),
 	digest,
-	value: z.any(),
+	value: z.unknown().refine(value => value !== undefined, { message: 'Authorized context requires its value payload.' }),
 }).strict();
 
 export const assignmentContextSchema = z.object({
@@ -181,4 +229,7 @@ export type EffectiveActivityProfile = z.infer<typeof effectiveActivityProfileSc
 export type AssignmentAttempt = z.infer<typeof assignmentAttemptSchema>;
 export type AssignmentTimingAwarenessReceipt = z.infer<typeof assignmentTimingAwarenessReceiptSchema>;
 export type AssignmentResult = z.infer<typeof assignmentResultSchema>;
+export type Lease = z.infer<typeof leaseSchema>;
+export type Reservation = z.infer<typeof reservationSchema>;
+export type UsageSettlement = z.infer<typeof usageSettlementSchema>;
 export type AssignmentContext = z.infer<typeof assignmentContextSchema>;

@@ -118,7 +118,12 @@ export type SdkGraphEdgeType =
 	| 'BELONGS_TO'
 	| 'ABOUT'
 	| 'USED_BY'
-	| 'GENERATED_FROM';
+	| 'GENERATED_FROM'
+	| 'PARENT_OF'
+	| 'DERIVED_FROM'
+	| 'GROUP_SOURCE'
+	| 'GROUP_TARGET'
+	| 'GUIDED_BY';
 
 export interface SdkGraphReferenceFieldConfig {
 	field: string;
@@ -128,7 +133,7 @@ export interface SdkGraphReferenceFieldConfig {
 }
 
 export interface SdkGraphModelConfig {
-	entityType?: SdkGraphNodeType;
+	entityType?: string;
 	referenceFields?: SdkGraphReferenceFieldConfig[];
 	groupField?: string;
 	seriesField?: string;

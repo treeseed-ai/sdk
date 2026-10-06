@@ -1,4 +1,17 @@
 import { z } from 'zod';
+import { leaseSchema } from '../agent-capacity/contracts/capacity/assignments/agent-execution.ts';
+
+const identifier = leaseSchema.shape.id;
+const slug = z.string().min(1).max(100).regex(/^[a-z0-9]+(?:[._/-][a-z0-9]+)*$/u);
+export const repositoryBindingSchema = z.object({ repository: z.string().min(1), defaultBranch: z.string().min(1) }).strict();
+export const treeDxBindingSchema = z.object({ repository: z.string().min(1), collection: z.string().min(1), protectedRef: z.string().min(1) }).strict();
+/** Durable portfolio identity, distinct from installer inventory selection. */
+export const teamRecordSchema = z.object({ schemaVersion: z.literal('treeseed.team/v1'), id: identifier,
+	slug, name: z.string().min(1), active: z.boolean() }).strict();
+export const projectRecordSchema = z.object({ schemaVersion: z.literal('treeseed.project/v1'), id: identifier,
+	teamId: identifier, slug, name: z.string().min(1), source: repositoryBindingSchema, treeDx: treeDxBindingSchema, active: z.boolean() }).strict();
+export type TeamRecord = z.infer<typeof teamRecordSchema>;
+export type ProjectRecord = z.infer<typeof projectRecordSchema>;
 
 export const repositorySchema = z.object({
 	key: z.string().min(1),

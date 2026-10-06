@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { agentDefinitionSchema } from '../../agent-capacity/validation/agent-definition-schema.ts';
+import { conditionalFields, requiredProperties, uniqueArray as unique } from './schema-constraints.ts';
+import { agentClassSchema as agentClass, agentDefinitionSchema, permissionSetSchema } from '../../agent-capacity/validation/agent-definition-schema.ts';
 import { PROPOSAL_TYPE_ID_PATTERN } from '../../agent-capacity/validation/proposal-type.ts';
 import {
 	BOOK_SCHEMA_VERSION,
@@ -15,28 +16,18 @@ export * from './agent-operational-content-schemas.ts';
 
 const nonEmpty = z.string().trim().min(1);
 const strings = z.array(z.string());
-const identifier = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
-const slug = z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:[._/-][a-z0-9]+)*$/u);
-const agentClass = z.string().trim().min(1).max(100).regex(/^[a-z][a-z0-9-]*$/u);
+const identifier = z.string().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
+const slug = z.string().min(1).max(100).regex(/^[a-z0-9]+(?:[._/-][a-z0-9]+)*$/u);
 const identifiers = z.array(identifier);
-const unique = <T extends z.ZodTypeAny>(schema: z.ZodArray<T>) => schema.superRefine((values, context) => {
-	if (new Set(values.map((value) => JSON.stringify(value))).size !== values.length) {
-		context.addIssue({ code: z.ZodIssueCode.custom, message: 'Values must be unique.' });
-	}
-});
 const date = z.coerce.date();
 const lifecycleStatus = z.enum(['live', 'in progress', 'exploratory', 'planned', 'speculative']);
 const exactRefs = z.array(exactEntityReferenceSchema);
+const exactWorkItemReferenceSchema = z.intersection(exactEntityReferenceSchema, requiredProperties(z.object({
+	store: z.literal('treedx'), model: z.literal('proposal'), anchor: z.string().regex(new RegExp('^work-item/[a-z0-9]+(?:-[a-z0-9]+)*$', 'u')),
+}).passthrough(), ['store', 'model', 'id', 'revision', 'digest', 'repository', 'commit', 'path', 'anchor'],
+'A dependency endpoint must identify an exact proposal work item.'));
 export const exactDependencyLinkSchema = z.object({ relation: z.literal('depends_on'),
-	from: exactEntityReferenceSchema, to: exactEntityReferenceSchema }).strict().superRefine((link, context) => {
-	for (const end of ['from', 'to'] as const) {
-		const ref = link[end];
-		if (ref.store !== 'treedx' || ref.model !== 'proposal' || !ref.repository || !ref.commit || !ref.path
-			|| !ref.digest || !ref.revision || !/^work-item\/[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(ref.anchor ?? '')) {
-			context.addIssue({ code: z.ZodIssueCode.custom, path: [end],
-				message: 'A dependency endpoint must identify an exact proposal work item.' });
-		}
-	}
+	from: exactWorkItemReferenceSchema, to: exactWorkItemReferenceSchema }).strict().superRefine((link, context) => {
 	if (JSON.stringify(link.from) === JSON.stringify(link.to)) context.addIssue({ code: z.ZodIssueCode.custom,
 		message: 'A work item cannot depend on itself.' });
 });
@@ -79,37 +70,29 @@ const proposalLinks = {
 	...linked,
 };
 
-const executionPlanWorkItemSchema = z.object({
-	id: nonEmpty.regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u),
+const executionPlanWorkItemSchema = conditionalFields(z.object({
+	id: slug,
+	priority: z.number().int().safe().optional(),
 	activity: z.literal('acting'),
-	agentClass: nonEmpty.regex(/^[a-z][a-z0-9-]*$/u),
+	agentClass,
 	workspace: z.enum(['read-only', 'treedx', 'git']),
 	review: z.enum(['required', 'none']),
 	objective: nonEmpty,
 	estimate: estimateSchema.optional(),
 	reviewEstimate: estimateSchema.optional(),
 	maximumReviewCycles: z.number().int().positive().optional(),
-	dependsOn: z.array(nonEmpty.regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u)),
-	requestedPermissions: z.object({
-		content: z.object({ read: z.array(z.enum(['agent','book','knowledge','objective','discussion','discussion-message','proposal','question','note','decision'])), write: z.array(z.enum(['agent','book','knowledge','objective','discussion','discussion-message','proposal','question','note','decision'])) }).strict(),
-		tools: z.array(z.enum(['discussion','source.read','source.write','verification','release'])),
-	}).strict(),
-	output: z.object({
-		model: z.enum(['agent','book','knowledge','objective','discussion','discussion-message','proposal','question','note','decision']),
-		id: identifier,
-	}).strict().optional(),
-	requiredCapabilities: z.array(nonEmpty).min(1),
-	contextRefs: z.array(exactEntityReferenceSchema).optional(),
+	dependsOn: unique(z.array(slug)),
+	requestedPermissions: permissionSetSchema,
+	requiredCapabilities: unique(z.array(identifier)).optional(),
+	contextRefs: unique(exactRefs).optional(),
 	acceptanceCriteria: z.array(nonEmpty).min(1),
-}).strict().superRefine((value, context) => {
-	if (value.review === 'required' && !value.maximumReviewCycles) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Required review needs a maximum cycle count.' });
-	if (value.review === 'none' && (value.reviewEstimate || value.maximumReviewCycles)) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Unreviewed work cannot define review estimates or cycles.' });
+}).strict(), [
+	{ field: 'review', equals: 'required', alternatives: [['maximumReviewCycles']], message: 'Required review needs a maximum cycle count.' },
+	{ field: 'review', equals: 'none', forbidden: { fields: ['reviewEstimate', 'maximumReviewCycles'] }, message: 'Unreviewed work cannot define review estimates or cycles.' },
+]).superRefine((value, context) => {
 	if (value.workspace !== 'read-only') {
 		const mutable = (value.contextRefs ?? []).filter((reference) => reference.store === value.workspace && reference.model === 'repository');
 		if (mutable.length !== 1) context.addIssue({ code: z.ZodIssueCode.custom, path: ['contextRefs'], message: `${value.workspace} work requires exactly one exact ${value.workspace} workspace reference.` });
-	}
-	if (value.output && (value.workspace !== 'treedx' || !value.requestedPermissions.content.write.includes(value.output.model))) {
-		context.addIssue({ code: z.ZodIssueCode.custom, path: ['output'], message: 'A content output requires a TreeDX workspace and matching content-write authority.' });
 	}
 });
 
@@ -130,68 +113,59 @@ const executionPlanSchema = z.object({ workItems: z.array(executionPlanWorkItemS
 	if ([...ids].some(cyclic)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['workItems'], message: 'Work-item dependencies must be acyclic.' });
 });
 
-const proposalSchema = z.object({
-	schemaVersion: z.literal('treeseed.proposal/v1'), id: nonEmpty, projectId: nonEmpty, title: nonEmpty,
+const proposalSchema = conditionalFields(z.object({
+	schemaVersion: z.literal('treeseed.proposal/v1'), id: identifier, projectId: identifier, title: nonEmpty,
 	request: nonEmpty, summary: nonEmpty.optional(), status: z.enum(['draft', 'discussing', 'ready', 'decided', 'withdrawn']),
 	objectiveRefs: unique(exactRefs).optional(), evidenceRefs: unique(exactRefs).optional(),
 	discussionRef: exactEntityReferenceSchema.optional(), executionPlan: executionPlanSchema.optional(),
-}).strict().superRefine((value, context) => {
-	if (['ready', 'decided'].includes(value.status)) for (const [index, item] of (value.executionPlan?.workItems ?? []).entries()) {
-		if (!item.estimate) context.addIssue({ code: z.ZodIssueCode.custom,
-			path: ['executionPlan', 'workItems', index, 'estimate'], message: 'Ready work requires its agent-authored estimate.' });
-		if (item.review === 'required' && !item.reviewEstimate) context.addIssue({ code: z.ZodIssueCode.custom,
-			path: ['executionPlan', 'workItems', index, 'reviewEstimate'], message: 'Ready reviewed work requires its Reviewer-authored estimate.' });
-	}
-	if (['ready', 'decided'].includes(value.status) && !value.summary) {
-		context.addIssue({ code: z.ZodIssueCode.custom, path: ['summary'], message: 'A ready proposal requires a summary.' });
-	}
-	if (['ready', 'decided'].includes(value.status) && !value.executionPlan) {
-		context.addIssue({ code: z.ZodIssueCode.custom, path: ['executionPlan'], message: 'A ready proposal requires an execution plan.' });
-	}
-});
+}).strict(), [{ field: 'status', in: ['ready', 'decided'], alternatives: [['summary', 'executionPlan']],
+	items: { field: 'executionPlan', key: 'workItems', required: ['estimate'],
+		conditional: { field: 'review', equals: 'required', required: ['reviewEstimate'] } },
+	message: 'Ready proposals require a summary, an execution plan, and each required independent estimate.' }]);
 
 const schemas = {
 	page: z.object({
 		title: nonEmpty, description: nonEmpty.optional(), slug: nonEmpty.optional(), page_layout: z.enum(['article', 'bridge']).optional(),
 		status: lifecycleStatus.optional(), stage: nonEmpty.optional(), audience: strings.optional(), summary: nonEmpty.optional(), updated_at: date.optional(),
 	}),
-	note: z.object({
-		schemaVersion: z.literal('treeseed.note/v1'), id: nonEmpty, projectId: nonEmpty,
+	note: conditionalFields(z.object({
+		schemaVersion: z.literal('treeseed.note/v1'), id: identifier, projectId: identifier,
 		classification: z.enum(['general', 'feedback', 'research', 'workday-report']),
-		subjectRefs: exactRefs.min(1), body: nonEmpty, createdAt: z.string().datetime({ offset: true }),
+		subjectRefs: unique(exactRefs.min(1)), body: nonEmpty, createdAt: z.string().datetime({ offset: true }),
 		links: z.array(exactDependencyLinkSchema).optional(),
-	}).strict().superRefine((value, context) => {
-		if (value.classification === 'workday-report' && !value.subjectRefs.some((reference) => reference.store === 'postgresql' && reference.model === 'workday')) {
-			context.addIssue({ code: z.ZodIssueCode.custom, path: ['subjectRefs'], message: 'Workday reports must reference their exact workday.' });
-		}
-	}),
-	question: z.object({
-		schemaVersion: z.literal('treeseed.question/v1'), id: nonEmpty, projectId: nonEmpty,
+	}).strict(), [{ field: 'classification', equals: 'workday-report',
+		contains: { field: 'subjectRefs', properties: { store: 'postgresql', model: 'workday' } },
+		path: ['subjectRefs'], message: 'Workday reports must reference their exact workday.' }]),
+	question: conditionalFields(z.object({
+		schemaVersion: z.literal('treeseed.question/v1'), id: identifier, projectId: identifier,
 		subjectRef: exactEntityReferenceSchema, question: nonEmpty, status: z.enum(['open', 'answered', 'withdrawn']),
-		addressedTo: strings.optional(), answer: nonEmpty.optional(), answerRefs: exactRefs.optional(),
+		addressedTo: unique(z.array(agentClass)).optional(), answer: nonEmpty.optional(), answerRefs: unique(exactRefs).optional(),
 		askedAt: z.string().datetime({ offset: true }), answeredAt: z.string().datetime({ offset: true }).optional(),
-	}).strict().superRefine((value, context) => {
-		if (value.status === 'answered' && !(value.answer || value.answerRefs?.length)) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Answered questions require an answer or exact answer reference.' });
-	}),
+	}).strict(), [{ field: 'status', equals: 'answered', alternatives: [['answer'], ['answerRefs']],
+		message: 'Answered questions require an answer or exact answer reference.' }]),
 	objective: z.object({
 		schemaVersion: z.literal('treeseed.objective/v1'), id: identifier, projectId: identifier,
 		title: nonEmpty, outcome: nonEmpty, status: z.enum(['active', 'achieved', 'abandoned']),
 		evidenceRefs: unique(exactRefs).optional(),
 	}).strict(),
 	proposal: proposalSchema,
-	decision: z.object({
-		schemaVersion: z.literal('treeseed.decision/v1'), id: nonEmpty, projectId: nonEmpty,
+	decision: conditionalFields(z.object({
+		schemaVersion: z.literal('treeseed.decision/v1'), id: identifier, projectId: identifier,
 		decisionClass: z.enum(['proposal', 'work-review', 'publication']),
 		decisionMethod: z.enum(['authority', 'approval', 'vote']), subjectRef: exactEntityReferenceSchema,
 		disposition: z.enum(['approved', 'rejected', 'request-changes', 'deferred', 'superseded']), rationale: nonEmpty,
-		findingRefs: exactRefs.optional(), authorityRefs: exactRefs.min(1), decidedByRefs: exactRefs.min(1),
+		findingRefs: unique(exactRefs).optional(), authorityRefs: unique(exactRefs.min(1)), decidedByRefs: unique(exactRefs.min(1)),
 		positions: z.array(z.object({ actorRef: exactEntityReferenceSchema, position: z.enum(['approve', 'reject', 'abstain']), rationale: z.string().optional(), recordedAt: z.string().datetime({ offset: true }) }).strict()).min(1).optional(),
 		decidedAt: z.string().datetime({ offset: true }),
-	}).strict().superRefine((value, context) => {
-		if (value.decisionMethod !== 'authority' && !value.positions?.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['positions'], message: 'Approval and vote decisions require signed positions.' });
-		if (value.decisionClass === 'work-review' && !['approved', 'request-changes'].includes(value.disposition)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['disposition'], message: 'Work review must approve or request changes.' });
-		if (value.decisionClass !== 'work-review' && value.disposition === 'request-changes') context.addIssue({ code: z.ZodIssueCode.custom, path: ['disposition'], message: 'Only work review may request changes.' });
-	}),
+	}).strict(), [
+		{ field: 'decisionMethod', in: ['approval', 'vote'], alternatives: [['positions']], path: ['positions'], message: 'Approval and vote decisions require signed positions.' },
+		{ field: 'decisionClass', equals: 'work-review', allowed: { field: 'disposition', values: ['approved', 'request-changes'] },
+			path: ['disposition'], message: 'Work review must approve or request changes.' },
+		{ field: 'decisionClass', equals: 'proposal', allowed: { field: 'disposition', values: ['approved', 'rejected', 'deferred', 'superseded'] },
+			path: ['disposition'], message: 'Only work review may request changes.' },
+		{ field: 'decisionClass', equals: 'publication', allowed: { field: 'disposition', values: ['approved', 'rejected', 'deferred', 'superseded'] },
+			path: ['disposition'], message: 'Only work review may request changes.' },
+	]),
 	book: z.object({
 		schemaVersion: z.literal(BOOK_SCHEMA_VERSION), id: identifier, projectId: identifier,
 		revision: z.number().int().positive(),
@@ -294,7 +268,8 @@ function fieldContract(schema: z.ZodTypeAny): Record<string, unknown> {
 	while (current instanceof z.ZodOptional || current instanceof z.ZodNullable
 		|| current instanceof z.ZodDefault || current instanceof z.ZodEffects) {
 		if (current instanceof z.ZodOptional || current instanceof z.ZodDefault) required = false;
-		current = current instanceof z.ZodEffects ? current.innerType() : current.removeDefault?.() ?? current.unwrap();
+		current = current instanceof z.ZodEffects ? current.innerType()
+			: current instanceof z.ZodDefault ? current.removeDefault() : current.unwrap();
 	}
 	const contract: Record<string, unknown> = { required };
 	if (current instanceof z.ZodEnum) return { ...contract, type: 'string', values: current.options };

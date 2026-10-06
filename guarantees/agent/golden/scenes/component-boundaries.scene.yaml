@@ -3,6 +3,528 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: execution-shared-weights-unit
+    action: { verifier: sdk.golden.execution-shared-weights-unit }
+    expect: { status: passed }
+  - id: execution-shared-weights-native
+    action: { verifier: sdk.golden.execution-shared-weights-native }
+    expect: { status: passed }
+  - id: execution-portfolio-custody-unit
+    action: { verifier: sdk.golden.execution-portfolio-custody-unit }
+    expect: { status: passed }
+  - id: execution-portfolio-custody-native
+    action: { verifier: sdk.golden.execution-portfolio-custody-native }
+    expect: { status: passed }
+  - id: execution-schedule-custody-unit
+    action: { verifier: sdk.golden.execution-schedule-custody-unit }
+    expect: { status: passed }
+  - id: execution-schedule-custody-native
+    action: { verifier: sdk.golden.execution-schedule-custody-native }
+    expect: { status: passed }
+  - id: execution-intent-identifiers-unit
+    action: { verifier: sdk.golden.execution-intent-identifiers-unit }
+    expect: { status: passed }
+  - id: execution-unbounded-definitions-unit
+    action: { verifier: sdk.golden.execution-unbounded-definitions-unit }
+    expect: { status: passed }
+  - id: execution-treedx-custody-unit
+    action: { verifier: sdk.golden.execution-treedx-custody-unit }
+    expect: { status: passed }
+  - id: execution-treedx-custody-native
+    action: { verifier: sdk.golden.execution-treedx-custody-native }
+    expect: { status: passed }
+  - id: execution-treedx-schema-native
+    action: { verifier: sdk.golden.execution-treedx-schema-native }
+    expect: { status: passed }
+  - id: execution-work-item-capability-optionality-unit
+    action: { verifier: sdk.golden.execution-work-item-capability-optionality-unit }
+    expect: { status: passed }
+  - id: execution-work-item-capability-optionality-native
+    action: { verifier: sdk.golden.execution-work-item-capability-optionality-native }
+    expect: { status: passed }
+  - id: execution-output-retirement-proposal-unit
+    action: { verifier: sdk.golden.execution-output-retirement-proposal-unit }
+    expect: { status: passed }
+  - id: execution-output-retirement-proposal-native
+    action: { verifier: sdk.golden.execution-output-retirement-proposal-native }
+    expect: { status: passed }
+  - id: execution-output-retirement-node-unit
+    action: { verifier: sdk.golden.execution-output-retirement-node-unit }
+    expect: { status: passed }
+  - id: execution-output-retirement-node-native
+    action: { verifier: sdk.golden.execution-output-retirement-node-native }
+    expect: { status: passed }
+  - id: profile-dependency-properties-unit
+    action: { verifier: sdk.golden.profile-dependency-properties-unit }
+    expect: { status: passed }
+  - id: profile-dependency-properties-native
+    action: { verifier: sdk.golden.profile-dependency-properties-native }
+    expect: { status: passed }
+  - id: execution-provider-offer-unit
+    action: { verifier: sdk.golden.execution-provider-offer-unit }
+    expect: { status: passed }
+  - id: execution-provider-offer-native
+    action: { verifier: sdk.golden.execution-provider-offer-native }
+    expect: { status: passed }
+  - id: execution-provider-state-unit
+    action: { verifier: sdk.golden.execution-provider-state-unit }
+    expect: { status: passed }
+  - id: execution-provider-state-native
+    action: { verifier: sdk.golden.execution-provider-state-native }
+    expect: { status: passed }
+  - id: execution-provider-schema-unit
+    action: { verifier: sdk.golden.execution-provider-schema-unit }
+    expect: { status: passed }
+  - id: execution-provider-schema-native
+    action: { verifier: sdk.golden.execution-provider-schema-native }
+    expect: { status: passed }
+  - id: execution-question-answer-unit
+    action: { verifier: sdk.golden.execution-question-answer-unit }
+    expect: { status: passed }
+  - id: execution-question-answer-native
+    action: { verifier: sdk.golden.execution-question-answer-native }
+    expect: { status: passed }
+  - id: execution-work-item-slugs-unit
+    action: { verifier: sdk.golden.execution-work-item-slugs-unit }
+    expect: { status: passed }
+  - id: execution-work-item-slugs-native
+    action: { verifier: sdk.golden.execution-work-item-slugs-native }
+    expect: { status: passed }
+  - id: execution-finite-enum-unit
+    action: { verifier: sdk.golden.execution-finite-enum-unit }
+    expect: { status: passed }
+  - id: execution-finite-enum-native
+    action: { verifier: sdk.golden.execution-finite-enum-native }
+    expect: { status: passed }
+  - id: execution-node-conditions-unit
+    action: { verifier: sdk.golden.execution-node-conditions-unit }
+    expect: { status: passed }
+  - id: execution-node-conditions-native
+    action: { verifier: sdk.golden.execution-node-conditions-native }
+    expect: { status: passed }
+  - id: execution-dependency-endpoint-unit
+    action: { verifier: sdk.golden.execution-dependency-endpoint-unit }
+    expect: { status: passed }
+  - id: execution-dependency-endpoint-native
+    action: { verifier: sdk.golden.execution-dependency-endpoint-native }
+    expect: { status: passed }
+  - id: execution-work-item-review-unit
+    action: { verifier: sdk.golden.execution-work-item-review-unit }
+    expect: { status: passed }
+  - id: execution-work-item-review-native
+    action: { verifier: sdk.golden.execution-work-item-review-native }
+    expect: { status: passed }
+  - id: execution-ready-proposal-unit
+    action: { verifier: sdk.golden.execution-ready-proposal-unit }
+    expect: { status: passed }
+  - id: execution-ready-proposal-native
+    action: { verifier: sdk.golden.execution-ready-proposal-native }
+    expect: { status: passed }
+  - id: execution-report-subject-unit
+    action: { verifier: sdk.golden.execution-report-subject-unit }
+    expect: { status: passed }
+  - id: execution-report-subject-native
+    action: { verifier: sdk.golden.execution-report-subject-native }
+    expect: { status: passed }
+  - id: execution-node-authority-unit
+    action: { verifier: sdk.golden.execution-node-authority-unit }
+    expect: { status: passed }
+  - id: execution-node-authority-native
+    action: { verifier: sdk.golden.execution-node-authority-native }
+    expect: { status: passed }
+  - id: execution-class-identity-unit
+    action: { verifier: sdk.golden.execution-class-identity-unit }
+    expect: { status: passed }
+  - id: execution-class-identity-native
+    action: { verifier: sdk.golden.execution-class-identity-native }
+    expect: { status: passed }
+  - id: execution-decision-conditions-unit
+    action: { verifier: sdk.golden.execution-decision-conditions-unit }
+    expect: { status: passed }
+  - id: execution-decision-conditions-native
+    action: { verifier: sdk.golden.execution-decision-conditions-native }
+    expect: { status: passed }
+  - id: execution-work-item-inventory-unit
+    action: { verifier: sdk.golden.execution-work-item-inventory-unit }
+    expect: { status: passed }
+  - id: execution-work-item-inventory-native
+    action: { verifier: sdk.golden.execution-work-item-inventory-native }
+    expect: { status: passed }
+  - id: execution-profile-inventory-unit
+    action: { verifier: sdk.golden.execution-profile-inventory-unit }
+    expect: { status: passed }
+  - id: execution-profile-inventory-native
+    action: { verifier: sdk.golden.execution-profile-inventory-native }
+    expect: { status: passed }
+  - id: execution-content-identity-unit
+    action: { verifier: sdk.golden.execution-content-identity-unit }
+    expect: { status: passed }
+  - id: execution-content-identity-native
+    action: { verifier: sdk.golden.execution-content-identity-native }
+    expect: { status: passed }
+  - id: execution-content-inventory-unit
+    action: { verifier: sdk.golden.execution-content-inventory-unit }
+    expect: { status: passed }
+  - id: execution-content-inventory-native
+    action: { verifier: sdk.golden.execution-content-inventory-native }
+    expect: { status: passed }
+  - id: execution-object-conditional-unit
+    action: { verifier: sdk.golden.execution-object-conditional-unit }
+    expect: { status: passed }
+  - id: execution-workday-closeout-native
+    action: { verifier: sdk.golden.execution-workday-closeout-native }
+    expect: { status: passed }
+  - id: execution-inventory-schema-native
+    action: { verifier: sdk.golden.execution-inventory-schema-native }
+    expect: { status: passed }
+  - id: execution-identifier-inventory-unit
+    action: { verifier: sdk.golden.execution-identifier-inventory-unit }
+    expect: { status: passed }
+  - id: execution-identifier-inventory-native
+    action: { verifier: sdk.golden.execution-identifier-inventory-native }
+    expect: { status: passed }
+  - id: execution-revision-source-unit
+    action: { verifier: sdk.golden.execution-revision-source-unit }
+    expect: { status: passed }
+  - id: execution-revision-source-native
+    action: { verifier: sdk.golden.execution-revision-source-native }
+    expect: { status: passed }
+  - id: execution-inventory-schema-unit
+    action: { verifier: sdk.golden.execution-inventory-schema-unit }
+    expect: { status: passed }
+  - id: execution-signal-cutover-unit
+    action: { verifier: sdk.golden.execution-signal-cutover-unit }
+    expect: { status: passed }
+  - id: execution-union-semantics-unit
+    action: { verifier: sdk.golden.execution-union-semantics-unit }
+    expect: { status: passed }
+  - id: execution-union-semantics-native
+    action: { verifier: sdk.golden.execution-union-semantics-native }
+    expect: { status: passed }
+  - id: execution-tool-grant-unit
+    action: { verifier: sdk.golden.execution-tool-grant-unit }
+    expect: { status: passed }
+  - id: execution-authority-bounds-unit
+    action: { verifier: sdk.golden.execution-authority-bounds-unit }
+    expect: { status: passed }
+  - id: execution-authority-bounds-native
+    action: { verifier: sdk.golden.execution-authority-bounds-native }
+    expect: { status: passed }
+  - id: execution-reference-inventory-unit
+    action: { verifier: sdk.golden.execution-reference-inventory-unit }
+    expect: { status: passed }
+  - id: execution-reference-conditions-unit
+    action: { verifier: sdk.golden.execution-reference-conditions-unit }
+    expect: { status: passed }
+  - id: execution-reference-conditions-native
+    action: { verifier: sdk.golden.execution-reference-conditions-native }
+    expect: { status: passed }
+  - id: execution-schema-reference-unit
+    action: { verifier: sdk.golden.execution-schema-reference-unit }
+    expect: { status: passed }
+  - id: execution-schema-reference-native
+    action: { verifier: sdk.golden.execution-schema-reference-native }
+    expect: { status: passed }
+  - id: execution-finite-fairness-unit
+    action: { verifier: sdk.golden.execution-finite-fairness-unit }
+    expect: { status: passed }
+  - id: execution-finite-fairness-native
+    action: { verifier: sdk.golden.execution-finite-fairness-native }
+    expect: { status: passed }
+  - id: execution-result-native-usage
+    action: { verifier: sdk.golden.execution-result-native-usage }
+    expect: { status: passed }
+  - id: execution-uniqueness-export-unit
+    action: { verifier: sdk.golden.execution-uniqueness-export-unit }
+    expect: { status: passed }
+  - id: execution-uniqueness-export-native
+    action: { verifier: sdk.golden.execution-uniqueness-export-native }
+    expect: { status: passed }
+  - id: execution-planning-round-identity-unit
+    action: { verifier: sdk.golden.execution-planning-round-identity-unit }
+    expect: { status: passed }
+  - id: execution-planning-round-identity-native
+    action: { verifier: sdk.golden.execution-planning-round-identity-native }
+    expect: { status: passed }
+  - id: execution-workday-resource-unit
+    action: { verifier: sdk.golden.execution-workday-resource-unit }
+    expect: { status: passed }
+  - id: execution-workday-resource-native
+    action: { verifier: sdk.golden.execution-workday-resource-native }
+    expect: { status: passed }
+  - id: execution-reconcile-plan-unit
+    action: { verifier: sdk.golden.execution-reconcile-plan-unit }
+    expect: { status: passed }
+  - id: execution-governed-collections-unit
+    action: { verifier: sdk.golden.execution-governed-collections-unit }
+    expect: { status: passed }
+  - id: execution-work-dependencies-unit
+    action: { verifier: sdk.golden.execution-work-dependencies-unit }
+    expect: { status: passed }
+  - id: execution-provider-constraints-unit
+    action: { verifier: sdk.golden.execution-provider-constraints-unit }
+    expect: { status: passed }
+  - id: execution-project-selection-unit
+    action: { verifier: sdk.golden.execution-project-selection-unit }
+    expect: { status: passed }
+  - id: execution-context-value-unit
+    action: { verifier: sdk.golden.execution-context-value-unit }
+    expect: { status: passed }
+  - id: execution-context-value-native
+    action: { verifier: sdk.golden.execution-context-value-native }
+    expect: { status: passed }
+  - id: execution-stored-root-unit
+    action: { verifier: sdk.golden.execution-stored-root-unit }
+    expect: { status: passed }
+  - id: execution-stored-root-native
+    action: { verifier: sdk.golden.execution-stored-root-native }
+    expect: { status: passed }
+  - id: execution-canonical-ci-unit
+    action: { verifier: sdk.golden.execution-canonical-ci-unit }
+    expect: { status: passed }
+  - id: execution-canonical-ci-native
+    action: { verifier: sdk.golden.execution-canonical-ci-native }
+    expect: { status: passed }
+  - id: execution-supply-validation-unit
+    action: { verifier: sdk.golden.execution-supply-validation-unit }
+    expect: { status: passed }
+  - id: execution-settlement-record-unit
+    action: { verifier: sdk.golden.execution-settlement-record-unit }
+    expect: { status: passed }
+  - id: execution-provider-contract-entry-native-1
+    action: { verifier: sdk.golden.execution-provider-contract-entry-native-1 }
+    expect: { status: passed }
+  - id: execution-provider-contract-entry-unit-1
+    action: { verifier: sdk.golden.execution-provider-contract-entry-unit-1 }
+    expect: { status: passed }
+  - id: execution-qualification-unit-1
+    action: { verifier: sdk.golden.execution-qualification-unit-1 }
+    expect: { status: passed }
+  - id: execution-work-priority-unit-1
+    action: { verifier: sdk.golden.execution-work-priority-unit-1 }
+    expect: { status: passed }
+  - id: execution-node-priority-unit-1
+    action: { verifier: sdk.golden.execution-node-priority-unit-1 }
+    expect: { status: passed }
+  - id: execution-node-priority-unit-2
+    action: { verifier: sdk.golden.execution-node-priority-unit-2 }
+    expect: { status: passed }
+  - id: execution-selection-input-unit-1
+    action: { verifier: sdk.golden.execution-selection-input-unit-1 }
+    expect: { status: passed }
+  - id: sdk.golden.execution-protected-observation-native-1
+    action: { verifier: sdk.golden.execution-protected-observation-native-1 }
+    expect: { status: passed }
+  - id: sdk.golden.execution-protected-observation-unit-1
+    action: { verifier: sdk.golden.execution-protected-observation-unit-1 }
+    expect: { status: passed }
+  - id: execution-retired-mode-unit-1
+    action: { verifier: sdk.golden.execution-retired-mode-unit-1 }
+    expect: { status: passed }
+  - id: execution-retired-mode-native-1
+    action: { verifier: sdk.golden.execution-retired-mode-native-1 }
+    expect: { status: passed }
+  - id: execution-retired-command-unit-1
+    action: { verifier: sdk.golden.execution-retired-command-unit-1 }
+    expect: { status: passed }
+  - id: execution-weighted-opportunity-unit-1
+    action: { verifier: sdk.golden.execution-weighted-opportunity-unit-1 }
+    expect: { status: passed }
+  - id: execution-retained-quota-unit-1
+    action: { verifier: sdk.golden.execution-retained-quota-unit-1 }
+    expect: { status: passed }
+  - id: execution-accounting-continuity-unit-1
+    action: { verifier: sdk.golden.execution-accounting-continuity-unit-1 }
+    expect: { status: passed }
+  - id: execution-accounting-continuity-unit-2
+    action: { verifier: sdk.golden.execution-accounting-continuity-unit-2 }
+    expect: { status: passed }
+  - id: architecture-intent-unit-1
+    action: { verifier: sdk.golden.architecture-intent-unit-1 }
+    expect: { status: passed }
+  - id: architecture-intent-unit-2
+    action: { verifier: sdk.golden.architecture-intent-unit-2 }
+    expect: { status: passed }
+  - id: architecture-intent-unit-3
+    action: { verifier: sdk.golden.architecture-intent-unit-3 }
+    expect: { status: passed }
+  - id: architecture-intent-unit-4
+    action: { verifier: sdk.golden.architecture-intent-unit-4 }
+    expect: { status: passed }
+  - id: architecture-intent-transport-unit-1
+    action: { verifier: sdk.golden.architecture-intent-transport-unit-1 }
+    expect: { status: passed }
+  - id: architecture-intent-transport-unit-2
+    action: { verifier: sdk.golden.architecture-intent-transport-unit-2 }
+    expect: { status: passed }
+  - id: architecture-intent-native-1
+    action: { verifier: sdk.golden.architecture-intent-native-1 }
+    expect: { status: passed }
+  - id: architecture-record-custody-unit-1
+    action: { verifier: sdk.golden.architecture-record-custody-unit-1 }
+    expect: { status: passed }
+  - id: architecture-record-custody-unit-2
+    action: { verifier: sdk.golden.architecture-record-custody-unit-2 }
+    expect: { status: passed }
+  - id: architecture-record-custody-unit-3
+    action: { verifier: sdk.golden.architecture-record-custody-unit-3 }
+    expect: { status: passed }
+  - id: architecture-record-custody-unit-4
+    action: { verifier: sdk.golden.architecture-record-custody-unit-4 }
+    expect: { status: passed }
+  - id: architecture-profile-authority-1
+    action: { verifier: sdk.golden.architecture-profile-authority-1 }
+    expect: { status: passed }
+  - id: architecture-profile-authority-2
+    action: { verifier: sdk.golden.architecture-profile-authority-2 }
+    expect: { status: passed }
+  - id: architecture-profile-authority-3
+    action: { verifier: sdk.golden.architecture-profile-authority-3 }
+    expect: { status: passed }
+  - id: architecture-profile-authority-4
+    action: { verifier: sdk.golden.architecture-profile-authority-4 }
+    expect: { status: passed }
+  - id: architecture-profile-authority-5
+    action: { verifier: sdk.golden.architecture-profile-authority-5 }
+    expect: { status: passed }
+  - id: architecture-profile-authority-6
+    action: { verifier: sdk.golden.architecture-profile-authority-6 }
+    expect: { status: passed }
+  - id: architecture-profile-authority-7
+    action: { verifier: sdk.golden.architecture-profile-authority-7 }
+    expect: { status: passed }
+  - id: architecture-shared-allocation-1
+    action: { verifier: sdk.golden.architecture-shared-allocation-1 }
+    expect: { status: passed }
+  - id: architecture-shared-allocation-2
+    action: { verifier: sdk.golden.architecture-shared-allocation-2 }
+    expect: { status: passed }
+  - id: architecture-shared-allocation-3
+    action: { verifier: sdk.golden.architecture-shared-allocation-3 }
+    expect: { status: passed }
+  - id: architecture-shared-allocation-4
+    action: { verifier: sdk.golden.architecture-shared-allocation-4 }
+    expect: { status: passed }
+  - id: architecture-shared-allocation-5
+    action: { verifier: sdk.golden.architecture-shared-allocation-5 }
+    expect: { status: passed }
+  - id: architecture-shared-allocation-6
+    action: { verifier: sdk.golden.architecture-shared-allocation-6 }
+    expect: { status: passed }
+  - id: architecture-workday-event-command
+    action: { verifier: sdk.golden.architecture-workday-event-command }
+    expect: { status: passed }
+  - id: calibration-exact-window
+    action: { verifier: sdk.golden.calibration-exact-window }
+    expect: { status: passed }
+  - id: calibration-failure-exclusion
+    action: { verifier: sdk.golden.calibration-failure-exclusion }
+    expect: { status: passed }
+  - id: calibration-malformed
+    action: { verifier: sdk.golden.calibration-malformed }
+    expect: { status: passed }
+  - id: calibration-public-ceilings
+    action: { verifier: sdk.golden.calibration-public-ceilings }
+    expect: { status: passed }
+  - id: calibration-public-deferral
+    action: { verifier: sdk.golden.calibration-public-deferral }
+    expect: { status: passed }
+  - id: closeout-canonical
+    action: { verifier: sdk.golden.closeout-canonical }
+    expect: { status: passed }
+  - id: closeout-preterminal
+    action: { verifier: sdk.golden.closeout-preterminal }
+    expect: { status: passed }
+  - id: closeout-ended
+    action: { verifier: sdk.golden.closeout-ended }
+    expect: { status: passed }
+  - id: closeout-missing
+    action: { verifier: sdk.golden.closeout-missing }
+    expect: { status: passed }
+  - id: closeout-invalid
+    action: { verifier: sdk.golden.closeout-invalid }
+    expect: { status: passed }
+  - id: estimate-no-minimum
+    action: { verifier: sdk.golden.estimate-no-minimum }
+    expect: { status: passed }
+  - id: closeout-public
+    action: { verifier: sdk.golden.closeout-public }
+    expect: { status: passed }
+  - id: closeout-public-missing
+    action: { verifier: sdk.golden.closeout-public-missing }
+    expect: { status: passed }
+  - id: estimate-public-no-minimum
+    action: { verifier: sdk.golden.estimate-public-no-minimum }
+    expect: { status: passed }
+  - id: canonical-target
+    action: { verifier: sdk.golden.canonical-target }
+    expect: { status: passed }
+  - id: canonical-stored-definitions
+    action: { verifier: sdk.golden.canonical-stored-definitions }
+    expect: { status: passed }
+  - id: canonical-runtime-definitions
+    action: { verifier: sdk.golden.canonical-runtime-definitions }
+    expect: { status: passed }
+  - id: canonical-root-union
+    action: { verifier: sdk.golden.canonical-root-union }
+    expect: { status: passed }
+  - id: canonical-fields
+    action: { verifier: sdk.golden.canonical-fields }
+    expect: { status: passed }
+  - id: canonical-constraints
+    action: { verifier: sdk.golden.canonical-constraints }
+    expect: { status: passed }
+  - id: canonical-constraints-1
+    action: { verifier: sdk.golden.canonical-constraints-1 }
+    expect: { status: passed }
+  - id: canonical-constraints-2
+    action: { verifier: sdk.golden.canonical-constraints-2 }
+    expect: { status: passed }
+  - id: canonical-git-stored
+    action: { verifier: sdk.golden.canonical-git-stored }
+    expect: { status: passed }
+  - id: canonical-git-runtime
+    action: { verifier: sdk.golden.canonical-git-runtime }
+    expect: { status: passed }
+  - id: canonical-git-target
+    action: { verifier: sdk.golden.canonical-git-target }
+    expect: { status: passed }
+  - id: canonical-git-assignment
+    action: { verifier: sdk.golden.canonical-git-assignment }
+    expect: { status: passed }
+  - id: schema-completeness
+    action: { verifier: sdk.golden.schema-completeness }
+    expect: { status: passed }
+  - id: schema-field-drift
+    action: { verifier: sdk.golden.schema-field-drift }
+    expect: { status: passed }
+  - id: schema-nested-drift
+    action: { verifier: sdk.golden.schema-nested-drift }
+    expect: { status: passed }
+  - id: schema-reference-completeness
+    action: { verifier: sdk.golden.schema-reference-completeness }
+    expect: { status: passed }
+  - id: schema-union-drift
+    action: { verifier: sdk.golden.schema-union-drift }
+    expect: { status: passed }
+  - id: schema-unconstrained-assignment
+    action: { verifier: sdk.golden.schema-unconstrained-assignment }
+    expect: { status: passed }
+  - id: schema-root-reference-denial
+    action: { verifier: sdk.golden.schema-root-reference-denial }
+    expect: { status: passed }
+  - id: schema-retired-model-denial
+    action: { verifier: sdk.golden.schema-retired-model-denial }
+    expect: { status: passed }
+  - id: schema-git-completeness
+    action: { verifier: sdk.golden.schema-git-completeness }
+    expect: { status: passed }
+  - id: schema-git-change
+    action: { verifier: sdk.golden.schema-git-change }
+    expect: { status: passed }
+  - id: schema-git-missing
+    action: { verifier: sdk.golden.schema-git-missing }
+    expect: { status: passed }
   - id: current-frozen-source
     action: { verifier: sdk.golden.current-frozen-source }
     expect: { status: passed }
@@ -48,6 +570,12 @@ workflow:
   - id: target-shares
     action: { verifier: sdk.golden.target-shares }
     expect: { status: passed }
+  - id: execution-policy-completeness-unit
+    action: { verifier: sdk.golden.execution-policy-completeness-unit }
+    expect: { status: passed }
+  - id: execution-policy-completeness-native
+    action: { verifier: sdk.golden.execution-policy-completeness-native }
+    expect: { status: passed }
   - id: concurrent-fairness
     action: { verifier: sdk.golden.concurrent-fairness }
     expect: { status: passed }
@@ -65,4 +593,16 @@ workflow:
     expect: { status: passed }
   - id: cycles-denied
     action: { verifier: sdk.golden.cycles-denied }
+    expect: { status: passed }
+  - id: execution-lease-record-unit
+    action: { verifier: sdk.golden.execution-lease-record-unit }
+    expect: { status: passed }
+  - id: execution-reservation-record-unit
+    action: { verifier: sdk.golden.execution-reservation-record-unit }
+    expect: { status: passed }
+  - id: execution-lease-record-native
+    action: { verifier: sdk.golden.execution-lease-record-native }
+    expect: { status: passed }
+  - id: execution-reservation-record-native
+    action: { verifier: sdk.golden.execution-reservation-record-native }
     expect: { status: passed }

@@ -1,23 +1,18 @@
 import { z, type ZodError } from 'zod';
+import { conditionalFields, minimumProperties, uniqueArray } from '../../content/validation/schema-constraints.ts';
 import { AGENT_CONTENT_MODELS, AGENT_TOOL_GROUPS } from '../../types/agents.ts';
 
 const identifier = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
-const agentClass = z.string().trim().min(1).max(100).regex(/^[a-z][a-z0-9-]*$/u);
+export const agentClassSchema = z.string().min(1).max(100).regex(/^[a-z][a-z0-9-]*$/u);
 const nonEmpty = z.string().trim().min(1);
-const unique = <T extends z.ZodTypeAny>(item: T) => z.array(item).superRefine((items, context) => {
-	if (new Set(items.map((value) => JSON.stringify(value))).size !== items.length) {
-		context.addIssue({ code: z.ZodIssueCode.custom, message: 'Values must be unique.' });
-	}
-});
+const unique = <T extends z.ZodTypeAny>(item: T) => uniqueArray(z.array(item));
 
-const dependenciesSchema = z.object({
-	agents: unique(agentClass).optional(),
+const dependenciesSchema = minimumProperties(z.object({
+	agents: unique(agentClassSchema).optional(),
 	events: unique(z.literal('workday-closing')).optional(),
-}).strict().refine((value) => Boolean(value.agents?.length || value.events?.length), {
-	message: 'At least one dependency selector is required.',
-});
+}).strict(), 1, 'At least one dependency selector property is required.');
 
-const permissionSetSchema = z.object({
+export const permissionSetSchema = z.object({
 	content: z.object({
 		read: unique(z.enum(AGENT_CONTENT_MODELS)),
 		write: unique(z.enum(AGENT_CONTENT_MODELS)),
@@ -39,36 +34,27 @@ export const activityProfileSchema = z.object({
 	parameters: z.record(z.unknown()).optional(),
 }).strict();
 
-export const activityProfilesSchema = z.object({
+export const activityProfilesSchema = minimumProperties(z.object({
 	planning: activityProfileSchema.optional(),
 	estimating: activityProfileSchema.optional(),
 	acting: activityProfileSchema.optional(),
 	reviewing: activityProfileSchema.optional(),
 	reporting: activityProfileSchema.optional(),
 	chat: activityProfileSchema.optional(),
-}).strict().refine((value) => Object.keys(value).length > 0, {
-	message: 'At least one activity profile is required.',
-});
+}).strict(), 1, 'At least one activity profile is required.');
 
-export const agentDefinitionSchema = z.object({
+export const agentDefinitionSchema = conditionalFields(z.object({
 	schemaVersion: z.literal('treeseed.agent/v1'),
 	id: identifier,
 	name: nonEmpty,
-	agentClass,
+	agentClass: agentClassSchema,
 	purpose: nonEmpty,
 	responsibilities: z.array(nonEmpty).min(1),
-	capabilities: unique(identifier).refine((value) => value.length > 0, 'At least one capability is required.'),
-	context: z.object({ include: unique(identifier).refine((value) => value.length > 0) }).strict(),
+	capabilities: uniqueArray(z.array(identifier).min(1, 'At least one capability is required.')),
+	context: z.object({ include: uniqueArray(z.array(identifier).min(1)) }).strict(),
 	activityProfiles: activityProfilesSchema,
-}).strict().superRefine((agent, context) => {
-	if (agent.agentClass !== 'reviewer' && agent.activityProfiles.reviewing) {
-		context.addIssue({
-			code: z.ZodIssueCode.custom,
-			path: ['activityProfiles', 'reviewing'],
-			message: 'Only the Reviewer agent class may enable reviewing.',
-		});
-	}
-});
+}).strict(), [{ field: 'agentClass', notEquals: 'reviewer', forbidden: { field: 'activityProfiles', key: 'reviewing' },
+	path: ['activityProfiles', 'reviewing'], message: 'Only the Reviewer agent class may enable reviewing.' }]);
 
 function issuePath(path: PropertyKey[]): string {
 	return path.reduce<string>((current, segment) => typeof segment === 'number'
