@@ -38,9 +38,9 @@ describe('human command tree contract', () => {
 			{ target: 'query', field: 'cursor', source: 'option', name: 'cursor', required: false, transform: 'identity' },
 			{ target: 'query', field: 'diagnostics', source: 'option', name: 'diagnostics', required: false, transform: 'identity' },
 		] });
-		const descriptor = CONTROL_PLANE_OPERATION_LIST.find(operation => operation.operationId === 'workdays.events.list');
+		const descriptor = CONTROL_PLANE_OPERATION_LIST.find(operation => operation.descriptor.operationId === 'workdays.events.list')?.descriptor;
 		expect(descriptor).toMatchObject({ kind: 'read', rest: { method: 'GET', path: '/v1/teams/{teamId}/workday-runs/{runId}/events' },
-			pagination: 'cursor', surfaces: ['rest', 'cli'], idempotencyRequired: false });
+			pagination: 'cursor', surfaces: ['rest', 'cli'], idempotency: { required: false, header: 'Idempotency-Key' } });
 		expect(TREESEED_COMMAND_TREE_V1).toEqual(before);
 	});
 	it('declares one optional repeatable exact target selector for scoped development freeze without another execution path', () => {
@@ -51,6 +51,7 @@ describe('human command tree contract', () => {
 		const freeze = dev.children.find(node => node.segment === 'freeze');
 		expect(freeze?.nodeType).toBe('leaf');
 		if (!freeze || freeze.nodeType !== 'leaf') throw new Error('Original freeze leaf required');
+		if (!freeze.options) throw new Error('Original freeze options required');
 		expect(freeze.options.filter(option => option.name === '--target')).toEqual([
 			{ name: '--target', description: 'Freeze only these exact project.target roots and their declared dependencies.', type: 'string[]' },
 		]);
