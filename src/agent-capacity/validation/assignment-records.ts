@@ -88,12 +88,15 @@ export function validateProviderAssignment(value: unknown) {
 		const suppliedResult = assignment.assignmentResult;
 		if (assignment.status === 'completed' || suppliedResult !== undefined && suppliedResult !== null) {
 			const result = assignmentResultSchema.safeParse(suppliedResult);
+			const failedCloseout = result.success && result.data.status === 'failed'
+				&& ['failed', 'cancelled', 'expired'].includes(String(assignment.status));
 			if (!result.success || !isDeepStrictEqual(result.data, suppliedResult) || result.data.assignmentId !== attempt.id
 				|| (assignment.status === 'completed' ? result.data.status !== 'completed'
 					: ['failed', 'returned', 'expired', 'cancelled'].includes(String(assignment.status)) && result.data.status === 'completed')
 				|| Date.parse(result.data.completedAt) < Date.parse(attempt.startedAt ?? attempt.createdAt)
-				|| Date.parse(result.data.completedAt) > Date.parse(attempt.finishedAt ?? attempt.deadline)
-				|| Date.parse(result.data.completedAt) > Date.parse(attempt.deadline)
+				|| failedCloseout && (!timestamp(assignment.failedAt) || Date.parse(result.data.completedAt) > Date.parse(String(assignment.failedAt)))
+				|| Date.parse(result.data.completedAt) > Date.parse(attempt.finishedAt ?? (failedCloseout ? String(assignment.failedAt) : attempt.deadline))
+				|| !failedCloseout && Date.parse(result.data.completedAt) > Date.parse(attempt.deadline)
 				|| (timestamp(assignment.completedAt) && Date.parse(result.data.completedAt) > Date.parse(String(assignment.completedAt)))) {
 				push(diagnostics, 'provider_assignment_contract_invalid', 'assignmentResult', 'The canonical result must belong to this attempt and its original interval and disposition.');
 			}
