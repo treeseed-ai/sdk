@@ -5,6 +5,48 @@ import { ControlPlaneClient, ControlPlaneClientError, normalizeControlPlaneServe
 import { CONTROL_PLANE_OPERATIONS, encodeConfirmationState, validateWorkdayIntent } from '../../src/operator-contracts/index.ts';
 
 describe('ControlPlaneClient', () => {
+	it('native workday event reads preserve diagnostic selection cursor raw clock evidence and denied retries without writing or inferring authority', async () => {
+		const requests: Array<{ method: string | undefined; path: string | undefined; body: string }> = [];
+		const raw = { providerEvents: [{ type: 'item.completed', item: { id: 'original-clock', type: 'mcp_tool_call',
+			server: 'treedx', tool: 'treeseed_time_status', result: { structuredContent: {
+				startedAt: '2030-01-01T00:00:00.000Z', deadlineAt: '2030-01-01T00:01:00.000Z', observedAt: '2030-01-01T00:00:03.000Z', remainingSeconds: 57,
+			} } } }] };
+		const page = { items: [{ id: 'event-original', protectedPayload: raw }], page: { hasMore: true, nextCursor: 'next-original' } };
+		let status = 200;
+		const server = createServer(async (request, response) => {
+			let body = ''; for await (const chunk of request) body += String(chunk);
+			requests.push({ method: request.method, path: request.url, body });
+			response.writeHead(status, { 'content-type': 'application/json' });
+			response.end(JSON.stringify(status === 200 ? { data: page } : { type: 'about:blank', title: 'Original diagnostic denial', status, code: 'diagnostics_denied' }));
+		});
+		try {
+			server.listen(0, '127.0.0.1'); await once(server, 'listening');
+			const address = server.address(); if (!address || typeof address === 'string') throw new Error('Allocated native HTTP address required.');
+			const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: `http://127.0.0.1:${address.port}` } });
+			for (const diagnostics of [undefined, 'metadata', 'full']) {
+				const input = { path: { teamId: 'original-team', runId: 'original-run' }, query: { limit: 2, cursor: 'original+cursor/=', ...(diagnostics === undefined ? {} : { diagnostics }) }, body: undefined };
+				const held = structuredClone(input), resultBefore = structuredClone(page);
+				await expect(client.invoke(CONTROL_PLANE_OPERATIONS.workdays.events, input)).resolves.toEqual({ data: page });
+				const path = `/v1/teams/original-team/workday-runs/original-run/events?limit=2&cursor=original%2Bcursor%2F%3D${diagnostics === undefined ? '' : `&diagnostics=${diagnostics}`}`;
+				expect(requests.at(-1)).toEqual({ method: 'GET', path, body: '' });
+				for (const denial of [403, 503]) {
+					status = denial; const count = requests.length;
+					await expect(client.invoke(CONTROL_PLANE_OPERATIONS.workdays.events, input)).rejects.toMatchObject({ status: denial, problem: { code: 'diagnostics_denied' } });
+					expect(requests.length).toBe(count + 1); expect(requests.at(-1)).toEqual({ method: 'GET', path, body: '' });
+					status = 200;
+					await expect(client.invoke(CONTROL_PLANE_OPERATIONS.workdays.events, input)).resolves.toEqual({ data: page });
+					expect(requests.length).toBe(count + 2); expect(requests.at(-1)).toEqual({ method: 'GET', path, body: '' });
+				}
+				const abort = new AbortController(); abort.abort(); const count = requests.length;
+				await expect(client.invoke(CONTROL_PLANE_OPERATIONS.workdays.events, input, { signal: abort.signal })).rejects.toThrow();
+				expect(requests).toHaveLength(count); expect(input).toEqual(held); expect(page).toEqual(resultBefore);
+			}
+			expect(requests).toHaveLength(15);
+		} finally { server.closeAllConnections(); if (server.listening) await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
+		expect(server.listening).toBe(false);
+		// Controlled raw responses are transport inputs, not actual model actions,
+		// API diagnostics permission, encryption custody, usage or physical closure.
+	});
 	it('validates manual and recurring public intent fields without inventing route-owned normalized metadata', async () => {
 		const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () => new Response(JSON.stringify({ data: {} }), { status: 200, headers: { 'content-type': 'application/json' } }));
 		const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002' }, fetchImpl });
