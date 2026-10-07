@@ -17,6 +17,32 @@ function tree(): CommandTreeDescriptor {
 }
 
 describe('human command tree contract', () => {
+	it('binds optional full workday diagnostics to the existing paginated read operation without creating a mutation or alternate route', () => {
+		const before = structuredClone(TREESEED_COMMAND_TREE_V1);
+		const leaves: Extract<(typeof TREESEED_COMMAND_TREE_V1.commands)[number], { nodeType: 'leaf' }>[] = [];
+		const visit = (nodes: typeof TREESEED_COMMAND_TREE_V1.commands): void => {
+			for (const node of nodes) if (node.nodeType === 'branch') visit(node.children); else leaves.push(node);
+		};
+		visit(TREESEED_COMMAND_TREE_V1.commands);
+		const selected = leaves.filter(node => node.execution.kind === 'operation' && node.execution.operationId === 'workdays.events.list');
+		expect(selected).toHaveLength(1); const leaf = selected[0]!;
+		expect(leaf.kind).toBe('read');
+		expect(leaf.options?.filter(option => option.name === '--diagnostics')).toEqual([
+			{ name: '--diagnostics', description: 'Diagnostic detail: metadata or full.', type: 'string' },
+		]);
+		expect(leaf.execution).toEqual({ kind: 'operation', operationId: 'workdays.events.list', input: [
+			{ target: 'path', field: 'teamId', source: 'context', name: 'team', required: true, transform: 'identity' },
+			{ target: 'path', field: 'runId', source: 'argument', name: 'workday', required: true, transform: 'identity' },
+			{ target: 'query', field: 'status', source: 'option', name: 'status', required: false, transform: 'identity' },
+			{ target: 'query', field: 'limit', source: 'option', name: 'limit', required: false, transform: 'integer' },
+			{ target: 'query', field: 'cursor', source: 'option', name: 'cursor', required: false, transform: 'identity' },
+			{ target: 'query', field: 'diagnostics', source: 'option', name: 'diagnostics', required: false, transform: 'identity' },
+		] });
+		const descriptor = CONTROL_PLANE_OPERATION_LIST.find(operation => operation.descriptor.operationId === 'workdays.events.list')?.descriptor;
+		expect(descriptor).toMatchObject({ kind: 'read', rest: { method: 'GET', path: '/v1/teams/{teamId}/workday-runs/{runId}/events' },
+			pagination: 'cursor', surfaces: ['rest', 'cli'], idempotency: { required: false, header: 'Idempotency-Key' } });
+		expect(TREESEED_COMMAND_TREE_V1).toEqual(before);
+	});
 	it('declares one optional repeatable exact target selector for scoped development freeze without another execution path', () => {
 		const before = structuredClone(TREESEED_COMMAND_TREE_V1);
 		const dev = TREESEED_COMMAND_TREE_V1.commands.find(node => node.segment === 'dev');
@@ -25,6 +51,7 @@ describe('human command tree contract', () => {
 		const freeze = dev.children.find(node => node.segment === 'freeze');
 		expect(freeze?.nodeType).toBe('leaf');
 		if (!freeze || freeze.nodeType !== 'leaf') throw new Error('Original freeze leaf required');
+		if (!freeze.options) throw new Error('Original freeze options required');
 		expect(freeze.options.filter(option => option.name === '--target')).toEqual([
 			{ name: '--target', description: 'Freeze only these exact project.target roots and their declared dependencies.', type: 'string[]' },
 		]);
