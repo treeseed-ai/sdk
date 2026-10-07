@@ -15,6 +15,12 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 // generated result is substituted for the validator's real observation.
 const input: unknown = JSON.parse(readFileSync(0, 'utf8'));
 const kind = process.argv[2];
+if (kind === 'provider-assignment-records') {
+	if (!Array.isArray(input)) throw new Error('Native assignment inventory required.');
+	const held = JSON.stringify(input), observations = input.map(value => publicContracts.validateProviderAssignment(value));
+	if (JSON.stringify(input) !== held) throw new Error('Native assignment validator changed supplied bytes.');
+	process.stdout.write(JSON.stringify(observations)); process.exit(0);
+}
 if (kind === 'installed-note-inventory') {
 	if (!Array.isArray(input) || !process.argv[3]) throw new Error('Installed workspace and native Note inventory required.');
 	const require = createRequire(process.argv[3]);
