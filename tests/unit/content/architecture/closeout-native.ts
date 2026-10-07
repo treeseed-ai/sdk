@@ -80,6 +80,14 @@ if (kind === 'workday-resource') {
 	process.exit(0);
 }
 const exports: Record<string, unknown> = publicContracts;
+if (kind === 'timing-result') {
+	const selected = exports.assignmentResultSchema;
+	if (!(selected instanceof z.ZodType) || !Array.isArray(input)) throw new Error('Exact public assignment result validator required.');
+	const held = JSON.stringify(input);
+	const observations = input.map(record => selected.safeParse(record));
+	if (JSON.stringify(input) !== held) throw new Error('Public result validator changed supplied timing inputs.');
+	process.stdout.write(JSON.stringify(observations)); process.exit(0);
+}
 if (kind === 'weight-map' || kind === 'project-weight' || kind === 'agent-class-weight') {
 	const selected = exports[kind === 'weight-map' ? 'weightMapSchema' : kind === 'project-weight' ? 'projectWeightSchema' : 'agentClassWeightSchema'];
 	if (!(selected instanceof z.ZodType) || !Array.isArray(input)) throw new Error('Exact shared weight validator required.');
