@@ -1,6 +1,16 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-diagnostics-command-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/command-tree.test.ts
+    testName: binds optional full workday diagnostics to the existing paginated read operation without creating a mutation or alternate route
+  sdk.golden.execution-diagnostics-transport-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/control-plane-client.test.ts
+    testName: native workday event reads preserve diagnostic selection cursor raw clock evidence and denied retries without writing or inferring authority
   sdk.golden.execution-timing-receipt-unit-1:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
