@@ -6,6 +6,7 @@ import { DEFAULT_WORKDAY_POLICY } from '../../../src/capacity/agents/agent-capac
 import {
 	assignmentContextSchema,
 	assignmentResultSchema,
+	assignmentTimingAwarenessReceiptSchema,
 	assignmentWorkspaceSchema,
 	exactEntityReferenceSchema,
 } from '../../../src/agent-capacity/contracts/capacity/assignments/agent-execution.ts';
@@ -20,6 +21,60 @@ const timingAwareness = {
 };
 
 describe('canonical agent execution contract', () => {
+	it('retains exact canonical timing receipts without requiring model timing from deterministic results', () => {
+		const original = { schemaVersion: 'treeseed.assignment-result/v1', id: 'result', assignmentId: 'attempt', status: 'completed',
+			summary: 'Supplied contract input, not an observed model clock.', references: [], verification: [],
+			usage: { elapsedSeconds: 1 }, diagnostics: [], completedAt: '2026-10-07T00:00:01.000Z' };
+		const held = structuredClone(original);
+		for (const completedChecks of [2, 3, 100]) {
+			const receipt = { ...timingAwareness, completedChecks }, before = structuredClone(receipt);
+			expect(assignmentTimingAwarenessReceiptSchema.parse(receipt)).toEqual(receipt);
+			for (const status of ['completed', 'blocked', 'failed']) {
+				const input = { ...original, status, timingAwareness: receipt }, frozen = structuredClone(input);
+				expect(assignmentResultSchema.parse(input)).toEqual(input); expect(input).toEqual(frozen);
+			}
+			expect(receipt).toEqual(before);
+		}
+		expect(assignmentResultSchema.parse(original)).toEqual(original); expect(original).toEqual(held);
+	});
+	it('denies every missing malformed failed or additional timing receipt field without repairing inputs', () => {
+		const original = structuredClone(timingAwareness), fields = Object.keys(original);
+		const invalid: unknown[] = [null, '', [], {}, ...fields.map(field => Object.fromEntries(Object.entries(original).filter(([key]) => key !== field)))];
+		for (const field of fields) for (const value of [undefined, null, '', false, 'true', 0, [], {}]) invalid.push({ ...original, [field]: value });
+		invalid.push(...[1, -1, 2.5, '2', true, NaN, Infinity, -Infinity].map(completedChecks => ({ ...original, completedChecks })),
+			{ ...original, schemaVersion: 'legacy/v1' }, { ...original, requiredChecks: 3 },
+			{ ...original, firstTool: 'treedx:time_status' }, { ...original, lastTool: 'treedx:time_status' },
+			{ ...original, checkedAt: '2026-10-07T00:00:01.000Z' }, { ...original, remainingSeconds: 1 });
+		for (const input of invalid) {
+			const held = structuredClone(input); expect(assignmentTimingAwarenessReceiptSchema.safeParse(input).success).toBe(false);
+			expect(input).toEqual(held);
+		}
+		expect(original).toEqual(timingAwareness);
+	});
+	it('native public SDK result consumers retain exact timing receipts and reject incomplete or contradictory supplied timing authority', () => {
+		const original = { schemaVersion: 'treeseed.assignment-result/v1', id: 'result', assignmentId: 'attempt', status: 'completed',
+			summary: 'Native parser input, not generated clock or usage evidence.', references: [], verification: [],
+			usage: { elapsedSeconds: 1 }, diagnostics: [], completedAt: '2026-10-07T00:00:01.000Z' };
+		const valid = [original, ...[2, 3].map(completedChecks => ({ ...original, timingAwareness: { ...timingAwareness, completedChecks } }))];
+		const invalid: unknown[] = Object.keys(timingAwareness).flatMap(field => [
+			Object.fromEntries(Object.entries(timingAwareness).filter(([key]) => key !== field)),
+			...[null, '', false, 'true', 0, [], {}].map(value => ({ ...timingAwareness, [field]: value })),
+		]);
+		invalid.push(...[{ requiredChecks: 3 }, { completedChecks: 1 }, { completedChecks: 2.5 }, { completedChecks: '2' },
+			{ schemaVersion: 'legacy/v1' }, { firstTool: 'treedx:time_status' }, { lastTool: 'treedx:time_status' },
+			{ checkedAt: original.completedAt }, { remainingSeconds: 1 }].map(patch => ({ ...timingAwareness, ...patch })));
+		const input = [...valid, ...invalid.map(receipt => ({ ...original, timingAwareness: receipt })),
+			...[null, '', [], {}].map(receipt => ({ ...original, timingAwareness: receipt })), valid[1]], held = structuredClone(input);
+		const path = fileURLToPath(new URL('../../unit/content/architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+		const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'timing-result'], {
+			input: JSON.stringify(input), encoding: 'utf8', timeout: 15_000,
+		});
+		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+		const observations: unknown = JSON.parse(child.stdout); if (!Array.isArray(observations)) throw new Error('Native result observations required.');
+		expect(observations).toHaveLength(input.length); expect(observations.slice(0, valid.length)).toEqual(valid.map(data => ({ success: true, data })));
+		for (const observation of observations.slice(valid.length, -1)) expect(observation).toMatchObject({ success: false });
+		expect(observations.at(-1)).toEqual(observations[1]); expect(input).toEqual(held); expect(readFileSync(path)).toEqual(bytes);
+	});
 	it('native public fairness selection preserves finite proportional project and class weights without concealing overflow in JSON', () => {
 		const input = (['project', 'class'] as const).flatMap(layer =>
 			[3, 0.375].flatMap(seconds => [1, Number.MAX_VALUE / 4, Number.MAX_VALUE / 2, Number.MIN_VALUE].map(weight => ({ layer, seconds,

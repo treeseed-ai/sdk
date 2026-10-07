@@ -1,6 +1,21 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.execution-timing-receipt-unit-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/agent-execution-contract.test.ts
+    testName: retains exact canonical timing receipts without requiring model timing from deterministic results
+  sdk.golden.execution-timing-receipt-unit-2:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/agent-execution-contract.test.ts
+    testName: denies every missing malformed failed or additional timing receipt field without repairing inputs
+  sdk.golden.execution-timing-receipt-native-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/contract/agent-capacity/agent-execution-contract.test.ts
+    testName: native public SDK result consumers retain exact timing receipts and reject incomplete or contradictory supplied timing authority
   sdk.golden.execution-provider-endpoint-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
