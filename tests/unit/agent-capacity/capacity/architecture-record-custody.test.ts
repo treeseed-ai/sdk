@@ -37,6 +37,31 @@ function supplied() {
 	return { item, attempt, result };
 }
 describe('public assignment whole immutable record custody', () => {
+	function verifyFailedCloseout(native: boolean) {
+		const f = supplied(), failedAt = '2026-10-03T00:00:03.000Z';
+		const result = { ...f.result, status: 'failed', completedAt: failedAt, references: [], verification: [] };
+		const original = { ...f.item, status: 'failed', assignmentResult: result, completedAt: null, failedAt, updatedAt: failedAt };
+		const entries: Array<{ record: Record<string, unknown>; valid: boolean }> = [{ record: original, valid: true },
+			{ record: { ...original, status: 'cancelled' }, valid: true }, { record: { ...original, status: 'expired' }, valid: true }];
+		for (const patch of [{ status: 'completed', completedAt: failedAt }, { failedAt: null }, { failedAt: 'not-a-clock' },
+			{ failedAt: '2026-10-03T00:00:02.999Z' }, { assignmentResult: { ...result, completedAt: '2026-10-02T23:59:59.999Z' } },
+			{ assignmentResult: { ...result, status: 'completed' } }, { assignmentResult: { ...result, assignmentId: 'foreign' } },
+			{ assignmentAttempt: { ...f.attempt, finishedAt: '2026-10-03T00:00:02.000Z' } }]) entries.push({ record: { ...original, ...patch }, valid: false });
+		const held = structuredClone(entries);
+		if (native) {
+			const path = fileURLToPath(new URL('../../content/architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
+			const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'provider-assignment-records'],
+				{ input: JSON.stringify(entries.map(entry => entry.record)), encoding: 'utf8', timeout: 15_000 });
+			expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
+			const observations: unknown = JSON.parse(child.stdout); if (!Array.isArray(observations)) throw new Error('Native assignment observations required.');
+			expect(observations).toHaveLength(entries.length);
+			for (const [index, entry] of entries.entries()) expect(observations[index]).toMatchObject({ ok: entry.valid });
+			expect(readFileSync(path)).toEqual(bytes);
+		} else for (const entry of entries) expect(validateProviderAssignment(entry.record).ok).toBe(entry.valid);
+		expect(entries).toEqual(held); expect(f.attempt.deadline).toBe('2026-10-03T00:00:02.000Z');
+	}
+	it('retains truthful failed closeout after the frozen productive deadline while denying fabricated successful or unbounded terminal result clocks', () => verifyFailedCloseout(false));
+	it('native public assignment validation retains exact failed closeout and rejects foreign moved or unbounded result clocks', () => verifyFailedCloseout(true));
 	function verifySharedWeights(native: boolean) {
 		for (const [kind, name, valid, invalid] of [
 			['weight-map', 'weightMapSchema', [{ project: 1 }, { project: 2, second: 1 }], [{}, { project: 0 }, { project: -1 }, { project: .5 }, { project: '1' }, { project: null }]],

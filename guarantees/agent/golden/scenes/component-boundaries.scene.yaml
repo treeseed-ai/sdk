@@ -3,6 +3,12 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: execution-failed-closeout-unit
+    action: { verifier: sdk.golden.execution-failed-closeout-unit }
+    expect: { status: passed }
+  - id: execution-failed-closeout-native
+    action: { verifier: sdk.golden.execution-failed-closeout-native }
+    expect: { status: passed }
   - id: execution-diagnostics-command-unit
     action: { verifier: sdk.golden.execution-diagnostics-command-unit }
     expect: { status: passed }
