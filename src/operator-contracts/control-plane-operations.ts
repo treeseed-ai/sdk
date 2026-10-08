@@ -297,6 +297,7 @@ export const CONTROL_PLANE_OPERATIONS = {
 		updateSchedule: resource('workdays.schedules.update', 'PATCH', '/v1/teams/{teamId}/workday-schedules/{scheduleId}', { teamId: z.string().min(1), scheduleId: z.string().min(1) }, { capability: 'workdays.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli'], concurrency: true }),
 	},
 	assignments: {
+		recover: resource('assignments.recover', 'POST', '/v1/teams/{teamId}/capacity/assignments/{assignmentId}/recover', { teamId: z.string().min(1), assignmentId: z.string().min(1) }, { capability: 'assignments.execute', scopes: ['treeseed:execution'], surfaces: ['rest', 'cli', 'mcp_tool'], risk: 'destructive', body: z.object({ expectedStateVersion: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), reason: z.string().trim().min(1).max(2000) }).strict() }),
 		list: resource('assignments.list', 'GET', '/v1/teams/{teamId}/capacity/assignments', { teamId: z.string().min(1) }, { capability: 'assignments.read', surfaces: ['rest', 'cli', 'mcp_tool'], pagination: 'cursor' }),
 		show: resource('assignments.show', 'GET', '/v1/teams/{teamId}/capacity/assignments/{assignmentId}', { teamId: z.string().min(1), assignmentId: z.string().min(1) }, { capability: 'assignments.read', surfaces: ['rest', 'cli', 'mcp_resource'] }),
 		explain: resource('assignments.explain', 'GET', '/v1/teams/{teamId}/capacity/assignments/{assignmentId}/explanation', { teamId: z.string().min(1), assignmentId: z.string().min(1) }, { capability: 'assignments.read', surfaces: ['rest', 'cli', 'mcp_tool'] }),
