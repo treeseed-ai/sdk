@@ -17,6 +17,27 @@ function tree(): CommandTreeDescriptor {
 }
 
 describe('human command tree contract', () => {
+	it('binds optional exact workday assignment filtering to the existing read route without changing pagination or authority', () => {
+		const before = structuredClone(TREESEED_COMMAND_TREE_V1);
+		const branch = TREESEED_COMMAND_TREE_V1.commands.find(node => node.segment === 'assignments');
+		if (!branch || branch.nodeType !== 'branch') throw new Error('Original assignments branch required');
+		const leaf = branch.children.find(node => node.segment === 'list');
+		if (!leaf || leaf.nodeType !== 'leaf') throw new Error('Original assignments list required');
+		expect(leaf.kind).toBe('read');
+		expect(leaf.options?.filter(option => option.name === '--workday')).toEqual([
+			{ name: '--workday', description: 'Restrict assignments to one exact workday.', type: 'string' },
+		]);
+		expect(leaf.execution).toEqual({ kind: 'operation', operationId: 'assignments.list', input: [
+			{ target: 'path', field: 'teamId', source: 'context', name: 'team', required: true, transform: 'identity' },
+			{ target: 'query', field: 'workdayId', source: 'option', name: 'workday', required: false, transform: 'identity' },
+			{ target: 'query', field: 'status', source: 'option', name: 'status', required: false, transform: 'identity' },
+			{ target: 'query', field: 'limit', source: 'option', name: 'limit', required: false, transform: 'integer' },
+			{ target: 'query', field: 'cursor', source: 'option', name: 'cursor', required: false, transform: 'identity' },
+		] });
+		expect(CONTROL_PLANE_OPERATION_LIST.find(operation => operation.descriptor.operationId === 'assignments.list')?.descriptor)
+			.toMatchObject({ kind: 'read', rest: { method: 'GET', path: '/v1/teams/{teamId}/capacity/assignments' }, pagination: 'cursor' });
+		expect(TREESEED_COMMAND_TREE_V1).toEqual(before);
+	});
 	it('binds optional full workday diagnostics to the existing paginated read operation without creating a mutation or alternate route', () => {
 		const before = structuredClone(TREESEED_COMMAND_TREE_V1);
 		const leaves: Extract<(typeof TREESEED_COMMAND_TREE_V1.commands)[number], { nodeType: 'leaf' }>[] = [];

@@ -1106,3 +1106,13 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/command-tree.test.ts
     testName: "declares one optional repeatable exact target selector for scoped development freeze without another execution path"
+  sdk.golden.assignment-workday-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/command-tree.test.ts
+    testName: "binds optional exact workday assignment filtering to the existing read route without changing pagination or authority"
+  sdk.golden.assignment-workday-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/control-plane-client.test.ts
+    testName: "native assignment reads preserve exact workday cursor denial and retry without filtering failed response evidence"

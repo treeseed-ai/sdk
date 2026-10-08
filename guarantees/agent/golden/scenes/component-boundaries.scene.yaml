@@ -651,3 +651,9 @@ workflow:
   - id: provider-scoped-freeze-descriptor-unit
     action: { verifier: sdk.golden.provider-scoped-freeze-descriptor-unit }
     expect: { status: passed }
+  - id: assignment-workday-unit
+    action: { verifier: sdk.golden.assignment-workday-unit }
+    expect: { status: passed }
+  - id: assignment-workday-native
+    action: { verifier: sdk.golden.assignment-workday-native }
+    expect: { status: passed }

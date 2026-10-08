@@ -5,6 +5,42 @@ import { ControlPlaneClient, ControlPlaneClientError, normalizeControlPlaneServe
 import { CONTROL_PLANE_OPERATIONS, encodeConfirmationState, validateWorkdayIntent } from '../../src/operator-contracts/index.ts';
 
 describe('ControlPlaneClient', () => {
+	it('native assignment reads preserve exact workday cursor denial and retry without filtering failed response evidence', async () => {
+		const requests: Array<{ method: string | undefined; path: string | undefined; body: string }> = [];
+		const page = { items: [{ id: 'failed-target', workDayId: 'workday-target', status: 'failed' }], page: { limit: 1, hasMore: false, nextCursor: null } };
+		const held = structuredClone(page); let status = 200;
+		const server = createServer(async (request, response) => {
+			let body = ''; for await (const chunk of request) body += String(chunk);
+			requests.push({ method: request.method, path: request.url, body });
+			response.writeHead(status, { 'content-type': 'application/json' });
+			response.end(JSON.stringify(status === 200 ? { data: page } : { title: 'Controlled denial', status, code: 'assignment_read_denied' }));
+		});
+		try {
+			server.listen(0, '127.0.0.1'); await once(server, 'listening');
+			const address = server.address(); if (!address || typeof address === 'string') throw new Error('Native HTTP address required');
+			const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: `http://127.0.0.1:${address.port}` } });
+			for (const workdayId of [undefined, 'workday-target']) {
+				const input = { path: { teamId: 'team-original' }, query: { ...(workdayId ? { workdayId } : {}), limit: 1, cursor: 'original+cursor/=' }, body: undefined };
+				const before = structuredClone(input);
+				const expected = { method: 'GET', path: `/v1/teams/team-original/capacity/assignments?${workdayId ? `workdayId=${workdayId}&` : ''}limit=1&cursor=original%2Bcursor%2F%3D`, body: '' };
+				await expect(client.invoke(CONTROL_PLANE_OPERATIONS.assignments.list, input)).resolves.toEqual({ data: page });
+				expect(requests.at(-1)).toEqual(expected);
+				for (const denial of [403, 503]) {
+					status = denial; const count = requests.length;
+					await expect(client.invoke(CONTROL_PLANE_OPERATIONS.assignments.list, input)).rejects.toMatchObject({ status: denial, problem: { code: 'assignment_read_denied' } });
+					expect(requests).toHaveLength(count + 1); expect(requests.at(-1)).toEqual(expected);
+					status = 200;
+					await expect(client.invoke(CONTROL_PLANE_OPERATIONS.assignments.list, input)).resolves.toEqual({ data: page });
+					expect(requests).toHaveLength(count + 2); expect(requests.at(-1)).toEqual(expected);
+				}
+				const abort = new AbortController(); abort.abort(); const count = requests.length;
+				await expect(client.invoke(CONTROL_PLANE_OPERATIONS.assignments.list, input, { signal: abort.signal })).rejects.toThrow();
+				expect(requests).toHaveLength(count); expect(input).toEqual(before); expect(page).toEqual(held);
+			}
+			expect(requests).toHaveLength(10);
+		} finally { server.closeAllConnections(); if (server.listening) await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
+		expect(server.listening).toBe(false);
+	});
 	it('native workday event reads preserve diagnostic selection cursor raw clock evidence and denied retries without writing or inferring authority', async () => {
 		const requests: Array<{ method: string | undefined; path: string | undefined; body: string }> = [];
 		const raw = { providerEvents: [{ type: 'item.completed', item: { id: 'original-clock', type: 'mcp_tool_call',
