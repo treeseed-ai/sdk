@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CONTROL_PLANE_OPERATIONS, TREESEED_COMMAND_TREE_V1 } from '../../../src/operator-contracts/index.ts';
+import { CONTROL_PLANE_OPERATIONS, TREESEED_COMMAND_TREE_V1 } from '../../../../src/operator-contracts/index.ts';
 
 describe('explicit unresolved assignment recovery contract', () => {
 	it('declares authenticated destructive recovery with exact version and reason and prohibits supplied measurements', () => {

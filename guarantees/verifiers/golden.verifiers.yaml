@@ -1111,15 +1111,20 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/command-tree.test.ts
     testName: "binds optional exact workday assignment filtering to the existing read route without changing pagination or authority"
+  sdk.golden.operator-unresolved-recovery-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/recovery/assignment-recovery-native.test.ts
+    testName: "native client retains unresolved recovery and exact version operation bytes through denial retry and local measurement rejection"
   sdk.golden.operator-unresolved-recovery-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
-    testFile: tests/unit/operator-contracts/assignment-recovery.test.ts
+    testFile: tests/unit/operator-contracts/recovery/assignment-recovery.test.ts
     testName: "declares authenticated destructive recovery with exact version and reason and prohibits supplied measurements"
   sdk.golden.operator-unresolved-recovery-command-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
-    testFile: tests/unit/operator-contracts/assignment-recovery.test.ts
+    testFile: tests/unit/operator-contracts/recovery/assignment-recovery.test.ts
     testName: "publishes exactly one generated recovery command with required integer state version and reason without measured usage options"
   sdk.golden.assignment-workday-native:
     kind: vitestCase

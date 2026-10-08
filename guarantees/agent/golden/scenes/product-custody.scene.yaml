@@ -15,6 +15,9 @@ workflow:
   - id: execution-installed-report-native
     action: { verifier: sdk.golden.execution-installed-report-native }
     expect: { status: passed }
+  - id: operator-unresolved-recovery-native
+    action: { verifier: sdk.golden.operator-unresolved-recovery-native }
+    expect: { status: passed }
   - id: operator-unresolved-recovery-unit
     action: { verifier: sdk.golden.operator-unresolved-recovery-unit }
     expect: { status: passed }

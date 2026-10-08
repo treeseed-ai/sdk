@@ -201,7 +201,8 @@ describe('control-plane operation catalog', () => {
 			expect.objectContaining({ operationId: 'treedx.service.contract', uriTemplate: 'treeseed://dx/projects/{projectId}/service-contract' }),
 		]));
 		const catalog = buildMcpCatalog(CONTROL_PLANE_CATALOG.operations);
-		expect(catalog.tools).toHaveLength(138);
+		expect(catalog.tools).toHaveLength(139);
+		expect(catalog.tools.filter(tool => tool.operationId === 'assignments.recover')).toHaveLength(1);
 		expect(catalog.resources).toEqual(resources);
 		expect(catalog.prompts.map(({ name }) => name)).toEqual(['operate', 'research', 'governance-review', 'workday-planning', 'project-agent-chat']);
 	});
