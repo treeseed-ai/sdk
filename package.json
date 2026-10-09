@@ -20,6 +20,7 @@
     "README.md",
     "guarantees",
     "tests/acceptance",
+    "treeseed.package.yaml",
     "dist"
   ],
   "publishConfig": {

@@ -1131,3 +1131,13 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/control-plane-client.test.ts
     testName: "native assignment reads preserve exact workday cursor denial and retry without filtering failed response evidence"
+  sdk.golden.installed-verifier-contract-unit:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/unit/operator-contracts/golden-product.test.ts
+    testName: ships golden acceptance using only the public assignment contract and declared package identity
+  sdk.golden.installed-verifier-contract-native:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/contract/standards/package-archive.test.ts
+    testName: resolves the packed golden verifier imports through the installed public contract without checkout source
