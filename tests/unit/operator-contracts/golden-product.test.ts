@@ -119,3 +119,12 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 		expect(() => verifySdkGoldenProduct([release, review, { status: 'completed', assignmentAttempt: { workItemId: 'tests-first', effectiveProfile: { activity: 'acting' }, contextRefs: [] } }], commit)).toThrow('ACCEPTANCE_SDK_SOURCE');
 	});
 });
+
+it('ships golden acceptance using only the public assignment contract and declared package identity',()=>{
+ const candidate=new URL('../../../',import.meta.url);
+ const manifest=JSON.parse(readFileSync(new URL('package.json',candidate),'utf8'));
+ const asset=readFileSync(new URL('tests/acceptance/golden-product.test.ts',candidate),'utf8');
+ expect(manifest.files).toContain('treeseed.package.yaml');
+ expect(asset).toContain("from '@treeseed/sdk/agent-capacity'");
+ expect(asset).not.toMatch(/from ['"].*src\//u);
+});

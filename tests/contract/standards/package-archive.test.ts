@@ -6,6 +6,30 @@ import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { assertPackageCandidateOutputs, assertPackageExportTargets } from '../../../scripts/standards/acceptance/package-exports.ts';
 
+it('resolves the packed golden verifier imports through the installed public contract without checkout source',()=>{
+ const candidate=resolve(import.meta.dirname,'../../..'),root=mkdtempSync(join(tmpdir(),'sdk-golden-installed-'));
+ const original=readFileSync(join(candidate,'tests/acceptance/golden-product.test.ts'));
+ try {
+  const packed=JSON.parse(execFileSync('npm',['pack','--json','--ignore-scripts','--pack-destination',root],{cwd:candidate,encoding:'utf8',timeout:15000})) as {filename:string}[];
+  expect(packed).toHaveLength(1);
+  const archive=join(root,packed[0]!.filename),held=readFileSync(archive),install=join(root,'installed');mkdirSync(install);
+  execFileSync('npm',['install','--prefix',install,'--omit=dev','--ignore-scripts','--package-lock=false','--no-save','--no-audit','--no-fund',archive],{encoding:'utf8',timeout:15000});
+  const owner=join(install,'node_modules/@treeseed/sdk');
+  const asset=readFileSync(join(owner,'tests/acceptance/golden-product.test.ts'),'utf8');
+  const declaration=asset.split('\n').find(line=>line.includes('import { assignmentAttemptSchema, assignmentResultSchema }'))!;
+  expect(declaration).toContain("from '@treeseed/sdk/agent-capacity'");
+  const consumer=join(install,'consumer.mjs');
+  writeFileSync(consumer,declaration+"\nif (!assignmentAttemptSchema || !assignmentResultSchema) throw new Error('Missing public assignment schemas');\n");
+  const child=spawnSync(process.execPath,[consumer],{cwd:install,encoding:'utf8',timeout:15000});
+  expect(child.error).toBeUndefined();expect(child.signal).toBeNull();expect(child.status,child.stderr+child.stdout).toBe(0);
+  expect(readFileSync(join(owner,'treeseed.package.yaml'))).toEqual(readFileSync(join(candidate,'treeseed.package.yaml')));
+  expect(readFileSync(join(owner,'tests/acceptance/golden-product.test.ts'))).toEqual(original);
+  expect(readFileSync(archive)).toEqual(held);
+  // This resolves the actual archived contract import with production dependencies.
+  // Managed verifier execution also requires the installed Reviewer loader and genuine authority.
+ } finally {rmSync(root,{recursive:true,force:true});expect(readFileSync(join(candidate,'tests/acceptance/golden-product.test.ts'))).toEqual(original);}
+});
+
 describe('portable packed SDK exports and declarations', () => {
 	it('installed native SDK owns operation projection and strict consumer declarations while retaining archive and validation bytes', () => {
 		const candidate = resolve(import.meta.dirname, '../../..'), manifestBytes = readFileSync(join(candidate, 'package.json'));

@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { sdkGoldenSource, verifySdkGoldenProduct } from './golden-product.ts';
-import { assignmentAttemptSchema, assignmentResultSchema } from '../../src/agent-capacity/contracts/capacity/assignments/agent-execution.ts';
+import { assignmentAttemptSchema, assignmentResultSchema } from '@treeseed/sdk/agent-capacity';
 
 test('SDK golden retains exact source and passing measured candidate release gates', () => {
 	const read = (args: string[]) => {

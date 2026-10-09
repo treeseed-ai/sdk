@@ -45,3 +45,9 @@ workflow:
   - id: export-targets
     action: { verifier: sdk.golden.archive-targets }
     expect: { status: passed }
+  - id: installed-verifier-contract-unit
+    action: { verifier: sdk.golden.installed-verifier-contract-unit }
+    expect: { status: passed }
+  - id: installed-verifier-contract-native
+    action: { verifier: sdk.golden.installed-verifier-contract-native }
+    expect: { status: passed }
