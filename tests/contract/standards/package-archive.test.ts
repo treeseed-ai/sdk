@@ -18,6 +18,8 @@ it('resolves the packed golden verifier imports through the installed public con
   const archive=join(root,packed[0]!.filename),held=readFileSync(archive),install=join(root,'installed');mkdirSync(install);
   const reproduction=join(root,'reproduction');mkdirSync(reproduction);
   execFileSync('tar',['-xzf',archive,'-C',reproduction],{timeout:15000});
+  // Repack actual archived owner bytes; alter only private fixture stamps,
+  // leaving the live development build coordination marker untouched.
   const fixture=join(reproduction,'package'),repacked:Buffer[]=[];
   for(const completedAt of ['2026-10-10T00:00:00.000Z','2026-10-10T01:00:00.000Z']) {
    for(const suffix of ['','.new'])writeFileSync(join(fixture,`dist/.treeseed-build-complete.json${suffix}`),JSON.stringify({completedAt}));
@@ -25,7 +27,7 @@ it('resolves the packed golden verifier imports through the installed public con
    const result=JSON.parse(execFileSync('npm',['pack','--json','--ignore-scripts','--pack-destination',destination],{cwd:fixture,encoding:'utf8',timeout:15000})) as {filename:string}[];
    expect(result).toHaveLength(1);repacked.push(readFileSync(join(destination,result[0]!.filename)));
   }
-  expect(repacked[1]).toEqual(repacked[0]);
+  expect(repacked[0]).toEqual(held);expect(repacked[1]).toEqual(held);
   execFileSync('npm',['install','--prefix',install,'--omit=dev','--ignore-scripts','--package-lock=false','--no-save','--no-audit','--no-fund',archive],{encoding:'utf8',timeout:15000});
   const owner=join(install,'node_modules/@treeseed/sdk');
   const asset=readFileSync(join(owner,'tests/acceptance/golden-product.test.ts'),'utf8');
@@ -184,10 +186,10 @@ process.stdout.write(JSON.stringify({ projection, valid, denied, provider: contr
 						expect(members).toContain(`package/${identity.exports['./standards']!.types.slice(2)}`);
 					}
 				} else {
-				const changed = JSON.parse(execFileSync('npm', ['pack', '--json', '--ignore-scripts'],
-					{ cwd: packageRoot, encoding: 'utf8', timeout: 15000 })) as Array<{ filename: string }>;
-				expect(changed).toHaveLength(1);
-				changedArchive = join(packageRoot, changed[0]!.filename);
+					const changed = JSON.parse(execFileSync('npm', ['pack', '--json', '--ignore-scripts'],
+						{ cwd: packageRoot, encoding: 'utf8', timeout: 15000 })) as Array<{ filename: string }>;
+					expect(changed).toHaveLength(1);
+					changedArchive = join(packageRoot, changed[0]!.filename);
 				}
 				expect(readFileSync(changedArchive).equals(originalBytes)).toBe(false);
 				const denied = inspect(changedArchive);
