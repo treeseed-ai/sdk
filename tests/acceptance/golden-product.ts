@@ -87,10 +87,10 @@ export function sdkGoldenWorkdayId(read: (args: string[]) => Row, freeze: Row, e
 	assert.equal(original.schemaVersion, 'treeseed.workday-start-receipt/v1');
 	assert.ok(typeof id === 'string' && /^workday-[a-f0-9-]+$/u.test(id));
 	assert.ok(typeof preflight?.id === 'string' && preflight.id.trim() && typeof preflight.teamId === 'string' && preflight.teamId.trim()
-		&& typeof preflight.preflightDigest === 'string' && /^sha256:[a-f0-9]{64}$/u.test(preflight.preflightDigest));
+		&& typeof preflight.preflightDigest === 'string' && /^sha256:[A-Za-z0-9_-]{43}$/u.test(preflight.preflightDigest));
 	assert.equal(original.preflightId, preflight.id); assert.equal(original.preflightDigest, preflight.preflightDigest);
 	assert.ok(typeof original.startedAt === 'string' && Number.isFinite(Date.parse(original.startedAt))
-		&& typeof original.transactionReceiptId === 'string' && /^workday-start:[a-f0-9]{64}$/u.test(original.transactionReceiptId));
+		&& typeof original.transactionReceiptId === 'string' && /^workday-start:[A-Za-z0-9_-]{43}$/u.test(original.transactionReceiptId));
 	for (const field of ['acceptedExecutionNodeIds', 'assignmentIds', 'reservationIds', 'providerReceiptRefs']) {
 		const values: unknown = original[field];
 		assert.ok(Array.isArray(values) && values.every(value => typeof value === 'string' && value.trim() === value && value.length > 0)

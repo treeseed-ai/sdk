@@ -24,7 +24,8 @@ it('rejects incomplete moved conflicting or foreign SDK workday custody and pres
 			expect(read).not.toHaveBeenCalled(); expect(readFileSync(f.retained, 'utf8')).toBe(bytes);
 		}
 		for (const [field, values] of Object.entries({ schemaVersion: ['', 'foreign'], workdayId: [null, 'foreign'],
-			preflightId: ['', 'foreign'], preflightDigest: ['', `sha256:${'c'.repeat(64)}`], startedAt: ['', 'invalid'], transactionReceiptId: ['', 'foreign'],
+			preflightId: ['', 'foreign'], preflightDigest: ['', `sha256:${'c'.repeat(64)}`], startedAt: ['', 'invalid'],
+			transactionReceiptId: ['', 'foreign', `workday-start:${'c'.repeat(64)}`, `workday-start:${'c'.repeat(42)}`, `workday-start:${'c'.repeat(44)}`],
 			acceptedExecutionNodeIds: [null, {}, ['same', 'same']], assignmentIds: ['invalid', [null]], reservationIds: [undefined, ['']], providerReceiptRefs: [[' spaced '], {}] })) {
 			for (const value of values) {
 				const changed = { ...f.receipt, [field]: value }, bytes = JSON.stringify(changed); writeFileSync(f.retained, bytes);
