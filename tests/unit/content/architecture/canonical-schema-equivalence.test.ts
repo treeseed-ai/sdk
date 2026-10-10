@@ -75,7 +75,7 @@ describe('exact canonical architecture schema equivalence', () => {
 		for (const name of ['Verify package', 'Execute coded golden component scenes']) expect(job.steps.findIndex(step => step.name === name)).toBeGreaterThan(index);
 		expect(job.steps.find(step => step.name === 'Verify package')?.run).toBe('npm run verify:direct');
 		expect(job.steps.find(step => step.name === 'Execute coded golden component scenes')?.uses)
-			.toBe('treeseed-ai/reviewer/.github/actions/run-scenes@77f8f0003ccdc477cf90801fd7b0a23b1a1bb82f');
+			.toBe('treeseed-ai/reviewer/.github/actions/run-scenes@c8bfadc036029f37ecc197884faf63df3f6d59a2');
 	});
 	it('accepts the exact complete canonical target without modifying its stored or runtime definitions', () => {
 		const { document } = canonicalAuthority();
