@@ -44,7 +44,7 @@ jobs:
       - name: Verify package
         run: npm run verify:direct
       - name: Execute coded golden component scenes
-        uses: treeseed-ai/reviewer/.github/actions/run-scenes@c8bfadc036029f37ecc197884faf63df3f6d59a2
+        uses: treeseed-ai/reviewer/.github/actions/run-scenes@108f153b18896e62cd0fb7507c2fa78c4ffaec36
         with:
           ids: guarantee.sdk.golden.component-boundaries,guarantee.sdk.golden.product-custody
 

@@ -16,7 +16,7 @@ test('SDK golden retains exact source and passing measured candidate release gat
 	const freezeBytes = readFileSync(freezePath, 'utf8');
 	const freeze = JSON.parse(freezeBytes);
 	const proposalId = freeze.proposal?.id;
-	const id = sdkGoldenWorkdayId(read, freeze, process.env.TREESEED_ACCEPTANCE_WORKDAY_ID);
+	const id = sdkGoldenWorkdayId(read, freeze, process.env.TREESEED_ACCEPTANCE_WORKDAY_ID, freezePath);
 	const run = read(['workdays', 'show', id]).run;
 	if (proposalId) assert.ok(run.parameters.proposalIds.includes(proposalId), 'ACCEPTANCE_SDK_WORKDAY: Wrong frozen proposal');
 	assert.equal(run.executionMode, 'simulation'); assert.equal(run.status, 'completed');

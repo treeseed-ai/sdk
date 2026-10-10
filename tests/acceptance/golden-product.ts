@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, realpathSync } from 'node:fs';
+import { isAbsolute, resolve } from 'node:path';
 
 type Row = Record<string, any>;
 function measured(record: Row | undefined): boolean {
@@ -63,23 +65,45 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string): 
 		'ACCEPTANCE_SDK_ARCHIVE_REVIEW: Independent review must consume this exact Actor result and candidate');
 }
 
-export function sdkGoldenWorkdayId(read: (args: string[]) => Row, freeze: Row, explicit?: string): string {
-	let id = explicit;
-	const proposalId = freeze.proposal?.id;
-	if (!id && proposalId) {
-		const matches: Record<string, any>[] = [];
-		let cursor: string | undefined;
-		for (let page = 0; page < 40; page += 1) {
-			const result = read(['workdays', 'list', '--limit', '100', ...(cursor ? ['--cursor', cursor] : [])]);
-			assert.ok(Array.isArray(result.items) && typeof result.page?.hasMore === 'boolean', 'ACCEPTANCE_SDK_PAGINATION: Malformed workday page');
-			matches.push(...result.items.filter((item: Record<string, any>) => item.executionKind === 'workday' && item.parameters?.proposalIds?.includes(proposalId)));
-			if (!result.page?.hasMore) break;
-			assert.ok(result.page.nextCursor && result.page.nextCursor !== cursor && page < 39, 'ACCEPTANCE_SDK_PAGINATION: Incomplete workday evidence');
-			cursor = result.page.nextCursor;
-		}
-		assert.equal(matches.length, 1, 'ACCEPTANCE_SDK_WORKDAY: Frozen proposal must identify exactly one real workday');
-		id = matches[0]!.id;
+function retainedBytes(path: string): Buffer {
+	assert.ok(isAbsolute(path) && realpathSync(path) === resolve(path) && lstatSync(path).isFile(),
+		'ACCEPTANCE_SDK_WORKDAY: Independent regular retained file required');
+	const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+	try {
+		assert.ok(fstatSync(fd).isFile() && (fstatSync(fd).mode & 0o444) !== 0, 'ACCEPTANCE_SDK_WORKDAY: Readable regular file required');
+		return readFileSync(fd);
+	} finally { closeSync(fd); }
+}
+/** Product acceptance consumes the original API receipt; proposal discovery is not invocation authority. */
+export function sdkGoldenWorkdayId(read: (args: string[]) => Row, freeze: Row, explicit?: string, freezePath?: string): string {
+	assert.ok(freezePath, 'ACCEPTANCE_SDK_WORKDAY: Explicit immutable freeze path required');
+	const bytes = retainedBytes(freezePath), receiptPath = `${freezePath}.workday-start.json`, receiptBytes = retainedBytes(receiptPath);
+	assert.deepEqual(JSON.parse(bytes.toString('utf8')), freeze, 'ACCEPTANCE_SDK_WORKDAY: Frozen input changed');
+	const receipt = JSON.parse(receiptBytes.toString('utf8')) as unknown;
+	assert.ok(receipt && typeof receipt === 'object' && !Array.isArray(receipt), 'ACCEPTANCE_SDK_WORKDAY: Original API receipt required');
+	const original = receipt as Row, preflight = freeze.preflight, body = freeze.request?.body, id = original.workdayId;
+	assert.deepEqual(Object.keys(original).sort(), ['schemaVersion', 'workdayId', 'preflightId', 'preflightDigest', 'startedAt',
+		'acceptedExecutionNodeIds', 'assignmentIds', 'reservationIds', 'providerReceiptRefs', 'transactionReceiptId'].sort());
+	assert.equal(original.schemaVersion, 'treeseed.workday-start-receipt/v1');
+	assert.ok(typeof id === 'string' && /^workday-[a-f0-9-]+$/u.test(id));
+	assert.ok(typeof preflight?.id === 'string' && preflight.id.trim() && typeof preflight.teamId === 'string' && preflight.teamId.trim()
+		&& typeof preflight.preflightDigest === 'string' && /^sha256:[a-f0-9]{64}$/u.test(preflight.preflightDigest));
+	assert.equal(original.preflightId, preflight.id); assert.equal(original.preflightDigest, preflight.preflightDigest);
+	assert.ok(typeof original.startedAt === 'string' && Number.isFinite(Date.parse(original.startedAt))
+		&& typeof original.transactionReceiptId === 'string' && /^workday-start:[a-f0-9]{64}$/u.test(original.transactionReceiptId));
+	for (const field of ['acceptedExecutionNodeIds', 'assignmentIds', 'reservationIds', 'providerReceiptRefs']) {
+		const values: unknown = original[field];
+		assert.ok(Array.isArray(values) && values.every(value => typeof value === 'string' && value.trim() === value && value.length > 0)
+			&& new Set(values).size === values.length);
 	}
-	assert.ok(typeof id === 'string' && id.startsWith('workday-'), 'ACCEPTANCE_SDK_WORKDAY: Explicit real workday or frozen proposal required');
+	if (explicit) assert.equal(explicit, id, 'ACCEPTANCE_SDK_WORKDAY: Conflicting explicit workday');
+	assert.ok(typeof freeze.proposal?.id === 'string' && freeze.proposal.id.trim());
+	assert.equal(body?.executionMode, 'simulation'); assert.deepEqual(body.proposalIds, [freeze.proposal.id]);
+	assert.ok(Array.isArray(body.projects) && body.projects.length === 1 && typeof body.projects[0] === 'string' && body.projects[0].trim());
+	const run = read(['workdays', 'show', id]).run;
+	assert.equal(run?.id, id); assert.equal(run.teamId, preflight.teamId); assert.equal(run.executionMode, 'simulation');
+	assert.equal(run.status, 'completed'); assert.equal(run.startedAt, original.startedAt);
+	assert.deepEqual(run.parameters?.proposalIds, body.proposalIds); assert.deepEqual(run.parameters.scheduledProjectIds, body.projects);
+	assert.deepEqual(retainedBytes(freezePath), bytes); assert.deepEqual(retainedBytes(receiptPath), receiptBytes);
 	return id;
 }
