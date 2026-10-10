@@ -1,6 +1,21 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.workday-start-receipt-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/acceptance/workday-start.test.ts
+    testName: "selects only the API-issued SDK workday through the retained receipt without listing proposal matches"
+  sdk.golden.workday-start-denials-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/acceptance/workday-start.test.ts
+    testName: "rejects incomplete moved conflicting or foreign SDK workday custody and preserves every original failed observation"
+  sdk.golden.workday-start-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/acceptance/workday-start-native.test.ts
+    testName: "native SDK public read in an isolated product verifier uses the original API workday without proposal discovery or admission replay"
   sdk.golden.exact-artifact-action-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

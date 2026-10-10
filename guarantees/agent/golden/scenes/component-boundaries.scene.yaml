@@ -3,6 +3,15 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: workday-start-receipt-unit
+    action: { verifier: sdk.golden.workday-start-receipt-unit }
+    expect: { status: passed }
+  - id: workday-start-denials-unit
+    action: { verifier: sdk.golden.workday-start-denials-unit }
+    expect: { status: passed }
+  - id: workday-start-native
+    action: { verifier: sdk.golden.workday-start-native }
+    expect: { status: passed }
   - id: exact-artifact-action-unit
     action: { verifier: sdk.golden.exact-artifact-action-unit }
     expect: { status: passed }
