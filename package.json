@@ -21,7 +21,9 @@
     "guarantees",
     "tests/acceptance",
     "treeseed.package.yaml",
-    "dist"
+    "dist",
+    "!dist/.treeseed-build-complete.json",
+    "!dist/.treeseed-build-complete.json.new"
   ],
   "publishConfig": {
     "access": "public"

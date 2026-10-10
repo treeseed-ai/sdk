@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { posix, resolve } from 'node:path';
 import { standardsSha256 } from '../../src/standards/index.ts';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -24,6 +24,9 @@ const args = process.argv.slice(2);
 if (args.length && (args.length !== 2 || args[0] !== '--archive')) throw new Error('Expected --archive <local npm tarball>.');
 const archive = args[1] ? resolve(args[1]) : null;
 const archiveFiles = archive ? new Set(execFileSync('tar', ['-tzf', archive], { encoding: 'utf8', timeout: 30000 }).trim().split('\n')) : null;
+for (const path of archiveFiles ?? [])
+	if (['package/dist/.treeseed-build-complete.json', 'package/dist/.treeseed-build-complete.json.new'].includes(posix.normalize(path)))
+		throw new Error('Packed SDK archive contains a local build coordination marker.');
 const missing = archive ? [] : required.filter((path) => !existsSync(resolve(root, path)));
 if (missing.length) throw new Error(`Missing standards package outputs: ${missing.join(', ')}.`);
 const localManifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as { name: string; version: string; exports: Record<string, unknown>; types?: string };
