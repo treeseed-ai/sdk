@@ -9,10 +9,23 @@ import { assertPackageCandidateOutputs, assertPackageExportTargets } from '../..
 it('resolves the packed golden verifier imports through the installed public contract without checkout source',()=>{
  const candidate=resolve(import.meta.dirname,'../../..'),root=mkdtempSync(join(tmpdir(),'sdk-golden-installed-'));
  const original=readFileSync(join(candidate,'tests/acceptance/golden-product.test.ts'));
+ const liveMarker=readFileSync(join(candidate,'dist/.treeseed-build-complete.json'));
  try {
-  const packed=JSON.parse(execFileSync('npm',['pack','--json','--ignore-scripts','--pack-destination',root],{cwd:candidate,encoding:'utf8',timeout:15000})) as {filename:string}[];
+  const packed=JSON.parse(execFileSync('npm',['pack','--json','--ignore-scripts','--pack-destination',root],{cwd:candidate,encoding:'utf8',timeout:15000})) as {filename:string;files:{path:string}[]}[];
   expect(packed).toHaveLength(1);
+  for(const name of ['dist/.treeseed-build-complete.json','dist/.treeseed-build-complete.json.new'])
+   expect(packed[0]!.files.map(file=>file.path)).not.toContain(name);
   const archive=join(root,packed[0]!.filename),held=readFileSync(archive),install=join(root,'installed');mkdirSync(install);
+  const reproduction=join(root,'reproduction');mkdirSync(reproduction);
+  execFileSync('tar',['-xzf',archive,'-C',reproduction],{timeout:15000});
+  const fixture=join(reproduction,'package'),repacked:Buffer[]=[];
+  for(const completedAt of ['2026-10-10T00:00:00.000Z','2026-10-10T01:00:00.000Z']) {
+   for(const suffix of ['','.new'])writeFileSync(join(fixture,`dist/.treeseed-build-complete.json${suffix}`),JSON.stringify({completedAt}));
+   const destination=join(root,`repack-${repacked.length}`);mkdirSync(destination);
+   const result=JSON.parse(execFileSync('npm',['pack','--json','--ignore-scripts','--pack-destination',destination],{cwd:fixture,encoding:'utf8',timeout:15000})) as {filename:string}[];
+   expect(result).toHaveLength(1);repacked.push(readFileSync(join(destination,result[0]!.filename)));
+  }
+  expect(repacked[1]).toEqual(repacked[0]);
   execFileSync('npm',['install','--prefix',install,'--omit=dev','--ignore-scripts','--package-lock=false','--no-save','--no-audit','--no-fund',archive],{encoding:'utf8',timeout:15000});
   const owner=join(install,'node_modules/@treeseed/sdk');
   const asset=readFileSync(join(owner,'tests/acceptance/golden-product.test.ts'),'utf8');
@@ -27,7 +40,7 @@ it('resolves the packed golden verifier imports through the installed public con
   expect(readFileSync(archive)).toEqual(held);
   // This resolves the actual archived contract import with production dependencies.
   // Managed verifier execution also requires the installed Reviewer loader and genuine authority.
- } finally {rmSync(root,{recursive:true,force:true});expect(readFileSync(join(candidate,'tests/acceptance/golden-product.test.ts'))).toEqual(original);}
+ } finally {rmSync(root,{recursive:true,force:true});expect(readFileSync(join(candidate,'tests/acceptance/golden-product.test.ts'))).toEqual(original);expect(readFileSync(join(candidate,'dist/.treeseed-build-complete.json'))).toEqual(liveMarker);}
 });
 
 describe('portable packed SDK exports and declarations', () => {
@@ -149,7 +162,7 @@ process.stdout.write(JSON.stringify({ projection, valid, denied, provider: contr
 			expect(valid.status).toBe(0);
 			expect(JSON.parse(valid.stdout.trim().split('\n').at(-1)!)).toMatchObject({ ok: true,
 				archiveDigest: `sha256:${createHash('sha256').update(originalBytes).digest('hex')}`, exportTargets: targets.length });
-			for (const mutation of ['export-map', 'declaration']) {
+			for (const mutation of ['export-map', 'declaration', 'build-marker', 'temporary-build-marker']) {
 				const workspace = join(root, mutation); mkdirSync(workspace);
 				execFileSync('tar', ['-xzf', archive, '-C', workspace], { timeout: 15000 });
 				const packageRoot = join(workspace, 'package');
@@ -158,15 +171,22 @@ process.stdout.write(JSON.stringify({ projection, valid, denied, provider: contr
 				if (mutation === 'export-map') {
 					packedManifest.exports['./standards']!.types = packedManifest.exports['./operator-contracts']!.types;
 					writeFileSync(join(packageRoot, 'package.json'), JSON.stringify(packedManifest));
-				} else writeFileSync(join(packageRoot, packedManifest.exports['./standards']!.types), 'export declare const incompatibleCandidate: never;\n');
+				} else if (mutation === 'declaration') writeFileSync(join(packageRoot, packedManifest.exports['./standards']!.types), 'export declare const incompatibleCandidate: never;\n');
+				let changedArchive: string;
+				if (mutation.endsWith('build-marker')) {
+					writeFileSync(join(packageRoot, `dist/.treeseed-build-complete.json${mutation === 'temporary-build-marker' ? '.new' : ''}`), JSON.stringify({ completedAt: '2026-10-10T02:00:00.000Z' }));
+					changedArchive = join(workspace, 'contaminated.tgz');
+					execFileSync('tar', ['-czf', changedArchive, '-C', workspace, 'package'], { timeout: 15000 });
+				} else {
 				const changed = JSON.parse(execFileSync('npm', ['pack', '--json', '--ignore-scripts'],
 					{ cwd: packageRoot, encoding: 'utf8', timeout: 15000 })) as Array<{ filename: string }>;
 				expect(changed).toHaveLength(1);
-				const changedArchive = join(packageRoot, changed[0]!.filename);
+				changedArchive = join(packageRoot, changed[0]!.filename);
+				}
 				expect(readFileSync(changedArchive).equals(originalBytes)).toBe(false);
 				const denied = inspect(changedArchive);
 				expect(denied.status).toBe(1);
-				expect(denied.stderr).toMatch(/candidate|declaration|export/iu);
+				expect(denied.stderr).toMatch(mutation.endsWith('build-marker') ? /coordination marker/iu : /candidate|declaration|export/iu);
 				expect(readFileSync(archive)).toEqual(originalBytes);
 			}
 			expect(inspect(archive).status).toBe(0);

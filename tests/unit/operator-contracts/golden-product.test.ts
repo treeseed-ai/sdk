@@ -125,6 +125,8 @@ it('ships golden acceptance using only the public assignment contract and declar
  const manifest=JSON.parse(readFileSync(new URL('package.json',candidate),'utf8'));
  const asset=readFileSync(new URL('tests/acceptance/golden-product.test.ts',candidate),'utf8');
  expect(manifest.files).toContain('treeseed.package.yaml');
+ expect(manifest.files).toContain('!dist/.treeseed-build-complete.json');
+ expect(manifest.files).toContain('!dist/.treeseed-build-complete.json.new');
  expect(asset).toContain("from '@treeseed/sdk/agent-capacity'");
  expect(asset).not.toMatch(/from ['"].*src\//u);
 });
