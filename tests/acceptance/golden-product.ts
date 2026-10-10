@@ -62,3 +62,24 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string): 
 		&& reviewerAttempt.contextRefs?.some((ref: Row) => ref.store === 'git' && ref.repository === source.repository && ref.commit === source.commit),
 		'ACCEPTANCE_SDK_ARCHIVE_REVIEW: Independent review must consume this exact Actor result and candidate');
 }
+
+export function sdkGoldenWorkdayId(read: (args: string[]) => Row, freeze: Row, explicit?: string): string {
+	let id = explicit;
+	const proposalId = freeze.proposal?.id;
+	if (!id && proposalId) {
+		const matches: Record<string, any>[] = [];
+		let cursor: string | undefined;
+		for (let page = 0; page < 40; page += 1) {
+			const result = read(['workdays', 'list', '--limit', '100', ...(cursor ? ['--cursor', cursor] : [])]);
+			assert.ok(Array.isArray(result.items) && typeof result.page?.hasMore === 'boolean', 'ACCEPTANCE_SDK_PAGINATION: Malformed workday page');
+			matches.push(...result.items.filter((item: Record<string, any>) => item.executionKind === 'workday' && item.parameters?.proposalIds?.includes(proposalId)));
+			if (!result.page?.hasMore) break;
+			assert.ok(result.page.nextCursor && result.page.nextCursor !== cursor && page < 39, 'ACCEPTANCE_SDK_PAGINATION: Incomplete workday evidence');
+			cursor = result.page.nextCursor;
+		}
+		assert.equal(matches.length, 1, 'ACCEPTANCE_SDK_WORKDAY: Frozen proposal must identify exactly one real workday');
+		id = matches[0]!.id;
+	}
+	assert.ok(typeof id === 'string' && id.startsWith('workday-'), 'ACCEPTANCE_SDK_WORKDAY: Explicit real workday or frozen proposal required');
+	return id;
+}
