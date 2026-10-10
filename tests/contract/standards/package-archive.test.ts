@@ -162,7 +162,7 @@ process.stdout.write(JSON.stringify({ projection, valid, denied, provider: contr
 			expect(valid.status).toBe(0);
 			expect(JSON.parse(valid.stdout.trim().split('\n').at(-1)!)).toMatchObject({ ok: true,
 				archiveDigest: `sha256:${createHash('sha256').update(originalBytes).digest('hex')}`, exportTargets: targets.length });
-			for (const mutation of ['export-map', 'declaration', 'build-marker', 'temporary-build-marker']) {
+			for (const mutation of ['export-map', 'declaration', 'build-marker', 'temporary-build-marker', 'aliased-build-marker']) {
 				const workspace = join(root, mutation); mkdirSync(workspace);
 				execFileSync('tar', ['-xzf', archive, '-C', workspace], { timeout: 15000 });
 				const packageRoot = join(workspace, 'package');
@@ -176,7 +176,13 @@ process.stdout.write(JSON.stringify({ projection, valid, denied, provider: contr
 				if (mutation.endsWith('build-marker')) {
 					writeFileSync(join(packageRoot, `dist/.treeseed-build-complete.json${mutation === 'temporary-build-marker' ? '.new' : ''}`), JSON.stringify({ completedAt: '2026-10-10T02:00:00.000Z' }));
 					changedArchive = join(workspace, 'contaminated.tgz');
-					execFileSync('tar', ['-czf', changedArchive, '-C', workspace, 'package'], { timeout: 15000 });
+					execFileSync('tar', ['-czf', changedArchive, '-C', workspace,
+						...(mutation === 'aliased-build-marker' ? ['--transform', 's,^package/dist/[.]treeseed-build-complete[.]json$,./package/dist/.treeseed-build-complete.json,'] : []), 'package'], { timeout: 15000 });
+					if (mutation === 'aliased-build-marker') {
+						const members = execFileSync('tar', ['-tzf', changedArchive], { encoding: 'utf8', timeout: 15000 }).split('\n');
+						expect(members).toContain('./package/dist/.treeseed-build-complete.json');
+						expect(members).toContain(`package/${identity.exports['./standards']!.types.slice(2)}`);
+					}
 				} else {
 				const changed = JSON.parse(execFileSync('npm', ['pack', '--json', '--ignore-scripts'],
 					{ cwd: packageRoot, encoding: 'utf8', timeout: 15000 })) as Array<{ filename: string }>;
