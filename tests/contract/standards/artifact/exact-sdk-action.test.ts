@@ -25,7 +25,8 @@ it('native exact SDK installation consumes the held archive at the explicit comm
  const archiveRoot = resolve(root, 'artifact'),fixture = resolve(root, 'fixture'),bin = resolve(root, 'bin'),installed = resolve(root, 'installed');
  const native = (command: string, args: string[], env: NodeJS.ProcessEnv = process.env, cwd = root) => {
   const timeout = Math.floor(deadline - performance.now()); expect(timeout).toBeGreaterThan(0);
-  const result = spawnSync(command, args, { cwd, env, encoding: 'utf8', timeout, killSignal: 'SIGKILL', detached: true, maxBuffer: 8 * 1024 * 1024 });
+  const options = { cwd, env, encoding: 'utf8' as const, timeout, killSignal: 'SIGKILL' as const, detached: true, maxBuffer: 8 * 1024 * 1024 };
+  const result = spawnSync(command, args, options);
   if (result.pid) try { process.kill(-result.pid, 'SIGKILL'); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error; }
   expect(result.error).toBeUndefined();expect(result.signal).toBeNull();return result;
  };
