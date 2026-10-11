@@ -15,13 +15,24 @@ export function sdkGoldenSource(freeze: Row, proposalIds: unknown): string {
 		'ACCEPTANCE_SDK_FREEZE: Exact current source and matching frozen proposal required');
 	return source;
 }
-export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string): void {
+export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, storedProposal: unknown): void {
 	const actors = assignments.filter(item => item.status === 'completed'
 		&& item.assignmentAttempt?.effectiveProfile?.activity === 'acting');
 	const final = (id: string) => actors.filter(item => item.assignmentAttempt.workItemId === id)
 		.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))).at(-1);
 	const release = final('simulate-release');
 	assert.ok(release, 'ACCEPTANCE_SDK_RELEASE: Completed release actor required');
+	assert.ok(storedProposal && typeof storedProposal === 'object' && !Array.isArray(storedProposal),
+		'ACCEPTANCE_SDK_PROPOSAL: Original public proposal record required');
+	const proposal = storedProposal as Row, sourceRef = release.assignmentAttempt.sourceRef;
+	assert.ok(sourceRef?.store === 'treedx' && sourceRef.model === 'proposal' && typeof sourceRef.id === 'string' && sourceRef.id,
+		'ACCEPTANCE_SDK_PROPOSAL: Release must retain its original proposal authority');
+	assert.equal(proposal.id, sourceRef.id, 'ACCEPTANCE_SDK_PROPOSAL: Public proposal differs from the executed authority');
+	assert.equal(proposal.projectId, release.assignmentAttempt.projectId, 'ACCEPTANCE_SDK_PROPOSAL: Public proposal belongs to another project');
+	assert.equal(proposal.title, 'Select accepted decisions in portable workday intent',
+		'ACCEPTANCE_SDK_PROPOSAL: Stored title differs from the fixed SDK proposal');
+	assert.equal(proposal.summary, 'Prove the SDK can express high-level decision-governed execution while keeping all derived execution state API-owned.',
+		'ACCEPTANCE_SDK_PROPOSAL: Stored summary differs from the fixed SDK proposal');
 	for (const item of actors.filter(item => ['research-context', 'architecture-contract', 'tests-first'].includes(item.assignmentAttempt.workItemId)))
 		assert.ok(item.assignmentAttempt.contextRefs?.some((ref: Row) => ref.store === 'git' && ref.commit === sourceBase),
 			'ACCEPTANCE_SDK_SOURCE: Early roles must receive exact frozen SDK source');

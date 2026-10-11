@@ -1,16 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { sdkGoldenSource, verifySdkGoldenProduct } from '../../acceptance/golden-product.ts';
-const commit = 'a'.repeat(40);
-const release = { id: 'release-row', createdAt: 'now', status: 'completed', assignmentAttempt: { id: 'release-attempt', workdayId: 'workday-fixture', projectId: 'sdk-project', agentClass: 'renamed-releaser', workItemId: 'simulate-release', effectiveProfile: { activity: 'acting' } },
-	lifecycleOutput: { sourceReference: { kind: 'git', repository: 'treeseed-ai/sdk', commit } },
-	assignmentResult: { id: 'release-result', assignmentId: 'release-attempt', references: [{ kind: 'git', repository: 'treeseed-ai/sdk', commit }], verification: ['npm run standards:build', 'npm run build', 'npm run release:verify', 'npm pack', 'npm run test:contracts', 'npm run standards:acceptance -- --archive treeseed-sdk-1.0.0.tgz']
-		.map(command => ({ command, status: 'passed', exitCode: 0, outputDigest: `sha256:${'b'.repeat(64)}`, durationSeconds: 1 })) } };
-const review = { ...release, id: 'review-row', assignmentAttempt: { ...release.assignmentAttempt, id: 'review-attempt', agentClass: 'renamed-reviewer', effectiveProfile: { activity: 'reviewing' },
-	contextRefs: [{ store: 'git', model: 'GitCommit', id: 'release-candidate', repository: 'treeseed-ai/sdk', commit }], predecessorResultIds: ['release-result'] },
-	assignmentResult: { ...release.assignmentResult, id: 'review-result', assignmentId: 'review-attempt' },
-	lifecycleOutput: { activityCompletion: { reviewDisposition: 'approved' } } };
+import { sdkGoldenSource, verifySdkGoldenProduct as verifyProduct } from '../../acceptance/golden-product.ts';
+import { commit, release, review, proposal } from './acceptance/golden-product-fixture.ts';
+const verifySdkGoldenProduct = (items: Parameters<typeof verifyProduct>[0], source: string) =>
+	Reflect.apply(verifyProduct, undefined, [items, source, proposal]);
 describe('SDK golden product gate (fixtures are not acceptance)', () => {
+	it('requires exact stored SDK proposal title summary and frozen identity without changing missing malformed or foreign observations', () => {
+		const check = (value: unknown) => Reflect.apply(verifyProduct, undefined, [[release, review], commit, value]);
+		expect(() => check(proposal)).not.toThrow();
+		const invalid: unknown[] = [undefined, null, [], '', {}, { ...proposal, id: 'foreign' }, { ...proposal, projectId: 'foreign' }];
+		for (const field of ['title', 'summary']) {
+			for (const value of [undefined, null, false, 1, [], {}, '', ' ', ` ${proposal[field as 'title' | 'summary']}`, `${proposal[field as 'title' | 'summary']} `, 'Changed objective'])
+				invalid.push({ ...proposal, [field]: value });
+		}
+		for (const value of invalid) {
+			const held = structuredClone(value);
+			expect.soft(() => check(value)).toThrow('ACCEPTANCE_SDK_PROPOSAL'); expect(value).toEqual(held);
+		}
+	});
+
 	it('requires independent measured replay of all three public release commands and rejects every invalid reviewer receipt', () => {
 		const before = structuredClone([release, review]);
 		expect(() => verifySdkGoldenProduct([release, review], commit)).not.toThrow();

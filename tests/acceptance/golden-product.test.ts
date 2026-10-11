@@ -20,6 +20,8 @@ test('SDK golden retains exact source and passing measured candidate release gat
 	const run = read(['workdays', 'show', id]).run;
 	if (proposalId) assert.ok(run.parameters.proposalIds.includes(proposalId), 'ACCEPTANCE_SDK_WORKDAY: Wrong frozen proposal');
 	assert.equal(run.executionMode, 'simulation'); assert.equal(run.status, 'completed');
+	const proposalArgs = ['proposals', 'show', proposalId, '--project', freeze.request.body.projects[0]];
+	const proposal = read(proposalArgs);
 	const assignments: Record<string, any>[] = [];
 	let cursor: string | undefined;
 	for (let page = 0; page < 40; page += 1) {
@@ -30,7 +32,7 @@ test('SDK golden retains exact source and passing measured candidate release gat
 		assert.ok(result.page.nextCursor && result.page.nextCursor !== cursor && page < 39, 'ACCEPTANCE_SDK_PAGINATION: Incomplete assignment evidence');
 		cursor = result.page.nextCursor;
 	}
-	verifySdkGoldenProduct(assignments, sdkGoldenSource(freeze, run.parameters.proposalIds));
+	verifySdkGoldenProduct(assignments, sdkGoldenSource(freeze, run.parameters.proposalIds), proposal);
 	// Complete public list/show custody, not a time-cutoff approximation or a
 	// synthetic replacement for a managed Releaser and its independent Reviewer.
 	assert.equal(new Set(assignments.map(item => item.id)).size, assignments.length, 'ACCEPTANCE_SDK_PAGINATION: Duplicate assignments');
@@ -39,7 +41,7 @@ test('SDK golden retains exact source and passing measured candidate release gat
 		assert.equal(value.id, item.id); assert.equal(value.workDayId, id);
 		return value;
 	});
-	verifySdkGoldenProduct(full, sdkGoldenSource(freeze, run.parameters.proposalIds));
+	verifySdkGoldenProduct(full, sdkGoldenSource(freeze, run.parameters.proposalIds), proposal);
 	const final = (activity: string, workItemId = 'simulate-release') => full.filter(item => item.status === 'completed'
 		&& item.assignmentAttempt?.workItemId === workItemId && item.assignmentAttempt.effectiveProfile?.activity === activity)
 		.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))).at(-1);
@@ -111,6 +113,7 @@ test('SDK golden retains exact source and passing measured candidate release gat
 		assert.ok(result.verification.every(record => record.status === 'passed' && record.exitCode === 0), 'ACCEPTANCE_SDK_RELEASE_GATE: Failed observations cannot pass');
 	}
 	for (const item of full) assert.deepEqual(read(['assignments', 'show', item.id]), item, 'ACCEPTANCE_SDK_CUSTODY: Public evidence changed during read-back');
+	assert.deepEqual(read(proposalArgs), proposal, 'ACCEPTANCE_SDK_PROPOSAL: Stored proposal changed during independent read-back');
 	assert.deepEqual(read(['workdays', 'show', id]).run, run, 'ACCEPTANCE_SDK_CUSTODY: Workday evidence changed during read-back');
 	assert.equal(readFileSync(freezePath, 'utf8'), freezeBytes, 'ACCEPTANCE_SDK_FREEZE: Original freeze bytes changed');
 });
