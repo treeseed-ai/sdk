@@ -181,8 +181,10 @@ export function sdkGoldenFrozenProposal(freeze: Row): Row {
 	const input: unknown = JSON.parse(bytes.toString('utf8'));
 	assert.ok(input && typeof input === 'object' && !Array.isArray(input), 'ACCEPTANCE_SDK_FROZEN_REQUEST: Original proposal object required');
 	const proposal = input as Row;
-	assert.ok(proposal.status === 'draft' && proposal.id === freeze.proposal?.id
+	assert.ok(proposal.status === 'draft' && typeof proposal.id === 'string' && proposal.id.trim() === proposal.id && proposal.id
+		&& proposal.id === freeze.proposal?.id
 		&& Array.isArray(freeze.request?.body?.projects) && freeze.request.body.projects.length === 1
+		&& typeof proposal.projectId === 'string' && proposal.projectId.trim() === proposal.projectId && proposal.projectId
 		&& proposal.projectId === freeze.request.body.projects[0]
 		&& typeof proposal.request === 'string' && proposal.request.trim(),
 		'ACCEPTANCE_SDK_FROZEN_REQUEST: Exact initial draft identity project and request required');

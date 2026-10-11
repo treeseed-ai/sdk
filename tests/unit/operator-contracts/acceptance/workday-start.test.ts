@@ -8,10 +8,12 @@ import { workdayStartFixture } from './workday-start-fixture.ts';
 it('reads only the original frozen draft request and rejects missing ambiguous changed foreign or redirected input without repairing it', () => {
 	const f = workdayStartFixture(), path = resolve(f.root, 'proposal-input.json');
 	const proposal = { id: f.freeze.proposal.id, projectId: f.freeze.request.body.projects[0], status: 'draft', request: 'Controlled unchanged SDK request' };
-	const receipt = (bytes: string) => ({ ...f.freeze, receipts: { [path]: `sha256:${createHash('sha256').update(bytes).digest('hex')}` } });
+	const receipt = (bytes: string) => ({ ...structuredClone(f.freeze), receipts: { [path]: `sha256:${createHash('sha256').update(bytes).digest('hex')}` } });
 	const bytes = JSON.stringify(proposal), freeze = receipt(bytes); writeFileSync(path, bytes);
 	try {
 		expect(sdkGoldenFrozenProposal(freeze)).toEqual(proposal);
+		const boundary = bytes + ' '.repeat(1_048_576 - Buffer.byteLength(bytes)); writeFileSync(path, boundary);
+		expect(sdkGoldenFrozenProposal(receipt(boundary))).toEqual(proposal); writeFileSync(path, bytes);
 		for (const value of [undefined, null, [], {}, { [path]: null }, { [path]: 'invalid' },
 			{ [path]: freeze.receipts[path], [resolve(f.root, 'other/proposal-input.json')]: freeze.receipts[path] }]) {
 			const changed = { ...freeze, receipts: value }, held = structuredClone(changed);
@@ -19,9 +21,15 @@ it('reads only the original frozen draft request and rejects missing ambiguous c
 		}
 		for (const value of ['', '{', 'null', '[]', '{}', JSON.stringify({ ...proposal, id: 'foreign' }),
 			JSON.stringify({ ...proposal, projectId: 'foreign' }), JSON.stringify({ ...proposal, status: 'ready' }),
-			JSON.stringify({ ...proposal, request: '' }), JSON.stringify({ ...proposal, request: ' ' }), ' '.repeat(1_048_577)]) {
+			JSON.stringify({ ...proposal, request: '' }), JSON.stringify({ ...proposal, request: ' ' }),
+			JSON.stringify({ ...proposal, request: false }), JSON.stringify({ ...proposal, request: [] }), ' '.repeat(1_048_577)]) {
 			writeFileSync(path, value); expect(() => sdkGoldenFrozenProposal(receipt(value))).toThrow();
 			expect(readFileSync(path, 'utf8')).toBe(value);
+		}
+		for (const field of ['id', 'projectId']) for (const value of [undefined, null, '', ' ', false, []]) {
+			const changed = { ...proposal, [field]: value }, content = JSON.stringify(changed), input = receipt(content);
+			Reflect.set(field === 'id' ? input.proposal : input.request.body.projects, field === 'id' ? 'id' : '0', value);
+			writeFileSync(path, content); expect(() => sdkGoldenFrozenProposal(input)).toThrow();
 		}
 		writeFileSync(path, bytes + ' '); expect(() => sdkGoldenFrozenProposal(freeze)).toThrow('ACCEPTANCE_SDK_FROZEN_REQUEST');
 		writeFileSync(path, bytes); chmodSync(path, 0); expect(() => sdkGoldenFrozenProposal(freeze)).toThrow(); chmodSync(path, 0o600);
