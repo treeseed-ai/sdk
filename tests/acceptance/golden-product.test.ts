@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { sdkGoldenSource, sdkGoldenWorkdayId, verifySdkGoldenProduct, sdkGoldenProposalProvenance, sdkGoldenFrozenProposal, sdkGoldenLibraryFiles, sdkGoldenProposalDocument, type SdkGoldenOriginal } from './golden-product.ts';
+import { sdkGoldenReadArguments, sdkGoldenSource, sdkGoldenWorkdayId, verifySdkGoldenProduct, sdkGoldenProposalProvenance, sdkGoldenFrozenProposal, sdkGoldenLibraryFiles, sdkGoldenProposalDocument, type SdkGoldenOriginal } from './golden-product.ts';
 import { assignmentAttemptSchema, assignmentResultSchema } from '@treeseed/sdk/agent-capacity';
 
 test('SDK golden retains exact source and passing measured candidate release gates', () => {
 	const read = (args: string[]) => {
-		const envelope = JSON.parse(execFileSync('trsd', [...args, '--server', 'local', '--team', process.env.TREESEED_ACCEPTANCE_TEAM ?? 'treeseed', '--json'],
+		const envelope = JSON.parse(execFileSync('trsd', sdkGoldenReadArguments(args, process.env.TREESEED_ACCEPTANCE_TEAM ?? 'treeseed'),
 			{ encoding: 'utf8', timeout: 30000, maxBuffer: 32 * 1024 * 1024 }));
 		assert.equal(envelope.ok, true, 'ACCEPTANCE_SDK_READ: Authoritative read failed'); return envelope.result;
 	};

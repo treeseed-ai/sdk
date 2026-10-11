@@ -5,8 +5,25 @@ import { exactEntityReferenceSchema, executionEdgeSchema, activityProfileSchema 
 import { validatePortableContentData } from '@treeseed/sdk/content-validation';
 import { createHash } from 'node:crypto';
 import { parse, parseDocument, visit } from 'yaml';
+import { TREESEED_COMMAND_TREE_V1, type CommandLeafDescriptor } from '@treeseed/sdk/operator-contracts';
 
 type Row = Record<string, any>;
+export function sdkGoldenReadArguments(args: readonly string[], team: string): string[] {
+	let nodes = TREESEED_COMMAND_TREE_V1.commands, selected: CommandLeafDescriptor | undefined;
+	for (const segment of args) {
+		const node = nodes.find(value => value.segment === segment);
+		assert.ok(node, 'ACCEPTANCE_SDK_READ: Supported public read command required');
+		if (node.nodeType === 'leaf') { selected = node; break; }
+		nodes = node.children;
+	}
+	assert.ok(selected?.kind === 'read', 'ACCEPTANCE_SDK_READ: Supported public read command required');
+	const operation = selected.execution.kind === 'operation' ? selected.execution : undefined;
+	const scopedTeam = operation?.input.some(input => input.source === 'context' && input.name === 'team');
+	assert.ok(!scopedTeam || (typeof team === 'string' && team.trim()), 'ACCEPTANCE_SDK_READ: Exact team required');
+	assert.ok(!args.some(value => ['--server', '--team', '--json'].includes(value)),
+		'ACCEPTANCE_SDK_READ: Scope selectors must be supplied once by the owning reader');
+	return [...args, ...(operation ? ['--server', 'local'] : []), ...(scopedTeam ? ['--team', team] : []), '--json'];
+}
 export type SdkGoldenOriginal = { binding: Row; files: Row; initialProposal: Row; teamLibrary?: Row; referenceFiles?: Row[]; graph?: Row };
 /** The selected scene consumes the existing CLI library-read result. */
 export function sdkGoldenLibraryFiles(readback: Row): Row {
