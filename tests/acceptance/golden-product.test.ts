@@ -22,6 +22,13 @@ test('SDK golden retains exact source and passing measured candidate release gat
 	assert.equal(run.executionMode, 'simulation'); assert.equal(run.status, 'completed');
 	const proposalArgs = ['proposals', 'show', proposalId, '--project', freeze.request.body.projects[0]];
 	const proposal = read(proposalArgs);
+	const provenance = proposal.metadata?.contentProvenance;
+	assert.ok(provenance?.repositoryId && /^[a-f0-9]{40}$/u.test(provenance.commitSha)
+		&& typeof provenance.contentPath === 'string', 'ACCEPTANCE_SDK_PROPOSAL: Original TreeDX provenance required');
+	const libraryArgs = ['library', 'show', proposal.projectId];
+	const contentArgs = ['library', 'read', proposal.projectId, provenance.contentPath, '--ref', provenance.commitSha];
+	const library = read(libraryArgs), content = read(contentArgs);
+	const original = { binding: library.library, files: content.data ?? content };
 	const assignments: Record<string, any>[] = [];
 	let cursor: string | undefined;
 	for (let page = 0; page < 40; page += 1) {
@@ -32,7 +39,7 @@ test('SDK golden retains exact source and passing measured candidate release gat
 		assert.ok(result.page.nextCursor && result.page.nextCursor !== cursor && page < 39, 'ACCEPTANCE_SDK_PAGINATION: Incomplete assignment evidence');
 		cursor = result.page.nextCursor;
 	}
-	verifySdkGoldenProduct(assignments, sdkGoldenSource(freeze, run.parameters.proposalIds), proposal);
+	verifySdkGoldenProduct(assignments, sdkGoldenSource(freeze, run.parameters.proposalIds), proposal, original);
 	// Complete public list/show custody, not a time-cutoff approximation or a
 	// synthetic replacement for a managed Releaser and its independent Reviewer.
 	assert.equal(new Set(assignments.map(item => item.id)).size, assignments.length, 'ACCEPTANCE_SDK_PAGINATION: Duplicate assignments');
@@ -41,7 +48,7 @@ test('SDK golden retains exact source and passing measured candidate release gat
 		assert.equal(value.id, item.id); assert.equal(value.workDayId, id);
 		return value;
 	});
-	verifySdkGoldenProduct(full, sdkGoldenSource(freeze, run.parameters.proposalIds), proposal);
+	verifySdkGoldenProduct(full, sdkGoldenSource(freeze, run.parameters.proposalIds), proposal, original);
 	const final = (activity: string, workItemId = 'simulate-release') => full.filter(item => item.status === 'completed'
 		&& item.assignmentAttempt?.workItemId === workItemId && item.assignmentAttempt.effectiveProfile?.activity === activity)
 		.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))).at(-1);
@@ -114,6 +121,8 @@ test('SDK golden retains exact source and passing measured candidate release gat
 	}
 	for (const item of full) assert.deepEqual(read(['assignments', 'show', item.id]), item, 'ACCEPTANCE_SDK_CUSTODY: Public evidence changed during read-back');
 	assert.deepEqual(read(proposalArgs), proposal, 'ACCEPTANCE_SDK_PROPOSAL: Stored proposal changed during independent read-back');
+	assert.deepEqual(read(libraryArgs), library, 'ACCEPTANCE_SDK_PROPOSAL: Library binding changed during read-back');
+	assert.deepEqual(read(contentArgs), content, 'ACCEPTANCE_SDK_PROPOSAL: Original content changed during read-back');
 	assert.deepEqual(read(['workdays', 'show', id]).run, run, 'ACCEPTANCE_SDK_CUSTODY: Workday evidence changed during read-back');
 	assert.equal(readFileSync(freezePath, 'utf8'), freezeBytes, 'ACCEPTANCE_SDK_FREEZE: Original freeze bytes changed');
 });

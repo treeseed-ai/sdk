@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, realpathSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { exactEntityReferenceSchema } from '@treeseed/sdk/agent-capacity';
+import { createHash } from 'node:crypto';
+import { parse } from 'yaml';
 
 type Row = Record<string, any>;
 function measured(record: Row | undefined): boolean {
@@ -16,7 +18,8 @@ export function sdkGoldenSource(freeze: Row, proposalIds: unknown): string {
 		'ACCEPTANCE_SDK_FREEZE: Exact current source and matching frozen proposal required');
 	return source;
 }
-export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, storedProposal: unknown): void {
+export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, storedProposal: unknown,
+	original?: { binding: Row; files: Row }): void {
 	const actors = assignments.filter(item => item.status === 'completed'
 		&& item.assignmentAttempt?.effectiveProfile?.activity === 'acting');
 	const final = (id: string) => actors.filter(item => item.assignmentAttempt.workItemId === id)
@@ -25,7 +28,32 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, s
 	assert.ok(release, 'ACCEPTANCE_SDK_RELEASE: Completed release actor required');
 	assert.ok(storedProposal && typeof storedProposal === 'object' && !Array.isArray(storedProposal),
 		'ACCEPTANCE_SDK_PROPOSAL: Original public proposal record required');
-	const proposal = storedProposal as Row, sourceRef = release.assignmentAttempt.sourceRef;
+	const governance = storedProposal as Row, provenance = governance.metadata?.contentProvenance;
+	assert.ok(provenance && /^repo_[A-Za-z0-9_-]+$/u.test(provenance.repositoryId)
+		&& /^[a-f0-9]{40}$/u.test(provenance.commitSha) && /^[a-f0-9]{64}$/u.test(provenance.digest)
+		&& typeof provenance.contentPath === 'string' && provenance.contentPath.startsWith('proposals/')
+		&& !provenance.contentPath.split('/').some((part: string) => !part || part === '.' || part === '..')
+		&& Number.isSafeInteger(governance.activeVersion) && governance.activeVersion > 0
+		&& governance.activeContentHash === provenance.digest,
+		'ACCEPTANCE_SDK_PROPOSAL: Original exact governed content provenance required');
+	assert.ok(original && original.binding?.repositoryId === provenance.repositoryId
+		&& original.files?.repoId === provenance.repositoryId && original.files.resolvedRef === provenance.commitSha
+		&& Array.isArray(original.files.files) && original.files.files.length === 1,
+		'ACCEPTANCE_SDK_PROPOSAL: Independently resolved original library and exact content required');
+	const file = original.files.files[0];
+	assert.ok(file && file.path === provenance.contentPath && typeof file.content === 'string'
+		&& Buffer.byteLength(file.content) <= 1_048_576
+		&& createHash('sha256').update(file.content).digest('hex') === provenance.digest,
+		'ACCEPTANCE_SDK_PROPOSAL: Original recorded path and raw proposal bytes required');
+	const document = file.content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u);
+	assert.ok(document, 'ACCEPTANCE_SDK_PROPOSAL: Original frontmatter required');
+	const proposal = parse(document[1], { maxAliasCount: 0 }) as Row;
+	assert.deepEqual(proposal, file.frontmatter, 'ACCEPTANCE_SDK_PROPOSAL: Readback contradicts original bytes');
+	assert.ok(proposal && typeof proposal === 'object' && !Array.isArray(proposal)
+		&& proposal.id === governance.id && proposal.projectId === governance.projectId
+		&& proposal.title === governance.title && proposal.summary === governance.summary && proposal.request === governance.body,
+		'ACCEPTANCE_SDK_PROPOSAL: Governance index differs from its original content');
+	const sourceRef = release.assignmentAttempt.sourceRef;
 	assert.ok(sourceRef?.store === 'treedx' && sourceRef.model === 'proposal' && typeof sourceRef.id === 'string' && sourceRef.id,
 		'ACCEPTANCE_SDK_PROPOSAL: Release must retain its original proposal authority');
 	assert.equal(proposal.id, sourceRef.id, 'ACCEPTANCE_SDK_PROPOSAL: Public proposal differs from the executed authority');

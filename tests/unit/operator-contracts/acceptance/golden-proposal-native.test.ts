@@ -82,9 +82,9 @@ Reflect.apply(verifySdkGoldenProduct,undefined,[${JSON.stringify([release, revie
 		const retained = structuredClone(failed); mode = 'exact'; expect((await observe()).stdout).toBe('verified');
 		expect(failed).toEqual(retained); expect(failed).toHaveLength(36);
 		expect(calls.filter(value => value === 'GET /v1/projects/sdk-project/proposals/sdk-proposal')).toHaveLength(39);
-		expect(calls.filter(value => value === 'GET /v1/projects/sdk-project/treedx-library')).toHaveLength(33);
+		expect(calls.filter(value => value === 'GET /v1/projects/sdk-project/treedx-library')).toHaveLength(34);
 		expect(calls.filter(value => value === 'POST /v1/dx/projects/sdk-project/repos/repo_sdk_fixture/files/read')).toHaveLength(33);
-		expect(calls).toHaveLength(105);
+		expect(calls).toHaveLength(106);
 		expect({ release, review, proposal }).toEqual(original);
 		// The owning SDK transport and isolated verifier are real. Upstream API
 		// values are controlled; this is not a managed governance or golden receipt.
