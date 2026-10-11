@@ -1,10 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { sdkGoldenSource, sdkGoldenLibraryFiles, verifySdkGoldenProduct as verifyProduct } from '../../acceptance/golden-product.ts';
+import { sdkGoldenSource, sdkGoldenLibraryFiles, verifySdkGoldenProposalReferences, verifySdkGoldenProduct as verifyProduct } from '../../acceptance/golden-product.ts';
+import { stringify } from 'yaml';
+import { createHash } from 'node:crypto';
 import { commit, release, review, proposal, proposalReadback } from './acceptance/golden-product-fixture.ts';
 const verifySdkGoldenProduct = (items: Parameters<typeof verifyProduct>[0], source: string) =>
 	Reflect.apply(verifyProduct, undefined, [items, source, proposalReadback().governance, proposalReadback().original]);
 describe('SDK golden product gate (fixtures are not acceptance)', () => {
+	it('rejects a coherently rehashed closed discussion that names another proposal repository or path', () => {
+		for (const [field, value] of [['repository', 'repo_foreign'], ['path', 'proposals/foreign.mdx']]) {
+			const input = structuredClone(proposal), original = proposalReadback().original, file = original.referenceFiles[2]!.files[0]!;
+			Reflect.set(file.frontmatter.subjectRef, field!, value); file.content = `---\n${stringify(file.frontmatter)}---\n`;
+			input.discussionRef.digest = `sha256:${createHash('sha256').update(file.content).digest('hex')}`;
+			const retained = structuredClone({ input, original });
+			expect.soft(() => verifySdkGoldenProposalReferences(input, original, release.assignmentAttempt)).toThrow('ACCEPTANCE_SDK_POPULATED_PROPOSAL');
+			expect({ input, original }).toEqual(retained);
+		}
+	});
 	it('consumes the supported CLI library read result envelope and rejects raw SDK reply fallback', () => {
 		const result = { ok: true, repoId: 'repo_sdk_fixture', resolvedRef: commit, files: [] };
 		const observed = { result, receipt: { operation: 'read' } }, held = structuredClone(observed);
