@@ -4,16 +4,37 @@ import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { sdkGoldenWorkdayId, sdkGoldenFrozenProposal } from '../../../acceptance/golden-product.ts';
 import { workdayStartFixture } from './workday-start-fixture.ts';
+import { proposal as readyProposal } from './golden-product-fixture.ts';
 
 it('reads only the original frozen draft request and rejects missing ambiguous changed foreign or redirected input without repairing it', () => {
 	const f = workdayStartFixture(), path = resolve(f.root, 'proposal-input.json');
-	const proposal = { id: f.freeze.proposal.id, projectId: f.freeze.request.body.projects[0], status: 'draft', request: 'Controlled unchanged SDK request' };
+	const proposal = { ...structuredClone(readyProposal), id: f.freeze.proposal.id, projectId: f.freeze.request.body.projects[0], status: 'draft' };
+	for (const item of proposal.executionPlan.workItems) { Reflect.deleteProperty(item, 'estimate'); Reflect.deleteProperty(item, 'reviewEstimate'); }
 	const receipt = (bytes: string) => ({ ...structuredClone(f.freeze), receipts: { [path]: `sha256:${createHash('sha256').update(bytes).digest('hex')}` } });
 	const bytes = JSON.stringify(proposal), freeze = receipt(bytes); writeFileSync(path, bytes);
 	try {
 		expect(sdkGoldenFrozenProposal(freeze)).toEqual(proposal);
 		const boundary = bytes + ' '.repeat(1_048_576 - Buffer.byteLength(bytes)); writeFileSync(path, boundary);
 		expect(sdkGoldenFrozenProposal(receipt(boundary))).toEqual(proposal); writeFileSync(path, bytes);
+		const denied: unknown[] = [];
+		for (const field of ['executionPlan', 'evidenceRefs', 'objectiveRefs', 'title', 'summary']) {
+			for (const value of [undefined, null, '', false, [], {}]) denied.push({ ...proposal, [field]: value });
+		}
+		for (const [index] of proposal.executionPlan.workItems.entries()) {
+			for (const field of ['id', 'agentClass', 'workspace', 'activity', 'review', 'maximumReviewCycles', 'objective',
+				'contextRefs', 'requestedPermissions', 'requiredCapabilities', 'acceptanceCriteria']) {
+				const value = structuredClone(proposal); Reflect.deleteProperty(value.executionPlan.workItems[index]!, field); denied.push(value);
+			}
+			for (const field of ['estimate', 'reviewEstimate', 'ownerEstimate', 'reviewerEstimate']) {
+				const value = structuredClone(proposal); Reflect.set(value.executionPlan.workItems[index]!, field, null); denied.push(value);
+			}
+		}
+		for (const value of denied) {
+			const content = JSON.stringify(value); writeFileSync(path, content);
+			expect.soft(() => sdkGoldenFrozenProposal(receipt(content))).toThrow('ACCEPTANCE_SDK_FROZEN_REQUEST');
+			expect(readFileSync(path, 'utf8')).toBe(content);
+		}
+		writeFileSync(path, bytes);
 		for (const value of [undefined, null, [], {}, { [path]: null }, { [path]: 'invalid' },
 			{ [path]: freeze.receipts[path], [resolve(f.root, 'other/proposal-input.json')]: freeze.receipts[path] }]) {
 			const changed = { ...freeze, receipts: value }, held = structuredClone(changed);

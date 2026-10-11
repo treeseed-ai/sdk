@@ -71,6 +71,46 @@ export function sdkGoldenProposalDocument(storedProposal: unknown, original: Sdk
 		'ACCEPTANCE_SDK_PROPOSAL: Governance index differs from its original content');
 	return proposal;
 }
+function verifySdkGoldenAuthoredWork(proposal: Row, draft = false): void {
+	const sourceCode = draft ? 'ACCEPTANCE_SDK_FROZEN_REQUEST' : 'ACCEPTANCE_SDK_PROPOSAL';
+	const graphCode = draft ? sourceCode : 'ACCEPTANCE_SDK_GRAPH';
+	assert.ok(Array.isArray(proposal.evidenceRefs), `${sourceCode}: Original source issue evidence required`);
+	const sourceEvidence = proposal.evidenceRefs.filter((ref: unknown) => ref && typeof ref === 'object'
+		&& !Array.isArray(ref) && (ref as Row).url === 'https://github.com/treeseed-ai/sdk/issues/299');
+	assert.equal(sourceEvidence.length, 1, `${sourceCode}: One unambiguous original SDK source issue required`);
+	const issue = exactEntityReferenceSchema.safeParse(sourceEvidence[0]);
+	assert.ok(issue.success && issue.data.store === 'url' && issue.data.model === 'issue',
+		`${sourceCode}: Canonical original SDK source issue reference required`);
+	const authored = proposal.executionPlan?.workItems;
+	const fixedRows = [
+		['research-context', 'researcher', 'treedx'], ['architecture-contract', 'architect', 'treedx'],
+		['tests-first', 'tester', 'git'], ['implement-change', 'engineer', 'git'],
+		['document-change', 'technical-writer', 'git'], ['simulate-release', 'releaser', 'git'],
+	] as const;
+	assert.ok(Array.isArray(authored) && authored.length === fixedRows.length
+		&& authored.every(item => item && typeof item === 'object' && !Array.isArray(item))
+		&& new Set(authored.map(item => item.id)).size === fixedRows.length,
+		`${graphCode}: Six unique original authored work items required`);
+	for (const [id, agentClass, workspace] of fixedRows) {
+		const item = authored.find(row => row.id === id);
+		assert.ok(item && item.agentClass === agentClass && item.workspace === workspace
+			&& item.activity === 'acting' && item.review === 'required' && item.maximumReviewCycles === 2
+			&& Array.isArray(item.dependsOn) && item.dependsOn.length === 0
+			&& ['objective', 'contextRefs', 'requestedPermissions', 'requiredCapabilities', 'acceptanceCriteria',
+				...(draft ? [] : ['estimate', 'reviewEstimate'])].every(field => Object.hasOwn(item, field)),
+			`${graphCode}: Original ${id} class workspace dependencies and review policy required`);
+		if (draft) assert.ok(['estimate', 'reviewEstimate', 'ownerEstimate', 'reviewerEstimate'].every(field => !Object.hasOwn(item, field))
+			&& typeof item.objective === 'string' && item.objective.trim()
+			&& Array.isArray(item.contextRefs) && item.contextRefs.length > 0
+			&& item.contextRefs.every((ref: unknown) => exactEntityReferenceSchema.safeParse(ref).success)
+			&& item.requestedPermissions && typeof item.requestedPermissions === 'object' && !Array.isArray(item.requestedPermissions)
+			&& Array.isArray(item.requiredCapabilities) && item.requiredCapabilities.every((value: unknown) => typeof value === 'string' && value.trim())
+			&& Array.isArray(item.acceptanceCriteria) && item.acceptanceCriteria.length > 0
+			&& item.acceptanceCriteria.every((value: unknown) => typeof value === 'string' && value.trim()),
+			`${graphCode}: Explicit estimate-free original work required`);
+	}
+}
+
 export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, storedProposal: unknown,
 	original?: SdkGoldenOriginal): void {
 	const actors = assignments.filter(item => item.status === 'completed'
@@ -96,37 +136,20 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, s
 		&& typeof original.initialProposal.request === 'string' && original.initialProposal.request.trim()
 		&& proposal.request === original.initialProposal.request,
 		'ACCEPTANCE_SDK_FROZEN_REQUEST: Ready proposal must retain its original frozen request; source issue is evidence only');
-	assert.ok(Array.isArray(proposal.evidenceRefs), 'ACCEPTANCE_SDK_PROPOSAL: Original source issue evidence required');
-	const sourceEvidence = proposal.evidenceRefs.filter((ref: unknown) => ref && typeof ref === 'object'
-		&& !Array.isArray(ref) && (ref as Row).url === 'https://github.com/treeseed-ai/sdk/issues/299');
-	assert.equal(sourceEvidence.length, 1, 'ACCEPTANCE_SDK_PROPOSAL: One unambiguous original SDK source issue required');
-	const issue = exactEntityReferenceSchema.safeParse(sourceEvidence[0]);
-	assert.ok(issue.success && issue.data.store === 'url' && issue.data.model === 'issue',
-		'ACCEPTANCE_SDK_PROPOSAL: Canonical original SDK source issue reference required');
 	// Check the original public proposal, not the derived graph node counts.
 	// Genuine estimate provenance and generated review readiness have separate gates.
-	const authored = proposal.executionPlan?.workItems;
-	const fixedRows = [
-		['research-context', 'researcher', 'treedx'], ['architecture-contract', 'architect', 'treedx'],
-		['tests-first', 'tester', 'git'], ['implement-change', 'engineer', 'git'],
-		['document-change', 'technical-writer', 'git'], ['simulate-release', 'releaser', 'git'],
-	] as const;
-	assert.ok(Array.isArray(authored) && authored.length === fixedRows.length
-		&& authored.every(item => item && typeof item === 'object' && !Array.isArray(item))
-		&& new Set(authored.map(item => item.id)).size === fixedRows.length,
-		'ACCEPTANCE_SDK_GRAPH: Six unique original authored work items required');
-	for (const [id, agentClass, workspace] of fixedRows) {
-		const item = authored.find(row => row.id === id);
-		assert.ok(item && item.agentClass === agentClass && item.workspace === workspace
-			&& item.activity === 'acting' && item.review === 'required' && item.maximumReviewCycles === 2
-			&& Array.isArray(item.dependsOn) && item.dependsOn.length === 0
-			&& ['objective', 'estimate', 'reviewEstimate', 'contextRefs', 'requestedPermissions', 'requiredCapabilities', 'acceptanceCriteria']
-				.every(field => Object.hasOwn(item, field)),
-			`ACCEPTANCE_SDK_GRAPH: Original ${id} class workspace dependencies and review policy required`);
-	}
+	verifySdkGoldenAuthoredWork(proposal);
 	const expanded = validatePortableContentData('proposal', proposal);
 	assert.ok(expanded.ok, 'ACCEPTANCE_SDK_GRAPH: Complete original canonical Proposal and WorkItems required');
 	assert.deepEqual(expanded.data, proposal, 'ACCEPTANCE_SDK_GRAPH: Original configuration cannot inherit defaults or discard shorthand');
+	verifySdkGoldenAuthoredWork(original.initialProposal, true);
+	for (const field of ['title', 'summary', 'evidenceRefs']) assert.deepEqual(proposal[field], original.initialProposal[field],
+		'ACCEPTANCE_SDK_FROZEN_REQUEST: Fixed original objective and evidence changed');
+	for (const item of proposal.executionPlan.workItems) {
+		const { estimate, reviewEstimate, ...fixed } = item;
+		assert.deepEqual(fixed, original.initialProposal.executionPlan.workItems.find((row: Row) => row.id === item.id),
+			'ACCEPTANCE_SDK_FROZEN_REQUEST: Fixed original work changed while becoming ready');
+	}
 	verifySdkGoldenProposalReferences(proposal, original!, release.assignmentAttempt);
 	assert.ok(sourceRef.revision === governance.activeVersion && sourceRef.digest === `sha256:${provenance.digest}`
 		&& sourceRef.repository === provenance.repositoryId && sourceRef.commit === provenance.commitSha
@@ -194,7 +217,7 @@ export function verifySdkGoldenProposalReferences(proposal: Row, original: SdkGo
 		const ref = exactEntityReferenceSchema.parse(value), model = index < proposal.objectiveRefs.length ? 'objective' : 'discussion';
 		assert.ok(ref.store === 'treedx' && ref.model === model && ref.repository && ref.path && ref.commit && ref.digest,
 			`${code}: Complete exact governed reference required`);
-		const matches = original.referenceFiles.filter(read => read.repoId === ref.repository && read.resolvedRef === ref.commit
+		const matches: Row[] = original.referenceFiles.filter(read => read.repoId === ref.repository && read.resolvedRef === ref.commit
 			&& Array.isArray(read.files) && read.files.length === 1 && read.files[0]?.path === ref.path);
 		assert.equal(matches.length, 1, `${code}: One unambiguous native read required`);
 		const read = matches[0]!; assert.ok(!consumed.has(read), `${code}: Reused reference read`); consumed.add(read);
@@ -250,6 +273,11 @@ export function sdkGoldenFrozenProposal(freeze: Row): Row {
 		&& proposal.projectId === freeze.request.body.projects[0]
 		&& typeof proposal.request === 'string' && proposal.request.trim(),
 		'ACCEPTANCE_SDK_FROZEN_REQUEST: Exact initial draft identity project and request required');
+	assert.ok(typeof proposal.title === 'string' && proposal.title.trim() && typeof proposal.summary === 'string' && proposal.summary.trim()
+		&& Array.isArray(proposal.objectiveRefs) && proposal.objectiveRefs.length >= 2
+		&& proposal.objectiveRefs.every((ref: unknown) => exactEntityReferenceSchema.safeParse(ref).success),
+		'ACCEPTANCE_SDK_FROZEN_REQUEST: Complete original objective authority required');
+	verifySdkGoldenAuthoredWork(proposal, true);
 	assert.deepEqual(retainedBytes(path), bytes, 'ACCEPTANCE_SDK_FROZEN_REQUEST: Original proposal changed during read');
 	return proposal;
 }

@@ -1,6 +1,11 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.frozen-draft-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/acceptance/workday-start.test.ts
+    testName: "reads only the original frozen draft request and rejects missing ambiguous changed foreign or redirected input without repairing it"
   sdk.golden.proposal-identity-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
