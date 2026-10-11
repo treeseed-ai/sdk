@@ -7,6 +7,9 @@ import { createHash } from 'node:crypto';
 import { parse, parseDocument, visit } from 'yaml';
 
 type Row = Record<string, any>;
+export function sdkGoldenReadArguments(args: readonly string[], team: string): string[] {
+	return [...args, '--server', 'local', '--team', team, '--json'];
+}
 export type SdkGoldenOriginal = { binding: Row; files: Row; initialProposal: Row; teamLibrary?: Row; referenceFiles?: Row[]; graph?: Row };
 /** The selected scene consumes the existing CLI library-read result. */
 export function sdkGoldenLibraryFiles(readback: Row): Row {
