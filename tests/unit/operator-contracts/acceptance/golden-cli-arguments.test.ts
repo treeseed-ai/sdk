@@ -12,8 +12,18 @@ it('retains supported library read arguments without unsupported server or team 
 
 it('retains exact project proposal authority without adding a team selector', () => {
 	const args = ['proposals', 'show', 'original-proposal', '--project', 'original-project'], held = [...args];
-	 expect(sdkGoldenReadArguments(args, 'governed-team')).toEqual([...args, '--server', 'local', '--json']);
+	expect(sdkGoldenReadArguments(args, 'governed-team')).toEqual([...args, '--server', 'local', '--json']);
 	expect(args).toEqual(held);
+});
+
+it('denies missing unknown mutating and duplicate reader scope without rewriting arguments', () => {
+	for (const args of [[], ['unknown'], ['library'], ['workdays', 'stop', 'original-workday'],
+		['workdays', 'show', 'original-workday', '--server', 'foreign'],
+		['library', 'show', 'sdk', '--team', 'foreign'], ['library', 'show', 'sdk', '--json']]) {
+		const held = [...args]; expect.soft(() => sdkGoldenReadArguments(args, 'governed-team')).toThrow('ACCEPTANCE_SDK_READ');
+		expect(args).toEqual(held);
+	}
+	for (const team of ['', ' ']) expect(() => sdkGoldenReadArguments(['assignments', 'list'], team)).toThrow('ACCEPTANCE_SDK_READ');
 });
 
 it('retains exact team and local server authority for workday assignment and graph reads', () => {

@@ -1,6 +1,26 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.cli-read-library-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/acceptance/golden-cli-arguments.test.ts
+    testName: "retains supported library read arguments without unsupported server or team flags"
+  sdk.golden.cli-read-proposal-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/acceptance/golden-cli-arguments.test.ts
+    testName: "retains exact project proposal authority without adding a team selector"
+  sdk.golden.cli-read-team-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/acceptance/golden-cli-arguments.test.ts
+    testName: "retains exact team and local server authority for workday assignment and graph reads"
+  sdk.golden.cli-read-denials-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/acceptance/golden-cli-arguments.test.ts
+    testName: "denies missing unknown mutating and duplicate reader scope without rewriting arguments"
   sdk.golden.fixed-permissions-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

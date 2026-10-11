@@ -3,6 +3,18 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: cli-read-library-unit
+    action: { verifier: sdk.golden.cli-read-library-unit }
+    expect: { status: passed }
+  - id: cli-read-proposal-unit
+    action: { verifier: sdk.golden.cli-read-proposal-unit }
+    expect: { status: passed }
+  - id: cli-read-team-unit
+    action: { verifier: sdk.golden.cli-read-team-unit }
+    expect: { status: passed }
+  - id: cli-read-denials-unit
+    action: { verifier: sdk.golden.cli-read-denials-unit }
+    expect: { status: passed }
   - id: frozen-draft-unit
     action: { verifier: sdk.golden.frozen-draft-unit }
     expect: { status: passed }
