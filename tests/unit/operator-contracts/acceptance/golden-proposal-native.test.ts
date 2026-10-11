@@ -2,12 +2,20 @@ import { createServer } from 'node:http';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { once } from 'node:events';
+import { writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 import { expect, it } from 'vitest';
 import { commit, release, review, proposal, proposalReadback } from './golden-product-fixture.ts';
+import { workdayStartFixture } from './workday-start-fixture.ts';
 
 it('native public SDK proposal reads in isolated product verification reject changed stored identity title and summary and retain denied observations before unchanged retry', async () => {
 	let mode = 'exact'; const calls: string[] = [], failed: Array<Record<string, unknown>> = [];
 	const original = structuredClone({ release, review, proposal });
+	const retainedInput = workdayStartFixture(), inputPath = resolve(retainedInput.root, 'proposal-input.json');
+	const inputBytes = JSON.stringify({ ...proposal, status: 'draft' }); writeFileSync(inputPath, inputBytes);
+	const freeze = { proposal: { id: proposal.id }, request: { body: { projects: [proposal.projectId] } },
+		receipts: { [inputPath]: `sha256:${createHash('sha256').update(inputBytes).digest('hex')}` } };
 	let worker: ChildProcess | undefined, sequence = 0, stderrBytes = 0;
 	const pending = new Map<number, { resolve: (value: { stdout: string }) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
 	const fail = (error: Error) => { for (const item of pending.values()) { clearTimeout(item.timer); item.reject(error); } pending.clear(); };
@@ -22,6 +30,7 @@ it('native public SDK proposal reads in isolated product verification reject cha
 		}
 		if (mode === 'json') { response.end('{'); return; }
 		const returned: Record<string, unknown> = { ...proposal };
+		if (mode === 'frozen-request') returned.request = 'Publish the legacy capacity plan and deploy it upstream.';
 		if (mode.startsWith('explicit-')) {
 			const workItems = structuredClone(proposal.executionPlan.workItems);
 			Reflect.deleteProperty(workItems[0]!, mode.slice(9)); returned.executionPlan = { workItems };
@@ -72,14 +81,14 @@ it('native public SDK proposal reads in isolated product verification reject cha
 		const helper = new URL('../../../acceptance/golden-product.ts', import.meta.url).href;
 		const code = `import{ControlPlaneClient,defaultLocalControlPlaneServer}from ${JSON.stringify(sdk)};
 import{controlPlaneOperation}from ${JSON.stringify(operations)};
-import{verifySdkGoldenProduct,sdkGoldenProposalProvenance}from ${JSON.stringify(helper)};
+import{verifySdkGoldenProduct,sdkGoldenProposalProvenance,sdkGoldenFrozenProposal}from ${JSON.stringify(helper)};
 const client=new ControlPlaneClient({profile:defaultLocalControlPlaneServer({TREESEED_API_BASE_URL:${JSON.stringify(`http://127.0.0.1:${address.port}`)}}),accessToken:'controlled-native-input'});
 process.on('message',async ({id,actors})=>{try{
 const observed=await client.invoke(controlPlaneOperation('governance.proposals.show'),{path:{projectId:'sdk-project',proposalId:'sdk-proposal'},query:{},body:undefined});
 const provenance=sdkGoldenProposalProvenance(observed.data);
 const binding=await client.invoke(controlPlaneOperation('treedx.library.show'),{path:{projectId:'sdk-project'},query:{},body:undefined});
 const files=await client.invoke(controlPlaneOperation('treedx.repositories.files.read'),{path:{projectId:'sdk-project',repoId:provenance.repositoryId},query:{},body:{ref:provenance.commitSha,paths:[provenance.contentPath],encoding:'utf8',parseFrontmatter:true}});
-Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)},observed.data,{binding:binding.data,files:files.data}]);process.send({id,passed:true});
+Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)},observed.data,{binding:binding.data,files:files.data,initialProposal:sdkGoldenFrozenProposal(${JSON.stringify(freeze)})}]);process.send({id,passed:true});
 }catch(error){process.send({id,passed:false,error:error instanceof Error?error.message:'Native verification failed'});}});`;
 		worker = spawn(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', code], {
 			cwd: new URL('../../../../', import.meta.url), stdio: ['ignore', 'ignore', 'pipe', 'ipc'], env: process.env,
@@ -138,6 +147,12 @@ Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)}
 		}
 		const deniedExpanded = structuredClone(failed); mode = 'exact'; expect((await observe()).stdout).toBe('verified');
 		expect(failed).toEqual(deniedExpanded); expect(failed).toHaveLength(46); expect(calls).toHaveLength(144);
+		const changedRequest = proposalReadback({ ...proposal, request: 'Publish the legacy capacity plan and deploy it upstream.' });
+		const changedActors = structuredClone([release, review]);
+		for (const actor of changedActors) actor.assignmentAttempt.sourceRef.digest = `sha256:${changedRequest.governance.activeContentHash}`;
+		mode = 'frozen-request'; await expect(observe(changedActors)).rejects.toThrow('ACCEPTANCE_SDK_FROZEN_REQUEST');
+		const deniedRequest = structuredClone(failed); mode = 'exact'; expect((await observe()).stdout).toBe('verified');
+		expect(failed).toEqual(deniedRequest); expect(failed).toHaveLength(47); expect(calls).toHaveLength(150);
 		expect({ release, review, proposal }).toEqual(original);
 		const interrupted = observe(); worker.kill('SIGKILL'); await expect(interrupted).rejects.toThrow('Isolated verifier exited');
 		await expect(observe()).rejects.toThrow('unavailable'); expect(pending.size).toBe(0);
@@ -147,6 +162,7 @@ Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)}
 		if (worker && worker.exitCode === null && worker.signalCode === null) { const exited = once(worker, 'exit'); worker.kill('SIGKILL'); await exited; }
 		fail(new Error('Native fixture closed'));
 		server.closeAllConnections(); if (server.listening) await new Promise<void>((accept, reject) => server.close(error => error ? reject(error) : accept()));
+		retainedInput.close();
 	}
 	expect(server.listening).toBe(false);
 }, 15_000);

@@ -1,7 +1,37 @@
 import { expect, it, vi } from 'vitest';
 import { chmodSync, existsSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { sdkGoldenWorkdayId } from '../../../acceptance/golden-product.ts';
+import { createHash } from 'node:crypto';
+import { resolve } from 'node:path';
+import { sdkGoldenWorkdayId, sdkGoldenFrozenProposal } from '../../../acceptance/golden-product.ts';
 import { workdayStartFixture } from './workday-start-fixture.ts';
+
+it('reads only the original frozen draft request and rejects missing ambiguous changed foreign or redirected input without repairing it', () => {
+	const f = workdayStartFixture(), path = resolve(f.root, 'proposal-input.json');
+	const proposal = { id: f.freeze.proposal.id, projectId: f.freeze.request.body.projects[0], status: 'draft', request: 'Controlled unchanged SDK request' };
+	const receipt = (bytes: string) => ({ ...f.freeze, receipts: { [path]: `sha256:${createHash('sha256').update(bytes).digest('hex')}` } });
+	const bytes = JSON.stringify(proposal), freeze = receipt(bytes); writeFileSync(path, bytes);
+	try {
+		expect(sdkGoldenFrozenProposal(freeze)).toEqual(proposal);
+		for (const value of [undefined, null, [], {}, { [path]: null }, { [path]: 'invalid' },
+			{ [path]: freeze.receipts[path], [resolve(f.root, 'other/proposal-input.json')]: freeze.receipts[path] }]) {
+			const changed = { ...freeze, receipts: value }, held = structuredClone(changed);
+			expect(() => sdkGoldenFrozenProposal(changed)).toThrow(); expect(changed).toEqual(held);
+		}
+		for (const value of ['', '{', 'null', '[]', '{}', JSON.stringify({ ...proposal, id: 'foreign' }),
+			JSON.stringify({ ...proposal, projectId: 'foreign' }), JSON.stringify({ ...proposal, status: 'ready' }),
+			JSON.stringify({ ...proposal, request: '' }), JSON.stringify({ ...proposal, request: ' ' }), ' '.repeat(1_048_577)]) {
+			writeFileSync(path, value); expect(() => sdkGoldenFrozenProposal(receipt(value))).toThrow();
+			expect(readFileSync(path, 'utf8')).toBe(value);
+		}
+		writeFileSync(path, bytes + ' '); expect(() => sdkGoldenFrozenProposal(freeze)).toThrow('ACCEPTANCE_SDK_FROZEN_REQUEST');
+		writeFileSync(path, bytes); chmodSync(path, 0); expect(() => sdkGoldenFrozenProposal(freeze)).toThrow(); chmodSync(path, 0o600);
+		rmSync(path); symlinkSync(f.path, path); expect(() => sdkGoldenFrozenProposal(freeze)).toThrow(); rmSync(path);
+		expect(() => sdkGoldenFrozenProposal(freeze)).toThrow(); writeFileSync(path, bytes);
+		for (let index = 0; index < 3; index++) expect(sdkGoldenFrozenProposal(freeze)).toEqual(proposal);
+		expect(readFileSync(path, 'utf8')).toBe(bytes);
+	} finally { f.close(); }
+	expect(existsSync(f.root)).toBe(false);
+});
 
 it('selects only the API-issued SDK workday through the retained receipt without listing proposal matches', () => {
 	const f = workdayStartFixture();

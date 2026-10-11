@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, realpathSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
+import { basename, isAbsolute, resolve } from 'node:path';
 import { exactEntityReferenceSchema } from '@treeseed/sdk/agent-capacity';
 import { validatePortableContentData } from '@treeseed/sdk/content-validation';
 import { createHash } from 'node:crypto';
@@ -35,7 +35,7 @@ export function sdkGoldenProposalProvenance(storedProposal: unknown): Row {
 	return provenance;
 }
 export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, storedProposal: unknown,
-	original?: { binding: Row; files: Row }): void {
+	original?: { binding: Row; files: Row; initialProposal: Row }): void {
 	const actors = assignments.filter(item => item.status === 'completed'
 		&& item.assignmentAttempt?.effectiveProfile?.activity === 'acting');
 	const final = (id: string) => actors.filter(item => item.assignmentAttempt.workItemId === id)
@@ -75,6 +75,11 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, s
 		'ACCEPTANCE_SDK_PROPOSAL: Stored title differs from the fixed SDK proposal');
 	assert.equal(proposal.summary, 'Prove the SDK can express high-level decision-governed execution while keeping all derived execution state API-owned.',
 		'ACCEPTANCE_SDK_PROPOSAL: Stored summary differs from the fixed SDK proposal');
+	assert.ok(original.initialProposal && original.initialProposal.id === proposal.id
+		&& original.initialProposal.projectId === proposal.projectId
+		&& typeof original.initialProposal.request === 'string' && original.initialProposal.request.trim()
+		&& proposal.request === original.initialProposal.request,
+		'ACCEPTANCE_SDK_FROZEN_REQUEST: Ready proposal must retain its original frozen request; source issue is evidence only');
 	assert.ok(Array.isArray(proposal.evidenceRefs), 'ACCEPTANCE_SDK_PROPOSAL: Original source issue evidence required');
 	const sourceEvidence = proposal.evidenceRefs.filter((ref: unknown) => ref && typeof ref === 'object'
 		&& !Array.isArray(ref) && (ref as Row).url === 'https://github.com/treeseed-ai/sdk/issues/299');
@@ -161,6 +166,28 @@ function retainedBytes(path: string): Buffer {
 		assert.ok(fstatSync(fd).isFile() && (fstatSync(fd).mode & 0o444) !== 0, 'ACCEPTANCE_SDK_WORKDAY: Readable regular file required');
 		return readFileSync(fd);
 	} finally { closeSync(fd); }
+}
+
+/** Consume the original captured proposal input, not a second proposal authority. */
+export function sdkGoldenFrozenProposal(freeze: Row): Row {
+	assert.ok(freeze.receipts && typeof freeze.receipts === 'object' && !Array.isArray(freeze.receipts),
+		'ACCEPTANCE_SDK_FROZEN_REQUEST: Original proposal input receipt required');
+	const inputs = Object.entries(freeze.receipts).filter(([path]) => basename(path) === 'proposal-input.json');
+	assert.equal(inputs.length, 1, 'ACCEPTANCE_SDK_FROZEN_REQUEST: One unambiguous original proposal input required');
+	const [path, digest] = inputs[0]!, bytes = retainedBytes(path);
+	assert.ok(bytes.length <= 1_048_576 && typeof digest === 'string' && /^sha256:[a-f0-9]{64}$/u.test(digest)
+		&& digest === `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
+		'ACCEPTANCE_SDK_FROZEN_REQUEST: Original proposal input bytes changed');
+	const input: unknown = JSON.parse(bytes.toString('utf8'));
+	assert.ok(input && typeof input === 'object' && !Array.isArray(input), 'ACCEPTANCE_SDK_FROZEN_REQUEST: Original proposal object required');
+	const proposal = input as Row;
+	assert.ok(proposal.status === 'draft' && proposal.id === freeze.proposal?.id
+		&& Array.isArray(freeze.request?.body?.projects) && freeze.request.body.projects.length === 1
+		&& proposal.projectId === freeze.request.body.projects[0]
+		&& typeof proposal.request === 'string' && proposal.request.trim(),
+		'ACCEPTANCE_SDK_FROZEN_REQUEST: Exact initial draft identity project and request required');
+	assert.deepEqual(retainedBytes(path), bytes, 'ACCEPTANCE_SDK_FROZEN_REQUEST: Original proposal changed during read');
+	return proposal;
 }
 /** Product acceptance consumes the original API receipt; proposal discovery is not invocation authority. */
 export function sdkGoldenWorkdayId(read: (args: string[]) => Row, freeze: Row, explicit?: string, freezePath?: string): string {
