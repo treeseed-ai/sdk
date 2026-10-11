@@ -681,6 +681,9 @@ workflow:
   - id: authored-graph-pairs-unit
     action: { verifier: sdk.golden.authored-graph-pairs-unit }
     expect: { status: passed }
+  - id: standing-graph-order-unit
+    action: { verifier: sdk.golden.standing-graph-order-unit }
+    expect: { status: passed }
   - id: assignment-workday-native
     action: { verifier: sdk.golden.assignment-workday-native }
     expect: { status: passed }

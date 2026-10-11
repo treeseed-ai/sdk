@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, isAbsolute, resolve } from 'node:path';
-import { exactEntityReferenceSchema } from '@treeseed/sdk/agent-capacity';
+import { exactEntityReferenceSchema, executionEdgeSchema } from '@treeseed/sdk/agent-capacity';
 import { validatePortableContentData } from '@treeseed/sdk/content-validation';
 import { createHash } from 'node:crypto';
 import { parse, parseDocument, visit } from 'yaml';
@@ -130,6 +130,30 @@ function verifySdkGoldenGraph(proposal: Row, attempt: Row, graph: Row | undefine
 			&& node.maximumReviewCycles === item.maximumReviewCycles && item.review === 'required',
 			`${code}: Authored Actor or generated Reviewer authority drifted`);
 		assert.deepEqual(node.sourceRef, attempt.sourceRef, `${code}: Pair must represent the exact original authored proposal`);
+	}
+	const orderCode = 'ACCEPTANCE_SDK_GRAPH_ORDER';
+	assert.ok(Array.isArray(graph.edges), `${orderCode}: Independent complete public edges required`);
+	const edges = graph.edges.map((edge: unknown) => {
+		const checked = executionEdgeSchema.safeParse(edge);
+		assert.ok(checked.success, `${orderCode}: Canonical original edge required`); return checked.data;
+	});
+	assert.equal(new Set(edges.map(edge => edge.id)).size, edges.length, `${orderCode}: Duplicate edge identity`);
+	const ids = new Set(nodes.map(node => node.id));
+	const scoped = edges.filter(edge => ids.has(edge.fromNodeId) || ids.has(edge.toNodeId));
+	const nodeId = (item: string, role: string) => nodes.find(node => node.workItemId === item && node.pairRole === role)!.id;
+	const expectedPairs = items.map(item => [nodeId(item.id, 'actor'), nodeId(item.id, 'reviewer')]);
+	const engineering = ['architecture-contract', 'tests-first', 'implement-change', 'document-change', 'simulate-release'];
+	const expectedProfiles = engineering.slice(1).map((item, index) => [nodeId(engineering[index]!, 'reviewer'), nodeId(item, 'actor')]);
+	for (const [provenance, expected] of [['review-pair', expectedPairs], ['profile-agent', expectedProfiles]] as const) {
+		const actual = scoped.filter(edge => edge.provenance === provenance || (provenance === 'profile-agent' && edge.provenance === 'work-item'));
+		assert.equal(actual.length, expected.length, `${orderCode}: Exact pairs and immediate standing profile dependencies required`);
+		for (const [from, to] of expected) {
+			const matching = actual.filter(edge => edge.provenance === provenance && edge.fromNodeId === from && edge.toNodeId === to);
+			assert.equal(matching.length, 1, `${orderCode}: Independent research and immediate reviewed predecessor required`);
+			assert.equal(matching[0]!.teamId, attempt.teamId, `${orderCode}: Foreign edge owner`);
+			assert.equal(matching[0]!.graphRevisionRemoved, undefined, `${orderCode}: Removed edge cannot establish current order`);
+			assert.deepEqual(matching[0]!.sourceRef, attempt.sourceRef, `${orderCode}: Edge must retain exact authored source authority`);
+		}
 	}
 }
 

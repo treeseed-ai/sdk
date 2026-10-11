@@ -1,6 +1,11 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.standing-graph-order-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/golden-product.test.ts
+    testName: "rejects counted graph pairs without independent research and exact immediate governed profile ordering"
   sdk.golden.authored-graph-pairs-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

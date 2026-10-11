@@ -2,6 +2,30 @@ import { createHash } from 'node:crypto';
 import { parse, stringify } from 'yaml';
 export const commit = 'a'.repeat(40);
 const libraryCommit = 'c'.repeat(40);
+export const graphOrderFailures = ['missing-edges', 'malformed-edge', 'duplicate-edge', 'missing-pair', 'extra-pair', 'missing-profile',
+	'transitive-profile', 'actor-profile', 'research-profile', 'work-item-profile', 'foreign-edge-team', 'edge-source-id',
+	'edge-source-revision', 'edge-source-digest', 'edge-source-commit', 'edge-source-path', 'edge-source-repository', 'missing-edge-source',
+	'removed-edge', 'pair-endpoint', 'profile-foreign-node'] as const;
+export function mutateGraphOrder(graph: { edges: Array<Record<string, unknown>> }, mode: string): void {
+	const pair = graph.edges[0]!, profile = graph.edges.find(edge => edge.provenance === 'profile-agent')!;
+	if (mode === 'missing-edges') Reflect.deleteProperty(graph, 'edges');
+	else if (mode === 'malformed-edge') graph.edges[0] = {};
+	else if (mode === 'duplicate-edge') graph.edges.push(structuredClone(pair));
+	else if (mode === 'missing-pair') graph.edges.shift();
+	else if (mode === 'extra-pair') graph.edges.push({ ...structuredClone(pair), id: 'extra-pair' });
+	else if (mode === 'missing-profile') graph.edges.splice(graph.edges.indexOf(profile), 1);
+	else if (mode === 'transitive-profile') profile.toNodeId = 'actor-implement-change';
+	else if (mode === 'actor-profile') profile.fromNodeId = 'actor-architecture-contract';
+	else if (mode === 'research-profile') profile.fromNodeId = 'reviewer-research-context';
+	else if (mode === 'work-item-profile') profile.provenance = 'work-item';
+	else if (mode === 'foreign-edge-team') pair.teamId = 'foreign-team';
+	else if (mode === 'pair-endpoint') pair.toNodeId = 'reviewer-architecture-contract';
+	else if (mode === 'profile-foreign-node') profile.toNodeId = 'foreign-node';
+	else if (mode === 'missing-edge-source') Reflect.deleteProperty(pair, 'sourceRef');
+	else if (mode === 'removed-edge') pair.graphRevisionRemoved = 2;
+	else if (mode.startsWith('edge-source-')) Reflect.set(pair.sourceRef as object, mode.slice(12), mode === 'edge-source-revision' ? 2
+		: mode === 'edge-source-digest' ? `sha256:${'e'.repeat(64)}` : mode === 'edge-source-commit' ? 'd'.repeat(40) : 'foreign');
+}
 export const graphPairFailures = ['missing', 'foreign-team', 'duplicate-id', 'missing-node', 'extra-node', 'work-item',
 	'pair-role', 'kind', 'class', 'workspace', 'cycles', 'project', 'team', 'workday', 'source-id', 'source-revision',
 	'source-digest', 'source-commit', 'source-path', 'source-repository'] as const;
@@ -82,7 +106,12 @@ export function proposalReadback(...input: [unknown?, number?, (boolean | 'alias
 		maximumReviewCycles: item.maximumReviewCycles, sourceRef: structuredClone(sourceRef),
 		estimate: structuredClone(pairRole === 'actor' ? item.estimate : item.reviewEstimate),
 		requiredCapabilities: ['source.read'], requestedPermissions: structuredClone(item.requestedPermissions) })));
-	const graph = { teamId: 'sdk-team', revision: 1, digest: `sha256:${'f'.repeat(64)}`, nodes, edges: [] };
+	const edge = (fromNodeId: string, toNodeId: string, provenance: string) => ({ schemaVersion: 'treeseed.execution-edge/v1',
+		id: `${fromNodeId}-${toNodeId}`, teamId: 'sdk-team', fromNodeId, toNodeId, provenance, sourceRef: structuredClone(sourceRef), graphRevisionCreated: 1 });
+	const order = ['architecture-contract', 'tests-first', 'implement-change', 'document-change', 'simulate-release'];
+	const edges = [...proposal.executionPlan.workItems.map(item => edge(`actor-${item.id}`, `reviewer-${item.id}`, 'review-pair')),
+		...order.slice(1).map((item, index) => edge(`reviewer-${order[index]}`, `actor-${item}`, 'profile-agent'))];
+	const graph = { teamId: 'sdk-team', revision: 1, digest: `sha256:${'f'.repeat(64)}`, nodes, edges };
 	return { governance: { id: fields.id, projectId: fields.projectId, title: fields.title, summary: fields.summary, body: fields.request,
 		activeVersion: 1, activeContentHash: digest, metadata: { contentProvenance: { repositoryId, commitSha, contentPath, digest } } },
 		original: { initialProposal, graph, binding: { repositoryId },

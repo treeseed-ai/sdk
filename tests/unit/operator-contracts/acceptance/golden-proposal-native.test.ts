@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { parse } from 'yaml';
 import { expect, it } from 'vitest';
-import { commit, release, review, proposal, proposalReadback, graphPairFailures, mutateGraphPair } from './golden-product-fixture.ts';
+import { commit, release, review, proposal, proposalReadback, graphPairFailures, mutateGraphPair, graphOrderFailures, mutateGraphOrder } from './golden-product-fixture.ts';
 import { workdayStartFixture } from './workday-start-fixture.ts';
 
 it('native public SDK proposal reads in isolated product verification reject changed stored identity title and summary and retain denied observations before unchanged retry', async () => {
@@ -35,7 +35,11 @@ it('native public SDK proposal reads in isolated product verification reject cha
 			if (mode === 'graph-denied' || mode === 'graph-unavailable') { response.writeHead(mode === 'graph-denied' ? 403 : 503).end(JSON.stringify({ title: 'Controlled graph failure' })); return; }
 			if (mode === 'graph-interrupted') { request.socket.destroy(); return; }
 			if (mode === 'graph-json') { response.end('{'); return; }
-			if (mode.startsWith('graph-')) mutateGraphPair(fixture.graph, mode.slice(6));
+			if (mode.startsWith('graph-')) {
+				const denial = mode.slice(6);
+				if ((graphOrderFailures as readonly string[]).includes(denial)) mutateGraphOrder(fixture.graph, denial);
+				else mutateGraphPair(fixture.graph, denial);
+			}
 			response.end(JSON.stringify({ data: fixture.graph })); return;
 		}
 		if (['reference-open', 'reference-repository', 'reference-path'].includes(mode)) {
@@ -253,13 +257,13 @@ Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)}
 		expect(failed).toEqual(deniedReferences); expect(calls).toHaveLength(291);
 		const graphStart = graphCalls.length;
 		mode = 'exact'; expect((await Promise.all([observe(), observe()])).map(value => value.stdout)).toEqual(['verified', 'verified']);
-		for (const denial of [...graphPairFailures, 'denied', 'unavailable', 'interrupted', 'json']) {
+		for (const denial of [...graphPairFailures, ...graphOrderFailures, 'denied', 'unavailable', 'interrupted', 'json']) {
 			mode = `graph-${denial}`; await expect.soft(observe(), mode).rejects.toThrow();
 		}
 		const retainedGraphFailures = structuredClone(graphFailures);
 		mode = 'exact'; expect((await observe()).stdout).toBe('verified');
-		expect(graphFailures).toEqual(retainedGraphFailures); expect(graphFailures).toHaveLength(graphPairFailures.length + 4);
-		expect(graphCalls.slice(graphStart)).toEqual(Array(graphPairFailures.length + 7).fill('GET /v1/teams/sdk-team/execution-graph'));
+		expect(graphFailures).toEqual(retainedGraphFailures); expect(graphFailures).toHaveLength(graphPairFailures.length + graphOrderFailures.length + 4);
+		expect(graphCalls.slice(graphStart)).toEqual(Array(graphPairFailures.length + graphOrderFailures.length + 7).fill('GET /v1/teams/sdk-team/execution-graph'));
 		for (const file of proposalReadback().original.referenceFiles)
 			expect(referenceCalls.some(value => value.endsWith(` ${file.files[0]!.path}`))).toBe(true);
 		expect({ release, review, proposal }).toEqual(original);
