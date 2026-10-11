@@ -13,10 +13,19 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 			for (const value of [undefined, null, false, 1, [], {}, '', ' ', ` ${proposal[field as 'title' | 'summary']}`, `${proposal[field as 'title' | 'summary']} `, 'Changed objective'])
 				invalid.push({ ...proposal, [field]: value });
 		}
+		const source = proposal.evidenceRefs[0]!;
+		for (const evidenceRefs of [undefined, null, false, 1, '', {}, [], [null], [[]], [{}],
+			[{ ...source, url: 'https://github.com/treeseed-ai/sdk/issues/300' }],
+			[{ ...source, url: `${source.url}#issuecomment-1` }], [{ ...source, url: ` ${source.url}` }],
+			[{ ...source, store: 'git' }], [{ ...source, model: 'note' }], [{ ...source, id: '' }],
+			[{ ...source, id: ' ' }], [{ ...source, callerAuthority: true }],
+			[source, structuredClone(source)], [source, { ...source, id: 'another-source' }]])
+			invalid.push({ ...proposal, evidenceRefs });
 		for (const value of invalid) {
 			const held = structuredClone(value);
 			expect.soft(() => check(value)).toThrow('ACCEPTANCE_SDK_PROPOSAL'); expect(value).toEqual(held);
 		}
+		expect(() => check(proposal)).not.toThrow();
 	});
 
 	it('requires independent measured replay of all three public release commands and rejects every invalid reviewer receipt', () => {
