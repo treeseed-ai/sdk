@@ -7,6 +7,17 @@ import { commit, release, review, proposal, proposalReadback } from './acceptanc
 const verifySdkGoldenProduct = (items: Parameters<typeof verifyProduct>[0], source: string) =>
 	Reflect.apply(verifyProduct, undefined, [items, source, proposalReadback().governance, proposalReadback().original]);
 describe('SDK golden product gate (fixtures are not acceptance)', () => {
+	it('rejects six counted Actor Reviewer pairs that do not represent their exact authored proposal work', () => {
+		const observed = proposalReadback();
+		const inspect = (value: typeof observed) => Reflect.apply(verifyProduct, undefined, [[release, review], commit, value.governance, value.original]);
+		expect(() => inspect(observed)).not.toThrow();
+		const changed = structuredClone(observed);
+		changed.original.graph.nodes[1]!.workItemId = 'unrelated-authored-work';
+		const retained = structuredClone(changed);
+		expect(() => inspect(changed)).toThrow('ACCEPTANCE_SDK_GRAPH_PAIRS');
+		expect(changed).toEqual(retained);
+		expect(() => inspect(observed)).not.toThrow();
+	});
 	it('rejects a coherently rehashed closed discussion that names another proposal repository or path', () => {
 		for (const [field, value] of [['repository', 'repo_foreign'], ['path', 'proposals/foreign.mdx']]) {
 			const input = structuredClone(proposal), original = proposalReadback().original, file = original.referenceFiles[2]!.files[0]!;

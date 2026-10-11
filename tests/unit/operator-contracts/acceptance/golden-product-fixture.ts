@@ -55,9 +55,19 @@ export function proposalReadback(...input: [unknown?, number?, (boolean | 'alias
 	const digest = createHash('sha256').update(content).digest('hex'), repositoryId = 'repo_sdk_fixture', commitSha = 'c'.repeat(40), contentPath = 'proposals/governance/sdk-proposal.mdx';
 	const initialProposal = structuredClone({ ...proposal, status: 'draft' });
 	for (const item of initialProposal.executionPlan.workItems) { Reflect.deleteProperty(item, 'estimate'); Reflect.deleteProperty(item, 'reviewEstimate'); }
+	// Controlled graph observations, not generated production evidence.
+	const sourceRef = { store: 'treedx', model: 'proposal', id: proposal.id, revision: 1, digest: `sha256:${digest}`,
+		repository: repositoryId, commit: commitSha, path: contentPath };
+	const nodes = proposal.executionPlan.workItems.flatMap(item => ['actor', 'reviewer'].map(pairRole => ({
+		id: `${pairRole}-${item.id}`, teamId: 'sdk-team', projectId: proposal.projectId, workdayId: 'workday-fixture',
+		workItemId: item.id, pairRole, kind: pairRole === 'actor' ? 'acting' : 'reviewing',
+		agentClass: pairRole === 'actor' ? item.agentClass : 'reviewer', workspace: pairRole === 'actor' ? item.workspace : 'treedx',
+		maximumReviewCycles: item.maximumReviewCycles, sourceRef: structuredClone(sourceRef) })));
+	const graph = { nodes, edges: proposal.executionPlan.workItems.map(item => ({ id: `pair-${item.id}`, teamId: 'sdk-team',
+		fromNodeId: `actor-${item.id}`, toNodeId: `reviewer-${item.id}`, provenance: 'review-pair', sourceRef: structuredClone(sourceRef) })) };
 	return { governance: { id: fields.id, projectId: fields.projectId, title: fields.title, summary: fields.summary, body: fields.request,
 		activeVersion: 1, activeContentHash: digest, metadata: { contentProvenance: { repositoryId, commitSha, contentPath, digest } } },
-		original: { initialProposal, binding: { repositoryId },
+		original: { initialProposal, graph, binding: { repositoryId },
 			teamLibrary: { project: { id: 'team-project', slug: 'team', teamId: 'sdk-team' }, library: { projectId: 'team-project', teamId: 'sdk-team', repositoryId: 'repo_team_fixture' } },
 			referenceFiles: structuredClone(referenced.map(item => item.read)), files: { ok: true, repoId: repositoryId, resolvedRef: commitSha,
 			files: [{ path: contentPath, content, frontmatter: parse(encoded) as unknown }] } } };
