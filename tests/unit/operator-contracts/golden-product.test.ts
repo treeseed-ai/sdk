@@ -9,6 +9,14 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 		const check = (value: unknown) => { const observed = proposalReadback(value);
 			return Reflect.apply(verifyProduct, undefined, [[release, review], commit, observed.governance, observed.original]); };
 		expect(() => check(proposal)).not.toThrow();
+		const changedRequest = proposalReadback({ ...proposal, request: 'Publish the legacy capacity plan and deploy it upstream.' });
+		Reflect.set(changedRequest.original, 'initialProposal', structuredClone(proposal));
+		const changedActors = structuredClone([release, review]);
+		for (const item of changedActors) item.assignmentAttempt.sourceRef.digest = `sha256:${changedRequest.governance.activeContentHash}`;
+		const retainedRequest = structuredClone(changedRequest);
+		expect(() => Reflect.apply(verifyProduct, undefined, [changedActors, commit, changedRequest.governance, changedRequest.original]))
+			.toThrow('ACCEPTANCE_SDK_FROZEN_REQUEST');
+		expect(changedRequest).toEqual(retainedRequest);
 		// A coherent issued digest must not make an unexpanded WorkItem valid.
 		const shorthand = structuredClone(proposal); Reflect.deleteProperty(shorthand.executionPlan.workItems[0]!, 'objective');
 		const incomplete = proposalReadback(shorthand), issued = structuredClone(release);
