@@ -13,7 +13,7 @@ const referenced = [
 	const content = `---\n${stringify(frontmatter)}---\n`, repoId = index === 1 ? 'repo_team_fixture' : 'repo_sdk_fixture';
 	return { ref: { store: 'treedx', model: index === 2 ? 'discussion' : 'objective', id: frontmatter.id, repository: repoId,
 		commit: libraryCommit, path, digest: `sha256:${createHash('sha256').update(content).digest('hex')}` },
-		read: { repoId, resolvedRef: libraryCommit, files: [{ path, content, frontmatter: parse(content.match(/^---\n([\s\S]*?)---\n/u)![1]!) }] } };
+		read: { ok: true, repoId, resolvedRef: libraryCommit, files: [{ path, content, frontmatter: parse(content.match(/^---\n([\s\S]*?)---\n/u)![1]!) }] } };
 });
 export const proposal = { schemaVersion: 'treeseed.proposal/v1', status: 'ready', id: 'sdk-proposal', projectId: 'sdk-project', title: 'Select accepted decisions in portable workday intent',
 	request: 'Controlled SDK request',
@@ -57,6 +57,6 @@ export function proposalReadback(...input: [unknown?, number?, (boolean | 'alias
 		activeVersion: 1, activeContentHash: digest, metadata: { contentProvenance: { repositoryId, commitSha, contentPath, digest } } },
 		original: { initialProposal: structuredClone({ ...proposal, status: 'draft' }), binding: { repositoryId },
 			teamLibrary: { project: { id: 'team-project', slug: 'team', teamId: 'sdk-team' }, library: { projectId: 'team-project', teamId: 'sdk-team', repositoryId: 'repo_team_fixture' } },
-			referenceFiles: structuredClone(referenced.map(item => item.read)), files: { repoId: repositoryId, resolvedRef: commitSha,
+			referenceFiles: structuredClone(referenced.map(item => item.read)), files: { ok: true, repoId: repositoryId, resolvedRef: commitSha,
 			files: [{ path: contentPath, content, frontmatter: parse(encoded) as unknown }] } } };
 }

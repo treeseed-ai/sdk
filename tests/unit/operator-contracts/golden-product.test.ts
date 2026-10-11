@@ -22,6 +22,32 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 			expect({ observed, actors }).toEqual(retained);
 		}
 	});
+	it('requires independently read frozen project and team objectives and the exact closed proposal discussion', () => {
+		const observed = proposalReadback(), held = structuredClone(observed);
+		const inspect = (value: typeof observed) => Reflect.apply(verifyProduct, undefined, [[release, review], commit, value.governance, value.original]);
+		expect(() => inspect(observed)).not.toThrow();
+		for (const mutate of [
+			(value: typeof observed) => { value.original.referenceFiles = []; },
+			(value: typeof observed) => { value.original.referenceFiles.push(value.original.referenceFiles[0]!); },
+			(value: typeof observed) => { value.original.referenceFiles[1] = value.original.referenceFiles[0]!; },
+			(value: typeof observed) => { value.original.teamLibrary.project.teamId = 'foreign'; },
+			(value: typeof observed) => { value.original.teamLibrary.project.slug = 'foreign'; },
+			(value: typeof observed) => { value.original.teamLibrary.library.repositoryId = 'repo_foreign'; },
+			(value: typeof observed) => { value.original.teamLibrary.library.projectId = 'foreign'; },
+			(value: typeof observed) => { value.original.initialProposal.objectiveRefs = []; },
+			...(Array.from({ length: 3 }, (_, index) => [
+				(value: typeof observed) => { value.original.referenceFiles[index]!.resolvedRef = 'd'.repeat(40); },
+				(value: typeof observed) => { value.original.referenceFiles[index]!.repoId = 'repo_foreign'; },
+				(value: typeof observed) => { value.original.referenceFiles[index]!.files[0]!.content += 'changed'; },
+				(value: typeof observed) => { value.original.referenceFiles[index]!.files[0]!.path = 'foreign.mdx'; },
+				(value: typeof observed) => { value.original.referenceFiles[index]!.files[0]!.frontmatter = {}; },
+			]).flat()),
+		]) {
+			const changed = structuredClone(observed); mutate(changed); const retained = structuredClone(changed);
+			expect.soft(() => inspect(changed)).toThrow('ACCEPTANCE_SDK_POPULATED_PROPOSAL'); expect(changed).toEqual(retained);
+		}
+		expect(() => inspect(observed)).not.toThrow(); expect(observed).toEqual(held);
+	});
 	it('requires exact stored SDK proposal title summary and frozen identity without changing missing malformed or foreign observations', () => {
 		const check = (value: unknown) => { const observed = proposalReadback(value);
 			return Reflect.apply(verifyProduct, undefined, [[release, review], commit, observed.governance, observed.original]); };

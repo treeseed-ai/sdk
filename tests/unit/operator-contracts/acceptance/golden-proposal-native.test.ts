@@ -22,10 +22,21 @@ it('native public SDK proposal reads in isolated product verification reject cha
 	const server = createServer((request, response) => {
 		let bytes = ''; request.setEncoding('utf8'); request.on('data', value => { bytes += String(value); }); request.on('end', () => {
 		const fixture = proposalReadback().original, path = request.method === 'POST' ? JSON.parse(bytes).paths?.[0] : undefined;
+		if (mode === 'reference-open') {
+			const discussion = fixture.referenceFiles[2]!.files[0]!;
+			discussion.content = discussion.content.replace('status: closed', 'status: open');
+			discussion.frontmatter.status = 'open';
+		}
 		const referenced = fixture.referenceFiles.find(value => value.files[0]?.path === path);
 		if (referenced || request.url === '/v1/projects/team-project' || request.url === '/v1/projects/team-project/treedx-library') {
 			referenceCalls.push(`${request.method} ${request.url} ${path ?? ''}`);
 			response.setHeader('content-type', 'application/json');
+			if (mode === 'reference-denied') { response.writeHead(403).end(JSON.stringify({ status: 403, code: 'controlled_reference_denial', title: 'Denied reference' })); return; }
+			if (mode === 'reference-interrupted') { request.socket.destroy(); return; }
+			if (referenced && mode === 'reference-bytes') referenced.files[0]!.content += 'changed';
+			if (referenced && mode === 'reference-moved') referenced.resolvedRef = 'd'.repeat(40);
+			if (referenced && mode === 'reference-frontmatter') referenced.files[0]!.frontmatter = {};
+			if (mode === 'reference-team') fixture.teamLibrary.project.teamId = 'foreign';
 			response.end(JSON.stringify({ data: referenced ?? (request.url?.endsWith('/treedx-library') ? fixture.teamLibrary.library : fixture.teamLibrary.project) })); return;
 		}
 		calls.push(`${request.method} ${request.url}`); response.setHeader('content-type', 'application/json');
@@ -38,6 +49,11 @@ it('native public SDK proposal reads in isolated product verification reject cha
 		}
 		if (mode === 'json') { response.end('{'); return; }
 		const returned: Record<string, unknown> = { ...proposal };
+		if (mode === 'reference-open') returned.discussionRef = { ...proposal.discussionRef,
+			digest: `sha256:${createHash('sha256').update(fixture.referenceFiles[2]!.files[0]!.content).digest('hex')}` };
+		if (mode === 'populated-status') returned.status = 'draft';
+		if (mode === 'populated-objectives') delete returned.objectiveRefs;
+		if (mode === 'populated-discussion') delete returned.discussionRef;
 		if (mode === 'frozen-request') returned.request = 'Publish the legacy capacity plan and deploy it upstream.';
 		if (mode.startsWith('explicit-')) {
 			const workItems = structuredClone(proposal.executionPlan.workItems);
@@ -90,20 +106,20 @@ it('native public SDK proposal reads in isolated product verification reject cha
 		const helper = new URL('../../../acceptance/golden-product.ts', import.meta.url).href;
 		const code = `import{ControlPlaneClient,defaultLocalControlPlaneServer}from ${JSON.stringify(sdk)};
 import{controlPlaneOperation}from ${JSON.stringify(operations)};
-import{verifySdkGoldenProduct,sdkGoldenProposalProvenance,sdkGoldenFrozenProposal,sdkGoldenProposalDocument}from ${JSON.stringify(helper)};
+import{verifySdkGoldenProduct,sdkGoldenProposalProvenance,sdkGoldenFrozenProposal,sdkGoldenProposalDocument,sdkGoldenLibraryFiles}from ${JSON.stringify(helper)};
 const client=new ControlPlaneClient({profile:defaultLocalControlPlaneServer({TREESEED_API_BASE_URL:${JSON.stringify(`http://127.0.0.1:${address.port}`)}}),accessToken:'controlled-native-input'});
 process.on('message',async ({id,actors})=>{try{
 const observed=await client.invoke(controlPlaneOperation('governance.proposals.show'),{path:{projectId:'sdk-project',proposalId:'sdk-proposal'},query:{},body:undefined});
 const provenance=sdkGoldenProposalProvenance(observed.data);
 const binding=await client.invoke(controlPlaneOperation('treedx.library.show'),{path:{projectId:'sdk-project'},query:{},body:undefined});
 const files=await client.invoke(controlPlaneOperation('treedx.repositories.files.read'),{path:{projectId:'sdk-project',repoId:provenance.repositoryId},query:{},body:{ref:provenance.commitSha,paths:[provenance.contentPath],encoding:'utf8',parseFrontmatter:true}});
-const original={binding:binding.data,files:files.data,initialProposal:sdkGoldenFrozenProposal(${JSON.stringify(freeze)})};
+const original={binding:binding.data,files:sdkGoldenLibraryFiles({result:files.data,receipt:{operation:'read'}}),initialProposal:sdkGoldenFrozenProposal(${JSON.stringify(freeze)})};
 const document=sdkGoldenProposalDocument(observed.data,original);
 const teamProject=await client.invoke(controlPlaneOperation('projects.show'),{path:{projectId:'team-project'},query:{},body:undefined});
 const teamBinding=await client.invoke(controlPlaneOperation('treedx.library.show'),{path:{projectId:'team-project'},query:{},body:undefined});
 const referenceFiles=[];
 for(const ref of [...(Array.isArray(document.objectiveRefs)?document.objectiveRefs:[]),...(document.discussionRef?[document.discussionRef]:[])]){
-const result=await client.invoke(controlPlaneOperation('treedx.repositories.files.read'),{path:{projectId:ref.repository===teamBinding.data.repositoryId?'team-project':'sdk-project',repoId:ref.repository},query:{},body:{ref:ref.commit,paths:[ref.path],encoding:'utf8',parseFrontmatter:true}});referenceFiles.push(result.data);}
+const result=await client.invoke(controlPlaneOperation('treedx.repositories.files.read'),{path:{projectId:ref.repository===teamBinding.data.repositoryId?'team-project':'sdk-project',repoId:ref.repository},query:{},body:{ref:ref.commit,paths:[ref.path],encoding:'utf8',parseFrontmatter:true}});referenceFiles.push(sdkGoldenLibraryFiles({result:result.data,receipt:{operation:'read'}}));}
 Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)},observed.data,{...original,teamLibrary:{project:teamProject.data,library:teamBinding.data},referenceFiles}]);process.send({id,passed:true});
 }catch(error){process.send({id,passed:false,error:error instanceof Error?error.message:'Native verification failed'});}});`;
 		worker = spawn(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', code], {
@@ -169,6 +185,24 @@ Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)}
 		mode = 'frozen-request'; await expect(observe(changedActors)).rejects.toThrow('ACCEPTANCE_SDK_FROZEN_REQUEST');
 		const deniedRequest = structuredClone(failed); mode = 'exact'; expect((await observe()).stdout).toBe('verified');
 		expect(failed).toEqual(deniedRequest); expect(failed).toHaveLength(47); expect(calls).toHaveLength(150);
+		for (const denied of ['populated-status', 'populated-objectives', 'populated-discussion', 'reference-bytes', 'reference-moved',
+			'reference-frontmatter', 'reference-team', 'reference-denied', 'reference-interrupted', 'reference-open']) {
+			const value = structuredClone(proposal);
+			if (denied === 'populated-status') value.status = 'draft';
+			if (denied === 'populated-objectives') Reflect.deleteProperty(value, 'objectiveRefs');
+			if (denied === 'populated-discussion') Reflect.deleteProperty(value, 'discussionRef');
+			if (denied === 'reference-open') value.discussionRef = { ...value.discussionRef,
+				digest: `sha256:${createHash('sha256').update(proposalReadback().original.referenceFiles[2]!.files[0]!.content.replace('status: closed', 'status: open')).digest('hex')}` };
+			const observed = proposalReadback(value), actors = structuredClone([release, review]);
+			for (const actor of actors) actor.assignmentAttempt.sourceRef.digest = `sha256:${observed.governance.activeContentHash}`;
+			mode = denied; await expect.soft(observe(actors), denied).rejects.toThrow();
+		}
+		const deniedReferences = structuredClone(failed), retainedReferenceCalls = structuredClone(referenceCalls);
+		mode = 'exact'; expect((await observe()).stdout).toBe('verified');
+		expect(failed).toEqual(deniedReferences); expect(referenceCalls.slice(0, retainedReferenceCalls.length)).toEqual(retainedReferenceCalls);
+		expect(failed).toHaveLength(57); expect(calls).toHaveLength(183);
+		for (const file of proposalReadback().original.referenceFiles)
+			expect(referenceCalls.some(value => value.endsWith(` ${file.files[0]!.path}`))).toBe(true);
 		expect({ release, review, proposal }).toEqual(original);
 		const interrupted = observe(); worker.kill('SIGKILL'); await expect(interrupted).rejects.toThrow('Isolated verifier exited');
 		await expect(observe()).rejects.toThrow('unavailable'); expect(pending.size).toBe(0);

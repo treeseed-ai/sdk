@@ -10,7 +10,12 @@ type Row = Record<string, any>;
 export type SdkGoldenOriginal = { binding: Row; files: Row; initialProposal: Row; teamLibrary?: Row; referenceFiles?: Row[] };
 /** The selected scene consumes the existing CLI library-read result. */
 export function sdkGoldenLibraryFiles(readback: Row): Row {
-	return readback.data ?? readback;
+	const result = readback && typeof readback === 'object' && !Array.isArray(readback) ? readback.result : undefined;
+	assert.ok(result && typeof result === 'object' && !Array.isArray(result) && result.ok === true
+		&& typeof result.repoId === 'string' && result.repoId && typeof result.resolvedRef === 'string'
+		&& /^[a-f0-9]{40}$/u.test(result.resolvedRef) && Array.isArray(result.files),
+		'ACCEPTANCE_SDK_LIBRARY_READ: Complete supported CLI library-read result required');
+	return result;
 }
 function measured(record: Row | undefined): boolean {
 	return Boolean(record && record.status === 'passed' && record.exitCode === 0
