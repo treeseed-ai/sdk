@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { sdkGoldenSource, sdkGoldenLibraryFiles, verifySdkGoldenProposalReferences, verifySdkGoldenProduct as verifyProduct } from '../../acceptance/golden-product.ts';
 import { stringify } from 'yaml';
 import { createHash } from 'node:crypto';
-import { commit, release, review, proposal, proposalReadback } from './acceptance/golden-product-fixture.ts';
+import { commit, release, review, proposal, proposalReadback, graphPairFailures, mutateGraphPair } from './acceptance/golden-product-fixture.ts';
 const verifySdkGoldenProduct = (items: Parameters<typeof verifyProduct>[0], source: string) =>
 	Reflect.apply(verifyProduct, undefined, [items, source, proposalReadback().governance, proposalReadback().original]);
 describe('SDK golden product gate (fixtures are not acceptance)', () => {
@@ -11,6 +11,16 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 		const observed = proposalReadback();
 		const inspect = (value: typeof observed) => Reflect.apply(verifyProduct, undefined, [[release, review], commit, value.governance, value.original]);
 		expect(() => inspect(observed)).not.toThrow();
+		const unrelated = structuredClone(observed);
+		unrelated.original.graph.nodes.push({ ...structuredClone(unrelated.original.graph.nodes[0]!), id: 'unrelated-retained-actor', workdayId: 'another-workday' });
+		const retainedUnrelated = structuredClone(unrelated);
+		expect(() => inspect(unrelated)).not.toThrow(); expect(unrelated).toEqual(retainedUnrelated);
+		for (const mode of graphPairFailures) {
+			const changed = structuredClone(observed); mutateGraphPair(changed.original.graph, mode);
+			const retained = structuredClone(changed);
+			expect.soft(() => inspect(changed), mode).toThrow('ACCEPTANCE_SDK_GRAPH_PAIRS');
+			expect(changed).toEqual(retained);
+		}
 		const changed = structuredClone(observed);
 		changed.original.graph.nodes[1]!.workItemId = 'unrelated-authored-work';
 		const retained = structuredClone(changed);
