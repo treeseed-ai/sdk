@@ -8,5 +8,10 @@ export const review = { ...release, id: 'review-row', assignmentAttempt: { ...re
 	assignmentResult: { ...release.assignmentResult, id: 'review-result', assignmentId: 'review-attempt' },
 	lifecycleOutput: { activityCompletion: { reviewDisposition: 'approved' } } };
 export const proposal = { id: 'sdk-proposal', projectId: 'sdk-project', title: 'Select accepted decisions in portable workday intent',
+	executionPlan: { workItems: [
+		['research-context', 'researcher', 'treedx'], ['architecture-contract', 'architect', 'treedx'],
+		['tests-first', 'tester', 'git'], ['implement-change', 'engineer', 'git'],
+		['document-change', 'technical-writer', 'git'], ['simulate-release', 'releaser', 'git'],
+	].map(([id, agentClass, workspace]) => ({ id, agentClass, workspace, dependsOn: [], maximumReviewCycles: 2, activity: 'acting', review: 'required' })) },
 	evidenceRefs: [{ store: 'url', model: 'issue', id: 'sdk-source-1', url: 'https://github.com/treeseed-ai/sdk/issues/299' }],
 	summary: 'Prove the SDK can express high-level decision-governed execution while keeping all derived execution state API-owned.' };

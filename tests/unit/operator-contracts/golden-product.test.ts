@@ -25,6 +25,29 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 			const held = structuredClone(value);
 			expect.soft(() => check(value)).toThrow('ACCEPTANCE_SDK_PROPOSAL'); expect(value).toEqual(held);
 		}
+		for (const executionPlan of [undefined, null, false, '', [], {}, { workItems: null }, { workItems: [] },
+			{ workItems: [...proposal.executionPlan.workItems, proposal.executionPlan.workItems[0]] },
+			{ workItems: proposal.executionPlan.workItems.slice(1) }])
+			expect.soft(() => check({ ...proposal, executionPlan })).toThrow('ACCEPTANCE_SDK_GRAPH');
+		for (const [index, row] of proposal.executionPlan.workItems.entries()) {
+			const patches = [{ id: undefined }, { id: '' }, { id: `review-${row.id}` }, { id: proposal.executionPlan.workItems[(index + 1) % 6]!.id },
+				{ agentClass: undefined }, { agentClass: '' }, { agentClass: 'reviewer' }, { agentClass: ` ${row.agentClass}` },
+				{ workspace: undefined }, { workspace: {} }, { workspace: row.workspace === 'git' ? 'treedx' : 'git' },
+				{ dependsOn: undefined }, { dependsOn: null }, { dependsOn: {} }, { dependsOn: ['tests-first'] },
+				{ maximumReviewCycles: undefined }, { maximumReviewCycles: '2' }, { maximumReviewCycles: 1 }, { maximumReviewCycles: 3 },
+				{ activity: 'reviewing' }, { activity: undefined }, { review: 'optional' }, { review: undefined }];
+			for (const patch of patches) {
+				const changed = structuredClone(proposal); Object.assign(changed.executionPlan.workItems[index]!, patch);
+				const held = structuredClone(changed);
+				expect.soft(() => check(changed)).toThrow('ACCEPTANCE_SDK_GRAPH'); expect(changed).toEqual(held);
+			}
+			for (const value of [null, false, '', [], {}]) {
+				const changed = structuredClone(proposal); Reflect.set(changed.executionPlan.workItems, index, value);
+				expect.soft(() => check(changed)).toThrow('ACCEPTANCE_SDK_GRAPH');
+			}
+		}
+		const permuted = structuredClone(proposal); permuted.executionPlan.workItems.reverse();
+		expect(() => check(permuted)).not.toThrow();
 		expect(() => check(proposal)).not.toThrow();
 	});
 
