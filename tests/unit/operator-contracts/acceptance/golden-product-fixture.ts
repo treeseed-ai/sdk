@@ -53,9 +53,11 @@ export function proposalReadback(...input: [unknown?, number?, (boolean | 'alias
 	const base = `---\n${encoded}---\n`;
 	const content = base + ' '.repeat(Math.max(0, (input[1] ?? 0) - Buffer.byteLength(base)));
 	const digest = createHash('sha256').update(content).digest('hex'), repositoryId = 'repo_sdk_fixture', commitSha = 'c'.repeat(40), contentPath = 'proposals/governance/sdk-proposal.mdx';
+	const initialProposal = structuredClone({ ...proposal, status: 'draft' });
+	for (const item of initialProposal.executionPlan.workItems) { Reflect.deleteProperty(item, 'estimate'); Reflect.deleteProperty(item, 'reviewEstimate'); }
 	return { governance: { id: fields.id, projectId: fields.projectId, title: fields.title, summary: fields.summary, body: fields.request,
 		activeVersion: 1, activeContentHash: digest, metadata: { contentProvenance: { repositoryId, commitSha, contentPath, digest } } },
-		original: { initialProposal: structuredClone({ ...proposal, status: 'draft' }), binding: { repositoryId },
+		original: { initialProposal, binding: { repositoryId },
 			teamLibrary: { project: { id: 'team-project', slug: 'team', teamId: 'sdk-team' }, library: { projectId: 'team-project', teamId: 'sdk-team', repositoryId: 'repo_team_fixture' } },
 			referenceFiles: structuredClone(referenced.map(item => item.read)), files: { ok: true, repoId: repositoryId, resolvedRef: commitSha,
 			files: [{ path: contentPath, content, frontmatter: parse(encoded) as unknown }] } } };

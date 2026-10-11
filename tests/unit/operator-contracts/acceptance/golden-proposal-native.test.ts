@@ -222,6 +222,15 @@ Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)}
 			const changed = structuredClone(initial); Reflect.set(changed.executionPlan.workItems[0]!, field, null);
 			deniedDrafts.push({ bytes: JSON.stringify(changed), error: 'ACCEPTANCE_SDK_FROZEN_REQUEST' });
 		}
+		for (const field of ['title', 'summary', 'evidenceRefs', 'objective', 'contextRefs', 'acceptanceCriteria']) {
+			const changed = structuredClone(initial);
+			if (field === 'evidenceRefs') changed.evidenceRefs[0]!.id = 'different-original-evidence';
+			else if (field === 'contextRefs') changed.executionPlan.workItems[0]!.contextRefs[0]!.commit = 'd'.repeat(40);
+			else if (field === 'acceptanceCriteria') changed.executionPlan.workItems[0]!.acceptanceCriteria = ['Different fixed criterion.'];
+			else if (field === 'objective') changed.executionPlan.workItems[0]!.objective = 'Different fixed objective.';
+			else Reflect.set(changed, field, 'Different fixed objective.');
+			deniedDrafts.push({ bytes: JSON.stringify(changed), error: 'ACCEPTANCE_SDK_FROZEN_REQUEST' });
+		}
 		for (const failedDraft of deniedDrafts) {
 			writeFileSync(inputPath, failedDraft.bytes);
 			const frozen = { ...freeze, receipts: { [inputPath]: `sha256:${createHash('sha256').update(failedDraft.bytes).digest('hex')}` } };
@@ -230,7 +239,7 @@ Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)}
 		}
 		const preservedDrafts = structuredClone(deniedDrafts); writeFileSync(inputPath, inputBytes);
 		expect((await observe()).stdout).toBe('verified'); expect(deniedDrafts).toEqual(preservedDrafts);
-		expect(failed).toEqual(deniedReferences); expect(calls).toHaveLength(273);
+		expect(failed).toEqual(deniedReferences); expect(calls).toHaveLength(291);
 		for (const file of proposalReadback().original.referenceFiles)
 			expect(referenceCalls.some(value => value.endsWith(` ${file.files[0]!.path}`))).toBe(true);
 		expect({ release, review, proposal }).toEqual(original);

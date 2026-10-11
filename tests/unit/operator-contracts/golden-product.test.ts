@@ -64,6 +64,18 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 		const check = (value: unknown) => { const observed = proposalReadback(value);
 			return Reflect.apply(verifyProduct, undefined, [[release, review], commit, observed.governance, observed.original]); };
 		expect(() => check(proposal)).not.toThrow();
+		for (const field of ['title', 'summary', 'evidenceRefs', 'objective', 'contextRefs', 'acceptanceCriteria']) {
+			const changed = proposalReadback();
+			if (field === 'evidenceRefs') changed.original.initialProposal.evidenceRefs[0]!.id = 'another-original-evidence';
+			else if (field === 'contextRefs') changed.original.initialProposal.executionPlan.workItems[0]!.contextRefs[0]!.commit = 'd'.repeat(40);
+			else if (field === 'acceptanceCriteria') changed.original.initialProposal.executionPlan.workItems[0]!.acceptanceCriteria = ['Different fixed criterion.'];
+			else if (field === 'objective') changed.original.initialProposal.executionPlan.workItems[0]!.objective = 'Different fixed objective.';
+			else Reflect.set(changed.original.initialProposal, field, 'Different fixed objective.');
+			const retained = structuredClone(changed);
+			expect(() => Reflect.apply(verifyProduct, undefined, [[release, review], commit, changed.governance, changed.original]))
+				.toThrow('ACCEPTANCE_SDK_FROZEN_REQUEST');
+			expect(changed).toEqual(retained);
+		}
 		const changedRequest = proposalReadback({ ...proposal, request: 'Publish the legacy capacity plan and deploy it upstream.' });
 		Reflect.set(changedRequest.original, 'initialProposal', structuredClone(proposal));
 		const changedActors = structuredClone([release, review]);
