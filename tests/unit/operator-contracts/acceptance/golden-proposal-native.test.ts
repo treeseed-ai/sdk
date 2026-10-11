@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { once } from 'node:events';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { parse } from 'yaml';
@@ -17,7 +17,9 @@ it('native public SDK proposal reads in isolated product verification reject cha
 			: kind === 'reference-path' ? bytes.replace('path: proposals/governance/sdk-proposal.mdx', 'path: proposals/foreign.mdx') : bytes;
 	const original = structuredClone({ release, review, proposal });
 	const retainedInput = workdayStartFixture(), inputPath = resolve(retainedInput.root, 'proposal-input.json');
-	const inputBytes = JSON.stringify({ ...proposal, status: 'draft' }); writeFileSync(inputPath, inputBytes);
+	const initial = { ...structuredClone(proposal), status: 'draft' };
+	for (const item of initial.executionPlan.workItems) { Reflect.deleteProperty(item, 'estimate'); Reflect.deleteProperty(item, 'reviewEstimate'); }
+	const inputBytes = JSON.stringify(initial); writeFileSync(inputPath, inputBytes);
 	const freeze = { proposal: { id: proposal.id }, request: { body: { projects: [proposal.projectId] } },
 		receipts: { [inputPath]: `sha256:${createHash('sha256').update(inputBytes).digest('hex')}` } };
 	let worker: ChildProcess | undefined, sequence = 0, stderrBytes = 0;
@@ -112,12 +114,12 @@ it('native public SDK proposal reads in isolated product verification reject cha
 import{controlPlaneOperation}from ${JSON.stringify(operations)};
 import{verifySdkGoldenProduct,sdkGoldenProposalProvenance,sdkGoldenFrozenProposal,sdkGoldenProposalDocument,sdkGoldenLibraryFiles}from ${JSON.stringify(helper)};
 const client=new ControlPlaneClient({profile:defaultLocalControlPlaneServer({TREESEED_API_BASE_URL:${JSON.stringify(`http://127.0.0.1:${address.port}`)}}),accessToken:'controlled-native-input'});
-process.on('message',async ({id,actors})=>{try{
+process.on('message',async ({id,actors,frozen})=>{try{
 const observed=await client.invoke(controlPlaneOperation('governance.proposals.show'),{path:{projectId:'sdk-project',proposalId:'sdk-proposal'},query:{},body:undefined});
 const provenance=sdkGoldenProposalProvenance(observed.data);
 const binding=await client.invoke(controlPlaneOperation('treedx.library.show'),{path:{projectId:'sdk-project'},query:{},body:undefined});
 const files=await client.invoke(controlPlaneOperation('treedx.repositories.files.read'),{path:{projectId:'sdk-project',repoId:provenance.repositoryId},query:{},body:{ref:provenance.commitSha,paths:[provenance.contentPath],encoding:'utf8',parseFrontmatter:true}});
-const original={binding:binding.data,files:sdkGoldenLibraryFiles({result:files.data,receipt:{operation:'read'}}),initialProposal:sdkGoldenFrozenProposal(${JSON.stringify(freeze)})};
+const original={binding:binding.data,files:sdkGoldenLibraryFiles({result:files.data,receipt:{operation:'read'}}),initialProposal:sdkGoldenFrozenProposal(frozen)};
 const document=sdkGoldenProposalDocument(observed.data,original);
 const teamProject=await client.invoke(controlPlaneOperation('projects.show'),{path:{projectId:'team-project'},query:{},body:undefined});
 const teamBinding=await client.invoke(controlPlaneOperation('treedx.library.show'),{path:{projectId:'team-project'},query:{},body:undefined});
@@ -140,10 +142,10 @@ Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)}
 			const item = pending.get(value.id)!; pending.delete(value.id); clearTimeout(item.timer);
 			if (value.passed) item.resolve({ stdout: 'verified' }); else item.reject(new Error(String(value.error)));
 		});
-		const observe = (actors: unknown[] = [release, review]) => new Promise<{ stdout: string }>((resolve, reject) => {
+		const observe = (actors: unknown[] = [release, review], frozen = freeze) => new Promise<{ stdout: string }>((resolve, reject) => {
 			if (!worker?.connected) { reject(new Error('Isolated verifier is unavailable')); return; }
 			const id = ++sequence, timer = setTimeout(() => { fail(new Error('Isolated verifier exceeded original five-second watchdog')); worker!.kill('SIGKILL'); }, 5_000);
-			pending.set(id, { resolve, reject, timer }); worker.send({ id, actors }, error => { if (error) fail(error); });
+			pending.set(id, { resolve, reject, timer }); worker.send({ id, actors, frozen }, error => { if (error) fail(error); });
 		});
 		expect((await Promise.all([observe(), observe()])).map(value => value.stdout)).toEqual(['verified', 'verified']);
 		for (const denied of ['title', 'summary', 'foreign-id', 'foreign-project', 'missing-title', 'missing-summary',
@@ -205,6 +207,30 @@ Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)}
 		mode = 'exact'; expect((await observe()).stdout).toBe('verified');
 		expect(failed).toEqual(deniedReferences); expect(referenceCalls.slice(0, retainedReferenceCalls.length)).toEqual(retainedReferenceCalls);
 		expect(failed).toHaveLength(59); expect(calls).toHaveLength(189);
+		const deniedDrafts: Array<{ bytes: string; error: string }> = [];
+		for (const field of ['executionPlan', 'evidenceRefs', 'objectiveRefs', 'title', 'summary']) {
+			const changed = structuredClone(initial); Reflect.deleteProperty(changed, field);
+			deniedDrafts.push({ bytes: JSON.stringify(changed), error: 'ACCEPTANCE_SDK_FROZEN_REQUEST' });
+		}
+		for (const [index] of initial.executionPlan.workItems.entries()) {
+			for (const field of ['objective', 'contextRefs', 'acceptanceCriteria']) {
+				const changed = structuredClone(initial); Reflect.deleteProperty(changed.executionPlan.workItems[index]!, field);
+				deniedDrafts.push({ bytes: JSON.stringify(changed), error: 'ACCEPTANCE_SDK_FROZEN_REQUEST' });
+			}
+		}
+		for (const field of ['estimate', 'reviewEstimate', 'ownerEstimate', 'reviewerEstimate']) {
+			const changed = structuredClone(initial); Reflect.set(changed.executionPlan.workItems[0]!, field, null);
+			deniedDrafts.push({ bytes: JSON.stringify(changed), error: 'ACCEPTANCE_SDK_FROZEN_REQUEST' });
+		}
+		for (const failedDraft of deniedDrafts) {
+			writeFileSync(inputPath, failedDraft.bytes);
+			const frozen = { ...freeze, receipts: { [inputPath]: `sha256:${createHash('sha256').update(failedDraft.bytes).digest('hex')}` } };
+			await expect.soft(observe([release, review], frozen)).rejects.toThrow(failedDraft.error);
+			expect(readFileSync(inputPath, 'utf8')).toBe(failedDraft.bytes);
+		}
+		const preservedDrafts = structuredClone(deniedDrafts); writeFileSync(inputPath, inputBytes);
+		expect((await observe()).stdout).toBe('verified'); expect(deniedDrafts).toEqual(preservedDrafts);
+		expect(failed).toEqual(deniedReferences); expect(calls).toHaveLength(273);
 		for (const file of proposalReadback().original.referenceFiles)
 			expect(referenceCalls.some(value => value.endsWith(` ${file.files[0]!.path}`))).toBe(true);
 		expect({ release, review, proposal }).toEqual(original);
