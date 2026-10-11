@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, isAbsolute, resolve } from 'node:path';
-import { exactEntityReferenceSchema, executionEdgeSchema } from '@treeseed/sdk/agent-capacity';
+import { exactEntityReferenceSchema, executionEdgeSchema, activityProfileSchema } from '@treeseed/sdk/agent-capacity';
 import { validatePortableContentData } from '@treeseed/sdk/content-validation';
 import { createHash } from 'node:crypto';
 import { parse, parseDocument, visit } from 'yaml';
@@ -92,13 +92,24 @@ function verifySdkGoldenAuthoredWork(proposal: Row, draft = false): void {
 		&& new Set(authored.map(item => item.id)).size === fixedRows.length,
 		`${graphCode}: Six unique original authored work items required`);
 	for (const [id, agentClass, workspace] of fixedRows) {
-		const item = authored.find(row => row.id === id);
+		const item: Row | undefined = authored.find(row => row.id === id);
 		assert.ok(item && item.agentClass === agentClass && item.workspace === workspace
 			&& item.activity === 'acting' && item.review === 'required' && item.maximumReviewCycles === 2
 			&& Array.isArray(item.dependsOn) && item.dependsOn.length === 0
 			&& ['objective', 'contextRefs', 'requestedPermissions', 'requiredCapabilities', 'acceptanceCriteria',
 				...(draft ? [] : ['estimate', 'reviewEstimate'])].every(field => Object.hasOwn(item, field)),
 			`${graphCode}: Original ${id} class workspace dependencies and review policy required`);
+		const permissionCode = `ACCEPTANCE_SDK_PERMISSIONS: ${graphCode}`;
+		const permissions = activityProfileSchema.shape.permissions.safeParse(item.requestedPermissions);
+		assert.ok(permissions.success, `${permissionCode}: Complete canonical original permission request required`);
+		const reads: string[] = ['book', 'knowledge', 'objective', 'proposal', 'decision', 'note', 'question'];
+		const writes: string[] = agentClass === 'researcher' ? ['knowledge', 'note', 'question']
+			: agentClass === 'architect' ? ['book', 'knowledge', 'note', 'question'] : [];
+		const tools: string[] = workspace === 'treedx' ? ['discussion', 'source.read']
+			: ['source.read', 'source.write', 'verification', ...(agentClass === 'releaser' ? ['release'] : [])];
+		const lists: [readonly string[], readonly string[]][] = [[permissions.data.content.read, reads], [permissions.data.content.write, writes], [permissions.data.tools, tools]];
+		for (const [actual, expected] of lists)
+			assert.deepEqual([...actual].sort(), [...expected].sort(), `${permissionCode}: Exact ${id} requested content and tools required`);
 		if (draft) assert.ok(['estimate', 'reviewEstimate', 'ownerEstimate', 'reviewerEstimate'].every(field => !Object.hasOwn(item, field))
 			&& typeof item.objective === 'string' && item.objective.trim()
 			&& Array.isArray(item.contextRefs) && item.contextRefs.length > 0
@@ -130,6 +141,7 @@ function verifySdkGoldenGraph(proposal: Row, attempt: Row, graph: Row | undefine
 			&& node.maximumReviewCycles === item.maximumReviewCycles && item.review === 'required',
 			`${code}: Authored Actor or generated Reviewer authority drifted`);
 		assert.deepEqual(node.sourceRef, attempt.sourceRef, `${code}: Pair must represent the exact original authored proposal`);
+		if (role === 'actor') assert.deepEqual(node.requestedPermissions, item.requestedPermissions, `${code}: Actor must retain its original authored permission request`);
 	}
 	const orderCode = 'ACCEPTANCE_SDK_GRAPH_ORDER';
 	assert.ok(Array.isArray(graph.edges), `${orderCode}: Independent complete public edges required`);

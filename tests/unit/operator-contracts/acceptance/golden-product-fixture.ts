@@ -2,6 +2,20 @@ import { createHash } from 'node:crypto';
 import { parse, stringify } from 'yaml';
 export const commit = 'a'.repeat(40);
 const libraryCommit = 'c'.repeat(40);
+export const permissionFailures = ['missing-read', 'extra-read', 'duplicate-read', 'missing-write', 'extra-write', 'missing-tool', 'extra-tool', 'duplicate-tool', 'unknown-field'] as const;
+export const permissionCases = Array.from({ length: 6 }, (_, index) => permissionFailures.map(mode => `${index}-${mode}`)).flat();
+export function mutatePermissionRequest(value: typeof proposal, failure: string): void {
+	const index = Number(failure[0]), mode = failure.slice(2), permissions = value.executionPlan.workItems[index]!.requestedPermissions;
+	if (mode === 'missing-read') permissions.content.read.pop();
+	if (mode === 'extra-read') permissions.content.read.push('discussion');
+	if (mode === 'duplicate-read') permissions.content.read.push(permissions.content.read[0]!);
+	if (mode === 'missing-write') Reflect.deleteProperty(permissions.content, 'write');
+	if (mode === 'extra-write') permissions.content.write.push('proposal');
+	if (mode === 'missing-tool') permissions.tools.pop();
+	if (mode === 'extra-tool') permissions.tools.push('external.publish');
+	if (mode === 'duplicate-tool') permissions.tools.push(permissions.tools[0]!);
+	if (mode === 'unknown-field') Reflect.set(permissions, 'alternateAuthority', true);
+}
 export const graphOrderFailures = ['missing-edges', 'malformed-edge', 'duplicate-edge', 'missing-pair', 'extra-pair', 'missing-profile',
 	'transitive-profile', 'actor-profile', 'research-profile', 'work-item-profile', 'foreign-edge-team', 'edge-source-id',
 	'edge-source-revision', 'edge-source-digest', 'edge-source-commit', 'edge-source-path', 'edge-source-repository', 'missing-edge-source',
@@ -28,7 +42,7 @@ export function mutateGraphOrder(graph: { edges: Array<Record<string, unknown>> 
 }
 export const graphPairFailures = ['missing', 'foreign-team', 'duplicate-id', 'missing-node', 'extra-node', 'work-item',
 	'pair-role', 'kind', 'class', 'workspace', 'cycles', 'project', 'team', 'workday', 'source-id', 'source-revision',
-	'source-digest', 'source-commit', 'source-path', 'source-repository'] as const;
+	'source-digest', 'source-commit', 'source-path', 'source-repository', 'permission-request'] as const;
 export function mutateGraphPair(graph: { teamId: string; nodes: Array<Record<string, unknown>> }, mode: string): void {
 	const node = graph.nodes[1]!;
 	if (mode === 'missing') Reflect.deleteProperty(graph, 'nodes');
@@ -36,6 +50,7 @@ export function mutateGraphPair(graph: { teamId: string; nodes: Array<Record<str
 	else if (mode === 'duplicate-id') node.id = graph.nodes[0]!.id;
 	else if (mode === 'missing-node') graph.nodes.pop();
 	else if (mode === 'extra-node') graph.nodes.push({ ...node, id: 'extra-pair' });
+	else if (mode === 'permission-request') Reflect.set(graph.nodes[0]!, 'requestedPermissions', { content: { read: [], write: [] }, tools: [] });
 	else if (mode.startsWith('source-')) Reflect.set(node.sourceRef as object, mode.slice(7), mode === 'source-revision' ? 2 : mode === 'source-digest' ? `sha256:${'e'.repeat(64)}` : mode === 'source-commit' ? 'd'.repeat(40) : 'foreign');
 	else Reflect.set(node, ({ 'work-item': 'workItemId', 'pair-role': 'pairRole', class: 'agentClass', cycles: 'maximumReviewCycles',
 		project: 'projectId', team: 'teamId', workday: 'workdayId' } as Record<string, string>)[mode] ?? mode,
@@ -65,7 +80,9 @@ export const proposal = { schemaVersion: 'treeseed.proposal/v1', status: 'ready'
 		objective: `Controlled explicit ${id} objective`, estimate: { expectedSeconds: 120, maximumSeconds: 240 },
 		reviewEstimate: { expectedSeconds: 60, maximumSeconds: 120 },
 		contextRefs: [{ store: workspace, model: 'repository', id: 'sdk', repository: workspace === 'git' ? 'treeseed-ai/sdk' : 'repo_sdk_fixture', commit }],
-		requestedPermissions: { content: { read: ['proposal', 'decision'], write: [] }, tools: ['source.read'] },
+		requestedPermissions: { content: { read: ['book', 'knowledge', 'objective', 'proposal', 'decision', 'note', 'question'],
+			write: agentClass === 'researcher' ? ['knowledge', 'note', 'question'] : agentClass === 'architect' ? ['book', 'knowledge', 'note', 'question'] : [] },
+			tools: workspace === 'treedx' ? ['discussion', 'source.read'] : ['source.read', 'source.write', 'verification', ...(agentClass === 'releaser' ? ['release'] : [])] },
 		requiredCapabilities: ['source.read'], acceptanceCriteria: [`Verify controlled ${id} outcome.`] })) },
 	evidenceRefs: [{ store: 'url', model: 'issue', id: 'sdk-source-1', url: 'https://github.com/treeseed-ai/sdk/issues/299' }],
 	summary: 'Prove the SDK can express high-level decision-governed execution while keeping all derived execution state API-owned.' };

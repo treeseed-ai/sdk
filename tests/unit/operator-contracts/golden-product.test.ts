@@ -3,10 +3,34 @@ import { readFileSync } from 'node:fs';
 import { sdkGoldenSource, sdkGoldenLibraryFiles, verifySdkGoldenProposalReferences, verifySdkGoldenProduct as verifyProduct } from '../../acceptance/golden-product.ts';
 import { stringify } from 'yaml';
 import { createHash } from 'node:crypto';
-import { commit, release, review, proposal, proposalReadback, graphPairFailures, mutateGraphPair, graphOrderFailures, mutateGraphOrder } from './acceptance/golden-product-fixture.ts';
+import { commit, release, review, proposal, proposalReadback, graphPairFailures, mutateGraphPair, graphOrderFailures, mutateGraphOrder, permissionCases, mutatePermissionRequest } from './acceptance/golden-product-fixture.ts';
 const verifySdkGoldenProduct = (items: Parameters<typeof verifyProduct>[0], source: string) =>
 	Reflect.apply(verifyProduct, undefined, [items, source, proposalReadback().governance, proposalReadback().original]);
 describe('SDK golden product gate (fixtures are not acceptance)', () => {
+	it('rejects missing extra duplicate and alternate permission requests for every fixed authored SDK role without repairing original bytes', () => {
+		const exact = proposalReadback(), inspect = (value: typeof exact) => Reflect.apply(verifyProduct, undefined, [[release, review], commit, value.governance, value.original]);
+		expect(() => inspect(exact)).not.toThrow();
+		const substituted = structuredClone(exact); substituted.original.graph.nodes[0]!.requestedPermissions.tools = [];
+		const heldGraph = structuredClone(substituted);
+		expect.soft(() => inspect(substituted)).toThrow('ACCEPTANCE_SDK_GRAPH_PAIRS'); expect(substituted).toEqual(heldGraph);
+		const permuted = structuredClone(proposal);
+		for (const item of permuted.executionPlan.workItems) { item.requestedPermissions.content.read.reverse(); item.requestedPermissions.content.write.reverse(); item.requestedPermissions.tools.reverse(); }
+		const reordered = proposalReadback(permuted), actor = structuredClone(release), reviewer = structuredClone(review);
+		for (const item of permuted.executionPlan.workItems) {
+			reordered.original.initialProposal.executionPlan.workItems.find(value => value.id === item.id)!.requestedPermissions = structuredClone(item.requestedPermissions);
+			reordered.original.graph.nodes.find(value => value.workItemId === item.id && value.pairRole === 'actor')!.requestedPermissions = structuredClone(item.requestedPermissions);
+		}
+		for (const item of [actor, reviewer]) item.assignmentAttempt.sourceRef.digest = `sha256:${reordered.governance.activeContentHash}`;
+		const heldPermutation = structuredClone({ reordered, actor, reviewer });
+		expect(() => Reflect.apply(verifyProduct, undefined, [[actor, reviewer], commit, reordered.governance, reordered.original])).not.toThrow();
+		expect({ reordered, actor, reviewer }).toEqual(heldPermutation);
+		for (const mode of permissionCases) {
+			const changed = structuredClone(proposal); mutatePermissionRequest(changed, mode);
+			const observed = proposalReadback(changed), held = structuredClone(observed);
+			expect.soft(() => inspect(observed), mode).toThrow('ACCEPTANCE_SDK_PERMISSIONS'); expect(observed).toEqual(held);
+		}
+		expect(() => inspect(exact)).not.toThrow();
+	});
 	it('rejects counted graph pairs without independent research and exact immediate governed profile ordering', () => {
 		const observed = proposalReadback();
 		const inspect = (value: typeof observed) => Reflect.apply(verifyProduct, undefined, [[release, review], commit, value.governance, value.original]);
