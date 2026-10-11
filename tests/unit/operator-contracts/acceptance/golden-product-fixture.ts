@@ -42,7 +42,7 @@ export function mutateGraphOrder(graph: { edges: Array<Record<string, unknown>> 
 }
 export const graphPairFailures = ['missing', 'foreign-team', 'duplicate-id', 'missing-node', 'extra-node', 'work-item',
 	'pair-role', 'kind', 'class', 'workspace', 'cycles', 'project', 'team', 'workday', 'source-id', 'source-revision',
-	'source-digest', 'source-commit', 'source-path', 'source-repository'] as const;
+	'source-digest', 'source-commit', 'source-path', 'source-repository', 'permission-request'] as const;
 export function mutateGraphPair(graph: { teamId: string; nodes: Array<Record<string, unknown>> }, mode: string): void {
 	const node = graph.nodes[1]!;
 	if (mode === 'missing') Reflect.deleteProperty(graph, 'nodes');
@@ -50,6 +50,7 @@ export function mutateGraphPair(graph: { teamId: string; nodes: Array<Record<str
 	else if (mode === 'duplicate-id') node.id = graph.nodes[0]!.id;
 	else if (mode === 'missing-node') graph.nodes.pop();
 	else if (mode === 'extra-node') graph.nodes.push({ ...node, id: 'extra-pair' });
+	else if (mode === 'permission-request') Reflect.set(graph.nodes[0]!, 'requestedPermissions', { content: { read: [], write: [] }, tools: [] });
 	else if (mode.startsWith('source-')) Reflect.set(node.sourceRef as object, mode.slice(7), mode === 'source-revision' ? 2 : mode === 'source-digest' ? `sha256:${'e'.repeat(64)}` : mode === 'source-commit' ? 'd'.repeat(40) : 'foreign');
 	else Reflect.set(node, ({ 'work-item': 'workItemId', 'pair-role': 'pairRole', class: 'agentClass', cycles: 'maximumReviewCycles',
 		project: 'projectId', team: 'teamId', workday: 'workdayId' } as Record<string, string>)[mode] ?? mode,

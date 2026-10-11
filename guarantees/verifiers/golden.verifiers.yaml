@@ -1,6 +1,11 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.fixed-permissions-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/golden-product.test.ts
+    testName: "rejects missing extra duplicate and alternate permission requests for every fixed authored SDK role without repairing original bytes"
   sdk.golden.standing-graph-order-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

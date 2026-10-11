@@ -684,6 +684,9 @@ workflow:
   - id: standing-graph-order-unit
     action: { verifier: sdk.golden.standing-graph-order-unit }
     expect: { status: passed }
+  - id: fixed-permissions-unit
+    action: { verifier: sdk.golden.fixed-permissions-unit }
+    expect: { status: passed }
   - id: assignment-workday-native
     action: { verifier: sdk.golden.assignment-workday-native }
     expect: { status: passed }
