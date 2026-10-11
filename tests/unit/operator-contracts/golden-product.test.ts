@@ -5,6 +5,16 @@ import { commit, release, review, proposal, proposalReadback } from './acceptanc
 const verifySdkGoldenProduct = (items: Parameters<typeof verifyProduct>[0], source: string) =>
 	Reflect.apply(verifyProduct, undefined, [items, source, proposalReadback().governance, proposalReadback().original]);
 describe('SDK golden product gate (fixtures are not acceptance)', () => {
+	it('rejects coherently issued proposals lacking the populated golden proposal contract without repairing observations', () => {
+		for (const patch of [{ status: 'draft' }, { status: 'discussing' }, { objectiveRefs: undefined }, { discussionRef: undefined }]) {
+			const observed = proposalReadback({ ...proposal, ...patch }), actors = structuredClone([release, review]);
+			for (const actor of actors) actor.assignmentAttempt.sourceRef.digest = `sha256:${observed.governance.activeContentHash}`;
+			const retained = structuredClone({ observed, actors });
+			expect.soft(() => Reflect.apply(verifyProduct, undefined, [actors, commit, observed.governance, observed.original]))
+				.toThrow('ACCEPTANCE_SDK_POPULATED_PROPOSAL');
+			expect({ observed, actors }).toEqual(retained);
+		}
+	});
 	it('requires exact stored SDK proposal title summary and frozen identity without changing missing malformed or foreign observations', () => {
 		const check = (value: unknown) => { const observed = proposalReadback(value);
 			return Reflect.apply(verifyProduct, undefined, [[release, review], commit, observed.governance, observed.original]); };
