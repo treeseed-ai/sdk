@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, realpathSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
+import { exactEntityReferenceSchema } from '@treeseed/sdk/agent-capacity';
 
 type Row = Record<string, any>;
 function measured(record: Row | undefined): boolean {
@@ -33,6 +34,13 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, s
 		'ACCEPTANCE_SDK_PROPOSAL: Stored title differs from the fixed SDK proposal');
 	assert.equal(proposal.summary, 'Prove the SDK can express high-level decision-governed execution while keeping all derived execution state API-owned.',
 		'ACCEPTANCE_SDK_PROPOSAL: Stored summary differs from the fixed SDK proposal');
+	assert.ok(Array.isArray(proposal.evidenceRefs), 'ACCEPTANCE_SDK_PROPOSAL: Original source issue evidence required');
+	const sourceEvidence = proposal.evidenceRefs.filter((ref: unknown) => ref && typeof ref === 'object'
+		&& !Array.isArray(ref) && (ref as Row).url === 'https://github.com/treeseed-ai/sdk/issues/299');
+	assert.equal(sourceEvidence.length, 1, 'ACCEPTANCE_SDK_PROPOSAL: One unambiguous original SDK source issue required');
+	const issue = exactEntityReferenceSchema.safeParse(sourceEvidence[0]);
+	assert.ok(issue.success && issue.data.store === 'url' && issue.data.model === 'issue',
+		'ACCEPTANCE_SDK_PROPOSAL: Canonical original SDK source issue reference required');
 	for (const item of actors.filter(item => ['research-context', 'architecture-contract', 'tests-first'].includes(item.assignmentAttempt.workItemId)))
 		assert.ok(item.assignmentAttempt.contextRefs?.some((ref: Row) => ref.store === 'git' && ref.commit === sourceBase),
 			'ACCEPTANCE_SDK_SOURCE: Early roles must receive exact frozen SDK source');

@@ -8,4 +8,5 @@ export const review = { ...release, id: 'review-row', assignmentAttempt: { ...re
 	assignmentResult: { ...release.assignmentResult, id: 'review-result', assignmentId: 'review-attempt' },
 	lifecycleOutput: { activityCompletion: { reviewDisposition: 'approved' } } };
 export const proposal = { id: 'sdk-proposal', projectId: 'sdk-project', title: 'Select accepted decisions in portable workday intent',
+	evidenceRefs: [{ store: 'url', model: 'issue', id: 'sdk-source-1', url: 'https://github.com/treeseed-ai/sdk/issues/299' }],
 	summary: 'Prove the SDK can express high-level decision-governed execution while keeping all derived execution state API-owned.' };

@@ -21,6 +21,16 @@ it('native public SDK proposal reads in isolated product verification reject cha
 		if (mode === 'title') returned.title = 'Changed objective'; if (mode === 'summary') returned.summary = 'Changed objective';
 		if (mode === 'foreign-id') returned.id = 'foreign'; if (mode === 'foreign-project') returned.projectId = 'foreign';
 		if (mode === 'missing-title') delete returned.title; if (mode === 'missing-summary') delete returned.summary;
+		const source = proposal.evidenceRefs[0]!;
+		if (mode === 'missing-source') delete returned.evidenceRefs;
+		if (mode === 'foreign-source') returned.evidenceRefs = [{ ...source, url: 'https://github.com/treeseed-ai/sdk/issues/300' }];
+		if (mode === 'duplicate-source') returned.evidenceRefs = [source, { ...source, id: 'another-source' }];
+		if (mode === 'malformed-source') returned.evidenceRefs = [null];
+		if (mode === 'source-fragment') returned.evidenceRefs = [{ ...source, url: `${source.url}#issuecomment-1` }];
+		if (mode === 'source-store') returned.evidenceRefs = [{ ...source, store: 'git' }];
+		if (mode === 'source-model') returned.evidenceRefs = [{ ...source, model: 'note' }];
+		if (mode === 'source-id') returned.evidenceRefs = [{ ...source, id: '' }];
+		if (mode === 'source-unknown-property') returned.evidenceRefs = [{ ...source, callerAuthority: true }];
 		const value = mode === 'null' ? null : returned;
 		if (mode !== 'exact') failed.at(-1)!.returned = structuredClone(value);
 		response.end(JSON.stringify({ data: value }));
@@ -40,12 +50,14 @@ Reflect.apply(verifySdkGoldenProduct,undefined,[${JSON.stringify([release, revie
 			cwd: new URL('../../../../', import.meta.url), timeout: 5_000, maxBuffer: 131_072, killSignal: 'SIGKILL', env: process.env,
 		});
 		expect((await Promise.all([observe(), observe()])).map(value => value.stdout)).toEqual(['verified', 'verified']);
-		for (const denied of ['title', 'summary', 'foreign-id', 'foreign-project', 'missing-title', 'missing-summary', 'null', 'denied', 'unavailable', 'interrupted', 'json']) {
+		for (const denied of ['title', 'summary', 'foreign-id', 'foreign-project', 'missing-title', 'missing-summary',
+			'missing-source', 'foreign-source', 'duplicate-source', 'malformed-source', 'source-fragment', 'source-store', 'source-model', 'source-id', 'source-unknown-property',
+			'null', 'denied', 'unavailable', 'interrupted', 'json']) {
 			mode = denied; await expect.soft(observe(), denied).rejects.toThrow();
 		}
 		const retained = structuredClone(failed); mode = 'exact'; expect((await observe()).stdout).toBe('verified');
-		expect(failed).toEqual(retained); expect(failed).toHaveLength(11);
-		expect(calls).toEqual(Array(14).fill('GET /v1/projects/sdk-project/proposals/sdk-proposal'));
+		expect(failed).toEqual(retained); expect(failed).toHaveLength(20);
+		expect(calls).toEqual(Array(23).fill('GET /v1/projects/sdk-project/proposals/sdk-proposal'));
 		expect({ release, review, proposal }).toEqual(original);
 		// The owning SDK transport and isolated verifier are real. Upstream API
 		// values are controlled; this is not a managed governance or golden receipt.
