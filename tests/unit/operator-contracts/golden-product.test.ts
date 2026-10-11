@@ -10,6 +10,11 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 			return Reflect.apply(verifyProduct, undefined, [[release, review], commit, observed.governance, observed.original]); };
 		expect(() => check(proposal)).not.toThrow();
 		const observed = proposalReadback();
+		for (const field of ['revision', 'digest', 'repository', 'commit', 'path']) for (const value of [undefined, null, '', 'foreign', 2]) {
+			const changed = structuredClone(release); Reflect.set(changed.assignmentAttempt.sourceRef, field, value);
+			expect.soft(() => Reflect.apply(verifyProduct, undefined, [[changed, review], commit, observed.governance, observed.original]))
+				.toThrow('ACCEPTANCE_SDK_PROPOSAL');
+		}
 		const originalCheck = (value: typeof observed) => Reflect.apply(verifyProduct, undefined,
 			[[release, review], commit, value.governance, value.original]);
 		for (const field of ['repositoryId', 'commitSha', 'contentPath', 'digest']) for (const value of [undefined, null, '', ' ', 'staging']) {
@@ -71,7 +76,9 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 			}
 		}
 		const permuted = structuredClone(proposal); permuted.executionPlan.workItems.reverse();
-		expect(() => check(permuted)).not.toThrow();
+		const reordered = proposalReadback(permuted), reorderedActor = structuredClone(release);
+		reorderedActor.assignmentAttempt.sourceRef.digest = `sha256:${reordered.governance.activeContentHash}`;
+		expect(() => Reflect.apply(verifyProduct, undefined, [[reorderedActor, review], commit, reordered.governance, reordered.original])).not.toThrow();
 		expect(() => check(proposal)).not.toThrow();
 	});
 

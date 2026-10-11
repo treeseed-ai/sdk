@@ -45,7 +45,10 @@ it('native public SDK proposal reads in isolated product verification reject cha
 		const observed = proposalReadback(value);
 		if (mode === 'missing-provenance') Reflect.deleteProperty(observed.governance.metadata, 'contentProvenance');
 		if (mode === 'foreign-binding') observed.original.binding.repositoryId = 'repo_foreign';
-		if (mode === 'moved-content') observed.original.files.resolvedRef = 'd'.repeat(40);
+		if (mode === 'moved-content') {
+			observed.original.files.resolvedRef = 'd'.repeat(40);
+			observed.governance.metadata.contentProvenance.commitSha = observed.original.files.resolvedRef;
+		}
 		if (mode === 'foreign-path') observed.original.files.files[0]!.path = 'proposals/foreign.mdx';
 		if (mode === 'changed-bytes') observed.original.files.files[0]!.content += 'changed';
 		if (mode === 'contradictory-frontmatter') observed.original.files.files[0]!.frontmatter = {};
