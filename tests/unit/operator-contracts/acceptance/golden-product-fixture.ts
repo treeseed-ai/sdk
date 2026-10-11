@@ -40,6 +40,6 @@ export function proposalReadback(...input: [unknown?, number?, (boolean | 'alias
 	const digest = createHash('sha256').update(content).digest('hex'), repositoryId = 'repo_sdk_fixture', commitSha = 'c'.repeat(40), contentPath = 'proposals/governance/sdk-proposal.mdx';
 	return { governance: { id: fields.id, projectId: fields.projectId, title: fields.title, summary: fields.summary, body: fields.request,
 		activeVersion: 1, activeContentHash: digest, metadata: { contentProvenance: { repositoryId, commitSha, contentPath, digest } } },
-		original: { binding: { repositoryId }, files: { repoId: repositoryId, resolvedRef: commitSha,
+		original: { initialProposal: structuredClone({ ...proposal, status: 'draft' }), binding: { repositoryId }, files: { repoId: repositoryId, resolvedRef: commitSha,
 			files: [{ path: contentPath, content, frontmatter: parse(encoded) as unknown }] } } };
 }
