@@ -213,6 +213,7 @@ export function verifySdkGoldenProposalReferences(proposal: Row, original: SdkGo
 		} else {
 			assert.ok(content.status === 'closed' && content.projectId === proposal.projectId && content.teamId === attempt.teamId
 				&& content.subjectRef?.store === 'treedx' && content.subjectRef.model === 'proposal' && content.subjectRef.id === proposal.id
+				&& content.subjectRef.repository === original.binding.repositoryId && content.subjectRef.path === original.files.files[0]?.path
 				&& ref.repository === original.binding.repositoryId, `${code}: Exact closed proposal discussion required`);
 		}
 	}

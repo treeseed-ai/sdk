@@ -5,12 +5,16 @@ import { once } from 'node:events';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
+import { parse } from 'yaml';
 import { expect, it } from 'vitest';
 import { commit, release, review, proposal, proposalReadback } from './golden-product-fixture.ts';
 import { workdayStartFixture } from './workday-start-fixture.ts';
 
 it('native public SDK proposal reads in isolated product verification reject changed stored identity title and summary and retain denied observations before unchanged retry', async () => {
 	let mode = 'exact'; const calls: string[] = [], referenceCalls: string[] = [], failed: Array<Record<string, unknown>> = [];
+	const discussionBytes = (kind: string, bytes: string) => kind === 'reference-open' ? bytes.replace('status: closed', 'status: open')
+		: kind === 'reference-repository' ? bytes.replace('repository: repo_sdk_fixture', 'repository: repo_foreign')
+			: kind === 'reference-path' ? bytes.replace('path: proposals/governance/sdk-proposal.mdx', 'path: proposals/foreign.mdx') : bytes;
 	const original = structuredClone({ release, review, proposal });
 	const retainedInput = workdayStartFixture(), inputPath = resolve(retainedInput.root, 'proposal-input.json');
 	const inputBytes = JSON.stringify({ ...proposal, status: 'draft' }); writeFileSync(inputPath, inputBytes);
@@ -22,10 +26,10 @@ it('native public SDK proposal reads in isolated product verification reject cha
 	const server = createServer((request, response) => {
 		let bytes = ''; request.setEncoding('utf8'); request.on('data', value => { bytes += String(value); }); request.on('end', () => {
 		const fixture = proposalReadback().original, path = request.method === 'POST' ? JSON.parse(bytes).paths?.[0] : undefined;
-		if (mode === 'reference-open') {
+		if (['reference-open', 'reference-repository', 'reference-path'].includes(mode)) {
 			const discussion = fixture.referenceFiles[2]!.files[0]!;
-			discussion.content = discussion.content.replace('status: closed', 'status: open');
-			discussion.frontmatter.status = 'open';
+			discussion.content = discussionBytes(mode, discussion.content);
+			discussion.frontmatter = parse(discussion.content.match(/^---\n([\s\S]*?)---\n/u)![1]!);
 		}
 		const referenced = fixture.referenceFiles.find(value => value.files[0]?.path === path);
 		if (referenced || request.url === '/v1/projects/team-project' || request.url === '/v1/projects/team-project/treedx-library') {
@@ -49,7 +53,7 @@ it('native public SDK proposal reads in isolated product verification reject cha
 		}
 		if (mode === 'json') { response.end('{'); return; }
 		const returned: Record<string, unknown> = { ...proposal };
-		if (mode === 'reference-open') returned.discussionRef = { ...proposal.discussionRef,
+		if (['reference-open', 'reference-repository', 'reference-path'].includes(mode)) returned.discussionRef = { ...proposal.discussionRef,
 			digest: `sha256:${createHash('sha256').update(fixture.referenceFiles[2]!.files[0]!.content).digest('hex')}` };
 		if (mode === 'populated-status') returned.status = 'draft';
 		if (mode === 'populated-objectives') delete returned.objectiveRefs;
@@ -186,13 +190,13 @@ Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)}
 		const deniedRequest = structuredClone(failed); mode = 'exact'; expect((await observe()).stdout).toBe('verified');
 		expect(failed).toEqual(deniedRequest); expect(failed).toHaveLength(47); expect(calls).toHaveLength(150);
 		for (const denied of ['populated-status', 'populated-objectives', 'populated-discussion', 'reference-bytes', 'reference-moved',
-			'reference-frontmatter', 'reference-team', 'reference-denied', 'reference-interrupted', 'reference-open']) {
+			'reference-frontmatter', 'reference-team', 'reference-denied', 'reference-interrupted', 'reference-open', 'reference-repository', 'reference-path']) {
 			const value = structuredClone(proposal);
 			if (denied === 'populated-status') value.status = 'draft';
 			if (denied === 'populated-objectives') Reflect.deleteProperty(value, 'objectiveRefs');
 			if (denied === 'populated-discussion') Reflect.deleteProperty(value, 'discussionRef');
-			if (denied === 'reference-open') value.discussionRef = { ...value.discussionRef,
-				digest: `sha256:${createHash('sha256').update(proposalReadback().original.referenceFiles[2]!.files[0]!.content.replace('status: closed', 'status: open')).digest('hex')}` };
+			if (['reference-open', 'reference-repository', 'reference-path'].includes(denied)) value.discussionRef = { ...value.discussionRef,
+				digest: `sha256:${createHash('sha256').update(discussionBytes(denied, proposalReadback().original.referenceFiles[2]!.files[0]!.content)).digest('hex')}` };
 			const observed = proposalReadback(value), actors = structuredClone([release, review]);
 			for (const actor of actors) actor.assignmentAttempt.sourceRef.digest = `sha256:${observed.governance.activeContentHash}`;
 			mode = denied; await expect.soft(observe(actors), denied).rejects.toThrow();
@@ -200,7 +204,7 @@ Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)}
 		const deniedReferences = structuredClone(failed), retainedReferenceCalls = structuredClone(referenceCalls);
 		mode = 'exact'; expect((await observe()).stdout).toBe('verified');
 		expect(failed).toEqual(deniedReferences); expect(referenceCalls.slice(0, retainedReferenceCalls.length)).toEqual(retainedReferenceCalls);
-		expect(failed).toHaveLength(57); expect(calls).toHaveLength(183);
+		expect(failed).toHaveLength(59); expect(calls).toHaveLength(189);
 		for (const file of proposalReadback().original.referenceFiles)
 			expect(referenceCalls.some(value => value.endsWith(` ${file.files[0]!.path}`))).toBe(true);
 		expect({ release, review, proposal }).toEqual(original);
