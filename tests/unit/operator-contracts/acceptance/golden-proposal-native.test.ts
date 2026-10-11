@@ -10,7 +10,7 @@ import { commit, release, review, proposal, proposalReadback } from './golden-pr
 import { workdayStartFixture } from './workday-start-fixture.ts';
 
 it('native public SDK proposal reads in isolated product verification reject changed stored identity title and summary and retain denied observations before unchanged retry', async () => {
-	let mode = 'exact'; const calls: string[] = [], failed: Array<Record<string, unknown>> = [];
+	let mode = 'exact'; const calls: string[] = [], referenceCalls: string[] = [], failed: Array<Record<string, unknown>> = [];
 	const original = structuredClone({ release, review, proposal });
 	const retainedInput = workdayStartFixture(), inputPath = resolve(retainedInput.root, 'proposal-input.json');
 	const inputBytes = JSON.stringify({ ...proposal, status: 'draft' }); writeFileSync(inputPath, inputBytes);
@@ -20,6 +20,14 @@ it('native public SDK proposal reads in isolated product verification reject cha
 	const pending = new Map<number, { resolve: (value: { stdout: string }) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
 	const fail = (error: Error) => { for (const item of pending.values()) { clearTimeout(item.timer); item.reject(error); } pending.clear(); };
 	const server = createServer((request, response) => {
+		let bytes = ''; request.setEncoding('utf8'); request.on('data', value => { bytes += String(value); }); request.on('end', () => {
+		const fixture = proposalReadback().original, path = request.method === 'POST' ? JSON.parse(bytes).paths?.[0] : undefined;
+		const referenced = fixture.referenceFiles.find(value => value.files[0]?.path === path);
+		if (referenced || request.url === '/v1/projects/team-project' || request.url === '/v1/projects/team-project/treedx-library') {
+			referenceCalls.push(`${request.method} ${request.url} ${path ?? ''}`);
+			response.setHeader('content-type', 'application/json');
+			response.end(JSON.stringify({ data: referenced ?? (request.url?.endsWith('/treedx-library') ? fixture.teamLibrary.library : fixture.teamLibrary.project) })); return;
+		}
 		calls.push(`${request.method} ${request.url}`); response.setHeader('content-type', 'application/json');
 		const governanceRead = request.url === '/v1/projects/sdk-project/proposals/sdk-proposal';
 		if (mode !== 'exact' && mode !== 'budget-boundary' && governanceRead) failed.push({ mode });
@@ -73,6 +81,7 @@ it('native public SDK proposal reads in isolated product verification reject cha
 		const responseValue = governanceRead ? (mode === 'null' ? null : observed.governance)
 			: request.method === 'GET' ? observed.original.binding : observed.original.files;
 		response.end(JSON.stringify({ data: responseValue }));
+		});
 	});
 	try {
 		await new Promise<void>((accept, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', accept); });
@@ -81,14 +90,21 @@ it('native public SDK proposal reads in isolated product verification reject cha
 		const helper = new URL('../../../acceptance/golden-product.ts', import.meta.url).href;
 		const code = `import{ControlPlaneClient,defaultLocalControlPlaneServer}from ${JSON.stringify(sdk)};
 import{controlPlaneOperation}from ${JSON.stringify(operations)};
-import{verifySdkGoldenProduct,sdkGoldenProposalProvenance,sdkGoldenFrozenProposal}from ${JSON.stringify(helper)};
+import{verifySdkGoldenProduct,sdkGoldenProposalProvenance,sdkGoldenFrozenProposal,sdkGoldenProposalDocument}from ${JSON.stringify(helper)};
 const client=new ControlPlaneClient({profile:defaultLocalControlPlaneServer({TREESEED_API_BASE_URL:${JSON.stringify(`http://127.0.0.1:${address.port}`)}}),accessToken:'controlled-native-input'});
 process.on('message',async ({id,actors})=>{try{
 const observed=await client.invoke(controlPlaneOperation('governance.proposals.show'),{path:{projectId:'sdk-project',proposalId:'sdk-proposal'},query:{},body:undefined});
 const provenance=sdkGoldenProposalProvenance(observed.data);
 const binding=await client.invoke(controlPlaneOperation('treedx.library.show'),{path:{projectId:'sdk-project'},query:{},body:undefined});
 const files=await client.invoke(controlPlaneOperation('treedx.repositories.files.read'),{path:{projectId:'sdk-project',repoId:provenance.repositoryId},query:{},body:{ref:provenance.commitSha,paths:[provenance.contentPath],encoding:'utf8',parseFrontmatter:true}});
-Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)},observed.data,{binding:binding.data,files:files.data,initialProposal:sdkGoldenFrozenProposal(${JSON.stringify(freeze)})}]);process.send({id,passed:true});
+const original={binding:binding.data,files:files.data,initialProposal:sdkGoldenFrozenProposal(${JSON.stringify(freeze)})};
+const document=sdkGoldenProposalDocument(observed.data,original);
+const teamProject=await client.invoke(controlPlaneOperation('projects.show'),{path:{projectId:'team-project'},query:{},body:undefined});
+const teamBinding=await client.invoke(controlPlaneOperation('treedx.library.show'),{path:{projectId:'team-project'},query:{},body:undefined});
+const referenceFiles=[];
+for(const ref of [...(Array.isArray(document.objectiveRefs)?document.objectiveRefs:[]),...(document.discussionRef?[document.discussionRef]:[])]){
+const result=await client.invoke(controlPlaneOperation('treedx.repositories.files.read'),{path:{projectId:ref.repository===teamBinding.data.repositoryId?'team-project':'sdk-project',repoId:ref.repository},query:{},body:{ref:ref.commit,paths:[ref.path],encoding:'utf8',parseFrontmatter:true}});referenceFiles.push(result.data);}
+Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)},observed.data,{...original,teamLibrary:{project:teamProject.data,library:teamBinding.data},referenceFiles}]);process.send({id,passed:true});
 }catch(error){process.send({id,passed:false,error:error instanceof Error?error.message:'Native verification failed'});}});`;
 		worker = spawn(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', code], {
 			cwd: new URL('../../../../', import.meta.url), stdio: ['ignore', 'ignore', 'pipe', 'ipc'], env: process.env,

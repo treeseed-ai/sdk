@@ -1,8 +1,23 @@
 import { createHash } from 'node:crypto';
 import { parse, stringify } from 'yaml';
 export const commit = 'a'.repeat(40);
+const libraryCommit = 'c'.repeat(40);
+const referenced = [
+	{ schemaVersion: 'treeseed.objective/v1', id: 'sdk-objective', projectId: 'sdk-project', title: 'SDK objective', outcome: 'Portable intent', status: 'active' },
+	{ schemaVersion: 'treeseed.objective/v1', id: 'team-objective', projectId: 'team-project', title: 'Team objective', outcome: 'Governed execution', status: 'active' },
+	{ schemaVersion: 'treeseed.discussion/v1', id: 'sdk-discussion', projectId: 'sdk-project', teamId: 'sdk-team', title: 'SDK proposal discussion',
+		status: 'closed', participantClasses: ['researcher'], createdAt: '2026-10-01T00:00:00.000Z',
+		subjectRef: { store: 'treedx', model: 'proposal', id: 'sdk-proposal', repository: 'repo_sdk_fixture', commit, path: 'proposals/governance/sdk-proposal.mdx' } },
+].map((frontmatter, index) => {
+	const path = index === 2 ? 'discussions/sdk-discussion.mdx' : `objectives/${frontmatter.id}.mdx`;
+	const content = `---\n${stringify(frontmatter)}---\n`, repoId = index === 1 ? 'repo_team_fixture' : 'repo_sdk_fixture';
+	return { ref: { store: 'treedx', model: index === 2 ? 'discussion' : 'objective', id: frontmatter.id, repository: repoId,
+		commit: libraryCommit, path, digest: `sha256:${createHash('sha256').update(content).digest('hex')}` },
+		read: { repoId, resolvedRef: libraryCommit, files: [{ path, content, frontmatter: parse(content.match(/^---\n([\s\S]*?)---\n/u)![1]!) }] } };
+});
 export const proposal = { schemaVersion: 'treeseed.proposal/v1', status: 'ready', id: 'sdk-proposal', projectId: 'sdk-project', title: 'Select accepted decisions in portable workday intent',
 	request: 'Controlled SDK request',
+	objectiveRefs: referenced.slice(0, 2).map(item => item.ref), discussionRef: referenced[2]!.ref,
 	executionPlan: { workItems: [
 		['research-context', 'researcher', 'treedx'], ['architecture-contract', 'architect', 'treedx'],
 		['tests-first', 'tester', 'git'], ['implement-change', 'engineer', 'git'],
@@ -16,7 +31,7 @@ export const proposal = { schemaVersion: 'treeseed.proposal/v1', status: 'ready'
 	evidenceRefs: [{ store: 'url', model: 'issue', id: 'sdk-source-1', url: 'https://github.com/treeseed-ai/sdk/issues/299' }],
 	summary: 'Prove the SDK can express high-level decision-governed execution while keeping all derived execution state API-owned.' };
 const recorded = proposalReadback().governance;
-export const release = { id: 'release-row', createdAt: 'now', status: 'completed', assignmentAttempt: { id: 'release-attempt', workdayId: 'workday-fixture', projectId: 'sdk-project', sourceRef: {
+export const release = { id: 'release-row', createdAt: 'now', status: 'completed', assignmentAttempt: { id: 'release-attempt', workdayId: 'workday-fixture', teamId: 'sdk-team', projectId: 'sdk-project', sourceRef: {
 	store: 'treedx', model: 'proposal', id: 'sdk-proposal', revision: recorded.activeVersion, digest: `sha256:${recorded.activeContentHash}`,
 	repository: recorded.metadata.contentProvenance.repositoryId, commit: recorded.metadata.contentProvenance.commitSha, path: recorded.metadata.contentProvenance.contentPath,
 }, agentClass: 'renamed-releaser', workItemId: 'simulate-release', effectiveProfile: { activity: 'acting' } },
@@ -40,6 +55,8 @@ export function proposalReadback(...input: [unknown?, number?, (boolean | 'alias
 	const digest = createHash('sha256').update(content).digest('hex'), repositoryId = 'repo_sdk_fixture', commitSha = 'c'.repeat(40), contentPath = 'proposals/governance/sdk-proposal.mdx';
 	return { governance: { id: fields.id, projectId: fields.projectId, title: fields.title, summary: fields.summary, body: fields.request,
 		activeVersion: 1, activeContentHash: digest, metadata: { contentProvenance: { repositoryId, commitSha, contentPath, digest } } },
-		original: { initialProposal: structuredClone({ ...proposal, status: 'draft' }), binding: { repositoryId }, files: { repoId: repositoryId, resolvedRef: commitSha,
+		original: { initialProposal: structuredClone({ ...proposal, status: 'draft' }), binding: { repositoryId },
+			teamLibrary: { project: { id: 'team-project', slug: 'team', teamId: 'sdk-team' }, library: { projectId: 'team-project', teamId: 'sdk-team', repositoryId: 'repo_team_fixture' } },
+			referenceFiles: structuredClone(referenced.map(item => item.read)), files: { repoId: repositoryId, resolvedRef: commitSha,
 			files: [{ path: contentPath, content, frontmatter: parse(encoded) as unknown }] } } };
 }

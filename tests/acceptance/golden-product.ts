@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { parse, parseDocument, visit } from 'yaml';
 
 type Row = Record<string, any>;
+export type SdkGoldenOriginal = { binding: Row; files: Row; initialProposal: Row; teamLibrary?: Row; referenceFiles?: Row[] };
 function measured(record: Row | undefined): boolean {
 	return Boolean(record && record.status === 'passed' && record.exitCode === 0
 		&& typeof record.outputDigest === 'string' && /^sha256:[a-f0-9]{64}$/u.test(record.outputDigest)
@@ -34,14 +35,7 @@ export function sdkGoldenProposalProvenance(storedProposal: unknown): Row {
 		'ACCEPTANCE_SDK_PROPOSAL: Original exact governed content provenance required');
 	return provenance;
 }
-export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, storedProposal: unknown,
-	original?: { binding: Row; files: Row; initialProposal: Row }): void {
-	const actors = assignments.filter(item => item.status === 'completed'
-		&& item.assignmentAttempt?.effectiveProfile?.activity === 'acting');
-	const final = (id: string) => actors.filter(item => item.assignmentAttempt.workItemId === id)
-		.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))).at(-1);
-	const release = final('simulate-release');
-	assert.ok(release, 'ACCEPTANCE_SDK_RELEASE: Completed release actor required');
+export function sdkGoldenProposalDocument(storedProposal: unknown, original: SdkGoldenOriginal | undefined): Row {
 	const provenance = sdkGoldenProposalProvenance(storedProposal), governance = storedProposal as Row;
 	assert.ok(original && original.binding?.repositoryId === provenance.repositoryId
 		&& original.files?.repoId === provenance.repositoryId && original.files.resolvedRef === provenance.commitSha
@@ -66,6 +60,19 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, s
 		&& proposal.id === governance.id && proposal.projectId === governance.projectId
 		&& proposal.title === governance.title && proposal.summary === governance.summary && proposal.request === governance.body,
 		'ACCEPTANCE_SDK_PROPOSAL: Governance index differs from its original content');
+	return proposal;
+}
+export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, storedProposal: unknown,
+	original?: SdkGoldenOriginal): void {
+	const actors = assignments.filter(item => item.status === 'completed'
+		&& item.assignmentAttempt?.effectiveProfile?.activity === 'acting');
+	const final = (id: string) => actors.filter(item => item.assignmentAttempt.workItemId === id)
+		.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))).at(-1);
+	const release = final('simulate-release');
+	assert.ok(release, 'ACCEPTANCE_SDK_RELEASE: Completed release actor required');
+	const proposal = sdkGoldenProposalDocument(storedProposal, original), governance = storedProposal as Row;
+	assert.ok(original, 'ACCEPTANCE_SDK_PROPOSAL: Original public evidence required');
+	const provenance = sdkGoldenProposalProvenance(governance);
 	const sourceRef = release.assignmentAttempt.sourceRef;
 	assert.ok(sourceRef?.store === 'treedx' && sourceRef.model === 'proposal' && typeof sourceRef.id === 'string' && sourceRef.id,
 		'ACCEPTANCE_SDK_PROPOSAL: Release must retain its original proposal authority');
@@ -111,6 +118,7 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, s
 	const expanded = validatePortableContentData('proposal', proposal);
 	assert.ok(expanded.ok, 'ACCEPTANCE_SDK_GRAPH: Complete original canonical Proposal and WorkItems required');
 	assert.deepEqual(expanded.data, proposal, 'ACCEPTANCE_SDK_GRAPH: Original configuration cannot inherit defaults or discard shorthand');
+	verifySdkGoldenProposalReferences(proposal, original!, release.assignmentAttempt);
 	assert.ok(sourceRef.revision === governance.activeVersion && sourceRef.digest === `sha256:${provenance.digest}`
 		&& sourceRef.repository === provenance.repositoryId && sourceRef.commit === provenance.commitSha
 		&& sourceRef.path === provenance.contentPath,
@@ -156,6 +164,50 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, s
 		&& reviewerAttempt.predecessorResultIds.includes(release.assignmentResult.id)
 		&& reviewerAttempt.contextRefs?.some((ref: Row) => ref.store === 'git' && ref.repository === source.repository && ref.commit === source.commit),
 		'ACCEPTANCE_SDK_ARCHIVE_REVIEW: Independent review must consume this exact Actor result and candidate');
+}
+
+/** Resolve the proposal's own exact references against independent native public reads. */
+export function verifySdkGoldenProposalReferences(proposal: Row, original: SdkGoldenOriginal, attempt: Row): void {
+	const code = 'ACCEPTANCE_SDK_POPULATED_PROPOSAL';
+	assert.equal(proposal.status, 'ready', `${code}: Actual ready proposal required`);
+	assert.ok(Array.isArray(proposal.objectiveRefs) && proposal.objectiveRefs.length >= 2
+		&& proposal.discussionRef && typeof proposal.discussionRef === 'object', `${code}: Project/team objectives and closed discussion required`);
+	assert.deepEqual(proposal.objectiveRefs, original.initialProposal.objectiveRefs, `${code}: Frozen objective authority changed`);
+	const team = original.teamLibrary?.project, library = original.teamLibrary?.library;
+	assert.ok(team && team.slug === 'team' && team.teamId === attempt.teamId && typeof team.id === 'string' && team.id
+		&& team.id !== proposal.projectId && library?.projectId === team.id && library.teamId === attempt.teamId
+		&& typeof library.repositoryId === 'string' && library.repositoryId, `${code}: Original owning Team Library lookup required`);
+	const refs = [...proposal.objectiveRefs, proposal.discussionRef];
+	assert.ok(Array.isArray(original.referenceFiles) && original.referenceFiles.length === refs.length,
+		`${code}: Complete independent reference read inventory required`);
+	const scopes = new Set<string>(), consumed = new Set<Row>();
+	for (const [index, value] of refs.entries()) {
+		const ref = exactEntityReferenceSchema.parse(value), model = index < proposal.objectiveRefs.length ? 'objective' : 'discussion';
+		assert.ok(ref.store === 'treedx' && ref.model === model && ref.repository && ref.path && ref.commit && ref.digest,
+			`${code}: Complete exact governed reference required`);
+		const matches = original.referenceFiles.filter(read => read.repoId === ref.repository && read.resolvedRef === ref.commit
+			&& Array.isArray(read.files) && read.files.length === 1 && read.files[0]?.path === ref.path);
+		assert.equal(matches.length, 1, `${code}: One unambiguous native read required`);
+		const read = matches[0]!; assert.ok(!consumed.has(read), `${code}: Reused reference read`); consumed.add(read);
+		const file = read.files[0], bytes = file.content;
+		assert.ok(typeof bytes === 'string' && Buffer.byteLength(bytes) <= 1_048_576
+			&& `sha256:${createHash('sha256').update(bytes).digest('hex')}` === ref.digest, `${code}: Original reference bytes and digest required`);
+		const document = bytes.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u); assert.ok(document, `${code}: Native reference frontmatter required`);
+		const content = parse(document[1], { maxAliasCount: 0 }) as Row;
+		assert.deepEqual(content, file.frontmatter, `${code}: Native parsed view contradicts bytes`);
+		assert.ok(validatePortableContentData(model, content).ok && content.id === ref.id, `${code}: Exact canonical referenced entity required`);
+		if (model === 'objective') {
+			const project = content.projectId;
+			assert.ok(project === proposal.projectId ? ref.repository === original.binding.repositoryId
+				: project === team.id && ref.repository === library.repositoryId, `${code}: Foreign objective owner`);
+			scopes.add(project);
+		} else {
+			assert.ok(content.status === 'closed' && content.projectId === proposal.projectId && content.teamId === attempt.teamId
+				&& content.subjectRef?.store === 'treedx' && content.subjectRef.model === 'proposal' && content.subjectRef.id === proposal.id
+				&& ref.repository === original.binding.repositoryId, `${code}: Exact closed proposal discussion required`);
+		}
+	}
+	assert.deepEqual([...scopes].sort(), [proposal.projectId, team.id].sort(), `${code}: Both original project and team objectives required`);
 }
 
 function retainedBytes(path: string): Buffer {
