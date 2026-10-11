@@ -1,13 +1,50 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { sdkGoldenSource, verifySdkGoldenProduct as verifyProduct } from '../../acceptance/golden-product.ts';
-import { commit, release, review, proposal } from './acceptance/golden-product-fixture.ts';
+import { commit, release, review, proposal, proposalReadback } from './acceptance/golden-product-fixture.ts';
 const verifySdkGoldenProduct = (items: Parameters<typeof verifyProduct>[0], source: string) =>
-	Reflect.apply(verifyProduct, undefined, [items, source, proposal]);
+	Reflect.apply(verifyProduct, undefined, [items, source, proposalReadback().governance, proposalReadback().original]);
 describe('SDK golden product gate (fixtures are not acceptance)', () => {
 	it('requires exact stored SDK proposal title summary and frozen identity without changing missing malformed or foreign observations', () => {
-		const check = (value: unknown) => Reflect.apply(verifyProduct, undefined, [[release, review], commit, value]);
+		const check = (value: unknown) => { const observed = proposalReadback(value);
+			return Reflect.apply(verifyProduct, undefined, [[release, review], commit, observed.governance, observed.original]); };
 		expect(() => check(proposal)).not.toThrow();
+		const observed = proposalReadback();
+		for (const bytes of [1_048_576, 1_048_577]) {
+			const bounded = proposalReadback(proposal, bytes), actor = structuredClone(release), reviewer = structuredClone(review);
+			for (const item of [actor, reviewer]) item.assignmentAttempt.sourceRef.digest = `sha256:${bounded.governance.activeContentHash}`;
+			expect(Buffer.byteLength(bounded.original.files.files[0]!.content)).toBe(bytes);
+			const checkBoundary = () => Reflect.apply(verifyProduct, undefined, [[actor, reviewer], commit, bounded.governance, bounded.original]);
+			if (bytes === 1_048_576) expect(checkBoundary).not.toThrow(); else expect(checkBoundary).toThrow('ACCEPTANCE_SDK_PROPOSAL');
+		}
+		for (const field of ['revision', 'digest', 'repository', 'commit', 'path']) for (const value of [undefined, null, '', 'foreign', 2]) {
+			const changed = structuredClone(release); Reflect.set(changed.assignmentAttempt.sourceRef, field, value);
+			expect.soft(() => Reflect.apply(verifyProduct, undefined, [[changed, review], commit, observed.governance, observed.original]))
+				.toThrow('ACCEPTANCE_SDK_PROPOSAL');
+		}
+		const originalCheck = (value: typeof observed) => Reflect.apply(verifyProduct, undefined,
+			[[release, review], commit, value.governance, value.original]);
+		for (const field of ['repositoryId', 'commitSha', 'contentPath', 'digest']) for (const value of [undefined, null, '', ' ', 'staging', [], {}, false, 1,
+			'proposals/../secret', 'proposals/a\0.mdx', 'proposals\\a.mdx', 'proposals/a\n']) {
+			const changed = structuredClone(observed); Reflect.set(changed.governance.metadata.contentProvenance, field, value);
+			expect.soft(() => originalCheck(changed)).toThrow('ACCEPTANCE_SDK_PROPOSAL');
+		}
+		for (const mutate of [
+			(value: typeof observed) => { value.original.binding.repositoryId = 'repo_foreign'; },
+			(value: typeof observed) => { value.original.files.repoId = 'repo_foreign'; },
+			(value: typeof observed) => { value.original.files.resolvedRef = 'd'.repeat(40); },
+			(value: typeof observed) => { value.original.files.files[0]!.path = 'proposals/foreign.mdx'; },
+			(value: typeof observed) => { value.original.files.files[0]!.content += 'changed'; },
+			(value: typeof observed) => { value.original.files.files[0]!.frontmatter = {}; },
+			(value: typeof observed) => { value.original.files.files = []; },
+			(value: typeof observed) => { value.original.files.files.push(value.original.files.files[0]!); },
+			(value: typeof observed) => { value.governance.activeContentHash = 'd'.repeat(64); },
+			(value: typeof observed) => { value.governance.activeVersion = 0; },
+			(value: typeof observed) => { value.governance.body = 'changed'; },
+		]) {
+			const changed = structuredClone(observed); mutate(changed); const held = structuredClone(changed);
+			expect.soft(() => originalCheck(changed)).toThrow('ACCEPTANCE_SDK_PROPOSAL'); expect(changed).toEqual(held);
+		}
 		const invalid: unknown[] = [undefined, null, [], '', {}, { ...proposal, id: 'foreign' }, { ...proposal, projectId: 'foreign' }];
 		for (const field of ['title', 'summary']) {
 			for (const value of [undefined, null, false, 1, [], {}, '', ' ', ` ${proposal[field as 'title' | 'summary']}`, `${proposal[field as 'title' | 'summary']} `, 'Changed objective'])
@@ -25,6 +62,31 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 			const held = structuredClone(value);
 			expect.soft(() => check(value)).toThrow('ACCEPTANCE_SDK_PROPOSAL'); expect(value).toEqual(held);
 		}
+		for (const executionPlan of [undefined, null, false, '', [], {}, { workItems: null }, { workItems: [] },
+			{ workItems: [...proposal.executionPlan.workItems, proposal.executionPlan.workItems[0]] },
+			{ workItems: proposal.executionPlan.workItems.slice(1) }])
+			expect.soft(() => check({ ...proposal, executionPlan })).toThrow('ACCEPTANCE_SDK_GRAPH');
+		for (const [index, row] of proposal.executionPlan.workItems.entries()) {
+			const patches = [{ id: undefined }, { id: '' }, { id: `review-${row.id}` }, { id: proposal.executionPlan.workItems[(index + 1) % 6]!.id },
+				{ agentClass: undefined }, { agentClass: '' }, { agentClass: 'reviewer' }, { agentClass: ` ${row.agentClass}` },
+				{ workspace: undefined }, { workspace: {} }, { workspace: row.workspace === 'git' ? 'treedx' : 'git' },
+				{ dependsOn: undefined }, { dependsOn: null }, { dependsOn: {} }, { dependsOn: ['tests-first'] },
+				{ maximumReviewCycles: undefined }, { maximumReviewCycles: '2' }, { maximumReviewCycles: 1 }, { maximumReviewCycles: 3 },
+				{ activity: 'reviewing' }, { activity: undefined }, { review: 'optional' }, { review: undefined }];
+			for (const patch of patches) {
+				const changed = structuredClone(proposal); Object.assign(changed.executionPlan.workItems[index]!, patch);
+				const held = structuredClone(changed);
+				expect.soft(() => check(changed)).toThrow('ACCEPTANCE_SDK_GRAPH'); expect(changed).toEqual(held);
+			}
+			for (const value of [null, false, '', [], {}]) {
+				const changed = structuredClone(proposal); Reflect.set(changed.executionPlan.workItems, index, value);
+				expect.soft(() => check(changed)).toThrow('ACCEPTANCE_SDK_GRAPH');
+			}
+		}
+		const permuted = structuredClone(proposal); permuted.executionPlan.workItems.reverse();
+		const reordered = proposalReadback(permuted), reorderedActor = structuredClone(release);
+		reorderedActor.assignmentAttempt.sourceRef.digest = `sha256:${reordered.governance.activeContentHash}`;
+		expect(() => Reflect.apply(verifyProduct, undefined, [[reorderedActor, review], commit, reordered.governance, reordered.original])).not.toThrow();
 		expect(() => check(proposal)).not.toThrow();
 	});
 

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, realpathSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { exactEntityReferenceSchema } from '@treeseed/sdk/agent-capacity';
+import { createHash } from 'node:crypto';
+import { parse } from 'yaml';
 
 type Row = Record<string, any>;
 function measured(record: Row | undefined): boolean {
@@ -16,16 +18,48 @@ export function sdkGoldenSource(freeze: Row, proposalIds: unknown): string {
 		'ACCEPTANCE_SDK_FREEZE: Exact current source and matching frozen proposal required');
 	return source;
 }
-export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, storedProposal: unknown): void {
+export function sdkGoldenProposalProvenance(storedProposal: unknown): Row {
+	assert.ok(storedProposal && typeof storedProposal === 'object' && !Array.isArray(storedProposal),
+		'ACCEPTANCE_SDK_PROPOSAL: Original public proposal record required');
+	const governance = storedProposal as Row, provenance = governance.metadata?.contentProvenance;
+	assert.ok(provenance && typeof provenance.repositoryId === 'string' && /^repo_[A-Za-z0-9_-]+$/u.test(provenance.repositoryId)
+		&& typeof provenance.commitSha === 'string' && /^[a-f0-9]{40}$/u.test(provenance.commitSha)
+		&& typeof provenance.digest === 'string' && /^[a-f0-9]{64}$/u.test(provenance.digest)
+		&& typeof provenance.contentPath === 'string' && provenance.contentPath.startsWith('proposals/')
+		&& !/[\s\\\0]/u.test(provenance.contentPath)
+		&& !provenance.contentPath.split('/').some((part: string) => !part || part === '.' || part === '..')
+		&& Number.isSafeInteger(governance.activeVersion) && governance.activeVersion > 0
+		&& governance.activeContentHash === provenance.digest,
+		'ACCEPTANCE_SDK_PROPOSAL: Original exact governed content provenance required');
+	return provenance;
+}
+export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, storedProposal: unknown,
+	original?: { binding: Row; files: Row }): void {
 	const actors = assignments.filter(item => item.status === 'completed'
 		&& item.assignmentAttempt?.effectiveProfile?.activity === 'acting');
 	const final = (id: string) => actors.filter(item => item.assignmentAttempt.workItemId === id)
 		.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))).at(-1);
 	const release = final('simulate-release');
 	assert.ok(release, 'ACCEPTANCE_SDK_RELEASE: Completed release actor required');
-	assert.ok(storedProposal && typeof storedProposal === 'object' && !Array.isArray(storedProposal),
-		'ACCEPTANCE_SDK_PROPOSAL: Original public proposal record required');
-	const proposal = storedProposal as Row, sourceRef = release.assignmentAttempt.sourceRef;
+	const provenance = sdkGoldenProposalProvenance(storedProposal), governance = storedProposal as Row;
+	assert.ok(original && original.binding?.repositoryId === provenance.repositoryId
+		&& original.files?.repoId === provenance.repositoryId && original.files.resolvedRef === provenance.commitSha
+		&& Array.isArray(original.files.files) && original.files.files.length === 1,
+		'ACCEPTANCE_SDK_PROPOSAL: Independently resolved original library and exact content required');
+	const file = original.files.files[0];
+	assert.ok(file && file.path === provenance.contentPath && typeof file.content === 'string'
+		&& Buffer.byteLength(file.content) <= 1_048_576
+		&& createHash('sha256').update(file.content).digest('hex') === provenance.digest,
+		'ACCEPTANCE_SDK_PROPOSAL: Original recorded path and raw proposal bytes required');
+	const document = file.content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u);
+	assert.ok(document, 'ACCEPTANCE_SDK_PROPOSAL: Original frontmatter required');
+	const proposal = parse(document[1], { maxAliasCount: 0 }) as Row;
+	assert.deepEqual(proposal, file.frontmatter, 'ACCEPTANCE_SDK_PROPOSAL: Readback contradicts original bytes');
+	assert.ok(proposal && typeof proposal === 'object' && !Array.isArray(proposal)
+		&& proposal.id === governance.id && proposal.projectId === governance.projectId
+		&& proposal.title === governance.title && proposal.summary === governance.summary && proposal.request === governance.body,
+		'ACCEPTANCE_SDK_PROPOSAL: Governance index differs from its original content');
+	const sourceRef = release.assignmentAttempt.sourceRef;
 	assert.ok(sourceRef?.store === 'treedx' && sourceRef.model === 'proposal' && typeof sourceRef.id === 'string' && sourceRef.id,
 		'ACCEPTANCE_SDK_PROPOSAL: Release must retain its original proposal authority');
 	assert.equal(proposal.id, sourceRef.id, 'ACCEPTANCE_SDK_PROPOSAL: Public proposal differs from the executed authority');
@@ -41,6 +75,29 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, s
 	const issue = exactEntityReferenceSchema.safeParse(sourceEvidence[0]);
 	assert.ok(issue.success && issue.data.store === 'url' && issue.data.model === 'issue',
 		'ACCEPTANCE_SDK_PROPOSAL: Canonical original SDK source issue reference required');
+	// Check the original public proposal, not the derived graph node counts.
+	// Genuine estimate provenance and generated review readiness have separate gates.
+	const authored = proposal.executionPlan?.workItems;
+	const fixedRows = [
+		['research-context', 'researcher', 'treedx'], ['architecture-contract', 'architect', 'treedx'],
+		['tests-first', 'tester', 'git'], ['implement-change', 'engineer', 'git'],
+		['document-change', 'technical-writer', 'git'], ['simulate-release', 'releaser', 'git'],
+	] as const;
+	assert.ok(Array.isArray(authored) && authored.length === fixedRows.length
+		&& authored.every(item => item && typeof item === 'object' && !Array.isArray(item))
+		&& new Set(authored.map(item => item.id)).size === fixedRows.length,
+		'ACCEPTANCE_SDK_GRAPH: Six unique original authored work items required');
+	for (const [id, agentClass, workspace] of fixedRows) {
+		const item = authored.find(row => row.id === id);
+		assert.ok(item && item.agentClass === agentClass && item.workspace === workspace
+			&& item.activity === 'acting' && item.review === 'required' && item.maximumReviewCycles === 2
+			&& Array.isArray(item.dependsOn) && item.dependsOn.length === 0,
+			`ACCEPTANCE_SDK_GRAPH: Original ${id} class workspace dependencies and review policy required`);
+	}
+	assert.ok(sourceRef.revision === governance.activeVersion && sourceRef.digest === `sha256:${provenance.digest}`
+		&& sourceRef.repository === provenance.repositoryId && sourceRef.commit === provenance.commitSha
+		&& sourceRef.path === provenance.contentPath,
+		'ACCEPTANCE_SDK_PROPOSAL: Read content differs from original issued proposal authority');
 	for (const item of actors.filter(item => ['research-context', 'architecture-contract', 'tests-first'].includes(item.assignmentAttempt.workItemId)))
 		assert.ok(item.assignmentAttempt.contextRefs?.some((ref: Row) => ref.store === 'git' && ref.commit === sourceBase),
 			'ACCEPTANCE_SDK_SOURCE: Early roles must receive exact frozen SDK source');
