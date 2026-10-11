@@ -17,6 +17,7 @@ it('native public SDK proposal reads in isolated product verification reject cha
 		: kind === 'reference-repository' ? bytes.replace('repository: repo_sdk_fixture', 'repository: repo_foreign')
 			: kind === 'reference-path' ? bytes.replace('path: proposals/governance/sdk-proposal.mdx', 'path: proposals/foreign.mdx') : bytes;
 	const original = structuredClone({ release, review, proposal });
+	const nativeBase = proposalReadback(proposal).original;
 	const retainedInput = workdayStartFixture(), inputPath = resolve(retainedInput.root, 'proposal-input.json');
 	const initial = { ...structuredClone(proposal), status: 'draft' };
 	for (const item of initial.executionPlan.workItems) { Reflect.deleteProperty(item, 'estimate'); Reflect.deleteProperty(item, 'reviewEstimate'); }
@@ -28,7 +29,8 @@ it('native public SDK proposal reads in isolated product verification reject cha
 	const fail = (error: Error) => { for (const item of pending.values()) { clearTimeout(item.timer); item.reject(error); } pending.clear(); };
 	const server = createServer((request, response) => {
 		let bytes = ''; request.setEncoding('utf8'); request.on('data', value => { bytes += String(value); }); request.on('end', () => {
-		const fixture = proposalReadback(proposal, mode === 'budget-boundary' ? 1_048_576 : undefined).original, path = request.method === 'POST' ? JSON.parse(bytes).paths?.[0] : undefined;
+		const fixture = mode === 'budget-boundary' ? proposalReadback(proposal, 1_048_576).original : structuredClone(nativeBase);
+		const path = request.method === 'POST' ? JSON.parse(bytes).paths?.[0] : undefined;
 		if (request.url === '/v1/teams/sdk-team/execution-graph') {
 			graphCalls.push(`${request.method} ${request.url}`); response.setHeader('content-type', 'application/json');
 			if (mode.startsWith('graph-')) graphFailures.push(mode);
