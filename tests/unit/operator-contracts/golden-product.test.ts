@@ -10,6 +10,9 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 	it('rejects missing extra duplicate and alternate permission requests for every fixed authored SDK role without repairing original bytes', () => {
 		const exact = proposalReadback(), inspect = (value: typeof exact) => Reflect.apply(verifyProduct, undefined, [[release, review], commit, value.governance, value.original]);
 		expect(() => inspect(exact)).not.toThrow();
+		const substituted = structuredClone(exact); substituted.original.graph.nodes[0]!.requestedPermissions.tools = [];
+		const heldGraph = structuredClone(substituted);
+		expect.soft(() => inspect(substituted)).toThrow('ACCEPTANCE_SDK_GRAPH_PAIRS'); expect(substituted).toEqual(heldGraph);
 		for (const mode of permissionCases) {
 			const changed = structuredClone(proposal); mutatePermissionRequest(changed, mode);
 			const observed = proposalReadback(changed), held = structuredClone(observed);
