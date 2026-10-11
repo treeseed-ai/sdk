@@ -1,13 +1,37 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { sdkGoldenSource, verifySdkGoldenProduct as verifyProduct } from '../../acceptance/golden-product.ts';
-import { commit, release, review, proposal } from './acceptance/golden-product-fixture.ts';
+import { commit, release, review, proposal, proposalReadback } from './acceptance/golden-product-fixture.ts';
 const verifySdkGoldenProduct = (items: Parameters<typeof verifyProduct>[0], source: string) =>
-	Reflect.apply(verifyProduct, undefined, [items, source, proposal]);
+	Reflect.apply(verifyProduct, undefined, [items, source, proposalReadback().governance, proposalReadback().original]);
 describe('SDK golden product gate (fixtures are not acceptance)', () => {
 	it('requires exact stored SDK proposal title summary and frozen identity without changing missing malformed or foreign observations', () => {
-		const check = (value: unknown) => Reflect.apply(verifyProduct, undefined, [[release, review], commit, value]);
+		const check = (value: unknown) => { const observed = proposalReadback(value);
+			return Reflect.apply(verifyProduct, undefined, [[release, review], commit, observed.governance, observed.original]); };
 		expect(() => check(proposal)).not.toThrow();
+		const observed = proposalReadback();
+		const originalCheck = (value: typeof observed) => Reflect.apply(verifyProduct, undefined,
+			[[release, review], commit, value.governance, value.original]);
+		for (const field of ['repositoryId', 'commitSha', 'contentPath', 'digest']) for (const value of [undefined, null, '', ' ', 'staging']) {
+			const changed = structuredClone(observed); Reflect.set(changed.governance.metadata.contentProvenance, field, value);
+			expect.soft(() => originalCheck(changed)).toThrow('ACCEPTANCE_SDK_PROPOSAL');
+		}
+		for (const mutate of [
+			(value: typeof observed) => { value.original.binding.repositoryId = 'repo_foreign'; },
+			(value: typeof observed) => { value.original.files.repoId = 'repo_foreign'; },
+			(value: typeof observed) => { value.original.files.resolvedRef = 'd'.repeat(40); },
+			(value: typeof observed) => { value.original.files.files[0]!.path = 'proposals/foreign.mdx'; },
+			(value: typeof observed) => { value.original.files.files[0]!.content += 'changed'; },
+			(value: typeof observed) => { value.original.files.files[0]!.frontmatter = {}; },
+			(value: typeof observed) => { value.original.files.files = []; },
+			(value: typeof observed) => { value.original.files.files.push(value.original.files.files[0]!); },
+			(value: typeof observed) => { value.governance.activeContentHash = 'd'.repeat(64); },
+			(value: typeof observed) => { value.governance.activeVersion = 0; },
+			(value: typeof observed) => { value.governance.body = 'changed'; },
+		]) {
+			const changed = structuredClone(observed); mutate(changed); const held = structuredClone(changed);
+			expect.soft(() => originalCheck(changed)).toThrow('ACCEPTANCE_SDK_PROPOSAL'); expect(changed).toEqual(held);
+		}
 		const invalid: unknown[] = [undefined, null, [], '', {}, { ...proposal, id: 'foreign' }, { ...proposal, projectId: 'foreign' }];
 		for (const field of ['title', 'summary']) {
 			for (const value of [undefined, null, false, 1, [], {}, '', ' ', ` ${proposal[field as 'title' | 'summary']}`, `${proposal[field as 'title' | 'summary']} `, 'Changed objective'])

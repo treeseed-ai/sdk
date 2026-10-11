@@ -8,6 +8,7 @@ export const review = { ...release, id: 'review-row', assignmentAttempt: { ...re
 	assignmentResult: { ...release.assignmentResult, id: 'review-result', assignmentId: 'review-attempt' },
 	lifecycleOutput: { activityCompletion: { reviewDisposition: 'approved' } } };
 export const proposal = { id: 'sdk-proposal', projectId: 'sdk-project', title: 'Select accepted decisions in portable workday intent',
+	request: 'Controlled SDK request',
 	executionPlan: { workItems: [
 		['research-context', 'researcher', 'treedx'], ['architecture-contract', 'architect', 'treedx'],
 		['tests-first', 'tester', 'git'], ['implement-change', 'engineer', 'git'],
@@ -15,3 +16,16 @@ export const proposal = { id: 'sdk-proposal', projectId: 'sdk-project', title: '
 	].map(([id, agentClass, workspace]) => ({ id, agentClass, workspace, dependsOn: [], maximumReviewCycles: 2, activity: 'acting', review: 'required' })) },
 	evidenceRefs: [{ store: 'url', model: 'issue', id: 'sdk-source-1', url: 'https://github.com/treeseed-ai/sdk/issues/299' }],
 	summary: 'Prove the SDK can express high-level decision-governed execution while keeping all derived execution state API-owned.' };
+
+/** Production governance is an index; executable content remains exact TreeDX bytes. */
+export function proposalReadback(value: unknown = proposal) {
+	const fields = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+	const content = `---\n${stringify(value === undefined ? null : value)}---\n`;
+	const digest = createHash('sha256').update(content).digest('hex'), repositoryId = 'repo_sdk_fixture', commitSha = 'c'.repeat(40), contentPath = 'proposals/governance/sdk-proposal.mdx';
+	return { governance: { id: fields.id, projectId: fields.projectId, title: fields.title, summary: fields.summary, body: fields.request,
+		activeVersion: 1, activeContentHash: digest, metadata: { contentProvenance: { repositoryId, commitSha, contentPath, digest } } },
+		original: { binding: { repositoryId }, files: { repoId: repositoryId, resolvedRef: commitSha,
+			files: [{ path: contentPath, content, frontmatter: value }] } } };
+}
+import { createHash } from 'node:crypto';
+import { stringify } from 'yaml';
