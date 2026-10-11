@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { parse, parseDocument, visit } from 'yaml';
 
 type Row = Record<string, any>;
-export type SdkGoldenOriginal = { binding: Row; files: Row; initialProposal: Row; teamLibrary?: Row; referenceFiles?: Row[] };
+export type SdkGoldenOriginal = { binding: Row; files: Row; initialProposal: Row; teamLibrary?: Row; referenceFiles?: Row[]; graph?: Row };
 /** The selected scene consumes the existing CLI library-read result. */
 export function sdkGoldenLibraryFiles(readback: Row): Row {
 	const result = readback && typeof readback === 'object' && !Array.isArray(readback) ? readback.result : undefined;
@@ -111,6 +111,28 @@ function verifySdkGoldenAuthoredWork(proposal: Row, draft = false): void {
 	}
 }
 
+function verifySdkGoldenGraph(proposal: Row, attempt: Row, graph: Row | undefined): void {
+	const code = 'ACCEPTANCE_SDK_GRAPH_PAIRS';
+	assert.ok(graph && graph.teamId === attempt.teamId && Array.isArray(graph.nodes), `${code}: Independent public graph required`);
+	assert.ok(graph.nodes.every((node: unknown) => node && typeof node === 'object' && !Array.isArray(node)), `${code}: Malformed graph node`);
+	const nodes: Row[] = graph.nodes.filter((node: Row) => node.workdayId === attempt.workdayId && node.pairRole !== null);
+	const items: Row[] = proposal.executionPlan.workItems;
+	assert.equal(nodes.length, items.length * 2, `${code}: Exactly six authored Actors and six generated Reviewers required`);
+	assert.equal(new Set(nodes.map(node => node.id)).size, nodes.length, `${code}: Duplicate node identity`);
+	for (const item of items) for (const role of ['actor', 'reviewer']) {
+		const pair = nodes.filter(node => node.workItemId === item.id && node.pairRole === role);
+		assert.equal(pair.length, 1, `${code}: Each authored work item requires one exact ${role}`);
+		const node = pair[0]!;
+		assert.ok(typeof node.id === 'string' && node.id && node.teamId === attempt.teamId && node.projectId === proposal.projectId
+			&& node.kind === (role === 'actor' ? item.activity : 'reviewing')
+			&& node.agentClass === (role === 'actor' ? item.agentClass : 'reviewer')
+			&& node.workspace === (role === 'actor' ? item.workspace : 'treedx')
+			&& node.maximumReviewCycles === item.maximumReviewCycles && item.review === 'required',
+			`${code}: Authored Actor or generated Reviewer authority drifted`);
+		assert.deepEqual(node.sourceRef, attempt.sourceRef, `${code}: Pair must represent the exact original authored proposal`);
+	}
+}
+
 export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, storedProposal: unknown,
 	original?: SdkGoldenOriginal): void {
 	const actors = assignments.filter(item => item.status === 'completed'
@@ -155,6 +177,7 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, s
 		&& sourceRef.repository === provenance.repositoryId && sourceRef.commit === provenance.commitSha
 		&& sourceRef.path === provenance.contentPath,
 		'ACCEPTANCE_SDK_PROPOSAL: Read content differs from original issued proposal authority');
+	verifySdkGoldenGraph(proposal, release.assignmentAttempt, original.graph);
 	for (const item of actors.filter(item => ['research-context', 'architecture-contract', 'tests-first'].includes(item.assignmentAttempt.workItemId)))
 		assert.ok(item.assignmentAttempt.contextRefs?.some((ref: Row) => ref.store === 'git' && ref.commit === sourceBase),
 			'ACCEPTANCE_SDK_SOURCE: Early roles must receive exact frozen SDK source');

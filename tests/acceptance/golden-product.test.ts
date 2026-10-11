@@ -46,6 +46,7 @@ test('SDK golden retains exact source and passing measured candidate release gat
 		assert.ok(result.page.nextCursor && result.page.nextCursor !== cursor && page < 39, 'ACCEPTANCE_SDK_PAGINATION: Incomplete assignment evidence');
 		cursor = result.page.nextCursor;
 	}
+	original.graph = read(['execution', 'graph', 'show']);
 	verifySdkGoldenProduct(assignments, sdkGoldenSource(freeze, run.parameters.proposalIds), proposal, original);
 	// Complete public list/show custody, not a time-cutoff approximation or a
 	// synthetic replacement for a managed Releaser and its independent Reviewer.
@@ -56,6 +57,7 @@ test('SDK golden retains exact source and passing measured candidate release gat
 		return value;
 	});
 	verifySdkGoldenProduct(full, sdkGoldenSource(freeze, run.parameters.proposalIds), proposal, original);
+	assert.deepEqual(read(['execution', 'graph', 'show']), original.graph, 'ACCEPTANCE_SDK_GRAPH_PAIRS: Public graph changed during independent read-back');
 	const final = (activity: string, workItemId = 'simulate-release') => full.filter(item => item.status === 'completed'
 		&& item.assignmentAttempt?.workItemId === workItemId && item.assignmentAttempt.effectiveProfile?.activity === activity)
 		.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))).at(-1);

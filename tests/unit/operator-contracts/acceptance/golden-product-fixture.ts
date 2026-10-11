@@ -2,6 +2,21 @@ import { createHash } from 'node:crypto';
 import { parse, stringify } from 'yaml';
 export const commit = 'a'.repeat(40);
 const libraryCommit = 'c'.repeat(40);
+export const graphPairFailures = ['missing', 'foreign-team', 'duplicate-id', 'missing-node', 'extra-node', 'work-item',
+	'pair-role', 'kind', 'class', 'workspace', 'cycles', 'project', 'team', 'workday', 'source-id', 'source-revision',
+	'source-digest', 'source-commit', 'source-path', 'source-repository'] as const;
+export function mutateGraphPair(graph: { teamId: string; nodes: Array<Record<string, unknown>> }, mode: string): void {
+	const node = graph.nodes[1]!;
+	if (mode === 'missing') Reflect.deleteProperty(graph, 'nodes');
+	else if (mode === 'foreign-team') graph.teamId = 'foreign';
+	else if (mode === 'duplicate-id') node.id = graph.nodes[0]!.id;
+	else if (mode === 'missing-node') graph.nodes.pop();
+	else if (mode === 'extra-node') graph.nodes.push({ ...node, id: 'extra-pair' });
+	else if (mode.startsWith('source-')) Reflect.set(node.sourceRef as object, mode.slice(7), mode === 'source-revision' ? 2 : mode === 'source-digest' ? `sha256:${'e'.repeat(64)}` : mode === 'source-commit' ? 'd'.repeat(40) : 'foreign');
+	else Reflect.set(node, ({ 'work-item': 'workItemId', 'pair-role': 'pairRole', class: 'agentClass', cycles: 'maximumReviewCycles',
+		project: 'projectId', team: 'teamId', workday: 'workdayId' } as Record<string, string>)[mode] ?? mode,
+		mode === 'cycles' ? 3 : mode === 'kind' ? 'acting' : mode === 'pair-role' ? 'actor' : mode === 'workspace' ? 'git' : 'foreign');
+}
 const referenced = [
 	{ schemaVersion: 'treeseed.objective/v1', id: 'sdk-objective', projectId: 'sdk-project', title: 'SDK objective', outcome: 'Portable intent', status: 'active' },
 	{ schemaVersion: 'treeseed.objective/v1', id: 'team-objective', projectId: 'team-project', title: 'Team objective', outcome: 'Governed execution', status: 'active' },
@@ -55,9 +70,22 @@ export function proposalReadback(...input: [unknown?, number?, (boolean | 'alias
 	const digest = createHash('sha256').update(content).digest('hex'), repositoryId = 'repo_sdk_fixture', commitSha = 'c'.repeat(40), contentPath = 'proposals/governance/sdk-proposal.mdx';
 	const initialProposal = structuredClone({ ...proposal, status: 'draft' });
 	for (const item of initialProposal.executionPlan.workItems) { Reflect.deleteProperty(item, 'estimate'); Reflect.deleteProperty(item, 'reviewEstimate'); }
+	// Controlled graph observations, not generated production evidence.
+	const sourceRef = { store: 'treedx', model: 'proposal', id: proposal.id, revision: 1, digest: `sha256:${digest}`,
+		repository: repositoryId, commit: commitSha, path: contentPath };
+	const nodes = proposal.executionPlan.workItems.flatMap(item => ['actor', 'reviewer'].map(pairRole => ({
+		schemaVersion: 'treeseed.execution-node/v1', ruleRevision: 1, nodeRevision: 1, status: 'completed',
+		graphRevisionCreated: 1, graphRevisionUpdated: 1,
+		id: `${pairRole}-${item.id}`, teamId: 'sdk-team', projectId: proposal.projectId, workdayId: 'workday-fixture',
+		workItemId: item.id, pairRole, kind: pairRole === 'actor' ? 'acting' : 'reviewing',
+		agentClass: pairRole === 'actor' ? item.agentClass : 'reviewer', workspace: pairRole === 'actor' ? item.workspace : 'treedx',
+		maximumReviewCycles: item.maximumReviewCycles, sourceRef: structuredClone(sourceRef),
+		estimate: structuredClone(pairRole === 'actor' ? item.estimate : item.reviewEstimate),
+		requiredCapabilities: ['source.read'], requestedPermissions: structuredClone(item.requestedPermissions) })));
+	const graph = { teamId: 'sdk-team', revision: 1, digest: `sha256:${'f'.repeat(64)}`, nodes, edges: [] };
 	return { governance: { id: fields.id, projectId: fields.projectId, title: fields.title, summary: fields.summary, body: fields.request,
 		activeVersion: 1, activeContentHash: digest, metadata: { contentProvenance: { repositoryId, commitSha, contentPath, digest } } },
-		original: { initialProposal, binding: { repositoryId },
+		original: { initialProposal, graph, binding: { repositoryId },
 			teamLibrary: { project: { id: 'team-project', slug: 'team', teamId: 'sdk-team' }, library: { projectId: 'team-project', teamId: 'sdk-team', repositoryId: 'repo_team_fixture' } },
 			referenceFiles: structuredClone(referenced.map(item => item.read)), files: { ok: true, repoId: repositoryId, resolvedRef: commitSha,
 			files: [{ path: contentPath, content, frontmatter: parse(encoded) as unknown }] } } };

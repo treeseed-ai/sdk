@@ -1,6 +1,11 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.authored-graph-pairs-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/golden-product.test.ts
+    testName: "rejects six counted Actor Reviewer pairs that do not represent their exact authored proposal work"
   sdk.golden.frozen-draft-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

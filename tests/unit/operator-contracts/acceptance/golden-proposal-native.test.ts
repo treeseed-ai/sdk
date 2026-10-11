@@ -7,11 +7,12 @@ import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { parse } from 'yaml';
 import { expect, it } from 'vitest';
-import { commit, release, review, proposal, proposalReadback } from './golden-product-fixture.ts';
+import { commit, release, review, proposal, proposalReadback, graphPairFailures, mutateGraphPair } from './golden-product-fixture.ts';
 import { workdayStartFixture } from './workday-start-fixture.ts';
 
 it('native public SDK proposal reads in isolated product verification reject changed stored identity title and summary and retain denied observations before unchanged retry', async () => {
 	let mode = 'exact'; const calls: string[] = [], referenceCalls: string[] = [], failed: Array<Record<string, unknown>> = [];
+	const graphCalls: string[] = [], graphFailures: string[] = [];
 	const discussionBytes = (kind: string, bytes: string) => kind === 'reference-open' ? bytes.replace('status: closed', 'status: open')
 		: kind === 'reference-repository' ? bytes.replace('repository: repo_sdk_fixture', 'repository: repo_foreign')
 			: kind === 'reference-path' ? bytes.replace('path: proposals/governance/sdk-proposal.mdx', 'path: proposals/foreign.mdx') : bytes;
@@ -27,7 +28,16 @@ it('native public SDK proposal reads in isolated product verification reject cha
 	const fail = (error: Error) => { for (const item of pending.values()) { clearTimeout(item.timer); item.reject(error); } pending.clear(); };
 	const server = createServer((request, response) => {
 		let bytes = ''; request.setEncoding('utf8'); request.on('data', value => { bytes += String(value); }); request.on('end', () => {
-		const fixture = proposalReadback().original, path = request.method === 'POST' ? JSON.parse(bytes).paths?.[0] : undefined;
+		const fixture = proposalReadback(proposal, mode === 'budget-boundary' ? 1_048_576 : undefined).original, path = request.method === 'POST' ? JSON.parse(bytes).paths?.[0] : undefined;
+		if (request.url === '/v1/teams/sdk-team/execution-graph') {
+			graphCalls.push(`${request.method} ${request.url}`); response.setHeader('content-type', 'application/json');
+			if (mode.startsWith('graph-')) graphFailures.push(mode);
+			if (mode === 'graph-denied' || mode === 'graph-unavailable') { response.writeHead(mode === 'graph-denied' ? 403 : 503).end(JSON.stringify({ title: 'Controlled graph failure' })); return; }
+			if (mode === 'graph-interrupted') { request.socket.destroy(); return; }
+			if (mode === 'graph-json') { response.end('{'); return; }
+			if (mode.startsWith('graph-')) mutateGraphPair(fixture.graph, mode.slice(6));
+			response.end(JSON.stringify({ data: fixture.graph })); return;
+		}
 		if (['reference-open', 'reference-repository', 'reference-path'].includes(mode)) {
 			const discussion = fixture.referenceFiles[2]!.files[0]!;
 			discussion.content = discussionBytes(mode, discussion.content);
@@ -126,7 +136,8 @@ const teamBinding=await client.invoke(controlPlaneOperation('treedx.library.show
 const referenceFiles=[];
 for(const ref of [...(Array.isArray(document.objectiveRefs)?document.objectiveRefs:[]),...(document.discussionRef?[document.discussionRef]:[])]){
 const result=await client.invoke(controlPlaneOperation('treedx.repositories.files.read'),{path:{projectId:ref.repository===teamBinding.data.repositoryId?'team-project':'sdk-project',repoId:ref.repository},query:{},body:{ref:ref.commit,paths:[ref.path],encoding:'utf8',parseFrontmatter:true}});referenceFiles.push(sdkGoldenLibraryFiles({result:result.data,receipt:{operation:'read'}}));}
-Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)},observed.data,{...original,teamLibrary:{project:teamProject.data,library:teamBinding.data},referenceFiles}]);process.send({id,passed:true});
+const graph=await client.invoke(controlPlaneOperation('execution.graph.show'),{path:{teamId:'sdk-team'},query:{},body:undefined});
+Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)},observed.data,{...original,graph:graph.data,teamLibrary:{project:teamProject.data,library:teamBinding.data},referenceFiles}]);process.send({id,passed:true});
 }catch(error){process.send({id,passed:false,error:error instanceof Error?error.message:'Native verification failed'});}});`;
 		worker = spawn(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', code], {
 			cwd: new URL('../../../../', import.meta.url), stdio: ['ignore', 'ignore', 'pipe', 'ipc'], env: process.env,
@@ -240,6 +251,15 @@ Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)}
 		const preservedDrafts = structuredClone(deniedDrafts); writeFileSync(inputPath, inputBytes);
 		expect((await observe()).stdout).toBe('verified'); expect(deniedDrafts).toEqual(preservedDrafts);
 		expect(failed).toEqual(deniedReferences); expect(calls).toHaveLength(291);
+		const graphStart = graphCalls.length;
+		mode = 'exact'; expect((await Promise.all([observe(), observe()])).map(value => value.stdout)).toEqual(['verified', 'verified']);
+		for (const denial of [...graphPairFailures, 'denied', 'unavailable', 'interrupted', 'json']) {
+			mode = `graph-${denial}`; await expect.soft(observe(), mode).rejects.toThrow();
+		}
+		const retainedGraphFailures = structuredClone(graphFailures);
+		mode = 'exact'; expect((await observe()).stdout).toBe('verified');
+		expect(graphFailures).toEqual(retainedGraphFailures); expect(graphFailures).toHaveLength(graphPairFailures.length + 4);
+		expect(graphCalls.slice(graphStart)).toEqual(Array(graphPairFailures.length + 7).fill('GET /v1/teams/sdk-team/execution-graph'));
 		for (const file of proposalReadback().original.referenceFiles)
 			expect(referenceCalls.some(value => value.endsWith(` ${file.files[0]!.path}`))).toBe(true);
 		expect({ release, review, proposal }).toEqual(original);
