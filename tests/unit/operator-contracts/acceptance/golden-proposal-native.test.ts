@@ -1,13 +1,16 @@
 import { createServer } from 'node:http';
-import { execFile } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { promisify } from 'node:util';
+import { once } from 'node:events';
 import { expect, it } from 'vitest';
 import { commit, release, review, proposal, proposalReadback } from './golden-product-fixture.ts';
 
 it('native public SDK proposal reads in isolated product verification reject changed stored identity title and summary and retain denied observations before unchanged retry', async () => {
 	let mode = 'exact'; const calls: string[] = [], failed: Array<Record<string, unknown>> = [];
 	const original = structuredClone({ release, review, proposal });
+	let worker: ChildProcess | undefined, sequence = 0, stderrBytes = 0;
+	const pending = new Map<number, { resolve: (value: { stdout: string }) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
+	const fail = (error: Error) => { for (const item of pending.values()) { clearTimeout(item.timer); item.reject(error); } pending.clear(); };
 	const server = createServer((request, response) => {
 		calls.push(`${request.method} ${request.url}`); response.setHeader('content-type', 'application/json');
 		const governanceRead = request.url === '/v1/projects/sdk-project/proposals/sdk-proposal';
@@ -64,15 +67,33 @@ it('native public SDK proposal reads in isolated product verification reject cha
 		const helper = new URL('../../../acceptance/golden-product.ts', import.meta.url).href;
 		const code = `import{ControlPlaneClient,defaultLocalControlPlaneServer}from ${JSON.stringify(sdk)};
 import{controlPlaneOperation}from ${JSON.stringify(operations)};
-import{verifySdkGoldenProduct}from ${JSON.stringify(helper)};
+import{verifySdkGoldenProduct,sdkGoldenProposalProvenance}from ${JSON.stringify(helper)};
 const client=new ControlPlaneClient({profile:defaultLocalControlPlaneServer({TREESEED_API_BASE_URL:${JSON.stringify(`http://127.0.0.1:${address.port}`)}}),accessToken:'controlled-native-input'});
+process.on('message',async id=>{try{
 const observed=await client.invoke(controlPlaneOperation('governance.proposals.show'),{path:{projectId:'sdk-project',proposalId:'sdk-proposal'},query:{},body:undefined});
-const provenance=observed.data.metadata.contentProvenance;
+const provenance=sdkGoldenProposalProvenance(observed.data);
 const binding=await client.invoke(controlPlaneOperation('treedx.library.show'),{path:{projectId:'sdk-project'},query:{},body:undefined});
 const files=await client.invoke(controlPlaneOperation('treedx.repositories.files.read'),{path:{projectId:'sdk-project',repoId:provenance.repositoryId},query:{},body:{ref:provenance.commitSha,paths:[provenance.contentPath],encoding:'utf8',parseFrontmatter:true}});
-Reflect.apply(verifySdkGoldenProduct,undefined,[${JSON.stringify([release, review])},${JSON.stringify(commit)},observed.data,{binding:binding.data,files:files.data}]);process.stdout.write('verified');`;
-		const observe = () => promisify(execFile)(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', code], {
-			cwd: new URL('../../../../', import.meta.url), timeout: 5_000, maxBuffer: 131_072, killSignal: 'SIGKILL', env: process.env,
+Reflect.apply(verifySdkGoldenProduct,undefined,[${JSON.stringify([release, review])},${JSON.stringify(commit)},observed.data,{binding:binding.data,files:files.data}]);process.send({id,passed:true});
+}catch(error){process.send({id,passed:false,error:error instanceof Error?error.message:'Native verification failed'});}});`;
+		worker = spawn(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', code], {
+			cwd: new URL('../../../../', import.meta.url), stdio: ['ignore', 'ignore', 'pipe', 'ipc'], env: process.env,
+		});
+		worker.once('error', fail); worker.once('exit', () => fail(new Error('Isolated verifier exited before completing its assertion')));
+		worker.stderr!.on('data', (bytes: Buffer) => { stderrBytes += bytes.length;
+			if (stderrBytes > 131_072) { fail(new Error('Isolated verifier exceeded original output bound')); worker!.kill('SIGKILL'); } });
+		worker.on('message', (message: unknown) => {
+			const value = message as { id?: unknown; passed?: unknown; error?: unknown };
+			if (!value || typeof value.id !== 'number' || !pending.has(value.id) || typeof value.passed !== 'boolean') {
+				fail(new Error('Malformed or duplicate isolated verifier assertion')); worker!.kill('SIGKILL'); return;
+			}
+			const item = pending.get(value.id)!; pending.delete(value.id); clearTimeout(item.timer);
+			if (value.passed) item.resolve({ stdout: 'verified' }); else item.reject(new Error(String(value.error)));
+		});
+		const observe = () => new Promise<{ stdout: string }>((resolve, reject) => {
+			if (!worker?.connected) { reject(new Error('Isolated verifier is unavailable')); return; }
+			const id = ++sequence, timer = setTimeout(() => { fail(new Error('Isolated verifier exceeded original five-second watchdog')); worker!.kill('SIGKILL'); }, 5_000);
+			pending.set(id, { resolve, reject, timer }); worker.send(id, error => { if (error) fail(error); });
 		});
 		expect((await Promise.all([observe(), observe()])).map(value => value.stdout)).toEqual(['verified', 'verified']);
 		for (const denied of ['title', 'summary', 'foreign-id', 'foreign-project', 'missing-title', 'missing-summary',
@@ -80,18 +101,25 @@ Reflect.apply(verifySdkGoldenProduct,undefined,[${JSON.stringify([release, revie
 			'missing-provenance', 'foreign-binding', 'moved-content', 'foreign-path', 'changed-bytes', 'contradictory-frontmatter', 'missing-file',
 			'missing-source', 'foreign-source', 'duplicate-source', 'malformed-source', 'source-fragment', 'source-store', 'source-model', 'source-id', 'source-unknown-property',
 			'null', 'denied', 'unavailable', 'interrupted', 'json']) {
-			mode = denied; await expect.soft(observe(), denied).rejects.toThrow();
+			mode = denied;
+			if (['denied', 'unavailable', 'interrupted', 'json'].includes(denied)) await expect.soft(observe(), denied).rejects.toThrow();
+			else if (denied === 'null') await expect.soft(observe(), denied).rejects.toThrow('invalid_type');
+			else await expect.soft(observe(), denied).rejects.toThrow('ACCEPTANCE_SDK_');
 		}
 		const retained = structuredClone(failed); mode = 'exact'; expect((await observe()).stdout).toBe('verified');
 		expect(failed).toEqual(retained); expect(failed).toHaveLength(36);
 		expect(calls.filter(value => value === 'GET /v1/projects/sdk-project/proposals/sdk-proposal')).toHaveLength(39);
-		expect(calls.filter(value => value === 'GET /v1/projects/sdk-project/treedx-library')).toHaveLength(34);
+		expect(calls.filter(value => value === 'GET /v1/projects/sdk-project/treedx-library')).toHaveLength(33);
 		expect(calls.filter(value => value === 'POST /v1/dx/projects/sdk-project/repos/repo_sdk_fixture/files/read')).toHaveLength(33);
-		expect(calls).toHaveLength(106);
+		expect(calls).toHaveLength(105);
 		expect({ release, review, proposal }).toEqual(original);
+		const interrupted = observe(); worker.kill('SIGKILL'); await expect(interrupted).rejects.toThrow('Isolated verifier exited');
+		await expect(observe()).rejects.toThrow('unavailable'); expect(pending.size).toBe(0);
 		// The owning SDK transport and isolated verifier are real. Upstream API
 		// values are controlled; this is not a managed governance or golden receipt.
 	} finally {
+		if (worker && worker.exitCode === null && worker.signalCode === null) { const exited = once(worker, 'exit'); worker.kill('SIGKILL'); await exited; }
+		fail(new Error('Native fixture closed'));
 		server.closeAllConnections(); if (server.listening) await new Promise<void>((accept, reject) => server.close(error => error ? reject(error) : accept()));
 	}
 	expect(server.listening).toBe(false);

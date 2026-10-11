@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { sdkGoldenSource, sdkGoldenWorkdayId, verifySdkGoldenProduct } from './golden-product.ts';
+import { sdkGoldenSource, sdkGoldenWorkdayId, verifySdkGoldenProduct, sdkGoldenProposalProvenance } from './golden-product.ts';
 import { assignmentAttemptSchema, assignmentResultSchema } from '@treeseed/sdk/agent-capacity';
 
 test('SDK golden retains exact source and passing measured candidate release gates', () => {
@@ -22,9 +22,7 @@ test('SDK golden retains exact source and passing measured candidate release gat
 	assert.equal(run.executionMode, 'simulation'); assert.equal(run.status, 'completed');
 	const proposalArgs = ['proposals', 'show', proposalId, '--project', freeze.request.body.projects[0]];
 	const proposal = read(proposalArgs);
-	const provenance = proposal.metadata?.contentProvenance;
-	assert.ok(provenance?.repositoryId && /^[a-f0-9]{40}$/u.test(provenance.commitSha)
-		&& typeof provenance.contentPath === 'string', 'ACCEPTANCE_SDK_PROPOSAL: Original TreeDX provenance required');
+	const provenance = sdkGoldenProposalProvenance(proposal);
 	const libraryArgs = ['library', 'show', proposal.projectId];
 	const contentArgs = ['library', 'read', proposal.projectId, provenance.contentPath, '--ref', provenance.commitSha];
 	const library = read(libraryArgs), content = read(contentArgs);

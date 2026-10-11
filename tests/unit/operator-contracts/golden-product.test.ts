@@ -17,7 +17,8 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 		}
 		const originalCheck = (value: typeof observed) => Reflect.apply(verifyProduct, undefined,
 			[[release, review], commit, value.governance, value.original]);
-		for (const field of ['repositoryId', 'commitSha', 'contentPath', 'digest']) for (const value of [undefined, null, '', ' ', 'staging']) {
+		for (const field of ['repositoryId', 'commitSha', 'contentPath', 'digest']) for (const value of [undefined, null, '', ' ', 'staging', [], {}, false, 1,
+			'proposals/../secret', 'proposals/a\0.mdx', 'proposals\\a.mdx', 'proposals/a\n']) {
 			const changed = structuredClone(observed); Reflect.set(changed.governance.metadata.contentProvenance, field, value);
 			expect.soft(() => originalCheck(changed)).toThrow('ACCEPTANCE_SDK_PROPOSAL');
 		}

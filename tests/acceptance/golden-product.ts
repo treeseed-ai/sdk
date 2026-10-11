@@ -18,6 +18,21 @@ export function sdkGoldenSource(freeze: Row, proposalIds: unknown): string {
 		'ACCEPTANCE_SDK_FREEZE: Exact current source and matching frozen proposal required');
 	return source;
 }
+export function sdkGoldenProposalProvenance(storedProposal: unknown): Row {
+	assert.ok(storedProposal && typeof storedProposal === 'object' && !Array.isArray(storedProposal),
+		'ACCEPTANCE_SDK_PROPOSAL: Original public proposal record required');
+	const governance = storedProposal as Row, provenance = governance.metadata?.contentProvenance;
+	assert.ok(provenance && typeof provenance.repositoryId === 'string' && /^repo_[A-Za-z0-9_-]+$/u.test(provenance.repositoryId)
+		&& typeof provenance.commitSha === 'string' && /^[a-f0-9]{40}$/u.test(provenance.commitSha)
+		&& typeof provenance.digest === 'string' && /^[a-f0-9]{64}$/u.test(provenance.digest)
+		&& typeof provenance.contentPath === 'string' && provenance.contentPath.startsWith('proposals/')
+		&& !/[\s\\\0]/u.test(provenance.contentPath)
+		&& !provenance.contentPath.split('/').some((part: string) => !part || part === '.' || part === '..')
+		&& Number.isSafeInteger(governance.activeVersion) && governance.activeVersion > 0
+		&& governance.activeContentHash === provenance.digest,
+		'ACCEPTANCE_SDK_PROPOSAL: Original exact governed content provenance required');
+	return provenance;
+}
 export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, storedProposal: unknown,
 	original?: { binding: Row; files: Row }): void {
 	const actors = assignments.filter(item => item.status === 'completed'
@@ -26,16 +41,7 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, s
 		.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))).at(-1);
 	const release = final('simulate-release');
 	assert.ok(release, 'ACCEPTANCE_SDK_RELEASE: Completed release actor required');
-	assert.ok(storedProposal && typeof storedProposal === 'object' && !Array.isArray(storedProposal),
-		'ACCEPTANCE_SDK_PROPOSAL: Original public proposal record required');
-	const governance = storedProposal as Row, provenance = governance.metadata?.contentProvenance;
-	assert.ok(provenance && /^repo_[A-Za-z0-9_-]+$/u.test(provenance.repositoryId)
-		&& /^[a-f0-9]{40}$/u.test(provenance.commitSha) && /^[a-f0-9]{64}$/u.test(provenance.digest)
-		&& typeof provenance.contentPath === 'string' && provenance.contentPath.startsWith('proposals/')
-		&& !provenance.contentPath.split('/').some((part: string) => !part || part === '.' || part === '..')
-		&& Number.isSafeInteger(governance.activeVersion) && governance.activeVersion > 0
-		&& governance.activeContentHash === provenance.digest,
-		'ACCEPTANCE_SDK_PROPOSAL: Original exact governed content provenance required');
+	const provenance = sdkGoldenProposalProvenance(storedProposal), governance = storedProposal as Row;
 	assert.ok(original && original.binding?.repositoryId === provenance.repositoryId
 		&& original.files?.repoId === provenance.repositoryId && original.files.resolvedRef === provenance.commitSha
 		&& Array.isArray(original.files.files) && original.files.files.length === 1,
@@ -88,6 +94,10 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, s
 			&& Array.isArray(item.dependsOn) && item.dependsOn.length === 0,
 			`ACCEPTANCE_SDK_GRAPH: Original ${id} class workspace dependencies and review policy required`);
 	}
+	assert.ok(sourceRef.revision === governance.activeVersion && sourceRef.digest === `sha256:${provenance.digest}`
+		&& sourceRef.repository === provenance.repositoryId && sourceRef.commit === provenance.commitSha
+		&& sourceRef.path === provenance.contentPath,
+		'ACCEPTANCE_SDK_PROPOSAL: Read content differs from original issued proposal authority');
 	for (const item of actors.filter(item => ['research-context', 'architecture-contract', 'tests-first'].includes(item.assignmentAttempt.workItemId)))
 		assert.ok(item.assignmentAttempt.contextRefs?.some((ref: Row) => ref.store === 'git' && ref.commit === sourceBase),
 			'ACCEPTANCE_SDK_SOURCE: Early roles must receive exact frozen SDK source');
