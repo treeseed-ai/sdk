@@ -9,7 +9,23 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 		const check = (value: unknown) => { const observed = proposalReadback(value);
 			return Reflect.apply(verifyProduct, undefined, [[release, review], commit, observed.governance, observed.original]); };
 		expect(() => check(proposal)).not.toThrow();
+		// A coherent issued digest must not make an unexpanded WorkItem valid.
+		const shorthand = structuredClone(proposal); Reflect.deleteProperty(shorthand.executionPlan.workItems[0]!, 'objective');
+		const incomplete = proposalReadback(shorthand), issued = structuredClone(release);
+		issued.assignmentAttempt.sourceRef.digest = `sha256:${incomplete.governance.activeContentHash}`;
+		expect(() => Reflect.apply(verifyProduct, undefined, [[issued, review], commit, incomplete.governance, incomplete.original]))
+			.toThrow('ACCEPTANCE_SDK_GRAPH');
 		const observed = proposalReadback();
+		const anchored = proposalReadback(proposal, 0, true), anchorActor = structuredClone(release), anchorReview = structuredClone(review);
+		for (const item of [anchorActor, anchorReview]) item.assignmentAttempt.sourceRef.digest = `sha256:${anchored.governance.activeContentHash}`;
+		const retainedAnchor = structuredClone(anchored);
+		expect(() => Reflect.apply(verifyProduct, undefined, [[anchorActor, anchorReview], commit, anchored.governance, anchored.original]))
+			.toThrow('ACCEPTANCE_SDK_PROPOSAL'); expect(anchored).toEqual(retainedAnchor);
+		const aliased = proposalReadback(proposal, 0, 'alias'), aliasActor = structuredClone(release), aliasReview = structuredClone(review);
+		for (const item of [aliasActor, aliasReview]) item.assignmentAttempt.sourceRef.digest = `sha256:${aliased.governance.activeContentHash}`;
+		const retainedAlias = structuredClone(aliased);
+		expect(() => Reflect.apply(verifyProduct, undefined, [[aliasActor, aliasReview], commit, aliased.governance, aliased.original]))
+			.toThrow(); expect(aliased).toEqual(retainedAlias);
 		for (const bytes of [1_048_576, 1_048_577]) {
 			const bounded = proposalReadback(proposal, bytes), actor = structuredClone(release), reviewer = structuredClone(review);
 			for (const item of [actor, reviewer]) item.assignmentAttempt.sourceRef.digest = `sha256:${bounded.governance.activeContentHash}`;
@@ -67,6 +83,16 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 			{ workItems: proposal.executionPlan.workItems.slice(1) }])
 			expect.soft(() => check({ ...proposal, executionPlan })).toThrow('ACCEPTANCE_SDK_GRAPH');
 		for (const [index, row] of proposal.executionPlan.workItems.entries()) {
+			for (const field of ['objective', 'estimate', 'reviewEstimate', 'contextRefs', 'requestedPermissions', 'requiredCapabilities', 'acceptanceCriteria']) {
+				for (const value of [undefined, null, false, 1, field === 'objective' ? '' : 'See docs/agent-acceptance.md for configuration']) {
+					const changed = structuredClone(proposal); Reflect.set(changed.executionPlan.workItems[index]!, field, value);
+					const observed = proposalReadback(changed), actor = structuredClone(release), reviewer = structuredClone(review);
+					for (const issued of [actor, reviewer]) issued.assignmentAttempt.sourceRef.digest = `sha256:${observed.governance.activeContentHash}`;
+					const held = structuredClone(observed);
+					expect.soft(() => Reflect.apply(verifyProduct, undefined, [[actor, reviewer], commit, observed.governance, observed.original]))
+						.toThrow('ACCEPTANCE_SDK_GRAPH'); expect(observed).toEqual(held);
+				}
+			}
 			const patches = [{ id: undefined }, { id: '' }, { id: `review-${row.id}` }, { id: proposal.executionPlan.workItems[(index + 1) % 6]!.id },
 				{ agentClass: undefined }, { agentClass: '' }, { agentClass: 'reviewer' }, { agentClass: ` ${row.agentClass}` },
 				{ workspace: undefined }, { workspace: {} }, { workspace: row.workspace === 'git' ? 'treedx' : 'git' },
