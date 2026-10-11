@@ -9,6 +9,12 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 		const check = (value: unknown) => { const observed = proposalReadback(value);
 			return Reflect.apply(verifyProduct, undefined, [[release, review], commit, observed.governance, observed.original]); };
 		expect(() => check(proposal)).not.toThrow();
+		// A coherent issued digest must not make an unexpanded WorkItem valid.
+		const shorthand = structuredClone(proposal); Reflect.deleteProperty(shorthand.executionPlan.workItems[0]!, 'objective');
+		const incomplete = proposalReadback(shorthand), issued = structuredClone(release);
+		issued.assignmentAttempt.sourceRef.digest = `sha256:${incomplete.governance.activeContentHash}`;
+		expect(() => Reflect.apply(verifyProduct, undefined, [[issued, review], commit, incomplete.governance, incomplete.original]))
+			.toThrow('ACCEPTANCE_SDK_GRAPH');
 		const observed = proposalReadback();
 		for (const bytes of [1_048_576, 1_048_577]) {
 			const bounded = proposalReadback(proposal, bytes), actor = structuredClone(release), reviewer = structuredClone(review);
