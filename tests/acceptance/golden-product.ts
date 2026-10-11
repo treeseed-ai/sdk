@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, realpathSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { exactEntityReferenceSchema } from '@treeseed/sdk/agent-capacity';
+import { validatePortableContentData } from '@treeseed/sdk/content-validation';
 import { createHash } from 'node:crypto';
-import { parse } from 'yaml';
+import { parse, parseDocument, visit } from 'yaml';
 
 type Row = Record<string, any>;
 function measured(record: Row | undefined): boolean {
@@ -54,6 +55,12 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, s
 	const document = file.content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u);
 	assert.ok(document, 'ACCEPTANCE_SDK_PROPOSAL: Original frontmatter required');
 	const proposal = parse(document[1], { maxAliasCount: 0 }) as Row;
+	const syntax = parseDocument(document[1]);
+	assert.equal(syntax.errors.length, 0, 'ACCEPTANCE_SDK_PROPOSAL: Unambiguous original YAML required');
+	visit(syntax, (_key, node) => {
+		if (node && typeof node === 'object' && 'anchor' in node) assert.ok(!node.anchor,
+			'ACCEPTANCE_SDK_PROPOSAL: Stored configuration cannot contain YAML anchors');
+	});
 	assert.deepEqual(proposal, file.frontmatter, 'ACCEPTANCE_SDK_PROPOSAL: Readback contradicts original bytes');
 	assert.ok(proposal && typeof proposal === 'object' && !Array.isArray(proposal)
 		&& proposal.id === governance.id && proposal.projectId === governance.projectId
@@ -91,9 +98,14 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, s
 		const item = authored.find(row => row.id === id);
 		assert.ok(item && item.agentClass === agentClass && item.workspace === workspace
 			&& item.activity === 'acting' && item.review === 'required' && item.maximumReviewCycles === 2
-			&& Array.isArray(item.dependsOn) && item.dependsOn.length === 0,
+			&& Array.isArray(item.dependsOn) && item.dependsOn.length === 0
+			&& ['objective', 'estimate', 'reviewEstimate', 'contextRefs', 'requestedPermissions', 'requiredCapabilities', 'acceptanceCriteria']
+				.every(field => Object.hasOwn(item, field)),
 			`ACCEPTANCE_SDK_GRAPH: Original ${id} class workspace dependencies and review policy required`);
 	}
+	const expanded = validatePortableContentData('proposal', proposal);
+	assert.ok(expanded.ok, 'ACCEPTANCE_SDK_GRAPH: Complete original canonical Proposal and WorkItems required');
+	assert.deepEqual(expanded.data, proposal, 'ACCEPTANCE_SDK_GRAPH: Original configuration cannot inherit defaults or discard shorthand');
 	assert.ok(sourceRef.revision === governance.activeVersion && sourceRef.digest === `sha256:${provenance.digest}`
 		&& sourceRef.repository === provenance.repositoryId && sourceRef.commit === provenance.commitSha
 		&& sourceRef.path === provenance.contentPath,

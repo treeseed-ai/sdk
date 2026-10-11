@@ -22,6 +22,10 @@ it('native public SDK proposal reads in isolated product verification reject cha
 		}
 		if (mode === 'json') { response.end('{'); return; }
 		const returned: Record<string, unknown> = { ...proposal };
+		if (mode.startsWith('explicit-')) {
+			const workItems = structuredClone(proposal.executionPlan.workItems);
+			Reflect.deleteProperty(workItems[0]!, mode.slice(9)); returned.executionPlan = { workItems };
+		}
 		if (mode.startsWith('row-')) {
 			const workItems = structuredClone(proposal.executionPlan.workItems), index = Number(mode.slice(4));
 			Object.assign(workItems[index]!, { agentClass: 'reviewer', workspace: 'analysis', dependsOn: ['foreign-node'], maximumReviewCycles: 3 });
@@ -45,7 +49,8 @@ it('native public SDK proposal reads in isolated product verification reject cha
 		if (mode === 'source-unknown-property') returned.evidenceRefs = [{ ...source, callerAuthority: true }];
 		const value = mode === 'null' ? null : returned;
 		if (mode !== 'exact' && mode !== 'budget-boundary') failed.at(-1)!.returned = structuredClone(value);
-		const observed = proposalReadback(value, mode === 'budget-boundary' ? 1_048_576 : mode === 'budget-over' ? 1_048_577 : undefined);
+		const observed = proposalReadback(value, mode === 'budget-boundary' ? 1_048_576 : mode === 'budget-over' ? 1_048_577 : undefined,
+			mode === 'alias' ? 'alias' : mode === 'anchor');
 		if (mode === 'missing-provenance') Reflect.deleteProperty(observed.governance.metadata, 'contentProvenance');
 		if (mode === 'foreign-binding') observed.original.binding.repositoryId = 'repo_foreign';
 		if (mode === 'moved-content') {
@@ -122,6 +127,17 @@ Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)}
 		mode = 'exact'; expect((await observe()).stdout).toBe('verified');
 		expect(failed.slice(0, retained.length)).toEqual(retained);
 		expect(failed).toHaveLength(37); expect(calls).toHaveLength(114);
+		for (const field of ['objective', 'estimate', 'reviewEstimate', 'contextRefs', 'requestedPermissions', 'requiredCapabilities', 'acceptanceCriteria', 'anchor', 'alias']) {
+			const value = structuredClone(proposal);
+			if (!['anchor', 'alias'].includes(field)) Reflect.deleteProperty(value.executionPlan.workItems[0]!, field);
+			const observed = proposalReadback(value, 0, field === 'alias' ? 'alias' : field === 'anchor'), actor = structuredClone(release), reviewer = structuredClone(review);
+			for (const issued of [actor, reviewer]) issued.assignmentAttempt.sourceRef.digest = `sha256:${observed.governance.activeContentHash}`;
+			mode = ['anchor', 'alias'].includes(field) ? field : `explicit-${field}`;
+			if (field === 'alias') await expect.soft(observe([actor, reviewer]), mode).rejects.toThrow();
+			else await expect.soft(observe([actor, reviewer]), mode).rejects.toThrow(field === 'anchor' ? 'ACCEPTANCE_SDK_PROPOSAL' : 'ACCEPTANCE_SDK_GRAPH');
+		}
+		const deniedExpanded = structuredClone(failed); mode = 'exact'; expect((await observe()).stdout).toBe('verified');
+		expect(failed).toEqual(deniedExpanded); expect(failed).toHaveLength(46); expect(calls).toHaveLength(144);
 		expect({ release, review, proposal }).toEqual(original);
 		const interrupted = observe(); worker.kill('SIGKILL'); await expect(interrupted).rejects.toThrow('Isolated verifier exited');
 		await expect(observe()).rejects.toThrow('unavailable'); expect(pending.size).toBe(0);
