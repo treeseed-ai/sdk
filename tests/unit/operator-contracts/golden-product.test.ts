@@ -11,6 +11,12 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 		const observed = proposalReadback();
 		const inspect = (value: typeof observed) => Reflect.apply(verifyProduct, undefined, [[release, review], commit, value.governance, value.original]);
 		expect(() => inspect(observed)).not.toThrow();
+		const independent = structuredClone(observed), edge = independent.original.graph.edges[0]!;
+		independent.original.graph.edges.push({ ...edge, id: 'unrelated-edge', fromNodeId: 'other-actor', toNodeId: 'other-reviewer' },
+			{ ...edge, id: 'governance-edge', fromNodeId: 'accepted-condition', toNodeId: 'actor-research-context', provenance: 'governance' },
+			{ ...edge, id: 'event-edge', fromNodeId: 'question-condition', toNodeId: 'actor-research-context', provenance: 'profile-event' });
+		const heldIndependent = structuredClone(independent);
+		expect(() => inspect(independent)).not.toThrow(); expect(independent).toEqual(heldIndependent);
 		for (const mode of graphOrderFailures) {
 			const changed = structuredClone(observed); mutateGraphOrder(changed.original.graph, mode);
 			const held = structuredClone(changed);

@@ -4,7 +4,8 @@ export const commit = 'a'.repeat(40);
 const libraryCommit = 'c'.repeat(40);
 export const graphOrderFailures = ['missing-edges', 'malformed-edge', 'duplicate-edge', 'missing-pair', 'extra-pair', 'missing-profile',
 	'transitive-profile', 'actor-profile', 'research-profile', 'work-item-profile', 'foreign-edge-team', 'edge-source-id',
-	'edge-source-revision', 'edge-source-digest', 'edge-source-commit', 'edge-source-path', 'pair-endpoint', 'profile-foreign-node'] as const;
+	'edge-source-revision', 'edge-source-digest', 'edge-source-commit', 'edge-source-path', 'edge-source-repository', 'missing-edge-source',
+	'removed-edge', 'pair-endpoint', 'profile-foreign-node'] as const;
 export function mutateGraphOrder(graph: { edges: Array<Record<string, unknown>> }, mode: string): void {
 	const pair = graph.edges[0]!, profile = graph.edges.find(edge => edge.provenance === 'profile-agent')!;
 	if (mode === 'missing-edges') Reflect.deleteProperty(graph, 'edges');
@@ -20,6 +21,8 @@ export function mutateGraphOrder(graph: { edges: Array<Record<string, unknown>> 
 	else if (mode === 'foreign-edge-team') pair.teamId = 'foreign-team';
 	else if (mode === 'pair-endpoint') pair.toNodeId = 'reviewer-architecture-contract';
 	else if (mode === 'profile-foreign-node') profile.toNodeId = 'foreign-node';
+	else if (mode === 'missing-edge-source') Reflect.deleteProperty(pair, 'sourceRef');
+	else if (mode === 'removed-edge') pair.graphRevisionRemoved = 2;
 	else if (mode.startsWith('edge-source-')) Reflect.set(pair.sourceRef as object, mode.slice(12), mode === 'edge-source-revision' ? 2
 		: mode === 'edge-source-digest' ? `sha256:${'e'.repeat(64)}` : mode === 'edge-source-commit' ? 'd'.repeat(40) : 'foreign');
 }
