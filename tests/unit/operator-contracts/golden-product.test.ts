@@ -10,6 +10,13 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 			return Reflect.apply(verifyProduct, undefined, [[release, review], commit, observed.governance, observed.original]); };
 		expect(() => check(proposal)).not.toThrow();
 		const observed = proposalReadback();
+		for (const bytes of [1_048_576, 1_048_577]) {
+			const bounded = proposalReadback(proposal, bytes), actor = structuredClone(release), reviewer = structuredClone(review);
+			for (const item of [actor, reviewer]) item.assignmentAttempt.sourceRef.digest = `sha256:${bounded.governance.activeContentHash}`;
+			expect(Buffer.byteLength(bounded.original.files.files[0]!.content)).toBe(bytes);
+			const checkBoundary = () => Reflect.apply(verifyProduct, undefined, [[actor, reviewer], commit, bounded.governance, bounded.original]);
+			if (bytes === 1_048_576) expect(checkBoundary).not.toThrow(); else expect(checkBoundary).toThrow('ACCEPTANCE_SDK_PROPOSAL');
+		}
 		for (const field of ['revision', 'digest', 'repository', 'commit', 'path']) for (const value of [undefined, null, '', 'foreign', 2]) {
 			const changed = structuredClone(release); Reflect.set(changed.assignmentAttempt.sourceRef, field, value);
 			expect.soft(() => Reflect.apply(verifyProduct, undefined, [[changed, review], commit, observed.governance, observed.original]))

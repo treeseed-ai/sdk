@@ -24,11 +24,12 @@ export const review = { ...release, id: 'review-row', assignmentAttempt: { ...re
 	lifecycleOutput: { activityCompletion: { reviewDisposition: 'approved' } } };
 
 /** Production governance is an index; executable content remains exact TreeDX bytes. */
-export function proposalReadback(...input: [unknown?]) {
+export function proposalReadback(...input: [unknown?, number?]) {
 	const value = input.length ? input[0] : proposal;
 	const fields = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 	const encoded = stringify(value === undefined ? null : value, { aliasDuplicateObjects: false });
-	const content = `---\n${encoded}---\n`;
+	const base = `---\n${encoded}---\n`;
+	const content = base + ' '.repeat(Math.max(0, (input[1] ?? 0) - Buffer.byteLength(base)));
 	const digest = createHash('sha256').update(content).digest('hex'), repositoryId = 'repo_sdk_fixture', commitSha = 'c'.repeat(40), contentPath = 'proposals/governance/sdk-proposal.mdx';
 	return { governance: { id: fields.id, projectId: fields.projectId, title: fields.title, summary: fields.summary, body: fields.request,
 		activeVersion: 1, activeContentHash: digest, metadata: { contentProvenance: { repositoryId, commitSha, contentPath, digest } } },

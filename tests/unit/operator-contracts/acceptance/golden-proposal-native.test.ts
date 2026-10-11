@@ -14,7 +14,7 @@ it('native public SDK proposal reads in isolated product verification reject cha
 	const server = createServer((request, response) => {
 		calls.push(`${request.method} ${request.url}`); response.setHeader('content-type', 'application/json');
 		const governanceRead = request.url === '/v1/projects/sdk-project/proposals/sdk-proposal';
-		if (mode !== 'exact' && governanceRead) failed.push({ mode });
+		if (mode !== 'exact' && mode !== 'budget-boundary' && governanceRead) failed.push({ mode });
 		if (mode === 'interrupted') { request.socket.destroy(); return; }
 		if (mode === 'denied' || mode === 'unavailable') {
 			const status = mode === 'denied' ? 403 : 503;
@@ -44,8 +44,8 @@ it('native public SDK proposal reads in isolated product verification reject cha
 		if (mode === 'source-id') returned.evidenceRefs = [{ ...source, id: '' }];
 		if (mode === 'source-unknown-property') returned.evidenceRefs = [{ ...source, callerAuthority: true }];
 		const value = mode === 'null' ? null : returned;
-		if (mode !== 'exact') failed.at(-1)!.returned = structuredClone(value);
-		const observed = proposalReadback(value);
+		if (mode !== 'exact' && mode !== 'budget-boundary') failed.at(-1)!.returned = structuredClone(value);
+		const observed = proposalReadback(value, mode === 'budget-boundary' ? 1_048_576 : mode === 'budget-over' ? 1_048_577 : undefined);
 		if (mode === 'missing-provenance') Reflect.deleteProperty(observed.governance.metadata, 'contentProvenance');
 		if (mode === 'foreign-binding') observed.original.binding.repositoryId = 'repo_foreign';
 		if (mode === 'moved-content') {
@@ -69,12 +69,12 @@ it('native public SDK proposal reads in isolated product verification reject cha
 import{controlPlaneOperation}from ${JSON.stringify(operations)};
 import{verifySdkGoldenProduct,sdkGoldenProposalProvenance}from ${JSON.stringify(helper)};
 const client=new ControlPlaneClient({profile:defaultLocalControlPlaneServer({TREESEED_API_BASE_URL:${JSON.stringify(`http://127.0.0.1:${address.port}`)}}),accessToken:'controlled-native-input'});
-process.on('message',async id=>{try{
+process.on('message',async ({id,actors})=>{try{
 const observed=await client.invoke(controlPlaneOperation('governance.proposals.show'),{path:{projectId:'sdk-project',proposalId:'sdk-proposal'},query:{},body:undefined});
 const provenance=sdkGoldenProposalProvenance(observed.data);
 const binding=await client.invoke(controlPlaneOperation('treedx.library.show'),{path:{projectId:'sdk-project'},query:{},body:undefined});
 const files=await client.invoke(controlPlaneOperation('treedx.repositories.files.read'),{path:{projectId:'sdk-project',repoId:provenance.repositoryId},query:{},body:{ref:provenance.commitSha,paths:[provenance.contentPath],encoding:'utf8',parseFrontmatter:true}});
-Reflect.apply(verifySdkGoldenProduct,undefined,[${JSON.stringify([release, review])},${JSON.stringify(commit)},observed.data,{binding:binding.data,files:files.data}]);process.send({id,passed:true});
+Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)},observed.data,{binding:binding.data,files:files.data}]);process.send({id,passed:true});
 }catch(error){process.send({id,passed:false,error:error instanceof Error?error.message:'Native verification failed'});}});`;
 		worker = spawn(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', code], {
 			cwd: new URL('../../../../', import.meta.url), stdio: ['ignore', 'ignore', 'pipe', 'ipc'], env: process.env,
@@ -90,10 +90,10 @@ Reflect.apply(verifySdkGoldenProduct,undefined,[${JSON.stringify([release, revie
 			const item = pending.get(value.id)!; pending.delete(value.id); clearTimeout(item.timer);
 			if (value.passed) item.resolve({ stdout: 'verified' }); else item.reject(new Error(String(value.error)));
 		});
-		const observe = () => new Promise<{ stdout: string }>((resolve, reject) => {
+		const observe = (actors: unknown[] = [release, review]) => new Promise<{ stdout: string }>((resolve, reject) => {
 			if (!worker?.connected) { reject(new Error('Isolated verifier is unavailable')); return; }
 			const id = ++sequence, timer = setTimeout(() => { fail(new Error('Isolated verifier exceeded original five-second watchdog')); worker!.kill('SIGKILL'); }, 5_000);
-			pending.set(id, { resolve, reject, timer }); worker.send(id, error => { if (error) fail(error); });
+			pending.set(id, { resolve, reject, timer }); worker.send({ id, actors }, error => { if (error) fail(error); });
 		});
 		expect((await Promise.all([observe(), observe()])).map(value => value.stdout)).toEqual(['verified', 'verified']);
 		for (const denied of ['title', 'summary', 'foreign-id', 'foreign-project', 'missing-title', 'missing-summary',
@@ -112,6 +112,16 @@ Reflect.apply(verifySdkGoldenProduct,undefined,[${JSON.stringify([release, revie
 		expect(calls.filter(value => value === 'GET /v1/projects/sdk-project/treedx-library')).toHaveLength(33);
 		expect(calls.filter(value => value === 'POST /v1/dx/projects/sdk-project/repos/repo_sdk_fixture/files/read')).toHaveLength(33);
 		expect(calls).toHaveLength(105);
+		for (const bytes of [1_048_576, 1_048_577]) {
+			const bounded = proposalReadback(proposal, bytes), actor = structuredClone(release), reviewer = structuredClone(review);
+			for (const item of [actor, reviewer]) item.assignmentAttempt.sourceRef.digest = `sha256:${bounded.governance.activeContentHash}`;
+			mode = bytes === 1_048_576 ? 'budget-boundary' : 'budget-over';
+			if (bytes === 1_048_576) expect((await observe([actor, reviewer])).stdout).toBe('verified');
+			else await expect(observe([actor, reviewer])).rejects.toThrow('ACCEPTANCE_SDK_PROPOSAL');
+		}
+		mode = 'exact'; expect((await observe()).stdout).toBe('verified');
+		expect(failed.slice(0, retained.length)).toEqual(retained);
+		expect(failed).toHaveLength(37); expect(calls).toHaveLength(114);
 		expect({ release, review, proposal }).toEqual(original);
 		const interrupted = observe(); worker.kill('SIGKILL'); await expect(interrupted).rejects.toThrow('Isolated verifier exited');
 		await expect(observe()).rejects.toThrow('unavailable'); expect(pending.size).toBe(0);
