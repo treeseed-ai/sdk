@@ -1,10 +1,65 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { sdkGoldenSource, verifySdkGoldenProduct as verifyProduct } from '../../acceptance/golden-product.ts';
+import { sdkGoldenSource, sdkGoldenLibraryFiles, verifySdkGoldenProposalReferences, verifySdkGoldenProduct as verifyProduct } from '../../acceptance/golden-product.ts';
+import { stringify } from 'yaml';
+import { createHash } from 'node:crypto';
 import { commit, release, review, proposal, proposalReadback } from './acceptance/golden-product-fixture.ts';
 const verifySdkGoldenProduct = (items: Parameters<typeof verifyProduct>[0], source: string) =>
 	Reflect.apply(verifyProduct, undefined, [items, source, proposalReadback().governance, proposalReadback().original]);
 describe('SDK golden product gate (fixtures are not acceptance)', () => {
+	it('rejects a coherently rehashed closed discussion that names another proposal repository or path', () => {
+		for (const [field, value] of [['repository', 'repo_foreign'], ['path', 'proposals/foreign.mdx']]) {
+			const input = structuredClone(proposal), original = proposalReadback().original, file = original.referenceFiles[2]!.files[0]!;
+			Reflect.set(file.frontmatter.subjectRef, field!, value); file.content = `---\n${stringify(file.frontmatter)}---\n`;
+			input.discussionRef.digest = `sha256:${createHash('sha256').update(file.content).digest('hex')}`;
+			const retained = structuredClone({ input, original });
+			expect.soft(() => verifySdkGoldenProposalReferences(input, original, release.assignmentAttempt)).toThrow('ACCEPTANCE_SDK_POPULATED_PROPOSAL');
+			expect({ input, original }).toEqual(retained);
+		}
+	});
+	it('consumes the supported CLI library read result envelope and rejects raw SDK reply fallback', () => {
+		const result = { ok: true, repoId: 'repo_sdk_fixture', resolvedRef: commit, files: [] };
+		const observed = { result, receipt: { operation: 'read' } }, held = structuredClone(observed);
+		expect(sdkGoldenLibraryFiles(observed)).toEqual(result); expect(observed).toEqual(held);
+		for (const invalid of [null, undefined, [], {}, { data: result }, result, { result: null }, { result: { ...result, ok: false } }])
+			expect.soft(() => sdkGoldenLibraryFiles(invalid as Record<string, unknown>)).toThrow('ACCEPTANCE_SDK_LIBRARY_READ');
+	});
+	it('rejects coherently issued proposals lacking the populated golden proposal contract without repairing observations', () => {
+		for (const patch of [{ status: 'draft' }, { status: 'discussing' }, { objectiveRefs: undefined }, { discussionRef: undefined }]) {
+			const observed = proposalReadback({ ...proposal, ...patch }), actors = structuredClone([release, review]);
+			for (const actor of actors) actor.assignmentAttempt.sourceRef.digest = `sha256:${observed.governance.activeContentHash}`;
+			const retained = structuredClone({ observed, actors });
+			expect.soft(() => Reflect.apply(verifyProduct, undefined, [actors, commit, observed.governance, observed.original]))
+				.toThrow('ACCEPTANCE_SDK_POPULATED_PROPOSAL');
+			expect({ observed, actors }).toEqual(retained);
+		}
+	});
+	it('requires independently read frozen project and team objectives and the exact closed proposal discussion', () => {
+		const observed = proposalReadback(), held = structuredClone(observed);
+		const inspect = (value: typeof observed) => Reflect.apply(verifyProduct, undefined, [[release, review], commit, value.governance, value.original]);
+		expect(() => inspect(observed)).not.toThrow();
+		for (const mutate of [
+			(value: typeof observed) => { value.original.referenceFiles = []; },
+			(value: typeof observed) => { value.original.referenceFiles.push(value.original.referenceFiles[0]!); },
+			(value: typeof observed) => { value.original.referenceFiles[1] = value.original.referenceFiles[0]!; },
+			(value: typeof observed) => { value.original.teamLibrary.project.teamId = 'foreign'; },
+			(value: typeof observed) => { value.original.teamLibrary.project.slug = 'foreign'; },
+			(value: typeof observed) => { value.original.teamLibrary.library.repositoryId = 'repo_foreign'; },
+			(value: typeof observed) => { value.original.teamLibrary.library.projectId = 'foreign'; },
+			(value: typeof observed) => { value.original.initialProposal.objectiveRefs = []; },
+			...(Array.from({ length: 3 }, (_, index) => [
+				(value: typeof observed) => { value.original.referenceFiles[index]!.resolvedRef = 'd'.repeat(40); },
+				(value: typeof observed) => { value.original.referenceFiles[index]!.repoId = 'repo_foreign'; },
+				(value: typeof observed) => { value.original.referenceFiles[index]!.files[0]!.content += 'changed'; },
+				(value: typeof observed) => { value.original.referenceFiles[index]!.files[0]!.path = 'foreign.mdx'; },
+				(value: typeof observed) => { value.original.referenceFiles[index]!.files[0]!.frontmatter = {}; },
+			]).flat()),
+		]) {
+			const changed = structuredClone(observed); mutate(changed); const retained = structuredClone(changed);
+			expect.soft(() => inspect(changed)).toThrow('ACCEPTANCE_SDK_POPULATED_PROPOSAL'); expect(changed).toEqual(retained);
+		}
+		expect(() => inspect(observed)).not.toThrow(); expect(observed).toEqual(held);
+	});
 	it('requires exact stored SDK proposal title summary and frozen identity without changing missing malformed or foreign observations', () => {
 		const check = (value: unknown) => { const observed = proposalReadback(value);
 			return Reflect.apply(verifyProduct, undefined, [[release, review], commit, observed.governance, observed.original]); };
