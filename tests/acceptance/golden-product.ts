@@ -41,6 +41,25 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, s
 	const issue = exactEntityReferenceSchema.safeParse(sourceEvidence[0]);
 	assert.ok(issue.success && issue.data.store === 'url' && issue.data.model === 'issue',
 		'ACCEPTANCE_SDK_PROPOSAL: Canonical original SDK source issue reference required');
+	// Check the original public proposal, not the derived graph node counts.
+	// Genuine estimate provenance and generated review readiness have separate gates.
+	const authored = proposal.executionPlan?.workItems;
+	const fixedRows = [
+		['research-context', 'researcher', 'treedx'], ['architecture-contract', 'architect', 'treedx'],
+		['tests-first', 'tester', 'git'], ['implement-change', 'engineer', 'git'],
+		['document-change', 'technical-writer', 'git'], ['simulate-release', 'releaser', 'git'],
+	] as const;
+	assert.ok(Array.isArray(authored) && authored.length === fixedRows.length
+		&& authored.every(item => item && typeof item === 'object' && !Array.isArray(item))
+		&& new Set(authored.map(item => item.id)).size === fixedRows.length,
+		'ACCEPTANCE_SDK_GRAPH: Six unique original authored work items required');
+	for (const [id, agentClass, workspace] of fixedRows) {
+		const item = authored.find(row => row.id === id);
+		assert.ok(item && item.agentClass === agentClass && item.workspace === workspace
+			&& item.activity === 'acting' && item.review === 'required' && item.maximumReviewCycles === 2
+			&& Array.isArray(item.dependsOn) && item.dependsOn.length === 0,
+			`ACCEPTANCE_SDK_GRAPH: Original ${id} class workspace dependencies and review policy required`);
+	}
 	for (const item of actors.filter(item => ['research-context', 'architecture-contract', 'tests-first'].includes(item.assignmentAttempt.workItemId)))
 		assert.ok(item.assignmentAttempt.contextRefs?.some((ref: Row) => ref.store === 'git' && ref.commit === sourceBase),
 			'ACCEPTANCE_SDK_SOURCE: Early roles must receive exact frozen SDK source');
