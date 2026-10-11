@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { sdkGoldenSource, sdkGoldenWorkdayId, verifySdkGoldenProduct, sdkGoldenProposalProvenance, sdkGoldenFrozenProposal } from './golden-product.ts';
+import { sdkGoldenSource, sdkGoldenWorkdayId, verifySdkGoldenProduct, sdkGoldenProposalProvenance, sdkGoldenFrozenProposal, sdkGoldenLibraryFiles } from './golden-product.ts';
 import { assignmentAttemptSchema, assignmentResultSchema } from '@treeseed/sdk/agent-capacity';
 
 test('SDK golden retains exact source and passing measured candidate release gates', () => {
@@ -26,7 +26,7 @@ test('SDK golden retains exact source and passing measured candidate release gat
 	const libraryArgs = ['library', 'show', proposal.projectId];
 	const contentArgs = ['library', 'read', proposal.projectId, provenance.contentPath, '--ref', provenance.commitSha];
 	const library = read(libraryArgs), content = read(contentArgs);
-	const original = { binding: library.library, files: content.data ?? content, initialProposal: sdkGoldenFrozenProposal(freeze) };
+	const original = { binding: library.library, files: sdkGoldenLibraryFiles(content), initialProposal: sdkGoldenFrozenProposal(freeze) };
 	const assignments: Record<string, any>[] = [];
 	let cursor: string | undefined;
 	for (let page = 0; page < 40; page += 1) {

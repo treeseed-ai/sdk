@@ -8,6 +8,10 @@ import { parse, parseDocument, visit } from 'yaml';
 
 type Row = Record<string, any>;
 export type SdkGoldenOriginal = { binding: Row; files: Row; initialProposal: Row; teamLibrary?: Row; referenceFiles?: Row[] };
+/** The selected scene consumes the existing CLI library-read result. */
+export function sdkGoldenLibraryFiles(readback: Row): Row {
+	return readback.data ?? readback;
+}
 function measured(record: Row | undefined): boolean {
 	return Boolean(record && record.status === 'passed' && record.exitCode === 0
 		&& typeof record.outputDigest === 'string' && /^sha256:[a-f0-9]{64}$/u.test(record.outputDigest)

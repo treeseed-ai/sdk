@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { sdkGoldenSource, verifySdkGoldenProduct as verifyProduct } from '../../acceptance/golden-product.ts';
+import { sdkGoldenSource, sdkGoldenLibraryFiles, verifySdkGoldenProduct as verifyProduct } from '../../acceptance/golden-product.ts';
 import { commit, release, review, proposal, proposalReadback } from './acceptance/golden-product-fixture.ts';
 const verifySdkGoldenProduct = (items: Parameters<typeof verifyProduct>[0], source: string) =>
 	Reflect.apply(verifyProduct, undefined, [items, source, proposalReadback().governance, proposalReadback().original]);
 describe('SDK golden product gate (fixtures are not acceptance)', () => {
+	it('consumes the supported CLI library read result envelope and rejects raw SDK reply fallback', () => {
+		const result = { ok: true, repoId: 'repo_sdk_fixture', resolvedRef: commit, files: [] };
+		const observed = { result, receipt: { operation: 'read' } }, held = structuredClone(observed);
+		expect(sdkGoldenLibraryFiles(observed)).toEqual(result); expect(observed).toEqual(held);
+		for (const invalid of [null, undefined, [], {}, { data: result }, result, { result: null }, { result: { ...result, ok: false } }])
+			expect.soft(() => sdkGoldenLibraryFiles(invalid as Record<string, unknown>)).toThrow('ACCEPTANCE_SDK_LIBRARY_READ');
+	});
 	it('rejects coherently issued proposals lacking the populated golden proposal contract without repairing observations', () => {
 		for (const patch of [{ status: 'draft' }, { status: 'discussing' }, { objectiveRefs: undefined }, { discussionRef: undefined }]) {
 			const observed = proposalReadback({ ...proposal, ...patch }), actors = structuredClone([release, review]);
