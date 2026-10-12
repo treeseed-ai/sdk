@@ -33,6 +33,29 @@ describe('minimal workday allocation', () => {
 				}
 			}
 		}
+		const projects = Array.from({ length: 17 }, (_, index) => `project-${String(index).padStart(2, '0')}`);
+		const classes = Array.from({ length: 8 }, (_, index) => `configured-class-${index}`);
+		const supplied = workdayPolicySchema.parse({ ...DEFAULT_WORKDAY_POLICY,
+			projectPercentages: Object.fromEntries(projects.map(project => [project, 1])),
+			agentClassPercentages: Object.fromEntries(projects.map(project => [project, Object.fromEntries(classes.map(agentClass => [agentClass, 12.5]))])),
+		});
+		const nodes = projects.flatMap(projectId => classes.map(agentClass => ({ id: `${projectId}:${agentClass}`,
+			projectId, agentClass, readyAt: '2026-10-03T00:00:00Z' })));
+		const held = structuredClone({ nodes, supplied }), usage: Array<{ projectId: string; agentClass: string; seconds: number }> = [];
+		const selectedIds = new Set<string>();
+		for (let index = 0; index < nodes.length; index++) {
+			const previous = structuredClone(usage);
+			const selected = selectFairReadyNode(index % 2 ? [...nodes].reverse() : nodes, usage, supplied);
+			expect(selectFairReadyNode(index % 2 ? nodes : [...nodes].reverse(), usage, supplied)).toEqual(selected);
+			expect(usage).toEqual(previous);
+			if (!selected) throw new Error('Complete portfolio ready selection required.');
+			expect(selected.explanation.projectTargetPercent).toBe(100 / 17);
+			expect(selected.explanation.classTargetPercent).toBe(12.5);
+			expect(selectedIds.has(selected.id)).toBe(false); selectedIds.add(selected.id);
+			usage.push({ projectId: selected.projectId, agentClass: selected.agentClass, seconds: 1 });
+		}
+		expect(selectedIds.size).toBe(136); expect({ nodes, supplied }).toEqual(held);
+		for (const project of projects) expect(usage.filter(value => value.projectId === project)).toHaveLength(8);
 	});
 	it('validates one canonical integer node priority without coercion and retains omission as zero selection rather than another authority', () => {
 		const node = { schemaVersion: 'treeseed.execution-node/v1', id: 'ready-node', teamId: 'team', projectId: 'sdk', kind: 'acting', pairRole: null,

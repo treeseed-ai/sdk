@@ -33,10 +33,29 @@ it('resolves the packed golden verifier imports through the installed public con
   const asset=readFileSync(join(owner,'tests/acceptance/golden-product.test.ts'),'utf8');
   const declaration=asset.split('\n').find(line=>line.includes('import { assignmentAttemptSchema, assignmentResultSchema }'))!;
   expect(declaration).toContain("from '@treeseed/sdk/agent-capacity'");
-  const consumer=join(install,'consumer.mjs');
-  writeFileSync(consumer,declaration+"\nif (!assignmentAttemptSchema || !assignmentResultSchema) throw new Error('Missing public assignment schemas');\n");
+  const consumer=join(install,'consumer.mts');
+  writeFileSync(consumer,declaration+`\nimport assert from 'node:assert/strict';
+import { DEFAULT_WORKDAY_POLICY, workdayPolicySchema, selectFairReadyNode } from '@treeseed/sdk/agent-capacity';
+if (!assignmentAttemptSchema || !assignmentResultSchema) throw new Error('Missing public assignment schemas');
+const projects=Array.from({length:17},(_,index)=>'project-'+String(index).padStart(2,'0'));
+const classes=Array.from({length:8},(_,index)=>'configured-class-'+index);
+const policy=workdayPolicySchema.parse({...DEFAULT_WORKDAY_POLICY,
+ projectPercentages:Object.fromEntries(projects.map(project=>[project,1])),
+ agentClassPercentages:Object.fromEntries(projects.map(project=>[project,Object.fromEntries(classes.map(name=>[name,12.5]))]))});
+const nodes=projects.flatMap(projectId=>classes.map(agentClass=>({id:projectId+':'+agentClass,projectId,agentClass,readyAt:'2026-10-03T00:00:00Z'})));
+const held=structuredClone({nodes,policy}),usage:Array<{projectId:string;agentClass:string;seconds:number}>=[],seen=new Set<string>();
+for(let index=0;index<nodes.length;index++){
+ const prior=structuredClone(usage),selected=selectFairReadyNode(index%2?[...nodes].reverse():nodes,usage,policy);
+ assert.ok(selected);assert.equal(selected.explanation.projectTargetPercent,100/17);assert.equal(selected.explanation.classTargetPercent,12.5);
+ assert.equal(seen.has(selected.id),false);seen.add(selected.id);assert.deepEqual(usage,prior);
+ usage.push({projectId:selected.projectId,agentClass:selected.agentClass,seconds:1});
+}
+assert.deepEqual({nodes,policy},held);assert.equal(seen.size,136);
+for(const project of projects)assert.equal(usage.filter(value=>value.projectId===project).length,8);
+process.stdout.write(JSON.stringify({projects:17,classes:8,selections:seen.size,projectTargetPercent:100/17,classTargetPercent:12.5}));\n`);
   const child=spawnSync(process.execPath,[consumer],{cwd:install,encoding:'utf8',timeout:15000});
   expect(child.error).toBeUndefined();expect(child.signal).toBeNull();expect(child.status,child.stderr+child.stdout).toBe(0);
+  expect(JSON.parse(child.stdout)).toEqual({projects:17,classes:8,selections:136,projectTargetPercent:100/17,classTargetPercent:12.5});
   expect(readFileSync(join(owner,'treeseed.package.yaml'))).toEqual(readFileSync(join(candidate,'treeseed.package.yaml')));
   expect(readFileSync(join(owner,'tests/acceptance/golden-product.test.ts'))).toEqual(original);
   expect(readFileSync(archive)).toEqual(held);
