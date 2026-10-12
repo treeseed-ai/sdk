@@ -173,6 +173,12 @@ function verifySdkGoldenGraph(proposal: Row, attempt: Row, graph: Row | undefine
 	const expectedPairs = items.map(item => [nodeId(item.id, 'actor'), nodeId(item.id, 'reviewer')]);
 	const engineering = ['architecture-contract', 'tests-first', 'implement-change', 'document-change', 'simulate-release'];
 	const expectedProfiles = engineering.slice(1).map((item, index) => [nodeId(engineering[index]!, 'reviewer'), nodeId(item, 'actor')]);
+	for (const edge of scoped.filter(edge => ids.has(edge.fromNodeId) && ids.has(edge.toNodeId))) {
+		const matches = (pairs: string[][]) => pairs.some(([from, to]) => edge.fromNodeId === from && edge.toNodeId === to);
+		assert.ok((edge.provenance === 'review-pair' && matches(expectedPairs))
+			|| (edge.provenance === 'profile-agent' && matches(expectedProfiles)),
+			`${orderCode}: Fixed work items allow only their generated review pairs and immediate reviewed profile predecessors`);
+	}
 	for (const [provenance, expected] of [['review-pair', expectedPairs], ['profile-agent', expectedProfiles]] as const) {
 		const actual = scoped.filter(edge => edge.provenance === provenance || (provenance === 'profile-agent' && edge.provenance === 'work-item'));
 		assert.equal(actual.length, expected.length, `${orderCode}: Exact pairs and immediate standing profile dependencies required`);

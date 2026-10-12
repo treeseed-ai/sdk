@@ -16,12 +16,28 @@ export function mutatePermissionRequest(value: typeof proposal, failure: string)
 	if (mode === 'duplicate-tool') permissions.tools.push(permissions.tools[0]!);
 	if (mode === 'unknown-field') Reflect.set(permissions, 'alternateAuthority', true);
 }
-export const graphOrderFailures = ['missing-edges', 'malformed-edge', 'duplicate-edge', 'missing-pair', 'extra-pair', 'missing-profile',
+export const graphOrderFailures = ['research-review-domain', 'research-actor-domain', 'research-review-governance', 'research-review-event',
+	'actor-extra-domain', 'transitive-extra-domain', 'transitive-extra-event',
+	'missing-edges', 'malformed-edge', 'duplicate-edge', 'missing-pair', 'extra-pair', 'missing-profile',
 	'transitive-profile', 'actor-profile', 'research-profile', 'work-item-profile', 'foreign-edge-team', 'edge-source-id',
 	'edge-source-revision', 'edge-source-digest', 'edge-source-commit', 'edge-source-path', 'edge-source-repository', 'missing-edge-source',
 	'removed-edge', 'pair-endpoint', 'profile-foreign-node'] as const;
 export function mutateGraphOrder(graph: { edges: Array<Record<string, unknown>> }, mode: string): void {
 	const pair = graph.edges[0]!, profile = graph.edges.find(edge => edge.provenance === 'profile-agent')!;
+	const extras: Record<string, readonly [string, string, string]> = {
+		'research-review-domain': ['reviewer-research-context', 'actor-architecture-contract', 'treedx-link'],
+		'research-actor-domain': ['actor-research-context', 'actor-architecture-contract', 'treedx-link'],
+		'research-review-governance': ['reviewer-research-context', 'actor-architecture-contract', 'governance'],
+		'research-review-event': ['reviewer-research-context', 'actor-architecture-contract', 'profile-event'],
+		'actor-extra-domain': ['actor-architecture-contract', 'actor-tests-first', 'treedx-link'],
+		'transitive-extra-domain': ['reviewer-architecture-contract', 'actor-implement-change', 'treedx-link'],
+		'transitive-extra-event': ['reviewer-architecture-contract', 'actor-implement-change', 'profile-event'],
+	};
+	const extra = extras[mode];
+	if (extra) {
+		graph.edges.push({ ...structuredClone(profile), id: mode, fromNodeId: extra[0], toNodeId: extra[1], provenance: extra[2] });
+		return;
+	}
 	if (mode === 'missing-edges') Reflect.deleteProperty(graph, 'edges');
 	else if (mode === 'malformed-edge') graph.edges[0] = {};
 	else if (mode === 'duplicate-edge') graph.edges.push(structuredClone(pair));
@@ -48,7 +64,7 @@ export function mutateGraphPair(graph: { teamId: string; nodes: Array<Record<str
 	if (mode === 'missing') Reflect.deleteProperty(graph, 'nodes');
 	else if (mode === 'foreign-team') graph.teamId = 'foreign';
 	else if (mode === 'duplicate-id') node.id = graph.nodes[0]!.id;
-	else if (mode === 'missing-node') graph.nodes.pop();
+	else if (mode === 'missing-node') graph.nodes.splice(graph.nodes.indexOf(node), 1);
 	else if (mode === 'extra-node') graph.nodes.push({ ...node, id: 'extra-pair' });
 	else if (mode === 'permission-request') Reflect.set(graph.nodes[0]!, 'requestedPermissions', { content: { read: [], write: [] }, tools: [] });
 	else if (mode.startsWith('source-')) Reflect.set(node.sourceRef as object, mode.slice(7), mode === 'source-revision' ? 2 : mode === 'source-digest' ? `sha256:${'e'.repeat(64)}` : mode === 'source-commit' ? 'd'.repeat(40) : 'foreign');
