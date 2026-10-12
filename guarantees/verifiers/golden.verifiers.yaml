@@ -1216,3 +1216,14 @@ verifiers:
     ownerPackage: '@treeseed/sdk'
     testFile: tests/contract/standards/package-archive.test.ts
     testName: resolves the packed golden verifier imports through the installed public contract without checkout source
+
+  sdk.golden.committed-test-custody-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/product/test-chain.test.ts
+    testName: requires complete unchanged public owning source custody and denies every foreign or ambiguous locator before native Git
+  sdk.golden.committed-test-custody-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/product/test-chain-native.test.ts
+    testName: native Git proves test-only approved ancestry and identical consumed blobs while retaining changed deleted redirected and unrelated failures before exact retry

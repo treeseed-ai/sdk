@@ -705,3 +705,9 @@ workflow:
   - id: assignment-workday-native
     action: { verifier: sdk.golden.assignment-workday-native }
     expect: { status: passed }
+  - id: committed-test-custody-unit
+    action: { verifier: sdk.golden.committed-test-custody-unit }
+    expect: { status: passed }
+  - id: committed-test-custody-native
+    action: { verifier: sdk.golden.committed-test-custody-native }
+    expect: { status: passed }

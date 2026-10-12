@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { sdkPublishedRepository, verifySdkCommittedTests } from './product/test-chain.ts';
 import { sdkGoldenReadArguments, sdkGoldenSource, sdkGoldenWorkdayId, verifySdkGoldenProduct, sdkGoldenProposalProvenance, sdkGoldenFrozenProposal, sdkGoldenLibraryFiles, sdkGoldenProposalDocument, type SdkGoldenOriginal } from './golden-product.ts';
 import { assignmentAttemptSchema, assignmentResultSchema } from '@treeseed/sdk/agent-capacity';
 
@@ -76,8 +77,8 @@ test('SDK golden retains exact source and passing measured candidate release gat
 	assert.ok(actorResult.references.some(ref => ref.kind === 'git' && ref.repository === source.repository && ref.commit === source.commit));
 	assert.ok(reviewAttempt.contextRefs.some(ref => ref.store === 'git' && ref.repository === source.repository && ref.commit === source.commit),
 		'ACCEPTANCE_SDK_ARCHIVE_REVIEW: Reviewer must consume the same exact candidate');
-	// Public canonical custody is necessary but is NOT physical test-byte
-	// equivalence, native Git ancestry, or proof that a BASE assertion failed.
+	// Canonical independent review and native committed test bytes are distinct
+	// obligations. Intended BASE assertion failure remains separately required.
 	const tester = final('acting', 'tests-first'), testReviewer = final('reviewing', 'tests-first'), engineer = final('acting', 'implement-change');
 	assert.ok(tester && testReviewer && engineer, 'ACCEPTANCE_SDK_TESTS_FIRST: Actual completed test and implementation chain required');
 	const testAttempt = assignmentAttemptSchema.parse(tester.assignmentAttempt), testResult = assignmentResultSchema.parse(tester.assignmentResult),
@@ -116,6 +117,14 @@ test('SDK golden retains exact source and passing measured candidate release gat
 	const engineerSource = engineer.lifecycleOutput?.sourceReference;
 	assert.ok(engineerSource?.kind === 'git' && engineerSource.repository === testSource.repository && /^[a-f0-9]{40}$/u.test(engineerSource.commit));
 	assert.ok(engineerResult.references.some(ref => ref.kind === 'git' && ref.repository === engineerSource.repository && ref.commit === engineerSource.commit));
+	const host = read(['host', 'sandbox', 'status']);
+	const testRepository = sdkPublishedRepository(host.workspace, tester.lifecycleOutput.sandboxId, testAttempt, testSource);
+	const engineerRepository = sdkPublishedRepository(host.workspace, engineer.lifecycleOutput.sandboxId, engineerAttempt, engineerSource);
+	assert.equal(testRepository, engineerRepository, 'ACCEPTANCE_SDK_NATIVE_TEST_CHAIN: Source security domain changed');
+	const committedTests = verifySdkCommittedTests(testRepository, frozenBase, testSource.commit, engineerSource.commit);
+	assert.ok(committedTests.length > 0);
+	assert.deepEqual(read(['host', 'sandbox', 'status']).workspace.journals, host.workspace.journals,
+		'ACCEPTANCE_SDK_NATIVE_TEST_CHAIN: Original owning publication journals changed during Git verification');
 	for (const result of [actorResult, reviewResult]) {
 		for (const command of ['npm run release:verify', 'npm pack']) {
 			const records = result.verification.filter(record => record.command === command);
