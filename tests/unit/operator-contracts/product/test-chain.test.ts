@@ -23,7 +23,12 @@ it('requires complete unchanged public owning source custody and denies every fo
 		value => { value.scope.storageRoot = '/tmp/arbitrary'; }, value => { value.journals.results.rootPresent = false; },
 		value => { value.journals.results.entries = []; }, value => { value.journals.results.entries.push(value.journals.results.entries[0]!); },
 		value => { value.journals.results.entries[0]!.digest = 'invalid'; }, value => { value.journals.results.entries[0]!.type = 'symlink'; },
-		value => { value.journals.jobs.entries[0]!.metadata.owner = { assignmentId: 'foreign' }; },
+		...['assignmentId', 'providerId', 'teamId', 'projectId', 'attempt'].map(field => (value: ReturnType<typeof fixture>) => {
+			const owner = value.journals.jobs.entries[0]!.metadata.owner as Record<string, unknown>; owner[field] = field === 'attempt' ? 2 : 'foreign';
+		}),
+		...['teamId', 'projectId', 'commit'].map(field => (value: ReturnType<typeof fixture>) => {
+			const source = value.journals.results.entries[0]!.metadata.source as Record<string, unknown>; source[field] = field === 'commit' ? 'f'.repeat(40) : 'foreign';
+		}),
 		...['sandboxId', 'leaseId', 'status', 'schemaVersion'].map(field => (value: ReturnType<typeof fixture>) => { value.journals.results.entries[0]!.metadata[field] = 'foreign'; }),
 		value => { value.journals.results.entries[0]!.metadata.teardownVerified = false; },
 		value => { value.journals.results.entries[0]!.metadata.source = {}; },

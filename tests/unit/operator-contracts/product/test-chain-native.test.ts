@@ -14,7 +14,8 @@ it('native Git proves test-only approved ancestry and identical consumed blobs w
 	const commit = (message: string) => { git(['add', '.']); git(['-c', 'user.name=SDK native fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', message]); return git(['rev-parse', 'HEAD']); };
 	try {
 		mkdirSync(work); git(['init', '--template=']); mkdirSync(join(work, 'src')); writeFileSync(join(work, 'src/product.ts'), 'export const original = true;\n');
-		const base = commit('controlled BASE'); mkdirSync(join(work, 'tests'));
+		mkdirSync(join(work, 'tests')); writeFileSync(join(work, 'tests/baseline.test.ts'), '// retained baseline tests\n');
+		const base = commit('controlled BASE');
 		const path = 'tests/intent.test.ts', bytes = Buffer.from("// controlled approved fixture\nexport const expected = 'exact';\n\n");
 		writeFileSync(join(work, path), bytes); const tester = commit('controlled test-only candidate');
 		writeFileSync(join(work, 'src/product.ts'), 'export const original = false;\n'); const engineer = commit('controlled descendant implementation');
@@ -37,7 +38,30 @@ it('native Git proves test-only approved ancestry and identical consumed blobs w
 			git(['--git-dir', repository, 'fetch', work, changed]);
 			expect(() => verifySdkCommittedTests(repository, base, tester, changed)).toThrow(); denied.push(changed);
 		}
-		expect(denied).toHaveLength(5); git(['checkout', '--detach', engineer]);
+		expect(denied).toHaveLength(5);
+		const independentlyDenied: string[] = [documentationOnly];
+		for (const mode of ['empty', 'fixture-only', 'source', 'deleted-test', 'redirected-test', 'non-test-path']) {
+			git(['checkout', '--detach', mode === 'source' || mode === 'non-test-path' ? tester : base]);
+			if (mode === 'fixture-only') writeFileSync(join(work, 'tests/fixture.ts'), '// helper only\n');
+			if (mode === 'source') writeFileSync(join(work, 'src/product.ts'), '// premature implementation\n');
+			if (mode === 'non-test-path') writeFileSync(join(work, 'README.md'), '// non-test change\n');
+			if (mode === 'deleted-test' || mode === 'redirected-test') {
+				rmSync(join(work, 'tests/baseline.test.ts'));
+				if (mode === 'redirected-test') symlinkSync('../src/product.ts', join(work, 'tests/baseline.test.ts'));
+				writeFileSync(join(work, path), bytes);
+			}
+			const badTester = mode === 'empty' ? (git(['-c', 'user.name=SDK native fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-qm', mode]), git(['rev-parse', 'HEAD'])) : commit(mode);
+			writeFileSync(join(work, 'src/product.ts'), `// later actual implementation ${mode}\n`); const next = commit('later implementation');
+			git(['--git-dir', repository, 'fetch', work, next]);
+			expect(() => verifySdkCommittedTests(repository, base, badTester, next)).toThrow(); independentlyDenied.push(badTester, next);
+		}
+		for (const mode of ['deleted-source', 'redirected-source']) {
+			git(['checkout', '--detach', tester]); rmSync(join(work, 'src/product.ts'));
+			if (mode === 'redirected-source') symlinkSync('../tests/baseline.test.ts', join(work, 'src/product.ts'));
+			const next = commit(mode); git(['--git-dir', repository, 'fetch', work, next]);
+			expect(() => verifySdkCommittedTests(repository, base, tester, next)).toThrow(); independentlyDenied.push(next);
+		}
+		git(['checkout', '--detach', engineer]);
 		for (const invalid of ['--unsafe', '', 'a'.repeat(39), 'f'.repeat(40), base]) expect(() => verifySdkCommittedTests(repository, base, tester, invalid)).toThrow();
 		expect(() => verifySdkCommittedTests(repository, tester, engineer, engineer)).toThrow();
 		writeFileSync(join(repository, 'shallow'), `${base}\n`);
@@ -53,6 +77,6 @@ it('native Git proves test-only approved ancestry and identical consumed blobs w
 			return JSON.parse(result.stdout) as unknown;
 		}));
 		expect(retries).toEqual(Array.from({ length: 4 }, () => proof)); expect(readFileSync(join(work, path))).toEqual(bytes);
-		for (const failed of denied) expect(git(['--git-dir', repository, 'rev-parse', '--verify', `${failed}^{commit}`])).toBe(failed);
+		for (const failed of [...denied, ...independentlyDenied]) expect(git(['--git-dir', repository, 'rev-parse', '--verify', `${failed}^{commit}`])).toBe(failed);
 	} finally { rmSync(root, { recursive: true, force: true }); }
 });
