@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { parse } from 'yaml';
 import { expect, it } from 'vitest';
+import { executionNodeSchema } from '@treeseed/sdk/agent-capacity';
 import { commit, release, review, proposal, proposalReadback, graphPairFailures, mutateGraphPair, graphOrderFailures, mutateGraphOrder, permissionCases, mutatePermissionRequest } from './golden-product-fixture.ts';
 import { workdayStartFixture } from './workday-start-fixture.ts';
 
@@ -18,6 +19,18 @@ it('native public SDK proposal reads in isolated product verification reject cha
 			: kind === 'reference-path' ? bytes.replace('path: proposals/governance/sdk-proposal.mdx', 'path: proposals/foreign.mdx') : bytes;
 	const original = structuredClone({ release, review, proposal });
 	const nativeBase = proposalReadback(proposal).original;
+	const originalNode = nativeBase.graph.nodes[0]!;
+	for (const provenance of ['governance', 'profile-event']) {
+		const id = `independent-${provenance}`;
+		nativeBase.graph.nodes.push(executionNodeSchema.parse({ schemaVersion: 'treeseed.execution-node/v1', id,
+			teamId: originalNode.teamId, projectId: originalNode.projectId, workdayId: originalNode.workdayId,
+			kind: 'condition', pairRole: null, sourceRef: originalNode.sourceRef, ruleRevision: 1, nodeRevision: 1, status: 'completed',
+			condition: { conditionType: 'authority', subjectRef: originalNode.sourceRef, expectedState: 'approved' },
+			graphRevisionCreated: 1, graphRevisionUpdated: 1 }));
+		nativeBase.graph.edges.push({ ...nativeBase.graph.edges[0]!, id: `edge-${id}`,
+			fromNodeId: id, toNodeId: 'actor-research-context', provenance });
+	}
+	const originalGraph = structuredClone(nativeBase.graph);
 	const retainedInput = workdayStartFixture(), inputPath = resolve(retainedInput.root, 'proposal-input.json');
 	const initial = { ...structuredClone(proposal), status: 'draft' };
 	for (const item of initial.executionPlan.workItems) { Reflect.deleteProperty(item, 'estimate'); Reflect.deleteProperty(item, 'reviewEstimate'); }
@@ -275,6 +288,7 @@ Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)}
 		for (const file of proposalReadback().original.referenceFiles)
 			expect(referenceCalls.some(value => value.endsWith(` ${file.files[0]!.path}`))).toBe(true);
 		expect({ release, review, proposal }).toEqual(original);
+		expect(nativeBase.graph).toEqual(originalGraph);
 		const interrupted = observe(); worker.kill('SIGKILL'); await expect(interrupted).rejects.toThrow('Isolated verifier exited');
 		await expect(observe()).rejects.toThrow('unavailable'); expect(pending.size).toBe(0);
 		// The owning SDK transport and isolated verifier are real. Upstream API
