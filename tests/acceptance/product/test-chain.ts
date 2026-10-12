@@ -62,6 +62,10 @@ export function verifySdkCommittedTests(repository: string, base: string, tester
 	assert.equal(git(['rev-parse', '--is-bare-repository']).toString().trim(), 'true', failure);
 	for (const commit of [base, tester, engineer]) assert.equal(git(['rev-parse', '--verify', `${commit}^{commit}`]).toString().trim(), commit, failure);
 	git(['merge-base', '--is-ancestor', base, tester]); git(['merge-base', '--is-ancestor', tester, engineer]);
+	const implementation = git(['diff', '--name-only', '--no-renames', '-z', tester, engineer]).toString('utf8').split('\0').filter(Boolean);
+	assert.ok(implementation.some(path => /^src\/.*\.ts$/u.test(path)
+		&& /^100(?:644|755) blob [a-f0-9]{40}\t/u.test(git(['ls-tree', '-z', engineer, '--', path]).toString('utf8'))),
+		`${failure}: Engineer must produce a native source implementation after approved tests`);
 	const changed = git(['diff', '--name-only', '--no-renames', '-z', base, tester]).toString('utf8').split('\0').filter(Boolean);
 	assert.ok(changed.length > 0 && new Set(changed).size === changed.length, failure);
 	assert.ok(changed.every(path => /^tests\//u.test(path) && !path.split('/').some(part => part === '..' || part === '.' || part === '')), failure);
