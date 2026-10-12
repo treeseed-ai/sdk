@@ -13,21 +13,24 @@ it('native Git proves test-only approved ancestry and identical consumed blobs w
 		env: { PATH: '/usr/bin:/bin', LANG: 'C', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' } }).trim();
 	const commit = (message: string) => { git(['add', '.']); git(['-c', 'user.name=SDK native fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', message]); return git(['rev-parse', 'HEAD']); };
 	try {
-		mkdirSync(work); git(['init', '--template=']); writeFileSync(join(work, 'product.ts'), 'export const original = true;\n');
+		mkdirSync(work); git(['init', '--template=']); mkdirSync(join(work, 'src')); writeFileSync(join(work, 'src/product.ts'), 'export const original = true;\n');
 		const base = commit('controlled BASE'); mkdirSync(join(work, 'tests'));
 		const path = 'tests/intent.test.ts', bytes = Buffer.from("// controlled approved fixture\nexport const expected = 'exact';\n\n");
 		writeFileSync(join(work, path), bytes); const tester = commit('controlled test-only candidate');
-		writeFileSync(join(work, 'product.ts'), 'export const original = false;\n'); const engineer = commit('controlled descendant implementation');
+		writeFileSync(join(work, 'src/product.ts'), 'export const original = false;\n'); const engineer = commit('controlled descendant implementation');
 		git(['clone', '--bare', '--no-local', work, repository]);
 		const proof = verifySdkCommittedTests(repository, base, tester, engineer);
 		expect(proof).toHaveLength(1); expect(proof[0]!.path).toBe(path);
 		expect(readFileSync(join(work, path))).toEqual(bytes);
+		git(['checkout', '--detach', tester]); writeFileSync(join(work, 'README.md'), 'Documentation only; no implementation.\n');
+		const documentationOnly = commit('controlled missing implementation'); git(['--git-dir', repository, 'fetch', work, documentationOnly]);
+		expect(() => verifySdkCommittedTests(repository, base, tester, documentationOnly)).toThrow();
 		const denied: string[] = [];
 		for (const mode of ['changed', 'deleted', 'symlink', 'mode', 'unrelated']) {
 			git(['checkout', '--detach', engineer]);
 			if (mode === 'unrelated') { git(['checkout', '--orphan', 'unrelated']); writeFileSync(join(work, 'unrelated.ts'), 'unrelated\n'); }
 			else if (mode === 'deleted') rmSync(join(work, path));
-			else if (mode === 'symlink') { rmSync(join(work, path)); symlinkSync('../product.ts', join(work, path)); }
+			else if (mode === 'symlink') { rmSync(join(work, path)); symlinkSync('../src/product.ts', join(work, path)); }
 			else if (mode === 'mode') chmodSync(join(work, path), 0o755);
 			else writeFileSync(join(work, path), Buffer.concat([bytes, Buffer.from('// substituted\n')]));
 			const changed = commit(mode);
