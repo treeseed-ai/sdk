@@ -18,7 +18,8 @@ it('native public SDK proposal reads in isolated product verification reject cha
 		: kind === 'reference-repository' ? bytes.replace('repository: repo_sdk_fixture', 'repository: repo_foreign')
 			: kind === 'reference-path' ? bytes.replace('path: proposals/governance/sdk-proposal.mdx', 'path: proposals/foreign.mdx') : bytes;
 	const original = structuredClone({ release, review, proposal });
-	const nativeBase = proposalReadback(proposal).original;
+	const base = proposalReadback(proposal).original;
+	const nativeBase = { ...base, graph: { ...base.graph, nodes: base.graph.nodes.map(node => executionNodeSchema.parse(node)) } };
 	const originalNode = nativeBase.graph.nodes[0]!;
 	for (const provenance of ['governance', 'profile-event']) {
 		const id = `independent-${provenance}`;

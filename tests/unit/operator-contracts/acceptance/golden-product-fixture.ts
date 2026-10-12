@@ -64,7 +64,7 @@ export function mutateGraphPair(graph: { teamId: string; nodes: Array<Record<str
 	if (mode === 'missing') Reflect.deleteProperty(graph, 'nodes');
 	else if (mode === 'foreign-team') graph.teamId = 'foreign';
 	else if (mode === 'duplicate-id') node.id = graph.nodes[0]!.id;
-	else if (mode === 'missing-node') graph.nodes.pop();
+	else if (mode === 'missing-node') graph.nodes.splice(graph.nodes.indexOf(node), 1);
 	else if (mode === 'extra-node') graph.nodes.push({ ...node, id: 'extra-pair' });
 	else if (mode === 'permission-request') Reflect.set(graph.nodes[0]!, 'requestedPermissions', { content: { read: [], write: [] }, tools: [] });
 	else if (mode.startsWith('source-')) Reflect.set(node.sourceRef as object, mode.slice(7), mode === 'source-revision' ? 2 : mode === 'source-digest' ? `sha256:${'e'.repeat(64)}` : mode === 'source-commit' ? 'd'.repeat(40) : 'foreign');
