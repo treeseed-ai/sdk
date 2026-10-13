@@ -1237,6 +1237,11 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/product/test-chain.test.ts
     testName: denies malformed reviewed integration identities before opening a native repository
+  sdk.golden.integration-reviewed-input-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/product/test-chain.test.ts
+    testName: retains original frozen fan-in integration base while requiring both exact predecessor results and completed independent review
   sdk.golden.integration-tree-native:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

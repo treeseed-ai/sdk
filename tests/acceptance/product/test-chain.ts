@@ -15,7 +15,7 @@ export function verifySdkReviewedSourceInput(next: Pick<AssignmentAttempt, 'work
 	predecessor: Pick<AssignmentResult, 'id'>, review: Pick<AssignmentResult, 'id' | 'completedAt'>, reference: AssignmentReference): void {
 	assert.ok(reference.kind === 'git', failure);
 	assert.ok(next.predecessorResultIds.includes(predecessor.id) && next.predecessorResultIds.includes(review.id), failure);
-	assert.ok(next.workspace.mode === 'git' && next.workspace.repository === reference.repository && next.workspace.baseCommit === reference.commit, failure);
+	assert.ok(next.workspace.mode === 'git' && next.workspace.repository === reference.repository, failure);
 	assert.ok(Date.parse(review.completedAt) <= Date.parse(next.createdAt), failure);
 }
 const object = (value: unknown): Record<string, unknown> => {
