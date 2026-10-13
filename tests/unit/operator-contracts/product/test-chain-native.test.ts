@@ -47,6 +47,17 @@ it('native Git rejects unreviewed final integration trees and unrelated approved
 		const newDocument = commit('controlled new operator documentation'); git(['--git-dir', repository, 'fetch', work, newDocument]);
 		expect(() => inspect(repository, base, tester, engineer, { writer: newDocument, release: newDocument, writerBase: engineer })).not.toThrow();
 		for (const retained of deniedDocuments) expect(git(['--git-dir', repository, 'rev-parse', `${retained}^{commit}`])).toBe(retained);
+
+		const allowedDocumentUpdates: unknown[] = [];
+		for (const mode of ['replace-obsolete', 'root-contributor']) {
+			git(['checkout', '--detach', engineer]);
+			if (mode === 'replace-obsolete') { rmSync(join(work, 'docs/guide.md')); writeFileSync(join(work, 'docs/current.md'), 'Use the current approved operator instructions.\n'); }
+			else writeFileSync(join(work, 'AGENTS.md'), 'Contributors must use the reviewed public client and exact tests.\n');
+			const actual = commit(`controlled legitimate documentation ${mode}`); git(['--git-dir', repository, 'fetch', work, actual]);
+			try { inspect(repository, base, tester, engineer, { writer: actual, release: actual, writerBase: engineer }); allowedDocumentUpdates.push(undefined); }
+			catch (error) { allowedDocumentUpdates.push(error instanceof Error ? error.message : String(error)); }
+		}
+		expect(allowedDocumentUpdates).toEqual([undefined, undefined]);
 		git(['checkout', '--detach', writer]);
 		writeFileSync(join(work, 'src/product.ts'), '// unreviewed release mutation\n'); const changed = commit('controlled unreviewed release');
 		git(['--git-dir', repository, 'fetch', work, changed]);
