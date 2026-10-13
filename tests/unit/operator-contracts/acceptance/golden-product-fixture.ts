@@ -102,14 +102,26 @@ export const proposal = { schemaVersion: 'treeseed.proposal/v1', status: 'ready'
 		requiredCapabilities: ['source.read'], acceptanceCriteria: [`Verify controlled ${id} outcome.`] })) },
 	evidenceRefs: [{ store: 'url', model: 'issue', id: 'sdk-source-1', url: 'https://github.com/treeseed-ai/sdk/issues/299' }],
 	summary: 'Prove the SDK can express high-level decision-governed execution while keeping all derived execution state API-owned.' };
+const commands = ['npm run standards:build', 'npm run build', 'npm run release:verify', 'npm pack', 'npm run test:contracts',
+	'npm run standards:acceptance -- --archive treeseed-sdk-1.0.0.tgz'];
+export function releaseOutputFixture() {
+	return commands.map(command => {
+		const stdout = command === 'npm pack' ? 'treeseed-sdk-1.0.0.tgz\n' : command.includes('--archive')
+			? JSON.stringify({ ok: true, declarations: 7, exportTargets: 2, archiveDigest: `sha256:${'d'.repeat(64)}` }) + '\n'
+			: `Original controlled output: ${command}\n`;
+		return { command, status: 'passed', exitCode: 0,
+			outputDigest: `sha256:${createHash('sha256').update(JSON.stringify({ stderr: '', stdout })).digest('hex')}`,
+			durationSeconds: 1, stdout, stderr: '' };
+	});
+}
 const recorded = proposalReadback().governance;
 export const release = { id: 'release-row', createdAt: 'now', status: 'completed', assignmentAttempt: { id: 'release-attempt', workdayId: 'workday-fixture', teamId: 'sdk-team', projectId: 'sdk-project', sourceRef: {
 	store: 'treedx', model: 'proposal', id: 'sdk-proposal', revision: recorded.activeVersion, digest: `sha256:${recorded.activeContentHash}`,
 	repository: recorded.metadata.contentProvenance.repositoryId, commit: recorded.metadata.contentProvenance.commitSha, path: recorded.metadata.contentProvenance.contentPath,
 }, agentClass: 'renamed-releaser', workItemId: 'simulate-release', effectiveProfile: { activity: 'acting' } },
 	lifecycleOutput: { sourceReference: { kind: 'git', repository: 'treeseed-ai/sdk', commit } },
-	assignmentResult: { id: 'release-result', assignmentId: 'release-attempt', references: [{ kind: 'git', repository: 'treeseed-ai/sdk', commit }], verification: ['npm run standards:build', 'npm run build', 'npm run release:verify', 'npm pack', 'npm run test:contracts', 'npm run standards:acceptance -- --archive treeseed-sdk-1.0.0.tgz']
-		.map(command => ({ command, status: 'passed', exitCode: 0, outputDigest: `sha256:${'b'.repeat(64)}`, durationSeconds: 1 })) } };
+	assignmentResult: { id: 'release-result', assignmentId: 'release-attempt', references: [{ kind: 'git', repository: 'treeseed-ai/sdk', commit }],
+		verification: releaseOutputFixture().map(({ stdout: _stdout, stderr: _stderr, ...receipt }) => receipt) } };
 export const review = { ...release, id: 'review-row', assignmentAttempt: { ...release.assignmentAttempt, id: 'review-attempt', agentClass: 'renamed-reviewer', effectiveProfile: { activity: 'reviewing' },
 	contextRefs: [{ store: 'git', model: 'GitCommit', id: 'release-candidate', repository: 'treeseed-ai/sdk', commit }], predecessorResultIds: ['release-result'] },
 	assignmentResult: { ...release.assignmentResult, id: 'review-result', assignmentId: 'review-attempt' },
@@ -148,6 +160,10 @@ export function proposalReadback(...input: [unknown?, number?, (boolean | 'alias
 	return { governance: { id: fields.id, projectId: fields.projectId, title: fields.title, summary: fields.summary, body: fields.request,
 		activeVersion: 1, activeContentHash: digest, metadata: { contentProvenance: { repositoryId, commitSha, contentPath, digest } } },
 		original: { initialProposal, graph, binding: { repositoryId },
+			executionEvents: ['release', 'review'].map((name, eventIndex) => ({ id: `${name}-event`, runId: 'workday-fixture',
+				teamId: 'sdk-team', assignmentId: `${name}-attempt`, eventType: 'provider.execution.completed', status: 'completed', eventIndex,
+				protectedPayload: { sourceCommit: commit, verificationRecords: releaseOutputFixture().map(({ stdout: _stdout, stderr: _stderr, ...receipt }) => receipt),
+					verificationObservations: releaseOutputFixture() } })),
 			teamLibrary: { project: { id: 'team-project', slug: 'team', teamId: 'sdk-team' }, library: { projectId: 'team-project', teamId: 'sdk-team', repositoryId: 'repo_team_fixture' } },
 			referenceFiles: structuredClone(referenced.map(item => item.read)), files: { ok: true, repoId: repositoryId, resolvedRef: commitSha,
 			files: [{ path: contentPath, content, frontmatter: parse(encoded) as unknown }] } } };
