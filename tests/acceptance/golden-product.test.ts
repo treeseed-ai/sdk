@@ -5,6 +5,7 @@ import test from 'node:test';
 import { sdkPublishedRepository, verifySdkCommittedTests, verifySdkPublishedBranch, verifySdkReviewedSourceInput } from './product/test-chain.ts';
 import { sdkGoldenReadArguments, sdkGoldenSource, sdkGoldenWorkdayId, verifySdkGoldenProduct, sdkGoldenProposalProvenance, sdkGoldenFrozenProposal, sdkGoldenLibraryFiles, sdkGoldenProposalDocument, type SdkGoldenOriginal } from './golden-product.ts';
 import { assignmentAttemptSchema, assignmentResultSchema } from '@treeseed/sdk/agent-capacity';
+import { isSdkArchiveCommand, sdkGoldenExecutionEvents, sdkReleaseCommands } from './product/release-output.ts';
 
 test('SDK golden retains exact source and passing measured candidate release gates', () => {
 	const read = (args: string[]) => {
@@ -48,6 +49,7 @@ test('SDK golden retains exact source and passing measured candidate release gat
 		cursor = result.page.nextCursor;
 	}
 	original.graph = read(['execution', 'graph', 'show']);
+	original.executionEvents = sdkGoldenExecutionEvents(read, id, run.teamId);
 	verifySdkGoldenProduct(assignments, sdkGoldenSource(freeze, run.parameters.proposalIds), proposal, original);
 	// Complete public list/show custody, not a time-cutoff approximation or a
 	// synthetic replacement for a managed Releaser and its independent Reviewer.
@@ -165,13 +167,13 @@ test('SDK golden retains exact source and passing measured candidate release gat
 	assert.deepEqual(read(['host', 'sandbox', 'status']).workspace.journals, host.workspace.journals,
 		'ACCEPTANCE_SDK_NATIVE_TEST_CHAIN: Original owning publication journals changed during Git verification');
 	for (const result of [actorResult, reviewResult]) {
-		for (const command of ['npm run release:verify', 'npm pack']) {
+		for (const command of sdkReleaseCommands) {
 			const records = result.verification.filter(record => record.command === command);
 			assert.ok(records.length > 0 && records.every(record => record.status === 'passed' && record.exitCode === 0
 				&& Number.isInteger(record.durationSeconds) && Number.isFinite(record.durationSeconds) && record.durationSeconds! >= 0),
 				'ACCEPTANCE_SDK_RELEASE_GATE: Each participant must actually replay both public release commands');
 		}
-		const archive = result.verification.filter(record => /^npm run standards:acceptance -- --archive (?:\.\/)?[a-zA-Z0-9][a-zA-Z0-9._-]*\.tgz$/u.test(record.command));
+		const archive = result.verification.filter(record => isSdkArchiveCommand(record.command));
 		assert.ok(archive.length > 0 && archive.every(record => record.status === 'passed' && record.exitCode === 0
 			&& Number.isInteger(record.durationSeconds) && Number.isFinite(record.durationSeconds) && record.durationSeconds! >= 0));
 		assert.ok(result.verification.every(record => record.status === 'passed' && record.exitCode === 0), 'ACCEPTANCE_SDK_RELEASE_GATE: Failed observations cannot pass');
@@ -184,6 +186,8 @@ test('SDK golden retains exact source and passing measured candidate release gat
 	for (const observation of referenceReads) assert.deepEqual(read(observation.args), observation.value,
 		'ACCEPTANCE_SDK_POPULATED_PROPOSAL: Referenced native content changed during read-back');
 	assert.deepEqual(read(['workdays', 'show', id]).run, run, 'ACCEPTANCE_SDK_CUSTODY: Workday evidence changed during read-back');
+	assert.deepEqual(sdkGoldenExecutionEvents(read, id, run.teamId), original.executionEvents,
+		'ACCEPTANCE_SDK_RELEASE_OUTPUT: Original diagnostic history changed during verification');
 	assert.deepEqual(sdkGoldenFrozenProposal(freeze), original.initialProposal, 'ACCEPTANCE_SDK_FROZEN_REQUEST: Original proposal input changed during verification');
 	assert.equal(readFileSync(freezePath, 'utf8'), freezeBytes, 'ACCEPTANCE_SDK_FREEZE: Original freeze bytes changed');
 });

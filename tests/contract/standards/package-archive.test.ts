@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { assertPackageCandidateOutputs, assertPackageExportTargets } from '../../../scripts/standards/acceptance/package-exports.ts';
+import { sdkPackedArchiveDigest } from '../../acceptance/product/release-output.ts';
 
 it('resolves the packed golden verifier imports through the installed public contract without checkout source',()=>{
  const candidate=resolve(import.meta.dirname,'../../..'),root=mkdtempSync(join(tmpdir(),'sdk-golden-installed-'));
@@ -230,6 +231,7 @@ process.stdout.write(JSON.stringify({ projection, valid, denied, provider: contr
 		expect(identity).not.toHaveProperty('types');
 		expect(Object.hasOwn(identity.exports, '.')).toBe(false);
 		try {
+			const independentDigests: string[] = [];
 			for (const role of ['actor', 'reviewer', 'valid-root-types', 'missing', 'wrong-identity', 'missing-root-types', 'unsafe-root-types', 'untyped-export']) {
 				const cwd = join(root, role); mkdirSync(join(cwd, 'dist'), { recursive: true });
 				const exports = structuredClone(identity.exports);
@@ -237,7 +239,7 @@ process.stdout.write(JSON.stringify({ projection, valid, denied, provider: contr
 				writeFileSync(join(cwd, 'package.json'), JSON.stringify({ name: role === 'wrong-identity' ? 'other-package' : identity.name, version: identity.version,
 					...(role === 'valid-root-types' ? { types: identity.exports['./standards']!.types } : {}),
 					...(role === 'missing-root-types' ? { types: './dist/absent.d.ts' } : {}),
-					...(role === 'unsafe-root-types' ? { types: '../outside.d.ts' } : {}), exports, files: ['dist'] }));
+					...(role === 'unsafe-root-types' ? { types: '../outside.d.ts' } : {}), scripts: { prepack: 'npm --version' }, exports, files: ['dist'] }));
 				for (const target of Object.values(identity.exports).flatMap(entry => Object.values(entry))) {
 					if (role === 'missing' && target === identity.exports['./standards']!.types) continue;
 					const output = join(cwd, target); mkdirSync(resolve(output, '..'), { recursive: true });
@@ -245,14 +247,21 @@ process.stdout.write(JSON.stringify({ projection, valid, denied, provider: contr
 					// outputs; arbitrary placeholder declarations are not custody.
 					writeFileSync(output, readFileSync(resolve(import.meta.dirname, '../../..', target)));
 				}
-				const packed = JSON.parse(execFileSync('npm', ['pack', '--json', '--ignore-scripts'], { cwd, encoding: 'utf8', timeout: 15000 })) as Array<{ filename: string }>;
-				const artifact = packed[0]!.filename;
+				const packed = spawnSync('npm', ['pack'], { cwd, encoding: 'utf8', timeout: 15000 });
+				expect(packed.error).toBeUndefined(); expect(packed.signal).toBeNull(); expect(packed.status, packed.stderr).toBe(0);
+				const artifact = packed.stdout.trimEnd().split(/\r?\n/u).at(-1)!; expect(artifact).toMatch(/^[a-zA-Z0-9][a-zA-Z0-9._-]*\.tgz$/u);
 				const inspect = () => execFileSync(process.execPath, ['--import', resolve(import.meta.dirname, '../../../node_modules/tsx/dist/loader.mjs'), command, '--archive', artifact],
 					{ cwd, encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'pipe'] });
 				if (!['actor', 'reviewer', 'valid-root-types'].includes(role)) { expect(inspect).toThrow(); continue; }
-				expect(JSON.parse(inspect())).toMatchObject({ ok: true, exportTargets: Object.keys(identity.exports).length * 2, declarations: Object.keys(identity.exports).length,
+				const inspected = inspect();
+				expect(JSON.parse(inspected)).toMatchObject({ ok: true, exportTargets: Object.keys(identity.exports).length * 2, declarations: Object.keys(identity.exports).length,
 					archiveDigest: `sha256:${createHash('sha256').update(readFileSync(join(cwd, artifact))).digest('hex')}` });
+				// Actual native pack and original standards implementation outputs;
+				// the three-command managed receipt chain is separately required.
+				const digest = sdkPackedArchiveDigest(packed.stdout, inspected, `npm run standards:acceptance -- --archive ${artifact}`);
+				if (['actor', 'reviewer'].includes(role)) independentDigests.push(digest);
 			}
+			expect(independentDigests).toHaveLength(2); expect(independentDigests[0]).toBe(independentDigests[1]);
 			// Pack this candidate's actual build outputs as well as the negative fixtures.
 			const actual = JSON.parse(execFileSync('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', root],
 				{ cwd: resolve(import.meta.dirname, '../../..'), encoding: 'utf8', timeout: 15000 })) as Array<{ filename: string }>;

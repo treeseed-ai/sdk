@@ -3,10 +3,84 @@ import { readFileSync } from 'node:fs';
 import { sdkGoldenSource, sdkGoldenLibraryFiles, verifySdkGoldenProposalReferences, verifySdkGoldenProduct as verifyProduct } from '../../acceptance/golden-product.ts';
 import { stringify } from 'yaml';
 import { createHash } from 'node:crypto';
+import { sdkGoldenExecutionEvents } from '../../acceptance/product/release-output.ts';
 import { commit, release, review, proposal, proposalReadback, graphPairFailures, mutateGraphPair, graphOrderFailures, mutateGraphOrder, permissionCases, mutatePermissionRequest } from './acceptance/golden-product-fixture.ts';
 const verifySdkGoldenProduct = (items: Parameters<typeof verifyProduct>[0], source: string) =>
 	Reflect.apply(verifyProduct, undefined, [items, source, proposalReadback().governance, proposalReadback().original]);
 describe('SDK golden product gate (fixtures are not acceptance)', () => {
+	it('rejects release receipts without the original paired native command outputs and matching packed archive digest', () => {
+		for (const mode of ['missing-events', 'empty-events', 'malformed-event', 'duplicate-event', 'foreign-workday', 'foreign-team',
+			'foreign-assignment', 'failed-event', 'foreign-candidate', 'missing-payload', 'missing-records', 'missing-outputs',
+			'malformed-output', 'duplicate-output', 'altered-stdout', 'altered-stderr', 'wrong-command-duration', 'duplicate-command',
+			'different-archive', 'different-pack-name', 'multiple-pack-names', 'malformed-inspection', 'failed-inspection', 'empty-declarations', 'bad-archive-digest']) {
+			const observed = proposalReadback(), participants = structuredClone([release, review]);
+			const events = observed.original.executionEvents, event = events[1]!, payload = event.protectedPayload;
+			const output = payload.verificationObservations.at(-1)!;
+			if (mode === 'missing-events') Reflect.deleteProperty(observed.original, 'executionEvents');
+			if (mode === 'empty-events') events.splice(0);
+			if (mode === 'malformed-event') Reflect.set(events, 0, null);
+			if (mode === 'duplicate-event') events.push(structuredClone(event));
+			if (mode === 'foreign-workday') event.runId = 'foreign';
+			if (mode === 'foreign-team') event.teamId = 'foreign';
+			if (mode === 'foreign-assignment') event.assignmentId = 'foreign';
+			if (mode === 'failed-event') event.status = 'failed';
+			if (mode === 'foreign-candidate') payload.sourceCommit = 'f'.repeat(40);
+			if (mode === 'missing-payload') Reflect.deleteProperty(event, 'protectedPayload');
+			if (mode === 'missing-records') payload.verificationRecords.splice(0);
+			if (mode === 'missing-outputs') payload.verificationObservations.splice(0);
+			if (mode === 'malformed-output') Reflect.set(payload.verificationObservations, 0, null);
+			if (mode === 'duplicate-output') payload.verificationObservations.push(structuredClone(output));
+			if (mode === 'altered-stdout') output.stdout += 'altered';
+			if (mode === 'altered-stderr') output.stderr += 'altered';
+			if (mode === 'wrong-command-duration') output.durationSeconds++;
+			if (mode === 'duplicate-command') participants[1]!.assignmentResult.verification.push(structuredClone(participants[1]!.assignmentResult.verification[2]!));
+			if (['different-archive', 'different-pack-name', 'multiple-pack-names', 'malformed-inspection', 'failed-inspection', 'empty-declarations', 'bad-archive-digest'].includes(mode)) {
+				const index = ['different-pack-name', 'multiple-pack-names'].includes(mode) ? 3 : 5, native = payload.verificationObservations[index]!;
+				const inspection = JSON.parse(output.stdout) as Record<string, unknown>;
+				if (mode === 'different-archive') inspection.archiveDigest = `sha256:${'e'.repeat(64)}`;
+				if (mode === 'failed-inspection') inspection.ok = false;
+				if (mode === 'empty-declarations') inspection.declarations = 0;
+				if (mode === 'bad-archive-digest') inspection.archiveDigest = 'sha256:unmeasured';
+				native.stdout = mode === 'different-pack-name' ? 'another.tgz\n' : mode === 'multiple-pack-names' ? 'another.tgz\ntreeseed-sdk-1.0.0.tgz\n'
+					: mode === 'malformed-inspection' ? '{truncated' : JSON.stringify(inspection) + '\n';
+				native.outputDigest = `sha256:${createHash('sha256').update(JSON.stringify({ stderr: native.stderr, stdout: native.stdout })).digest('hex')}`;
+				payload.verificationRecords[index]!.outputDigest = native.outputDigest;
+				participants[1]!.assignmentResult.verification[index]!.outputDigest = native.outputDigest;
+			}
+			const held = structuredClone({ observed, participants });
+			expect.soft(() => Reflect.apply(verifyProduct, undefined, [participants, commit, observed.governance, observed.original]), mode)
+				.toThrow('ACCEPTANCE_SDK_RELEASE_OUTPUT');
+			expect({ observed, participants }).toEqual(held);
+		}
+	});
+	it('reads complete authorized diagnostic pages and rejects malformed duplicate foreign interrupted or cyclic inventories', () => {
+		const original = proposalReadback().original.executionEvents, held = structuredClone(original);
+		const pages = [{ items: [original[0]], page: { hasMore: true, nextCursor: 'second' } },
+			{ items: [original[1]], page: { hasMore: false, nextCursor: null } }];
+		const calls: string[][] = [];
+		expect(sdkGoldenExecutionEvents(args => { calls.push(args); return pages[calls.length - 1]!; }, 'workday-fixture', 'sdk-team')).toEqual(original);
+		expect(calls).toEqual([['workdays', 'events', 'list', 'workday-fixture', '--diagnostics', 'full', '--limit', '50'],
+			['workdays', 'events', 'list', 'workday-fixture', '--diagnostics', 'full', '--limit', '50', '--cursor', 'second']]);
+		for (const mode of ['missing-page', 'missing-items', 'duplicate', 'foreign-workday', 'foreign-team', 'missing-id', 'missing-cursor', 'cycle', 'interrupted', 'unbounded']) {
+			const changed = structuredClone(pages); let index = 0;
+			if (mode === 'missing-page') Reflect.deleteProperty(changed[1]!, 'page');
+			if (mode === 'missing-items') Reflect.deleteProperty(changed[1]!, 'items');
+			if (mode === 'duplicate') changed[1]!.items = [changed[0]!.items[0]];
+			if (mode === 'foreign-workday') changed[1]!.items[0]!.runId = 'foreign';
+			if (mode === 'foreign-team') changed[1]!.items[0]!.teamId = 'foreign';
+			if (mode === 'missing-id') Reflect.deleteProperty(changed[1]!.items[0]!, 'id');
+			if (mode === 'missing-cursor') changed[0]!.page.nextCursor = null;
+			if (mode === 'cycle') { changed[1]!.page.hasMore = true; changed[1]!.page.nextCursor = 'second'; }
+			const before = structuredClone(changed);
+			expect.soft(() => sdkGoldenExecutionEvents(() => {
+				if (mode === 'interrupted' && index === 1) throw new Error('native transport interrupted');
+				if (mode === 'unbounded') return { items: [], page: { hasMore: true, nextCursor: `page-${index++}` } };
+				return changed[index++]!;
+			}, 'workday-fixture', 'sdk-team'), mode).toThrow();
+			expect(changed).toEqual(before);
+		}
+		expect(original).toEqual(held);
+	});
 	it('rejects missing extra duplicate and alternate permission requests for every fixed authored SDK role without repairing original bytes', () => {
 		const exact = proposalReadback(), inspect = (value: typeof exact) => Reflect.apply(verifyProduct, undefined, [[release, review], commit, value.governance, value.original]);
 		expect(() => inspect(exact)).not.toThrow();
@@ -336,7 +410,12 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 		for (const prefix of ['', './']) {
 			const actor = structuredClone(release), reviewer = structuredClone(review);
 			for (const item of [actor, reviewer]) item.assignmentResult.verification.at(-1)!.command = `npm run standards:acceptance -- --archive ${prefix}treeseed-sdk-1.0.0.tgz`;
-			expect(() => verifySdkGoldenProduct([actor, reviewer], commit)).not.toThrow();
+			const observed = proposalReadback();
+			for (const event of observed.original.executionEvents) {
+				event.protectedPayload.verificationRecords.at(-1)!.command = actor.assignmentResult.verification.at(-1)!.command;
+				event.protectedPayload.verificationObservations.at(-1)!.command = actor.assignmentResult.verification.at(-1)!.command;
+			}
+			expect(() => Reflect.apply(verifyProduct, undefined, [[actor, reviewer], commit, observed.governance, observed.original])).not.toThrow();
 		}
 		for (const path of ['../package.tgz', '/tmp/package.tgz', 'scratch/package.tgz', './scratch/package.tgz', './package.tgz && true']) {
 			const actor = structuredClone(release); actor.assignmentResult.verification.at(-1)!.command = `npm run standards:acceptance -- --archive ${path}`;

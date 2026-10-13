@@ -726,3 +726,9 @@ workflow:
   - id: committed-test-custody-native
     action: { verifier: sdk.golden.committed-test-custody-native }
     expect: { status: passed }
+  - id: release-output-custody-unit
+    action: { verifier: sdk.golden.release-output-custody-unit }
+    expect: { status: passed }
+  - id: release-diagnostics-pagination-unit
+    action: { verifier: sdk.golden.release-diagnostics-pagination-unit }
+    expect: { status: passed }

@@ -6,6 +6,7 @@ import { validatePortableContentData } from '@treeseed/sdk/content-validation';
 import { createHash } from 'node:crypto';
 import { parse, parseDocument, visit } from 'yaml';
 import { TREESEED_COMMAND_TREE_V1, type CommandLeafDescriptor } from '@treeseed/sdk/operator-contracts';
+import { isSdkArchiveCommand, sdkReleaseCommands, verifySdkReleaseOutputs } from './product/release-output.ts';
 
 type Row = Record<string, any>;
 export function sdkGoldenReadArguments(args: readonly string[], team: string): string[] {
@@ -24,7 +25,7 @@ export function sdkGoldenReadArguments(args: readonly string[], team: string): s
 		'ACCEPTANCE_SDK_READ: Scope selectors must be supplied once by the owning reader');
 	return [...args, ...(operation ? ['--server', 'local'] : []), ...(scopedTeam ? ['--team', team] : []), '--json'];
 }
-export type SdkGoldenOriginal = { binding: Row; files: Row; initialProposal: Row; teamLibrary?: Row; referenceFiles?: Row[]; graph?: Row };
+export type SdkGoldenOriginal = { binding: Row; files: Row; initialProposal: Row; teamLibrary?: Row; referenceFiles?: Row[]; graph?: Row; executionEvents?: Row[] };
 /** The selected scene consumes the existing CLI library-read result. */
 export function sdkGoldenLibraryFiles(readback: Row): Row {
 	const result = readback && typeof readback === 'object' && !Array.isArray(readback) ? readback.result : undefined;
@@ -244,7 +245,7 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, s
 	assert.ok(Array.isArray(records), 'ACCEPTANCE_SDK_VERIFICATION: Canonical measured verification required');
 	// release:verify owns strict build, standards generation/acceptance and the full
 	// test:release suite. Separate build/generator/suite receipts duplicate that gate.
-	for (const command of ['npm run release:verify', 'npm pack']) {
+	for (const command of sdkReleaseCommands) {
 		const record = records.find(item => item.command === command);
 		assert.ok(measured(record),
 			'ACCEPTANCE_SDK_RELEASE_GATE: Every required release command must have passed with measured exact evidence');
@@ -252,7 +253,7 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, s
 	assert.ok(!records.some(record => record.status === 'failed' || record.exitCode !== 0),
 		'ACCEPTANCE_SDK_RELEASE_GATE: A failed candidate cannot pass');
 	const archivePassed = (verification: unknown) => Array.isArray(verification) && verification.some(record =>
-		/^npm run standards:acceptance -- --archive (?:\.\/)?[a-zA-Z0-9][a-zA-Z0-9._-]*\.tgz$/u.test(String(record.command))
+		isSdkArchiveCommand(record.command)
 		&& measured(record));
 	assert.ok(archivePassed(records), 'ACCEPTANCE_SDK_RELEASE_GATE: Packed export/type inspection must be independently replayable');
 	const review = assignments.filter(item => item.status === 'completed' && item.assignmentAttempt?.workItemId === 'simulate-release'
@@ -260,7 +261,7 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, s
 		.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))).at(-1);
 	assert.ok(review?.lifecycleOutput?.activityCompletion?.reviewDisposition === 'approved'
 		&& archivePassed(review.assignmentResult?.verification)
-		&& ['npm run release:verify', 'npm pack'].every(command => measured(review.assignmentResult?.verification?.find((record: Row) => record.command === command)))
+		&& sdkReleaseCommands.every(command => measured(review.assignmentResult?.verification?.find((record: Row) => record.command === command)))
 		&& !review.assignmentResult?.verification?.some((record: Row) => record.status === 'failed' || record.exitCode !== 0),
 		'ACCEPTANCE_SDK_ARCHIVE_REVIEW: Independent approved replay of every release command required');
 	const source = release.lifecycleOutput?.sourceReference;
@@ -278,6 +279,7 @@ export function verifySdkGoldenProduct(assignments: Row[], sourceBase: string, s
 		&& reviewerAttempt.predecessorResultIds.includes(release.assignmentResult.id)
 		&& reviewerAttempt.contextRefs?.some((ref: Row) => ref.store === 'git' && ref.repository === source.repository && ref.commit === source.commit),
 		'ACCEPTANCE_SDK_ARCHIVE_REVIEW: Independent review must consume this exact Actor result and candidate');
+	verifySdkReleaseOutputs(release, review, original.executionEvents, source.commit);
 }
 
 /** Resolve the proposal's own exact references against independent native public reads. */
