@@ -7,6 +7,14 @@ import { commit, release, review, proposal, proposalReadback, graphPairFailures,
 const verifySdkGoldenProduct = (items: Parameters<typeof verifyProduct>[0], source: string) =>
 	Reflect.apply(verifyProduct, undefined, [items, source, proposalReadback().governance, proposalReadback().original]);
 describe('SDK golden product gate (fixtures are not acceptance)', () => {
+	it('rejects release receipts without the original paired native command outputs and matching packed archive digest', () => {
+		const observed = proposalReadback();
+		Reflect.set(observed.original, 'executionEvents', []);
+		const held = structuredClone(observed);
+		expect(() => Reflect.apply(verifyProduct, undefined, [[release, review], commit, observed.governance, observed.original]))
+			.toThrow('ACCEPTANCE_SDK_RELEASE_OUTPUT');
+		expect(observed).toEqual(held);
+	});
 	it('rejects missing extra duplicate and alternate permission requests for every fixed authored SDK role without repairing original bytes', () => {
 		const exact = proposalReadback(), inspect = (value: typeof exact) => Reflect.apply(verifyProduct, undefined, [[release, review], commit, value.governance, value.original]);
 		expect(() => inspect(exact)).not.toThrow();
