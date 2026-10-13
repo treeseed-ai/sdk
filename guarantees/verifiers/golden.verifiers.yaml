@@ -1252,3 +1252,13 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/product/test-chain-native.test.ts
     testName: native Git proves test-only approved ancestry and identical consumed blobs while retaining changed deleted redirected and unrelated failures before exact retry
+  sdk.golden.release-output-custody-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/golden-product.test.ts
+    testName: rejects release receipts without the original paired native command outputs and matching packed archive digest
+  sdk.golden.release-diagnostics-pagination-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/golden-product.test.ts
+    testName: reads complete authorized diagnostic pages and rejects malformed duplicate foreign interrupted or cyclic inventories
