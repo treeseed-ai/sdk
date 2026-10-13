@@ -106,7 +106,7 @@ const commands = ['npm run standards:build', 'npm run build', 'npm run release:v
 	'npm run standards:acceptance -- --archive treeseed-sdk-1.0.0.tgz'];
 export function releaseOutputFixture() {
 	return commands.map(command => {
-		const stdout = command === 'npm pack' ? 'treeseed-sdk-1.0.0.tgz\n' : command.includes('--archive')
+		const stdout = command === 'npm pack' ? '\n> controlled prepack\n> npm --version\n\n11.6.2\ntreeseed-sdk-1.0.0.tgz\n' : command.includes('--archive')
 			? JSON.stringify({ ok: true, declarations: 7, exportTargets: 2, archiveDigest: `sha256:${'d'.repeat(64)}` }) + '\n'
 			: `Original controlled output: ${command}\n`;
 		return { command, status: 'passed', exitCode: 0,

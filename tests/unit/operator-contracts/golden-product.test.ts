@@ -12,7 +12,7 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 		for (const mode of ['missing-events', 'empty-events', 'malformed-event', 'duplicate-event', 'foreign-workday', 'foreign-team',
 			'foreign-assignment', 'failed-event', 'foreign-candidate', 'missing-payload', 'missing-records', 'missing-outputs',
 			'malformed-output', 'duplicate-output', 'altered-stdout', 'altered-stderr', 'wrong-command-duration', 'duplicate-command',
-			'different-archive', 'different-pack-name', 'malformed-inspection', 'failed-inspection', 'empty-declarations', 'bad-archive-digest']) {
+			'different-archive', 'different-pack-name', 'multiple-pack-names', 'malformed-inspection', 'failed-inspection', 'empty-declarations', 'bad-archive-digest']) {
 			const observed = proposalReadback(), participants = structuredClone([release, review]);
 			const events = observed.original.executionEvents, event = events[1]!, payload = event.protectedPayload;
 			const output = payload.verificationObservations.at(-1)!;
@@ -34,14 +34,15 @@ describe('SDK golden product gate (fixtures are not acceptance)', () => {
 			if (mode === 'altered-stderr') output.stderr += 'altered';
 			if (mode === 'wrong-command-duration') output.durationSeconds++;
 			if (mode === 'duplicate-command') participants[1]!.assignmentResult.verification.push(structuredClone(participants[1]!.assignmentResult.verification[2]!));
-			if (['different-archive', 'different-pack-name', 'malformed-inspection', 'failed-inspection', 'empty-declarations', 'bad-archive-digest'].includes(mode)) {
-				const index = mode === 'different-pack-name' ? 3 : 5, native = payload.verificationObservations[index]!;
+			if (['different-archive', 'different-pack-name', 'multiple-pack-names', 'malformed-inspection', 'failed-inspection', 'empty-declarations', 'bad-archive-digest'].includes(mode)) {
+				const index = ['different-pack-name', 'multiple-pack-names'].includes(mode) ? 3 : 5, native = payload.verificationObservations[index]!;
 				const inspection = JSON.parse(output.stdout) as Record<string, unknown>;
 				if (mode === 'different-archive') inspection.archiveDigest = `sha256:${'e'.repeat(64)}`;
 				if (mode === 'failed-inspection') inspection.ok = false;
 				if (mode === 'empty-declarations') inspection.declarations = 0;
 				if (mode === 'bad-archive-digest') inspection.archiveDigest = 'sha256:unmeasured';
-				native.stdout = mode === 'different-pack-name' ? 'another.tgz\n' : mode === 'malformed-inspection' ? '{truncated' : JSON.stringify(inspection) + '\n';
+				native.stdout = mode === 'different-pack-name' ? 'another.tgz\n' : mode === 'multiple-pack-names' ? 'another.tgz\ntreeseed-sdk-1.0.0.tgz\n'
+					: mode === 'malformed-inspection' ? '{truncated' : JSON.stringify(inspection) + '\n';
 				native.outputDigest = `sha256:${createHash('sha256').update(JSON.stringify({ stderr: native.stderr, stdout: native.stdout })).digest('hex')}`;
 				payload.verificationRecords[index]!.outputDigest = native.outputDigest;
 				participants[1]!.assignmentResult.verification[index]!.outputDigest = native.outputDigest;

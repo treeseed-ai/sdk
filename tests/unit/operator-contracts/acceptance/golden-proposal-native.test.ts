@@ -1,6 +1,5 @@
 import { createServer } from 'node:http';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { createRequire } from 'node:module';
 import { once } from 'node:events';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -14,6 +13,7 @@ import { workdayStartFixture } from './workday-start-fixture.ts';
 it('native public SDK proposal reads in isolated product verification reject changed stored identity title and summary and retain denied observations before unchanged retry', async () => {
 	let mode = 'exact'; const calls: string[] = [], referenceCalls: string[] = [], failed: Array<Record<string, unknown>> = [];
 	const graphCalls: string[] = [], graphFailures: string[] = [];
+	const diagnosticCalls: string[] = [], diagnosticFailures: string[] = [];
 	const discussionBytes = (kind: string, bytes: string) => kind === 'reference-open' ? bytes.replace('status: closed', 'status: open')
 		: kind === 'reference-repository' ? bytes.replace('repository: repo_sdk_fixture', 'repository: repo_foreign')
 			: kind === 'reference-path' ? bytes.replace('path: proposals/governance/sdk-proposal.mdx', 'path: proposals/foreign.mdx') : bytes;
@@ -45,6 +45,19 @@ it('native public SDK proposal reads in isolated product verification reject cha
 		let bytes = ''; request.setEncoding('utf8'); request.on('data', value => { bytes += String(value); }); request.on('end', () => {
 		const fixture = mode === 'budget-boundary' ? proposalReadback(proposal, 1_048_576).original : structuredClone(nativeBase);
 		const path = request.method === 'POST' ? JSON.parse(bytes).paths?.[0] : undefined;
+		const requested = new URL(request.url ?? '/', 'http://isolated.test');
+		if (requested.pathname === '/v1/teams/sdk-team/workday-runs/workday-fixture/events') {
+			diagnosticCalls.push(`${request.method} ${requested.search}`); response.setHeader('content-type', 'application/json');
+			if (mode.startsWith('release-diagnostics-')) diagnosticFailures.push(mode);
+			if (mode === 'release-diagnostics-denied' || mode === 'release-diagnostics-unavailable') {
+				response.writeHead(mode === 'release-diagnostics-denied' ? 403 : 503).end(JSON.stringify({ title: 'Controlled original diagnostic failure' })); return;
+			}
+			if (mode === 'release-diagnostics-interrupted') { request.socket.destroy(); return; }
+			if (mode === 'release-diagnostics-json') { response.end('{'); return; }
+			if (mode === 'release-diagnostics-altered') fixture.executionEvents[0]!.protectedPayload.verificationObservations[2]!.stdout += 'altered';
+			if (mode === 'release-diagnostics-foreign') fixture.executionEvents[0]!.runId = 'foreign';
+			response.end(JSON.stringify({ data: { items: fixture.executionEvents, page: { limit: 50, hasMore: false, nextCursor: null } } })); return;
+		}
 		if (request.url === '/v1/teams/sdk-team/execution-graph') {
 			graphCalls.push(`${request.method} ${request.url}`); response.setHeader('content-type', 'application/json');
 			if (mode.startsWith('graph-')) graphFailures.push(mode);
@@ -139,28 +152,8 @@ it('native public SDK proposal reads in isolated product verification reject cha
 	try {
 		await new Promise<void>((accept, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', accept); });
 		const address = server.address(); if (!address || typeof address === 'string') throw new Error('Native loopback address required');
-		const require = createRequire(import.meta.url), sdk = require.resolve('@treeseed/sdk/control-plane-client'), operations = require.resolve('@treeseed/sdk/operator-contracts');
-		const helper = new URL('../../../acceptance/golden-product.ts', import.meta.url).href;
-		const code = `import{ControlPlaneClient,defaultLocalControlPlaneServer}from ${JSON.stringify(sdk)};
-import{controlPlaneOperation}from ${JSON.stringify(operations)};
-import{verifySdkGoldenProduct,sdkGoldenProposalProvenance,sdkGoldenFrozenProposal,sdkGoldenProposalDocument,sdkGoldenLibraryFiles}from ${JSON.stringify(helper)};
-const client=new ControlPlaneClient({profile:defaultLocalControlPlaneServer({TREESEED_API_BASE_URL:${JSON.stringify(`http://127.0.0.1:${address.port}`)}}),accessToken:'controlled-native-input'});
-process.on('message',async ({id,actors,frozen})=>{try{
-const observed=await client.invoke(controlPlaneOperation('governance.proposals.show'),{path:{projectId:'sdk-project',proposalId:'sdk-proposal'},query:{},body:undefined});
-const provenance=sdkGoldenProposalProvenance(observed.data);
-const binding=await client.invoke(controlPlaneOperation('treedx.library.show'),{path:{projectId:'sdk-project'},query:{},body:undefined});
-const files=await client.invoke(controlPlaneOperation('treedx.repositories.files.read'),{path:{projectId:'sdk-project',repoId:provenance.repositoryId},query:{},body:{ref:provenance.commitSha,paths:[provenance.contentPath],encoding:'utf8',parseFrontmatter:true}});
-const original={binding:binding.data,files:sdkGoldenLibraryFiles({result:files.data,receipt:{operation:'read'}}),initialProposal:sdkGoldenFrozenProposal(frozen)};
-const document=sdkGoldenProposalDocument(observed.data,original);
-const teamProject=await client.invoke(controlPlaneOperation('projects.show'),{path:{projectId:'team-project'},query:{},body:undefined});
-const teamBinding=await client.invoke(controlPlaneOperation('treedx.library.show'),{path:{projectId:'team-project'},query:{},body:undefined});
-const referenceFiles=[];
-for(const ref of [...(Array.isArray(document.objectiveRefs)?document.objectiveRefs:[]),...(document.discussionRef?[document.discussionRef]:[])]){
-const result=await client.invoke(controlPlaneOperation('treedx.repositories.files.read'),{path:{projectId:ref.repository===teamBinding.data.repositoryId?'team-project':'sdk-project',repoId:ref.repository},query:{},body:{ref:ref.commit,paths:[ref.path],encoding:'utf8',parseFrontmatter:true}});referenceFiles.push(sdkGoldenLibraryFiles({result:result.data,receipt:{operation:'read'}}));}
-const graph=await client.invoke(controlPlaneOperation('execution.graph.show'),{path:{teamId:'sdk-team'},query:{},body:undefined});
-Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)},observed.data,{...original,graph:graph.data,teamLibrary:{project:teamProject.data,library:teamBinding.data},referenceFiles}]);process.send({id,passed:true});
-}catch(error){process.send({id,passed:false,error:error instanceof Error?error.message:'Native verification failed'});}});`;
-		worker = spawn(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', code], {
+
+		worker = spawn(process.execPath, ['--import', 'tsx', new URL('./golden-proposal-native-worker.ts', import.meta.url).pathname, `http://127.0.0.1:${address.port}`, commit], {
 			cwd: new URL('../../../../', import.meta.url), stdio: ['ignore', 'ignore', 'pipe', 'ipc'], env: process.env,
 		});
 		worker.once('error', fail); worker.once('exit', () => fail(new Error('Isolated verifier exited before completing its assertion')));
@@ -286,6 +279,15 @@ Reflect.apply(verifySdkGoldenProduct,undefined,[actors,${JSON.stringify(commit)}
 		mode = 'exact'; expect((await observe()).stdout).toBe('verified');
 		expect(graphFailures).toEqual(retainedGraphFailures); expect(graphFailures).toHaveLength(graphPairFailures.length + graphOrderFailures.length + 4);
 		expect(graphCalls.slice(graphStart)).toEqual(Array(graphPairFailures.length + graphOrderFailures.length + 7).fill('GET /v1/teams/sdk-team/execution-graph'));
+		for (const denial of ['denied', 'unavailable', 'interrupted', 'json', 'altered', 'foreign']) {
+			mode = `release-diagnostics-${denial}`; await expect.soft(observe(), mode).rejects.toThrow();
+		}
+		const retainedDiagnostics = structuredClone(diagnosticFailures); mode = 'exact'; expect((await observe()).stdout).toBe('verified');
+		expect(diagnosticFailures).toEqual(retainedDiagnostics); expect(diagnosticFailures).toHaveLength(6);
+		expect(diagnosticCalls.length).toBeGreaterThan(6);
+		for (const call of diagnosticCalls) {
+			const query = new URLSearchParams(call.slice('GET '.length)); expect(query.get('diagnostics')).toBe('full'); expect(query.get('limit')).toBe('50');
+		}
 		for (const file of proposalReadback().original.referenceFiles)
 			expect(referenceCalls.some(value => value.endsWith(` ${file.files[0]!.path}`))).toBe(true);
 		expect({ release, review, proposal }).toEqual(original);

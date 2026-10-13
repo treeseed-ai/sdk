@@ -71,8 +71,9 @@ export function sdkGoldenExecutionEvents(read: (args: string[]) => Row, workday:
 /** Parse outputs of the existing native pack and standards archive boundary. */
 export function sdkPackedArchiveDigest(packed: string, inspectionOutput: string, command: string): string {
 	assert.ok(isSdkArchiveCommand(command), `${code}: Exact public standards archive command required`);
-	const filename = packed.trim();
-	assert.match(filename, /^[a-zA-Z0-9][a-zA-Z0-9._-]*\.tgz$/u, `${code}: npm pack must produce one current-directory archive`);
+	const lines = packed.trimEnd().split(/\r?\n/u), filenames = lines.filter(line => /^[a-zA-Z0-9][a-zA-Z0-9._-]*\.tgz$/u.test(line));
+	assert.ok(filenames.length === 1 && lines.at(-1) === filenames[0], `${code}: npm pack must produce one final current-directory archive`);
+	const filename = filenames[0]!;
 	assert.equal(command.replace('npm run standards:acceptance -- --archive ', '').replace(/^\.\//u, ''), filename,
 		`${code}: Inspection did not consume the actual npm pack output`);
 	let inspection: Row | undefined;
