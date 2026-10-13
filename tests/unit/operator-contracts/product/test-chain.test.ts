@@ -15,6 +15,15 @@ function fixture() {
 	return { complete: true, errors: [] as string[], scope: { storageRoot: '/var/lib/treeseed/agent/workspaces' }, journals,
 		confirmation: { journals: structuredClone(journals) } };
 }
+it.each(['branch', 'repository'] as const)('denies a self-consistent published Git %s outside the original assignment workspace', field => {
+	const changed = { ...reference, [field]: field === 'branch' ? 'simulation/foreign' : 'treeseed-ai/foreign' };
+	const observation = fixture(); observation.journals.results.entries[0]!.metadata.sourceReference = changed;
+	observation.confirmation.journals = structuredClone(observation.journals);
+	const retained = structuredClone(observation);
+	expect(() => sdkPublishedRepository(observation, 'sandbox-test', attempt, changed)).toThrow();
+	expect(observation).toEqual(retained);
+	expect(sdkPublishedRepository(fixture(), 'sandbox-test', attempt, reference)).toBe(repository);
+});
 it('requires complete unchanged public owning source custody and denies every foreign or ambiguous locator before native Git', () => {
 	const original = fixture(), before = structuredClone(original);
 	expect(sdkPublishedRepository(original, 'sandbox-test', attempt, reference)).toBe(repository); expect(original).toEqual(before);
