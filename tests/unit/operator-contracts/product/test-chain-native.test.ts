@@ -15,7 +15,9 @@ it('native Git rejects unreviewed final integration trees and unrelated approved
 	const inspect: (repository: string, base: string, tester: string, engineer: string, integration: { writer: string; release: string; writerBase: string }) => unknown = verifySdkCommittedTests;
 	try {
 		mkdirSync(work); git(['init', '--template=']); mkdirSync(join(work, 'src')); mkdirSync(join(work, 'tests'));
-		writeFileSync(join(work, 'src/product.ts'), 'export const original = true;\n'); const base = commit('controlled BASE');
+		writeFileSync(join(work, 'src/product.ts'), 'export const original = true;\n');
+		mkdirSync(join(work, 'docs')); writeFileSync(join(work, 'README.md'), 'Original user instructions.\n');
+		writeFileSync(join(work, 'docs/guide.md'), '---\nrevision: 1\n---\nOriginal operator instructions.\n'); const base = commit('controlled BASE');
 		writeFileSync(join(work, 'tests/intent.test.ts'), '// original approved test\n'); const tester = commit('controlled Tester');
 		writeFileSync(join(work, 'src/product.ts'), 'export const original = false;\n'); const engineer = commit('controlled Engineer');
 		writeFileSync(join(work, 'README.md'), 'Controlled reviewed Writer documentation.\n'); const writer = commit('controlled Writer');
@@ -24,6 +26,28 @@ it('native Git rejects unreviewed final integration trees and unrelated approved
 		expect(() => inspect(repository, base, tester, engineer, { writer: engineer, release: engineer, writerBase: engineer })).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN');
 		expect(() => inspect(repository, base, tester, engineer, { ...valid, writerBase: base })).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN');
 
+
+		const deniedDocuments: string[] = [];
+		for (const mode of ['empty', 'comment-only', 'frontmatter-only', 'source-only', 'non-doc-path', 'metadata-only', 'whitespace-only', 'redirected', 'deleted', 'binary', 'invalid-utf8']) {
+			git(['checkout', '--detach', engineer]);
+			if (mode === 'empty') writeFileSync(join(work, 'README.md'), '');
+			if (mode === 'comment-only') writeFileSync(join(work, 'README.md'), '<!-- no published instructions -->\n');
+			if (mode === 'frontmatter-only') writeFileSync(join(work, 'README.md'), '---\nrevision: 2\n---\n');
+			if (mode === 'source-only') writeFileSync(join(work, 'src/product.ts'), '// not documentation\n');
+			if (mode === 'non-doc-path') writeFileSync(join(work, 'tests/observation.md'), 'A test observation is not user documentation.\n');
+			if (mode === 'metadata-only') writeFileSync(join(work, 'docs/guide.md'), '---\nrevision: 2\n---\nOriginal operator instructions.\n');
+			if (mode === 'whitespace-only') writeFileSync(join(work, 'README.md'), '\nOriginal user instructions.\n\n');
+			if (mode === 'deleted' || mode === 'redirected') { rmSync(join(work, 'README.md')); if (mode === 'redirected') symlinkSync('src/product.ts', join(work, 'README.md')); }
+			if (mode === 'binary') writeFileSync(join(work, 'README.md'), Buffer.from('instructions\0binary'));
+			if (mode === 'invalid-utf8') writeFileSync(join(work, 'README.md'), Buffer.from([255]));
+			const denied = commit(`controlled Writer ${mode}`); git(['--git-dir', repository, 'fetch', work, denied]);
+			expect(() => inspect(repository, base, tester, engineer, { writer: denied, release: denied, writerBase: engineer }), mode).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN'); deniedDocuments.push(denied);
+		}
+		git(['checkout', '--detach', engineer]); writeFileSync(join(work, 'docs/operator.md'), 'Use the exact approved implementation through its public client.\n');
+		const newDocument = commit('controlled new operator documentation'); git(['--git-dir', repository, 'fetch', work, newDocument]);
+		expect(() => inspect(repository, base, tester, engineer, { writer: newDocument, release: newDocument, writerBase: engineer })).not.toThrow();
+		for (const retained of deniedDocuments) expect(git(['--git-dir', repository, 'rev-parse', `${retained}^{commit}`])).toBe(retained);
+		git(['checkout', '--detach', writer]);
 		writeFileSync(join(work, 'src/product.ts'), '// unreviewed release mutation\n'); const changed = commit('controlled unreviewed release');
 		git(['--git-dir', repository, 'fetch', work, changed]);
 		expect(() => inspect(repository, base, tester, engineer, { writer, release: changed, writerBase: engineer })).toThrow();
