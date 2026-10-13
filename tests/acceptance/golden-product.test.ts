@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { sdkPublishedRepository, verifySdkCommittedTests, verifySdkPublishedBranch } from './product/test-chain.ts';
+import { sdkPublishedRepository, verifySdkCommittedTests, verifySdkPublishedBranch, verifySdkReviewedSourceInput } from './product/test-chain.ts';
 import { sdkGoldenReadArguments, sdkGoldenSource, sdkGoldenWorkdayId, verifySdkGoldenProduct, sdkGoldenProposalProvenance, sdkGoldenFrozenProposal, sdkGoldenLibraryFiles, sdkGoldenProposalDocument, type SdkGoldenOriginal } from './golden-product.ts';
 import { assignmentAttemptSchema, assignmentResultSchema } from '@treeseed/sdk/agent-capacity';
 
@@ -131,7 +131,36 @@ test('SDK golden retains exact source and passing measured candidate release gat
 	const testRepository = sdkPublishedRepository(host.workspace, tester.lifecycleOutput.sandboxId, testAttempt, testSource);
 	const engineerRepository = sdkPublishedRepository(host.workspace, engineer.lifecycleOutput.sandboxId, engineerAttempt, engineerSource);
 	assert.equal(testRepository, engineerRepository, 'ACCEPTANCE_SDK_NATIVE_TEST_CHAIN: Source security domain changed');
-	const committedTests = verifySdkCommittedTests(testRepository, frozenBase, testSource.commit, engineerSource.commit);
+	const writer = final('acting', 'document-change'), writerReview = final('reviewing', 'document-change'), engineerReview = final('reviewing', 'implement-change');
+	assert.ok(writer && writerReview && engineerReview, 'ACCEPTANCE_SDK_INTEGRATION: Complete approved predecessor chain required');
+	const writerAttempt = assignmentAttemptSchema.parse(writer.assignmentAttempt), writerResult = assignmentResultSchema.parse(writer.assignmentResult);
+	const writerSource = writer.lifecycleOutput?.sourceReference;
+	assert.ok(writerSource?.kind === 'git' && writerSource.repository === source.repository);
+	const approved = (owner: typeof actor, review: typeof reviewer, exact: typeof source) => {
+		const attempt = assignmentAttemptSchema.parse(owner.assignmentAttempt), result = assignmentResultSchema.parse(owner.assignmentResult);
+		const reviewing = assignmentAttemptSchema.parse(review.assignmentAttempt), reviewed = assignmentResultSchema.parse(review.assignmentResult);
+		assert.equal(result.assignmentId, attempt.id); assert.equal(reviewed.assignmentId, reviewing.id);
+		assert.equal(result.status, 'completed'); assert.equal(reviewed.status, 'completed');
+		assert.equal(review.lifecycleOutput?.activityCompletion?.reviewDisposition, 'approved');
+		assert.notEqual(reviewing.agentClass, attempt.agentClass); assert.notEqual(reviewing.id, attempt.id);
+		for (const value of [attempt, reviewing]) {
+			assert.equal(value.teamId, actorAttempt.teamId); assert.equal(value.projectId, actorAttempt.projectId); assert.equal(value.workdayId, id);
+		}
+		assert.ok(result.references.some(ref => ref.kind === 'git' && ref.repository === exact.repository && ref.commit === exact.commit));
+		assert.ok(reviewing.predecessorResultIds.includes(result.id));
+		assert.ok(reviewing.contextRefs.some(ref => ref.store === 'git' && ref.repository === exact.repository && ref.commit === exact.commit));
+		assert.ok(Date.parse(result.completedAt) <= Date.parse(reviewing.createdAt));
+		return reviewed;
+	};
+	const approvedEngineering = approved(engineer, engineerReview, engineerSource), approvedWriting = approved(writer, writerReview, writerSource);
+	for (const [next, predecessor, decision, exact] of [[writerAttempt, engineerResult, approvedEngineering, engineerSource],
+		[actorAttempt, writerResult, approvedWriting, writerSource]] as const) {
+		verifySdkReviewedSourceInput(next, predecessor, decision, exact);
+	}
+	assert.equal(sdkPublishedRepository(host.workspace, writer.lifecycleOutput.sandboxId, writerAttempt, writerSource), testRepository);
+	assert.equal(sdkPublishedRepository(host.workspace, actor.lifecycleOutput.sandboxId, actorAttempt, source), testRepository);
+	const committedTests = verifySdkCommittedTests(testRepository, frozenBase, testSource.commit, engineerSource.commit,
+		{ writer: writerSource.commit, release: source.commit });
 	assert.ok(committedTests.length > 0);
 	assert.deepEqual(read(['host', 'sandbox', 'status']).workspace.journals, host.workspace.journals,
 		'ACCEPTANCE_SDK_NATIVE_TEST_CHAIN: Original owning publication journals changed during Git verification');
