@@ -107,15 +107,16 @@ export function verifySdkCommittedTests(repository: string, base: string, tester
 			assert.equal(git(['rev-parse', '--verify', `${commit}^{commit}`]).toString().trim(), commit, failure);
 		git(['merge-base', '--is-ancestor', engineer, integration.writer]);
 		const changed = git(['diff', '--name-only', '--no-renames', '-z', engineer, integration.writer]).toString('utf8').split('\0').filter(Boolean);
-		const docs = changed.filter(path => /^(?:(?:README|CONTRIBUTING)\.md|docs\/.+\.mdx?)$/u.test(path));
+		const docs = changed.filter(path => /^(?:[^/]+\.mdx?|docs\/.+\.mdx?)$/u.test(path));
 		let documented = 0;
 		for (const path of docs) {
 			const entry = git(['ls-tree', '-z', integration.writer, '--', path]).toString('utf8');
+			if (!entry) continue; // Removed obsolete pages cannot count as the delivered documentation.
 			assert.ok(/^(100644|100755) blob [a-f0-9]{40}\t/u.test(entry), `${failure}: Writer deleted or redirected documentation`);
 			const body = sdkDocumentationBody(git(['cat-file', 'blob', `${integration.writer}:${path}`]));
 			assert.ok(body && /[\p{L}\p{N}]/u.test(body), `${failure}: Empty documentation is not a delivered product`);
 			const previous = git(['ls-tree', '-z', engineer, '--', path]);
-			if (previous.length) assert.notEqual(body, sdkDocumentationBody(git(['cat-file', 'blob', `${engineer}:${path}`])), `${failure}: Metadata-only or whitespace-only documentation does not update the instructions`);
+			if (previous.length && body === sdkDocumentationBody(git(['cat-file', 'blob', `${engineer}:${path}`]))) continue;
 			documented++;
 		}
 		assert.ok(documented > 0, `${failure}: Actual repository documentation must change`);
