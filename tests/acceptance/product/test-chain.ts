@@ -3,13 +3,21 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
-import { assignmentReferenceSchema, type AssignmentAttempt, type AssignmentReference } from '@treeseed/sdk/agent-capacity';
+import { assignmentReferenceSchema, type AssignmentAttempt, type AssignmentReference, type AssignmentResult } from '@treeseed/sdk/agent-capacity';
 import { sourceWorkspaceKeySchema } from '@treeseed/sdk/capacity-provider/sandbox';
 
 export type PublishedSourceAttempt = Pick<AssignmentAttempt, 'id' | 'teamId' | 'projectId' | 'attempt' | 'workspace'>
 	& { provider: Pick<AssignmentAttempt['provider'], 'providerId'> };
 
 const failure = 'ACCEPTANCE_SDK_NATIVE_TEST_CHAIN';
+/** Join original reviewed predecessors; workspace compilation remains API-owned. */
+export function verifySdkReviewedSourceInput(next: Pick<AssignmentAttempt, 'workspace' | 'predecessorResultIds' | 'createdAt'>,
+	predecessor: Pick<AssignmentResult, 'id'>, review: Pick<AssignmentResult, 'id' | 'completedAt'>, reference: AssignmentReference): void {
+	assert.ok(reference.kind === 'git', failure);
+	assert.ok(next.predecessorResultIds.includes(predecessor.id) && next.predecessorResultIds.includes(review.id), failure);
+	assert.ok(next.workspace.mode === 'git' && next.workspace.repository === reference.repository && next.workspace.baseCommit === reference.commit, failure);
+	assert.ok(Date.parse(review.completedAt) <= Date.parse(next.createdAt), failure);
+}
 const object = (value: unknown): Record<string, unknown> => {
 	assert.ok(value && typeof value === 'object' && !Array.isArray(value), failure);
 	return value as Record<string, unknown>;

@@ -1,5 +1,23 @@
 import { expect, it } from 'vitest';
-import { sdkPublishedRepository, verifySdkCommittedTests, type PublishedSourceAttempt } from '../../../acceptance/product/test-chain.ts';
+import { sdkPublishedRepository, verifySdkCommittedTests, verifySdkReviewedSourceInput, type PublishedSourceAttempt } from '../../../acceptance/product/test-chain.ts';
+
+it('retains original frozen fan-in integration base while requiring both exact predecessor results and completed independent review', () => {
+	const next = { workspace: { mode: 'git' as const, repository: 'treeseed-ai/sdk', baseCommit: 'a'.repeat(40), branch: 'simulation/release', writablePaths: ['.'] },
+		predecessorResultIds: ['writer-result', 'writer-review', 'engineer-result'], createdAt: '2026-10-13T03:00:01.000Z' };
+	const predecessor = { id: 'writer-result' }, review = { id: 'writer-review', completedAt: '2026-10-13T03:00:00.000Z' };
+	const source = { kind: 'git' as const, repository: 'treeseed-ai/sdk', commit: 'b'.repeat(40) }, held = structuredClone(next);
+	expect(() => verifySdkReviewedSourceInput(next, predecessor, review, source)).not.toThrow();
+	expect(next).toEqual(held);
+	for (const change of [
+		(value: typeof next) => { value.predecessorResultIds = ['writer-result']; },
+		(value: typeof next) => { value.predecessorResultIds = ['writer-review']; },
+		(value: typeof next) => { value.workspace.repository = 'foreign'; },
+		(value: typeof next) => { value.createdAt = '2026-10-13T02:59:59.000Z'; },
+	]) {
+		const value = structuredClone(next); change(value); const failed = structuredClone(value);
+		expect(() => verifySdkReviewedSourceInput(value, predecessor, review, source)).toThrow(); expect(value).toEqual(failed);
+	}
+});
 
 it('denies malformed reviewed integration identities before opening a native repository', () => {
 	const inspect: (repository: string, base: string, tester: string, engineer: string, integration: { writer: string; release: string }) => unknown = verifySdkCommittedTests;

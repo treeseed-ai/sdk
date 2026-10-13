@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { sdkPublishedRepository, verifySdkCommittedTests, verifySdkPublishedBranch } from './product/test-chain.ts';
+import { sdkPublishedRepository, verifySdkCommittedTests, verifySdkPublishedBranch, verifySdkReviewedSourceInput } from './product/test-chain.ts';
 import { sdkGoldenReadArguments, sdkGoldenSource, sdkGoldenWorkdayId, verifySdkGoldenProduct, sdkGoldenProposalProvenance, sdkGoldenFrozenProposal, sdkGoldenLibraryFiles, sdkGoldenProposalDocument, type SdkGoldenOriginal } from './golden-product.ts';
 import { assignmentAttemptSchema, assignmentResultSchema } from '@treeseed/sdk/agent-capacity';
 
@@ -155,9 +155,7 @@ test('SDK golden retains exact source and passing measured candidate release gat
 	const approvedEngineering = approved(engineer, engineerReview, engineerSource), approvedWriting = approved(writer, writerReview, writerSource);
 	for (const [next, predecessor, decision, exact] of [[writerAttempt, engineerResult, approvedEngineering, engineerSource],
 		[actorAttempt, writerResult, approvedWriting, writerSource]] as const) {
-		assert.ok(next.predecessorResultIds.includes(predecessor.id) && next.predecessorResultIds.includes(decision.id));
-		assert.ok(next.workspace.mode === 'git' && next.workspace.repository === exact.repository && next.workspace.baseCommit === exact.commit);
-		assert.ok(Date.parse(decision.completedAt) <= Date.parse(next.createdAt));
+		verifySdkReviewedSourceInput(next, predecessor, decision, exact);
 	}
 	assert.equal(sdkPublishedRepository(host.workspace, writer.lifecycleOutput.sandboxId, writerAttempt, writerSource), testRepository);
 	assert.equal(sdkPublishedRepository(host.workspace, actor.lifecycleOutput.sandboxId, actorAttempt, source), testRepository);
