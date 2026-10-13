@@ -1222,6 +1222,16 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/product/test-chain.test.ts
     testName: requires complete unchanged public owning source custody and denies every foreign or ambiguous locator before native Git
+  sdk.golden.published-branch-custody-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/product/test-chain.test.ts
+    testName: denies a self-consistent published Git branch outside the original assignment workspace
+  sdk.golden.published-repository-custody-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/product/test-chain.test.ts
+    testName: denies a self-consistent published Git repository outside the original assignment workspace
   sdk.golden.committed-test-custody-native:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

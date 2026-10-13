@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { verifySdkCommittedTests } from '../../../acceptance/product/test-chain.ts';
+import { verifySdkCommittedTests, verifySdkPublishedBranch } from '../../../acceptance/product/test-chain.ts';
 
 it('native Git proves test-only approved ancestry and identical consumed blobs while retaining changed deleted redirected and unrelated failures before exact retry', async () => {
 	const root = mkdtempSync(join(tmpdir(), 'sdk-test-chain-')), work = join(root, 'work'), repository = join(root, 'repository.git');
@@ -20,6 +20,20 @@ it('native Git proves test-only approved ancestry and identical consumed blobs w
 		writeFileSync(join(work, path), bytes); const tester = commit('controlled test-only candidate');
 		writeFileSync(join(work, 'src/product.ts'), 'export const original = false;\n'); const engineer = commit('controlled descendant implementation');
 		git(['clone', '--bare', '--no-local', work, repository]);
+		const published = { kind: 'git' as const, repository: 'treeseed-ai/sdk', commit: tester, branch: 'simulation/original-tester' };
+		const branchRef = `refs/heads/${published.branch}`;
+		git(['--git-dir', repository, 'update-ref', branchRef, tester]);
+		expect(verifySdkPublishedBranch(repository, published)).toBe(tester);
+		for (const branch of ['', 'missing', '../outside', 'bad..branch', 'bad.lock', 'bad\nbranch']) {
+			expect(() => verifySdkPublishedBranch(repository, { ...published, branch })).toThrow();
+		}
+		git(['--git-dir', repository, 'update-ref', branchRef, engineer]);
+		expect(() => verifySdkPublishedBranch(repository, published)).toThrow();
+		git(['--git-dir', repository, 'update-ref', '-d', branchRef]);
+		expect(() => verifySdkPublishedBranch(repository, published)).toThrow();
+		expect(git(['--git-dir', repository, 'rev-parse', '--verify', `${tester}^{commit}`])).toBe(tester);
+		git(['--git-dir', repository, 'update-ref', branchRef, tester]);
+		expect(verifySdkPublishedBranch(repository, published)).toBe(tester);
 		const proof = verifySdkCommittedTests(repository, base, tester, engineer);
 		expect(proof).toHaveLength(1); expect(proof[0]!.path).toBe(path);
 		expect(readFileSync(join(work, path))).toEqual(bytes);
@@ -73,7 +87,7 @@ it('native Git proves test-only approved ancestry and identical consumed blobs w
 		expect(() => verifySdkCommittedTests(repository, base, tester, engineer)).toThrow(); rmSync(join(repository, 'objects/info/alternates'));
 		const worker = fileURLToPath(new URL('./test-chain-worker.ts', import.meta.url));
 		const retries = await Promise.all(Array.from({ length: 4 }, async () => {
-			const result = await promisify(execFile)(process.execPath, ['--import', 'tsx', worker, repository, base, tester, engineer], { timeout: 5000 });
+			const result = await promisify(execFile)(process.execPath, ['--import', 'tsx', worker, repository, base, tester, engineer, JSON.stringify(published)], { timeout: 5000 });
 			return JSON.parse(result.stdout) as unknown;
 		}));
 		expect(retries).toEqual(Array.from({ length: 4 }, () => proof)); expect(readFileSync(join(work, path))).toEqual(bytes);

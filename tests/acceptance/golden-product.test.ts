@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { sdkPublishedRepository, verifySdkCommittedTests } from './product/test-chain.ts';
+import { sdkPublishedRepository, verifySdkCommittedTests, verifySdkPublishedBranch } from './product/test-chain.ts';
 import { sdkGoldenReadArguments, sdkGoldenSource, sdkGoldenWorkdayId, verifySdkGoldenProduct, sdkGoldenProposalProvenance, sdkGoldenFrozenProposal, sdkGoldenLibraryFiles, sdkGoldenProposalDocument, type SdkGoldenOriginal } from './golden-product.ts';
 import { assignmentAttemptSchema, assignmentResultSchema } from '@treeseed/sdk/agent-capacity';
 
@@ -118,6 +118,16 @@ test('SDK golden retains exact source and passing measured candidate release gat
 	assert.ok(engineerSource?.kind === 'git' && engineerSource.repository === testSource.repository && /^[a-f0-9]{40}$/u.test(engineerSource.commit));
 	assert.ok(engineerResult.references.some(ref => ref.kind === 'git' && ref.repository === engineerSource.repository && ref.commit === engineerSource.commit));
 	const host = read(['host', 'sandbox', 'status']);
+	for (const item of full) {
+		const attempt = assignmentAttemptSchema.parse(item.assignmentAttempt);
+		if (attempt.workspace.mode !== 'git' || item.status !== 'completed') continue;
+		const result = assignmentResultSchema.parse(item.assignmentResult), source = item.lifecycleOutput?.sourceReference;
+		assert.equal(result.status, 'completed'); assert.equal(result.assignmentId, attempt.id);
+		assert.ok(source?.kind === 'git' && result.references.some(ref => ref.kind === 'git'
+			&& ref.repository === source.repository && ref.commit === source.commit && ref.branch === source.branch));
+		const repository = sdkPublishedRepository(host.workspace, item.lifecycleOutput.sandboxId, attempt, source);
+		verifySdkPublishedBranch(repository, source);
+	}
 	const testRepository = sdkPublishedRepository(host.workspace, tester.lifecycleOutput.sandboxId, testAttempt, testSource);
 	const engineerRepository = sdkPublishedRepository(host.workspace, engineer.lifecycleOutput.sandboxId, engineerAttempt, engineerSource);
 	assert.equal(testRepository, engineerRepository, 'ACCEPTANCE_SDK_NATIVE_TEST_CHAIN: Source security domain changed');

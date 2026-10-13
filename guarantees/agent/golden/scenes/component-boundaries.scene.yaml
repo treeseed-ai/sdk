@@ -708,6 +708,12 @@ workflow:
   - id: committed-test-custody-unit
     action: { verifier: sdk.golden.committed-test-custody-unit }
     expect: { status: passed }
+  - id: published-branch-custody-unit
+    action: { verifier: sdk.golden.published-branch-custody-unit }
+    expect: { status: passed }
+  - id: published-repository-custody-unit
+    action: { verifier: sdk.golden.published-repository-custody-unit }
+    expect: { status: passed }
   - id: committed-test-custody-native
     action: { verifier: sdk.golden.committed-test-custody-native }
     expect: { status: passed }
