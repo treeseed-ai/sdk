@@ -239,7 +239,7 @@ process.stdout.write(JSON.stringify({ projection, valid, denied, provider: contr
 				writeFileSync(join(cwd, 'package.json'), JSON.stringify({ name: role === 'wrong-identity' ? 'other-package' : identity.name, version: identity.version,
 					...(role === 'valid-root-types' ? { types: identity.exports['./standards']!.types } : {}),
 					...(role === 'missing-root-types' ? { types: './dist/absent.d.ts' } : {}),
-					...(role === 'unsafe-root-types' ? { types: '../outside.d.ts' } : {}), exports, files: ['dist'] }));
+					...(role === 'unsafe-root-types' ? { types: '../outside.d.ts' } : {}), scripts: { prepack: 'npm --version' }, exports, files: ['dist'] }));
 				for (const target of Object.values(identity.exports).flatMap(entry => Object.values(entry))) {
 					if (role === 'missing' && target === identity.exports['./standards']!.types) continue;
 					const output = join(cwd, target); mkdirSync(resolve(output, '..'), { recursive: true });
@@ -249,7 +249,7 @@ process.stdout.write(JSON.stringify({ projection, valid, denied, provider: contr
 				}
 				const packed = spawnSync('npm', ['pack'], { cwd, encoding: 'utf8', timeout: 15000 });
 				expect(packed.error).toBeUndefined(); expect(packed.signal).toBeNull(); expect(packed.status, packed.stderr).toBe(0);
-				const artifact = packed.stdout.trim(); expect(artifact).toMatch(/^[a-zA-Z0-9][a-zA-Z0-9._-]*\.tgz$/u);
+				const artifact = packed.stdout.trimEnd().split(/\r?\n/u).at(-1)!; expect(artifact).toMatch(/^[a-zA-Z0-9][a-zA-Z0-9._-]*\.tgz$/u);
 				const inspect = () => execFileSync(process.execPath, ['--import', resolve(import.meta.dirname, '../../../node_modules/tsx/dist/loader.mjs'), command, '--archive', artifact],
 					{ cwd, encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'pipe'] });
 				if (!['actor', 'reviewer', 'valid-root-types'].includes(role)) { expect(inspect).toThrow(); continue; }
