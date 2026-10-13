@@ -1232,6 +1232,16 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/product/test-chain.test.ts
     testName: denies a self-consistent published Git repository outside the original assignment workspace
+  sdk.golden.integration-inputs-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/product/test-chain.test.ts
+    testName: denies malformed reviewed integration identities before opening a native repository
+  sdk.golden.integration-tree-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/product/test-chain-native.test.ts
+    testName: native Git rejects unreviewed final integration trees and unrelated approved predecessors before unchanged retry
   sdk.golden.committed-test-custody-native:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

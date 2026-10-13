@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { verifySdkCommittedTests, verifySdkPublishedBranch } from '../../../acceptance/product/test-chain.ts';
 
-it('native Git rejects unreviewed final integration trees and unrelated approved predecessors before unchanged retry', () => {
+it('native Git rejects unreviewed final integration trees and unrelated approved predecessors before unchanged retry', async () => {
 	const root = mkdtempSync(join(tmpdir(), 'sdk-integration-chain-')), work = join(root, 'work'), repository = join(root, 'repository.git');
 	const git = (args: string[]) => execFileSync('/usr/bin/git', ['-C', work, ...args], { encoding: 'utf8', timeout: 1000,
 		env: { PATH: '/usr/bin:/bin', LANG: 'C', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' } }).trim();
@@ -25,6 +25,19 @@ it('native Git rejects unreviewed final integration trees and unrelated approved
 		git(['--git-dir', repository, 'fetch', work, changed]);
 		expect(() => inspect(repository, base, tester, engineer, { writer, release: changed })).toThrow();
 		expect(git(['--git-dir', repository, 'rev-parse', `${writer}^{tree}`])).not.toBe(git(['--git-dir', repository, 'rev-parse', `${changed}^{tree}`]));
+		expect(() => inspect(repository, base, tester, engineer, { writer: base, release: writer })).toThrow();
+		expect(() => inspect(repository, base, tester, engineer, { writer, release: engineer })).toThrow();
+		expect(() => inspect(repository, base, tester, engineer, { writer, release: 'f'.repeat(40) })).toThrow();
+		git(['checkout', '--detach', writer]); writeFileSync(join(work, 'tests/intent.test.ts'), '// substituted approved test\n');
+		const substituted = commit('controlled substituted Writer tests'); git(['--git-dir', repository, 'fetch', work, substituted]);
+		expect(() => inspect(repository, base, tester, engineer, { writer: substituted, release: substituted })).toThrow();
+		git(['checkout', '--detach', writer]); git(['-c', 'user.name=SDK native fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-qm', 'controlled unchanged integration']);
+		const release = git(['rev-parse', 'HEAD']); git(['--git-dir', repository, 'fetch', work, release]);
+		const integrated = { writer, release }; expect(() => inspect(repository, base, tester, engineer, integrated)).not.toThrow();
+		const execute = promisify(execFile), worker = fileURLToPath(new URL('./test-chain-worker.ts', import.meta.url));
+		const concurrent = await Promise.all(Array.from({ length: 3 }, () => execute(process.execPath,
+			['--import', 'tsx', worker, repository, base, tester, engineer, '', JSON.stringify(integrated)], { timeout: 5000 })));
+		expect(concurrent.every(value => JSON.parse(value.stdout).length === 1)).toBe(true);
 		expect(() => inspect(repository, base, tester, engineer, valid)).not.toThrow();
 	} finally { rmSync(root, { recursive: true, force: true }); }
 });

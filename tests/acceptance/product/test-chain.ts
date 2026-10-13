@@ -76,12 +76,22 @@ export function verifySdkPublishedBranch(repository: string, reference: Assignme
 }
 
 /** Independent native Git objects prove ancestry and exact approved test bytes. No product code is changed. */
-export function verifySdkCommittedTests(repository: string, base: string, tester: string, engineer: string) {
+export function verifySdkCommittedTests(repository: string, base: string, tester: string, engineer: string,
+	integration?: { writer: string; release: string }) {
 	for (const commit of [base, tester, engineer]) assert.match(commit, /^[a-f0-9]{40}$/u, failure);
+	if (integration) for (const commit of [integration.writer, integration.release]) assert.match(commit, /^[a-f0-9]{40}$/u, failure);
 	assert.equal(new Set([base, tester, engineer]).size, 3, failure);
 	const git = nativePublishedGit(repository);
 	for (const commit of [base, tester, engineer]) assert.equal(git(['rev-parse', '--verify', `${commit}^{commit}`]).toString().trim(), commit, failure);
 	git(['merge-base', '--is-ancestor', base, tester]); git(['merge-base', '--is-ancestor', tester, engineer]);
+	if (integration) {
+		for (const commit of [integration.writer, integration.release])
+			assert.equal(git(['rev-parse', '--verify', `${commit}^{commit}`]).toString().trim(), commit, failure);
+		git(['merge-base', '--is-ancestor', engineer, integration.writer]);
+		git(['merge-base', '--is-ancestor', integration.writer, integration.release]);
+		assert.equal(git(['rev-parse', `${integration.release}^{tree}`]).toString().trim(),
+			git(['rev-parse', `${integration.writer}^{tree}`]).toString().trim(), `${failure}: Integration contains unreviewed changes`);
+	}
 	const implementation = git(['diff', '--name-only', '--no-renames', '-z', tester, engineer]).toString('utf8').split('\0').filter(Boolean);
 	assert.ok(implementation.some(path => /^src\/.*\.ts$/u.test(path)
 		&& /^100(?:644|755) blob [a-f0-9]{40}\t/u.test(git(['ls-tree', '-z', engineer, '--', path]).toString('utf8'))),
@@ -93,6 +103,8 @@ export function verifySdkCommittedTests(repository: string, base: string, tester
 	const tests = changed.map(path => {
 		const original = git(['ls-tree', '-z', tester, '--', path]), consumed = git(['ls-tree', '-z', engineer, '--', path]);
 		assert.deepEqual(consumed, original, `${failure}: Engineer changed approved test ${path}`);
+		if (integration) for (const commit of [integration.writer, integration.release])
+			assert.deepEqual(git(['ls-tree', '-z', commit, '--', path]), original, `${failure}: Integrated candidate changed approved test ${path}`);
 		const match = /^(100644|100755) blob ([a-f0-9]{40})\t([^\0]+)\0$/u.exec(original.toString('utf8'));
 		assert.ok(match && match[3] === path, `${failure}: Tester deleted or redirected test ${path}`);
 		const blob = git(['cat-file', 'blob', `${tester}:${path}`]);
