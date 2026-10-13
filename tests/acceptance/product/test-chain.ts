@@ -83,11 +83,21 @@ export function verifySdkPublishedBranch(repository: string, reference: Assignme
 	return reference.commit;
 }
 
+/** Inspect visible committed documentation, rather than metadata or comments alone. */
+export function sdkDocumentationBody(bytes: Buffer): string {
+	const text = bytes.toString('utf8'); assert.deepEqual(Buffer.from(text), bytes, `${failure}: Documentation must be UTF-8`);
+	assert.ok(!text.includes('\0'), `${failure}: Binary documentation denied`);
+	return text.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/u, '').replace(/<!--[\s\S]*?-->/gu, '').trim();
+}
+
 /** Independent native Git objects prove ancestry and exact approved test bytes. No product code is changed. */
 export function verifySdkCommittedTests(repository: string, base: string, tester: string, engineer: string,
-	integration?: { writer: string; release: string }) {
+	integration?: { writer: string; release: string; writerBase: string }) {
 	for (const commit of [base, tester, engineer]) assert.match(commit, /^[a-f0-9]{40}$/u, failure);
-	if (integration) for (const commit of [integration.writer, integration.release]) assert.match(commit, /^[a-f0-9]{40}$/u, failure);
+	if (integration) {
+		for (const commit of [integration.writer, integration.release, integration.writerBase]) assert.ok(typeof commit === 'string' && /^[a-f0-9]{40}$/u.test(commit), failure);
+		assert.equal(integration.writerBase, engineer, `${failure}: Writer must start from the independently approved implementation`);
+	}
 	assert.equal(new Set([base, tester, engineer]).size, 3, failure);
 	const git = nativePublishedGit(repository);
 	for (const commit of [base, tester, engineer]) assert.equal(git(['rev-parse', '--verify', `${commit}^{commit}`]).toString().trim(), commit, failure);
@@ -96,6 +106,21 @@ export function verifySdkCommittedTests(repository: string, base: string, tester
 		for (const commit of [integration.writer, integration.release])
 			assert.equal(git(['rev-parse', '--verify', `${commit}^{commit}`]).toString().trim(), commit, failure);
 		git(['merge-base', '--is-ancestor', engineer, integration.writer]);
+		const changed = git(['diff', '--name-only', '--no-renames', '-z', engineer, integration.writer]).toString('utf8').split('\0').filter(Boolean);
+		const docs = changed.filter(path => /^(?:[^/]+\.mdx?|docs\/.+\.mdx?)$/u.test(path));
+		let documented = 0;
+		for (const path of docs) {
+			const entry = git(['ls-tree', '-z', integration.writer, '--', path]).toString('utf8');
+			if (!entry) continue; // Removed obsolete pages cannot count as the delivered documentation.
+			assert.ok(/^(100644|100755) blob [a-f0-9]{40}\t/u.test(entry), `${failure}: Writer deleted or redirected documentation`);
+			const body = sdkDocumentationBody(git(['cat-file', 'blob', `${integration.writer}:${path}`]));
+			assert.ok(body && /[\p{L}\p{N}]/u.test(body), `${failure}: Empty documentation is not a delivered product`);
+			const previous = git(['ls-tree', '-z', engineer, '--', path]);
+			if (previous.length && body === sdkDocumentationBody(git(['cat-file', 'blob', `${engineer}:${path}`]))) continue;
+			documented++;
+		}
+		assert.ok(documented > 0, `${failure}: Actual repository documentation must change`);
+
 		git(['merge-base', '--is-ancestor', integration.writer, integration.release]);
 		assert.equal(git(['rev-parse', `${integration.release}^{tree}`]).toString().trim(),
 			git(['rev-parse', `${integration.writer}^{tree}`]).toString().trim(), `${failure}: Integration contains unreviewed changes`);

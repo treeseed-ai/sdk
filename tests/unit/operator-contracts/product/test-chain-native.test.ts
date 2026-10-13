@@ -12,28 +12,66 @@ it('native Git rejects unreviewed final integration trees and unrelated approved
 	const git = (args: string[]) => execFileSync('/usr/bin/git', ['-C', work, ...args], { encoding: 'utf8', timeout: 1000,
 		env: { PATH: '/usr/bin:/bin', LANG: 'C', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' } }).trim();
 	const commit = (message: string) => { git(['add', '.']); git(['-c', 'user.name=SDK native fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', message]); return git(['rev-parse', 'HEAD']); };
-	const inspect: (repository: string, base: string, tester: string, engineer: string, integration: { writer: string; release: string }) => unknown = verifySdkCommittedTests;
+	const inspect: (repository: string, base: string, tester: string, engineer: string, integration: { writer: string; release: string; writerBase: string }) => unknown = verifySdkCommittedTests;
 	try {
 		mkdirSync(work); git(['init', '--template=']); mkdirSync(join(work, 'src')); mkdirSync(join(work, 'tests'));
-		writeFileSync(join(work, 'src/product.ts'), 'export const original = true;\n'); const base = commit('controlled BASE');
+		writeFileSync(join(work, 'src/product.ts'), 'export const original = true;\n');
+		mkdirSync(join(work, 'docs')); writeFileSync(join(work, 'README.md'), 'Original user instructions.\n');
+		writeFileSync(join(work, 'docs/guide.md'), '---\nrevision: 1\n---\nOriginal operator instructions.\n'); const base = commit('controlled BASE');
 		writeFileSync(join(work, 'tests/intent.test.ts'), '// original approved test\n'); const tester = commit('controlled Tester');
 		writeFileSync(join(work, 'src/product.ts'), 'export const original = false;\n'); const engineer = commit('controlled Engineer');
 		writeFileSync(join(work, 'README.md'), 'Controlled reviewed Writer documentation.\n'); const writer = commit('controlled Writer');
 		git(['clone', '--bare', '--no-local', work, repository]);
-		const valid = { writer, release: writer }; expect(() => inspect(repository, base, tester, engineer, valid)).not.toThrow();
+		const valid = { writer, release: writer, writerBase: engineer }; expect(() => inspect(repository, base, tester, engineer, valid)).not.toThrow();
+		expect(() => inspect(repository, base, tester, engineer, { writer: engineer, release: engineer, writerBase: engineer })).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN');
+		expect(() => inspect(repository, base, tester, engineer, { ...valid, writerBase: base })).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN');
+
+
+		const deniedDocuments: string[] = [];
+		for (const mode of ['empty', 'comment-only', 'frontmatter-only', 'source-only', 'non-doc-path', 'metadata-only', 'whitespace-only', 'redirected', 'deleted', 'binary', 'invalid-utf8']) {
+			git(['checkout', '--detach', engineer]);
+			if (mode === 'empty') writeFileSync(join(work, 'README.md'), '');
+			if (mode === 'comment-only') writeFileSync(join(work, 'README.md'), '<!-- no published instructions -->\n');
+			if (mode === 'frontmatter-only') writeFileSync(join(work, 'README.md'), '---\nrevision: 2\n---\n');
+			if (mode === 'source-only') writeFileSync(join(work, 'src/product.ts'), '// not documentation\n');
+			if (mode === 'non-doc-path') writeFileSync(join(work, 'tests/observation.md'), 'A test observation is not user documentation.\n');
+			if (mode === 'metadata-only') writeFileSync(join(work, 'docs/guide.md'), '---\nrevision: 2\n---\nOriginal operator instructions.\n');
+			if (mode === 'whitespace-only') writeFileSync(join(work, 'README.md'), '\nOriginal user instructions.\n\n');
+			if (mode === 'deleted' || mode === 'redirected') { rmSync(join(work, 'README.md')); if (mode === 'redirected') symlinkSync('src/product.ts', join(work, 'README.md')); }
+			if (mode === 'binary') writeFileSync(join(work, 'README.md'), Buffer.from('instructions\0binary'));
+			if (mode === 'invalid-utf8') writeFileSync(join(work, 'README.md'), Buffer.from([255]));
+			const denied = commit(`controlled Writer ${mode}`); git(['--git-dir', repository, 'fetch', work, denied]);
+			expect(() => inspect(repository, base, tester, engineer, { writer: denied, release: denied, writerBase: engineer }), mode).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN'); deniedDocuments.push(denied);
+		}
+		git(['checkout', '--detach', engineer]); writeFileSync(join(work, 'docs/operator.md'), 'Use the exact approved implementation through its public client.\n');
+		const newDocument = commit('controlled new operator documentation'); git(['--git-dir', repository, 'fetch', work, newDocument]);
+		expect(() => inspect(repository, base, tester, engineer, { writer: newDocument, release: newDocument, writerBase: engineer })).not.toThrow();
+		for (const retained of deniedDocuments) expect(git(['--git-dir', repository, 'rev-parse', `${retained}^{commit}`])).toBe(retained);
+
+		const allowedDocumentUpdates: unknown[] = [];
+		for (const mode of ['replace-obsolete', 'root-contributor']) {
+			git(['checkout', '--detach', engineer]);
+			if (mode === 'replace-obsolete') { rmSync(join(work, 'docs/guide.md')); writeFileSync(join(work, 'docs/current.md'), 'Use the current approved operator instructions.\n'); }
+			else writeFileSync(join(work, 'AGENTS.md'), 'Contributors must use the reviewed public client and exact tests.\n');
+			const actual = commit(`controlled legitimate documentation ${mode}`); git(['--git-dir', repository, 'fetch', work, actual]);
+			try { inspect(repository, base, tester, engineer, { writer: actual, release: actual, writerBase: engineer }); allowedDocumentUpdates.push(undefined); }
+			catch (error) { allowedDocumentUpdates.push(error instanceof Error ? error.message : String(error)); }
+		}
+		expect(allowedDocumentUpdates).toEqual([undefined, undefined]);
+		git(['checkout', '--detach', writer]);
 		writeFileSync(join(work, 'src/product.ts'), '// unreviewed release mutation\n'); const changed = commit('controlled unreviewed release');
 		git(['--git-dir', repository, 'fetch', work, changed]);
-		expect(() => inspect(repository, base, tester, engineer, { writer, release: changed })).toThrow();
+		expect(() => inspect(repository, base, tester, engineer, { writer, release: changed, writerBase: engineer })).toThrow();
 		expect(git(['--git-dir', repository, 'rev-parse', `${writer}^{tree}`])).not.toBe(git(['--git-dir', repository, 'rev-parse', `${changed}^{tree}`]));
-		expect(() => inspect(repository, base, tester, engineer, { writer: base, release: writer })).toThrow();
-		expect(() => inspect(repository, base, tester, engineer, { writer, release: engineer })).toThrow();
-		expect(() => inspect(repository, base, tester, engineer, { writer, release: 'f'.repeat(40) })).toThrow();
+		expect(() => inspect(repository, base, tester, engineer, { writer: base, release: writer, writerBase: engineer })).toThrow();
+		expect(() => inspect(repository, base, tester, engineer, { writer, release: engineer, writerBase: engineer })).toThrow();
+		expect(() => inspect(repository, base, tester, engineer, { writer, release: 'f'.repeat(40), writerBase: engineer })).toThrow();
 		git(['checkout', '--detach', writer]); writeFileSync(join(work, 'tests/intent.test.ts'), '// substituted approved test\n');
 		const substituted = commit('controlled substituted Writer tests'); git(['--git-dir', repository, 'fetch', work, substituted]);
-		expect(() => inspect(repository, base, tester, engineer, { writer: substituted, release: substituted })).toThrow();
+		expect(() => inspect(repository, base, tester, engineer, { writer: substituted, release: substituted, writerBase: engineer })).toThrow();
 		git(['checkout', '--detach', writer]); git(['-c', 'user.name=SDK native fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-qm', 'controlled unchanged integration']);
 		const release = git(['rev-parse', 'HEAD']); git(['--git-dir', repository, 'fetch', work, release]);
-		const integrated = { writer, release }; expect(() => inspect(repository, base, tester, engineer, integrated)).not.toThrow();
+		const integrated = { writer, release, writerBase: engineer }; expect(() => inspect(repository, base, tester, engineer, integrated)).not.toThrow();
 		const execute = promisify(execFile), worker = fileURLToPath(new URL('./test-chain-worker.ts', import.meta.url));
 		const concurrent = await Promise.all(Array.from({ length: 3 }, () => execute(process.execPath,
 			['--import', 'tsx', worker, repository, base, tester, engineer, '', JSON.stringify(integrated)], { timeout: 5000 })));

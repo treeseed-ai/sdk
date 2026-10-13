@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { sdkPublishedRepository, verifySdkCommittedTests, verifySdkReviewedSourceInput, type PublishedSourceAttempt } from '../../../acceptance/product/test-chain.ts';
+import { sdkPublishedRepository, sdkDocumentationBody, verifySdkCommittedTests, verifySdkReviewedSourceInput, type PublishedSourceAttempt } from '../../../acceptance/product/test-chain.ts';
 
 it('retains original frozen fan-in integration base while requiring both exact predecessor results and completed independent review', () => {
 	const next = { workspace: { mode: 'git' as const, repository: 'treeseed-ai/sdk', baseCommit: 'a'.repeat(40), branch: 'simulation/release', writablePaths: ['.'] },
@@ -20,11 +20,15 @@ it('retains original frozen fan-in integration base while requiring both exact p
 });
 
 it('denies malformed reviewed integration identities before opening a native repository', () => {
-	const inspect: (repository: string, base: string, tester: string, engineer: string, integration: { writer: string; release: string }) => unknown = verifySdkCommittedTests;
-	for (const commit of ['', '--unsafe', 'a'.repeat(39), 'A'.repeat(40), 'a'.repeat(41)]) {
-		for (const field of ['writer', 'release'] as const) {
-			const integration = { writer: 'd'.repeat(40), release: 'e'.repeat(40), [field]: commit }, held = structuredClone(integration);
-			expect(() => inspect('/not-an-approved-repository', 'a'.repeat(40), 'b'.repeat(40), 'c'.repeat(40), integration)).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN');
+	expect(sdkDocumentationBody(Buffer.from('---\nrevision: 2\n---\n# Usage\nUse the public client.\n<!-- internal -->\n'))).toBe('# Usage\nUse the public client.');
+	for (const text of ['', ' \n', '<!-- no instructions -->', '---\nrevision: 2\n---\n']) expect(sdkDocumentationBody(Buffer.from(text))).toBe('');
+	for (const bytes of [Buffer.from([255]), Buffer.from('instruction\0binary')]) expect(() => sdkDocumentationBody(bytes)).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN');
+
+	const inspect: (repository: string, base: string, tester: string, engineer: string, integration: { writer: string; release: string; writerBase: string }) => unknown = verifySdkCommittedTests;
+	for (const commit of [undefined, null, 42, {}, [], '', '--unsafe', 'a'.repeat(39), 'A'.repeat(40), 'a'.repeat(41)]) {
+		for (const field of ['writer', 'release', 'writerBase'] as const) {
+			const integration = { writer: 'd'.repeat(40), release: 'e'.repeat(40), writerBase: 'c'.repeat(40), [field]: commit }, held = structuredClone(integration);
+			expect(() => inspect('/not-an-approved-repository', 'a'.repeat(40), 'b'.repeat(40), 'c'.repeat(40), integration as { writer: string; release: string; writerBase: string })).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN');
 			expect(integration).toEqual(held);
 		}
 	}
