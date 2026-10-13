@@ -7,6 +7,28 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { verifySdkCommittedTests, verifySdkPublishedBranch } from '../../../acceptance/product/test-chain.ts';
 
+it('native Git rejects unreviewed final integration trees and unrelated approved predecessors before unchanged retry', () => {
+	const root = mkdtempSync(join(tmpdir(), 'sdk-integration-chain-')), work = join(root, 'work'), repository = join(root, 'repository.git');
+	const git = (args: string[]) => execFileSync('/usr/bin/git', ['-C', work, ...args], { encoding: 'utf8', timeout: 1000,
+		env: { PATH: '/usr/bin:/bin', LANG: 'C', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' } }).trim();
+	const commit = (message: string) => { git(['add', '.']); git(['-c', 'user.name=SDK native fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', message]); return git(['rev-parse', 'HEAD']); };
+	const inspect: (repository: string, base: string, tester: string, engineer: string, integration: { writer: string; release: string }) => unknown = verifySdkCommittedTests;
+	try {
+		mkdirSync(work); git(['init', '--template=']); mkdirSync(join(work, 'src')); mkdirSync(join(work, 'tests'));
+		writeFileSync(join(work, 'src/product.ts'), 'export const original = true;\n'); const base = commit('controlled BASE');
+		writeFileSync(join(work, 'tests/intent.test.ts'), '// original approved test\n'); const tester = commit('controlled Tester');
+		writeFileSync(join(work, 'src/product.ts'), 'export const original = false;\n'); const engineer = commit('controlled Engineer');
+		writeFileSync(join(work, 'README.md'), 'Controlled reviewed Writer documentation.\n'); const writer = commit('controlled Writer');
+		git(['clone', '--bare', '--no-local', work, repository]);
+		const valid = { writer, release: writer }; expect(() => inspect(repository, base, tester, engineer, valid)).not.toThrow();
+		writeFileSync(join(work, 'src/product.ts'), '// unreviewed release mutation\n'); const changed = commit('controlled unreviewed release');
+		git(['--git-dir', repository, 'fetch', work, changed]);
+		expect(() => inspect(repository, base, tester, engineer, { writer, release: changed })).toThrow();
+		expect(git(['--git-dir', repository, 'rev-parse', `${writer}^{tree}`])).not.toBe(git(['--git-dir', repository, 'rev-parse', `${changed}^{tree}`]));
+		expect(() => inspect(repository, base, tester, engineer, valid)).not.toThrow();
+	} finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('native Git proves test-only approved ancestry and identical consumed blobs while retaining changed deleted redirected and unrelated failures before exact retry', async () => {
 	const root = mkdtempSync(join(tmpdir(), 'sdk-test-chain-')), work = join(root, 'work'), repository = join(root, 'repository.git');
 	const git = (args: string[]) => execFileSync('/usr/bin/git', ['-C', work, ...args], { encoding: 'utf8', timeout: 1000,

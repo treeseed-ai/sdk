@@ -1,5 +1,16 @@
 import { expect, it } from 'vitest';
-import { sdkPublishedRepository, type PublishedSourceAttempt } from '../../../acceptance/product/test-chain.ts';
+import { sdkPublishedRepository, verifySdkCommittedTests, type PublishedSourceAttempt } from '../../../acceptance/product/test-chain.ts';
+
+it('denies malformed reviewed integration identities before opening a native repository', () => {
+	const inspect: (repository: string, base: string, tester: string, engineer: string, integration: { writer: string; release: string }) => unknown = verifySdkCommittedTests;
+	for (const commit of ['', '--unsafe', 'a'.repeat(39), 'A'.repeat(40), 'a'.repeat(41)]) {
+		for (const field of ['writer', 'release'] as const) {
+			const integration = { writer: 'd'.repeat(40), release: 'e'.repeat(40), [field]: commit }, held = structuredClone(integration);
+			expect(() => inspect('/not-an-approved-repository', 'a'.repeat(40), 'b'.repeat(40), 'c'.repeat(40), integration)).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN');
+			expect(integration).toEqual(held);
+		}
+	}
+});
 
 const attempt: PublishedSourceAttempt = { id: 'attempt', teamId: 'team', projectId: 'sdk', attempt: 1, provider: { providerId: 'provider' },
 	workspace: { mode: 'git', repository: 'treeseed-ai/sdk', baseCommit: 'a'.repeat(40), branch: 'simulation/tester', writablePaths: ['tests'] } };
