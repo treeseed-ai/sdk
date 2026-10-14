@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import * as nativeOutputs from '../../../acceptance/product/release-output.ts';
+import { approvedOutputFixture } from './test-output-fixture.ts';
 import { expect, it } from 'vitest';
 import { sdkPublishedRepository, sdkDocumentationBody, verifySdkCommittedTests, verifySdkReviewedSourceInput, type PublishedSourceAttempt } from '../../../acceptance/product/test-chain.ts';
 
@@ -20,6 +23,43 @@ it('retains original frozen fan-in integration base while requiring both exact p
 });
 
 it('denies malformed reviewed integration identities before opening a native repository', () => {
+  const verify = (nativeOutputs as unknown as Record<string, unknown>).verifySdkApprovedTestOutputs;
+  expect(typeof verify).toBe('function'); if (typeof verify !== 'function') throw new Error('Native approved-test output proof is missing');
+  const exact = approvedOutputFixture(), held = structuredClone(exact);
+  verify(exact.tester, exact.engineer, exact.events, exact.testerCommit, exact.engineerCommit, exact.tests); expect(exact).toEqual(held);
+  for (const mode of ['empty', 'duplicate', 'team', 'workday', 'candidate', 'digest', 'missing-record', 'missing-output', 'duration', 'truncated', 'skipped', 'file-omitted', 'duplicate-file', 'total', 'unrelated-base', 'non-assertion', 'changed-count']) {
+    const f = approvedOutputFixture(), event = f.events[1]!, payload = event.protectedPayload;
+    const output = payload.verificationObservations[0]!;
+    if (mode === 'empty') f.events = []; if (mode === 'duplicate') f.events.push(structuredClone(event));
+    if (mode === 'team') event.teamId = 'foreign'; if (mode === 'workday') event.runId = 'foreign';
+    if (mode === 'candidate') payload.sourceCommit = 'f'.repeat(40); if (mode === 'digest') output.outputDigest = 'sha256:' + 'f'.repeat(64);
+    if (mode === 'missing-record') payload.verificationRecords = []; if (mode === 'missing-output') payload.verificationObservations = [];
+    if (mode === 'duration') { output.durationSeconds = -1; payload.verificationRecords[0]!.durationSeconds = -1; f.engineer.assignmentResult.verification[0]!.durationSeconds = -1; }
+    const parse = (text: string) => JSON.parse(text.split('\n').at(-1)!) as { numTotalTests: number; numPassedTests: number; numPendingTests: number; numTotalTestSuites: number; numPassedTestSuites: number; testResults: Array<{ name: string; assertionResults: Array<{ fullName: string; status: string; duration?: number; failureMessages: string[] }> }> };
+    const replaceReport = (o: typeof output, report: ReturnType<typeof parse>) => { o.stdout = o.stdout.slice(0, o.stdout.lastIndexOf('\n') + 1) + JSON.stringify(report); };
+    const report = parse(output.stdout);
+    if (mode === 'truncated') output.stdout = ' RUN v4.1.10 /workspace/project\n';
+    if (mode === 'skipped') { report.numPendingTests = 1; report.numPassedTests = 1; report.testResults[0]!.assertionResults[0]!.status = 'pending'; }
+    if (mode === 'file-omitted') report.testResults[0]!.name = '/workspace/project/tests/foreign.test.ts';
+    if (mode === 'duplicate-file') { report.testResults.push(structuredClone(report.testResults[0]!)); report.numTotalTests++; report.numPassedTests++; report.numTotalTestSuites++; report.numPassedTestSuites++; }
+    if (mode === 'total') report.numTotalTests++;
+    if (mode === 'changed-count') { const next = structuredClone(report.testResults[0]!.assertionResults[0]!); next.fullName = 'unapproved extra assertion'; report.testResults[0]!.assertionResults.push(next); report.numTotalTests++; report.numPassedTests++; }
+    if (!['truncated', 'unrelated-base', 'non-assertion'].includes(mode)) replaceReport(output, report);
+    if (mode === 'unrelated-base') { const o = f.events[0]!.protectedPayload.verificationObservations[0]!, r = parse(o.stdout); r.testResults[0]!.name = '/workspace/project/tests/private.test.ts'; replaceReport(o, r); }
+    if (mode === 'non-assertion') { const o = f.events[0]!.protectedPayload.verificationObservations[0]!, r = parse(o.stdout); r.testResults[0]!.assertionResults[0]!.failureMessages = ['TypeError: cannot execute']; replaceReport(o, r); }
+    // Rehash coherent output corruptions, so denial cannot depend only on a stale digest.
+    for (const [index, participant] of [[0, f.tester], [1, f.engineer]] as const) {
+      const p = f.events[index]?.protectedPayload, o = p?.verificationObservations[0];
+      if (!p || !o || mode === 'digest') continue;
+      o.outputDigest = 'sha256:' + createHash('sha256').update(JSON.stringify({ stderr: o.stderr, stdout: o.stdout })).digest('hex');
+      if (p.verificationRecords[0]) p.verificationRecords[0].outputDigest = o.outputDigest;
+      participant.assignmentResult.verification[0]!.outputDigest = o.outputDigest;
+    }
+    const originalFailure = structuredClone(f);
+    expect(() => verify(f.tester, f.engineer, f.events, f.testerCommit, f.engineerCommit, f.tests), mode).toThrow(); expect(f).toEqual(originalFailure);
+    verify(exact.tester, exact.engineer, exact.events, exact.testerCommit, exact.engineerCommit, exact.tests);
+  }
+
 	expect(sdkDocumentationBody(Buffer.from('---\nrevision: 2\n---\n# Usage\nUse the public client.\n<!-- internal -->\n'))).toBe('# Usage\nUse the public client.');
 	for (const text of ['', ' \n', '<!-- no instructions -->', '---\nrevision: 2\n---\n']) expect(sdkDocumentationBody(Buffer.from(text))).toBe('');
 	for (const bytes of [Buffer.from([255]), Buffer.from('instruction\0binary')]) expect(() => sdkDocumentationBody(bytes)).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN');
