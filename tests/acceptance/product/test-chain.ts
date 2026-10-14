@@ -107,6 +107,8 @@ export function verifySdkCommittedTests(repository: string, base: string, tester
 			assert.equal(git(['rev-parse', '--verify', `${commit}^{commit}`]).toString().trim(), commit, failure);
 		git(['merge-base', '--is-ancestor', engineer, integration.writer]);
 		const changed = git(['diff', '--name-only', '--no-renames', '-z', engineer, integration.writer]).toString('utf8').split('\0').filter(Boolean);
+		assert.ok(changed.every(path => /^(?:[^/]+\.mdx?$|docs\/|examples\/)/u.test(path)),
+			`${failure}: Writer must preserve the independently approved implementation and test runner`);
 		const docs = changed.filter(path => /^(?:[^/]+\.mdx?|docs\/.+\.mdx?)$/u.test(path));
 		let documented = 0;
 		for (const path of docs) {
@@ -126,6 +128,10 @@ export function verifySdkCommittedTests(repository: string, base: string, tester
 			git(['rev-parse', `${integration.writer}^{tree}`]).toString().trim(), `${failure}: Integration contains unreviewed changes`);
 	}
 	const implementation = git(['diff', '--name-only', '--no-renames', '-z', tester, engineer]).toString('utf8').split('\0').filter(Boolean);
+	assert.ok(implementation.every(path => !path.startsWith('tests/') && !path.startsWith('scripts/')
+		&& !['package.json', 'package-lock.json', 'npm-shrinkwrap.json', '.npmrc'].includes(path)
+		&& !/^(?:vitest|vite|tsconfig)(?:\.[^/]+)?\.(?:ts|mts|cts|js|mjs|cjs|json)$/u.test(path)),
+		`${failure}: Engineer must retain every approved test and the original complete-suite runner`);
 	assert.ok(implementation.some(path => /^src\/.*\.ts$/u.test(path)
 		&& /^100(?:644|755) blob [a-f0-9]{40}\t/u.test(git(['ls-tree', '-z', engineer, '--', path]).toString('utf8'))),
 		`${failure}: Engineer must produce a native source implementation after approved tests`);
