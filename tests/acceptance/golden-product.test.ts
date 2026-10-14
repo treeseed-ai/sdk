@@ -5,7 +5,7 @@ import test from 'node:test';
 import { sdkPublishedRepository, verifySdkCommittedTests, verifySdkPublishedBranch, verifySdkReviewedSourceInput } from './product/test-chain.ts';
 import { sdkGoldenReadArguments, sdkGoldenSource, sdkGoldenWorkdayId, verifySdkGoldenProduct, sdkGoldenProposalProvenance, sdkGoldenFrozenProposal, sdkGoldenLibraryFiles, sdkGoldenProposalDocument, type SdkGoldenOriginal } from './golden-product.ts';
 import { assignmentAttemptSchema, assignmentResultSchema } from '@treeseed/sdk/agent-capacity';
-import { isSdkArchiveCommand, sdkGoldenExecutionEvents, sdkReleaseCommands } from './product/release-output.ts';
+import { isSdkArchiveCommand, sdkGoldenExecutionEvents, sdkReleaseCommands, sdkNativeTestCommand, verifySdkApprovedTestOutputs } from './product/release-output.ts';
 
 test('SDK golden retains exact source and passing measured candidate release gates', () => {
 	const read = (args: string[]) => {
@@ -112,9 +112,9 @@ test('SDK golden retains exact source and passing measured candidate release gat
 		&& Date.parse(testReviewResult.completedAt) <= Date.parse(engineerAttempt.createdAt));
 	const measured = (record: typeof testResult.verification[number]) => Number.isInteger(record.durationSeconds)
 		&& Number.isFinite(record.durationSeconds) && record.durationSeconds! >= 0;
-	assert.ok(testResult.verification.some(record => record.command === 'npm run test:contracts' && record.status === 'failed' && record.exitCode !== 0 && measured(record)),
+	assert.ok(testResult.verification.some(record => record.command === sdkNativeTestCommand && record.status === 'failed' && record.exitCode !== 0 && measured(record)),
 		'ACCEPTANCE_SDK_TESTS_FIRST: Original measured failed test observation must remain visible');
-	assert.ok(engineerResult.verification.some(record => record.command === 'npm run test:contracts' && record.status === 'passed' && record.exitCode === 0 && measured(record)),
+	assert.ok(engineerResult.verification.some(record => record.command === sdkNativeTestCommand && record.status === 'passed' && record.exitCode === 0 && measured(record)),
 		'ACCEPTANCE_SDK_TESTS_FIRST: Implementation must retain an actual measured passing contract-suite observation');
 	const engineerSource = engineer.lifecycleOutput?.sourceReference;
 	assert.ok(engineerSource?.kind === 'git' && engineerSource.repository === testSource.repository && /^[a-f0-9]{40}$/u.test(engineerSource.commit));
@@ -164,6 +164,7 @@ test('SDK golden retains exact source and passing measured candidate release gat
 	const committedTests = verifySdkCommittedTests(testRepository, frozenBase, testSource.commit, engineerSource.commit,
 		{ writer: writerSource.commit, release: source.commit, writerBase: writerAttempt.workspace.mode === 'git' ? writerAttempt.workspace.baseCommit : '' });
 	assert.ok(committedTests.length > 0);
+	verifySdkApprovedTestOutputs(tester, engineer, original.executionEvents, testSource.commit, engineerSource.commit, committedTests);
 	assert.deepEqual(read(['host', 'sandbox', 'status']).workspace.journals, host.workspace.journals,
 		'ACCEPTANCE_SDK_NATIVE_TEST_CHAIN: Original owning publication journals changed during Git verification');
 	for (const result of [actorResult, reviewResult]) {

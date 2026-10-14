@@ -96,7 +96,7 @@ it('native Git proves test-only approved ancestry and identical consumed blobs w
     writeFileSync(join(work, 'vitest.contracts.config.ts'), "export default { cacheDir: '.vitest-cache', test: { include: ['tests/**/*.test.ts'] } };\n");
     mkdirSync(join(work, 'node_modules')); symlinkSync(new URL('../../../../node_modules/vitest', import.meta.url), join(work, 'node_modules/vitest'), 'dir');
     const observe = (identity: string, sourceCommit: string, expected: 'passed' | 'failed') => {
-      const started = process.hrtime.bigint(), result = spawnSync('npm', ['run', 'test:contracts'], { cwd: work, encoding: 'utf8', timeout: 10_000, maxBuffer: 8 * 1024 * 1024 });
+      const started = process.hrtime.bigint(), result = spawnSync('npm', ['run', 'test:contracts', '--', '--reporter=default', '--reporter=json'], { cwd: work, encoding: 'utf8', timeout: 10_000, maxBuffer: 8 * 1024 * 1024 });
       expect(result.signal).toBeNull(); expect(result.status).toBe(expected === 'passed' ? 0 : 1);
       return testOutputFixture(identity, sourceCommit, expected, result.stdout ?? '', result.stderr ?? '', Math.ceil(Number(process.hrtime.bigint() - started) / 1e9));
     };
@@ -126,6 +126,7 @@ it('native Git proves test-only approved ancestry and identical consumed blobs w
     const verify = (nativeOutputs as unknown as Record<string, unknown>).verifySdkApprovedTestOutputs;
     expect(typeof verify).toBe('function'); if (typeof verify !== 'function') throw new Error('Native approved-test output proof is missing');
     verify(red.participant, green.participant, [red.event, green.event], tester, engineer, proof);
+    console.log(JSON.stringify({ nativeApprovedTestOutputs: { tester: red, engineer: green, committed: proof }, controlledMetadata: true, managedProof: false }));
 		expect(readFileSync(join(work, path))).toEqual(bytes);
 		git(['checkout', '--detach', tester]); writeFileSync(join(work, 'README.md'), 'Documentation only; no implementation.\n');
 		const documentationOnly = commit('controlled missing implementation'); git(['--git-dir', repository, 'fetch', work, documentationOnly]);
