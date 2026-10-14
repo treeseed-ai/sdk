@@ -22,7 +22,7 @@ it('native frozen BASE replay distinguishes a new approved assertion RED from or
   writeFileSync(join(work,'src/product.ts'),"export function value(){return 'implemented';}\n");const engineer=commit('Controlled descendant implementation');git(['clone','--bare','--no-local',work,repository]);
   const inspect:unknown=Reflect.get(chain,'verifySdkBaseRed');expect(inspect).toBeTypeOf('function');
   if(typeof inspect!=='function')throw new Error('Independent frozen BASE replay is missing');
-  const proof=Reflect.apply(inspect,undefined,[repository,base,tester,engineer]);
+  let proof;try{proof=Reflect.apply(inspect,undefined,[repository,base,tester,engineer]);}catch(error){const original=error as {cause?:{failure?:Error;observations?:Array<{command:string;status:number;stderr:string;stdout:string}>}};console.error(JSON.stringify({nativeBaseFailure:original.cause?.failure?.message,observations:original.cause?.observations?.map(o=>({command:o.command,status:o.status,stderr:o.stderr.slice(-1800),stdout:o.stdout.slice(-1200)}))}));throw error;}
   expect(proof).toMatchObject({base,tester,engineer,introducedFailures:['tests/intent.test.ts\0new approved intent'],unrelatedBaseFailures:[]});
   expect(proof.observations.filter((o:{command:string})=>o.command==='npm run test:contracts -- --reporter=default --reporter=json').map((o:{status:number})=>o.status)).toEqual([0,1,0]);
   expect(proof.approved).toHaveLength(1);expect(git(['rev-parse','HEAD'])).toBe(engineer);
