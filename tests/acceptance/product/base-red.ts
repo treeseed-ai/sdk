@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync,spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {existsSync,mkdtempSync,mkdirSync,readFileSync,rmSync} from 'node:fs';
+import {existsSync,mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname,join,resolve} from 'node:path';
 import {nativePublishedGit,verifySdkCommittedTests} from './test-chain.ts';
@@ -15,16 +15,21 @@ export function verifySdkBaseRed(repository:string,base:string,tester:string,eng
  const approved=verifySdkCommittedTests(repository,base,tester,engineer),git=nativePublishedGit(repository);
  const root=mkdtempSync(join(tmpdir(),'sdk-native-base-red-')),observations:Observation[]=[];
  const env:NodeJS.ProcessEnv={PATH:dirname(process.execPath)+':/usr/bin:/bin',HOME:root,LANG:'C',CI:'true',
-  NPM_CONFIG_CACHE:join(root,'npm-cache'),NPM_CONFIG_USERCONFIG:'/dev/null',NPM_CONFIG_GLOBALCONFIG:'/dev/null',
+  NPM_CONFIG_CACHE:join(root,'npm-cache'),NPM_CONFIG_USERCONFIG:join(root,'user.npmrc'),NPM_CONFIG_GLOBALCONFIG:join(root,'global.npmrc'),
   ...(process.env.NODE_EXTRA_CA_CERTS?{NODE_EXTRA_CA_CERTS:process.env.NODE_EXTRA_CA_CERTS}:{})};
  const run=(commit:string,cwd:string,args:string[],mayFail=false)=>{
-  const startedAt=new Date().toISOString(),result=spawnSync('npm',args,{cwd,env,encoding:'utf8',timeout:120_000,maxBuffer:32*1024*1024});
+  const startedAt=new Date().toISOString(),result=spawnSync('npm',args,{cwd,env,encoding:'utf8',detached:true,timeout:120_000,maxBuffer:32*1024*1024});
   const observation={commit,command:['npm',...args].join(' '),status:result.status??-1,startedAt,completedAt:new Date().toISOString(),stdout:result.stdout??'',stderr:result.stderr??'',outputDigest:'sha256:'+createHash('sha256').update(JSON.stringify({stderr:result.stderr??'',stdout:result.stdout??''})).digest('hex')};
-  observations.push(observation);assert.equal(result.error,undefined,label);assert.equal(result.signal,null,label);
+  observations.push(observation);
+  // Every process group is newly owned by this disposable command. Reap its
+  // descendants on success or failure before another phase or directory cleanup.
+  if(Number.isInteger(result.pid)&&result.pid>0){try{process.kill(-result.pid,'SIGKILL');}catch(error){if((error as NodeJS.ErrnoException).code!=='ESRCH')throw error;}}
+  assert.equal(result.error,undefined,label);assert.equal(result.signal,null,label);
   assert.ok(mayFail?result.status===0||result.status===1:result.status===0,label+': '+observation.command);
   return observation;
  };
  try{
+  writeFileSync(join(root,'user.npmrc'),'');writeFileSync(join(root,'global.npmrc'),'');
   const reports=[];
   let baselinePackage:Buffer|undefined,baselineLock:Buffer|undefined,baselineConfig:Buffer|undefined;
   for(const [phase,commit]of [['base',base],['tester',tester],['engineer',engineer]]as const){
