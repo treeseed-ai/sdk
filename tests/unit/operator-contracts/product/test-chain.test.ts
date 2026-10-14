@@ -1,3 +1,5 @@
+import * as nativeOutputs from '../../../acceptance/product/release-output.ts';
+import { approvedOutputFixture } from './test-output-fixture.ts';
 import { expect, it } from 'vitest';
 import { sdkPublishedRepository, sdkDocumentationBody, verifySdkCommittedTests, verifySdkReviewedSourceInput, type PublishedSourceAttempt } from '../../../acceptance/product/test-chain.ts';
 
@@ -20,6 +22,39 @@ it('retains original frozen fan-in integration base while requiring both exact p
 });
 
 it('denies malformed reviewed integration identities before opening a native repository', () => {
+  const verify = (nativeOutputs as unknown as Record<string, unknown>).verifySdkApprovedTestOutputs;
+  expect(typeof verify).toBe('function'); if (typeof verify !== 'function') throw new Error('Native approved-test output proof is missing');
+  const exact = approvedOutputFixture(), held = structuredClone(exact);
+  verify(exact.tester, exact.engineer, exact.events, exact.testerCommit, exact.engineerCommit, exact.tests); expect(exact).toEqual(held);
+  for (const mode of ['empty', 'duplicate', 'team', 'workday', 'candidate', 'digest', 'missing-record', 'missing-output', 'duration', 'truncated', 'skipped', 'file-omitted', 'duplicate-file', 'total', 'unrelated-base', 'non-assertion', 'changed-count']) {
+    const f = approvedOutputFixture(), event = f.events[1]!, payload = event.protectedPayload;
+    const output = payload.verificationObservations[0]!;
+    if (mode === 'empty') f.events = []; if (mode === 'duplicate') f.events.push(structuredClone(event));
+    if (mode === 'team') event.teamId = 'foreign'; if (mode === 'workday') event.runId = 'foreign';
+    if (mode === 'candidate') payload.sourceCommit = 'f'.repeat(40); if (mode === 'digest') output.outputDigest = 'sha256:' + 'f'.repeat(64);
+    if (mode === 'missing-record') payload.verificationRecords = []; if (mode === 'missing-output') payload.verificationObservations = [];
+    if (mode === 'duration') { output.durationSeconds = -1; payload.verificationRecords[0]!.durationSeconds = -1; f.engineer.assignmentResult.verification[0]!.durationSeconds = -1; }
+    if (mode === 'truncated') output.stdout = ' RUN v4.1.10 /workspace/project\n';
+    if (mode === 'skipped') output.stdout = output.stdout.replace('Tests  2 passed (2)', 'Tests  1 passed | 1 skipped (2)');
+    if (mode === 'file-omitted') output.stdout = output.stdout.replace('tests/intent.test.ts', 'tests/foreign.test.ts');
+    if (mode === 'duplicate-file') output.stdout += ' ✓ tests/intent.test.ts (1 test) 3ms\n';
+    if (mode === 'total') output.stdout = output.stdout.replace('Tests  2 passed (2)', 'Tests  3 passed (3)');
+    if (mode === 'changed-count') output.stdout = output.stdout.replace('tests/intent.test.ts (1 test)', 'tests/intent.test.ts (2 tests)').replace('Tests  2 passed (2)', 'Tests  3 passed (3)');
+    if (mode === 'unrelated-base') { const out = f.events[0]!.protectedPayload.verificationObservations[0]!; out.stdout = out.stdout.replace('tests/intent.test.ts', 'tests/private.test.ts'); }
+    if (mode === 'non-assertion') f.events[0]!.protectedPayload.verificationObservations[0]!.stderr = 'Cannot find module';
+    // Rehash coherent output corruptions, so denial cannot depend only on a stale digest.
+    for (const [index, participant] of [[0, f.tester], [1, f.engineer]] as const) {
+      const p = f.events[index]?.protectedPayload, o = p?.verificationObservations[0];
+      if (!p || !o || mode === 'digest') continue;
+      o.outputDigest = 'sha256:' + createHash('sha256').update(JSON.stringify({ stderr: o.stderr, stdout: o.stdout })).digest('hex');
+      if (p.verificationRecords[0]) p.verificationRecords[0].outputDigest = o.outputDigest;
+      participant.assignmentResult.verification[0]!.outputDigest = o.outputDigest;
+    }
+    const originalFailure = structuredClone(f);
+    expect(() => verify(f.tester, f.engineer, f.events, f.testerCommit, f.engineerCommit, f.tests), mode).toThrow(); expect(f).toEqual(originalFailure);
+    verify(exact.tester, exact.engineer, exact.events, exact.testerCommit, exact.engineerCommit, exact.tests);
+  }
+
 	expect(sdkDocumentationBody(Buffer.from('---\nrevision: 2\n---\n# Usage\nUse the public client.\n<!-- internal -->\n'))).toBe('# Usage\nUse the public client.');
 	for (const text of ['', ' \n', '<!-- no instructions -->', '---\nrevision: 2\n---\n']) expect(sdkDocumentationBody(Buffer.from(text))).toBe('');
 	for (const bytes of [Buffer.from([255]), Buffer.from('instruction\0binary')]) expect(() => sdkDocumentationBody(bytes)).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN');

@@ -1,5 +1,7 @@
+import * as nativeOutputs from '../../../acceptance/product/release-output.ts';
+import { testOutputFixture } from './test-output-fixture.ts';
 import { expect, it } from 'vitest';
-import { execFile, execFileSync } from 'node:child_process';
+import { execFile, execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, chmodSync, symlinkSync, writeFileSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
@@ -88,11 +90,22 @@ it('native Git proves test-only approved ancestry and identical consumed blobs w
 	const commit = (message: string) => { git(['add', '.']); git(['-c', 'user.name=SDK native fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', message]); return git(['rev-parse', 'HEAD']); };
 	try {
 		mkdirSync(work); git(['init', '--template=']); mkdirSync(join(work, 'src')); writeFileSync(join(work, 'src/product.ts'), 'export const original = true;\n');
-		mkdirSync(join(work, 'tests')); writeFileSync(join(work, 'tests/baseline.test.ts'), '// retained baseline tests\n');
+		mkdirSync(join(work, 'tests')); writeFileSync(join(work, 'tests/baseline.test.ts'), "import { it, expect } from 'vitest';\nit('retained baseline', () => expect(true).toBe(true));\n");
+    writeFileSync(join(work, '.gitignore'), 'node_modules/\n.vitest-cache/\n');
+    writeFileSync(join(work, 'package.json'), JSON.stringify({ type: 'module', scripts: { 'test:contracts': 'node ./node_modules/vitest/vitest.mjs run --config ./vitest.contracts.config.ts' } }));
+    writeFileSync(join(work, 'vitest.contracts.config.ts'), "export default { cacheDir: '.vitest-cache', test: { include: ['tests/**/*.test.ts'] } };\n");
+    mkdirSync(join(work, 'node_modules')); symlinkSync(new URL('../../../../node_modules/vitest', import.meta.url), join(work, 'node_modules/vitest'), 'dir');
+    const observe = (identity: string, sourceCommit: string, expected: 'passed' | 'failed') => {
+      const started = process.hrtime.bigint(), result = spawnSync('npm', ['run', 'test:contracts'], { cwd: work, encoding: 'utf8', timeout: 10_000, maxBuffer: 8 * 1024 * 1024 });
+      expect(result.signal).toBeNull(); expect(result.status).toBe(expected === 'passed' ? 0 : 1);
+      return testOutputFixture(identity, sourceCommit, expected, result.stdout ?? '', result.stderr ?? '', Math.ceil(Number(process.hrtime.bigint() - started) / 1e9));
+    };
 		const base = commit('controlled BASE');
-		const path = 'tests/intent.test.ts', bytes = Buffer.from("// controlled approved fixture\nexport const expected = 'exact';\n\n");
+		const path = 'tests/intent.test.ts', bytes = Buffer.from("import { it, expect } from 'vitest';\nimport { original } from '../src/product.ts';\nit('controlled approved assertion', () => expect(original).toBe(false));\n");
 		writeFileSync(join(work, path), bytes); const tester = commit('controlled test-only candidate');
+    const red = observe('tester', tester, 'failed');
 		writeFileSync(join(work, 'src/product.ts'), 'export const original = false;\n'); const engineer = commit('controlled descendant implementation');
+    const green = observe('engineer', engineer, 'passed');
 		git(['clone', '--bare', '--no-local', work, repository]);
 		const published = { kind: 'git' as const, repository: 'treeseed-ai/sdk', commit: tester, branch: 'simulation/original-tester' };
 		const branchRef = `refs/heads/${published.branch}`;
@@ -110,6 +123,9 @@ it('native Git proves test-only approved ancestry and identical consumed blobs w
 		expect(verifySdkPublishedBranch(repository, published)).toBe(tester);
 		const proof = verifySdkCommittedTests(repository, base, tester, engineer);
 		expect(proof).toHaveLength(1); expect(proof[0]!.path).toBe(path);
+    const verify = (nativeOutputs as unknown as Record<string, unknown>).verifySdkApprovedTestOutputs;
+    expect(typeof verify).toBe('function'); if (typeof verify !== 'function') throw new Error('Native approved-test output proof is missing');
+    verify(red.participant, green.participant, [red.event, green.event], tester, engineer, proof);
 		expect(readFileSync(join(work, path))).toEqual(bytes);
 		git(['checkout', '--detach', tester]); writeFileSync(join(work, 'README.md'), 'Documentation only; no implementation.\n');
 		const documentationOnly = commit('controlled missing implementation'); git(['--git-dir', repository, 'fetch', work, documentationOnly]);
