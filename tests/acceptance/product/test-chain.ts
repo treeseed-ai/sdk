@@ -58,7 +58,7 @@ export function sdkPublishedRepository(workspace: unknown, sandboxId: string, at
 	return repository;
 }
 
-function nativePublishedGit(repository: string) {
+export function nativePublishedGit(repository: string) {
 	assert.ok(isAbsolute(repository), failure);
 	assert.equal(realpathSync(repository), repository, failure); assert.ok(lstatSync(repository).isDirectory(), failure);
 	assert.equal(existsSync(join(repository, 'objects/info/alternates')), false, failure);
@@ -153,3 +153,5 @@ export function verifySdkCommittedTests(repository: string, base: string, tester
 	for (const commit of [base, tester, engineer]) assert.equal(git(['rev-parse', '--verify', `${commit}^{commit}`]).toString().trim(), commit, failure);
 	return tests;
 }
+
+export {verifySdkBaseRed} from './base-red.ts';

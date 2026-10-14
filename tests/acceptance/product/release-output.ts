@@ -57,7 +57,7 @@ export function verifySdkReleaseOutputs(actor: Row, reviewer: Row, events: unkno
 }
 
 /** The owning Vitest reporter supplies assertion identities/status/timing; no exit-zero inference. */
-function nativeTestReport(stdout: string, passed: boolean): Map<string, { path: string; status: string }> {
+export function nativeTestReport(stdout: string, passed: boolean): Map<string, { path: string; status: string }> {
 	const label = 'ACCEPTANCE_SDK_APPROVED_TESTS';
 	const clean = stdout.replace(/\u001b\[[0-9;]*m/gu, '');
 	const json = clean.split(/\r?\n/u).filter(line => line.startsWith('{"numTotalTestSuites":'));
