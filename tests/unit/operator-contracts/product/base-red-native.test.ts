@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import * as chain from '../../../acceptance/product/test-chain.ts';
 
-it('native frozen BASE replay distinguishes a new approved assertion RED from original failures and proves identical Engineer GREEN',()=>{
+function nativeCase(mode:'new-red'|'retained-base-failure'|'no-new-red'){
  const root=mkdtempSync(join(tmpdir(),'sdk-base-replay-fixture-')),work=join(root,'work'),repository=join(root,'repository.git');
  const git=(args:string[])=>execFileSync('/usr/bin/git',['-C',work,...args],{encoding:'utf8',timeout:5000,env:{PATH:'/usr/bin:/bin',LANG:'C',GIT_CONFIG_GLOBAL:'/dev/null',GIT_CONFIG_NOSYSTEM:'1'}}).trim();
  const commit=(message:string)=>{git(['add','.']);git(['-c','user.name=Native BASE fixture','-c','user.email=fixture@example.invalid','commit','-qm',message]);return git(['rev-parse','HEAD']);};
@@ -17,15 +17,19 @@ it('native frozen BASE replay distinguishes a new approved assertion RED from or
   writeFileSync(join(work,'vitest.contracts.config.ts'),"export default {test:{include:['tests/**/*.test.ts'],maxWorkers:1}};\n");
   const header=`import {it,expect} from ${JSON.stringify(import.meta.resolve('vitest'))};import {value} from '../src/product.ts';\n`;
   writeFileSync(join(work,'src/product.ts'),"export function value(){return 'original';}\n");
-  writeFileSync(join(work,'tests/baseline.test.ts'),header+"it('original invariant',()=>expect(typeof value()).toBe('string'));\n");const base=commit('Controlled frozen BASE');
-  writeFileSync(join(work,'tests/intent.test.ts'),header+"it('new approved intent',()=>expect(value()).toBe('implemented'));\n");const tester=commit('Controlled test-only candidate');
+  writeFileSync(join(work,'tests/baseline.test.ts'),header+(mode==='retained-base-failure'?"it('original invariant',()=>expect(value()).toBe('implemented'));\n":"it('original invariant',()=>expect(typeof value()).toBe('string'));\n"));const base=commit('Controlled frozen BASE');
+  writeFileSync(join(work,'tests/intent.test.ts'),header+(mode==='no-new-red'?"it('new approved intent',()=>expect(typeof value()).toBe('string'));\n":"it('new approved intent',()=>expect(value()).toBe('implemented'));\n"));const tester=commit('Controlled test-only candidate');
   writeFileSync(join(work,'src/product.ts'),"export function value(){return 'implemented';}\n");const engineer=commit('Controlled descendant implementation');git(['clone','--bare','--no-local',work,repository]);
   const inspect:unknown=Reflect.get(chain,'verifySdkBaseRed');expect(inspect).toBeTypeOf('function');
   if(typeof inspect!=='function')throw new Error('Independent frozen BASE replay is missing');
+  if(mode==='no-new-red'){expect(()=>Reflect.apply(inspect,undefined,[repository,base,tester,engineer])).toThrow('ACCEPTANCE_SDK_BASE_RED');return;}
   let proof;try{proof=Reflect.apply(inspect,undefined,[repository,base,tester,engineer]);}catch(error){const original=error as {cause?:{failure?:Error;observations?:Array<{command:string;status:number;stderr:string;stdout:string}>}};console.error(JSON.stringify({nativeBaseFailure:original.cause?.failure?.message,observations:original.cause?.observations?.map(o=>({command:o.command,status:o.status,stderr:o.stderr.slice(-1800),stdout:o.stdout.slice(-1200)}))}));throw error;}
-  expect(proof).toMatchObject({base,tester,engineer,introducedFailures:['tests/intent.test.ts\0new approved intent'],unrelatedBaseFailures:[]});
-  expect(proof.observations.filter((o:{command:string})=>o.command==='npm run test:contracts -- --reporter=default --reporter=json').map((o:{status:number})=>o.status)).toEqual([0,1,0]);
+  expect(proof).toMatchObject({base,tester,engineer,introducedFailures:['tests/intent.test.ts\0new approved intent'],unrelatedBaseFailures:mode==='retained-base-failure'?['tests/baseline.test.ts\0original invariant']:[]});
+  expect(proof.observations.filter((o:{command:string})=>o.command==='npm run test:contracts -- --reporter=default --reporter=json').map((o:{status:number})=>o.status)).toEqual([mode==='retained-base-failure'?1:0,1,0]);
   expect(proof.approved).toHaveLength(1);expect(git(['rev-parse','HEAD'])).toBe(engineer);
   console.log(JSON.stringify({nativeBaseReplay:true,base,tester,engineer,introducedFailures:proof.introducedFailures,observations:proof.observations.map(({stdout,stderr,...o}:{stdout:string;stderr:string})=>o)}));
  }finally{rmSync(root,{recursive:true,force:true});}
-});
+}
+it('native frozen BASE replay distinguishes a new approved assertion RED from original failures and proves identical Engineer GREEN',()=>nativeCase('new-red'));
+it('native frozen BASE replay retains unrelated original assertion failures separately from new approved RED',()=>nativeCase('retained-base-failure'));
+it('native frozen BASE replay rejects an all-green Tester candidate without a new failing approved assertion',()=>nativeCase('no-new-red'));
