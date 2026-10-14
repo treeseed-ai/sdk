@@ -8,7 +8,7 @@ import {nativePublishedGit,verifySdkCommittedTests} from './test-chain.ts';
 import {nativeTestReport,sdkNativeTestCommand} from './release-output.ts';
 
 const label='ACCEPTANCE_SDK_BASE_RED';
-type Observation={commit:string;command:string;status:number;startedAt:string;completedAt:string;stdout:string;stderr:string;outputDigest:string};
+type Observation={commit:string;command:string;processCommand:string[];status:number;startedAt:string;completedAt:string;stdout:string;stderr:string;outputDigest:string};
 /** Replay original committed source and tests independently. Only disposable
  * directories are written; every command comes from the held upstream package. */
 export function verifySdkBaseRed(repository:string,base:string,tester:string,engineer:string){
@@ -18,8 +18,8 @@ export function verifySdkBaseRed(repository:string,base:string,tester:string,eng
   NPM_CONFIG_CACHE:join(root,'npm-cache'),NPM_CONFIG_USERCONFIG:join(root,'user.npmrc'),NPM_CONFIG_GLOBALCONFIG:join(root,'global.npmrc'),
   ...(process.env.NODE_EXTRA_CA_CERTS?{NODE_EXTRA_CA_CERTS:process.env.NODE_EXTRA_CA_CERTS}:{})};
  const run=(commit:string,cwd:string,args:string[],mayFail=false)=>{
-  const startedAt=new Date().toISOString(),result=spawnSync('npm',args,{cwd,env,encoding:'utf8',detached:true,timeout:120_000,maxBuffer:32*1024*1024});
-  const observation={commit,command:['npm',...args].join(' '),status:result.status??-1,startedAt,completedAt:new Date().toISOString(),stdout:result.stdout??'',stderr:result.stderr??'',outputDigest:'sha256:'+createHash('sha256').update(JSON.stringify({stderr:result.stderr??'',stdout:result.stdout??''})).digest('hex')};
+  const startedAt=new Date().toISOString(),result=spawnSync('/usr/bin/setsid',['npm',...args],{cwd,env,encoding:'utf8',timeout:120_000,maxBuffer:32*1024*1024});
+  const observation={commit,command:['npm',...args].join(' '),processCommand:['/usr/bin/setsid','npm',...args],status:result.status??-1,startedAt,completedAt:new Date().toISOString(),stdout:result.stdout??'',stderr:result.stderr??'',outputDigest:'sha256:'+createHash('sha256').update(JSON.stringify({stderr:result.stderr??'',stdout:result.stdout??''})).digest('hex')};
   observations.push(observation);
   // Every process group is newly owned by this disposable command. Reap its
   // descendants on success or failure before another phase or directory cleanup.
