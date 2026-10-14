@@ -46,6 +46,18 @@ export function verifySdkBaseRed(repository:string,base:string,tester:string,eng
    for(const candidate of [base,tester,engineer])assert.equal(git(['rev-parse','--verify',candidate+'^{commit}']).toString().trim(),candidate,label);
   }
   const [baseline,red,green]=reports;assert.ok(baseline&&red&&green,label);
+  const progress=verifySdkBaseAssertionProgress(baseline,red,green,approved);
+  return{base,tester,engineer,approved,...progress,observations};
+ }catch(failure){throw new Error(label+': independent frozen-source replay failed',{cause:{failure,observations}});}
+ finally{rmSync(root,{recursive:true,force:true});assert.equal(existsSync(root),false,label+': disposable replay residue');}
+}
+
+type Assertions=ReadonlyMap<string,{path:string;status:string}>;
+/** Original BASE identities cannot disappear from the approved native suite. */
+export function verifySdkBaseAssertionProgress(baseline:Assertions,red:Assertions,green:Assertions,approved:readonly{path:string}[]){
+ assert.ok(baseline.size>0&&red.size>0&&green.size>0,label+': complete original assertion inventories required');
+ for(const id of baseline.keys())assert.ok(red.has(id),label+': original BASE assertion omitted');
+ 
   const changed=new Set(approved.map(file=>file.path)),introduced:string[]=[],unrelated:string[]=[];
   for(const[id,test]of baseline)if(test.status==='failed'){unrelated.push(id);assert.equal(red.get(id)?.status,'failed',label+': original BASE failure disappeared');}
   assert.deepEqual([...red.keys()].sort(),[...green.keys()].sort(),label+': Engineer omitted or replaced assertions');
@@ -54,7 +66,6 @@ export function verifySdkBaseRed(repository:string,base:string,tester:string,eng
   }
   assert.ok(introduced.length>0,label+': a nonzero command or unchanged BASE failure is not intended test-first RED');
   for(const file of approved.filter(file=>/\.(?:test|spec)\.tsx?$/u.test(file.path)))assert.ok([...red.values()].some(test=>test.path===file.path),label+': committed test omitted');
-  return{base,tester,engineer,approved,introducedFailures:introduced,unrelatedBaseFailures:unrelated,observations};
- }catch(failure){throw new Error(label+': independent frozen-source replay failed',{cause:{failure,observations}});}
- finally{rmSync(root,{recursive:true,force:true});assert.equal(existsSync(root),false,label+': disposable replay residue');}
+
+ return{introducedFailures:introduced,unrelatedBaseFailures:unrelated};
 }

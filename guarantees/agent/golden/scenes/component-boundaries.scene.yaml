@@ -732,3 +732,23 @@ workflow:
   - id: release-diagnostics-pagination-unit
     action: { verifier: sdk.golden.release-diagnostics-pagination-unit }
     expect: { status: passed }
+
+  - id: native-base-red
+    action: { verifier: sdk.golden.native-base-red }
+    expect: { status: passed }
+
+  - id: native-base-existing-failure
+    action: { verifier: sdk.golden.native-base-existing-failure }
+    expect: { status: passed }
+
+  - id: native-base-no-red
+    action: { verifier: sdk.golden.native-base-no-red }
+    expect: { status: passed }
+
+  - id: native-base-omitted
+    action: { verifier: sdk.golden.native-base-omitted }
+    expect: { status: passed }
+
+  - id: base-progress-unit
+    action: { verifier: sdk.golden.base-progress-unit }
+    expect: { status: passed }
