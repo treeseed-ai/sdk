@@ -28,8 +28,9 @@ it('native Git rejects unreviewed final integration trees and unrelated approved
 
 
 		const deniedDocuments: string[] = [];
-		for (const mode of ['empty', 'comment-only', 'frontmatter-only', 'source-only', 'non-doc-path', 'metadata-only', 'whitespace-only', 'redirected', 'deleted', 'binary', 'invalid-utf8']) {
+		for (const mode of ['empty', 'comment-only', 'frontmatter-only', 'source-only', 'non-doc-path', 'metadata-only', 'whitespace-only', 'redirected', 'deleted', 'binary', 'invalid-utf8', 'documentation-and-source']) {
 			git(['checkout', '--detach', engineer]);
+			if (mode === 'documentation-and-source') { writeFileSync(join(work, 'README.md'), 'Actual documentation with an unapproved product change.\n'); writeFileSync(join(work, 'src/product.ts'), 'export const original = true;\n'); }
 			if (mode === 'empty') writeFileSync(join(work, 'README.md'), '');
 			if (mode === 'comment-only') writeFileSync(join(work, 'README.md'), '<!-- no published instructions -->\n');
 			if (mode === 'frontmatter-only') writeFileSync(join(work, 'README.md'), '---\nrevision: 2\n---\n');
@@ -41,7 +42,7 @@ it('native Git rejects unreviewed final integration trees and unrelated approved
 			if (mode === 'binary') writeFileSync(join(work, 'README.md'), Buffer.from('instructions\0binary'));
 			if (mode === 'invalid-utf8') writeFileSync(join(work, 'README.md'), Buffer.from([255]));
 			const denied = commit(`controlled Writer ${mode}`); git(['--git-dir', repository, 'fetch', work, denied]);
-			expect(() => inspect(repository, base, tester, engineer, { writer: denied, release: denied, writerBase: engineer }), mode).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN'); deniedDocuments.push(denied);
+			expect.soft(() => inspect(repository, base, tester, engineer, { writer: denied, release: denied, writerBase: engineer }), mode).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN'); deniedDocuments.push(denied);
 		}
 		git(['checkout', '--detach', engineer]); writeFileSync(join(work, 'docs/operator.md'), 'Use the exact approved implementation through its public client.\n');
 		const newDocument = commit('controlled new operator documentation'); git(['--git-dir', repository, 'fetch', work, newDocument]);
@@ -114,18 +115,24 @@ it('native Git proves test-only approved ancestry and identical consumed blobs w
 		const documentationOnly = commit('controlled missing implementation'); git(['--git-dir', repository, 'fetch', work, documentationOnly]);
 		expect(() => verifySdkCommittedTests(repository, base, tester, documentationOnly)).toThrow();
 		const denied: string[] = [];
-		for (const mode of ['changed', 'deleted', 'symlink', 'mode', 'unrelated']) {
+		for (const mode of ['changed', 'deleted', 'symlink', 'mode', 'unrelated', 'package-script', 'runner-config', 'lock', 'runner-script', 'baseline-test', 'extra-test']) {
 			git(['checkout', '--detach', engineer]);
 			if (mode === 'unrelated') { git(['checkout', '--orphan', 'unrelated']); writeFileSync(join(work, 'unrelated.ts'), 'unrelated\n'); }
+			else if (mode === 'package-script') writeFileSync(join(work, 'package.json'), JSON.stringify({ scripts: { 'test:contracts': 'echo false green' } }));
+			else if (mode === 'runner-config') writeFileSync(join(work, 'vitest.contracts.config.ts'), 'export default { test: { include: [] } };\n');
+			else if (mode === 'lock') writeFileSync(join(work, 'package-lock.json'), '{}\n');
+			else if (mode === 'runner-script') { mkdirSync(join(work, 'scripts'), { recursive: true }); writeFileSync(join(work, 'scripts/test.ts'), '// substitute runner\n'); }
+			else if (mode === 'baseline-test') writeFileSync(join(work, 'tests/baseline.test.ts'), '// replaced original baseline tests\n');
+			else if (mode === 'extra-test') writeFileSync(join(work, 'tests/private.test.ts'), '// unapproved substitute tests\n');
 			else if (mode === 'deleted') rmSync(join(work, path));
 			else if (mode === 'symlink') { rmSync(join(work, path)); symlinkSync('../src/product.ts', join(work, path)); }
 			else if (mode === 'mode') chmodSync(join(work, path), 0o755);
 			else writeFileSync(join(work, path), Buffer.concat([bytes, Buffer.from('// substituted\n')]));
 			const changed = commit(mode);
 			git(['--git-dir', repository, 'fetch', work, changed]);
-			expect(() => verifySdkCommittedTests(repository, base, tester, changed)).toThrow(); denied.push(changed);
+			expect.soft(() => verifySdkCommittedTests(repository, base, tester, changed), mode).toThrow(); denied.push(changed);
 		}
-		expect(denied).toHaveLength(5);
+		expect(denied).toHaveLength(11);
 		const independentlyDenied: string[] = [documentationOnly];
 		for (const mode of ['empty', 'fixture-only', 'source', 'deleted-test', 'redirected-test', 'non-test-path']) {
 			git(['checkout', '--detach', mode === 'source' || mode === 'non-test-path' ? tester : base]);
