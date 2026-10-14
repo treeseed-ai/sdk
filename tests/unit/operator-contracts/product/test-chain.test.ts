@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import * as nativeOutputs from '../../../acceptance/product/release-output.ts';
 import { approvedOutputFixture } from './test-output-fixture.ts';
 import { expect, it } from 'vitest';
