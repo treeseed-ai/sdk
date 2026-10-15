@@ -12,8 +12,8 @@ it('native product inspection uses actual built public SDK exports and refuses h
  const intent={profileId:'default',projects:['sdk'],startsAt:'2030-01-01T00:00:00Z',durationSeconds:600};Object.defineProperty(intent,'executionPlanId',{value:undefined,enumerable:false});
  try{await client.invoke(CONTROL_PLANE_OPERATIONS.workdays.preflight,{path:{teamId:'team'},query:{},body:intent});}catch{/* Original public rejection is the control observation. */}
  let result:any,failure:any;try{result=await Reflect.apply(inspect,undefined,[fileURLToPath(new URL('../../../../',import.meta.url))]);}catch(error){failure=error;}
- if(calls){expect(failure?.message).toContain('ACCEPTANCE_SDK_INTENT_PRODUCT');expect(failure?.cause?.failures.some((value:{expectation:string})=>value.expectation==='retired/direct/executionPlanId/0/hidden')).toBe(true);expect(failure?.cause?.cleanupConfirmed).toBe(true);}
- else if(failure){expect(failure.cause.failures.length).toBeGreaterThan(0);expect(failure.cause.cleanupConfirmed).toBe(true);}
+ if(calls){expect(failure?.message).toContain('ACCEPTANCE_SDK_INTENT_PRODUCT');expect(failure?.cause?.failures.some((value:{expectation:string})=>value.expectation==='retired/direct/executionPlanId/0/hidden')).toBe(true);expect(failure?.cause?.cleanupConfirmed).toBe(true);expect(failure.cause.failures).toHaveLength(32);expect(failure.cause.failures.every((value:{expectation:string})=>/^retired\/(?:direct|nested)\/(?:executionPlanId|capacityPlanId|executionInputId|demandSetId)\/[0-3]\/hidden$/u.test(value.expectation))).toBe(true);}
+ else if(failure){throw failure;}
  else{expect(result.failures).toEqual([]);expect(result.cleanupConfirmed).toBe(true);expect(result.checks).toBeGreaterThan(100);}
  console.log(JSON.stringify({sdkProductInspectorNative:failure?.cause??result,actualHiddenRetiredFieldTransmitted:calls>0,managedProductPassed:false}));
 });

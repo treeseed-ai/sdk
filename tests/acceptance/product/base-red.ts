@@ -70,3 +70,4 @@ export function verifySdkBaseAssertionProgress(baseline:Assertions,red:Assertion
 
  return{introducedFailures:introduced,unrelatedBaseFailures:unrelated};
 }
+export {verifySdkIntentRuntime} from './intent-runtime.ts';
