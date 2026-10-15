@@ -26,6 +26,12 @@ it('native Git resolves actual SDK source citation symbols and bytes from the ex
    expect(()=>resolve(repository,base,citation.replace(base,'a'.repeat(40)),symbol)).toThrow('ACCEPTANCE_SDK_RESEARCH_CITATION');
    return{path,symbol,citation,found};
   });
+  for(const path of ['src/operator-contracts/control-plane-operations.ts','src/operator-contracts/canonical-command-tree.ts'])for(const symbol of ['workdays.plan','workdays.schedules.create']){
+   const citation='https://github.com/treeseed-ai/sdk/blob/'+base+'/'+path,found=resolve(repository,base,citation,symbol);
+   expect(found.symbol).toBe(symbol);expect(found.line).toBeGreaterThan(0);expect(resolve(repository,base,citation+'#L'+found.line,symbol)).toEqual(found);
+   expect(()=>resolve(repository,base,citation+'#L1',symbol)).toThrow('ACCEPTANCE_SDK_RESEARCH_CITATION');
+   const other=symbol==='workdays.plan'?'workdays.schedules.create':'workdays.plan';expect(()=>resolve(repository,base,citation+'#L'+found.line,other)).toThrow('ACCEPTANCE_SDK_RESEARCH_CITATION');
+  }
   const original=observations[0]!,declared=declaredSdkResearchIntentFields(original.found.source);
   for(const field of ['planningOnly','proposalIds','decisionIds','agentSelection','allocation'])expect(declared).toContain(field);
   const git=(args:string[],input?:string)=>execFileSync('git',['--no-replace-objects','-C',repository,...args],{env:{...env,GIT_INDEX_FILE:join(root,'source.index')},encoding:'utf8',input,timeout:30_000}).trim();
