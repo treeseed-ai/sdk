@@ -22,6 +22,11 @@ it('native Git resolves actual SDK source citation symbols and bytes from the ex
    const citation='https://github.com/treeseed-ai/sdk/blob/'+base+'/'+path,source=upstream(['cat-file','blob',base+':'+path]),expected=execFileSync('git',['-C',repository,'cat-file','blob',base+':'+path],{env,timeout:30_000});
    const found=resolve(repository,base,citation,symbol);expect(found.source.trim()).toBe(source);expect(found.sourceSha256).toBe(createHash('sha256').update(expected).digest('hex'));expect(found.blob).toBe(upstream(['rev-parse',base+':'+path]));expect(found.symbol).toBe(symbol);expect(found.line).toBeGreaterThan(0);
    expect(resolve(repository,base,citation+'#L'+found.line,symbol)).toEqual(found);
+   const reference={store:'git',model:'repository',id:'sdk',repository:'treeseed-ai/sdk',commit:base,path,startLine:found.line,endLine:found.line};
+   expect(resolve(repository,base,reference,symbol)).toEqual(found);
+   expect(()=>resolve(repository,base,{...reference,startLine:1,endLine:1},symbol)).toThrow('ACCEPTANCE_SDK_RESEARCH_CITATION');
+   expect(()=>resolve(repository,base,{...reference,anchor:'L1'},symbol)).toThrow('ACCEPTANCE_SDK_RESEARCH_CITATION');
+
    expect(()=>resolve(repository,base,citation+'#L1',symbol)).toThrow('ACCEPTANCE_SDK_RESEARCH_CITATION');expect(()=>resolve(repository,base,citation,symbol+'.missing')).toThrow('ACCEPTANCE_SDK_RESEARCH_CITATION');
    expect(()=>resolve(repository,base,citation.replace(base,'a'.repeat(40)),symbol)).toThrow('ACCEPTANCE_SDK_RESEARCH_CITATION');
    return{path,symbol,citation,found};
