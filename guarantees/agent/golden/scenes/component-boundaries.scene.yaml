@@ -752,3 +752,7 @@ workflow:
   - id: base-progress-unit
     action: { verifier: sdk.golden.base-progress-unit }
     expect: { status: passed }
+
+  - id: base-replay-custody-unit
+    action: { verifier: sdk.golden.base-replay-custody-unit }
+    expect: { status: passed }

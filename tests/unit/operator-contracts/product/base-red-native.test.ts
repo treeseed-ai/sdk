@@ -35,7 +35,7 @@ function nativeCase(mode:'new-red'|'retained-base-failure'|'no-new-red'|'omitted
    const red=native(tester),green=native(engineer);
    const actor=testOutputFixture('native-tester',tester,'failed',red.stdout,red.stderr,Math.ceil((Date.parse(red.completedAt)-Date.parse(red.startedAt))/1000));
    const implementer=testOutputFixture('native-engineer',engineer,'passed',green.stdout,green.stderr,Math.ceil((Date.parse(green.completedAt)-Date.parse(green.startedAt))/1000));
-   const replay={redAssertions:nativeTestReport(red.stdout,false),greenAssertions:nativeTestReport(green.stdout,true)};
+   const replay={redAssertions:proof.redAssertions,greenAssertions:proof.greenAssertions};
    const verify=(...args:unknown[])=>Reflect.apply(verifySdkApprovedTestOutputs,undefined,args);
    const input=[actor.participant,implementer.participant,[actor.event,implementer.event],tester,engineer,proof.approved];
    verify(...input,replay);const retained=structuredClone({input,replay});

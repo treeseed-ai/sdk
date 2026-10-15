@@ -1292,3 +1292,9 @@ verifiers:
     ownerPackage: '@treeseed/sdk'
     testFile: tests/unit/operator-contracts/product/base-red.test.ts
     testName: requires newly failing approved assertions and unchanged full GREEN identities while retaining original BASE failures without input repair
+
+  sdk.golden.base-replay-custody-unit:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/unit/operator-contracts/product/base-red.test.ts
+    testName: requires independently replayed native assertion identities and statuses to match original protected Tester and Engineer observations without repair

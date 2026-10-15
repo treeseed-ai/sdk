@@ -164,8 +164,8 @@ test('SDK golden retains exact source and passing measured candidate release gat
 	const committedTests = verifySdkCommittedTests(testRepository, frozenBase, testSource.commit, engineerSource.commit,
 		{ writer: writerSource.commit, release: source.commit, writerBase: writerAttempt.workspace.mode === 'git' ? writerAttempt.workspace.baseCommit : '' });
 	assert.ok(committedTests.length > 0);
-	verifySdkBaseRed(testRepository, frozenBase, testSource.commit, engineerSource.commit);
-	verifySdkApprovedTestOutputs(tester, engineer, original.executionEvents, testSource.commit, engineerSource.commit, committedTests);
+	const baseReplay = verifySdkBaseRed(testRepository, frozenBase, testSource.commit, engineerSource.commit);
+	verifySdkApprovedTestOutputs(tester, engineer, original.executionEvents, testSource.commit, engineerSource.commit, committedTests, baseReplay);
 	assert.deepEqual(read(['host', 'sandbox', 'status']).workspace.journals, host.workspace.journals,
 		'ACCEPTANCE_SDK_NATIVE_TEST_CHAIN: Original owning publication journals changed during Git verification');
 	for (const result of [actorResult, reviewResult]) {

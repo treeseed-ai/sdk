@@ -47,7 +47,7 @@ export function verifySdkBaseRed(repository:string,base:string,tester:string,eng
   }
   const [baseline,red,green]=reports;assert.ok(baseline&&red&&green,label);
   const progress=verifySdkBaseAssertionProgress(baseline,red,green,approved);
-  return{base,tester,engineer,approved,...progress,observations};
+  return{base,tester,engineer,approved,...progress,redAssertions:red,greenAssertions:green,observations};
  }catch(failure){throw new Error(label+': independent frozen-source replay failed',{cause:{failure,observations}});}
  finally{rmSync(root,{recursive:true,force:true});assert.equal(existsSync(root),false,label+': disposable replay residue');}
 }

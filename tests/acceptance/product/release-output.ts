@@ -98,7 +98,7 @@ export function nativeTestReport(stdout: string, passed: boolean): Map<string, {
 }
 
 /** Exact committed blobs plus original full RED/GREEN observations prove consumption; semantic BASE intent remains separate. */
-export function verifySdkApprovedTestOutputs(tester: Row, engineer: Row, events: unknown, testerCommit: string, engineerCommit: string, committed: readonly { path: string }[]): void {
+export function verifySdkApprovedTestOutputs(tester: Row, engineer: Row, events: unknown, testerCommit: string, engineerCommit: string, committed: readonly { path: string }[], replayed?: { redAssertions: ReadonlyMap<string,{path:string;status:string}>; greenAssertions: ReadonlyMap<string,{path:string;status:string}> }): void {
 	const label = 'ACCEPTANCE_SDK_APPROVED_TESTS';
 	assert.ok(/^[a-f0-9]{40}$/u.test(testerCommit) && /^[a-f0-9]{40}$/u.test(engineerCommit) && testerCommit !== engineerCommit, label);
 	assert.ok(tester.assignmentAttempt.id !== engineer.assignmentAttempt.id, label);
@@ -113,6 +113,14 @@ export function verifySdkApprovedTestOutputs(tester: Row, engineer: Row, events:
 	assert.deepEqual([...green.keys()].sort(), [...red.keys()].sort(), `${label}: Engineer must execute the same complete assertion inventory`);
 	for (const path of paths) assert.ok([...red.values()].some(test => test.path === path), `${label}: Approved committed test omitted from native discovery`);
 	for (const test of red.values()) if (test.status === 'failed') assert.ok(paths.has(test.path), `${label}: Unrelated BASE failures remain unaccepted`);
+ if(arguments.length>=7){
+  assert.ok(replayed&&replayed.redAssertions instanceof Map&&replayed.greenAssertions instanceof Map,label+': independent native replay required');
+  for(const[original,replayedAssertions]of [[red,replayed.redAssertions],[green,replayed.greenAssertions]]as const){
+   assert.equal(replayedAssertions.size,original.size,label+': independent replay assertion inventory differs');
+   for(const[id,observed]of original)assert.deepEqual(replayedAssertions.get(id),observed,label+': original protected assertion differs from independent replay');
+  }
+ }
+
 }
 export function sdkGoldenExecutionEvents(read: (args: string[]) => Row, workday: string, team: string): Row[] {
 	const events: Row[] = [], cursors = new Set<string>(), ids = new Set<string>();

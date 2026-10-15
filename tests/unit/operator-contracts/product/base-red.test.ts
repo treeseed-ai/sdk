@@ -1,3 +1,5 @@
+import {approvedOutputFixture} from './test-output-fixture.ts';
+import {nativeTestReport,verifySdkApprovedTestOutputs} from '../../../acceptance/product/release-output.ts';
 import {expect,it} from 'vitest';
 import {verifySdkBaseAssertionProgress} from '../../../acceptance/product/base-red.ts';
 type Assertion={path:string;status:string};
@@ -15,4 +17,18 @@ it('requires newly failing approved assertions and unchanged full GREEN identiti
   if(mode==='undiscovered-approved')changed.approved.push({path:'tests/omitted.test.ts'});
   const before=structuredClone(changed);expect(()=>verifySdkBaseAssertionProgress(changed.baseline,changed.red,changed.green,changed.approved),mode).toThrow('ACCEPTANCE_SDK_BASE_RED');expect(changed).toEqual(before);
  }
+});
+
+it('requires independently replayed native assertion identities and statuses to match original protected Tester and Engineer observations without repair',()=>{
+ const f=approvedOutputFixture(),replay={redAssertions:nativeTestReport(f.events[0]!.protectedPayload.verificationObservations[0]!.stdout,false),greenAssertions:nativeTestReport(f.events[1]!.protectedPayload.verificationObservations[0]!.stdout,true)};
+ const verify=(input:unknown)=>Reflect.apply(verifySdkApprovedTestOutputs,undefined,[f.tester,f.engineer,f.events,f.testerCommit,f.engineerCommit,f.tests,input]);
+ const original=structuredClone({f,replay});expect(()=>verify(replay)).not.toThrow();
+ for(const phase of ['redAssertions','greenAssertions']as const)for(const mode of ['omitted','extra','path','status']){
+  const changed=structuredClone(replay),first=[...changed[phase].keys()][0]!;
+  if(mode==='omitted')changed[phase].delete(first);if(mode==='extra')changed[phase].set('extra',{path:'tests/foreign.test.ts',status:'passed'});
+  if(mode==='path')changed[phase].get(first)!.path='tests/foreign.test.ts';if(mode==='status')changed[phase].get(first)!.status=changed[phase].get(first)!.status==='passed'?'failed':'passed';
+  const held=structuredClone(changed);expect(()=>verify(changed),phase+'/'+mode).toThrow('ACCEPTANCE_SDK_APPROVED_TESTS');expect(changed).toEqual(held);
+ }
+ for(const malformed of [undefined,null,false,{},[],{redAssertions:replay.redAssertions,greenAssertions:[]}])expect(()=>verify(malformed)).toThrow('ACCEPTANCE_SDK_APPROVED_TESTS');
+ expect({f,replay}).toEqual(original);expect(()=>verify(replay)).not.toThrow();
 });
