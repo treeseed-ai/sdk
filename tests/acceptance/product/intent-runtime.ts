@@ -58,6 +58,17 @@ export async function verifySdkIntentRuntime(root:string){
      }
     }finally{assert.deepEqual(Object.getOwnPropertyDescriptors(intent),originalIntent,label+': caller intent changed');assert.deepEqual(Object.getOwnPropertyDescriptors(body),originalBody,label+': caller body changed');}
    };
+   const tree=contracts.TREESEED_COMMAND_TREE_V1,originalTree=structuredClone(tree);
+   const leaves=new Map<string,Extract<(typeof tree.commands)[number],{nodeType:'leaf'}>>();
+   const visit=(nodes:typeof tree.commands,parent:string[]=[])=>{for(const node of nodes){const path=[...parent,node.segment];if(node.nodeType==='branch')visit(node.children,path);else leaves.set(path.join(' '),node);}};
+   visit(tree.commands);
+   for(const [path,operationId,field]of [['workdays plan','workdays.plan','decisionIds'],['workdays schedules start','workdays.schedules.create','intent.decisionIds']])await capture('descriptor/'+operationId,async()=>{
+    const leaf=leaves.get(path!);assert.ok(leaf&&leaf.execution.kind==='operation',label+': original generated operation required');assert.equal(leaf.execution.operationId,operationId,label);
+    const options=leaf.options?.filter(option=>option.name==='--decision');assert.equal(options?.length,1,label);assert.equal(options![0]!.type,'string[]',label);
+    assert.deepEqual(leaf.execution.input?.filter(input=>input.name==='decision'||input.field===field),[{target:'body',field,source:'option',name:'decision',required:false,transform:'csv'}],label);
+    for(const prohibited of ['executionPlanId','capacityPlanId','executionInputId','demandSetId'])assert.ok(!leaf.execution.input?.some(input=>input.field===prohibited||input.field==='intent.'+prohibited||input.name===prohibited),label);
+    assert.deepEqual(tree,originalTree,label+': original generated contracts changed');
+   });
    for(const nested of [false,true]){
     const shape=nested?'nested':'direct';
     for(const planningOnly of [false,true]){

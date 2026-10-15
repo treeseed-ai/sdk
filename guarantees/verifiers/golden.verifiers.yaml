@@ -1298,3 +1298,27 @@ verifiers:
     ownerPackage: '@treeseed/sdk'
     testFile: tests/unit/operator-contracts/product/base-red.test.ts
     testName: requires independently replayed native assertion identities and statuses to match original protected Tester and Engineer observations without repair
+
+  sdk.golden.native-product-inspection-failure:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/product/base-red-native.test.ts
+    testName: "native frozen BASE replay retains independent product inspection failure before another passing suite can hide it"
+
+  sdk.golden.intent-runtime-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/product/intent-runtime-native.test.ts
+    testName: "native product inspection uses actual built public SDK exports and refuses hidden retired intent fields without fixing the candidate"
+
+  sdk.golden.intent-runtime-custody-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/product/intent-runtime-native.test.ts
+    testName: "rejects missing or relative built SDK custody before any product transport"
+
+  sdk.golden.intent-runtime-wiring-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/product/base-red.test.ts
+    testName: "requires the selected SDK product gate to inspect original built intent behavior within existing native replay custody"
