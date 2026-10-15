@@ -1,3 +1,4 @@
+import{declaredSdkResearchIntentFields}from'../../../acceptance/product/research-source.ts';
 import {expect,it} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,renameSync,rmSync} from 'node:fs';
@@ -25,6 +26,17 @@ it('native Git resolves actual SDK source citation symbols and bytes from the ex
    expect(()=>resolve(repository,base,citation.replace(base,'a'.repeat(40)),symbol)).toThrow('ACCEPTANCE_SDK_RESEARCH_CITATION');
    return{path,symbol,citation,found};
   });
+  const original=observations[0]!,declared=declaredSdkResearchIntentFields(original.found.source);
+  for(const field of ['planningOnly','proposalIds','decisionIds','agentSelection','allocation'])expect(declared).toContain(field);
+  const git=(args:string[],input?:string)=>execFileSync('git',['--no-replace-objects','-C',repository,...args],{env:{...env,GIT_INDEX_FILE:join(root,'source.index')},encoding:'utf8',input,timeout:30_000}).trim();
+  for(const field of ['executionPlanId','capacityPlanId','executionInputId','demandSetId']){
+   expect(declared).not.toContain(field);git(['read-tree',base]);
+   const bytes=original.found.source.replace('export interface WorkdayIntent {','export interface WorkdayIntent {\n'+field+': string;'),blob=git(['hash-object','-w','--stdin'],bytes);
+   git(['update-index','--cacheinfo','100644,'+blob+','+original.path]);const changedTree=git(['write-tree']),changed=git(['commit-tree',changedTree,'-p',base], 'Controlled source-citation negative fixture\n');
+   const observed=resolve(repository,changed,original.citation.replace(base,changed),original.symbol);
+   expect(observed.blob).toBe(blob);expect(()=>declaredSdkResearchIntentFields(observed.source)).toThrow('ACCEPTANCE_SDK_RESEARCH_INTENT');
+   expect(resolve(repository,base,original.citation,original.symbol)).toEqual(original.found);
+  }
   mkdirSync(join(repository,'src/operator-contracts'),{recursive:true});writeFileSync(join(repository,sources[0][0]),'A substituted working file must not replace the frozen Git object.');
   for(const value of observations)expect(resolve(repository,base,value.citation,value.symbol)).toEqual(value.found);
   const held=structuredClone(observations);renameSync(repository,repository+'.interrupted');try{expect(()=>resolve(repository,base,observations[0]!.citation,observations[0]!.symbol)).toThrow('ACCEPTANCE_SDK_RESEARCH_CITATION');}finally{renameSync(repository+'.interrupted',repository);}
