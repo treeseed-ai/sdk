@@ -8,7 +8,7 @@ import {createHash} from 'node:crypto';
 import * as product from '../../../acceptance/golden-product.ts';
 
 it('native Git resolves actual SDK source citation symbols and bytes from the exact held commit while denying substituted missing and moved evidence before unchanged retry',()=>{
- const resolve=Reflect.get(product,'resolveSdkResearchCitation') as ((root:string,base:string,citation:unknown,symbol:string)=>{source:string;blob:string;sourceSha256:string;symbol:string;line:number})|undefined;
+ const resolve=Reflect.get(product,'resolveSdkResearchCitation') as ((root:string,base:string,citation:unknown,symbol?:string)=>{source:string;blob:string;sourceSha256:string;symbol:string;line:number})|undefined;
  expect(resolve,'native citation resolution is required').toBeTypeOf('function');if(!resolve)return;
  const root=mkdtempSync(join(tmpdir(),'sdk-research-citation-')),repository=join(root,'source.git'),env={...process.env};for(const name of Object.keys(env))if(name.startsWith('GIT_'))delete env[name];
  const upstream=(args:string[],input?:string)=>execFileSync('git',['--no-replace-objects',...args],{cwd:process.cwd(),env:process.env,input,encoding:'utf8',timeout:30_000,maxBuffer:32*1024*1024}).trim();
@@ -22,6 +22,10 @@ it('native Git resolves actual SDK source citation symbols and bytes from the ex
    const citation='https://github.com/treeseed-ai/sdk/blob/'+base+'/'+path,source=upstream(['cat-file','blob',base+':'+path]),expected=execFileSync('git',['-C',repository,'cat-file','blob',base+':'+path],{env,timeout:30_000});
    const found=resolve(repository,base,citation,symbol);expect(found.source.trim()).toBe(source);expect(found.sourceSha256).toBe(createHash('sha256').update(expected).digest('hex'));expect(found.blob).toBe(upstream(['rev-parse',base+':'+path]));expect(found.symbol).toBe(symbol);expect(found.line).toBeGreaterThan(0);
    expect(resolve(repository,base,citation+'#L'+found.line,symbol)).toEqual(found);
+   expect(resolve(repository,base,citation+'#L'+found.line)).toMatchObject({source:found.source,blob:found.blob,sourceSha256:found.sourceSha256,line:found.line});
+   expect(()=>resolve(repository,base,citation)).toThrow('ACCEPTANCE_SDK_RESEARCH_CITATION');
+   expect(()=>resolve(repository,base,citation+'#L9007199254740991')).toThrow('ACCEPTANCE_SDK_RESEARCH_CITATION');
+
    const reference={store:'git',model:'repository',id:'sdk',repository:'treeseed-ai/sdk',commit:base,path,startLine:found.line,endLine:found.line};
    expect(resolve(repository,base,reference,symbol)).toEqual(found);
    expect(()=>resolve(repository,base,{...reference,startLine:1,endLine:1},symbol)).toThrow('ACCEPTANCE_SDK_RESEARCH_CITATION');
