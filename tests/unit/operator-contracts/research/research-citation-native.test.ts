@@ -1,3 +1,4 @@
+import{verifySdkResearchCitations}from'../../../acceptance/product/research-artifact.ts';
 import{declaredSdkResearchIntentFields}from'../../../acceptance/product/research-source.ts';
 import {expect,it} from 'vitest';
 import {execFileSync} from 'node:child_process';
@@ -41,6 +42,16 @@ it('native Git resolves actual SDK source citation symbols and bytes from the ex
    expect(()=>resolve(repository,base,citation+'#L1',symbol)).toThrow('ACCEPTANCE_SDK_RESEARCH_CITATION');
    const other=symbol==='workdays.plan'?'workdays.schedules.create':'workdays.plan';expect(()=>resolve(repository,base,citation+'#L'+found.line,other)).toThrow('ACCEPTANCE_SDK_RESEARCH_CITATION');
   }
+  const initialCitations=observations.map(value=>value.citation+'#L'+value.found.line),completeCitations=[...initialCitations];
+  for(const[path,symbol]of [['src/operator-contracts/control-plane-operations.ts','workdays.plan'],['src/operator-contracts/control-plane-operations.ts','workdays.schedules.create'],['src/operator-contracts/canonical-command-tree.ts','workdays.plan'],['src/operator-contracts/canonical-command-tree.ts','workdays.schedules.create'],['src/operator-contracts/workday-lifecycle.ts','WorkdayPreflightReceipt'],['src/operator-contracts/catalog/workdays/selection-commands.ts','WORKDAY_PLAN_OPTIONS']]){
+   const citation='https://github.com/treeseed-ai/sdk/blob/'+base+'/'+path,found=resolve(repository,base,citation,symbol);completeCitations.push(citation+'#L'+found.line);
+  }
+  const pending='Operation bindings: pending.\n\nGenerated descriptors: pending.\n\nPer-field provenance: pending.',preliminary={frontmatter:{},body:initialCitations.join('\n\n')+'\n\n'+pending},corrected={frontmatter:{},body:completeCitations.join('\n\n')+'\n\nexecutionPlanId, capacityPlanId, executionInputId and demandSetId are absent SDK caller fields. API receipt declarations are a separate boundary.'};
+  const first=verifySdkResearchCitations(preliminary,repository,base,'preliminary'),last=verifySdkResearchCitations(corrected,repository,base,'corrected');expect(first.length).toBe(2);expect(last.length).toBe(8);
+  for(const citation of completeCitations)expect(()=>verifySdkResearchCitations({...corrected,body:corrected.body.replace(citation,'')},repository,base,'corrected')).toThrow('ACCEPTANCE_SDK_RESEARCH_SOURCES');
+  expect(()=>verifySdkResearchCitations({...preliminary,body:preliminary.body+'\n'+completeCitations[2]},repository,base,'preliminary')).toThrow('ACCEPTANCE_SDK_RESEARCH_SOURCES');
+  expect(()=>verifySdkResearchCitations({...corrected,body:corrected.body.replace(base,'a'.repeat(40))},repository,base,'corrected')).toThrow();
+  expect(verifySdkResearchCitations(corrected,repository,base,'corrected')).toEqual(last);
   const original=observations[0]!,declared=declaredSdkResearchIntentFields(original.found.source);
   for(const field of ['planningOnly','proposalIds','decisionIds','agentSelection','allocation'])expect(declared).toContain(field);
   const git=(args:string[],input?:string)=>execFileSync('git',['--no-replace-objects','-C',repository,...args],{env:{...env,GIT_INDEX_FILE:join(root,'source.index')},encoding:'utf8',input,timeout:30_000}).trim();
