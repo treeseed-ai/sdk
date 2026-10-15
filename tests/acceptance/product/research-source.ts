@@ -20,7 +20,8 @@ export function parseSdkResearchCitation(value:unknown,base:string,repository='t
   let url:URL;try{url=new URL(value);}catch(cause){throw new Error(code+': Source URL required',{cause});}
   assert.ok(value===url.href&&url.protocol==='https:'&&url.hostname==='github.com'&&!url.port&&!url.username&&!url.password&&!url.search,code+': Exact public source URL required');
   const parts=url.pathname.split('/');assert.ok(parts[0]===''&&parts[1]+'/'+parts[2]===repository&&parts[3]==='blob'&&parts.length>5,code+': Foreign source repository or location');
-  reference={repository,commit:parts[4]!,path:decodeURIComponent(parts.slice(5).join('/')),...(url.hash?{anchor:url.hash.slice(1)}:{})};if(reference.anchor)assert.ok(anchor(reference.anchor),code+': Source URL anchor must resolve to exact lines');
+  let path:string;try{path=decodeURIComponent(parts.slice(5).join('/'));}catch(cause){throw new Error(code+': Invalid encoded source path',{cause});}
+  reference={repository,commit:parts[4]!,path,...(url.hash?{anchor:url.hash.slice(1)}:{})};if(reference.anchor)assert.ok(anchor(reference.anchor),code+': Source URL anchor must resolve to exact lines');
  }else{
   const checked=exactEntityReferenceSchema.safeParse(value);assert.ok(checked.success,code+': Canonical exact Git reference required');assert.deepEqual(checked.data,value,code+': Source reference cannot be normalized');
   assert.equal(checked.data.store,'git',code);assert.ok(checked.data.repository&&checked.data.commit&&checked.data.path,code+': Complete exact source location required');
