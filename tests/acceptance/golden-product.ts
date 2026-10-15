@@ -398,3 +398,5 @@ export function sdkGoldenWorkdayId(read: (args: string[]) => Row, freeze: Row, e
 	assert.deepEqual(retainedBytes(freezePath), bytes); assert.deepEqual(retainedBytes(receiptPath), receiptBytes);
 	return id;
 }
+
+export{parseSdkResearchCitation,resolveSdkResearchCitation}from'./product/research-source.ts';
