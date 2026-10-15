@@ -45,6 +45,7 @@ export function resolveSdkResearchCitation(root:string,base:string,citation:unkn
   const matches:ts.Node[]=[];const inspect=(node:ts.Node)=>{let name:string|undefined;
    if(ts.isInterfaceDeclaration(node)||ts.isTypeAliasDeclaration(node)||ts.isFunctionDeclaration(node)||ts.isClassDeclaration(node)||ts.isVariableDeclaration(node))name=node.name&&ts.isIdentifier(node.name)?node.name.text:undefined;
    if(ts.isMethodDeclaration(node)&&ts.isClassDeclaration(node.parent)&&node.parent.name&&ts.isIdentifier(node.name))name=node.parent.name.text+'.'+node.name.text;
+   if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&['resource','operation'].includes(node.expression.text)&&node.arguments[0]&&ts.isStringLiteral(node.arguments[0])&&node.arguments[0].text===symbol)name=symbol;
    if(name===symbol)matches.push(node);ts.forEachChild(node,inspect);
   };inspect(parsed);assert.ok(matches.length>0,code+': Cited source symbol missing');
   const range=reference.anchor?anchor(reference.anchor):undefined;if(reference.anchor&&!range)assert.equal(reference.anchor,symbol,code+': Foreign source symbol');
