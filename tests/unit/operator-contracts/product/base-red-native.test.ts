@@ -1,3 +1,5 @@
+import {testOutputFixture} from './test-output-fixture.ts';
+import {verifySdkApprovedTestOutputs,sdkNativeTestCommand,nativeTestReport} from '../../../acceptance/product/release-output.ts';
 import {expect,it} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
@@ -27,7 +29,21 @@ function nativeCase(mode:'new-red'|'retained-base-failure'|'no-new-red'|'omitted
   let proof;try{proof=Reflect.apply(inspect,undefined,[repository,base,tester,engineer]);}catch(error){const original=error as {cause?:{failure?:Error;observations?:Array<{command:string;status:number;stderr:string;stdout:string}>}};console.error(JSON.stringify({nativeBaseFailure:original.cause?.failure?.message,observations:original.cause?.observations?.map(o=>({command:o.command,status:o.status,stderr:o.stderr.slice(-1800),stdout:o.stdout.slice(-1200)}))}));throw error;}
   expect(proof).toMatchObject({base,tester,engineer,introducedFailures:['tests/intent.test.ts\0new approved intent'],unrelatedBaseFailures:mode==='retained-base-failure'?['tests/baseline.test.ts\0original invariant']:[]});
   expect(proof.observations.filter((o:{command:string})=>o.command==='npm run test:contracts -- --reporter=default --reporter=json').map((o:{status:number})=>o.status)).toEqual([mode==='retained-base-failure'?1:0,1,0]);
-  expect(proof.approved).toHaveLength(1);expect(git(['rev-parse','HEAD'])).toBe(engineer);
+  expect(proof.approved).toHaveLength(1);
+  if(mode==='new-red'){
+   const native=(commit:string)=>proof.observations.find((o:{commit:string;command:string})=>o.commit===commit&&o.command===sdkNativeTestCommand)!;
+   const red=native(tester),green=native(engineer);
+   const actor=testOutputFixture('native-tester',tester,'failed',red.stdout,red.stderr,Math.ceil((Date.parse(red.completedAt)-Date.parse(red.startedAt))/1000));
+   const implementer=testOutputFixture('native-engineer',engineer,'passed',green.stdout,green.stderr,Math.ceil((Date.parse(green.completedAt)-Date.parse(green.startedAt))/1000));
+   const replay={redAssertions:nativeTestReport(red.stdout,false),greenAssertions:nativeTestReport(green.stdout,true)};
+   const verify=(...args:unknown[])=>Reflect.apply(verifySdkApprovedTestOutputs,undefined,args);
+   const input=[actor.participant,implementer.participant,[actor.event,implementer.event],tester,engineer,proof.approved];
+   verify(...input,replay);const retained=structuredClone({input,replay});
+   const substituted=structuredClone(replay);substituted.redAssertions.get(proof.introducedFailures[0])!.status='passed';
+   expect(()=>verify(...input,substituted)).toThrow('ACCEPTANCE_SDK_APPROVED_TESTS');
+   expect({input,replay}).toEqual(retained);verify(...input,replay);
+  }
+expect(git(['rev-parse','HEAD'])).toBe(engineer);
   console.log(JSON.stringify({nativeBaseReplay:true,base,tester,engineer,introducedFailures:proof.introducedFailures,observations:proof.observations.map(({stdout,stderr,...o}:{stdout:string;stderr:string})=>o)}));
  }finally{rmSync(root,{recursive:true,force:true});}
 }
