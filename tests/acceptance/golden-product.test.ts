@@ -7,7 +7,7 @@ import { sdkGoldenReadArguments, sdkGoldenSource, sdkGoldenWorkdayId, verifySdkG
 import { assignmentAttemptSchema, assignmentResultSchema } from '@treeseed/sdk/agent-capacity';
 import { isSdkArchiveCommand, sdkGoldenExecutionEvents, sdkReleaseCommands, sdkNativeTestCommand, verifySdkApprovedTestOutputs } from './product/release-output.ts';
 
-test('SDK golden retains exact source and passing measured candidate release gates', () => {
+test('SDK golden retains exact source and passing measured candidate release gates', async () => {
 	const read = (args: string[]) => {
 		const envelope = JSON.parse(execFileSync('trsd', sdkGoldenReadArguments(args, process.env.TREESEED_ACCEPTANCE_TEAM ?? 'treeseed'),
 			{ encoding: 'utf8', timeout: 30000, maxBuffer: 32 * 1024 * 1024 }));
@@ -164,7 +164,7 @@ test('SDK golden retains exact source and passing measured candidate release gat
 	const committedTests = verifySdkCommittedTests(testRepository, frozenBase, testSource.commit, engineerSource.commit,
 		{ writer: writerSource.commit, release: source.commit, writerBase: writerAttempt.workspace.mode === 'git' ? writerAttempt.workspace.baseCommit : '' });
 	assert.ok(committedTests.length > 0);
-	const baseReplay = verifySdkBaseRed(testRepository, frozenBase, testSource.commit, engineerSource.commit);
+	const baseReplay = await verifySdkBaseRed(testRepository, frozenBase, testSource.commit, engineerSource.commit);
 	verifySdkApprovedTestOutputs(tester, engineer, original.executionEvents, testSource.commit, engineerSource.commit, committedTests, baseReplay);
 	assert.deepEqual(read(['host', 'sandbox', 'status']).workspace.journals, host.workspace.journals,
 		'ACCEPTANCE_SDK_NATIVE_TEST_CHAIN: Original owning publication journals changed during Git verification');

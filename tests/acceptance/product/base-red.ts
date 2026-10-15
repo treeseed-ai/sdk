@@ -11,7 +11,7 @@ const label='ACCEPTANCE_SDK_BASE_RED';
 type Observation={commit:string;command:string;processCommand:string[];status:number;startedAt:string;completedAt:string;stdout:string;stderr:string;outputDigest:string};
 /** Replay original committed source and tests independently. Only disposable
  * directories are written; every command comes from the held upstream package. */
-export function verifySdkBaseRed(repository:string,base:string,tester:string,engineer:string){
+export async function verifySdkBaseRed(repository:string,base:string,tester:string,engineer:string, inspectEngineer?: (cwd:string)=>void|Promise<void>){
  const approved=verifySdkCommittedTests(repository,base,tester,engineer),git=nativePublishedGit(repository);
  const root=mkdtempSync(join(tmpdir(),'sdk-native-base-red-')),observations:Observation[]=[];
  const env:NodeJS.ProcessEnv={PATH:dirname(process.execPath)+':/usr/bin:/bin',HOME:root,LANG:'C',CI:'true',
@@ -40,6 +40,7 @@ export function verifySdkBaseRed(repository:string,base:string,tester:string,eng
    else {assert.deepEqual(packageBytes,baselinePackage,label+': runner package changed');assert.deepEqual(lock,baselineLock,label+': dependency lock changed');assert.deepEqual(config,baselineConfig,label+': assertion discovery changed');}
    const scripts=JSON.parse(packageBytes.toString('utf8')).scripts;assert.ok(typeof scripts?.build==='string'&&typeof scripts?.['test:contracts']==='string',label);
    run(commit,cwd,['ci','--ignore-scripts','--no-audit','--no-fund']);run(commit,cwd,['run','build']);
+   if(phase==='engineer')await inspectEngineer?.(cwd);
    const original=run(commit,cwd,['run','test:contracts','--','--reporter=default','--reporter=json'],true);
    assert.equal(original.command,sdkNativeTestCommand,label);
    reports.push(nativeTestReport(original.stdout,original.status===0));
