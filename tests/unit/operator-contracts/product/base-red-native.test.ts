@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import * as chain from '../../../acceptance/product/test-chain.ts';
 
-function nativeCase(mode:'new-red'|'retained-base-failure'|'no-new-red'|'omitted-base-assertion'){
+async function nativeCase(mode:'new-red'|'retained-base-failure'|'no-new-red'|'omitted-base-assertion'){
  const root=mkdtempSync(join(tmpdir(),'sdk-base-replay-fixture-')),work=join(root,'work'),repository=join(root,'repository.git');
  const git=(args:string[])=>execFileSync('/usr/bin/git',['-C',work,...args],{encoding:'utf8',timeout:5000,env:{PATH:'/usr/bin:/bin',LANG:'C',GIT_CONFIG_GLOBAL:'/dev/null',GIT_CONFIG_NOSYSTEM:'1'}}).trim();
  const commit=(message:string)=>{git(['add','.']);git(['-c','user.name=Native BASE fixture','-c','user.email=fixture@example.invalid','commit','-qm',message]);return git(['rev-parse','HEAD']);};
@@ -25,11 +25,11 @@ function nativeCase(mode:'new-red'|'retained-base-failure'|'no-new-red'|'omitted
   writeFileSync(join(work,'src/product.ts'),"export function value(){return 'implemented';}\n");const engineer=commit('Controlled descendant implementation');git(['clone','--bare','--no-local',work,repository]);
   const inspect:unknown=Reflect.get(chain,'verifySdkBaseRed');expect(inspect).toBeTypeOf('function');
   if(typeof inspect!=='function')throw new Error('Independent frozen BASE replay is missing');
-  if(mode==='no-new-red'||mode==='omitted-base-assertion'){let failure:unknown;try{Reflect.apply(inspect,undefined,[repository,base,tester,engineer]);}catch(error){failure=error;}expect(failure).toMatchObject({cause:{failure:{message:expect.stringContaining(mode==='no-new-red'?'a nonzero command or unchanged BASE failure is not intended test-first RED':'original BASE assertion omitted')}}});return;}
-  let proof;try{proof=Reflect.apply(inspect,undefined,[repository,base,tester,engineer]);}catch(error){const original=error as {cause?:{failure?:Error;observations?:Array<{command:string;status:number;stderr:string;stdout:string}>}};console.error(JSON.stringify({nativeBaseFailure:original.cause?.failure?.message,observations:original.cause?.observations?.map(o=>({command:o.command,status:o.status,stderr:o.stderr.slice(-1800),stdout:o.stdout.slice(-1200)}))}));throw error;}
+  if(mode==='no-new-red'||mode==='omitted-base-assertion'){let failure:unknown;try{await Reflect.apply(inspect,undefined,[repository,base,tester,engineer]);}catch(error){failure=error;}expect(failure).toMatchObject({cause:{failure:{message:expect.stringContaining(mode==='no-new-red'?'a nonzero command or unchanged BASE failure is not intended test-first RED':'original BASE assertion omitted')}}});return;}
+  const inspected:string[]=[];let proof;try{proof=await Reflect.apply(inspect,undefined,[repository,base,tester,engineer,(cwd:string)=>{inspected.push(cwd);expect(execFileSync('/usr/bin/git',['-C',work,'show',engineer+':src/product.ts'],{encoding:'utf8'})).toBe("export function value(){return 'implemented';}\n");}]);}catch(error){const original=error as {cause?:{failure?:Error;observations?:Array<{command:string;status:number;stderr:string;stdout:string}>}};console.error(JSON.stringify({nativeBaseFailure:original.cause?.failure?.message,observations:original.cause?.observations?.map(o=>({command:o.command,status:o.status,stderr:o.stderr.slice(-1800),stdout:o.stdout.slice(-1200)}))}));throw error;}
   expect(proof).toMatchObject({base,tester,engineer,introducedFailures:['tests/intent.test.ts\0new approved intent'],unrelatedBaseFailures:mode==='retained-base-failure'?['tests/baseline.test.ts\0original invariant']:[]});
   expect(proof.observations.filter((o:{command:string})=>o.command==='npm run test:contracts -- --reporter=default --reporter=json').map((o:{status:number})=>o.status)).toEqual([mode==='retained-base-failure'?1:0,1,0]);
-  expect(proof.approved).toHaveLength(1);
+  expect(proof.approved).toHaveLength(1);expect(inspected).toHaveLength(1);expect(inspected[0]).toMatch(/sdk-native-base-red-[^/]+\/engineer$/u);
   if(mode==='new-red'){
    const native=(commit:string)=>proof.observations.find((o:{commit:string;command:string})=>o.commit===commit&&o.command===sdkNativeTestCommand)!;
    const red=native(tester),green=native(engineer);
