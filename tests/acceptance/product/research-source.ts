@@ -49,7 +49,7 @@ export function resolveSdkResearchCitation(root:string,base:string,citation:unkn
    if(ts.isInterfaceDeclaration(node)||ts.isTypeAliasDeclaration(node)||ts.isFunctionDeclaration(node)||ts.isClassDeclaration(node)||ts.isVariableDeclaration(node))name=node.name&&ts.isIdentifier(node.name)?node.name.text:undefined;
    if(ts.isMethodDeclaration(node)&&ts.isClassDeclaration(node.parent)&&node.parent.name&&ts.isIdentifier(node.name))name=node.parent.name.text+'.'+node.name.text;
    if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&['resource','operation'].includes(node.expression.text)&&node.arguments[0]&&ts.isStringLiteral(node.arguments[0])&&node.arguments[0].text===symbol)name=symbol;
-   if(name===symbol)matches.push(node);ts.forEachChild(node,inspect);
+   if(symbol!==undefined&&name===symbol)matches.push(node);ts.forEachChild(node,inspect);
   };inspect(parsed);if(symbol!==undefined)assert.ok(matches.length>0,code+': Cited source symbol missing');
   const lines=source.split('\n').length;if(range)assert.ok(range.last<=lines,code+': Cited lines are absent');
   const located=matches.filter(node=>!range||parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line+1<=range.last&&parsed.getLineAndCharacterOfPosition(node.end).line+1>=range.first);if(symbol!==undefined)assert.ok(located.length>0,code+': Citation does not locate its claimed symbol');

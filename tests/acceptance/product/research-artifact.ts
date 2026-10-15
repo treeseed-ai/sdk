@@ -1,3 +1,4 @@
+import{parseSdkResearchCitation,resolveSdkResearchCitation,declaredSdkResearchIntentFields}from'./research-source.ts';
 import assert from'node:assert/strict';
 import{createHash}from'node:crypto';
 import{posix}from'node:path';
@@ -30,4 +31,46 @@ export function sdkResearchArtifact(reference:Row,returned:unknown){
  assert.ok(model&&frontmatter.projectId===reference.projectId,code+': Original project-owned Note or Knowledge required');
  assert.ok(validatePortableContentData(model,{...frontmatter,body}).ok,code+': Complete original canonical artifact required');
  return{model,frontmatter,body,content,sha256};
+}
+
+/** Required SDK research facts are read from the frozen owning Git objects; independent governed reviews still own the free-text assessment. */
+export function verifySdkResearchCitations(artifact:Pick<ReturnType<typeof sdkResearchArtifact>,'body'|'frontmatter'>,
+ sdkRoot:string,base:string,stage:'preliminary'|'corrected',otherSources:Readonly<Record<string,{root:string;base:string}>>={}){
+ const label='ACCEPTANCE_SDK_RESEARCH_SOURCES';assert.ok(artifact&&typeof artifact.body==='string'&&artifact.body.trim()&&artifact.frontmatter&&typeof artifact.frontmatter==='object',label);
+ assert.ok(stage==='preliminary'||stage==='corrected',label+': Exact original contribution stage required');
+ const values:unknown[]=[...artifact.body.matchAll(/https?:\/\/[^\s<>()\]"'`]+/gu)].map(match=>match[0].replace(/[.,;:!?]+$/u,''));
+ for(const name of ['relatedRefs','subjectRefs'])if(artifact.frontmatter[name]!==undefined){
+  assert.ok(Array.isArray(artifact.frontmatter[name]),label+': Canonical original source references required');
+  for(const value of artifact.frontmatter[name]){const ref=row(value);if(ref.store==='git')values.push(value);else if(ref.store==='url')values.push(ref.url);}
+ }
+ const sources={...otherSources,'treeseed-ai/sdk':{root:sdkRoot,base}},cited=new Map<string,{value:unknown;reference:ReturnType<typeof parseSdkResearchCitation>;observed:ReturnType<typeof resolveSdkResearchCitation>}>();
+ for(const value of values){
+  let repository:unknown;if(typeof value==='string'){let url:URL;try{url=new URL(value);}catch(cause){throw new Error(label+': Malformed original source citation',{cause});}const parts=url.pathname.split('/');repository=parts[1]+'/'+parts[2];}else repository=row(value).repository;
+  assert.ok(typeof repository==='string'&&Object.hasOwn(sources,repository),label+': Citation owner must have frozen source custody');
+  const owner=sources[repository as keyof typeof sources]!;const reference=parseSdkResearchCitation(value,owner.base,repository);
+  assert.ok(reference.anchor||reference.startLine!==undefined,label+': Exact original source location required');
+  const observed=resolveSdkResearchCitation(owner.root,owner.base,value,undefined,repository),key=JSON.stringify(reference);
+  cited.set(key,{value,reference,observed});
+ }
+ const entries=[...cited.values()],required=[
+  ['src/operator-contracts/workday-lifecycle.ts','WorkdayIntent'],['src/entrypoints/clients/control-plane-client.ts','ControlPlaneClient.invoke'],
+  ['src/operator-contracts/control-plane-operations.ts','workdays.plan'],['src/operator-contracts/control-plane-operations.ts','workdays.schedules.create'],
+  ['src/operator-contracts/canonical-command-tree.ts','workdays.plan'],['src/operator-contracts/canonical-command-tree.ts','workdays.schedules.create'],
+  ['src/operator-contracts/workday-lifecycle.ts','WorkdayPreflightReceipt'],['src/operator-contracts/catalog/workdays/selection-commands.ts','WORKDAY_PLAN_OPTIONS'],
+ ]as const;
+ const proves=(entry:typeof entries[number],path:string,symbol:string)=>{
+  if(entry.reference.repository!=='treeseed-ai/sdk'||entry.reference.path!==path)return;
+  try{return resolveSdkResearchCitation(sdkRoot,base,entry.value,symbol);}catch{return;}
+ };
+ for(const[path,symbol]of required.slice(0,stage==='preliminary'?2:required.length))assert.ok(entries.some(entry=>proves(entry,path,symbol)),label+': Missing exact source finding '+symbol+' at '+path);
+ if(stage==='preliminary'){
+  assert.ok(entries.every(entry=>required.slice(0,2).some(([path,symbol])=>proves(entry,path,symbol))),label+': First contribution may cite only WorkdayIntent and ControlPlaneClient.invoke');
+  const paragraphs=artifact.body.split(/\n\s*\n/u);
+  for(const subject of [/operation\s+bindings?/iu,/generated\s+descriptors?/iu,/per[- ]field\s+provenance/iu])assert.ok(paragraphs.some(paragraph=>subject.test(paragraph)&&/\bpending\b/iu.test(paragraph)),label+': Omitted findings must be explicitly pending');
+ }else{
+  const intent=entries.map(entry=>proves(entry,required[0][0],required[0][1])).find(value=>value!==undefined);assert.ok(intent,label);
+  declaredSdkResearchIntentFields(intent.source);
+  for(const name of ['executionPlanId','capacityPlanId','executionInputId','demandSetId'])assert.ok(new RegExp('\\b'+name+'\\b','u').test(artifact.body),label+': Each actual caller-field provenance finding is required');
+ }
+ return entries.map(({reference,observed})=>({reference,blob:observed.blob,sourceSha256:observed.sourceSha256,line:observed.line}));
 }
