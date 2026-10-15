@@ -1262,3 +1262,39 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/golden-product.test.ts
     testName: reads complete authorized diagnostic pages and rejects malformed duplicate foreign interrupted or cyclic inventories
+
+  sdk.golden.native-base-red:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/unit/operator-contracts/product/base-red-native.test.ts
+    testName: native frozen BASE replay distinguishes a new approved assertion RED from original failures and proves identical Engineer GREEN
+
+  sdk.golden.native-base-existing-failure:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/unit/operator-contracts/product/base-red-native.test.ts
+    testName: native frozen BASE replay retains unrelated original assertion failures separately from new approved RED
+
+  sdk.golden.native-base-no-red:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/unit/operator-contracts/product/base-red-native.test.ts
+    testName: native frozen BASE replay rejects an all-green Tester candidate without a new failing approved assertion
+
+  sdk.golden.native-base-omitted:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/unit/operator-contracts/product/base-red-native.test.ts
+    testName: native frozen BASE replay denies omitted original passing assertion identities before unchanged retry
+
+  sdk.golden.base-progress-unit:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/unit/operator-contracts/product/base-red.test.ts
+    testName: requires newly failing approved assertions and unchanged full GREEN identities while retaining original BASE failures without input repair
+
+  sdk.golden.base-replay-custody-unit:
+    kind: vitestCase
+    ownerPackage: '@treeseed/sdk'
+    testFile: tests/unit/operator-contracts/product/base-red.test.ts
+    testName: requires independently replayed native assertion identities and statuses to match original protected Tester and Engineer observations without repair
