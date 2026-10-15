@@ -54,3 +54,22 @@ export function resolveSdkResearchCitation(root:string,base:string,citation:unkn
   return{source,blob:git(['rev-parse',base+':'+reference.path]).toString('utf8').trim(),sourceSha256:createHash('sha256').update(bytes).digest('hex'),symbol,line};
  }catch(cause){if(cause instanceof Error&&cause.message.startsWith(code))throw cause;throw new Error(code+': Native frozen source resolution failed',{cause});}
 }
+
+/** Absence is established from a complete native declaration, never a prose assertion or a receipt with a different owner. */
+export function declaredSdkResearchIntentFields(source:string):string[]{
+ const label='ACCEPTANCE_SDK_RESEARCH_INTENT';assert.ok(typeof source==='string'&&source.length>0,label);
+ const parsed=ts.createSourceFile('workday-lifecycle.ts',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS),diagnostics:unknown=Reflect.get(parsed,'parseDiagnostics');
+ assert.ok(Array.isArray(diagnostics)&&diagnostics.length===0,label+': Complete original source required');
+ const declarations:ts.InterfaceDeclaration[]=[];
+ const inspect=(node:ts.Node)=>{if(ts.isInterfaceDeclaration(node)&&node.name.text==='WorkdayIntent')declarations.push(node);ts.forEachChild(node,inspect);};inspect(parsed);
+ assert.equal(declarations.length,1,label+': One unambiguous original interface required');const declaration=declarations[0]!;
+ assert.ok(!declaration.heritageClauses?.length,label+': Inherited caller fields require their own complete proof');
+ const fields=declaration.members.map(member=>{
+  assert.ok(ts.isPropertySignature(member)&&member.name&&(ts.isIdentifier(member.name)||ts.isStringLiteral(member.name)),label+': Every original member must be statically declared');
+  return member.name.text;
+ });
+ assert.equal(new Set(fields).size,fields.length,label+': Duplicate or merged declarations denied');
+ for(const name of ['schemaVersion','teamId','profileId','projects','executionMode','startsAt','planningOnly','proposalIds','decisionIds','agentSelection','allocation'])assert.ok(fields.includes(name),label+': Missing original independent intent control '+name);
+ for(const name of ['executionPlanId','capacityPlanId','executionInputId','demandSetId'])assert.ok(!fields.includes(name),label+': Prohibited field is declared as SDK caller input: '+name);
+ return fields;
+}
