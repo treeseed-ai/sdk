@@ -7,7 +7,7 @@ import ts from 'typescript';
 import {exactEntityReferenceSchema} from '@treeseed/sdk/agent-capacity';
 
 const code='ACCEPTANCE_SDK_RESEARCH_CITATION';
-type SourceLocation={repository:string;commit:string;path:string;anchor?:string};
+type SourceLocation={repository:string;commit:string;path:string;anchor?:string;startLine?:number;endLine?:number};
 function anchor(value:string):{first:number;last:number}|undefined{
  const match=value.match(/^L([1-9][0-9]*)(?:-L([1-9][0-9]*))?$/u);if(!match)return;
  const first=Number(match[1]),last=Number(match[2]??match[1]);assert.ok(Number.isSafeInteger(first)&&Number.isSafeInteger(last)&&first<=last,code+': Exact source line range required');return{first,last};
@@ -25,11 +25,12 @@ export function parseSdkResearchCitation(value:unknown,base:string,repository='t
  }else{
   const checked=exactEntityReferenceSchema.safeParse(value);assert.ok(checked.success,code+': Canonical exact Git reference required');assert.deepEqual(checked.data,value,code+': Source reference cannot be normalized');
   assert.equal(checked.data.store,'git',code);assert.ok(checked.data.repository&&checked.data.commit&&checked.data.path,code+': Complete exact source location required');
-  reference={repository:checked.data.repository,commit:checked.data.commit,path:checked.data.path,...(checked.data.anchor!==undefined?{anchor:checked.data.anchor}:{})};
+  reference={repository:checked.data.repository,commit:checked.data.commit,path:checked.data.path,...(checked.data.anchor!==undefined?{anchor:checked.data.anchor}:{}),...(checked.data.startLine!==undefined?{startLine:checked.data.startLine,...(checked.data.endLine!==undefined?{endLine:checked.data.endLine}:{})}:{})};
  }
  assert.equal(reference.repository,repository,code+': Foreign source repository');assert.equal(reference.commit,base,code+': Citation differs from frozen source');
  assert.ok(reference.path.startsWith('src/')&&reference.path.endsWith('.ts')&&!reference.path.includes('\\')&&!/[\u0000-\u001f\u007f]/u.test(reference.path)&&posix.normalize(reference.path)===reference.path&&!reference.path.split('/').includes('..'),code+': Canonical owning source path required');
  if(reference.anchor!==undefined){assert.ok(reference.anchor&&reference.anchor.trim()===reference.anchor,code);if(reference.anchor.startsWith('L')&&/^L[0-9]/u.test(reference.anchor))assert.ok(anchor(reference.anchor),code);else assert.match(reference.anchor,/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/u,code+': Exact source symbol required');}
+ if(reference.startLine!==undefined){const last=reference.endLine??reference.startLine;assert.ok(Number.isSafeInteger(reference.startLine)&&Number.isSafeInteger(last)&&reference.startLine<=last,code+': Exact canonical source lines required');const located=reference.anchor?anchor(reference.anchor):undefined;if(located)assert.ok(located.first===reference.startLine&&located.last===last,code+': Contradictory source line authorities');}
  return reference;
 }
 
@@ -48,7 +49,7 @@ export function resolveSdkResearchCitation(root:string,base:string,citation:unkn
    if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&['resource','operation'].includes(node.expression.text)&&node.arguments[0]&&ts.isStringLiteral(node.arguments[0])&&node.arguments[0].text===symbol)name=symbol;
    if(name===symbol)matches.push(node);ts.forEachChild(node,inspect);
   };inspect(parsed);assert.ok(matches.length>0,code+': Cited source symbol missing');
-  const range=reference.anchor?anchor(reference.anchor):undefined;if(reference.anchor&&!range)assert.equal(reference.anchor,symbol,code+': Foreign source symbol');
+  const suppliedAnchor=reference.anchor?anchor(reference.anchor):undefined,range=reference.startLine!==undefined?{first:reference.startLine,last:reference.endLine??reference.startLine}:suppliedAnchor;if(reference.anchor&&!suppliedAnchor)assert.equal(reference.anchor,symbol,code+': Foreign source symbol');
   const lines=source.split('\n').length;if(range)assert.ok(range.last<=lines,code+': Cited lines are absent');
   const located=matches.filter(node=>!range||parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line+1<=range.last&&parsed.getLineAndCharacterOfPosition(node.end).line+1>=range.first);assert.ok(located.length>0,code+': Citation does not locate its claimed symbol');
   const line=parsed.getLineAndCharacterOfPosition(located[0]!.getStart(parsed)).line+1;
