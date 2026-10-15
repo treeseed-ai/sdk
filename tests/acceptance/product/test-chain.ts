@@ -154,4 +154,4 @@ export function verifySdkCommittedTests(repository: string, base: string, tester
 	return tests;
 }
 
-export {verifySdkBaseRed} from './base-red.ts';
+export {verifySdkBaseRed,verifySdkIntentRuntime} from './base-red.ts';

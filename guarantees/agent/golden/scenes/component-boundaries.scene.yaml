@@ -756,3 +756,19 @@ workflow:
   - id: base-replay-custody-unit
     action: { verifier: sdk.golden.base-replay-custody-unit }
     expect: { status: passed }
+
+  - id: native-product-inspection-failure
+    action: { verifier: sdk.golden.native-product-inspection-failure }
+    expect: { status: passed }
+
+  - id: intent-runtime-native
+    action: { verifier: sdk.golden.intent-runtime-native }
+    expect: { status: passed }
+
+  - id: intent-runtime-custody-unit
+    action: { verifier: sdk.golden.intent-runtime-custody-unit }
+    expect: { status: passed }
+
+  - id: intent-runtime-wiring-unit
+    action: { verifier: sdk.golden.intent-runtime-wiring-unit }
+    expect: { status: passed }

@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import {approvedOutputFixture} from './test-output-fixture.ts';
 import {nativeTestReport,verifySdkApprovedTestOutputs} from '../../../acceptance/product/release-output.ts';
 import {expect,it} from 'vitest';
@@ -31,4 +32,11 @@ it('requires independently replayed native assertion identities and statuses to 
  }
  for(const malformed of [undefined,null,false,{},[],{redAssertions:replay.redAssertions,greenAssertions:[]}])expect(()=>verify(malformed)).toThrow('ACCEPTANCE_SDK_APPROVED_TESTS');
  expect({f,replay}).toEqual(original);expect(()=>verify(replay)).not.toThrow();
+});
+
+it('requires the selected SDK product gate to inspect original built intent behavior within existing native replay custody',()=>{
+ const gate=readFileSync(new URL('../../../acceptance/golden-product.test.ts',import.meta.url),'utf8');
+ expect(gate).toContain('const baseReplay = await verifySdkBaseRed(testRepository, frozenBase, testSource.commit, engineerSource.commit, async cwd => { await verifySdkIntentRuntime(cwd); });');
+ const helper=readFileSync(new URL('../../../acceptance/product/intent-runtime.ts',import.meta.url),'utf8');
+ expect(helper).not.toMatch(/from ['"].*src\//u);expect(helper).toContain("load('./control-plane-client')");expect(helper).toContain("load('./operator-contracts')");
 });

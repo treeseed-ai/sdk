@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { sdkPublishedRepository, verifySdkBaseRed, verifySdkCommittedTests, verifySdkPublishedBranch, verifySdkReviewedSourceInput } from './product/test-chain.ts';
+import { sdkPublishedRepository, verifySdkBaseRed, verifySdkIntentRuntime, verifySdkCommittedTests, verifySdkPublishedBranch, verifySdkReviewedSourceInput } from './product/test-chain.ts';
 import { sdkGoldenReadArguments, sdkGoldenSource, sdkGoldenWorkdayId, verifySdkGoldenProduct, sdkGoldenProposalProvenance, sdkGoldenFrozenProposal, sdkGoldenLibraryFiles, sdkGoldenProposalDocument, type SdkGoldenOriginal } from './golden-product.ts';
 import { assignmentAttemptSchema, assignmentResultSchema } from '@treeseed/sdk/agent-capacity';
 import { isSdkArchiveCommand, sdkGoldenExecutionEvents, sdkReleaseCommands, sdkNativeTestCommand, verifySdkApprovedTestOutputs } from './product/release-output.ts';
 
-test('SDK golden retains exact source and passing measured candidate release gates', () => {
+test('SDK golden retains exact source and passing measured candidate release gates', async () => {
 	const read = (args: string[]) => {
 		const envelope = JSON.parse(execFileSync('trsd', sdkGoldenReadArguments(args, process.env.TREESEED_ACCEPTANCE_TEAM ?? 'treeseed'),
 			{ encoding: 'utf8', timeout: 30000, maxBuffer: 32 * 1024 * 1024 }));
@@ -164,7 +164,7 @@ test('SDK golden retains exact source and passing measured candidate release gat
 	const committedTests = verifySdkCommittedTests(testRepository, frozenBase, testSource.commit, engineerSource.commit,
 		{ writer: writerSource.commit, release: source.commit, writerBase: writerAttempt.workspace.mode === 'git' ? writerAttempt.workspace.baseCommit : '' });
 	assert.ok(committedTests.length > 0);
-	const baseReplay = verifySdkBaseRed(testRepository, frozenBase, testSource.commit, engineerSource.commit);
+	const baseReplay = await verifySdkBaseRed(testRepository, frozenBase, testSource.commit, engineerSource.commit, async cwd => { await verifySdkIntentRuntime(cwd); });
 	verifySdkApprovedTestOutputs(tester, engineer, original.executionEvents, testSource.commit, engineerSource.commit, committedTests, baseReplay);
 	assert.deepEqual(read(['host', 'sandbox', 'status']).workspace.journals, host.workspace.journals,
 		'ACCEPTANCE_SDK_NATIVE_TEST_CHAIN: Original owning publication journals changed during Git verification');
