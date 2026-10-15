@@ -35,24 +35,26 @@ export function parseSdkResearchCitation(value:unknown,base:string,repository='t
 }
 
 /** Read native immutable Git objects; no checked-out source or network fallback. */
-export function resolveSdkResearchCitation(root:string,base:string,citation:unknown,symbol:string,repository='treeseed-ai/sdk'){
- const reference=parseSdkResearchCitation(citation,base,repository);assert.match(symbol,/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/u,code);
+export function resolveSdkResearchCitation(root:string,base:string,citation:unknown,symbol?:string,repository='treeseed-ai/sdk'){
+ const reference=parseSdkResearchCitation(citation,base,repository);if(symbol!==undefined)assert.match(symbol,/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/u,code);
  try{
   assert.ok(isAbsolute(root)&&realpathSync(root)===resolve(root),code+': Exact owning repository required');
   const env={...process.env};for(const key of Object.keys(env))if(key.startsWith('GIT_'))delete env[key];env.GIT_OPTIONAL_LOCKS='0';env.GIT_NO_REPLACE_OBJECTS='1';
   const git=(args:string[])=>execFileSync('git',['--no-replace-objects','-C',root,...args],{env,timeout:30_000,maxBuffer:8*1024*1024});
   assert.equal(git(['cat-file','-t',base]).toString('utf8').trim(),'commit',code);const bytes=git(['cat-file','blob',base+':'+reference.path]),source=bytes.toString('utf8');assert.ok(Buffer.from(source,'utf8').equals(bytes),code+': Exact UTF-8 source required');
+  const suppliedAnchor=reference.anchor?anchor(reference.anchor):undefined,range=reference.startLine!==undefined?{first:reference.startLine,last:reference.endLine??reference.startLine}:suppliedAnchor;
+  if(reference.anchor&&!suppliedAnchor){if(symbol===undefined)symbol=reference.anchor;else assert.equal(reference.anchor,symbol,code+': Foreign source symbol');}
   const parsed=ts.createSourceFile(reference.path,source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS),diagnostics:unknown=Reflect.get(parsed,'parseDiagnostics');assert.ok(Array.isArray(diagnostics)&&diagnostics.length===0,code+': Source must parse without repair');
   const matches:ts.Node[]=[];const inspect=(node:ts.Node)=>{let name:string|undefined;
    if(ts.isInterfaceDeclaration(node)||ts.isTypeAliasDeclaration(node)||ts.isFunctionDeclaration(node)||ts.isClassDeclaration(node)||ts.isVariableDeclaration(node))name=node.name&&ts.isIdentifier(node.name)?node.name.text:undefined;
    if(ts.isMethodDeclaration(node)&&ts.isClassDeclaration(node.parent)&&node.parent.name&&ts.isIdentifier(node.name))name=node.parent.name.text+'.'+node.name.text;
    if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&['resource','operation'].includes(node.expression.text)&&node.arguments[0]&&ts.isStringLiteral(node.arguments[0])&&node.arguments[0].text===symbol)name=symbol;
    if(name===symbol)matches.push(node);ts.forEachChild(node,inspect);
-  };inspect(parsed);assert.ok(matches.length>0,code+': Cited source symbol missing');
-  const suppliedAnchor=reference.anchor?anchor(reference.anchor):undefined,range=reference.startLine!==undefined?{first:reference.startLine,last:reference.endLine??reference.startLine}:suppliedAnchor;if(reference.anchor&&!suppliedAnchor)assert.equal(reference.anchor,symbol,code+': Foreign source symbol');
+  };inspect(parsed);if(symbol!==undefined)assert.ok(matches.length>0,code+': Cited source symbol missing');
   const lines=source.split('\n').length;if(range)assert.ok(range.last<=lines,code+': Cited lines are absent');
-  const located=matches.filter(node=>!range||parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line+1<=range.last&&parsed.getLineAndCharacterOfPosition(node.end).line+1>=range.first);assert.ok(located.length>0,code+': Citation does not locate its claimed symbol');
-  const line=parsed.getLineAndCharacterOfPosition(located[0]!.getStart(parsed)).line+1;
+  const located=matches.filter(node=>!range||parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line+1<=range.last&&parsed.getLineAndCharacterOfPosition(node.end).line+1>=range.first);if(symbol!==undefined)assert.ok(located.length>0,code+': Citation does not locate its claimed symbol');
+  assert.ok(symbol!==undefined||range,code+': Exact source lines or a source symbol required');
+  const line=symbol!==undefined?parsed.getLineAndCharacterOfPosition(located[0]!.getStart(parsed)).line+1:range!.first;
   return{source,blob:git(['rev-parse',base+':'+reference.path]).toString('utf8').trim(),sourceSha256:createHash('sha256').update(bytes).digest('hex'),symbol,line};
  }catch(cause){if(cause instanceof Error&&cause.message.startsWith(code))throw cause;throw new Error(code+': Native frozen source resolution failed',{cause});}
 }
