@@ -1,3 +1,4 @@
+import {Session} from 'node:inspector/promises';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {once} from 'node:events';
@@ -8,13 +9,59 @@ import {pathToFileURL} from 'node:url';
 
 const label='ACCEPTANCE_SDK_INTENT_PRODUCT';
 type Request={method:string|undefined;path:string|undefined;body:string};
+/** Read native V8 entry counts for the owning compiled public normalizer only. */
+export function sdkNormalizerCoverageCount(root:string,observation:unknown):number{
+ const label='ACCEPTANCE_SDK_NORMALIZATION_PATH';assert.ok(isAbsolute(root)&&resolve(root)===root,label);
+ assert.ok(observation&&typeof observation==='object'&&!Array.isArray(observation),label);
+ const scripts=Reflect.get(observation,'result');assert.ok(Array.isArray(scripts),label);
+ const expected=pathToFileURL(resolve(root,'dist/operator-contracts/workday-lifecycle.js')).href,matched:Array<Record<string,unknown>>=[];
+ for(const script of scripts){assert.ok(script&&typeof script==='object'&&!Array.isArray(script)&&typeof script.url==='string',label);if(script.url!==expected)continue;
+  assert.ok(Array.isArray(script.functions),label);for(const fn of script.functions){assert.ok(fn&&typeof fn==='object'&&!Array.isArray(fn),label);if(fn.functionName==='normalizeWorkdayIntent')matched.push(fn);}
+ }
+ assert.ok(matched.length<=1,label+': Duplicate owning function observation');if(!matched.length)return 0;
+ const ranges=matched[0]!.ranges;assert.ok(Array.isArray(ranges)&&ranges.length>0,label+': Original measured function range required');
+ for(const range of ranges){assert.ok(range&&typeof range==='object'&&!Array.isArray(range),label);for(const key of ['startOffset','endOffset','count'])assert.ok(Number.isSafeInteger(range[key])&&range[key]>=0,label+': Unmeasured native function range');assert.ok(range.endOffset>range.startOffset,label);}
+ return ranges[0]!.count as number;
+}
+
+/** One local inspector session observes immutable candidate bytes. It never
+ * changes source, installs a loader, opens a port or connects to another process. */
+export class SdkIntentNormalizerObservation{
+ private static active=false;
+ private readonly session=new Session();private owned=false;private connected=false;private started=false;
+ private asset='';private digest='';private canonicalRoot='';
+ constructor(private readonly root:string){}
+ get closed(){return !this.owned;}
+ async start(){
+  const label='ACCEPTANCE_SDK_NORMALIZATION_PATH';assert.ok(!this.owned&&!SdkIntentNormalizerObservation.active,label+': Concurrent observation denied');
+  assert.ok(isAbsolute(this.root)&&realpathSync(this.root)===resolve(this.root),label);this.canonicalRoot=realpathSync(this.root);
+  this.asset=resolve(this.root,'dist/operator-contracts/workday-lifecycle.js');assert.equal(realpathSync(this.asset),this.asset,label);assert.ok(lstatSync(this.asset).isFile(),label);
+  this.digest=createHash('sha256').update(readFileSync(this.asset)).digest('hex');SdkIntentNormalizerObservation.active=true;this.owned=true;
+  try{this.session.connect();this.connected=true;await this.session.post('Profiler.enable');await this.session.post('Profiler.startPreciseCoverage',{callCount:true,detailed:true});this.started=true;}
+  catch(error){try{await this.close();}catch(cleanup){throw new AggregateError([error,cleanup],label+': Observation and cleanup failed');}throw error;}
+ }
+ async read(){
+  const label='ACCEPTANCE_SDK_NORMALIZATION_PATH';assert.ok(this.owned&&this.started,label+': Original observation required');
+  assert.equal(createHash('sha256').update(readFileSync(this.asset)).digest('hex'),this.digest,label+': Compiled normalizer changed');
+  return sdkNormalizerCoverageCount(this.canonicalRoot,await this.session.post('Profiler.takePreciseCoverage'));
+ }
+ async close(){
+  if(!this.owned)return;const failures:unknown[]=[];
+  if(this.started)try{await this.session.post('Profiler.stopPreciseCoverage');}catch(error){failures.push(error);}
+  if(this.connected){try{await this.session.post('Profiler.disable');}catch(error){failures.push(error);}try{this.session.disconnect();}catch(error){failures.push(error);}}
+  this.started=false;this.connected=false;this.owned=false;SdkIntentNormalizerObservation.active=false;
+  if(failures.length)throw new AggregateError(failures,'ACCEPTANCE_SDK_NORMALIZATION_PATH: Native observation cleanup failed');
+ }
+}
+
 /** Inspect the original built public exports inside existing native replay
  * custody. Controlled replies are transport inputs, never API admission or
  * managed Tester/Engineer receipts. No source implementation is substituted. */
 export async function verifySdkIntentRuntime(root:string){
  const requests:Request[]=[],failures:Array<{expectation:string;observed:string}>=[];
  const targets:Array<{specifier:string;path:string;sha256:string}>=[];
- let checks=0;
+ const normalizationPathFailures:Array<{expectation:string;count:number}>=[],directNormalizationFailures:Array<{expectation:string;observed:string}>=[];
+ let checks=0,currentExpectation='';
  try{
   assert.ok(typeof root==='string'&&isAbsolute(root)&&realpathSync(root)===resolve(root),label+': exact native package root required');
   const manifest=JSON.parse(readFileSync(resolve(root,'package.json'),'utf8')) as {name?:unknown;exports?:Record<string,{default?:unknown}>};
@@ -34,18 +81,24 @@ export async function verifySdkIntentRuntime(root:string){
    requests.push({method:request.method,path:request.url,body:Buffer.concat(chunks).toString('utf8')});
    response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({data:{marker:'sdk-intent-inspection'}}));
   });
-  let cleanupConfirmed=false;
+  let cleanupConfirmed=false;const normalization=new SdkIntentNormalizerObservation(root);
   try{
    server.listen(0,'127.0.0.1');await once(server,'listening');const address=server.address();assert.ok(address&&typeof address!=='string',label);
+   await normalization.start();
    const client=new sdk.ControlPlaneClient({profile:{serverId:'local',label:'Local',baseUrl:'http://127.0.0.1:'+address.port}});
    const base={schemaVersion:'treeseed.workday-intent/v1',teamId:'team',profileId:'default',projects:['sdk'],startsAt:'2030-01-01T00:00:00Z',durationSeconds:600,
     proposalIds:['proposal-original'],agentSelection:{agentSlugs:['configured-arbitrary-agent'],activityTypes:['planning']},allocation:{planningPercent:20,allocationWeight:2}};
    const ordered=['A','Z','a','a-1','a.1','a/1','a:1'];
-   const capture=async(expectation:string,action:()=>Promise<void>)=>{checks++;try{await action();}catch(error){failures.push({expectation,observed:String(error)});}};
+   const capture=async(expectation:string,action:()=>Promise<void>)=>{checks++;currentExpectation=expectation;try{await action();}catch(error){failures.push({expectation,observed:String(error)});}};
    const observe=async(nested:boolean,intent:Record<string,unknown>,expected:Record<string,unknown>|null)=>{
     const body=nested?{intent,cadenceSeconds:3600}:intent;
     const originalIntent=structuredClone(Object.getOwnPropertyDescriptors(intent)),originalBody=structuredClone(Object.getOwnPropertyDescriptors(body));
     const before=requests.length,binding=nested?contracts.CONTROL_PLANE_OPERATIONS.workdays.createSchedule:contracts.CONTROL_PLANE_OPERATIONS.workdays.preflight;
+    try{let value:unknown,denied=false;try{value=Reflect.apply(contracts.normalizeWorkdayIntent,contracts,[intent]);}catch{denied=true;}
+     if(expected===null)assert.equal(denied,true,label+': Direct public normalization accepted invalid own intent');else{assert.equal(denied,false,label);assert.deepEqual(value,expected,label+': Direct public normalization differs from exact intent');}
+    }catch(error){directNormalizationFailures.push({expectation:currentExpectation,observed:String(error)});}
+    await normalization.read(); // Exclude the independent direct-call control from invoke's own measured path.
+
     try{
      if(expected===null){let denied=false;try{await client.invoke(binding,{path:{teamId:'team'},query:{},body},{signal:AbortSignal.timeout(10_000)});}catch{denied=true;}
       assert.equal(denied,true,label+': invalid own intent accepted');assert.equal(requests.length,before,label+': invalid intent reached transport');
@@ -56,7 +109,7 @@ export async function verifySdkIntentRuntime(root:string){
       const sent=JSON.parse(requests.at(-1)!.body) as Record<string,unknown>,transmitted=nested?sent.intent as Record<string,unknown>:sent;
       for(const key of ['intentDigest','preflightDigest'])assert.equal(Object.hasOwn(transmitted,key),false,label+': SDK must not invent API digests');
      }
-    }finally{assert.deepEqual(Object.getOwnPropertyDescriptors(intent),originalIntent,label+': caller intent changed');assert.deepEqual(Object.getOwnPropertyDescriptors(body),originalBody,label+': caller body changed');}
+    }finally{const count=await normalization.read();if(count!==1)normalizationPathFailures.push({expectation:currentExpectation,count});assert.deepEqual(Object.getOwnPropertyDescriptors(intent),originalIntent,label+': caller intent changed');assert.deepEqual(Object.getOwnPropertyDescriptors(body),originalBody,label+': caller body changed');}
    };
    const tree=contracts.TREESEED_COMMAND_TREE_V1,originalTree=structuredClone(tree);
    const leaves=new Map<string,Extract<(typeof tree.commands)[number],{nodeType:'leaf'}>>();
@@ -84,9 +137,9 @@ export async function verifySdkIntentRuntime(root:string){
      await capture('retired/'+shape+'/'+field+'/'+index+'/'+(enumerable?'enumerable':'hidden'),()=>observe(nested,intent,null));
     }
    }
-  }finally{server.closeAllConnections();if(server.listening)await new Promise<void>((done,reject)=>server.close(error=>error?reject(error):done()));cleanupConfirmed=!server.listening;}
-  const observation={checks,failures,targets,requests,cleanupConfirmed};console.log(JSON.stringify({sdkIntentRuntimeObservation:observation}));
-  assert.equal(cleanupConfirmed,true,label+': disposable transport residue');if(failures.length)throw new Error(label+': independent public intent behavior failed',{cause:observation});
+  }finally{try{server.closeAllConnections();if(server.listening)await new Promise<void>((done,reject)=>server.close(error=>error?reject(error):done()));}finally{await normalization.close();cleanupConfirmed=!server.listening&&normalization.closed;}}
+  const observation={checks,failures,normalizationPathFailures,directNormalizationFailures,targets,requests,cleanupConfirmed};console.log(JSON.stringify({sdkIntentRuntimeObservation:observation}));
+  assert.equal(cleanupConfirmed,true,label+': disposable transport residue');if(failures.length||normalizationPathFailures.length||directNormalizationFailures.length)throw new Error(label+': independent public intent behavior failed',{cause:observation});
   return observation;
  }catch(error){if(error instanceof Error&&error.message.startsWith(label))throw error;throw new Error(label+': exact public runtime inspection failed',{cause:error});}
 }

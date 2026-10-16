@@ -802,3 +802,12 @@ workflow:
   - id: research-unsafe-read-unit
     action: { verifier: sdk.golden.research-unsafe-read-unit }
     expect: { status: passed }
+  - id: normalization-path-unit
+    action: { verifier: sdk.golden.normalization-path-unit }
+    expect: { status: passed }
+  - id: normalization-path-denials-unit
+    action: { verifier: sdk.golden.normalization-path-denials-unit }
+    expect: { status: passed }
+  - id: normalization-path-native
+    action: { verifier: sdk.golden.normalization-path-native }
+    expect: { status: passed }
