@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { assignmentReferenceSchema, type AssignmentAttempt, type AssignmentReference, type AssignmentResult } from '@treeseed/sdk/agent-capacity';
-import { sourceWorkspaceKeySchema } from '@treeseed/sdk/capacity-provider/sandbox';
+import { sourceWorkspaceKeySchema, sourceWorkspaceAuthorizationSchema } from '@treeseed/sdk/capacity-provider/sandbox';
 
 export type PublishedSourceAttempt = Pick<AssignmentAttempt, 'id' | 'teamId' | 'projectId' | 'attempt' | 'workspace'>
 	& { provider: Pick<AssignmentAttempt['provider'], 'providerId'> };
@@ -53,6 +53,15 @@ export function sdkPublishedRepository(workspace: unknown, sandboxId: string, at
 	assert.equal(reference.kind, 'git', failure); assert.deepEqual(assignmentReferenceSchema.parse(result.sourceReference), reference, failure);
 	assert.ok(reference.kind === 'git'); assert.equal(reference.repository, attempt.workspace.repository, failure);
 	assert.equal(reference.branch, attempt.workspace.branch, failure);
+ const parsedAuthority = sourceWorkspaceAuthorizationSchema.safeParse(job.authority); assert.ok(parsedAuthority.success, failure);
+ const authority = parsedAuthority.data; assert.deepEqual(authority, job.authority, failure);
+ assert.equal(authority.assignmentId, attempt.id, failure); assert.equal(authority.providerId, attempt.provider.providerId, failure);
+ assert.equal(authority.attempt, attempt.attempt, failure); assert.deepEqual(authority.source, source, failure);
+ assert.equal(authority.mode, 'work', failure); assert.equal(authority.publication, 'simulation-branch', failure);
+ assert.ok(['upstream-public', 'simulation-local'].includes(authority.acquisition), failure);
+ assert.equal(Object.hasOwn(authority, 'credentialBindingId'), false, failure);
+ assert.equal(authority.publicationRef, reference.branch, failure);
+
 	const candidate = entry('candidates'), verification = object(candidate.verification);
 	assert.equal(candidate.state, 'published', failure);
 	assert.equal(candidate.assignmentId, attempt.id, failure); assert.equal(candidate.attempt, attempt.attempt, failure);
