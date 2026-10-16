@@ -1372,3 +1372,18 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/research/revision/research-revision-wiring.test.ts
     testName: "denies an unsafe returned artifact path before invoking any public library reader"
+  sdk.golden.normalization-path-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/product/normalization/normalization-path.test.ts
+    testName: "reads exactly the owning compiled shared normalizer entry count without treating other scripts functions or branch counts as SDK execution proof"
+  sdk.golden.normalization-path-denials-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/product/normalization/normalization-path.test.ts
+    testName: "rejects absent malformed duplicate or unmeasured native normalizer entry observations without rewriting the original failure"
+  sdk.golden.normalization-path-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/product/intent-runtime-native.test.ts
+    testName: "native owning SDK normalizer execution is measured exactly once across denial interruption concurrent observation refusal and clean reacquisition without altering compiled assets"
