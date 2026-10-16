@@ -11,10 +11,7 @@ function row(value:unknown):Row{assert.ok(value&&typeof value==='object'&&!Array
 
 /** Consume original independently read bytes, retaining the native content model and source authority. */
 export function sdkResearchArtifact(reference:Row,returned:unknown){
- assert.ok(reference.kind==='treedx'&&typeof reference.projectId==='string'&&reference.projectId
-  &&typeof reference.repository==='string'&&reference.repository&&typeof reference.commit==='string'&&/^[a-f0-9]{40}$/u.test(reference.commit)
-  &&typeof reference.path==='string'&&reference.path&&!reference.path.startsWith('/')&&!/[\\\u0000-\u001f\u007f]/u.test(reference.path)
-  &&posix.normalize(reference.path)===reference.path&&!reference.path.split('/').some(part=>part==='..'||part==='.'||!part),code+': Exact original returned artifact reference required');
+ sdkResearchArtifactReference(reference);
  const observed=row(returned);
  assert.ok(observed.ok===true&&observed.repoId===reference.repository&&observed.resolvedRef===reference.commit
   &&Array.isArray(observed.files)&&observed.files.length===1,code+': One complete independent native artifact read required');
@@ -73,4 +70,12 @@ export function verifySdkResearchCitations(artifact:Pick<ReturnType<typeof sdkRe
   for(const name of ['executionPlanId','capacityPlanId','executionInputId','demandSetId'])assert.ok(new RegExp('\\b'+name+'\\b','u').test(artifact.body),label+': Each actual caller-field provenance finding is required');
  }
  return entries.map(({reference,observed})=>({reference,blob:observed.blob,sourceSha256:observed.sourceSha256,line:observed.line}));
+}
+
+/** Validate source authority before a supported read is invoked. */
+export function sdkResearchArtifactReference(reference:Row):void{
+ assert.ok(reference.kind==='treedx'&&typeof reference.projectId==='string'&&reference.projectId
+  &&typeof reference.repository==='string'&&reference.repository&&typeof reference.commit==='string'&&/^[a-f0-9]{40}$/u.test(reference.commit)
+  &&typeof reference.path==='string'&&reference.path&&!reference.path.startsWith('/')&&!/[\\\u0000-\u001f\u007f]/u.test(reference.path)
+  &&posix.normalize(reference.path)===reference.path&&!reference.path.split('/').some(part=>part==='..'||part==='.'||!part),code+': Exact original returned artifact reference required');
 }

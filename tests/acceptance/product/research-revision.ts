@@ -1,6 +1,7 @@
+import{isDeepStrictEqual}from'node:util';
 import assert from'node:assert/strict';
 import{assignmentAttemptSchema,assignmentResultSchema}from'@treeseed/sdk/agent-capacity';
-import{sdkResearchArtifact,verifySdkResearchCitations}from'./research-artifact.ts';
+import{sdkResearchArtifact,sdkResearchArtifactReference,verifySdkResearchCitations}from'./research-artifact.ts';
 
 type Row=Record<string,unknown>;
 const code='ACCEPTANCE_SDK_RESEARCH_REVISION';
@@ -32,15 +33,15 @@ export async function verifySdkResearchRevision(items:readonly Row[],scopeInput:
  assert.ok(corrected.attempt.predecessorResultIds.includes(request.result.id),code+': Correction must consume the actual request-changes result');
  assert.ok(clock(first.result.completedAt)<clock(request.attempt.createdAt)&&clock(request.result.completedAt)<clock(corrected.attempt.createdAt)&&clock(corrected.result.completedAt)<clock(approval.attempt.createdAt),code+': Original independent review and correction chronology required');
  const retained=new Map<string,{reference:Row;returned:unknown;artifact:ReturnType<typeof sdkResearchArtifact>}>();
- const content=async(reference:Row)=>{
+ const content=async(reference:Row,owner:typeof scope)=>{
+  sdkResearchArtifactReference(reference);const targets=owner.grant.contentWrite.filter(target=>target.repository===reference.repository&&target.path===reference.path);assert.equal(targets.length,1,code+': Returned output requires its exact original publication target before reading');
   assert.equal(reference.projectId,scope.projectId,code+': Foreign output owner');const key=JSON.stringify(reference);let found=retained.get(key);
-  if(!found){const returned=await read(reference),artifact=sdkResearchArtifact(reference,returned);found={reference,returned,artifact};retained.set(key,found);}return found;
+  if(!found){const returned=await read(reference),artifact=sdkResearchArtifact(reference,returned);assert.ok(targets[0]!.id===artifact.frontmatter.id&&targets[0]!.model===artifact.model,code+': Original publication model and identity required');found={reference,returned,artifact};retained.set(key,found);}return found;
  };
  const actorProduct=async(actor:typeof first)=>{
   assert.ok(actor.attempt.contextRefs.some(ref=>ref.store==='git'&&ref.repository==='treeseed-ai/sdk'&&ref.commit===base),code+': Original frozen SDK source must be consumed');
   const references=actor.result.references.filter(ref=>ref.kind==='treedx');assert.equal(references.length,1,code+': One original primary research artifact required');
-  const found=await content(references[0]!);assert.ok(found.artifact.model==='note'||found.artifact.model==='knowledge',code+': Researcher must return original Note or Knowledge');
-  assert.ok(actor.attempt.grant.contentWrite.some(ref=>ref.id===found.artifact.frontmatter.id&&ref.model===found.artifact.model&&ref.repository===found.reference.repository&&ref.path===found.reference.path),code+': Exact original authored content grant required');
+  const found=await content(references[0]!,actor.attempt);assert.ok(found.artifact.model==='note'||found.artifact.model==='knowledge',code+': Researcher must return original Note or Knowledge');
   if(found.artifact.model==='note')assert.ok(clock(actor.attempt.createdAt)<=clock(found.artifact.frontmatter.createdAt)&&clock(found.artifact.frontmatter.createdAt)<=clock(actor.result.completedAt),code+': Artifact predates or escapes its owning contribution');
   return found;
  };
@@ -57,11 +58,11 @@ export async function verifySdkResearchRevision(items:readonly Row[],scopeInput:
   assert.ok(review.attempt.contextRefs.some(ref=>candidate(ref,artifact))&&review.attempt.grant.contentRead.some(ref=>candidate(ref,artifact)),code+': Reviewer must read the exact original candidate');
   assert.ok(!review.attempt.grant.contentWrite.some(ref=>ref.repository===artifact.reference.repository&&ref.path===artifact.reference.path),code+': Reviewer candidate writes denied');
   const workspace=review.attempt.workspace;if(workspace.mode==='treedx'&&workspace.repository===artifact.reference.repository)assert.ok(!workspace.writablePaths.some(path=>path==='.'||path===artifact.reference.path||String(artifact.reference.path).startsWith(path.replace(/\/$/u,'')+'/')),code+': Reviewer candidate workspace must remain read-only');
-  const observed=await Promise.all(review.result.references.filter(ref=>ref.kind==='treedx').map(ref=>content(ref))),decisions=observed.filter(value=>value.artifact.model==='decision'&&value.artifact.frontmatter.decisionClass==='work-review');
+  const observed=await Promise.all(review.result.references.filter(ref=>ref.kind==='treedx').map(ref=>content(ref,review.attempt))),decisions=observed.filter(value=>value.artifact.model==='decision'&&value.artifact.frontmatter.decisionClass==='work-review');
   assert.equal(decisions.length,1,code+': One genuine classed work-review Decision required');const decision=decisions[0]!,value=decision.artifact.frontmatter;
   assert.equal(value.disposition,disposition,code+': Lifecycle flag cannot replace classed authority');assert.ok(candidate(value.subjectRef,artifact),code+': Classed review must bind exact actual artifact bytes');
-  assert.ok(Array.isArray(value.authorityRefs)&&value.authorityRefs.some(ref=>JSON.stringify(ref)===JSON.stringify(scope.sourceRef)),code+': Exact original proposal authority required');
-  assert.ok(Array.isArray(value.decidedByRefs)&&value.decidedByRefs.some(ref=>JSON.stringify(ref)===JSON.stringify(review.attempt.effectiveProfile.profileRef)),code+': Original assigned reviewing profile must decide');
+  assert.ok(Array.isArray(value.authorityRefs)&&value.authorityRefs.some(ref=>isDeepStrictEqual(ref,scope.sourceRef)),code+': Exact original proposal authority required');
+  assert.ok(Array.isArray(value.decidedByRefs)&&value.decidedByRefs.some(ref=>isDeepStrictEqual(ref,review.attempt.effectiveProfile.profileRef)),code+': Original assigned reviewing profile must decide');
   assert.ok(clock(review.attempt.createdAt)<=clock(value.decidedAt)&&clock(value.decidedAt)<=clock(review.result.completedAt),code+': Original independent decision clock required');
   return{decision,observed};
  };
