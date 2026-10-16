@@ -1402,3 +1402,8 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/product/test-chain.test.ts
     testName: "rejects missing foreign credentialed or upstream publication authority before consuming a self-consistent simulation candidate without changing original evidence"
+  sdk.golden.execution-reference-documentation-examples:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/product/documentation-examples.test.ts
+    testName: "requires literal normalized selections both omitted planning states generated command examples and API-only provenance in visible SDK reference documentation"

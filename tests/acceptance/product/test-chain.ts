@@ -1,3 +1,5 @@
+import {verifySdkDocumentationExamples} from './documentation-examples.ts';
+export {verifySdkDocumentationExamples} from './documentation-examples.ts';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -178,3 +180,13 @@ export function verifySdkCommittedTests(repository: string, base: string, tester
 }
 
 export {verifySdkBaseRed,verifySdkIntentRuntime} from './base-red.ts';
+
+/** Resolve actual Writer documentation bytes from the independently published native Git repository. */
+export function verifySdkReferenceDocumentation(repository:string,engineer:string,writer:string):void{
+ const label='ACCEPTANCE_SDK_DOCUMENTATION';for(const commit of [engineer,writer])assert.match(commit,/^[a-f0-9]{40}$/u,label);
+ const git=nativePublishedGit(repository);git(['merge-base','--is-ancestor',engineer,writer]);
+ const paths=git(['diff','--name-only','--no-renames','-z',engineer,writer]).toString('utf8').split('\0').filter(path=>/^(?:[^/]+\.mdx?|docs\/.+\.mdx?)$/u.test(path));
+ const documents:string[]=[];for(const path of paths){const entry=git(['ls-tree','-z',writer,'--',path]).toString('utf8');if(!entry)continue;assert.ok(/^100(?:644|755) blob [a-f0-9]{40}\t/u.test(entry),label+': Redirected reference page');documents.push(sdkDocumentationBody(git(['cat-file','blob',writer+':'+path])));}
+ verifySdkDocumentationExamples(documents);
+ assert.equal(git(['rev-parse',writer+'^{commit}']).toString().trim(),writer,label);
+}

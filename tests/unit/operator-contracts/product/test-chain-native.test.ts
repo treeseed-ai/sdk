@@ -1,3 +1,5 @@
+import * as documentationProof from '../../../acceptance/product/test-chain.ts';
+import {documentationExamples} from './documentation-examples-fixture.ts';
 import {publicationVerificationFixture} from './publication-verification-fixture.ts';
 import {sdkPublishedRepository} from '../../../acceptance/product/test-chain.ts';
 import * as nativeOutputs from '../../../acceptance/product/release-output.ts';
@@ -27,6 +29,24 @@ it('native Git rejects unreviewed final integration trees and unrelated approved
 		writeFileSync(join(work, 'README.md'), 'Controlled reviewed Writer documentation.\n'); const writer = commit('controlled Writer');
 		git(['clone', '--bare', '--no-local', work, repository]);
 		const valid = { writer, release: writer, writerBase: engineer }; expect(() => inspect(repository, base, tester, engineer, valid)).not.toThrow();
+		const verifyDocs=Reflect.get(documentationProof,'verifySdkReferenceDocumentation');
+		expect(typeof verifyDocs).toBe('function');if(typeof verifyDocs!=='function')throw new Error('SDK native reference documentation verification is missing');
+		expect(()=>verifyDocs(repository,engineer,writer)).toThrow('ACCEPTANCE_SDK_DOCUMENTATION');
+		git(['checkout','--detach',engineer]);writeFileSync(join(work,'docs/reference.md'),documentationExamples());
+		const documented=commit('controlled complete SDK reference examples');git(['--git-dir',repository,'fetch',work,documented]);
+		verifyDocs(repository,engineer,documented);
+		git(['checkout','--detach',engineer]);writeFileSync(join(work,'docs/reference.md'),documentationExamples()+'\nThe SDK computes intentDigest and preflightDigest before transport.\n');
+		const contradictory=commit('controlled contradictory SDK digest ownership');git(['--git-dir',repository,'fetch',work,contradictory]);
+		expect(()=>verifyDocs(repository,engineer,contradictory)).toThrow('ACCEPTANCE_SDK_DOCUMENTATION');
+		verifyDocs(repository,engineer,documented);
+		expect(git(['--git-dir',repository,'rev-parse',contradictory+'^{commit}'])).toBe(contradictory);
+		for(const field of ['executionPlanId','capacityPlanId','executionInputId','demandSetId']){
+		 git(['checkout','--detach',engineer]);writeFileSync(join(work,'docs/reference.md'),documentationExamples().replaceAll(field,'unrelatedField'));
+		 const failed=commit('controlled missing prohibited caller field '+field);git(['--git-dir',repository,'fetch',work,failed]);
+		 expect(()=>verifyDocs(repository,engineer,failed)).toThrow('ACCEPTANCE_SDK_DOCUMENTATION');verifyDocs(repository,engineer,documented);
+		 expect(git(['--git-dir',repository,'rev-parse',failed+'^{commit}'])).toBe(failed);
+		}
+
 		expect(() => inspect(repository, base, tester, engineer, { writer: engineer, release: engineer, writerBase: engineer })).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN');
 		expect(() => inspect(repository, base, tester, engineer, { ...valid, writerBase: base })).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN');
 
