@@ -208,7 +208,7 @@ it('native Git and SDK source readback deny missing or contradictory retained ca
    if(mode==='missing')f.workspace.journals.candidates.entries=[];if(mode==='provider')candidate.providerId='foreign';if(mode==='base')proof.baseCommit='f'.repeat(40);if(mode==='candidate')proof.commit='f'.repeat(40);if(mode==='flag')proof.ancestry=false;if(mode==='digest')candidate.digest='invalid';
    f.workspace.confirmation.journals=structuredClone(f.workspace.journals);const before=structuredClone(f),count=reads;failures.push({mode,workspace:structuredClone(f.workspace)});expect(()=>inspect(f),mode).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN');expect(reads).toBe(count);expect(f).toEqual(before);expect(git(native,'show-ref')).toBe(refs);
   }
-  
+
   for(const mode of ['missing-authority','foreign-authority','foreign-source','upstream-publication','credential-binding']){
    const f=publicationVerificationFixture(base,commit,branch),job=f.workspace.journals.jobs.entries[0]!.metadata,a=structuredClone(job.authority)as Record<string,unknown>;
    if(mode==='missing-authority')delete job.authority;else{if(mode==='foreign-authority')a.assignmentId='foreign';if(mode==='foreign-source')a.source={...(a.source as object),commit:'f'.repeat(40)};
