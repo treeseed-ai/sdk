@@ -29,6 +29,12 @@ it('native Git resolves actual SDK source citation symbols and bytes from the ex
 
    const reference={store:'git',model:'repository',id:'sdk',repository:'treeseed-ai/sdk',commit:base,path,startLine:found.line,endLine:found.line};
    expect(resolve(repository,base,reference,symbol)).toEqual(found);
+   expect(resolve(repository,base,{...reference,digest:'sha256:'+found.sourceSha256},symbol)).toEqual(found);
+   expect.soft(()=>resolve(repository,base,{...reference,digest:'sha256:'+'f'.repeat(64)},symbol)).toThrow('ACCEPTANCE_SDK_RESEARCH_CITATION');
+   expect(resolve(repository,base,{...reference,url:citation+'#L'+found.line},symbol)).toEqual(found);
+   expect.soft(()=>resolve(repository,base,{...reference,url:citation.replace(base,'staging')+'#L'+found.line},symbol)).toThrow('ACCEPTANCE_SDK_RESEARCH_CITATION');
+   expect.soft(()=>resolve(repository,base,{...reference,url:citation+'#L1'},symbol)).toThrow('ACCEPTANCE_SDK_RESEARCH_CITATION');
+
    expect(()=>resolve(repository,base,{...reference,startLine:1,endLine:1},symbol)).toThrow('ACCEPTANCE_SDK_RESEARCH_CITATION');
    expect(()=>resolve(repository,base,{...reference,anchor:'L1'},symbol)).toThrow('ACCEPTANCE_SDK_RESEARCH_CITATION');
 
@@ -47,6 +53,7 @@ it('native Git resolves actual SDK source citation symbols and bytes from the ex
    const citation='https://github.com/treeseed-ai/sdk/blob/'+base+'/'+path,found=resolve(repository,base,citation,symbol);completeCitations.push(citation+'#L'+found.line);
   }
   const pending='Operation bindings: pending.\n\nGenerated descriptors: pending.\n\nPer-field provenance: pending.',preliminary={frontmatter:{},body:initialCitations.join('\n\n')+'\n\n'+pending},corrected={frontmatter:{},body:completeCitations.join('\n\n')+'\n\nexecutionPlanId, capacityPlanId, executionInputId and demandSetId are absent SDK caller fields. API receipt declarations are a separate boundary.'};
+  expect.soft(()=>verifySdkResearchCitations({...preliminary,frontmatter:{documentationUrls:[completeCitations[2]]}},repository,base,'preliminary')).toThrow('ACCEPTANCE_SDK_RESEARCH_SOURCES');
   const first=verifySdkResearchCitations(preliminary,repository,base,'preliminary'),last=verifySdkResearchCitations(corrected,repository,base,'corrected');expect(first.length).toBe(2);expect(last.length).toBe(8);
   for(const citation of completeCitations)expect(()=>verifySdkResearchCitations({...corrected,body:corrected.body.replace(citation,'')},repository,base,'corrected')).toThrow('ACCEPTANCE_SDK_RESEARCH_SOURCES');
   expect(()=>verifySdkResearchCitations({...preliminary,body:preliminary.body+'\n'+completeCitations[2]},repository,base,'preliminary')).toThrow('ACCEPTANCE_SDK_RESEARCH_SOURCES');
