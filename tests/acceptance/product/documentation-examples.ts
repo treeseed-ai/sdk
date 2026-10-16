@@ -43,7 +43,7 @@ function examples(source:string):Array<{[key:string]:Literal}>{
  return observations;
 }
 
-export function verifySdkDocumentationExamples(documents:readonly string[]):void{
+export function verifySdkDocumentationExamples(documents:unknown):void{
  assert.ok(Array.isArray(documents)&&documents.length>0&&documents.every(value=>typeof value==='string'&&value.trim()),label+': Visible committed reference pages required');
  const source=documents.join('\n').replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/gmu,'').replace(/<!--[\s\S]*?-->/gu,'');
  const rows=examples(source),selections=rows.map(row=>row.decisionIds).filter((value):value is string[]=>Array.isArray(value)&&value.length>0&&value.every(id=>typeof id==='string'));
