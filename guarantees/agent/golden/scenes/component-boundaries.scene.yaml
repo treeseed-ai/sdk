@@ -772,3 +772,33 @@ workflow:
   - id: intent-runtime-wiring-unit
     action: { verifier: sdk.golden.intent-runtime-wiring-unit }
     expect: { status: passed }
+  - id: research-citation-unit
+    action: { verifier: sdk.golden.research-citation-unit }
+    expect: { status: passed }
+  - id: research-citation-native
+    action: { verifier: sdk.golden.research-citation-native }
+    expect: { status: passed }
+  - id: research-intent-fields-unit
+    action: { verifier: sdk.golden.research-intent-fields-unit }
+    expect: { status: passed }
+  - id: research-artifact-unit
+    action: { verifier: sdk.golden.research-artifact-unit }
+    expect: { status: passed }
+  - id: research-artifact-native
+    action: { verifier: sdk.golden.research-artifact-native }
+    expect: { status: passed }
+  - id: research-source-criteria-unit
+    action: { verifier: sdk.golden.research-source-criteria-unit }
+    expect: { status: passed }
+  - id: research-revision-unit
+    action: { verifier: sdk.golden.research-revision-unit }
+    expect: { status: passed }
+  - id: research-revision-native
+    action: { verifier: sdk.golden.research-revision-native }
+    expect: { status: passed }
+  - id: research-revision-wiring-unit
+    action: { verifier: sdk.golden.research-revision-wiring-unit }
+    expect: { status: passed }
+  - id: research-unsafe-read-unit
+    action: { verifier: sdk.golden.research-unsafe-read-unit }
+    expect: { status: passed }

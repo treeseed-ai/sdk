@@ -1322,3 +1322,53 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/product/base-red.test.ts
     testName: "requires the selected SDK product gate to inspect original built intent behavior within existing native replay custody"
+  sdk.golden.research-citation-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/research/research-citation.test.ts
+    testName: "resolves canonical exact SDK source citation locations without accepting moving foreign malformed or traversal authority"
+  sdk.golden.research-citation-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/research/research-citation-native.test.ts
+    testName: "native Git resolves actual SDK source citation symbols and bytes from the exact held commit while denying substituted missing and moved evidence before unchanged retry"
+  sdk.golden.research-intent-fields-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/research/research-source-fields.test.ts
+    testName: "proves prohibited SDK caller fields absent from the actual complete intent declaration instead of accepting narrative keywords or unrelated receipts"
+  sdk.golden.research-artifact-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/research/research-artifact.test.ts
+    testName: "reads original research Note bytes at the exact returned repository commit path and rejects narrative or substituted content views"
+  sdk.golden.research-artifact-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/research/research-artifact-native.test.ts
+    testName: "native public SDK repository-file reads retain independently committed research bytes through concurrency denial interruption and unchanged retry without source fallback"
+  sdk.golden.research-source-criteria-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/research/research-citations.test.ts
+    testName: "requires only the two native preliminary source findings with explicit pending boundaries and complete corrected source proof instead of keyword-only coverage"
+  sdk.golden.research-revision-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/research/revision/research-revision.test.ts
+    testName: "requires actual preliminary bytes actionable independent findings a substantive source-complete correction and a separately approved exact artifact without fabricating or rewriting the revision chain"
+  sdk.golden.research-revision-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/research/revision/research-revision-native.test.ts
+    testName: "native SDK research revision reads immutable published artifact and governed review bytes against actual frozen SDK source and retains missing altered denied interrupted evidence before unchanged retry"
+  sdk.golden.research-revision-wiring-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/research/revision/research-revision-wiring.test.ts
+    testName: "selected SDK product acceptance awaits original research revision proof on complete public assignments and the owning published source repository through supported exact library reads"
+  sdk.golden.research-unsafe-read-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/research/revision/research-revision-wiring.test.ts
+    testName: "denies an unsafe returned artifact path before invoking any public library reader"
