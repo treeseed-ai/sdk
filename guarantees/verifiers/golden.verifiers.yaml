@@ -1387,3 +1387,13 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/product/intent-runtime-native.test.ts
     testName: "native owning SDK normalizer execution is measured exactly once across denial interruption concurrent observation refusal and clean reacquisition without altering compiled assets"
+  sdk.golden.execution-publication-verification-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/product/test-chain.test.ts
+    testName: "denies missing foreign or contradictory independently verified publication custody without accepting self-consistent result-only records"
+  sdk.golden.execution-publication-verification-2:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/product/test-chain-native.test.ts
+    testName: "native Git and SDK source readback deny missing or contradictory retained candidate verification before native branch consumption and unchanged retry"
