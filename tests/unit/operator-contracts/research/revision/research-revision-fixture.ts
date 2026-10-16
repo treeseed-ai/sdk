@@ -10,7 +10,7 @@ export function researchRevisionFixture(base='a'.repeat(40),citations?:string[],
  const at=(seconds:number)=>new Date(Date.parse('2030-01-01T00:00:00.000Z')+seconds*1000).toISOString();
  const target=(model:string,id:string)=>({store:'treedx',model,id,repository:'repo_sdk',commit:'b'.repeat(40),path:(model==='decision'?'decisions/':'notes/')+id+'.md'});
  const save=(outputs:Array<{target:Row;frontmatter:Row;body:string}>)=>{
-  const files=outputs.map(value=>({path:value.target.path as string,content:'---\n'+stringify(value.frontmatter,{aliasDuplicateObjects:false})+'---\n'+value.body+'\n'})),commit=publish?publish(files):(++serial).toString(16).repeat(40);
+  const files=outputs.map(value=>({path:value.target.path as string,content:'---\n'+stringify(value.frontmatter.schemaVersion==='treeseed.decision/v1'?{...value.frontmatter,authorityRefs:value.frontmatter.authorityRefs.map((ref:Row)=>Object.fromEntries(Object.entries(ref).reverse())),decidedByRefs:value.frontmatter.decidedByRefs.map((ref:Row)=>Object.fromEntries(Object.entries(ref).reverse()))}:value.frontmatter,{aliasDuplicateObjects:false})+'---\n'+value.body+'\n'})),commit=publish?publish(files):(++serial).toString(16).repeat(40);
   return outputs.map((value,index)=>{const file=files[index]!,reference={kind:'treedx',projectId:'project',repository:'repo_sdk',commit,path:file.path},digest='sha256:'+createHash('sha256').update(file.content).digest('hex');
    views.set(commit+':'+file.path,{ok:true,repoId:'repo_sdk',resolvedRef:commit,files:[{...file,frontmatter:parse(file.content.match(/^---\n([\s\S]*?)\n---/u)![1]!),body:value.body.trim()}]});
    return{reference,exact:{...value.target,commit,digest,revision:1},digest};});
