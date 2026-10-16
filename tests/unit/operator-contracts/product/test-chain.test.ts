@@ -1,8 +1,9 @@
+import {publicationVerificationFixture} from './publication-verification-fixture.ts';
 import { createHash } from 'node:crypto';
 import * as nativeOutputs from '../../../acceptance/product/release-output.ts';
 import { approvedOutputFixture } from './test-output-fixture.ts';
 import { expect, it } from 'vitest';
-import { sdkPublishedRepository, sdkDocumentationBody, verifySdkCommittedTests, verifySdkReviewedSourceInput, type PublishedSourceAttempt } from '../../../acceptance/product/test-chain.ts';
+import { sdkPublishedRepository, sdkDocumentationBody, verifySdkCommittedTests, verifySdkReviewedSourceInput } from '../../../acceptance/product/test-chain.ts';
 
 it('retains original frozen fan-in integration base while requiring both exact predecessor results and completed independent review', () => {
 	const next = { workspace: { mode: 'git' as const, repository: 'treeseed-ai/sdk', baseCommit: 'a'.repeat(40), branch: 'simulation/release', writablePaths: ['.'] },
@@ -74,20 +75,8 @@ it('denies malformed reviewed integration identities before opening a native rep
 	}
 });
 
-const attempt: PublishedSourceAttempt = { id: 'attempt', teamId: 'team', projectId: 'sdk', attempt: 1, provider: { providerId: 'provider' },
-	workspace: { mode: 'git', repository: 'treeseed-ai/sdk', baseCommit: 'a'.repeat(40), branch: 'simulation/tester', writablePaths: ['tests'] } };
-const reference = { kind: 'git' as const, repository: 'treeseed-ai/sdk', commit: 'b'.repeat(40), branch: 'simulation/tester' };
-const repository = `/var/lib/treeseed/agent/workspaces/simulations/${'c'.repeat(64)}.git`;
-function fixture() {
-	const entry = (metadata: Record<string, unknown>) => ({ name: 'sandbox-test.json', type: 'file', digest: 'd'.repeat(64), metadata });
-	const journals = { jobs: { rootPresent: true, entries: [entry({ schemaVersion: 'treeseed.assignment-source-job/v1', leaseId: 'lease',
-		owner: { assignmentId: attempt.id, providerId: 'provider', teamId: 'team', projectId: 'sdk', attempt: 1 } })] },
-		results: { rootPresent: true, entries: [entry({ schemaVersion: 'treeseed.source-result/v1', sandboxId: 'sandbox-test', leaseId: 'lease',
-			status: 'completed', teardownVerified: true, source: { controlPlaneId: 'control', teamId: 'team', projectId: 'sdk', repositoryId: 'repository',
-				commit: 'a'.repeat(40), formatVersion: 1, profile: 'source-only' }, sourceReference: reference, simulationRepository: repository })] } };
-	return { complete: true, errors: [] as string[], scope: { storageRoot: '/var/lib/treeseed/agent/workspaces' }, journals,
-		confirmation: { journals: structuredClone(journals) } };
-}
+const {attempt,reference,repository}=publicationVerificationFixture();
+const fixture=()=>publicationVerificationFixture().workspace;
 it.each(['branch', 'repository'] as const)('denies a self-consistent published Git %s outside the original assignment workspace', field => {
 	const changed = { ...reference, [field]: field === 'branch' ? 'simulation/foreign' : 'treeseed-ai/foreign' };
 	const observation = fixture(); observation.journals.results.entries[0]!.metadata.sourceReference = changed;
@@ -127,4 +116,15 @@ it('requires complete unchanged public owning source custody and denies every fo
 	expect(() => sdkPublishedRepository(changed, 'sandbox-test', attempt, reference)).toThrow();
 	expect(() => sdkPublishedRepository(original, '../sandbox-test', attempt, reference)).toThrow();
 	expect(sdkPublishedRepository(original, 'sandbox-test', attempt, reference)).toBe(repository);
+});
+
+it('denies missing foreign or contradictory independently verified publication custody without accepting self-consistent result-only records',()=>{
+ for(const mode of ['missing-candidate','duplicate-candidate','root','state','assignmentId','providerId','attempt','leaseId','source','commit','digest','verifierId','verifierStopped','missing-verification','baseCommit','verified-commit','bytes','bytes-type','clean','objectClosure','ancestry','isolatedVerifier']){
+  const f=publicationVerificationFixture(),candidate=f.workspace.journals.candidates.entries[0]!.metadata,proof=candidate.verification as Record<string,unknown>;
+  if(mode==='missing-candidate')f.workspace.journals.candidates.entries=[];if(mode==='duplicate-candidate')f.workspace.journals.candidates.entries.push(structuredClone(f.workspace.journals.candidates.entries[0]!));if(mode==='root')f.workspace.journals.candidates.rootPresent=false;
+  if(['state','assignmentId','providerId','leaseId','commit','digest','verifierId'].includes(mode))candidate[mode]='foreign';if(mode==='attempt')candidate.attempt=2;if(mode==='source')candidate.source={};if(mode==='verifierStopped')candidate.verifierStopped=false;if(mode==='missing-verification')delete candidate.verification;
+  if(mode==='baseCommit')proof.baseCommit='f'.repeat(40);if(mode==='verified-commit')proof.commit='f'.repeat(40);if(mode==='bytes')proof.bytes=0;if(mode==='bytes-type')proof.bytes='100';if(['clean','objectClosure','ancestry','isolatedVerifier'].includes(mode))proof[mode]=false;
+  f.workspace.confirmation.journals=structuredClone(f.workspace.journals);const held=structuredClone(f);expect(()=>sdkPublishedRepository(f.workspace,'sandbox-test',f.attempt,f.reference),mode).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN');expect(f).toEqual(held);
+  const exact=publicationVerificationFixture();expect(sdkPublishedRepository(exact.workspace,'sandbox-test',exact.attempt,exact.reference)).toBe(exact.repository);
+ }
 });
