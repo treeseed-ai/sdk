@@ -820,3 +820,6 @@ workflow:
   - id: source-authorization-1
     action: { verifier: sdk.golden.execution-source-authorization-1 }
     expect: { status: passed }
+  - id: reference-documentation-examples
+    action: { verifier: sdk.golden.execution-reference-documentation-examples }
+    expect: { status: passed }
