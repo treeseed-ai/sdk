@@ -1,3 +1,4 @@
+import {verifySdkReferenceDocumentation} from './product/test-chain.ts';
 import{isAbsolute,resolve}from'node:path';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -172,6 +173,7 @@ test('SDK golden retains exact source and passing measured candidate release gat
 	const committedTests = verifySdkCommittedTests(testRepository, frozenBase, testSource.commit, engineerSource.commit,
 		{ writer: writerSource.commit, release: source.commit, writerBase: writerAttempt.workspace.mode === 'git' ? writerAttempt.workspace.baseCommit : '' });
 	assert.ok(committedTests.length > 0);
+	verifySdkReferenceDocumentation(testRepository,engineerSource.commit,writerSource.commit);
 	const baseReplay = await verifySdkBaseRed(testRepository, frozenBase, testSource.commit, engineerSource.commit, async cwd => { await verifySdkIntentRuntime(cwd); });
 	verifySdkApprovedTestOutputs(tester, engineer, original.executionEvents, testSource.commit, engineerSource.commit, committedTests, baseReplay);
 	assert.deepEqual(read(['host', 'sandbox', 'status']).workspace.journals, host.workspace.journals,
