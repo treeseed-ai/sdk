@@ -6,6 +6,7 @@ it('requires literal normalized selections both omitted planning states generate
  const verify=Reflect.get(proof,'verifySdkDocumentationExamples');
  expect(typeof verify).toBe('function');if(typeof verify!=='function')throw new Error('SDK documentation example verification is missing');
  const exact=[documentationExamples()],held=[...exact];verify(exact);expect(exact).toEqual(held);
+ verify([exact[0]+'\nThe SDK computes neither intentDigest nor preflightDigest.\nCaller-authored executionPlanId is not accepted.\n']);
  const mutations=[
   (s:string)=>s+'\nThe SDK computes intentDigest and preflightDigest before transport.\n',
   (s:string)=>s+'\nCaller-authored executionPlanId is accepted as caller input.\n',

@@ -57,9 +57,11 @@ export function verifySdkDocumentationExamples(documents:unknown):void{
   const ids=[...line.matchAll(/(?:^|\s)--decision(?:=|\s+)([^\s]+)/gu)].flatMap(match=>match[1]!.replace(/^['"]|['"]$/gu,'').split(','));return ids.length>=2&&ids.every(id=>/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/u.test(id));
  }),label+': Both generated command descriptors need repeatable/CSV selection examples');
  const prose=source.replace(/(?:^|\n)(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n\1(?=\n|$)/gu,' ');
+ assert.ok(!/\bSDK\s+(?:also\s+)?(?:computes?|generates?)\s+(?!neither\b|no\b)[^,.;\n]*\b(?:intentDigest|preflightDigest)\b/iu.test(prose),label+': Contradictory SDK digest ownership');
  assert.ok(/\bAPI\b[^.\n]*\b(?:alone|only)\b[^.\n]*\bcomputes?\b[^.\n]*\bintentDigest\b[^.\n]*\bpreflightDigest\b[^.\n]*\b(?:persistence|persisted)\b/iu.test(prose),label+': API-only digest and persistence ownership must be stated');
  assert.ok(/\bSDK\b[^.\n]*\bserializ\w*/iu.test(prose)&&/\bpersisted\s+`?capacityPlanId`?\b/iu.test(prose),label+': Separate SDK serialization and persisted API capacity provenance required');
  for(const field of ['executionPlanId','capacityPlanId','executionInputId','demandSetId']){
+  assert.ok(!new RegExp('caller-authored[^.\\n]*\\b'+field+'\\b[^.\\n]*\\b(?:is|are)\\s+(?:accepted|allowed|permitted)\\b','iu').test(prose),label+': Contradictory caller-derived authority');
   assert.ok(rows.some(row=>Object.hasOwn(row,field)),label+': Every prohibited caller field needs an actual input example');
   assert.ok(new RegExp('(?:caller-authored|caller input)[^.\\n]*\\b'+field+'\\b[^.\\n]*\\b(?:rejected|prohibited|invalid)\\b','iu').test(prose),label+': Each caller-authored field must be explicitly denied');
  }
