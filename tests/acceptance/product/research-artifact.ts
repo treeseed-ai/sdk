@@ -36,13 +36,19 @@ export function verifySdkResearchCitations(artifact:Pick<ReturnType<typeof sdkRe
  const label='ACCEPTANCE_SDK_RESEARCH_SOURCES';assert.ok(artifact&&typeof artifact.body==='string'&&artifact.body.trim()&&artifact.frontmatter&&typeof artifact.frontmatter==='object',label);
  assert.ok(stage==='preliminary'||stage==='corrected',label+': Exact original contribution stage required');
  const values:unknown[]=[...artifact.body.matchAll(/https?:\/\/[^\s<>()\]"'`]+/gu)].map(match=>match[0].replace(/[.,;:!?]+$/u,''));
- for(const name of ['relatedRefs','subjectRefs'])if(artifact.frontmatter[name]!==undefined){
-  assert.ok(Array.isArray(artifact.frontmatter[name]),label+': Canonical original source references required');
-  for(const value of artifact.frontmatter[name]){const ref=row(value);if(ref.store==='git')values.push(value);else if(ref.store==='url')values.push(ref.url);}
- }
+ for(const name of ['relatedRefs','subjectRefs'])if(artifact.frontmatter[name]!==undefined)assert.ok(Array.isArray(artifact.frontmatter[name]),label+': Canonical original source references required');
+ const collect=(value:unknown):void=>{
+  if(typeof value==='string'){for(const match of value.matchAll(/https?:\/\/[^\s<>()\]"'`]+/gu))values.push(match[0].replace(/[.,;:!?]+$/u,''));return;}
+  if(Array.isArray(value)){for(const item of value)collect(item);return;}
+  if(!value||typeof value!=='object')return;const ref=value as Row;
+  if(ref.store==='git'||ref.store==='url'){values.push(ref);return;}
+  if(ref.store==='treedx'||ref.store==='postgresql')return;
+  for(const[key,item]of Object.entries(ref))if(key!=='body')collect(item);
+ };collect(artifact.frontmatter);
+
  const sources={...otherSources,'treeseed-ai/sdk':{root:sdkRoot,base}},cited=new Map<string,{value:unknown;reference:ReturnType<typeof parseSdkResearchCitation>;observed:ReturnType<typeof resolveSdkResearchCitation>}>();
  for(const value of values){
-  let repository:unknown;if(typeof value==='string'){let url:URL;try{url=new URL(value);}catch(cause){throw new Error(label+': Malformed original source citation',{cause});}const parts=url.pathname.split('/');repository=parts[1]+'/'+parts[2];}else repository=row(value).repository;
+  let repository:unknown;if(typeof value==='string'){let url:URL;try{url=new URL(value);}catch(cause){throw new Error(label+': Malformed original source citation',{cause});}const parts=url.pathname.split('/');repository=parts[1]+'/'+parts[2];}else{const ref=row(value);if(ref.store==='url'&&typeof ref.url==='string'){const parts=new URL(ref.url).pathname.split('/');repository=parts[1]+'/'+parts[2];}else repository=ref.repository;}
   assert.ok(typeof repository==='string'&&Object.hasOwn(sources,repository),label+': Citation owner must have frozen source custody');
   const owner=sources[repository as keyof typeof sources]!;const reference=parseSdkResearchCitation(value,owner.base,repository);
   assert.ok(reference.anchor||reference.startLine!==undefined,label+': Exact original source location required');

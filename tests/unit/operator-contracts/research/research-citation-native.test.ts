@@ -16,6 +16,7 @@ it('native Git resolves actual SDK source citation symbols and bytes from the ex
  try{
   const base=upstream(['rev-parse','HEAD^{commit}']),tree=upstream(['rev-parse',base+'^{tree}']),objects=[base,tree,...upstream(['ls-tree','-r','-t',base]).split('\n').map(line=>line.match(/^[0-7]{6} (?:tree|blob) ([a-f0-9]{40})\t/u)?.[1]).filter((value):value is string=>Boolean(value))];
   execFileSync('git',['init','--bare',repository],{env,stdio:'pipe',timeout:30_000});
+  for(const[key,value]of [['user.name','Native source fixture'],['user.email','native-source-fixture@example.invalid']])execFileSync('git',['-C',repository,'config','--local',key!,value!],{env,stdio:'pipe',timeout:30_000});
   const pack=execFileSync('git',['--no-replace-objects','pack-objects','--stdout'],{cwd:process.cwd(),env:process.env,input:[...new Set(objects)].join('\n')+'\n',timeout:30_000,maxBuffer:128*1024*1024});
   execFileSync('git',['-C',repository,'index-pack','--stdin'],{env,input:pack,stdio:'pipe',timeout:30_000});writeFileSync(join(repository,'shallow'),base+'\n');
   const sources=[['src/operator-contracts/workday-lifecycle.ts','WorkdayIntent'],['src/entrypoints/clients/control-plane-client.ts','ControlPlaneClient.invoke']] as const;

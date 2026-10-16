@@ -7,7 +7,7 @@ import ts from 'typescript';
 import {exactEntityReferenceSchema} from '@treeseed/sdk/agent-capacity';
 
 const code='ACCEPTANCE_SDK_RESEARCH_CITATION';
-type SourceLocation={repository:string;commit:string;path:string;anchor?:string;startLine?:number;endLine?:number};
+type SourceLocation={repository:string;commit:string;path:string;anchor?:string;startLine?:number;endLine?:number;digest?:string;url?:string};
 function anchor(value:string):{first:number;last:number}|undefined{
  const match=value.match(/^L([1-9][0-9]*)(?:-L([1-9][0-9]*))?$/u);if(!match)return;
  const first=Number(match[1]),last=Number(match[2]??match[1]);assert.ok(Number.isSafeInteger(first)&&Number.isSafeInteger(last)&&first<=last,code+': Exact source line range required');return{first,last};
@@ -24,8 +24,17 @@ export function parseSdkResearchCitation(value:unknown,base:string,repository='t
   reference={repository,commit:parts[4]!,path,...(url.hash?{anchor:url.hash.slice(1)}:{})};if(reference.anchor)assert.ok(anchor(reference.anchor),code+': Source URL anchor must resolve to exact lines');
  }else{
   const checked=exactEntityReferenceSchema.safeParse(value);assert.ok(checked.success,code+': Canonical exact Git reference required');assert.deepEqual(checked.data,value,code+': Source reference cannot be normalized');
-  assert.equal(checked.data.store,'git',code);assert.ok(checked.data.repository&&checked.data.commit&&checked.data.path,code+': Complete exact source location required');
-  reference={repository:checked.data.repository,commit:checked.data.commit,path:checked.data.path,...(checked.data.anchor!==undefined?{anchor:checked.data.anchor}:{}),...(checked.data.startLine!==undefined?{startLine:checked.data.startLine,...(checked.data.endLine!==undefined?{endLine:checked.data.endLine}:{})}:{})};
+  const data=checked.data;assert.ok(data.store==='git'||data.store==='url',code+': Canonical source owner required');
+  const presentation=data.url===undefined?undefined:parseSdkResearchCitation(data.url,base,repository);
+  if(data.store==='git')assert.ok(data.repository&&data.commit&&data.path,code+': Complete exact source location required');
+  reference={repository:data.repository??presentation!.repository,commit:data.commit??presentation!.commit,path:data.path??presentation!.path,
+   ...(data.anchor!==undefined?{anchor:data.anchor}:presentation?.anchor!==undefined?{anchor:presentation.anchor}:{}),
+   ...(data.startLine!==undefined?{startLine:data.startLine,...(data.endLine!==undefined?{endLine:data.endLine}:{})}:{}),
+   ...(data.digest!==undefined?{digest:data.digest}:{}),...(data.url!==undefined?{url:data.url}:{})};
+  if(presentation){for(const key of ['repository','commit','path']as const)assert.equal(reference[key],presentation[key],code+': Contradictory presentation source');
+   const range=reference.startLine!==undefined?{first:reference.startLine,last:reference.endLine??reference.startLine}:reference.anchor?anchor(reference.anchor):undefined,shown=presentation.anchor?anchor(presentation.anchor):undefined;
+   if(range&&shown)assert.ok(range.first<=shown.last&&shown.first<=range.last,code+': Contradictory presentation source lines');}
+
  }
  assert.equal(reference.repository,repository,code+': Foreign source repository');assert.equal(reference.commit,base,code+': Citation differs from frozen source');
  assert.ok(reference.path.startsWith('src/')&&reference.path.endsWith('.ts')&&!reference.path.includes('\\')&&!/[\u0000-\u001f\u007f]/u.test(reference.path)&&posix.normalize(reference.path)===reference.path&&!reference.path.split('/').includes('..'),code+': Canonical owning source path required');
@@ -42,6 +51,7 @@ export function resolveSdkResearchCitation(root:string,base:string,citation:unkn
   const env={...process.env};for(const key of Object.keys(env))if(key.startsWith('GIT_'))delete env[key];env.GIT_OPTIONAL_LOCKS='0';env.GIT_NO_REPLACE_OBJECTS='1';
   const git=(args:string[])=>execFileSync('git',['--no-replace-objects','-C',root,...args],{env,timeout:30_000,maxBuffer:8*1024*1024});
   assert.equal(git(['cat-file','-t',base]).toString('utf8').trim(),'commit',code);const bytes=git(['cat-file','blob',base+':'+reference.path]),source=bytes.toString('utf8');assert.ok(Buffer.from(source,'utf8').equals(bytes),code+': Exact UTF-8 source required');
+  const sourceSha256=createHash('sha256').update(bytes).digest('hex');if(reference.digest!==undefined)assert.equal(reference.digest,'sha256:'+sourceSha256,code+': Source digest differs from original Git bytes');
   const suppliedAnchor=reference.anchor?anchor(reference.anchor):undefined,range=reference.startLine!==undefined?{first:reference.startLine,last:reference.endLine??reference.startLine}:suppliedAnchor;
   if(reference.anchor&&!suppliedAnchor){if(symbol===undefined)symbol=reference.anchor;else assert.equal(reference.anchor,symbol,code+': Foreign source symbol');}
   const parsed=ts.createSourceFile(reference.path,source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS),diagnostics:unknown=Reflect.get(parsed,'parseDiagnostics');assert.ok(Array.isArray(diagnostics)&&diagnostics.length===0,code+': Source must parse without repair');
@@ -53,9 +63,11 @@ export function resolveSdkResearchCitation(root:string,base:string,citation:unkn
   };inspect(parsed);if(symbol!==undefined)assert.ok(matches.length>0,code+': Cited source symbol missing');
   const lines=source.split('\n').length;if(range)assert.ok(range.last<=lines,code+': Cited lines are absent');
   const located=matches.filter(node=>!range||parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line+1<=range.last&&parsed.getLineAndCharacterOfPosition(node.end).line+1>=range.first);if(symbol!==undefined)assert.ok(located.length>0,code+': Citation does not locate its claimed symbol');
+  if(reference.url){const shown=parseSdkResearchCitation(reference.url,base,repository),display=shown.anchor?anchor(shown.anchor):undefined;
+   if(display){assert.ok(display.last<=lines,code+': Presented source lines are absent');if(symbol!==undefined)assert.ok(located.some(node=>parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line+1<=display.last&&parsed.getLineAndCharacterOfPosition(node.end).line+1>=display.first),code+': Presentation does not locate its claimed source symbol');}}
   assert.ok(symbol!==undefined||range,code+': Exact source lines or a source symbol required');
   const line=symbol!==undefined?parsed.getLineAndCharacterOfPosition(located[0]!.getStart(parsed)).line+1:range!.first;
-  return{source,blob:git(['rev-parse',base+':'+reference.path]).toString('utf8').trim(),sourceSha256:createHash('sha256').update(bytes).digest('hex'),symbol,line};
+  return{source,blob:git(['rev-parse',base+':'+reference.path]).toString('utf8').trim(),sourceSha256,symbol,line};
  }catch(cause){if(cause instanceof Error&&cause.message.startsWith(code))throw cause;throw new Error(code+': Native frozen source resolution failed',{cause});}
 }
 
