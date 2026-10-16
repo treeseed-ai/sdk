@@ -59,6 +59,12 @@ it('native Git resolves actual SDK source citation symbols and bytes from the ex
   expect(()=>verifySdkResearchCitations({...preliminary,body:preliminary.body+'\n'+completeCitations[2]},repository,base,'preliminary')).toThrow('ACCEPTANCE_SDK_RESEARCH_SOURCES');
   expect(()=>verifySdkResearchCitations({...corrected,body:corrected.body.replace(base,'a'.repeat(40))},repository,base,'corrected')).toThrow();
   expect(verifySdkResearchCitations(corrected,repository,base,'corrected')).toEqual(last);
+  const urlRefs=observations.map(value=>({store:'url',model:'source',id:value.symbol.replace('.','-'),url:value.citation+'#L'+value.found.line,digest:'sha256:'+value.found.sourceSha256}));
+  expect(verifySdkResearchCitations({frontmatter:{relatedRefs:urlRefs},body:pending},repository,base,'preliminary')).toHaveLength(2);
+  expect.soft(()=>verifySdkResearchCitations({...preliminary,frontmatter:{relatedRefs:[{...urlRefs[0],digest:'sha256:'+'f'.repeat(64)}]}},repository,base,'preliminary')).toThrow('ACCEPTANCE_SDK_RESEARCH_CITATION');
+  expect.soft(()=>verifySdkResearchCitations({...preliminary,frontmatter:{documentationUrls:['https://example.test/third-source']}},repository,base,'preliminary')).toThrow('ACCEPTANCE_SDK_RESEARCH_SOURCES');
+  expect(verifySdkResearchCitations({...preliminary,frontmatter:{bookRef:{store:'treedx',model:'book',id:'sdk-core',commit:base,url:'https://example.test/context-book'}}},repository,base,'preliminary')).toHaveLength(2);
+
   const original=observations[0]!,declared=declaredSdkResearchIntentFields(original.found.source);
   for(const field of ['planningOnly','proposalIds','decisionIds','agentSelection','allocation'])expect(declared).toContain(field);
   const git=(args:string[],input?:string)=>execFileSync('git',['--no-replace-objects','-C',repository,...args],{env:{...env,GIT_INDEX_FILE:join(root,'source.index')},encoding:'utf8',input,timeout:30_000}).trim();
