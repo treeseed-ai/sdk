@@ -128,3 +128,18 @@ it('denies missing foreign or contradictory independently verified publication c
   const exact=publicationVerificationFixture();expect(sdkPublishedRepository(exact.workspace,'sandbox-test',exact.attempt,exact.reference)).toBe(exact.repository);
  }
 });
+
+it('rejects missing foreign credentialed or upstream publication authority before consuming a self-consistent simulation candidate without changing original evidence',()=>{
+ const exact=publicationVerificationFixture();expect(sdkPublishedRepository(exact.workspace,'sandbox-test',exact.attempt,exact.reference)).toBe(exact.repository);
+ for(const mode of ['missing','malformed','owner','provider','attempt','source','mode','acquisition','publication','branch','credential','clock']){
+  const f=publicationVerificationFixture(),job=f.workspace.journals.jobs.entries[0]!.metadata,a=structuredClone(job.authority)as Record<string,unknown>;
+  if(mode==='missing')delete job.authority;else if(mode==='malformed')job.authority=null;else{
+   if(mode==='owner')a.assignmentId='foreign';if(mode==='provider')a.providerId='foreign';if(mode==='attempt')a.attempt=2;if(mode==='source')a.source={...(a.source as object),commit:'f'.repeat(40)};
+   if(mode==='mode')a.mode='analysis';if(mode==='acquisition'){a.acquisition='upstream-authorized';a.credentialBindingId='binding-original';}
+   if(mode==='publication'){a.acquisition='upstream-authorized';a.publication='assignment-branch';a.credentialBindingId='binding-original';}
+   if(mode==='branch')a.publicationRef='simulation/foreign';if(mode==='credential')a.credentialBindingId='forbidden-in-simulation';if(mode==='clock')a.expiresAt=a.issuedAt;job.authority=a;
+  }
+  f.workspace.confirmation.journals=structuredClone(f.workspace.journals);const held=structuredClone(f);expect.soft(()=>sdkPublishedRepository(f.workspace,'sandbox-test',f.attempt,f.reference),mode).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN');expect(f).toEqual(held);
+ }
+ const retry=publicationVerificationFixture();expect(sdkPublishedRepository(retry.workspace,'sandbox-test',retry.attempt,retry.reference)).toBe(retry.repository);
+});

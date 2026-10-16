@@ -208,6 +208,14 @@ it('native Git and SDK source readback deny missing or contradictory retained ca
    if(mode==='missing')f.workspace.journals.candidates.entries=[];if(mode==='provider')candidate.providerId='foreign';if(mode==='base')proof.baseCommit='f'.repeat(40);if(mode==='candidate')proof.commit='f'.repeat(40);if(mode==='flag')proof.ancestry=false;if(mode==='digest')candidate.digest='invalid';
    f.workspace.confirmation.journals=structuredClone(f.workspace.journals);const before=structuredClone(f),count=reads;failures.push({mode,workspace:structuredClone(f.workspace)});expect(()=>inspect(f),mode).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN');expect(reads).toBe(count);expect(f).toEqual(before);expect(git(native,'show-ref')).toBe(refs);
   }
+
+  for(const mode of ['missing-authority','foreign-authority','foreign-source','upstream-publication','credential-binding']){
+   const f=publicationVerificationFixture(base,commit,branch),job=f.workspace.journals.jobs.entries[0]!.metadata,a=structuredClone(job.authority)as Record<string,unknown>;
+   if(mode==='missing-authority')delete job.authority;else{if(mode==='foreign-authority')a.assignmentId='foreign';if(mode==='foreign-source')a.source={...(a.source as object),commit:'f'.repeat(40)};
+    if(mode==='upstream-publication'){a.publication='assignment-branch';a.acquisition='upstream-authorized';a.credentialBindingId='binding';}if(mode==='credential-binding')a.credentialBindingId='forbidden';job.authority=a;}
+   f.workspace.confirmation.journals=structuredClone(f.workspace.journals);const held=structuredClone(f),count=reads;failures.push({mode,workspace:structuredClone(f.workspace)});
+   expect.soft(()=>inspect(f),mode).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN');expect.soft(reads,mode).toBe(count);expect(f).toEqual(held);expect(git(native,'show-ref')).toBe(refs);
+  }
   const retained=structuredClone(failures);expect(inspect(original)).toBe(commit);expect(failures).toEqual(retained);expect(git(native,'rev-parse','refs/heads/frozen-base')).toBe(base);expect(git(native,'show',commit+':source.ts')).toBe('export const value=2;');expect(original).toEqual(held);
   // Actual original native Git helpers and physical objects. Public workspace
   // DTO/locator inputs are controlled; Deployment878 owns real installed

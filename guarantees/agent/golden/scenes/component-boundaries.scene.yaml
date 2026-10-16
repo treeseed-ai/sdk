@@ -817,3 +817,6 @@ workflow:
   - id: publication-verification-2
     action: { verifier: sdk.golden.execution-publication-verification-2 }
     expect: { status: passed }
+  - id: source-authorization-1
+    action: { verifier: sdk.golden.execution-source-authorization-1 }
+    expect: { status: passed }
