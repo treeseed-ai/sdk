@@ -27,9 +27,9 @@ export function sdkResearchArtifact(reference:Row,returned:unknown){
  const frontmatter=row(document.toJS({maxAliasCount:0})),body=match[2]!.trim();assert.deepEqual(frontmatter,file.frontmatter,code+': Parsed native view contradicts raw bytes');
  if(file.body!==undefined)assert.equal(file.body,body,code+': Native body differs from original bytes');
  if(frontmatter.body!==undefined)assert.equal(frontmatter.body,body,code+': Frontmatter body differs from original bytes');
- const model=frontmatter.schemaVersion==='treeseed.note/v1'?'note':frontmatter.schemaVersion==='treeseed.knowledge-page/v2'?'knowledge':undefined;
- assert.ok(model&&frontmatter.projectId===reference.projectId,code+': Original project-owned Note or Knowledge required');
- assert.ok(validatePortableContentData(model,{...frontmatter,body}).ok,code+': Complete original canonical artifact required');
+ const model=frontmatter.schemaVersion==='treeseed.note/v1'?'note':frontmatter.schemaVersion==='treeseed.knowledge-page/v2'?'knowledge':frontmatter.schemaVersion==='treeseed.decision/v1'?'decision':undefined;
+ assert.ok(model&&frontmatter.projectId===reference.projectId,code+': Original project-owned canonical artifact required');
+ assert.ok(validatePortableContentData(model,model==='decision'?frontmatter:{...frontmatter,body}).ok,code+': Complete original canonical artifact required');
  return{model,frontmatter,body,content,sha256};
 }
 

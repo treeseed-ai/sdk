@@ -401,3 +401,4 @@ export function sdkGoldenWorkdayId(read: (args: string[]) => Row, freeze: Row, e
 
 export{parseSdkResearchCitation,resolveSdkResearchCitation}from'./product/research-source.ts';
 export{sdkResearchArtifact,verifySdkResearchCitations}from'./product/research-artifact.ts';
+export{verifySdkResearchRevision}from'./product/research-revision.ts';
