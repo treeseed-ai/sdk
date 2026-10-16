@@ -811,3 +811,9 @@ workflow:
   - id: normalization-path-native
     action: { verifier: sdk.golden.normalization-path-native }
     expect: { status: passed }
+  - id: publication-verification-1
+    action: { verifier: sdk.golden.execution-publication-verification-1 }
+    expect: { status: passed }
+  - id: publication-verification-2
+    action: { verifier: sdk.golden.execution-publication-verification-2 }
+    expect: { status: passed }
