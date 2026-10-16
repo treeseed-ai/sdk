@@ -29,12 +29,12 @@ export function sdkNormalizerCoverageCount(root:string,observation:unknown):numb
 export class SdkIntentNormalizerObservation{
  private static active=false;
  private readonly session=new Session();private owned=false;private connected=false;private started=false;
- private asset='';private digest='';
+ private asset='';private digest='';private canonicalRoot='';
  constructor(private readonly root:string){}
  get closed(){return !this.owned;}
  async start(){
   const label='ACCEPTANCE_SDK_NORMALIZATION_PATH';assert.ok(!this.owned&&!SdkIntentNormalizerObservation.active,label+': Concurrent observation denied');
-  assert.ok(isAbsolute(this.root)&&realpathSync(this.root)===resolve(this.root),label);
+  assert.ok(isAbsolute(this.root)&&realpathSync(this.root)===resolve(this.root),label);this.canonicalRoot=realpathSync(this.root);
   this.asset=resolve(this.root,'dist/operator-contracts/workday-lifecycle.js');assert.equal(realpathSync(this.asset),this.asset,label);assert.ok(lstatSync(this.asset).isFile(),label);
   this.digest=createHash('sha256').update(readFileSync(this.asset)).digest('hex');SdkIntentNormalizerObservation.active=true;this.owned=true;
   try{this.session.connect();this.connected=true;await this.session.post('Profiler.enable');await this.session.post('Profiler.startPreciseCoverage',{callCount:true,detailed:true});this.started=true;}
@@ -43,7 +43,7 @@ export class SdkIntentNormalizerObservation{
  async read(){
   const label='ACCEPTANCE_SDK_NORMALIZATION_PATH';assert.ok(this.owned&&this.started,label+': Original observation required');
   assert.equal(createHash('sha256').update(readFileSync(this.asset)).digest('hex'),this.digest,label+': Compiled normalizer changed');
-  return sdkNormalizerCoverageCount(this.root,await this.session.post('Profiler.takePreciseCoverage'));
+  return sdkNormalizerCoverageCount(this.canonicalRoot,await this.session.post('Profiler.takePreciseCoverage'));
  }
  async close(){
   if(!this.owned)return;const failures:unknown[]=[];

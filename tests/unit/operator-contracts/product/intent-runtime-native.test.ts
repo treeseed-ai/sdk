@@ -1,9 +1,8 @@
 import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
-import {normalizeWorkdayIntent} from '@treeseed/sdk/operator-contracts';
 import * as runtime from '../../../acceptance/product/intent-runtime.ts';
 import {expect,it} from 'vitest';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 import {ControlPlaneClient} from '@treeseed/sdk/control-plane-client';
 import {CONTROL_PLANE_OPERATIONS} from '@treeseed/sdk/operator-contracts';
 import * as replay from '../../../acceptance/product/base-red.ts';
@@ -30,6 +29,7 @@ it('rejects missing or relative built SDK custody before any product transport',
 it('native owning SDK normalizer execution is measured exactly once across denial interruption concurrent observation refusal and clean reacquisition without altering compiled assets',async()=>{
  const Constructor=Reflect.get(runtime,'SdkIntentNormalizerObservation') as (new(root:string)=>{start():Promise<void>;read():Promise<number>;close():Promise<void>})|undefined;expect(Constructor).toBeTypeOf('function');if(!Constructor)throw new Error('Native normalization-path resource missing');
  const root=fileURLToPath(new URL('../../../../',import.meta.url)),asset=resolve(root,'dist/operator-contracts/workday-lifecycle.js'),held=readFileSync(asset),first=new Constructor(root),competing=new Constructor(root);
+ const manifest=JSON.parse(readFileSync(resolve(root,'package.json'),'utf8'));const publicContracts=await import(pathToFileURL(resolve(root,manifest.exports['./operator-contracts'].default)).href) as typeof import('@treeseed/sdk/operator-contracts');const normalizeWorkdayIntent=publicContracts.normalizeWorkdayIntent;
  const input={schemaVersion:'treeseed.workday-intent/v1' as const,teamId:'team',profileId:'default',projects:['sdk'],startsAt:'2030-01-01T00:00:00Z',durationSeconds:600,decisionIds:[' b ','A']};const original=structuredClone(input);
  try{await first.start();expect(await first.read()).toBe(0);expect(normalizeWorkdayIntent(input).decisionIds).toEqual(['A','b']);expect(await first.read()).toBe(1);
   await expect(competing.start()).rejects.toThrow('ACCEPTANCE_SDK_NORMALIZATION_PATH');expect(await first.read()).toBe(0);
