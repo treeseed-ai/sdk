@@ -7,6 +7,8 @@ it('requires literal normalized selections both omitted planning states generate
  expect(typeof verify).toBe('function');if(typeof verify!=='function')throw new Error('SDK documentation example verification is missing');
  const exact=[documentationExamples()],held=[...exact];verify(exact);expect(exact).toEqual(held);
  const mutations=[
+  (s:string)=>s+'\nThe SDK computes intentDigest and preflightDigest before transport.\n',
+  (s:string)=>s+'\nCaller-authored executionPlanId is accepted as caller input.\n',
   (s:string)=>'# decisionIds planningOnly workdays plan workdays schedules start intentDigest preflightDigest executionPlanId capacityPlanId executionInputId demandSetId',
   (s:string)=>'<!-- '+s+' -->',
   (s:string)=>s.replace('trsd workdays plan --decision Z,a --decision A','trsd workdays plan'),

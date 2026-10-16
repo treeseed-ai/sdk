@@ -35,6 +35,11 @@ it('native Git rejects unreviewed final integration trees and unrelated approved
 		git(['checkout','--detach',engineer]);writeFileSync(join(work,'docs/reference.md'),documentationExamples());
 		const documented=commit('controlled complete SDK reference examples');git(['--git-dir',repository,'fetch',work,documented]);
 		verifyDocs(repository,engineer,documented);
+		git(['checkout','--detach',engineer]);writeFileSync(join(work,'docs/reference.md'),documentationExamples()+'\nThe SDK computes intentDigest and preflightDigest before transport.\n');
+		const contradictory=commit('controlled contradictory SDK digest ownership');git(['--git-dir',repository,'fetch',work,contradictory]);
+		expect(()=>verifyDocs(repository,engineer,contradictory)).toThrow('ACCEPTANCE_SDK_DOCUMENTATION');
+		verifyDocs(repository,engineer,documented);
+		expect(git(['--git-dir',repository,'rev-parse',contradictory+'^{commit}'])).toBe(contradictory);
 		for(const field of ['executionPlanId','capacityPlanId','executionInputId','demandSetId']){
 		 git(['checkout','--detach',engineer]);writeFileSync(join(work,'docs/reference.md'),documentationExamples().replaceAll(field,'unrelatedField'));
 		 const failed=commit('controlled missing prohibited caller field '+field);git(['--git-dir',repository,'fetch',work,failed]);
