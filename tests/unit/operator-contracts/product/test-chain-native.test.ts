@@ -1,3 +1,5 @@
+import {publicationVerificationFixture} from './publication-verification-fixture.ts';
+import {sdkPublishedRepository} from '../../../acceptance/product/test-chain.ts';
 import * as nativeOutputs from '../../../acceptance/product/release-output.ts';
 import { testOutputFixture } from './test-output-fixture.ts';
 import { expect, it } from 'vitest';
@@ -191,3 +193,24 @@ it('native Git proves test-only approved ancestry and identical consumed blobs w
 		for (const failed of [...denied, ...independentlyDenied]) expect(git(['--git-dir', repository, 'rev-parse', '--verify', `${failed}^{commit}`])).toBe(failed);
 	} finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it('native Git and SDK source readback deny missing or contradictory retained candidate verification before native branch consumption and unchanged retry',()=>{
+ const root=mkdtempSync(join(tmpdir(),'sdk-publication-verification-')),work=join(root,'work'),native=join(root,'published.git'),failures:unknown[]=[];
+ const git=(directory:string,...args:string[])=>execFileSync('/usr/bin/git',['-C',directory,...args],{encoding:'utf8',timeout:5000,maxBuffer:1024*1024,env:{PATH:'/usr/bin:/bin',GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:'/dev/null',GIT_AUTHOR_NAME:'Controlled SDK source',GIT_AUTHOR_EMAIL:'fixture@example.invalid',GIT_COMMITTER_NAME:'Controlled SDK source',GIT_COMMITTER_EMAIL:'fixture@example.invalid'}}).trim();
+ try{
+  mkdirSync(work);git(work,'init','--template=');writeFileSync(join(work,'source.ts'),'export const value=1;\n');git(work,'add','.');git(work,'commit','-m','controlled frozen base');const base=git(work,'rev-parse','HEAD');git(work,'branch','frozen-base');
+  const branch='simulation/native/workday/assignment';git(work,'checkout','-b',branch);writeFileSync(join(work,'source.ts'),'export const value=2;\n');git(work,'add','.');git(work,'commit','-m','controlled source candidate');const commit=git(work,'rev-parse','HEAD');git(root,'clone','--bare','--no-local',work,native);
+  const original=publicationVerificationFixture(base,commit,branch),held=structuredClone(original),refs=git(native,'show-ref');let reads=0;
+  const inspect=(f:ReturnType<typeof publicationVerificationFixture>)=>{expect(sdkPublishedRepository(f.workspace,'sandbox-test',f.attempt,f.reference)).toBe(f.repository);reads++;return verifySdkPublishedBranch(native,f.reference);};
+  expect(inspect(original)).toBe(commit);expect(original).toEqual(held);
+  for(const mode of ['missing','provider','base','candidate','flag','digest']){
+   const f=publicationVerificationFixture(base,commit,branch),candidate=f.workspace.journals.candidates.entries[0]!.metadata,proof=candidate.verification as Record<string,unknown>;
+   if(mode==='missing')f.workspace.journals.candidates.entries=[];if(mode==='provider')candidate.providerId='foreign';if(mode==='base')proof.baseCommit='f'.repeat(40);if(mode==='candidate')proof.commit='f'.repeat(40);if(mode==='flag')proof.ancestry=false;if(mode==='digest')candidate.digest='invalid';
+   f.workspace.confirmation.journals=structuredClone(f.workspace.journals);const before=structuredClone(f),count=reads;failures.push({mode,workspace:structuredClone(f.workspace)});expect(()=>inspect(f),mode).toThrow('ACCEPTANCE_SDK_NATIVE_TEST_CHAIN');expect(reads).toBe(count);expect(f).toEqual(before);expect(git(native,'show-ref')).toBe(refs);
+  }
+  const retained=structuredClone(failures);expect(inspect(original)).toBe(commit);expect(failures).toEqual(retained);expect(git(native,'rev-parse','refs/heads/frozen-base')).toBe(base);expect(git(native,'show',commit+':source.ts')).toBe('export const value=2;');expect(original).toEqual(held);
+  // Actual original native Git helpers and physical objects. Public workspace
+  // DTO/locator inputs are controlled; Deployment878 owns real installed
+  // manager/supervisor production of this boundary. No Kata/model/usage claim.
+ }finally{console.log(JSON.stringify({nativeSdkPublicationVerificationFailures:failures}));rmSync(root,{recursive:true,force:true});}
+},30_000);
