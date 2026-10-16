@@ -136,7 +136,7 @@ test('SDK golden retains exact source and passing measured candidate release gat
 	assert.equal(testRepository, engineerRepository, 'ACCEPTANCE_SDK_NATIVE_TEST_CHAIN: Source security domain changed');
  const platformPath=process.env.TREESEED_ACCEPTANCE_PLATFORM_PATH;
  if(platformPath!==undefined)assert.ok(isAbsolute(platformPath),'ACCEPTANCE_SDK_RESEARCH_SOURCES: Absolute source workspace authority required');
- const otherResearchSources=platformPath&&typeof freeze.sourceHeads?.api==='string'?{'treeseed-ai/api':{root:resolve(platformPath,'packages','api'),base:freeze.sourceHeads.api}}:{};
+ const otherResearchSources:Record<string,{root:string;base:string}>=platformPath&&typeof freeze.sourceHeads?.api==='string'?{'treeseed-ai/api':{root:resolve(platformPath,'packages','api'),base:freeze.sourceHeads.api}}:{};
  const researchProof=await verifySdkResearchRevision(full, actorAttempt, testRepository, frozenBase, reference =>
   sdkGoldenLibraryFiles(read(['library', 'read', String(reference.projectId), String(reference.path), '--ref', String(reference.commit)])),otherResearchSources);
  console.log(JSON.stringify({sdkResearchRevision:researchProof}));
