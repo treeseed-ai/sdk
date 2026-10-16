@@ -1397,3 +1397,8 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/product/test-chain-native.test.ts
     testName: "native Git and SDK source readback deny missing or contradictory retained candidate verification before native branch consumption and unchanged retry"
+  sdk.golden.execution-source-authorization-1:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/product/test-chain.test.ts
+    testName: "rejects missing foreign credentialed or upstream publication authority before consuming a self-consistent simulation candidate without changing original evidence"
