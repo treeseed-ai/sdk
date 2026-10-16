@@ -190,4 +190,3 @@ export function verifySdkReferenceDocumentation(repository:string,engineer:strin
  verifySdkDocumentationExamples(documents);
  assert.equal(git(['rev-parse',writer+'^{commit}']).toString().trim(),writer,label);
 }
-
