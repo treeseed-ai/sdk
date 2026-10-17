@@ -106,7 +106,7 @@ describe('ControlPlaneClient', () => {
 		const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () => new Response(JSON.stringify({ data: { marker: 'controlled-response' } }), { status: 200, headers: { 'content-type': 'application/json' } }));
 		const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002' }, fetchImpl });
 		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default', projects: ['sdk'], startsAt: '2026-09-16T12:00:00Z', durationSeconds: 3600,
-			proposalIds: ['proposal-original'], agentSelection: { agentSlugs: ['configured-arbitrary-agent'], activityTypes: ['planning'] }, allocation: { planningPercent: 20, allocationWeight: 2 } };
+			reportingAgentId: 'sdk/digest-writer', proposalIds: ['proposal-original'], agentSelection: { agentSlugs: ['configured-arbitrary-agent'], activityTypes: ['planning'] }, allocation: { planningPercent: 20, allocationWeight: 2 } };
 		const normalized = ['A', 'Z', 'a', 'a-1', 'a.1', 'a/1', 'a:1'];
 		for (const nested of [false, true]) {
 			for (const planningOnly of [false, true]) {
@@ -169,7 +169,7 @@ describe('ControlPlaneClient', () => {
 			if (!address || typeof address === 'string') throw new Error('Expected allocated loopback TCP address');
 			const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: `http://127.0.0.1:${address.port}` } });
 			const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default', projects: ['sdk'], startsAt: '2026-09-16T12:00:00Z', durationSeconds: 3600,
-				proposalIds: ['proposal-original'], agentSelection: { agentSlugs: ['configured-arbitrary-agent'], activityTypes: ['planning'] }, allocation: { planningPercent: 20, allocationWeight: 2 } };
+				reportingAgentId: 'sdk/digest-writer', proposalIds: ['proposal-original'], agentSelection: { agentSlugs: ['configured-arbitrary-agent'], activityTypes: ['planning'] }, allocation: { planningPercent: 20, allocationWeight: 2 } };
 			const normalized = ['A', 'Z', 'a', 'a-1', 'a.1', 'a/1', 'a:1'];
 			for (const nested of [false, true]) {
 				for (const planningOnly of [false, true]) {
@@ -209,6 +209,7 @@ describe('ControlPlaneClient', () => {
 				}
 				const binding = nested ? CONTROL_PLANE_OPERATIONS.workdays.createSchedule : CONTROL_PLANE_OPERATIONS.workdays.preflight;
 				const invalid = [
+					...['', ' ', null, false, 1, [], {}, 'é', 'id?', 'x'.repeat(201)].map(reportingAgentId => Object.assign({}, base, { reportingAgentId })),
 					...[null, [], '', true, { unknown: 1 }, ...[null, '', [''], [' '], ['same', 'same'], [null], [1],
 						['x'.repeat(201)], ['provider?']].map(providerIds => ({ providerIds })),
 						...[null, '', '1', 0, -1, 0.5, true, Number.NaN, Number.POSITIVE_INFINITY].map(maxConcurrency => ({ maxConcurrency }))]
