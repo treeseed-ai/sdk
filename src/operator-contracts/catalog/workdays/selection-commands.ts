@@ -1,7 +1,7 @@
 import type { CommandInputBinding, CommandLeafDescriptor } from '../../command-tree.ts';
 
 export const WORKDAY_SELECTION_INPUTS: CommandInputBinding[] = [
-	{ target: 'body', field: 'reportingAgentId', source: 'option', name: 'reportingAgent', transform: 'identity' },
+	{ target: 'body', field: 'reportingAgentId', source: 'option', name: 'reportingAgent', required: false, transform: 'identity' },
 	{ target: 'body', field: 'allocation.planningPercent', source: 'option', name: 'planningPercent', transform: 'number' },
 	{ target: 'body', field: 'allocation.allocationWeight', source: 'option', name: 'allocationWeight', transform: 'number' },
 	{ target: 'body', field: 'allocation.planningTurnMaximumSeconds', source: 'option', name: 'planningTurnMaximumSeconds', transform: 'integer' },
