@@ -1407,3 +1407,13 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/product/documentation-examples.test.ts
     testName: "requires literal normalized selections both omitted planning states generated command examples and API-only provenance in visible SDK reference documentation"
+  sdk.golden.reporting-selection-plan:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/agent-capacity/capacity/workday-allocation.test.ts
+    testName: "retains the explicit configured reporting identity in the canonical applied plan before activation without changing planning contributors"
+  sdk.golden.reporting-selection-intent:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/workday-lifecycle.test.ts
+    testName: "accepts one canonical configured reporting identity as independent operator intent and denies malformed explicit selectors"

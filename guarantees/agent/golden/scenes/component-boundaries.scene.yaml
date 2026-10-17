@@ -823,3 +823,9 @@ workflow:
   - id: reference-documentation-examples
     action: { verifier: sdk.golden.execution-reference-documentation-examples }
     expect: { status: passed }
+  - id: reporting-selection-plan
+    action: { verifier: sdk.golden.reporting-selection-plan }
+    expect: { status: passed }
+  - id: reporting-selection-intent
+    action: { verifier: sdk.golden.reporting-selection-intent }
+    expect: { status: passed }
