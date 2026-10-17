@@ -41,6 +41,7 @@ export type WorkdayProfile = z.infer<typeof workdayProfileSchema>;
 export const appliedWorkdaySchema = conditionalFields(z.object({
 	schemaVersion: z.literal('treeseed.workday/v1'), id: identifier, teamId: identifier,
 	executionMode: z.enum(AGENT_WORK_EXECUTION_MODES),
+	reportingAgentId: identifier.optional(),
 	policyId: identifier, policyRevision: z.number().int().positive(), policySnapshot: workdayPolicySchema,
 	state: z.enum(['planned', 'active', 'closing', 'ended']), startsAt: z.string().datetime({ offset: true }),
 	endsAt: z.string().datetime({ offset: true }),
@@ -152,12 +153,13 @@ export function workdayPhase(plan: Pick<AppliedWorkday, 'startsAt' | 'endsAt' | 
 /** Shared by read-only plan and mutating start; callers persist this exact value. */
 export function compileWorkday(input: { id: string; teamId: string; policyId: string; policyRevision: number;
 	executionMode: AgentWorkExecutionMode; policy: z.input<typeof workdayPolicySchema>; agentIds: string[]; startsAt: string;
-	activityTypes?: string[] }) {
+	activityTypes?: string[]; reportingAgentId?: string }) {
 	const policy = workdayPolicySchema.parse(input.policy);
 	const assignments = policy.planningPercent > 0 ? compilePlanningRounds(input.id, input.agentIds, policy.planningTurnMaximumSeconds) : [];
 	const startsAt = new Date(input.startsAt).toISOString();
 	return appliedWorkdaySchema.parse({ schemaVersion: 'treeseed.workday/v1', id: input.id, teamId: input.teamId,
 		executionMode: input.executionMode,
+		...(input.reportingAgentId === undefined ? {} : { reportingAgentId: input.reportingAgentId }),
 		policyId: input.policyId, policyRevision: input.policyRevision, policySnapshot: policy, state: 'planned', startsAt,
 		endsAt: new Date(Date.parse(startsAt) + policy.durationSeconds * 1_000).toISOString(),
 		planningRounds: assignments.length ? [{ round: 1, state: 'pending', assignmentIds: assignments.map((assignment) => assignment.id) }] : [],
