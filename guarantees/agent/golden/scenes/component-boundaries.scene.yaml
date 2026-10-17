@@ -829,3 +829,6 @@ workflow:
   - id: reporting-selection-intent
     action: { verifier: sdk.golden.reporting-selection-intent }
     expect: { status: passed }
+  - id: reporting-selection-command
+    action: { verifier: sdk.golden.reporting-selection-command }
+    expect: { status: passed }

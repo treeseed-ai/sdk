@@ -1,6 +1,7 @@
 import type { CommandInputBinding, CommandLeafDescriptor } from '../../command-tree.ts';
 
 export const WORKDAY_SELECTION_INPUTS: CommandInputBinding[] = [
+	{ target: 'body', field: 'reportingAgentId', source: 'option', name: 'reportingAgent', required: false, transform: 'identity' },
 	{ target: 'body', field: 'allocation.planningPercent', source: 'option', name: 'planningPercent', transform: 'number' },
 	{ target: 'body', field: 'allocation.allocationWeight', source: 'option', name: 'allocationWeight', transform: 'number' },
 	{ target: 'body', field: 'allocation.planningTurnMaximumSeconds', source: 'option', name: 'planningTurnMaximumSeconds', transform: 'integer' },
@@ -12,6 +13,7 @@ export const WORKDAY_SELECTION_INPUTS: CommandInputBinding[] = [
 ];
 
 export const WORKDAY_PLAN_OPTIONS: NonNullable<CommandLeafDescriptor['options']> = [
+	{ name: '--reporting-agent', description: 'Closeout Reporter identity; required when several are eligible.', type: 'string' },
 	{ name: '--planning-percent', description: 'Planning share of workday time and capacity (default 20%).', type: 'number' },
 	{ name: '--allocation-weight', description: 'Relative share among eligible concurrent workdays (default 1).', type: 'number' },
 	{ name: '--planning-turn-maximum-seconds', description: 'Maximum active seconds per planning turn (default 180).', type: 'number' },

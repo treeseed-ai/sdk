@@ -1417,3 +1417,8 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/workday-lifecycle.test.ts
     testName: "accepts one canonical configured reporting identity as independent operator intent and denies malformed explicit selectors"
+  sdk.golden.reporting-selection-command:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/command-tree.test.ts
+    testName: "binds one exact optional closeout Reporter selector to direct Workday planning and nested scheduling without changing cooperative selection or intent authority"
