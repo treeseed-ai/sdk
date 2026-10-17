@@ -166,3 +166,11 @@ describe('minimal workday allocation', () => {
 		expect(selectFairReadyNode(nodes, [{ projectId: 'sdk', agentClass: 'engineer', seconds: 600 }], policy)?.id).toBe('api-engineer');
 	});
 });
+
+it('retains the explicit configured reporting identity in the canonical applied plan before activation without changing planning contributors', () => {
+ const input={id:'selected-closeout',teamId:'team',policyId:'default',policyRevision:1,executionMode:'simulation' as const,policy:DEFAULT_WORKDAY_POLICY,agentIds:['api/digest-writer','sdk/digest-writer'],reportingAgentId:'sdk/digest-writer',startsAt:'2026-10-17T00:00:00.000Z'},held=structuredClone(input);
+ const plan=compileWorkday(input);
+ expect(plan).toMatchObject({state:'planned',reportingAgentId:'sdk/digest-writer'});
+ expect(plan.planningRounds[0]?.assignmentIds).toEqual(['planning:selected-closeout:1:api/digest-writer','planning:selected-closeout:1:sdk/digest-writer']);
+ expect(input).toEqual(held);
+});
