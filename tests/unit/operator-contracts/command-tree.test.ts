@@ -17,6 +17,22 @@ function tree(): CommandTreeDescriptor {
 }
 
 describe('human command tree contract', () => {
+	it("binds one exact optional closeout Reporter selector to direct Workday planning and nested scheduling without changing cooperative selection or intent authority", () => {
+		const before = structuredClone(TREESEED_COMMAND_TREE_V1);
+		const leaves = new Map<string, Extract<(typeof TREESEED_COMMAND_TREE_V1.commands)[number], { nodeType: 'leaf' }>>();
+		const visit = (nodes: typeof TREESEED_COMMAND_TREE_V1.commands, parent: string[] = []) => nodes.forEach(node => {
+			const path = [...parent, node.segment]; if (node.nodeType === 'branch') visit(node.children, path); else leaves.set(path.join(' '), node);
+		}); visit(TREESEED_COMMAND_TREE_V1.commands);
+		for (const [path, operationId, field] of [['workdays plan', 'workdays.plan', 'reportingAgentId'], ['workdays schedules start', 'workdays.schedules.create', 'intent.reportingAgentId']]) {
+			const leaf = leaves.get(path); if (!leaf || leaf.execution.kind !== 'operation') throw new Error('Original Workday operation required');
+			expect(leaf.execution.operationId).toBe(operationId);
+			expect(leaf.options?.filter(option => option.name === '--reporting-agent')).toEqual([{ name: '--reporting-agent', description: 'Closeout Reporter identity; required when several are eligible.', type: 'string' }]);
+			expect(leaf.execution.input?.filter(input => input.name === 'reportingAgent' || input.field === field)).toEqual([{ target: 'body', field, source: 'option', name: 'reportingAgent', required: false, transform: 'identity' }]);
+			for (const independent of ['agent', 'class', 'activity', 'decision']) expect(leaf.options?.some(option => option.name === '--' + independent)).toBe(true);
+		}
+		expect(TREESEED_COMMAND_TREE_V1).toEqual(before);
+	});
+
 	it('binds optional exact workday assignment filtering to the existing read route without changing pagination or authority', () => {
 		const before = structuredClone(TREESEED_COMMAND_TREE_V1);
 		const branch = TREESEED_COMMAND_TREE_V1.commands.find(node => node.segment === 'assignments');
