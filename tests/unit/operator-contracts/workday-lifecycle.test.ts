@@ -179,7 +179,7 @@ it('accepts one canonical configured reporting identity as independent operator 
   expect(validateWorkdayIntent(intent)).toEqual([]); expect(intent).toEqual(held);
  }
  for(const reportingAgentId of ['', ' ',null,false,1,[],{},'é','id?','x'.repeat(201)]) {
-  const intent={...base,reportingAgentId},held=structuredClone(intent);
+  const intent:WorkdayIntent={...base}; Object.assign(intent,{reportingAgentId}); const held=structuredClone(intent);
   expect(validateWorkdayIntent(intent).length).toBeGreaterThan(0); expect(intent).toEqual(held);
  }
  expect(validateWorkdayIntent(base)).toEqual([]);
