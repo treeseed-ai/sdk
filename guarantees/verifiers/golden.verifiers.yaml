@@ -1171,6 +1171,11 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/control-plane-operation.test.ts
     testName: "preserves exact provider and workday schema bindings and semantic denials across repeated projection"
+  sdk.golden.execution-schema-dialect-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/control-plane-operation.test.ts
+    testName: "projects declared JSON Schema dialects without changing OpenAPI or native validation authority"
   sdk.golden.execution-schema-archive-native:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

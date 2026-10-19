@@ -89,14 +89,21 @@ describe('portable packed SDK exports and declarations', () => {
 			const consumer = join(install, 'consumer.mts');
 			writeFileSync(consumer, `import { readFileSync } from 'node:fs';
 import { CONTROL_PLANE_OPERATIONS, controlPlaneSchemaJson } from '@treeseed/sdk/operator-contracts';
+import { z } from 'zod';
 const intent: unknown = JSON.parse(readFileSync(0, 'utf8'));
 const binding = CONTROL_PLANE_OPERATIONS.workdays.preflight;
 const held = JSON.stringify(intent);
 const projection = controlPlaneSchemaJson(binding.schema.path);
 const valid = binding.schema.body.safeParse(intent);
 const denied = binding.schema.body.safeParse(Object.assign({}, intent, { executionPlanId: 'caller-derived' }));
+const native = z.object({ positive: z.number().positive(), optional: z.string().nullable() }).strict();
+const jsonSchema = controlPlaneSchemaJson(native, 'jsonSchema7');
+for (const target of [null, '', 7, 'unsupported']) {
+ let denied = false; try { Reflect.apply(controlPlaneSchemaJson, undefined, [native, target]); } catch { denied = true; }
+ if (!denied) throw new Error('Unknown projection dialect accepted.');
+}
 if (JSON.stringify(intent) !== held) throw new Error('Native validator mutated input.');
-process.stdout.write(JSON.stringify({ projection, valid, denied, provider: controlPlaneSchemaJson(CONTROL_PLANE_OPERATIONS.providers.assignment.schema.path) }));
+process.stdout.write(JSON.stringify({ projection, valid, denied, jsonSchema, provider: controlPlaneSchemaJson(CONTROL_PLANE_OPERATIONS.providers.assignment.schema.path) }));
 `);
 			const typed = spawnSync(process.execPath, [resolve(candidate, 'node_modules/typescript/lib/tsc.js'), '--strict', '--noEmit',
 				'--module', 'NodeNext', '--moduleResolution', 'NodeNext', '--target', 'ES2022', '--types', 'node',
@@ -108,6 +115,8 @@ process.stdout.write(JSON.stringify({ projection, valid, denied, provider: contr
 			expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
 			expect(JSON.parse(child.stdout)).toMatchObject({ projection: { type: 'object', properties: { teamId: { type: 'string', minLength: 1 } },
 				required: ['teamId'], additionalProperties: false }, valid: { success: true, data: intent }, denied: { success: false },
+				jsonSchema: { $schema: 'http://json-schema.org/draft-07/schema#', type: 'object', properties: {
+					positive: { type: 'number', exclusiveMinimum: 0 }, optional: { type: ['string', 'null'] } }, additionalProperties: false },
 				provider: { type: 'object', properties: { assignmentId: { type: 'string', minLength: 1 } }, required: ['assignmentId'], additionalProperties: false } });
 			for (const file of packed[0]!.files) expect(readFileSync(join(installed, file.path))).toEqual(readFileSync(join(extracted, 'package', file.path)));
 			for (const { target, bytes } of outputs) expect(readFileSync(join(candidate, target))).toEqual(bytes);
