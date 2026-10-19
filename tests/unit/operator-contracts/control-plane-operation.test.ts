@@ -45,6 +45,24 @@ function catalog(...operations: ControlPlaneOperationDescriptor[]): ControlPlane
 }
 
 describe('control-plane operation catalog', () => {
+	it('projects declared JSON Schema dialects without changing OpenAPI or native validation authority', () => {
+		const schema = z.object({ positive: z.number().positive(), ceiling: z.number().lt(4), optional: z.string().nullable(),
+			pair: z.tuple([z.string(), z.number()]) }).strict();
+		const openapi = controlPlaneSchemaJson(schema), held = structuredClone(openapi);
+		const project = (target: unknown) => Reflect.apply(controlPlaneSchemaJson, undefined, [schema, target]);
+		expect(project('jsonSchema7')).toEqual({ $schema: 'http://json-schema.org/draft-07/schema#', type: 'object',
+			properties: { positive: { type: 'number', exclusiveMinimum: 0 }, ceiling: { type: 'number', exclusiveMaximum: 4 },
+				optional: { type: ['string', 'null'] }, pair: { type: 'array', minItems: 2, maxItems: 2,
+					items: [{ type: 'string' }, { type: 'number' }] } }, required: ['positive', 'ceiling', 'optional', 'pair'], additionalProperties: false });
+		expect(project('openApi3')).toEqual(held); expect(project(undefined)).toEqual(held);
+		for (const target of [null, '', 7, [], {}, 'draft-04', 'openapi3'])
+			expect(() => project(target)).toThrow('Unsupported control-plane schema dialect');
+		const valid = { positive: 1, ceiling: 3, optional: null, pair: ['row', 2] }, before = structuredClone(valid);
+		expect(schema.safeParse(valid).success).toBe(true);
+		for (const value of [{ ...valid, positive: 0 }, { ...valid, ceiling: 4 }, { ...valid, pair: [2, 'row'] }, { ...valid, authority: true }])
+			expect(schema.safeParse(value).success).toBe(false);
+		expect(valid).toEqual(before); expect(controlPlaneSchemaJson(schema)).toEqual(held); expect(openapi).toEqual(held);
+	});
 	it('projects owning operation schemas into exact reference-free OpenAPI JSON without changing native validation', () => {
 		const schema = z.object({ id: z.string().min(1).max(200).regex(/^[A-Za-z0-9_-]+$/u), priority: z.number().int(),
 			mode: z.enum(['simulation', 'production']).optional(), subject: z.object({ id: z.string().min(1) }).strict() }).strict();
