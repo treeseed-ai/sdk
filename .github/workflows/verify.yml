@@ -26,7 +26,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: treeseed-ai/platform
-          ref: bee9636d79b81c202ee5d73afb3f144a027612d5
+          ref: 0011a2459dce8290ddb604e0ee390363a4533646
           path: .treeseed/platform-authority
           persist-credentials: false
 

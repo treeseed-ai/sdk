@@ -80,9 +80,9 @@ describe('time-based workday lifecycle contracts', () => {
 		}
 	});
 
-	it('preserves omitted decisions and independent planning proposal agent and allocation controls', () => {
+	it('preserves omitted decisions and independent planning proposal group and allocation controls', () => {
 		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default', projects: ['sdk'], startsAt: '2026-09-16T12:00:00Z', durationSeconds: 3600,
-			proposalIds: ['proposal-original'], agentSelection: { agentSlugs: ['configured-arbitrary-agent'], activityTypes: ['planning'] }, allocation: { planningPercent: 20, allocationWeight: 2 } };
+			proposalIds: ['proposal-original'], groupIds: ['ui-snapshot-admin-chart'], agentSelection: { activityTypes: ['planning'] }, allocation: { planningPercent: 20, allocationWeight: 2 } };
 		for (const planningOnly of [false, true]) {
 			const intent = { ...base, planningOnly };
 			const before = structuredClone(intent);
@@ -114,9 +114,9 @@ describe('time-based workday lifecycle contracts', () => {
 			expect(validateWorkdayIntent({ ...base, allocation } as never).map((issue) => issue.code)).toContain('allocation_invalid');
 		}
 	});
-	it('supports normalized explicit planning agent/activity selection', () => {
+	it('rejects named planning participants while preserving historical selection readback', () => {
 		const selection = { agentSlugs: ['reviewer', ' architect ', 'reviewer'], activityTypes: ['reviewing'] };
-		expect(validateWorkdayIntentSelection(selection)).toEqual([]);
+		expect(validateWorkdayIntentSelection(selection)).not.toEqual([]);
 		expect(normalizeWorkdayAgentSelection(selection)).toEqual({ agentSlugs: ['architect','reviewer'], activityTypes: ['reviewing'], classIds: [], classSlugs: [], mode: 'intersection' });
 	});
 	it.each([null, [], {}, { mode: 'union' }, { agentSlugs: [] }, { agentSlugs: [''] }, { agentSlugs: [1] }, { agentSlugs: 'reviewer' }, { agentSlugs: ['reviewer'], mode: 'all' }, { agentSlugs: ['reviewer'], unknown: true }, { activityTypes: ['acting'] }, { activityTypes: ['typo'] }])('rejects malformed or silently broadening selection %j', value => {

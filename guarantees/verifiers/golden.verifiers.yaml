@@ -705,7 +705,7 @@ verifiers:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/workday-lifecycle.test.ts
-    testName: "preserves omitted decisions and independent planning proposal agent and allocation controls"
+    testName: "preserves omitted decisions and independent planning proposal group and allocation controls"
   sdk.golden.architecture-intent-unit-4:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

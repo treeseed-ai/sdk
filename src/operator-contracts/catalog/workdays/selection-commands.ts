@@ -7,9 +7,8 @@ export const WORKDAY_SELECTION_INPUTS: CommandInputBinding[] = [
 	{ target: 'body', field: 'allocation.planningTurnMaximumSeconds', source: 'option', name: 'planningTurnMaximumSeconds', transform: 'integer' },
 	{ target: 'body', field: 'allocation.projectPercentages', source: 'option', name: 'projectPercentages', transform: 'json' },
 	{ target: 'body', field: 'allocation.agentClassPercentages', source: 'option', name: 'agentClassPercentages', transform: 'json' },
-	{ target: 'body', field: 'agentSelection.agentSlugs', source: 'option', name: 'agent', transform: 'csv' },
+	{ target: 'body', field: 'groupIds', source: 'option', name: 'group', transform: 'csv' },
 	{ target: 'body', field: 'agentSelection.activityTypes', source: 'option', name: 'activity', transform: 'csv' },
-	{ target: 'body', field: 'agentSelection.classSlugs', source: 'option', name: 'class', transform: 'csv' },
 ];
 
 export const WORKDAY_PLAN_OPTIONS: NonNullable<CommandLeafDescriptor['options']> = [
@@ -25,7 +24,6 @@ export const WORKDAY_PLAN_OPTIONS: NonNullable<CommandLeafDescriptor['options']>
 	{ name: '--proposal', description: 'Governed proposal id for cooperative planning; repeat or comma-separate.', type: 'string[]' },
 	{ name: '--decision', description: 'Accepted decision id; repeat or comma-separate. The API derives and verifies acting authority.', type: 'string[]' },
 	{ name: '--continue-from', description: 'Settled workday whose exact accepted results and review history should continue. Omit for a fresh simulation.', type: 'string' },
-	{ name: '--agent', description: 'Planning agent slug; repeat or comma-separate. Intersects with class/activity selectors.', type: 'string[]' },
+	{ name: '--group', description: 'Shared proposal group; participants come from governed subscriptions. Repeat or comma-separate.', type: 'string[]' },
 	{ name: '--activity', description: 'Planning activity: planning, estimating, reviewing, reporting, or chat; repeat or comma-separate.', type: 'string[]' },
-	{ name: '--class', description: 'Planning class slug; repeat or comma-separate. Acting remains governed by accepted decisions.', type: 'string[]' },
 ];

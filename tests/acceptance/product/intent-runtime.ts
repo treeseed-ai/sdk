@@ -87,7 +87,7 @@ export async function verifySdkIntentRuntime(root:string){
    await normalization.start();
    const client=new sdk.ControlPlaneClient({profile:{serverId:'local',label:'Local',baseUrl:'http://127.0.0.1:'+address.port}});
    const base={schemaVersion:'treeseed.workday-intent/v1',teamId:'team',profileId:'default',projects:['sdk'],startsAt:'2030-01-01T00:00:00Z',durationSeconds:600,
-    proposalIds:['proposal-original'],agentSelection:{agentSlugs:['configured-arbitrary-agent'],activityTypes:['planning']},allocation:{planningPercent:20,allocationWeight:2}};
+    proposalIds:['proposal-original'],groupIds:['ui-snapshot-admin-chart'],agentSelection:{activityTypes:['planning']},allocation:{planningPercent:20,allocationWeight:2}};
    const ordered=['A','Z','a','a-1','a.1','a/1','a:1'];
    const capture=async(expectation:string,action:()=>Promise<void>)=>{checks++;currentExpectation=expectation;try{await action();}catch(error){failures.push({expectation,observed:String(error)});}};
    const observe=async(nested:boolean,intent:Record<string,unknown>,expected:Record<string,unknown>|null)=>{
