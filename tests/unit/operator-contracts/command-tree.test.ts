@@ -28,7 +28,8 @@ describe('human command tree contract', () => {
 			expect(leaf.execution.operationId).toBe(operationId);
 			expect(leaf.options?.filter(option => option.name === '--reporting-agent')).toEqual([{ name: '--reporting-agent', description: 'Closeout Reporter identity; required when several are eligible.', type: 'string' }]);
 			expect(leaf.execution.input?.filter(input => input.name === 'reportingAgent' || input.field === field)).toEqual([{ target: 'body', field, source: 'option', name: 'reportingAgent', required: false, transform: 'identity' }]);
-			for (const independent of ['agent', 'class', 'activity', 'decision']) expect(leaf.options?.some(option => option.name === '--' + independent)).toBe(true);
+			for (const independent of ['group', 'activity', 'decision']) expect(leaf.options?.some(option => option.name === '--' + independent)).toBe(true);
+			for (const retired of ['agent', 'class']) expect(leaf.options?.some(option => option.name === '--' + retired)).toBe(false);
 		}
 		expect(TREESEED_COMMAND_TREE_V1).toEqual(before);
 	});
