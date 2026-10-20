@@ -8,11 +8,9 @@ export { normalizeWorkdayAgentSelection } from '../agent-capacity/workday.ts';
 const identifier = leaseSchema.shape.id, timestamp = leaseSchema.shape.acquiredAt;
 const selectedIdentities = uniqueArray(z.array(identifier).min(1).max(64));
 const intentAgentSelectionSchema = alternativeProperties(z.object({
-	agentSlugs: z.array(identifier).min(1).optional(), classIds: z.array(identifier).min(1).optional(),
-	classSlugs: z.array(identifier).min(1).optional(),
 	activityTypes: z.array(z.enum(['planning', 'estimating', 'reviewing', 'reporting', 'chat'])).min(1).optional(),
 	mode: z.literal('intersection').optional(),
-}).strict(), ['agentSlugs', 'activityTypes', 'classIds', 'classSlugs']);
+}).strict(), ['activityTypes']);
 /** One normalized high-level contract for manual and recurring execution. */
 const workdayIntentFields = z.object({
 	schemaVersion: z.literal('treeseed.workday-intent/v1'), teamId: identifier, profileId: identifier,
@@ -21,6 +19,7 @@ const workdayIntentFields = z.object({
 	startsAt: timestamp, endsAt: timestamp.optional(), durationSeconds: z.number().int().positive().optional(),
 	planningOnly: z.boolean().optional(), objectiveFilters: z.array(identifier).optional(),
 	proposalIds: selectedIdentities.optional(), decisionIds: selectedIdentities.optional(),
+	groupIds: selectedIdentities.optional(),
 	reportingAgentId: identifier.optional(),
 	continueFromWorkdayId: z.string().min(1).max(128).regex(/\S/u).optional(),
 	allocation: workdayAllocationOverridesSchema.optional(), agentSelection: intentAgentSelectionSchema.optional(),
@@ -67,14 +66,16 @@ export interface WorkdayIntent {
 	planningOnly?: boolean;
 	/** Selects exact governed proposals for cooperative planning and estimating. */
 	proposalIds?: string[];
+	/** Shared proposal groups; membership, never named-agent selection, supplies participants. */
+	groupIds?: string[];
 	/** Selects accepted decisions for API-derived acting work; it does not grant acting authority. */
 	decisionIds?: string[];
 	/** Selects one configured closeout agent; the API resolves its frozen reporting profile. */
 	reportingAgentId?: string;
 	/** Continue exact accepted work from a settled workday; omission starts a fresh simulation. */
 	continueFromWorkdayId?: string;
-	/** Limits cooperative planning; acting still requires accepted decision/estimate authority. */
-	agentSelection?: Partial<WorkdayAgentSelection>;
+	/** Selects activity phases without excluding group participants by identity or class. */
+	agentSelection?: Partial<Pick<WorkdayAgentSelection, 'activityTypes' | 'mode'>>;
 	/** High-level overrides of the canonical workday allocation policy. */
 	allocation?: Partial<Pick<import('../agent-capacity/contracts/capacity/workdays/workday-allocation.ts').WorkdayPolicy,
 		'planningPercent' | 'allocationWeight' | 'planningTurnMaximumSeconds' | 'projectPercentages' | 'agentClassPercentages'>>;
@@ -219,7 +220,7 @@ export function validateWorkdayIntent(intent: WorkdayIntent): WorkdayLifecycleDi
 	const codes: Record<string, string> = { schemaVersion: 'schema_version_invalid', teamId: 'team_required', profileId: 'profile_required',
 		projects: 'project_selection_invalid', operatorConstraints: 'operator_constraints_invalid', executionMode: 'execution_mode_invalid',
 		startsAt: 'start_invalid', endsAt: 'end_invalid', durationSeconds: 'duration_invalid', planningOnly: 'planning_only_invalid',
-		objectiveFilters: 'objective_selection_invalid', proposalIds: 'proposal_selection_invalid', decisionIds: 'decision_selection_invalid', reportingAgentId: 'reporting_agent_selection_invalid',
+		objectiveFilters: 'objective_selection_invalid', proposalIds: 'proposal_selection_invalid', decisionIds: 'decision_selection_invalid', groupIds: 'group_selection_invalid', reportingAgentId: 'reporting_agent_selection_invalid',
 		continueFromWorkdayId: 'continuation_invalid', agentSelection: 'agent_selection_invalid', allocation: 'allocation_invalid' };
 	const diagnostics: WorkdayLifecycleDiagnostic[] = result.success ? [] : result.error.issues.flatMap(issue => {
 		if (issue.code === z.ZodIssueCode.unrecognized_keys && !issue.path.length)
