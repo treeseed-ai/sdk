@@ -48,6 +48,7 @@ export const agentDefinitionSchema = conditionalFields(z.object({
 	id: identifier,
 	name: nonEmpty,
 	agentClass: agentClassSchema,
+	groupIds: unique(identifier).optional(),
 	purpose: nonEmpty,
 	responsibilities: z.array(nonEmpty).min(1),
 	capabilities: uniqueArray(z.array(identifier).min(1, 'At least one capability is required.')),

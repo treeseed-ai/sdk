@@ -43,6 +43,7 @@ export interface AgentDefinition {
 	id: string;
 	name: string;
 	agentClass: string;
+	groupIds?: string[];
 	purpose: string;
 	responsibilities: string[];
 	capabilities: string[];

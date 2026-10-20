@@ -115,6 +115,7 @@ const executionPlanSchema = z.object({ workItems: z.array(executionPlanWorkItemS
 
 const proposalSchema = conditionalFields(z.object({
 	schemaVersion: z.literal('treeseed.proposal/v1'), id: identifier, projectId: identifier, title: nonEmpty,
+	groupIds: unique(identifiers).optional(),
 	request: nonEmpty, summary: nonEmpty.optional(), status: z.enum(['draft', 'discussing', 'ready', 'decided', 'withdrawn']),
 	objectiveRefs: unique(exactRefs).optional(), evidenceRefs: unique(exactRefs).optional(),
 	discussionRef: exactEntityReferenceSchema.optional(), executionPlan: executionPlanSchema.optional(),
