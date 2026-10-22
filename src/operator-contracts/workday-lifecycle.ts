@@ -2,7 +2,7 @@ import type { WorkdayAgentSelection } from '../agent-capacity/workday.ts';
 import { workdayAllocationOverridesSchema } from '../agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
 import { z } from 'zod';
 import { leaseSchema } from '../agent-capacity/contracts/capacity/assignments/agent-execution.ts';
-import { alternativeProperties, conditionalFields, exclusiveProperties, exclusiveUnion, uniqueArray } from '../content/validation/schema-constraints.ts';
+import { alternativeProperties, conditionalFields, exclusiveProperties, exclusiveUnion, preserveInputOrder, uniqueArray } from '../content/validation/schema-constraints.ts';
 export { normalizeWorkdayAgentSelection } from '../agent-capacity/workday.ts';
 
 const identifier = leaseSchema.shape.id, timestamp = leaseSchema.shape.acquiredAt;
@@ -38,12 +38,9 @@ const requestIntentFields = z.preprocess(value => {
 	.superRefine((intent, context) => {
 		if (!validIntentRange(intent)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['endsAt'], message: 'endsAt must be after startsAt.' });
 	});
-export const workdayIntentRequestSchema = z.custom<Record<string, unknown>>(value => Boolean(value && typeof value === 'object' && !Array.isArray(value)))
-	.transform((intent, context) => {
-		const parsed = requestIntentFields.safeParse(intent);
-		if (!parsed.success) { for (const issue of parsed.error.issues) context.addIssue(issue); return z.NEVER; }
-		return { ...intent, ...parsed.data, ...(parsed.data.decisionIds ? { decisionIds: [...parsed.data.decisionIds].sort() } : {}) };
-	});
+export const workdayIntentRequestSchema = preserveInputOrder(requestIntentFields.transform(intent => ({
+	...intent, ...(intent.decisionIds ? { decisionIds: [...intent.decisionIds].sort() } : {}),
+})));
 
 function validIntentRange(intent: { startsAt: string; endsAt?: string }) {
 	return intent.endsAt === undefined || Date.parse(intent.endsAt) > Date.parse(intent.startsAt);

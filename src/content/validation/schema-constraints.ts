@@ -4,7 +4,29 @@ import { zodToJsonSchema, type PostProcessCallback } from 'zod-to-json-schema';
 // Zod's exporter cannot infer custom refinements. Register the definition
 // created by the owning check; never borrow assertions from the target.
 type ExportedSchema = NonNullable<Parameters<PostProcessCallback>[0]>;
-const exporters = new WeakMap<z.ZodTypeDef, (schema: ExportedSchema) => ExportedSchema>();
+const exporters = new WeakMap<z.ZodTypeDef, (schema: ExportedSchema, refs: Parameters<PostProcessCallback>[2]) => ExportedSchema>();
+
+/** Validate with the owning parser without changing the caller's property order. */
+export function preserveInputOrder<T extends z.ZodType<Record<string, unknown>>>(parser: T) {
+	const schema = z.custom<Record<string, unknown>>(value => Boolean(value && typeof value === 'object' && !Array.isArray(value)))
+		.transform((value, context): z.output<T> => {
+			const parsed = parser.safeParse(value);
+			if (!parsed.success) {
+				for (const issue of parsed.error.issues) context.addIssue(issue);
+				return z.NEVER;
+			}
+			const ordered = Object.fromEntries(Object.keys(value).filter(key => Object.hasOwn(parsed.data, key))
+				.map(key => [key, parsed.data[key]]));
+			return { ...ordered, ...parsed.data };
+		});
+	exporters.set(schema._def, (_exported, refs) => {
+		const { $schema: _dialect, ...exported } = zodToJsonSchema(parser, {
+			target: refs.target, $refStrategy: 'none', postProcess: exportSchemaConstraints,
+		});
+		return exported;
+	});
+	return schema;
+}
 
 /** Preserve inherited validation while requiring represented properties. */
 export function requiredProperties<T extends z.AnyZodObject>(object: T, fields: readonly string[], message: string) {
@@ -164,13 +186,13 @@ export function conditionalFields<T extends z.AnyZodObject>(object: T,
 	return schema;
 }
 
-export const exportSchemaConstraints: PostProcessCallback = (schema, definition) => {
+export const exportSchemaConstraints: PostProcessCallback = (schema, definition, refs) => {
 	// The upstream intersection exporter flattens allOf and loses sibling
 	// object constraints. Export each actual validator intact, not the target.
 	if ('typeName' in definition && definition.typeName === z.ZodFirstPartyTypeKind.ZodIntersection && 'left' in definition && 'right' in definition
 		&& definition.left instanceof z.ZodType && definition.right instanceof z.ZodType) {
 		return { allOf: [definition.left, definition.right].map(part => {
-			const { $schema: _dialect, ...branch } = zodToJsonSchema(part, { $refStrategy: 'none', postProcess: exportSchemaConstraints });
+			const { $schema: _dialect, ...branch } = zodToJsonSchema(part, { target: refs.target, $refStrategy: 'none', postProcess: exportSchemaConstraints });
 			return branch;
 		}) };
 	}
@@ -183,5 +205,5 @@ export const exportSchemaConstraints: PostProcessCallback = (schema, definition)
 		return schema;
 	}
 	if (!schema) throw new Error('An owning constraint has no exported schema.');
-	return exportConstraint(schema);
+	return exportConstraint(schema, refs);
 };
