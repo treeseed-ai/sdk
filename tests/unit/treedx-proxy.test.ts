@@ -63,16 +63,13 @@ describe('TreeSeed TreeDX proxy facade', () => {
 		})).rejects.toThrow(/not part of the TreeSeed TreeDX proxy catalog/u);
 	});
 
-	it('exports TreeDX resource links with the MCP dx URI prefix', () => {
-		expect(buildMcpResources(CONTROL_PLANE_CATALOG.operations).some(
-			(resource) => resource.operationId === 'treedx.repositories.retire',
-		)).toBe(false);
-		const serviceContractResource = buildMcpResources(CONTROL_PLANE_CATALOG.operations).find(
-			(resource) => resource.operationId === 'treedx.service.contract',
-		);
-		expect(serviceContractResource?.uriTemplate).toBe('treeseed://dx/projects/{projectId}/service-contract');
-		const template: `treeseed://dx/projects/${string}/${string}` = 'treeseed://dx/projects/{projectId}/service-contract';
-		expect(serviceContractResource!.uriTemplate).toBe(template);
+	it('retains typed TreeDX links without publishing raw custody as coordinator MCP resources', () => {
+		expect(buildMcpResources(CONTROL_PLANE_CATALOG.operations).filter(
+			resource => resource.operationId.startsWith('treedx.'),
+		)).toEqual([]);
+		expect(CONTROL_PLANE_OPERATIONS.treedx.serviceContract.descriptor.rest).toEqual({
+			method: 'GET', path: '/v1/dx/projects/{projectId}/service-contract',
+		});
 		const link: TreeSeedTreeDxResourceLink = {
 			type: 'resource_link',
 			uri: `treeseed://dx/projects/${'project-123'}/service-contract`,
