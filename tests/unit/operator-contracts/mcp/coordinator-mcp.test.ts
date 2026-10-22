@@ -4,6 +4,13 @@ import { z } from 'zod';
 import { preserveInputOrder } from '../../../../src/content/validation/schema-constraints.ts';
 
 describe('coordinator MCP boundary', () => {
+	it('opens an inspected proposal for discussion through the existing governance operation', () => {
+		const binding = CONTROL_PLANE_OPERATIONS.governance.openProposal;
+		expect(buildMcpCatalog(CONTROL_PLANE_CATALOG.operations).tools.map(tool => tool.name)).toContain('governance.proposals.open');
+		expect(binding.descriptor.oauthScopes).toEqual(['treeseed:governance:write']);
+		expect(binding.descriptor.concurrency.required).toBe(true);
+		expect(binding.descriptor.idempotency.required).toBe(true);
+	});
 	it('offers governed team-profile authoring and publication without raw TreeDX custody', () => {
 		const tools = buildMcpCatalog(CONTROL_PLANE_CATALOG.operations).tools.map(tool => tool.name);
 		expect(tools).toEqual(expect.arrayContaining([
