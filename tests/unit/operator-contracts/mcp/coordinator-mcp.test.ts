@@ -4,6 +4,15 @@ import { z } from 'zod';
 import { preserveInputOrder } from '../../../../src/content/validation/schema-constraints.ts';
 
 describe('coordinator MCP boundary', () => {
+	it('revises structured proposal work through the existing version-checked governance operation', () => {
+		const binding = CONTROL_PLANE_OPERATIONS.governance.updateProposal;
+		expect(buildMcpCatalog(CONTROL_PLANE_CATALOG.operations).tools.map(tool => tool.name)).toContain('governance.proposals.update');
+		expect(binding.descriptor.oauthScopes).toEqual(['treeseed:governance:write']);
+		expect(binding.descriptor.concurrency.required).toBe(true);
+		expect(binding.descriptor.idempotency.required).toBe(true);
+		expect(binding.schema.path.parse({projectId:'agent',proposalId:'real-proposal'}))
+			.toEqual({projectId:'agent',proposalId:'real-proposal'});
+	});
 	it('opens an inspected proposal for discussion through the existing governance operation', () => {
 		const binding = CONTROL_PLANE_OPERATIONS.governance.openProposal;
 		expect(buildMcpCatalog(CONTROL_PLANE_CATALOG.operations).tools.map(tool => tool.name)).toContain('governance.proposals.open');
