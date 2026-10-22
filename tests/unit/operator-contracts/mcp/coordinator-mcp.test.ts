@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildMcpCatalog, CONTROL_PLANE_CATALOG, CONTROL_PLANE_OPERATION_LIST } from '../../../src/operator-contracts/index.ts';
+import { buildMcpCatalog, CONTROL_PLANE_CATALOG, CONTROL_PLANE_OPERATION_LIST } from '../../../../src/operator-contracts/index.ts';
 
 describe('coordinator MCP boundary', () => {
 	it('keeps storage, service, account and project administration off both MCP surfaces', () => {
