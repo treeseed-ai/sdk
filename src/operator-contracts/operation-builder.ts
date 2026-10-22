@@ -68,7 +68,7 @@ export function defineTreeDxProxyOperation<T extends z.ZodRawShape>(
 ) {
 	const kind = (options.read ?? method === 'GET') ? 'read' : 'mutation';
 	const riskClass = options.risk ?? 'ordinary';
-	const surfaces = options.surfaces ?? ['rest', 'mcp_tool', ...(method === 'GET' ? ['mcp_resource' as const] : [])];
+	const surfaces = options.surfaces ?? ['rest'];
 	return defineOperation({
 		operationId,
 		description: `${kind === 'read' ? 'Read' : 'Apply'} ${operationId} through the project-scoped TreeDX proxy.`,

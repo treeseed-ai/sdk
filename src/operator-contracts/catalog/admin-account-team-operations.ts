@@ -37,7 +37,7 @@ function operation<T extends z.ZodRawShape>(
 }
 
 export const adminAccountOperations = {
-	publicProfile: operation('accounts.profile.public.show', 'GET', '/v1/users/by-username/{username}/profile', { username: z.string().min(1) }, { capability: 'accounts.public.read', authentication: 'anonymous', cacheScope: 'public', surfaces: ['rest', 'mcp_resource'] }),
+	publicProfile: operation('accounts.profile.public.show', 'GET', '/v1/users/by-username/{username}/profile', { username: z.string().min(1) }, { capability: 'accounts.public.read', authentication: 'anonymous', cacheScope: 'public', surfaces: ['rest'] }),
 	updateUsername: operation('accounts.username.update', 'PATCH', '/v1/auth/web/username', {}, { capability: 'accounts.write', concurrency: true }),
 	notificationPreferences: operation('accounts.notification.preferences.show', 'GET', '/v1/auth/web/notifications/preferences', {}, { capability: 'accounts.read' }),
 	updateNotificationPreferences: operation('accounts.notification.preferences.update', 'PUT', '/v1/auth/web/notifications/preferences', {}, { capability: 'accounts.write', concurrency: true }),

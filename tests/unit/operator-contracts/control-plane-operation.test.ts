@@ -208,18 +208,16 @@ describe('control-plane operation catalog', () => {
 
 	it('derives the complete stable MCP catalog from resource-declared operations', () => {
 		const resources = buildMcpResources(CONTROL_PLANE_CATALOG.operations);
-		expect(resources).toHaveLength(65);
+		expect(resources).toHaveLength(35);
 		expect(new Set(resources.map(({ uriTemplate }) => uriTemplate)).size).toBe(resources.length);
 		expect(resources).toEqual(expect.arrayContaining([
 			expect.objectContaining({ operationId: 'status.show', uriTemplate: 'treeseed://status' }),
-			expect.objectContaining({ operationId: 'accounts.current.show', uriTemplate: 'treeseed://accounts/current' }),
-			expect.objectContaining({ operationId: 'accounts.profile.public.show', uriTemplate: 'treeseed://users/by-username/{username}/profile' }),
 			expect.objectContaining({ operationId: 'projects.show', uriTemplate: 'treeseed://projects/{projectId}' }),
 			expect.objectContaining({ operationId: 'operations.show', uriTemplate: 'treeseed://operations/{operationId}' }),
-			expect.objectContaining({ operationId: 'treedx.service.contract', uriTemplate: 'treeseed://dx/projects/{projectId}/service-contract' }),
+			expect.objectContaining({ operationId: 'workdays.show', uriTemplate: 'treeseed://teams/{teamId}/workdays/{runId}' }),
 		]));
 		const catalog = buildMcpCatalog(CONTROL_PLANE_CATALOG.operations);
-		expect(catalog.tools).toHaveLength(139);
+		expect(catalog.tools).toHaveLength(56);
 		expect(catalog.tools.filter(tool => tool.operationId === 'assignments.recover')).toHaveLength(1);
 		expect(catalog.resources).toEqual(resources);
 		expect(catalog.prompts.map(({ name }) => name)).toEqual(['operate', 'research', 'governance-review', 'workday-planning', 'project-agent-chat']);
