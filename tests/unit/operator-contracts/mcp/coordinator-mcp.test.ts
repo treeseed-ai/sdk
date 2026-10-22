@@ -1,7 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { buildMcpCatalog, controlPlaneSchemaJson, CONTROL_PLANE_CATALOG, CONTROL_PLANE_OPERATIONS, CONTROL_PLANE_OPERATION_LIST } from '../../../../src/operator-contracts/index.ts';
+import { z } from 'zod';
+import { preserveInputOrder } from '../../../../src/content/validation/schema-constraints.ts';
 
 describe('coordinator MCP boundary', () => {
+	it('exports the same owning parser while preserving normalized request order, defaults and denial', () => {
+		const parser = z.object({ first: z.string().trim(), second: z.number().positive(),
+			added: z.boolean().default(false) }).strict();
+		const schema = preserveInputOrder(parser);
+		const input = { second: 2, first: ' value ' }, held = structuredClone(input);
+		expect(JSON.stringify(schema.parse(input))).toBe('{"second":2,"first":"value","added":false}');
+		expect(input).toEqual(held);
+		for (const target of ['openApi3', 'jsonSchema7'] as const)
+			expect(controlPlaneSchemaJson(schema, target)).toEqual(controlPlaneSchemaJson(parser, target));
+		for (const invalid of [null, [], {}, { ...input, second: 0 }, { ...input, unexpected: true }])
+			expect(schema.safeParse(invalid).success).toBe(false);
+		const stripsUnknown = preserveInputOrder(z.object({ first: z.string() }));
+		expect(stripsUnknown.parse({ removed: true, first: 'value' })).toEqual({ first: 'value' });
+	});
 	it('describes actual workday planning fields instead of an opaque body', () => {
 		expect(controlPlaneSchemaJson(CONTROL_PLANE_OPERATIONS.workdays.preflight.schema.body)).toMatchObject({
 			type: 'object', additionalProperties: false,
