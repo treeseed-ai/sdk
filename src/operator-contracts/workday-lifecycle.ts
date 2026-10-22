@@ -38,12 +38,9 @@ const requestIntentFields = z.preprocess(value => {
 	.superRefine((intent, context) => {
 		if (!validIntentRange(intent)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['endsAt'], message: 'endsAt must be after startsAt.' });
 	});
-export const workdayIntentRequestSchema = z.custom<Record<string, unknown>>(value => Boolean(value && typeof value === 'object' && !Array.isArray(value)))
-	.transform((intent, context) => {
-		const parsed = requestIntentFields.safeParse(intent);
-		if (!parsed.success) { for (const issue of parsed.error.issues) context.addIssue(issue); return z.NEVER; }
-		return { ...intent, ...parsed.data, ...(parsed.data.decisionIds ? { decisionIds: [...parsed.data.decisionIds].sort() } : {}) };
-	});
+export const workdayIntentRequestSchema = requestIntentFields.transform(intent => ({
+	...intent, ...(intent.decisionIds ? { decisionIds: [...intent.decisionIds].sort() } : {}),
+}));
 
 function validIntentRange(intent: { startsAt: string; endsAt?: string }) {
 	return intent.endsAt === undefined || Date.parse(intent.endsAt) > Date.parse(intent.startsAt);

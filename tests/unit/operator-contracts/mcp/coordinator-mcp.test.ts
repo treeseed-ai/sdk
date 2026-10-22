@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { buildMcpCatalog, CONTROL_PLANE_CATALOG, CONTROL_PLANE_OPERATION_LIST } from '../../../../src/operator-contracts/index.ts';
+import { buildMcpCatalog, controlPlaneSchemaJson, CONTROL_PLANE_CATALOG, CONTROL_PLANE_OPERATIONS, CONTROL_PLANE_OPERATION_LIST } from '../../../../src/operator-contracts/index.ts';
 
 describe('coordinator MCP boundary', () => {
+	it('describes actual workday planning fields instead of an opaque body', () => {
+		expect(controlPlaneSchemaJson(CONTROL_PLANE_OPERATIONS.workdays.preflight.schema.body)).toMatchObject({
+			type: 'object', additionalProperties: false,
+			properties: { projects: expect.any(Object), proposalIds: expect.any(Object), decisionIds: expect.any(Object),
+				groupIds: expect.any(Object), executionMode: expect.any(Object), startsAt: expect.any(Object),
+				durationSeconds: expect.any(Object), allocation: expect.any(Object) },
+			required: expect.arrayContaining(['profileId', 'projects', 'startsAt']),
+		});
+	});
 	it('keeps storage, service, account and project administration off both MCP surfaces', () => {
 		const excluded = CONTROL_PLANE_OPERATION_LIST.filter(({ descriptor: d }) =>
 			d.operationId.startsWith('treedx.') || d.operationId.startsWith('services.')
