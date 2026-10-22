@@ -4,6 +4,21 @@ import { z } from 'zod';
 import { preserveInputOrder } from '../../../../src/content/validation/schema-constraints.ts';
 
 describe('coordinator MCP boundary', () => {
+	it('offers governed team-profile authoring and publication without raw TreeDX custody', () => {
+		const tools = buildMcpCatalog(CONTROL_PLANE_CATALOG.operations).tools.map(tool => tool.name);
+		expect(tools).toEqual(expect.arrayContaining([
+			'knowledge.workspaces.create', 'knowledge.workspaces.show', 'knowledge.workspaces.content.show',
+			'knowledge.workspaces.content.update', 'knowledge.workspaces.diff', 'knowledge.workspaces.abandon',
+			'knowledge.workspaces.submit', 'knowledge.reviews.list', 'knowledge.reviews.decide', 'knowledge.reviews.publish',
+		]));
+		for (const binding of [CONTROL_PLANE_OPERATIONS.knowledge.updateWorkspaceContent,
+			CONTROL_PLANE_OPERATIONS.knowledge.submitWorkspace, CONTROL_PLANE_OPERATIONS.knowledge.decideReview,
+			CONTROL_PLANE_OPERATIONS.knowledge.publishReview]) {
+			expect(binding.descriptor.oauthScopes).toEqual(['treeseed:knowledge:write']);
+			expect(binding.descriptor.concurrency.required).toBe(true);
+			expect(binding.descriptor.idempotency.required).toBe(true);
+		}
+	});
 	it('offers coordinator detail and audit reads to clients that consume tools', () => {
 		const tools = buildMcpCatalog(CONTROL_PLANE_CATALOG.operations).tools.map(tool => tool.name);
 		expect(tools).toEqual(expect.arrayContaining([
