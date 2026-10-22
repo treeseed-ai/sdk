@@ -78,7 +78,7 @@ describe('human command tree contract', () => {
 		] });
 		const descriptor = CONTROL_PLANE_OPERATION_LIST.find(operation => operation.descriptor.operationId === 'workdays.events.list')?.descriptor;
 		expect(descriptor).toMatchObject({ kind: 'read', rest: { method: 'GET', path: '/v1/teams/{teamId}/workday-runs/{runId}/events' },
-			pagination: 'cursor', surfaces: ['rest', 'cli'], idempotency: { required: false, header: 'Idempotency-Key' } });
+			pagination: 'cursor', surfaces: ['rest', 'cli', 'mcp_tool'], idempotency: { required: false, header: 'Idempotency-Key' } });
 		expect(TREESEED_COMMAND_TREE_V1).toEqual(before);
 	});
 	it('declares one optional repeatable exact target selector for scoped development freeze without another execution path', () => {
