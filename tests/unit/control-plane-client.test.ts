@@ -332,7 +332,9 @@ describe('ControlPlaneClient', () => {
 		const inputRequired = { type: 'input_required', requestId: 'request_1', prompt: 'Confirm exact input.', confirmation };
 		const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ type: 'about:blank', title: 'Confirmation required', status: 409, code: 'confirmation_required', inputRequired }), { status: 409, headers: { 'content-type': 'application/problem+json' } }));
 		const client = new ControlPlaneClient({ profile: { serverId: 'local', label: 'Local', baseUrl: 'http://127.0.0.1:3002' }, fetchImpl });
-		await expect(client.invoke(CONTROL_PLANE_OPERATIONS.workdays.start, { path: { teamId: 'team_1' }, query: {}, body: {} }, { idempotencyKey: 'idempotency_1' })).rejects.toMatchObject({ problem: { code: 'confirmation_required', inputRequired } });
+		await expect(client.invoke(CONTROL_PLANE_OPERATIONS.workdays.start, { path: { teamId: 'team_1' }, query: {}, body: {
+			preflightId: 'preflight-real', preflightDigest: `sha256:${'a'.repeat(64)}`,
+		} }, { idempotencyKey: 'idempotency_1' })).rejects.toMatchObject({ problem: { code: 'confirmation_required', inputRequired } });
 		expect(JSON.parse(Buffer.from(encodeConfirmationState(confirmation), 'base64url').toString('utf8'))).toEqual(confirmation);
 	});
 });

@@ -7,7 +7,7 @@ const empty = z.object({}).strict();
 const output = z.record(z.unknown());
 const read = (operationId: 'workdays.profiles.list' | 'workdays.profiles.show', path: `/v1/${string}`, parameters: z.AnyZodObject, query: z.AnyZodObject, pagination: 'cursor' | 'none') => defineOperation({
 	operationId, description: 'Read the team-owned canonical workday allocation policy.', rest: { method: 'GET', path }, parameters: `treeseed.${operationId}.parameters/v1`,
-	capability: 'workdays.read', authentication: 'oauth', oauthScopes: ['treeseed:read'], kind: 'read', riskClass: 'ordinary', confirmation: 'never', surfaces: ['rest', 'cli'], cacheScope: 'principal', pagination,
+	capability: 'workdays.read', authentication: 'oauth', oauthScopes: ['treeseed:read'], kind: 'read', riskClass: 'ordinary', confirmation: 'never', surfaces: ['rest', 'cli', 'mcp_tool'], cacheScope: 'principal', pagination,
 }, { path: parameters, query, body: z.undefined(), output });
 
 export const WORKDAY_PROFILE_OPERATIONS = {

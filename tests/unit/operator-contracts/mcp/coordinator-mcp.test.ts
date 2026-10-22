@@ -4,6 +4,26 @@ import { z } from 'zod';
 import { preserveInputOrder } from '../../../../src/content/validation/schema-constraints.ts';
 
 describe('coordinator MCP boundary', () => {
+	it('offers coordinator detail and audit reads to clients that consume tools', () => {
+		const tools = buildMcpCatalog(CONTROL_PLANE_CATALOG.operations).tools.map(tool => tool.name);
+		expect(tools).toEqual(expect.arrayContaining([
+			'governance.proposals.show', 'governance.decisions.show', 'inbox.items.show',
+			'assignments.show', 'workdays.show', 'workdays.events.list', 'capacity.audit',
+			'workdays.profiles.list', 'workdays.profiles.show',
+		]));
+	});
+	it('describes start as an exact preflight receipt and denies caller execution plans', () => {
+		const binding = CONTROL_PLANE_OPERATIONS.workdays.start;
+		expect(controlPlaneSchemaJson(binding.schema.body)).toMatchObject({ type: 'object', additionalProperties: false,
+			properties: { preflightId: { type: 'string', minLength: 1 }, preflightDigest: { type: 'string', minLength: 1 } },
+			required: ['preflightId', 'preflightDigest'] });
+		const input = { preflightId: 'preflight-real', preflightDigest: `sha256:${'a'.repeat(64)}` };
+		expect(binding.schema.body.parse(input)).toEqual(input);
+		for (const invalid of [null, [], {}, { ...input, preflightId: '' }, { ...input, preflightDigest: '' },
+			...['intent', 'assignmentIds', 'executionPlanId', 'agentIds', 'idempotencyKey'].map(field => ({ ...input, [field]: 'caller-derived' }))])
+			expect(binding.schema.body.safeParse(invalid).success).toBe(false);
+		expect(binding.descriptor.idempotency.required).toBe(true);
+	});
 	it('exports the same owning parser while preserving normalized request order, defaults and denial', () => {
 		const parser = z.object({ first: z.string().trim(), second: z.number().positive(),
 			added: z.boolean().default(false) }).strict();
