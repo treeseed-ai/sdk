@@ -28,7 +28,7 @@ export class SourcePolicy {
       const file=join(directory,entry.name);
       if(entry.isSymbolicLink()) throw new Error(`Source symlink forbidden: ${file}`);
       if(entry.isDirectory()) files.push(...this.files(file));
-      else if(/\.(?:[cm]?js|jsx|tsx?)$/.test(entry.name)) files.push(file);
+      else if(/\.(?:[cm]?js|jsx|[cm]?ts|tsx)$/.test(entry.name)) files.push(file);
     }
     return files;
   }

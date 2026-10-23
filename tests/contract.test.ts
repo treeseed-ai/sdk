@@ -65,7 +65,7 @@ class ContractTests {
   sourcePolicy(): void {
     const policy=new SourcePolicy();
     expect(policy.inspect('okay.ts','export class A { run(): number { return 1; } } export interface B { run(): void; }')).toEqual([]);
-    const cases: [string,string][]=[['bad.js','class A {}'],['bad.ts','export function bad() {}'],['bad.ts','const bad = () => 1;'],['bad.ts','const factory = function() { return {}; };'],['bad.tsx','const UI = () => <div/>;'],['bad.ts','const bag = {run() { return 1; }};'],['bad.ts',"export {Thing} from '../../other/src/main';"]];
+    const cases: [string,string][]=[['bad.js','class A {}'],['bad.ts','export function bad() {}'],['bad.mts','export function bad() {}'],['bad.cts','const bad = () => 1;'],['bad.ts','const bad = () => 1;'],['bad.ts','const factory = function() { return {}; };'],['bad.tsx','const UI = () => <div/>;'],['bad.ts','const bag = {run() { return 1; }};'],['bad.ts',"export {Thing} from '../../other/src/main';"]];
     for(const [name,source] of cases) expect(policy.inspect(name,source).length).toBeGreaterThan(0);
     const directory=mkdtempSync(join(tmpdir(),'cordis-source-'));
     try { writeFileSync(join(directory,'hidden.js'),'class Bad {}'); expect(policy.check.bind(policy,directory)).toThrow('handwritten'); }
