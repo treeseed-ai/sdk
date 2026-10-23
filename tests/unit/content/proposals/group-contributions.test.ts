@@ -11,7 +11,7 @@ function proposal() {
 		summary: 'Document the boundary, reproduce the lost request, and repair the handoff.', status: 'ready',
 		executionPlan: { workItems: ['document-boundary', 'reproduce-request-loss', 'repair-handoff'].map((id, index, ids) => ({
 			id, activity: 'acting', objective: id, workspace: 'git', review: 'required', maximumReviewCycles: 2,
-			estimateRef: { store: 'postgresql', model: 'assignment', id: `estimate-${index}`, revision: 1 },
+			estimateRef: { store: 'postgresql', model: 'assignment-attempt', id: `estimate-${index}`, revision: 1 },
 			estimate: { expectedSeconds: 120, maximumSeconds: 240, rationale: 'Own bounded contribution against the actual provider source.' },
 			reviewEstimate: { expectedSeconds: 60, maximumSeconds: 120, rationale: 'Own independent peer-review effort.' },
 			dependsOn: index ? [ids[index - 1]!] : [],
@@ -35,7 +35,7 @@ describe('group-owned proposal contributions', () => {
 			expect(validatePortableContentData('proposal', input).ok, field).toBe(false);
 		}
 		for (const patch of [{ estimateRef: undefined }, { estimateRef: { store: 'postgresql', model: 'agent', id: 'engineer', revision: 1 } },
-			{ estimateRef: { store: 'postgresql', model: 'assignment', id: 'estimate', revision: 0 } }, { estimate: undefined },
+			{ estimateRef: { store: 'postgresql', model: 'assignment-attempt', id: 'estimate', revision: 0 } }, { estimate: undefined },
 			{ estimate: { expectedSeconds: 120, maximumSeconds: 240, rationale: '' } },
 			{ estimate: { expectedSeconds: 300, maximumSeconds: 240, rationale: 'Invalid bound.' } }, { reviewEstimate: undefined }]) {
 			const input = proposal(); Object.assign(input.executionPlan.workItems[0]!, patch);
@@ -62,8 +62,8 @@ describe('group-owned proposal contributions', () => {
 		noGroups.groupIds = []; cycle.executionPlan.workItems[0]!.dependsOn = ['repair-handoff'];
 		const denied = [noGroups, cycle, ...[
 			{ agentClass: 'engineer' }, { agentId: 'engineer' }, { reviewerId: 'reviewer' },
-			{ estimateRef: undefined }, { estimateRef: { store: 'postgresql', model: 'assignment', id: 'estimate', revision: 0 } },
-			{ estimateRef: { store: 'postgresql', model: 'assignment', id: 'estimate', revision: 1, agentId: 'engineer' } },
+			{ estimateRef: undefined }, { estimateRef: { store: 'postgresql', model: 'assignment-attempt', id: 'estimate', revision: 0 } },
+			{ estimateRef: { store: 'postgresql', model: 'assignment-attempt', id: 'estimate', revision: 1, agentId: 'engineer' } },
 			{ estimate: { expectedSeconds: 300, maximumSeconds: 240, rationale: 'Invalid bound.' } },
 			{ estimate: { expectedSeconds: 120, maximumSeconds: 240, rationale: '' } }, { reviewEstimate: undefined },
 		].map(patch => { const value = proposal(); Object.assign(value.executionPlan.workItems[0]!, patch); return value; })];

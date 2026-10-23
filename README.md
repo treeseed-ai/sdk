@@ -69,8 +69,9 @@ still use the agent's one class and are independent of participation.
 Current proposal metadata uses `treeseed.proposal/v2`. A proposal requires shared
 `groupIds`; its execution plan contains each subscriber's own work items and
 bounded estimates with rationale. Work items have no agent or class selector.
-Each `estimateRef` names the exact PostgreSQL estimating assignment and revision
-that supplied the contribution. The API must verify that assignment's actual
+Each `estimateRef` names the existing PostgreSQL `assignment-attempt` by its
+admitted ID and attempt ordinal (`revision`), rather than its changing lease state
+version. The API must verify that estimating attempt's actual
 author, current proposal authority, completed result and contribution before
 approval or execution; a syntactically valid reference grants no authority.
 Every subscriber contributes and executes its work, rather than bidding for one

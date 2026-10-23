@@ -131,7 +131,7 @@ const proposalSchema = conditionalFields(z.object({
 // Each subscriber owns its plan. The estimate reference identifies actual
 // assignment custody, never a caller-selected agent or allocation class.
 const estimateAssignmentRefSchema = exactEntityReferenceSchema.innerType().pick({ store: true, model: true, id: true, revision: true }).extend({
-	store: z.literal('postgresql'), model: z.literal('assignment'), revision: z.number().int().positive(),
+	store: z.literal('postgresql'), model: z.literal('assignment-attempt'), revision: z.number().int().positive(),
 }).strict();
 const contributionEstimateSchema = estimateSchema.innerType().extend({ rationale: nonEmpty }).refine(
 	value => estimateSchema.safeParse(value).success, { message: 'Contribution estimates must satisfy the shared bounded estimate contract.' });
