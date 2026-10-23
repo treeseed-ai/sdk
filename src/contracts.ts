@@ -24,7 +24,8 @@ export class PlatformSchemas {
   static readonly check=z.strictObject({id:this.text,status:z.enum(['pass','blocked']),code:this.text,message:this.text});
   static readonly diagnostic=z.strictObject({ready:z.boolean(),host:z.strictObject({os:this.text,architecture:this.text,distribution:this.text,release:this.text}),engine:z.strictObject({context:this.text.nullable(),endpoint:this.text.nullable(),serverVersion:this.text.nullable(),serverArchitecture:this.text.nullable(),composeVersion:this.text.nullable(),cpus:z.number().nonnegative().nullable(),memoryBytes:z.number().nonnegative().nullable()}),installation:z.strictObject({path:this.absolute,exists:z.boolean(),freeBytes:z.number().nonnegative().nullable()}),port:z.number().int().min(1).max(65535),checks:z.array(this.check)});
   static readonly problem=z.strictObject({code:this.text,title:this.text,detail:this.text});
-  static readonly envelope=z.strictObject({command:this.text,success:z.boolean(),result:z.union([this.diagnostic,z.strictObject({version:this.text}),z.strictObject({help:this.text})]).nullable(),problem:this.problem.nullable(),blockers:z.array(this.blocker),references:z.array(this.text)});
+  private static readonly envelopeBase=z.strictObject({command:this.text,success:z.boolean(),result:z.union([this.diagnostic,z.strictObject({version:this.text}),z.strictObject({help:this.text})]).nullable(),problem:this.problem.nullable(),blockers:z.array(this.blocker),references:z.array(this.text)});
+  static readonly envelope=z.discriminatedUnion('success',[this.envelopeBase.extend({success:z.literal(true),problem:z.null()}),this.envelopeBase.extend({success:z.literal(false),problem:this.problem})]);
 }
 export type DiagnosticConfiguration=z.infer<typeof PlatformSchemas.configuration>;
 export type DiagnosticReport=z.infer<typeof PlatformSchemas.diagnostic>;
@@ -39,6 +40,9 @@ export interface OperationMetadata<I extends z.ZodType=z.ZodType,O extends z.Zod
 export class OperationDefinition<I extends z.ZodType=z.ZodType,O extends z.ZodType=z.ZodType> {
   private constructor(readonly definition:OperationMetadata<I,O>) {}
   static define<I extends z.ZodType,O extends z.ZodType>(definition:OperationMetadata<I,O>):OperationDefinition<I,O> {
+    for(const schema of [definition.input,definition.output]) {
+      if(!(schema instanceof z.ZodObject)||z.toJSONSchema(schema,{io:'input'}).additionalProperties!==false)throw new Error('Operation schemas must be strict objects');
+    }
     const write=definition.effect==='write';
     if(!/^platform\.[a-z]+(\.[a-z]+)?$/.test(definition.id)||definition.mcp!==definition.id.replaceAll('.','_')||!definition.cli.trim()||!definition.rest.path.startsWith('/v1/platform')||definition.scope!==(write?'platform.manage':'platform.read')||definition.rest.method!==(write?'POST':'GET')||definition.idempotency!==write||definition.expectedState!==write||definition.exposure.join(',')!=='rest,cli,mcp') throw new Error('Invalid operation policy');
     return new OperationDefinition(Object.freeze({...definition,rest:Object.freeze({...definition.rest}),exposure:Object.freeze([...definition.exposure]) as readonly ['rest','cli','mcp']}));
@@ -73,7 +77,7 @@ export class ContractProjection {
     const operations=[];
     for(const binding of PlatformOperations.all) {
       const {input,output,...metadata}=binding.definition;
-      operations.push({...metadata,input:z.toJSONSchema(input),output:z.toJSONSchema(output)});
+      operations.push({...metadata,input:z.toJSONSchema(input,{io:'input'}),output:z.toJSONSchema(output)});
     }
     const contract={contractVersion:'0.1.0-cordis.1',operations};
     return {...contract,digest:createHash('sha256').update(JSON.stringify(contract)).digest('hex')};
