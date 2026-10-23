@@ -770,7 +770,7 @@ verifiers:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/agent-capacity/capacity/architecture/profiles/profile-authority.test.ts
-    testName: "rejects producer reviewing while retaining one independent reviewer class and exact lifecycle selector"
+    testName: "allows every activity for arbitrary classes while retaining exact lifecycle selectors"
   sdk.golden.architecture-profile-authority-6:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

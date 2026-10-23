@@ -39,6 +39,25 @@ The client provides typed operation dispatch, RFC 9457 problem handling, OAuth d
 
 Communication contracts treat discussion topics as team-wide coordination scopes. Qualified `@project/agent` addresses select one agent, while unqualified `@agent` addresses expand to every matching chat-enabled agent across active team projects. The API maintains a project-local TreeDX discussion stream for each addressed project and aggregates their invocations under one send identity.
 
+## Agent activity contract
+
+An agent's single class identifies allocation and memory attachment; it does not
+restrict which activities its configured handler can perform. Every class may
+configure `planning`, `estimating`, `acting`, `reviewing`, `reporting`, and `chat`
+with any registered handler. Each profile retains its own explicit prompt,
+parameters, permissions, and dependencies. Review independence is a property of
+the assigned attempt and candidate provenance, not a reserved class name.
+
+This validator change removes the class restriction only. Group membership and
+discussion mentions must determine participation in the control plane; handler
+dispatch must support every activity for nondeterministic workloads. Those
+consumers must adopt this contract before the complete workflow is available.
+The runner's boundary is an already-prepared opaque workload and its runtime
+environment: process lifecycle, limits, isolation, observations, measured usage,
+and cleanup. It must not interpret agent identity, profile, proposal, review, or
+release policy. Workload preparation and task interpretation belong to the
+configured application handlers.
+
 ## TreeDX API
 
 ```ts
