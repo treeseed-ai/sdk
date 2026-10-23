@@ -4,7 +4,8 @@ Task 1 defines executable portable schemas and seven operation bindings. There i
 remote client, server dispatcher, authorization implementation or plugin runtime yet.
 `OperationDefinition.define(definition)` returns a typed binding with `parseInput` and
 `parseOutput`; metadata declares ID, scope, effect, REST, CLI and MCP exposure and mutation
-policy. `PlatformOperations.all` is the sole seven-binding catalog; duplicate IDs/routes/tool
+policy. Non-strict or non-object schemas fail definition validation. Success/failure
+envelopes require matching null/non-null problems. `PlatformOperations.all` is the sole seven-binding catalog; duplicate IDs/routes/tool
 names and inconsistent write/idempotency policy are rejected. `PlatformSchemas` owns schemas.
 Types are inferred from [strict Zod objects](https://zod.dev/api?id=objects).
 `ContractProjection.generate()` projects every binding to JSON Schema and metadata;
