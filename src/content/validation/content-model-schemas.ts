@@ -70,6 +70,30 @@ const proposalLinks = {
 	...linked,
 };
 
+function validateWorkItemWorkspace(value: { workspace: string; contextRefs?: Array<{ store: string; model: string }> }, context: z.RefinementCtx) {
+	if (value.workspace !== 'read-only') {
+		const mutable = (value.contextRefs ?? []).filter((reference) => reference.store === value.workspace && reference.model === 'repository');
+		if (mutable.length !== 1) context.addIssue({ code: z.ZodIssueCode.custom, path: ['contextRefs'], message: `${value.workspace} work requires exactly one exact ${value.workspace} workspace reference.` });
+	}
+}
+
+function validateWorkItemDependencies(value: { workItems: Array<{ id: string; dependsOn: string[] }> }, context: z.RefinementCtx) {
+	const ids = new Set(value.workItems.map((item) => item.id));
+	if (ids.size !== value.workItems.length) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Work-item IDs must be unique.' });
+	for (const [index, item] of value.workItems.entries()) for (const dependency of item.dependsOn) {
+		if (!ids.has(dependency)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['workItems', index, 'dependsOn'], message: `Dependency ${dependency} does not exist in this proposal.` });
+		if (dependency === item.id) context.addIssue({ code: z.ZodIssueCode.custom, path: ['workItems', index, 'dependsOn'], message: 'Work items cannot depend on themselves.' });
+	}
+	const byId = new Map(value.workItems.map((item) => [item.id, item]));
+	const visiting = new Set<string>(), visited = new Set<string>();
+	const cyclic = (id: string): boolean => {
+		if (visiting.has(id)) return true; if (visited.has(id)) return false; visiting.add(id);
+		if ((byId.get(id)?.dependsOn ?? []).some(cyclic)) return true;
+		visiting.delete(id); visited.add(id); return false;
+	};
+	if ([...ids].some(cyclic)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['workItems'], message: 'Work-item dependencies must be acyclic.' });
+}
+
 const executionPlanWorkItemSchema = conditionalFields(z.object({
 	id: slug,
 	priority: z.number().int().safe().optional(),
@@ -89,29 +113,9 @@ const executionPlanWorkItemSchema = conditionalFields(z.object({
 }).strict(), [
 	{ field: 'review', equals: 'required', alternatives: [['maximumReviewCycles']], message: 'Required review needs a maximum cycle count.' },
 	{ field: 'review', equals: 'none', forbidden: { fields: ['reviewEstimate', 'maximumReviewCycles'] }, message: 'Unreviewed work cannot define review estimates or cycles.' },
-]).superRefine((value, context) => {
-	if (value.workspace !== 'read-only') {
-		const mutable = (value.contextRefs ?? []).filter((reference) => reference.store === value.workspace && reference.model === 'repository');
-		if (mutable.length !== 1) context.addIssue({ code: z.ZodIssueCode.custom, path: ['contextRefs'], message: `${value.workspace} work requires exactly one exact ${value.workspace} workspace reference.` });
-	}
-});
+]).superRefine(validateWorkItemWorkspace);
 
-const executionPlanSchema = z.object({ workItems: z.array(executionPlanWorkItemSchema).min(1) }).strict().superRefine((value, context) => {
-	const ids = new Set(value.workItems.map((item) => item.id));
-	if (ids.size !== value.workItems.length) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Work-item IDs must be unique.' });
-	for (const [index, item] of value.workItems.entries()) for (const dependency of item.dependsOn) {
-		if (!ids.has(dependency)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['workItems', index, 'dependsOn'], message: `Dependency ${dependency} does not exist in this proposal.` });
-		if (dependency === item.id) context.addIssue({ code: z.ZodIssueCode.custom, path: ['workItems', index, 'dependsOn'], message: 'Work items cannot depend on themselves.' });
-	}
-	const byId = new Map(value.workItems.map((item) => [item.id, item]));
-	const visiting = new Set<string>(), visited = new Set<string>();
-	const cyclic = (id: string): boolean => {
-		if (visiting.has(id)) return true; if (visited.has(id)) return false; visiting.add(id);
-		if ((byId.get(id)?.dependsOn ?? []).some(cyclic)) return true;
-		visiting.delete(id); visited.add(id); return false;
-	};
-	if ([...ids].some(cyclic)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['workItems'], message: 'Work-item dependencies must be acyclic.' });
-});
+const executionPlanSchema = z.object({ workItems: z.array(executionPlanWorkItemSchema).min(1) }).strict().superRefine(validateWorkItemDependencies);
 
 const proposalSchema = conditionalFields(z.object({
 	schemaVersion: z.literal('treeseed.proposal/v1'), id: identifier, projectId: identifier, title: nonEmpty,
@@ -123,6 +127,30 @@ const proposalSchema = conditionalFields(z.object({
 	items: { field: 'executionPlan', key: 'workItems', required: ['estimate'],
 		conditional: { field: 'review', equals: 'required', required: ['reviewEstimate'] } },
 	message: 'Ready proposals require a summary, an execution plan, and each required independent estimate.' }]);
+
+// Each subscriber owns its plan. The estimate reference identifies actual
+// assignment custody, never a caller-selected agent or allocation class.
+const estimateAssignmentRefSchema = exactEntityReferenceSchema.innerType().pick({ store: true, model: true, id: true, revision: true }).extend({
+	store: z.literal('postgresql'), model: z.literal('assignment'), revision: z.number().int().positive(),
+}).strict();
+const contributionEstimateSchema = estimateSchema.innerType().extend({ rationale: nonEmpty }).refine(
+	value => estimateSchema.safeParse(value).success, { message: 'Contribution estimates must satisfy the shared bounded estimate contract.' });
+const contributionWorkItemSchema = conditionalFields(executionPlanWorkItemSchema.innerType().innerType()
+	.omit({ agentClass: true }).extend({ estimateRef: estimateAssignmentRefSchema,
+		estimate: contributionEstimateSchema, reviewEstimate: contributionEstimateSchema.optional() }), [
+	{ field: 'review', equals: 'required', alternatives: [['maximumReviewCycles', 'reviewEstimate']],
+		message: 'Reviewed contributions require bounded cycles and their author’s own review estimate.' },
+	{ field: 'review', equals: 'none', forbidden: { fields: ['reviewEstimate', 'maximumReviewCycles'] },
+		message: 'Unreviewed work cannot define review estimates or cycles.' },
+]).superRefine(validateWorkItemWorkspace);
+const contributionExecutionPlanSchema = executionPlanSchema.innerType().extend({
+	workItems: z.array(contributionWorkItemSchema).min(1),
+}).superRefine(validateWorkItemDependencies);
+const contributionProposalSchema = conditionalFields(proposalSchema.innerType().extend({
+	schemaVersion: z.literal('treeseed.proposal/v2'), groupIds: unique(z.array(identifier).min(1)),
+	executionPlan: contributionExecutionPlanSchema.optional(),
+}), [{ field: 'status', in: ['ready', 'decided'], alternatives: [['summary', 'executionPlan']],
+	message: 'Ready proposals require the contribution plan from every subscribed participant.' }]);
 
 const schemas = {
 	page: z.object({
@@ -149,7 +177,7 @@ const schemas = {
 		title: nonEmpty, outcome: nonEmpty, status: z.enum(['active', 'achieved', 'abandoned']),
 		evidenceRefs: unique(exactRefs).optional(),
 	}).strict(),
-	proposal: proposalSchema,
+	proposal: z.union([contributionProposalSchema, proposalSchema]),
 	decision: conditionalFields(z.object({
 		schemaVersion: z.literal('treeseed.decision/v1'), id: identifier, projectId: identifier,
 		decisionClass: z.enum(['proposal', 'work-review', 'publication']),
@@ -259,8 +287,11 @@ export function validateContentFrontmatter(model: PortableContentModel, value: u
 	};
 }
 
-export function describeContentFrontmatterSchema(model: PortableContentModel) {
-	return schemas[model];
+export function describeContentFrontmatterSchema(model: PortableContentModel, schemaVersion?: string) {
+	if (model !== 'proposal') return schemas[model];
+	if (schemaVersion === 'treeseed.proposal/v1') return proposalSchema;
+	if (schemaVersion !== undefined && schemaVersion !== 'treeseed.proposal/v2') throw new Error('proposal_schema_version_unsupported');
+	return contributionProposalSchema;
 }
 
 function fieldContract(schema: z.ZodTypeAny): Record<string, unknown> {
@@ -296,8 +327,8 @@ function fieldContract(schema: z.ZodTypeAny): Record<string, unknown> {
 }
 
 /** A JSON-safe description derived directly from the canonical validation schema. */
-export function describeContentFrontmatterContract(model: PortableContentModel) {
-	const selected = schemas[model];
+export function describeContentFrontmatterContract(model: PortableContentModel, schemaVersion?: string) {
+	const selected = describeContentFrontmatterSchema(model, schemaVersion);
 	const schema = selected instanceof z.ZodEffects ? selected.innerType() : selected;
 	if (!(schema instanceof z.ZodObject)) throw new Error(`Content model ${model} is not an object schema.`);
 	return {
@@ -327,7 +358,7 @@ function contractJsonSchema(contract: Record<string, unknown>): Record<string, u
 }
 
 /** Strict structured-output schema generated from the canonical frontmatter validator. */
-export function describeContentFrontmatterJsonSchema(model: PortableContentModel) {
-	const contract = describeContentFrontmatterContract(model);
+export function describeContentFrontmatterJsonSchema(model: PortableContentModel, schemaVersion?: string) {
+	const contract = describeContentFrontmatterContract(model, schemaVersion);
 	return contractJsonSchema({ required: true, type: 'object', fields: contract.fields });
 }

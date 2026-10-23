@@ -34,7 +34,9 @@ if (kind === 'installed-note-inventory') {
 if (kind === 'decision-inventory' || kind === 'note-inventory' || kind === 'proposal-inventory' || kind === 'question-inventory') {
 	const model = kind === 'decision-inventory' ? 'decision' : kind === 'note-inventory' ? 'note' : kind === 'question-inventory' ? 'question' : 'proposal';
 	if (!Array.isArray(input)) throw new Error('Native governed content inventory required.');
-	process.stdout.write(JSON.stringify({ schema: zodToJsonSchema(describeContentFrontmatterSchema(model),
+	const version = model === 'proposal' && input[0] && typeof input[0] === 'object' && typeof input[0].schemaVersion === 'string'
+		? input[0].schemaVersion : undefined;
+	process.stdout.write(JSON.stringify({ schema: zodToJsonSchema(describeContentFrontmatterSchema(model, version),
 		{ $refStrategy: 'none', postProcess: exportSchemaConstraints }), observations: input.map(value => validatePortableContentData(model, value)) }));
 	process.exit(0);
 }

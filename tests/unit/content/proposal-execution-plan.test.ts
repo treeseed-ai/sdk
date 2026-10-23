@@ -136,7 +136,7 @@ function observeWorkItemReview(native: boolean) {
 		const results = entries.map(entry => validatePortableContentData('proposal', entry.data));
 		expect(results.map(result => result.ok)).toEqual(entries.map(entry => entry.valid));
 		for (const [index, entry] of entries.entries()) if (entry.valid) expect(results[index]).toMatchObject({ data: entry.data });
-		expect(zodToJsonSchema(describeContentFrontmatterSchema('proposal'), { $refStrategy: 'none', postProcess: exportSchemaConstraints }))
+		expect(zodToJsonSchema(describeContentFrontmatterSchema('proposal', 'treeseed.proposal/v1'), { $refStrategy: 'none', postProcess: exportSchemaConstraints }))
 			.toMatchObject({ properties: { executionPlan: { properties: { workItems: { items: { allOf: expected } } } } } });
 	}
 	expect(entries).toEqual(held);
@@ -176,7 +176,7 @@ function observeReadyProposal(native: boolean) {
 		const observed = entries.map(entry => validatePortableContentData('proposal', entry.data));
 		expect(observed.map(value => value.ok)).toEqual(entries.map(entry => entry.valid));
 		for (const [index, entry] of entries.entries()) if (entry.valid) expect(observed[index]).toMatchObject({ data: entry.data });
-		expect(zodToJsonSchema(describeContentFrontmatterSchema('proposal'),
+		expect(zodToJsonSchema(describeContentFrontmatterSchema('proposal', 'treeseed.proposal/v1'),
 			{ $refStrategy: 'none', postProcess: exportSchemaConstraints })).toMatchObject({ allOf: expected });
 	}
 		expect(entries).toEqual(held);
@@ -308,7 +308,7 @@ describe('proposal-owned execution plan', () => {
 		expect(validatePortableContentData('proposal', value).ok).toBe(false);
 	});
 	it('describes nested execution-plan fields from the canonical validator', () => {
-		const contract = describeContentFrontmatterContract('proposal') as any;
+		const contract = describeContentFrontmatterContract('proposal', 'treeseed.proposal/v1') as any;
 		expect(contract.fields.executionPlan).toMatchObject({
 			type: 'object', fields: { workItems: { type: 'array', items: { type: 'object', fields: {
 				activity: { value: 'acting' }, agentClass: { type: 'string' }, estimate: { type: 'object' },
@@ -317,7 +317,7 @@ describe('proposal-owned execution plan', () => {
 		});
 	});
 	it('generates strict structured output from the canonical proposal validator', () => {
-		const schema = describeContentFrontmatterJsonSchema('proposal') as { additionalProperties: boolean; properties: Record<string, any>; required: string[] };
+		const schema = describeContentFrontmatterJsonSchema('proposal', 'treeseed.proposal/v1') as { additionalProperties: boolean; properties: Record<string, any>; required: string[] };
 		expect(schema.additionalProperties).toBe(false);
 		expect(schema.properties).toHaveProperty('evidenceRefs');
 		expect(schema.properties).not.toHaveProperty('evidence_refs');
