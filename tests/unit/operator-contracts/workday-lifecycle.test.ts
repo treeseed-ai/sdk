@@ -3,7 +3,7 @@ import { validateSelectedDemand, validateWorkdayIntent, validateWorkdayPreflight
 
 describe('time-based workday lifecycle contracts', () => {
 	it('retains bounded provider constraints and rejects malformed unknown or duplicate supply selectors without changing workday authority', () => {
-		const base: WorkdayIntent = { schemaVersion: 'treeseed.workday-intent/v1', teamId: 'team', profileId: 'default',
+		const base: WorkdayIntent = { schemaVersion: 'treeseed.workday-intent/v1', teamId: 'team', groupIds: ['portfolio-runtime'], profileId: 'default',
 			projects: 'all', startsAt: '2026-09-16T12:00:00Z' };
 		for (const operatorConstraints of [{}, { providerIds: [] }, { providerIds: ['provider', 'second'], maxConcurrency: 1 },
 			{ providerIds: ['x'.repeat(200)] }, { maxConcurrency: 2 }]) {
@@ -19,7 +19,7 @@ describe('time-based workday lifecycle contracts', () => {
 		}
 	});
 	it('requires explicit all or unique canonical project identities without broadening missing malformed or repeated project scope', () => {
-		const base: WorkdayIntent = { schemaVersion: 'treeseed.workday-intent/v1', teamId: 'team', profileId: 'default',
+		const base: WorkdayIntent = { schemaVersion: 'treeseed.workday-intent/v1', teamId: 'team', groupIds: ['portfolio-runtime'], profileId: 'default',
 			projects: 'all', startsAt: '2026-09-16T12:00:00Z' };
 		for (const projects of ['all', ['sdk', 'api'], ['A', 'a'], ['x'.repeat(200)]]) {
 			const intent = Object.assign({}, base, { projects }), before = structuredClone(intent);
@@ -35,7 +35,7 @@ describe('time-based workday lifecycle contracts', () => {
 		}
 	});
 	it('rejects duplicate trimmed decision identities and every malformed explicit selection without changing intent', () => {
-		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default', projects: 'all' as const, startsAt: '2026-09-16T12:00:00Z', durationSeconds: 3600 };
+		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', groupIds: ['portfolio-runtime'], profileId: 'default', projects: 'all' as const, startsAt: '2026-09-16T12:00:00Z', durationSeconds: 3600 };
 		for (const decisionIds of [[], [''], [' \t\n '], ['one', ' one '], ['same', 'same'], [null], [1], 'one', null, Array.from({ length: 65 }, (_, i) => `decision-${i}`), ['x'.repeat(201)], ['é'], ['e\u0301'], ['\uE000'], ['\u{10000}'], ['decision?']]) {
 			const intent: WorkdayIntent = { ...base };
 			Object.assign(intent, { decisionIds });
@@ -51,7 +51,7 @@ describe('time-based workday lifecycle contracts', () => {
 		}
 	});
 	it('requires canonical ASCII identities across normalized intent without narrowing the 200 character boundary', () => {
-		const base: WorkdayIntent = { schemaVersion: 'treeseed.workday-intent/v1', teamId: 'team', profileId: 'default', projects: 'all', startsAt: '2026-09-16T12:00:00Z' };
+		const base: WorkdayIntent = { schemaVersion: 'treeseed.workday-intent/v1', teamId: 'team', groupIds: ['portfolio-runtime'], profileId: 'default', projects: 'all', startsAt: '2026-09-16T12:00:00Z' };
 		for (const field of ['teamId', 'profileId', 'objectiveFilters', 'proposalIds', 'decisionIds'] as const) {
 			for (const identity of ['A', 'a', 'id._:/-', 'x'.repeat(200)]) {
 				const intent = Object.assign({}, base, { [field]: field.endsWith('Ids') || field === 'objectiveFilters' ? [identity] : identity });
@@ -68,7 +68,7 @@ describe('time-based workday lifecycle contracts', () => {
 	});
 
 	it('rejects each named derived identity even when its supplied value would disappear during JSON serialization', () => {
-		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default', projects: 'all' as const, startsAt: '2026-09-16T12:00:00Z', durationSeconds: 3600 };
+		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', groupIds: ['portfolio-runtime'], profileId: 'default', projects: 'all' as const, startsAt: '2026-09-16T12:00:00Z', durationSeconds: 3600 };
 		for (const field of ['executionPlanId', 'capacityPlanId', 'executionInputId', 'demandSetId']) {
 			for (const value of [undefined, null, '', 'derived-identity']) {
 				const intent = Object.assign({}, base, { [field]: value });
@@ -81,7 +81,7 @@ describe('time-based workday lifecycle contracts', () => {
 	});
 
 	it('preserves omitted decisions and independent planning proposal group and allocation controls', () => {
-		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default', projects: ['sdk'], startsAt: '2026-09-16T12:00:00Z', durationSeconds: 3600,
+		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', groupIds: ['portfolio-runtime'], profileId: 'default', projects: ['sdk'], startsAt: '2026-09-16T12:00:00Z', durationSeconds: 3600,
 			proposalIds: ['proposal-original'], groupIds: ['ui-snapshot-admin-chart'], agentSelection: { activityTypes: ['planning'] }, allocation: { planningPercent: 20, allocationWeight: 2 } };
 		for (const planningOnly of [false, true]) {
 			const intent = { ...base, planningOnly };
@@ -92,20 +92,20 @@ describe('time-based workday lifecycle contracts', () => {
 		}
 	});
 	it('validates explicit custody mode without granting free simulation capacity', () => {
-		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default',
+		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', groupIds: ['portfolio-runtime'], profileId: 'default',
 			projects: 'all' as const, startsAt: '2026-09-16T12:00:00Z' };
 		for (const executionMode of ['simulation', 'production'] as const) expect(validateWorkdayIntent({ ...base, executionMode })).toEqual([]);
 		expect(validateWorkdayIntent({ ...base, executionMode: 'other' } as never)).toContainEqual(expect.objectContaining({ code: 'execution_mode_invalid' }));
 	});
 	it('rejects derived execution state in operator workday intent', () => {
-		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default',
+		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', groupIds: ['portfolio-runtime'], profileId: 'default',
 			projects: 'all' as const, startsAt: '2026-09-16T12:00:00Z' };
 		for (const field of ['graph', 'executionPlan', 'capacityPlan']) {
 			expect(validateWorkdayIntent({ ...base, [field]: {} } as never)).toContainEqual(expect.objectContaining({ code: 'field_forbidden', path: field }));
 		}
 	});
 	it('validates high-level allocation through the canonical policy contract', () => {
-		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default',
+		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', groupIds: ['portfolio-runtime'], profileId: 'default',
 			projects: 'all' as const, startsAt: '2026-09-16T12:00:00Z', durationSeconds: 3600 };
 		expect(validateWorkdayIntent({ ...base, allocation: { planningPercent: 20, allocationWeight: 2,
 			projectPercentages: { sdk: 60, api: 40 }, agentClassPercentages: { sdk: { engineer: 100 } } } })).toEqual([]);
@@ -125,7 +125,7 @@ describe('time-based workday lifecycle contracts', () => {
 		expect(validateWorkdayIntentSelection(value).length).toBeGreaterThan(0);
 	});
 	it('accepts a duration or explicit range, never both', () => {
-		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'feature-heavy', projects: 'all' as const, startsAt: '2026-08-21T12:00:00.000Z' };
+		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', groupIds: ['portfolio-runtime'], profileId: 'feature-heavy', projects: 'all' as const, startsAt: '2026-08-21T12:00:00.000Z' };
 		expect(validateWorkdayIntent({ ...base, durationSeconds: 3600 })).toEqual([]);
 		expect(validateWorkdayIntent({ ...base, durationSeconds: 3600, decisionIds: ['decision-1'] })).toEqual([]);
 		expect(validateWorkdayIntent({ ...base, durationSeconds: 3600, planningOnly: true, proposalIds: ['proposal-1'] })).toEqual([]);
@@ -134,7 +134,7 @@ describe('time-based workday lifecycle contracts', () => {
 	});
 
 	it('requires explicit accepted decisions for continuation, without changing fresh intent', () => {
-		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default', projects: ['sdk'], startsAt: '2026-08-21T12:00:00Z' };
+		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', groupIds: ['portfolio-runtime'], profileId: 'default', projects: ['sdk'], startsAt: '2026-08-21T12:00:00Z' };
 		expect(validateWorkdayIntent({ ...base, continueFromWorkdayId: 'previous', decisionIds: ['decision'] })).toEqual([]);
 		for (const value of [{ continueFromWorkdayId: '' }, { continueFromWorkdayId: 'previous' },
 			{ continueFromWorkdayId: 'previous', decisionIds: ['decision'], proposalIds: ['new'] },
@@ -144,7 +144,7 @@ describe('time-based workday lifecycle contracts', () => {
 	});
 
 	it('rejects malformed decision selection without broadening to all decisions', () => {
-		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'feature-heavy', projects: 'all' as const, startsAt: '2026-08-21T12:00:00.000Z', durationSeconds: 3600 };
+		const base = { schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', groupIds: ['portfolio-runtime'], profileId: 'feature-heavy', projects: 'all' as const, startsAt: '2026-08-21T12:00:00.000Z', durationSeconds: 3600 };
 		expect(validateWorkdayIntent({ ...base, decisionIds: [] }).map((item) => item.code)).toContain('decision_selection_invalid');
 		expect(validateWorkdayIntent({ ...base, decisionIds: [''] }).map((item) => item.code)).toContain('decision_selection_invalid');
 		expect(validateWorkdayIntent({ ...base, proposalIds: [] }).map((item) => item.code)).toContain('proposal_selection_invalid');

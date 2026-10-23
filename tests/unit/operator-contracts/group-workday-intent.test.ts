@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeWorkdayAgentSelection, validateWorkdayIntent } from '../../../src/operator-contracts/workday-lifecycle.ts';
+import { normalizeWorkdayAgentSelection, validateWorkdayIntent, workdayIntentSchema, workdayIntentRequestSchema } from '../../../src/operator-contracts/workday-lifecycle.ts';
 import { WORKDAY_PLAN_OPTIONS, WORKDAY_SELECTION_INPUTS } from '../../../src/operator-contracts/catalog/workdays/selection-commands.ts';
 
 const intent = {
@@ -9,6 +9,33 @@ const intent = {
 };
 
 describe('group-driven workday intent', () => {
+	it('rejects prohibited own fields even when they are hidden or undefined without changing the input', () => {
+		for (const field of ['executionPlanId','capacityPlanId','executionInputId','demandSetId']) {
+			for (const value of [undefined,null,'','derived']) for (const enumerable of [false,true]) {
+				const input = { ...intent }; Object.defineProperty(input,field,{ value, enumerable, configurable: true });
+				const before = Object.getOwnPropertyDescriptors(input);
+				expect(validateWorkdayIntent(input)).toContainEqual(expect.objectContaining({ code: 'field_forbidden', path: field }));
+				expect(workdayIntentRequestSchema.safeParse(input).success).toBe(false);
+				expect(Object.getOwnPropertyDescriptors(input)).toEqual(before);
+			}
+		}
+	});
+	it('requires groups or exact governed subjects instead of treating project and activity scope as an agent audience', () => {
+		const { groupIds: _groups, proposalIds: _proposals, ...bare } = intent;
+		for (const projects of [['ui', 'admin'], 'all'] as const) {
+			const input = { ...bare, projects: projects === 'all' ? projects : [...projects] }, before = structuredClone(input);
+			expect(validateWorkdayIntent(input)).not.toEqual([]);
+			expect(workdayIntentSchema.safeParse(input).success).toBe(false);
+			expect(workdayIntentRequestSchema.safeParse(input).success).toBe(false);
+			for (const field of ['groupIds', 'proposalIds', 'decisionIds']) {
+				const scoped = { ...input, [field]: ['portfolio-runtime'] };
+				expect(validateWorkdayIntent(scoped)).toEqual([]);
+				expect(workdayIntentSchema.safeParse(scoped).success).toBe(true);
+				expect(workdayIntentRequestSchema.safeParse(scoped).success).toBe(true);
+			}
+			expect(input).toEqual(before);
+		}
+	});
 	it('accepts shared proposal groups without requiring named agents or classes', () => {
 		expect(validateWorkdayIntent(intent)).toEqual([]);
 		for (const groupIds of [[], [''], ['bad group'], ['ui-snapshot-admin-chart', 'ui-snapshot-admin-chart']]) {

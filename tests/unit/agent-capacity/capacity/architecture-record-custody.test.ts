@@ -88,7 +88,7 @@ describe('public assignment whole immutable record custody', () => {
 	it('validates canonical shared integer weights without converting percentage policy or creating another allocator', () => verifySharedWeights(false));
 	it('native shared weight validators preserve supplied scope and deny missing fractional coerced or duplicated policy fields', () => verifySharedWeights(true));
 	function verifyScheduleRecord(native: boolean) {
-		const clock = '2026-10-03T00:00:00.000Z', intent = { schemaVersion: 'treeseed.workday-intent/v1', teamId: 'team', profileId: 'default', projects: 'all', startsAt: clock };
+		const clock = '2026-10-03T00:00:00.000Z', intent = { schemaVersion: 'treeseed.workday-intent/v1', teamId: 'team', profileId: 'default', projects: 'all', groupIds: ['portfolio-runtime'], startsAt: clock };
 		const record = { id: 'schedule', teamId: 'team', status: 'active', purpose: '', cadenceSeconds: 60, intent, lastRunId: null, nextRunAt: clock, stateVersion: 1, createdAt: clock, updatedAt: clock };
 		const entries: Array<{ record: Record<string, unknown>; valid: boolean }> = [{ record, valid: true }];
 		for (const field of Object.keys(record)) {

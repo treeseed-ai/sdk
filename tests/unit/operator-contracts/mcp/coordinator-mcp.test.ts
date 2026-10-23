@@ -58,7 +58,7 @@ describe('coordinator MCP boundary', () => {
 	it('exports the same owning parser while preserving normalized request order, defaults and denial', () => {
 		const parser = z.object({ first: z.string().trim(), second: z.number().positive(),
 			added: z.boolean().default(false) }).strict();
-		const schema = preserveInputOrder(parser);
+		const schema = preserveInputOrder(parser, value => parser.parse(value));
 		const input = { second: 2, first: ' value ' }, held = structuredClone(input);
 		expect(JSON.stringify(schema.parse(input))).toBe('{"second":2,"first":"value","added":false}');
 		expect(input).toEqual(held);
@@ -66,7 +66,8 @@ describe('coordinator MCP boundary', () => {
 			expect(controlPlaneSchemaJson(schema, target)).toEqual(controlPlaneSchemaJson(parser, target));
 		for (const invalid of [null, [], {}, { ...input, second: 0 }, { ...input, unexpected: true }])
 			expect(schema.safeParse(invalid).success).toBe(false);
-		const stripsUnknown = preserveInputOrder(z.object({ first: z.string() }));
+		const strippingParser = z.object({ first: z.string() });
+		const stripsUnknown = preserveInputOrder(strippingParser, value => strippingParser.parse(value));
 		expect(stripsUnknown.parse({ removed: true, first: 'value' })).toEqual({ first: 'value' });
 	});
 	it('describes actual workday planning fields instead of an opaque body', () => {

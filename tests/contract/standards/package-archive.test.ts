@@ -18,7 +18,7 @@ it('resolves the packed golden verifier imports through the installed public con
    expect(packed[0]!.files.map(file=>file.path)).not.toContain(name);
   const archive=join(root,packed[0]!.filename),held=readFileSync(archive),install=join(root,'installed');mkdirSync(install);
   const reproduction=join(root,'reproduction');mkdirSync(reproduction);
-  execFileSync('tar',['-xzf',archive,'-C',reproduction],{timeout:15000});
+  execFileSync('tar',['-xzf',archive,'--same-permissions','-C',reproduction],{timeout:15000});
   // Repack actual archived owner bytes; alter only private fixture stamps,
   // leaving the live development build coordination marker untouched.
   const fixture=join(reproduction,'package'),repacked:Buffer[]=[];
@@ -28,7 +28,7 @@ it('resolves the packed golden verifier imports through the installed public con
    const result=JSON.parse(execFileSync('npm',['pack','--json','--ignore-scripts','--pack-destination',destination],{cwd:fixture,encoding:'utf8',timeout:15000})) as {filename:string}[];
    expect(result).toHaveLength(1);repacked.push(readFileSync(join(destination,result[0]!.filename)));
   }
-  expect(repacked[0]).toEqual(held);expect(repacked[1]).toEqual(held);
+  for (const bytes of repacked) expect(bytes.equals(held), 'Repacked archive SHA256 '+createHash('sha256').update(bytes).digest('hex')+' differs from original '+createHash('sha256').update(held).digest('hex')).toBe(true);
   execFileSync('npm',['install','--prefix',install,'--omit=dev','--ignore-scripts','--package-lock=false','--no-save','--no-audit','--no-fund',archive],{encoding:'utf8',timeout:15000});
   const owner=join(install,'node_modules/@treeseed/sdk');
   const asset=readFileSync(join(owner,'tests/acceptance/golden-product.test.ts'),'utf8');

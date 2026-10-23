@@ -21,6 +21,16 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/group-workday-intent.test.ts
     testName: "keeps normalized internal phase snapshots free of identity filters and rejects legacy targeting"
+  sdk.golden.group-workday-audience:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/group-workday-intent.test.ts
+    testName: "requires groups or exact governed subjects instead of treating project and activity scope as an agent audience"
+  sdk.golden.group-workday-audience-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/acceptance/workday-group-scope-native.test.ts
+    testName: "native manual and scheduled workday requests preserve group-derived scope and deny an unscoped audience before HTTP"
   sdk.golden.cli-read-library-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
@@ -1334,7 +1344,7 @@ verifiers:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/product/intent-runtime-native.test.ts
-    testName: "native product inspection uses actual built public SDK exports and refuses hidden retired intent fields without fixing the candidate"
+    testName: "native product inspection uses actual built public SDK exports and refuses hidden retired intent fields through the shared normalizer"
 
   sdk.golden.intent-runtime-custody-unit:
     kind: vitestCase
