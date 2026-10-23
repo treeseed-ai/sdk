@@ -3,6 +3,9 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: group-phase-selection
+    action: { verifier: sdk.golden.group-phase-selection }
+    expect: { status: passed }
   - id: integration-reviewed-input-unit
     action: { verifier: sdk.golden.integration-reviewed-input-unit }
     expect: { status: passed }

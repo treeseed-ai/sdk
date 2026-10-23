@@ -58,6 +58,12 @@ and cleanup. It must not interpret agent identity, profile, proposal, review, or
 release policy. Workload preparation and task interpretation belong to the
 configured application handlers.
 
+The shared workday selection normalizer accepts activity phases only. It rejects
+agent names, class IDs, class slugs, union matching and unknown fields even on
+internal calls. Proposal groups and discussion addressing supply participants;
+the phase selection describes which activities run. Fair allocation weights
+still use the agent's one class and are independent of participation.
+
 ## TreeDX API
 
 ```ts

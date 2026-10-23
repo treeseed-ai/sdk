@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateWorkdayIntent } from '../../../src/operator-contracts/workday-lifecycle.ts';
+import { normalizeWorkdayAgentSelection, validateWorkdayIntent } from '../../../src/operator-contracts/workday-lifecycle.ts';
 import { WORKDAY_PLAN_OPTIONS, WORKDAY_SELECTION_INPUTS } from '../../../src/operator-contracts/catalog/workdays/selection-commands.ts';
 
 const intent = {
@@ -19,6 +19,16 @@ describe('group-driven workday intent', () => {
 		for (const selector of ['agentSlugs', 'classSlugs', 'classIds']) {
 			expect(validateWorkdayIntent({ ...intent, agentSelection: { activityTypes: ['planning'], [selector]: ['engineer'] } })).not.toEqual([]);
 		}
+	});
+	it('keeps normalized internal phase snapshots free of identity filters and rejects legacy targeting', () => {
+		expect(normalizeWorkdayAgentSelection(undefined)).toEqual({ activityTypes: [], mode: 'intersection' });
+		expect(normalizeWorkdayAgentSelection({ activityTypes: ['estimating', 'planning', 'estimating'] }))
+			.toEqual({ activityTypes: ['estimating', 'planning'], mode: 'intersection' });
+		for (const field of ['agentSlugs', 'classSlugs', 'classIds']) for (const value of [[], ['engineer']]) {
+			expect(() => normalizeWorkdayAgentSelection({ activityTypes: ['planning'], [field]: value })).toThrow();
+		}
+		expect(() => normalizeWorkdayAgentSelection({ activityTypes: ['planning'], mode: 'union' })).toThrow();
+		expect(() => normalizeWorkdayAgentSelection({ activityTypes: ['typo'] })).toThrow();
 	});
 	it('offers shared-group selection and removes agent and class participant flags from the CLI contract', () => {
 		expect(WORKDAY_PLAN_OPTIONS.map(option => option.name)).toContain('--group');
