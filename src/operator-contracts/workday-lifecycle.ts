@@ -23,22 +23,20 @@ const workdayIntentFields = z.object({
 	allocation: workdayAllocationOverridesSchema.optional(), agentSelection: intentAgentSelectionSchema.optional(),
 	operatorConstraints: z.object({ providerIds: uniqueArray(z.array(identifier)).optional(), maxConcurrency: z.number().int().positive().optional() }).strict().optional(),
 }).strict();
-const continuationRules = [{ field: 'continueFromWorkdayId', alternatives: [['decisionIds']],
+const workdayScopeRules = [{ field: 'projects', alternatives: [['groupIds'], ['proposalIds'], ['decisionIds']],
+	path: ['groupIds'], message: 'Select shared groups or exact proposals or decisions whose groups supply participants.' },
+	{ field: 'continueFromWorkdayId', alternatives: [['decisionIds']],
 	forbidden: { fields: ['proposalIds'], conditions: [{ field: 'planningOnly', equals: true }] },
 	path: ['continueFromWorkdayId'], message: 'Continuation requires exact decisions, not new proposal planning.' }] as const;
-export const workdayIntentSchema = exclusiveProperties(conditionalFields(workdayIntentFields, continuationRules), ['endsAt', 'durationSeconds']);
+export const workdayIntentSchema = exclusiveProperties(conditionalFields(workdayIntentFields, workdayScopeRules), ['endsAt', 'durationSeconds']);
 
 /** Public request metadata is route-owned; every represented intent field retains its canonical rule. */
-const requestIntentFields = z.preprocess(value => {
-	if (!value || typeof value !== 'object' || Array.isArray(value) || !('decisionIds' in value) || !Array.isArray(value.decisionIds)) return value;
-	return { ...value, decisionIds: value.decisionIds.map(entry => typeof entry === 'string' ? entry.trim() : entry) };
-}, exclusiveProperties(conditionalFields(workdayIntentFields.partial({ schemaVersion: true, teamId: true }), continuationRules), ['endsAt', 'durationSeconds']))
+const requestIntentFields = z.preprocess(portableIntentInput,
+	exclusiveProperties(conditionalFields(workdayIntentFields.partial({ schemaVersion: true, teamId: true }), workdayScopeRules), ['endsAt', 'durationSeconds']))
 	.superRefine((intent, context) => {
 		if (!validIntentRange(intent)) context.addIssue({ code: z.ZodIssueCode.custom, path: ['endsAt'], message: 'endsAt must be after startsAt.' });
 	});
-export const workdayIntentRequestSchema = preserveInputOrder(requestIntentFields.transform(intent => ({
-	...intent, ...(intent.decisionIds ? { decisionIds: [...intent.decisionIds].sort() } : {}),
-})));
+export const workdayIntentRequestSchema = preserveInputOrder(requestIntentFields, intent => normalizeWorkdayIntent(intent, 'request'));
 
 function validIntentRange(intent: { startsAt: string; endsAt?: string }) {
 	return intent.endsAt === undefined || Date.parse(intent.endsAt) > Date.parse(intent.startsAt);
@@ -204,7 +202,10 @@ export interface WorkdayLifecycleDiagnostic {
 	message: string;
 }
 
-function portableIntentInput(intent: WorkdayIntent) {
+function portableIntentInput(value: unknown) {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+	// Every own field is evidence, including prohibited keys JSON would omit.
+	const intent = Object.fromEntries(Object.getOwnPropertyNames(value).map(key => [key, Reflect.get(value, key)]));
 	return { ...intent, ...(Array.isArray(intent.decisionIds) ? { decisionIds: intent.decisionIds.map(value => typeof value === 'string' ? value.trim() : value) } : {}) };
 }
 
@@ -230,7 +231,14 @@ export function validateWorkdayIntent(intent: WorkdayIntent): WorkdayLifecycleDi
 }
 
 /** Preserve raw caller evidence; normalize only legitimate selector input. */
-export function normalizeWorkdayIntent(intent: WorkdayIntent): WorkdayIntent {
+export function normalizeWorkdayIntent(intent: WorkdayIntent): WorkdayIntent;
+export function normalizeWorkdayIntent(intent: unknown, shape: 'request'): z.output<typeof requestIntentFields>;
+export function normalizeWorkdayIntent(input: unknown, shape?: 'request') {
+	if (shape === 'request') {
+		const normalized = requestIntentFields.parse(input);
+		return { ...normalized, ...(normalized.decisionIds ? { decisionIds: [...normalized.decisionIds].sort() } : {}) };
+	}
+	const intent = input as WorkdayIntent;
 	const diagnostics = validateWorkdayIntent(intent);
 	if (diagnostics.length) throw new Error(`Invalid workday intent: ${diagnostics.map(value => `${value.path}: ${value.message}`).join('; ')}`);
 	const normalized = workdayIntentSchema.parse(portableIntentInput(intent));

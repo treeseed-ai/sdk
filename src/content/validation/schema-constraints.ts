@@ -7,17 +7,20 @@ type ExportedSchema = NonNullable<Parameters<PostProcessCallback>[0]>;
 const exporters = new WeakMap<z.ZodTypeDef, (schema: ExportedSchema, refs: Parameters<PostProcessCallback>[2]) => ExportedSchema>();
 
 /** Validate with the owning parser without changing the caller's property order. */
-export function preserveInputOrder<T extends z.ZodType<Record<string, unknown>>>(parser: T) {
+export function preserveInputOrder<T extends z.ZodType<Record<string, unknown>>>(parser: T,
+	normalize: (value: Record<string, unknown>) => z.output<T>) {
 	const schema = z.custom<Record<string, unknown>>(value => Boolean(value && typeof value === 'object' && !Array.isArray(value)))
 		.transform((value, context): z.output<T> => {
-			const parsed = parser.safeParse(value);
-			if (!parsed.success) {
-				for (const issue of parsed.error.issues) context.addIssue(issue);
+			let parsed: z.output<T>;
+			try { parsed = normalize(value); }
+			catch (error) {
+				if (!(error instanceof z.ZodError)) throw error;
+				for (const issue of error.issues) context.addIssue(issue);
 				return z.NEVER;
 			}
-			const ordered = Object.fromEntries(Object.keys(value).filter(key => Object.hasOwn(parsed.data, key))
-				.map(key => [key, parsed.data[key]]));
-			return { ...ordered, ...parsed.data };
+			const ordered = Object.fromEntries(Object.keys(value).filter(key => Object.hasOwn(parsed, key))
+				.map(key => [key, parsed[key]]));
+			return { ...ordered, ...parsed };
 		});
 	exporters.set(schema._def, (_exported, refs) => {
 		const { $schema: _dialect, ...exported } = zodToJsonSchema(parser, {
