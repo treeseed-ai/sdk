@@ -1,0 +1,43 @@
+{
+  "name": "@treeseed-cordis/sdk",
+  "version": "0.0.0-cordis.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/contracts.d.ts",
+      "default": "./dist/src/contracts.js"
+    },
+    "./source-policy": {
+      "types": "./dist/src/source-policy.d.ts",
+      "default": "./dist/src/source-policy.js"
+    }
+  },
+  "files": [
+    "dist/src",
+    "dist/contract.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "bun scripts/tooling.ts check",
+    "build": "bun scripts/tooling.ts build",
+    "test:unit": "bun test ./tests --test-name-pattern '^unit:'",
+    "test:integration": "bun test ./tests --test-name-pattern '^integration:'",
+    "test:smoke": "bun test ./tests --test-name-pattern '^smoke:'",
+    "verify": "bun run check && bun run build && bun run test:unit && bun run test:integration && bun run test:smoke"
+  },
+  "dependencies": {
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "@types/bun": "1.4.4",
+    "@types/node": "24.10.1"
+  },
+  "packageManager": "bun@1.4.4",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=24.19.0"
+  }
+}

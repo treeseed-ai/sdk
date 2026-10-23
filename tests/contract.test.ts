@@ -29,8 +29,8 @@ class ContractTests {
     expect(PlatformOperations.all.map(ContractTests.id)).toEqual(['platform.describe','platform.status','platform.plan','platform.apply','platform.applications.get','platform.applications.events','platform.applications.cancel']);
     for(let index=0;index<7;index++) {
       const operation=PlatformOperations.all[index]!;
-      expect(operation.parseInput(this.inputs[index])).toEqual(this.inputs[index]);
-      expect(operation.parseOutput(this.outputs[index])).toEqual(this.outputs[index]);
+      expect<unknown>(operation.parseInput(this.inputs[index])).toEqual(this.inputs[index]);
+      expect<unknown>(operation.parseOutput(this.outputs[index])).toEqual(this.outputs[index]);
       expect(operation.definition.input.safeParse({...this.inputs[index] as object,principal:'forged'}).success).toBe(false);
       expect(operation.definition.output.safeParse({...this.outputs[index] as object,extra:true}).success).toBe(false);
       expect(operation.definition.output.safeParse({}).success).toBe(false);
@@ -55,17 +55,20 @@ class ContractTests {
       expect(definition.idempotency).toBe(definition.effect==='write');
     }
     expect(PlatformOperations.plan.definition.effect).toBe('write');
-    expect(() => OperationDefinition.define({...PlatformOperations.apply.definition,idempotency:false})).toThrow();
-    expect(() => PlatformOperations.validate([...PlatformOperations.all,PlatformOperations.describe])).toThrow();
-    expect(() => OperationDefinition.define({...PlatformOperations.describe.definition,mcp:'collision'})).toThrow();
+    expect(this.badWrite.bind(this)).toThrow();
+    expect(this.duplicate.bind(this)).toThrow();
+    expect(this.badTool.bind(this)).toThrow();
   }
+  badWrite():void {OperationDefinition.define({...PlatformOperations.apply.definition,idempotency:false});}
+  duplicate():void {PlatformOperations.validate([...PlatformOperations.all,PlatformOperations.describe]);}
+  badTool():void {OperationDefinition.define({...PlatformOperations.describe.definition,mcp:'collision'});}
   sourcePolicy(): void {
     const policy=new SourcePolicy();
     expect(policy.inspect('okay.ts','export class A { run(): number { return 1; } } export interface B { run(): void; }')).toEqual([]);
     const cases: [string,string][]=[['bad.js','class A {}'],['bad.ts','export function bad() {}'],['bad.ts','const bad = () => 1;'],['bad.ts','const factory = function() { return {}; };'],['bad.tsx','const UI = () => <div/>;'],['bad.ts','const bag = {run() { return 1; }};'],['bad.ts',"export {Thing} from '../../other/src/main';"]];
     for(const [name,source] of cases) expect(policy.inspect(name,source).length).toBeGreaterThan(0);
     const directory=mkdtempSync(join(tmpdir(),'cordis-source-'));
-    try { writeFileSync(join(directory,'hidden.js'),'class Bad {}'); expect(() => policy.check(directory)).toThrow('handwritten'); }
+    try { writeFileSync(join(directory,'hidden.js'),'class Bad {}'); expect(policy.check.bind(policy,directory)).toThrow('handwritten'); }
     finally {rmSync(directory,{recursive:true,force:true});}
   }
 }
