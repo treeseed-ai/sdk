@@ -18,7 +18,14 @@ import { AGENT_TEAM_CLONE_OPERATIONS } from './catalog/agents/agent-team-clone-o
 import { workdayIntentRequestSchema } from './workday-lifecycle.ts';
 const empty = z.object({}).strict(), none = z.undefined(), record = z.record(z.unknown()), payload = record;
 const workdayIntent = workdayIntentRequestSchema;
-const scheduledWorkdayIntent = record.transform(value => ({ ...value, intent: workdayIntent.parse(value.intent) }));
+const scheduledWorkdayIntent = record.transform((value, context) => {
+	const intent = workdayIntent.safeParse(value.intent);
+	if (!intent.success) {
+		for (const issue of intent.error.issues) context.addIssue({ ...issue, path: ['intent', ...issue.path] });
+		return z.NEVER;
+	}
+	return { ...value, intent: intent.data };
+});
 const providerRequest = record.superRefine((value, context) => {
 	if (Object.hasOwn(value, 'modeRunId')) context.addIssue({ code: z.ZodIssueCode.custom, path: ['modeRunId'], message: 'Mode-run identity is retired; use assignment and attempt identity.' });
 });

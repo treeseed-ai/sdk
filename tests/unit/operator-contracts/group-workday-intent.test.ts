@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeWorkdayAgentSelection, validateWorkdayIntent, workdayIntentSchema, workdayIntentRequestSchema } from '../../../src/operator-contracts/workday-lifecycle.ts';
 import { WORKDAY_PLAN_OPTIONS, WORKDAY_SELECTION_INPUTS } from '../../../src/operator-contracts/catalog/workdays/selection-commands.ts';
+import { controlPlaneOperation } from '../../../src/operator-contracts/control-plane-operations.ts';
 
 const intent = {
 	schemaVersion: 'treeseed.workday-intent/v1' as const, teamId: 'team', profileId: 'default',
@@ -9,6 +10,19 @@ const intent = {
 };
 
 describe('group-driven workday intent', () => {
+	it('returns nested validation issues for invalid scheduled intents instead of throwing from safeParse', () => {
+		const schema = controlPlaneOperation('workdays.schedules.create').schema.body;
+		const { groupIds: _groups, proposalIds: _proposals, ...bare } = intent;
+		for (const selected of [undefined, bare, { ...intent, groupIds: ['bad group'] }, { ...intent, reportingAgentId: 'chosen-reporter' }]) {
+			const input = { intent: selected, cadenceSeconds: 3600 }, before = structuredClone(input);
+			const parsed = schema.safeParse(input);
+			expect(parsed.success).toBe(false);
+			if (!parsed.success) expect(parsed.error.issues.every(issue => issue.path[0] === 'intent')).toBe(true);
+			expect(input).toEqual(before);
+		}
+		const valid = { intent: { ...intent, decisionIds: ['z', 'a'] }, cadenceSeconds: 3600 };
+		expect(schema.parse(valid)).toEqual({ ...valid, intent: { ...valid.intent, decisionIds: ['a', 'z'] } });
+	});
 	it('rejects prohibited own fields even when they are hidden or undefined without changing the input', () => {
 		for (const field of ['executionPlanId','capacityPlanId','executionInputId','demandSetId']) {
 			for (const value of [undefined,null,'','derived']) for (const enumerable of [false,true]) {

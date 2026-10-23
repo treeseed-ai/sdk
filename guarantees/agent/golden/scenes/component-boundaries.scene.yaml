@@ -3,6 +3,9 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: scheduled-intent-validation
+    action: { verifier: sdk.golden.scheduled-intent-validation }
+    expect: { status: passed }
   - id: group-contribution-unit
     action: { verifier: sdk.golden.group-contribution-unit }
     expect: { status: passed }
