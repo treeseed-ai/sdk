@@ -1,4 +1,5 @@
 import { test, expect } from 'bun:test';
+import { z } from 'zod';
 import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -58,7 +59,13 @@ class ContractTests {
     expect(this.badWrite.bind(this)).toThrow();
     expect(this.duplicate.bind(this)).toThrow();
     expect(this.badTool.bind(this)).toThrow();
+    expect(this.badInput.bind(this)).toThrow();expect(this.badOutput.bind(this)).toThrow();
+    const envelope={command:'doctor',success:true,result:null,problem:{code:'bad',title:'bad',detail:'bad'},blockers:[],references:[]};
+    expect(PlatformSchemas.envelope.safeParse(envelope).success).toBe(false);
+    expect(PlatformSchemas.envelope.safeParse({...envelope,success:false,problem:null}).success).toBe(false);
   }
+  badInput():void {OperationDefinition.define({...PlatformOperations.describe.definition,input:z.object({})});}
+  badOutput():void {OperationDefinition.define({...PlatformOperations.describe.definition,output:z.any()});}
   badWrite():void {OperationDefinition.define({...PlatformOperations.apply.definition,idempotency:false});}
   duplicate():void {PlatformOperations.validate([...PlatformOperations.all,PlatformOperations.describe]);}
   badTool():void {OperationDefinition.define({...PlatformOperations.describe.definition,mcp:'collision'});}
