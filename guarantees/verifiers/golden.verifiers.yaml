@@ -1,6 +1,11 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.group-phase-selection:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/group-workday-intent.test.ts
+    testName: "keeps normalized internal phase snapshots free of identity filters and rejects legacy targeting"
   sdk.golden.cli-read-library-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
