@@ -17,7 +17,7 @@ function tree(): CommandTreeDescriptor {
 }
 
 describe('human command tree contract', () => {
-	it("binds one exact optional closeout Reporter selector to direct Workday planning and nested scheduling without changing cooperative selection or intent authority", () => {
+	it("removes explicit closeout agent selection from direct Workday planning and scheduling while retaining group and phase controls", () => {
 		const before = structuredClone(TREESEED_COMMAND_TREE_V1);
 		const leaves = new Map<string, Extract<(typeof TREESEED_COMMAND_TREE_V1.commands)[number], { nodeType: 'leaf' }>>();
 		const visit = (nodes: typeof TREESEED_COMMAND_TREE_V1.commands, parent: string[] = []) => nodes.forEach(node => {
@@ -26,8 +26,8 @@ describe('human command tree contract', () => {
 		for (const [path, operationId, field] of [['workdays plan', 'workdays.plan', 'reportingAgentId'], ['workdays schedules start', 'workdays.schedules.create', 'intent.reportingAgentId']]) {
 			const leaf = leaves.get(path); if (!leaf || leaf.execution.kind !== 'operation') throw new Error('Original Workday operation required');
 			expect(leaf.execution.operationId).toBe(operationId);
-			expect(leaf.options?.filter(option => option.name === '--reporting-agent')).toEqual([{ name: '--reporting-agent', description: 'Closeout Reporter identity; required when several are eligible.', type: 'string' }]);
-			expect(leaf.execution.input?.filter(input => input.name === 'reportingAgent' || input.field === field)).toEqual([{ target: 'body', field, source: 'option', name: 'reportingAgent', required: false, transform: 'identity' }]);
+			expect(leaf.options?.filter(option => option.name === '--reporting-agent')).toEqual([]);
+			expect(leaf.execution.input?.filter(input => input.name === 'reportingAgent' || input.field === field)).toEqual([]);
 			for (const independent of ['group', 'activity', 'decision']) expect(leaf.options?.some(option => option.name === '--' + independent)).toBe(true);
 			for (const retired of ['agent', 'class']) expect(leaf.options?.some(option => option.name === '--' + retired)).toBe(false);
 		}

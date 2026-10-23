@@ -1,6 +1,21 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.group-contribution-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposals/group-contributions.test.ts
+    testName: "retains each independently estimated contribution and dependency without agent targeting"
+  sdk.golden.group-contribution-denials:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposals/group-contributions.test.ts
+    testName: "requires a group and actual estimate-assignment provenance rather than caller-selected agent identity"
+  sdk.golden.group-contribution-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposals/group-contributions.test.ts
+    testName: "native public proposal validation preserves every contribution and historical read while rejecting forged target fields and malformed estimates"
   sdk.golden.group-phase-selection:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
@@ -1426,9 +1441,9 @@ verifiers:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/workday-lifecycle.test.ts
-    testName: "accepts one canonical configured reporting identity as independent operator intent and denies malformed explicit selectors"
+    testName: "rejects every explicit reporting identity so group configuration owns closeout participation"
   sdk.golden.reporting-selection-command:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/command-tree.test.ts
-    testName: "binds one exact optional closeout Reporter selector to direct Workday planning and nested scheduling without changing cooperative selection or intent authority"
+    testName: "removes explicit closeout agent selection from direct Workday planning and scheduling while retaining group and phase controls"
