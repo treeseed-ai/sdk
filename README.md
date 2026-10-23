@@ -63,6 +63,9 @@ agent names, class IDs, class slugs, union matching and unknown fields even on
 internal calls. Proposal groups and discussion addressing supply participants;
 the phase selection describes which activities run. Fair allocation weights
 still use the agent's one class and are independent of participation.
+Closeout participation is also group-driven: public workday intent and generated
+commands reject `reportingAgentId` and expose no `--reporting-agent` flag. Existing
+applied plans retain their derived reporting identity as historical authority.
 
 ## Group contribution proposal contract
 

@@ -48,8 +48,9 @@ describe('proposal group membership', () => {
 	it('describes the same group field for machine authoring of agents and proposals', () => {
 		for (const model of ['agent', 'proposal'] as const) {
 			expect(describeContentFrontmatterContract(model)).toMatchObject({ fields: {
-				groupIds: { required: false, type: 'array', items: { type: 'string', minLength: 1, maxLength: 200 } },
+				groupIds: { required: model === 'proposal', type: 'array', items: { type: 'string', minLength: 1, maxLength: 200 } },
 			} });
 		}
+		expect(describeContentFrontmatterContract('proposal', 'treeseed.proposal/v1').fields.groupIds).toMatchObject({ required: false });
 	});
 });

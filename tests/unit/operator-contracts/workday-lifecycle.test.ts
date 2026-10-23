@@ -174,11 +174,11 @@ describe('time-based workday lifecycle contracts', () => {
 	});
 });
 
-it('accepts one canonical configured reporting identity as independent operator intent and denies malformed explicit selectors', () => {
+it('rejects every explicit reporting identity so group configuration owns closeout participation', () => {
  const base:WorkdayIntent={schemaVersion:'treeseed.workday-intent/v1',teamId:'team',profileId:'default',projects:'all',startsAt:'2026-10-17T00:00:00.000Z',decisionIds:['Z','A'],allocation:{planningPercent:20},agentSelection:{activityTypes:['planning']}};
  for(const reportingAgentId of ['sdk/digest-writer','A','a','x'.repeat(200)]) {
   const intent={...base,reportingAgentId},held=structuredClone(intent);
-  expect(validateWorkdayIntent(intent)).toEqual([]); expect(intent).toEqual(held);
+  expect(validateWorkdayIntent(intent).length).toBeGreaterThan(0); expect(intent).toEqual(held);
  }
  for(const reportingAgentId of ['', ' ',null,false,1,[],{},'é','id?','x'.repeat(201)]) {
   const intent:WorkdayIntent={...base}; Object.assign(intent,{reportingAgentId}); const held=structuredClone(intent);
