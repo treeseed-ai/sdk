@@ -1,5 +1,5 @@
 import { z, type ZodError } from 'zod';
-import { conditionalFields, minimumProperties, uniqueArray } from '../../content/validation/schema-constraints.ts';
+import { minimumProperties, uniqueArray } from '../../content/validation/schema-constraints.ts';
 import { AGENT_CONTENT_MODELS, AGENT_TOOL_GROUPS } from '../../types/agents.ts';
 
 const identifier = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
@@ -43,7 +43,7 @@ export const activityProfilesSchema = minimumProperties(z.object({
 	chat: activityProfileSchema.optional(),
 }).strict(), 1, 'At least one activity profile is required.');
 
-export const agentDefinitionSchema = conditionalFields(z.object({
+export const agentDefinitionSchema = z.object({
 	schemaVersion: z.literal('treeseed.agent/v1'),
 	id: identifier,
 	name: nonEmpty,
@@ -54,8 +54,7 @@ export const agentDefinitionSchema = conditionalFields(z.object({
 	capabilities: uniqueArray(z.array(identifier).min(1, 'At least one capability is required.')),
 	context: z.object({ include: uniqueArray(z.array(identifier).min(1)) }).strict(),
 	activityProfiles: activityProfilesSchema,
-}).strict(), [{ field: 'agentClass', notEquals: 'reviewer', forbidden: { field: 'activityProfiles', key: 'reviewing' },
-	path: ['activityProfiles', 'reviewing'], message: 'Only the Reviewer agent class may enable reviewing.' }]);
+}).strict();
 
 function issuePath(path: PropertyKey[]): string {
 	return path.reduce<string>((current, segment) => typeof segment === 'number'

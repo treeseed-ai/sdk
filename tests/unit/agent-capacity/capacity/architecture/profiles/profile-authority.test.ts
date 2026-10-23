@@ -84,9 +84,8 @@ describe('governed profile complete authority boundaries', () => {
 	it('exports the same nonempty configured capability context and activity inventories enforced by the owning profile validator', () => {
 		const schema = zodToJsonSchema(describeContentFrontmatterSchema('agent'), { $refStrategy: 'none', postProcess: exportSchemaConstraints });
 		expect(schema).toMatchObject({ properties: { capabilities: { minItems: 1, uniqueItems: true },
-			context: { properties: { include: { minItems: 1, uniqueItems: true } } }, activityProfiles: { minProperties: 1 } },
-			allOf: [{ if: { properties: { agentClass: { not: { const: 'reviewer' } } }, required: ['agentClass'] },
-				then: { properties: { activityProfiles: { not: { required: ['reviewing'] } } } } }] });
+			context: { properties: { include: { minItems: 1, uniqueItems: true } } }, activityProfiles: { minProperties: 1 } } });
+		expect(schema).not.toHaveProperty('allOf');
 		const input = profile(), original = structuredClone(input);
 		for (const value of [{ ...input, capabilities: [] }, { ...input, context: { include: [] } },
 			{ ...input, activityProfiles: {} }, { ...input, activityProfiles: { acting: undefined } }]) {
@@ -104,10 +103,9 @@ describe('governed profile complete authority boundaries', () => {
 		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
 		const observed: unknown = JSON.parse(child.stdout);
 		expect(observed).toMatchObject({ schema: { properties: { capabilities: { minItems: 1, uniqueItems: true },
-			context: { properties: { include: { minItems: 1, uniqueItems: true } } }, activityProfiles: { minProperties: 1 } },
-			allOf: [{ if: { properties: { agentClass: { not: { const: 'reviewer' } } }, required: ['agentClass'] },
-				then: { properties: { activityProfiles: { not: { required: ['reviewing'] } } } } }] },
-			observations: [{ ok: true, data: input }, { ok: false }, { ok: false }, { ok: false }, { ok: false }, { ok: true, data: values[5] }] });
+			context: { properties: { include: { minItems: 1, uniqueItems: true } } }, activityProfiles: { minProperties: 1 } } },
+			observations: [{ ok: true, data: input }, { ok: false }, { ok: false }, { ok: false }, { ok: true, data: values[4] }, { ok: true, data: values[5] }] });
+		expect(observed).not.toHaveProperty('schema.allOf');
 		expect(values).toEqual(before);
 	});
 	it('preserves arbitrary identities compiled handlers prompts parameters and independent chat without role dispatch', () => {
@@ -150,11 +148,16 @@ describe('governed profile complete authority boundaries', () => {
 		];
 		expect(values.map(value => validateAgentDefinitionModel(value).ok)).toEqual(values.map(() => false));
 	});
-	it('rejects producer reviewing while retaining one independent reviewer class and exact lifecycle selector', () => {
+	it('allows every activity for arbitrary classes while retaining exact lifecycle selectors', () => {
 		const input = profile(), reviewing = { ...input.activityProfiles.acting, handler: 'writer',
 			permissions: { content: { read: ['decision'], write: ['note', 'question', 'decision'] }, tools: ['source.read', 'verification'] } };
-		expect(validateAgentDefinitionModel({ ...input, activityProfiles: { reviewing } }).ok).toBe(false);
-		expect(validateAgentDefinitionModel({ ...input, agentClass: 'reviewer', activityProfiles: { reviewing } }).ok).toBe(true);
+		for (const agentClass of ['architect', 'technical-writer', 'tester', 'engineer', 'releaser', 'reviewer', 'another-specialist']) {
+			const activityProfiles = Object.fromEntries(['planning', 'estimating', 'acting', 'reviewing', 'reporting', 'chat']
+				.map(name => [name, { ...reviewing, handler: 'project/compiled-handler' }]));
+			const value = { ...input, agentClass, activityProfiles };
+			expect(validateAgentDefinitionModel(value)).toMatchObject({ ok: true, data: value });
+			expect(native(value)).toMatchObject({ ok: true, data: value });
+		}
 		expect(validateAgentDefinitionModel({ ...input, activityProfiles: { reporting: { ...reviewing, dependsOn: { events: ['workday-closing'] } } } }).ok).toBe(true);
 	});
 	it('native public SDK YAML boundary retains changed governed inputs with no provider runtime configuration', () => {

@@ -115,7 +115,7 @@ describe('capacity configuration inventory', () => {
 		]));
 	});
 
-	it('reserves reviewing for the Reviewer class', () => {
+	it('permits all activities for every configured class and handler', () => {
 		const activity = {
 			handler: 'writer',
 			permissions: { content: { read: ['decision'], write: ['note', 'decision'] }, tools: ['source.read', 'verification'] },
@@ -126,8 +126,14 @@ describe('capacity configuration inventory', () => {
 			purpose: 'Implement SDK work.', responsibilities: ['Implement accepted changes.'], capabilities: ['code-change'],
 			context: { include: ['assignment-subject'] }, activityProfiles: { reviewing: activity },
 		};
-		expect(validateAgentDefinitionModel(base).ok).toBe(false);
-		expect(validateAgentDefinitionModel({ ...base, id: 'sdk/reviewer', agentClass: 'reviewer' }).ok).toBe(true);
+		for (const agentClass of ['architect', 'technical-writer', 'tester', 'engineer', 'releaser', 'reviewer', 'renamed-specialist']) {
+			for (const handler of ['writer', 'actor', 'estimate', 'reviewer', 'releaser', 'project/compiled-handler']) {
+				const activityProfiles = Object.fromEntries(['planning', 'estimating', 'acting', 'reviewing', 'reporting', 'chat']
+					.map(name => [name, { ...activity, handler }]));
+				const input = { ...base, id: `project/${agentClass}`, agentClass, activityProfiles };
+				expect(validateAgentDefinitionModel(input), `${agentClass}/${handler}`).toMatchObject({ ok: true, data: input });
+			}
+		}
 	});
 
 	it('fails closed on unknown project-agent-class configuration fields', () => {
