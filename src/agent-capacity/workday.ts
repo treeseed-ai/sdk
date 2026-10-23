@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export interface WorkdayPlanningAgent {
 	slug: string;
 	activityType?: string | null;
@@ -6,50 +8,30 @@ export interface WorkdayPlanningAgent {
 	projectAgentClassId?: string | null;
 }
 
+export const workdayActivitySelectionSchema = z.object({
+ activityTypes: z.array(z.enum(['planning', 'estimating', 'reviewing', 'reporting', 'chat'])).optional(),
+ mode: z.literal('intersection').optional(),
+}).strict();
+
 export interface WorkdayAgentSelection {
-	classIds: string[];
-	classSlugs: string[];
-	agentSlugs: string[];
-	activityTypes: string[];
-	mode: 'intersection' | 'union';
+ activityTypes: string[];
+ mode: 'intersection';
 }
 
-function uniqueStrings(value: unknown): string[] {
-	if (!Array.isArray(value)) return [];
-	return [...new Set(value.map((item) => String(item).trim()).filter(Boolean))].sort();
-}
-
+/** Normalize activity phases only. Group resolution owns the agent audience. */
 export function normalizeWorkdayAgentSelection(value: unknown): WorkdayAgentSelection {
-	const input = record(value);
-	return {
-		classIds: uniqueStrings(input.classIds),
-		classSlugs: uniqueStrings(input.classSlugs),
-		agentSlugs: uniqueStrings(input.agentSlugs),
-		activityTypes: uniqueStrings(input.activityTypes),
-		mode: input.mode === 'union' ? 'union' : 'intersection',
-	};
+ const parsed = workdayActivitySelectionSchema.parse(value === undefined ? {} : value);
+ return { activityTypes: [...new Set(parsed.activityTypes ?? [])].sort(), mode: 'intersection' };
 }
 
 export function workdayAgentSelectionActive(selection: WorkdayAgentSelection): boolean {
-	return selection.classIds.length > 0 || selection.classSlugs.length > 0 || selection.agentSlugs.length > 0 || selection.activityTypes.length > 0;
+ return selection.activityTypes.length > 0;
 }
 
 export function selectWorkdayAgents<T extends WorkdayPlanningAgent>(agents: T[], value: unknown): T[] {
-	const selection = normalizeWorkdayAgentSelection(value);
-	if (!workdayAgentSelectionActive(selection)) return agents;
-	const classSelectors = new Set([...selection.classIds, ...selection.classSlugs]);
-	const agentSelectors = new Set(selection.agentSlugs);
-	const activitySelectors = new Set(selection.activityTypes);
-	return agents.filter((agent) => {
-		const classMatch = classSelectors.size === 0 || [agent.projectAgentClassId, agent.projectAgentClassSlug]
-			.some((candidate) => candidate && [...classSelectors].some((selector) => selector === candidate || selector.endsWith(`:${candidate}`)));
-		const agentMatch = agentSelectors.size === 0 || agentSelectors.has(agent.slug);
-		const activityMatch = activitySelectors.size === 0 || Boolean(agent.activityType && activitySelectors.has(agent.activityType));
-		if (selection.mode === 'union') {
-			return (classSelectors.size > 0 && classMatch) || (agentSelectors.size > 0 && agentMatch) || (activitySelectors.size > 0 && activityMatch);
-		}
-		return classMatch && agentMatch && activityMatch;
-	});
+ const selection = normalizeWorkdayAgentSelection(value);
+ return !selection.activityTypes.length ? agents : agents.filter(agent =>
+  Boolean(agent.activityType && selection.activityTypes.includes(agent.activityType)));
 }
 
 export interface WorkdayExistingAssignment {

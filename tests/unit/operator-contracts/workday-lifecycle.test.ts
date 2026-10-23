@@ -114,10 +114,12 @@ describe('time-based workday lifecycle contracts', () => {
 			expect(validateWorkdayIntent({ ...base, allocation } as never).map((issue) => issue.code)).toContain('allocation_invalid');
 		}
 	});
-	it('rejects named planning participants while preserving historical selection readback', () => {
+	it('rejects named planning participants without rewriting the supplied historical selection', () => {
 		const selection = { agentSlugs: ['reviewer', ' architect ', 'reviewer'], activityTypes: ['reviewing'] };
+		const original = structuredClone(selection);
 		expect(validateWorkdayIntentSelection(selection)).not.toEqual([]);
-		expect(normalizeWorkdayAgentSelection(selection)).toEqual({ agentSlugs: ['architect','reviewer'], activityTypes: ['reviewing'], classIds: [], classSlugs: [], mode: 'intersection' });
+		expect(() => normalizeWorkdayAgentSelection(selection)).toThrow();
+		expect(selection).toEqual(original);
 	});
 	it.each([null, [], {}, { mode: 'union' }, { agentSlugs: [] }, { agentSlugs: [''] }, { agentSlugs: [1] }, { agentSlugs: 'reviewer' }, { agentSlugs: ['reviewer'], mode: 'all' }, { agentSlugs: ['reviewer'], unknown: true }, { activityTypes: ['acting'] }, { activityTypes: ['typo'] }])('rejects malformed or silently broadening selection %j', value => {
 		expect(validateWorkdayIntentSelection(value).length).toBeGreaterThan(0);

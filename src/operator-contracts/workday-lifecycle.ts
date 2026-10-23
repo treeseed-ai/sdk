@@ -1,4 +1,4 @@
-import type { WorkdayAgentSelection } from '../agent-capacity/workday.ts';
+import { workdayActivitySelectionSchema, type WorkdayAgentSelection } from '../agent-capacity/workday.ts';
 import { workdayAllocationOverridesSchema } from '../agent-capacity/contracts/capacity/workdays/workday-allocation.ts';
 import { z } from 'zod';
 import { leaseSchema } from '../agent-capacity/contracts/capacity/assignments/agent-execution.ts';
@@ -7,10 +7,9 @@ export { normalizeWorkdayAgentSelection } from '../agent-capacity/workday.ts';
 
 const identifier = leaseSchema.shape.id, timestamp = leaseSchema.shape.acquiredAt;
 const selectedIdentities = uniqueArray(z.array(identifier).min(1).max(64));
-const intentAgentSelectionSchema = alternativeProperties(z.object({
-	activityTypes: z.array(z.enum(['planning', 'estimating', 'reviewing', 'reporting', 'chat'])).min(1).optional(),
-	mode: z.literal('intersection').optional(),
-}).strict(), ['activityTypes']);
+const intentAgentSelectionSchema = alternativeProperties(workdayActivitySelectionSchema.extend({
+ activityTypes: workdayActivitySelectionSchema.shape.activityTypes.unwrap().min(1).optional(),
+}), ['activityTypes']);
 /** One normalized high-level contract for manual and recurring execution. */
 const workdayIntentFields = z.object({
 	schemaVersion: z.literal('treeseed.workday-intent/v1'), teamId: identifier, profileId: identifier,
