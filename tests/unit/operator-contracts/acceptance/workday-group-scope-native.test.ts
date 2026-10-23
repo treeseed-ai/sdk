@@ -25,7 +25,10 @@ it('native manual and scheduled workday requests preserve group-derived scope an
 					body: scheduled ? { intent, cadenceSeconds: 3600 } : intent });
 			const count = requests.length;
 			for (const unscoped of [base, { ...base, projects: 'all' }, { ...base, agentSelection: { activityTypes: ['planning'] } }]) {
-				const held = structuredClone(unscoped); await expect(invoke(unscoped)).rejects.toThrow('Select shared groups');
+				const held = structuredClone(unscoped), denied = invoke(unscoped);
+				await expect(denied).rejects.toThrow('Select shared groups');
+				await expect(denied).rejects.toMatchObject({ issues: expect.arrayContaining([
+					expect.objectContaining({ path: scheduled ? ['intent', 'groupIds'] : ['groupIds'] })]) });
 				expect(unscoped).toEqual(held); expect(requests).toHaveLength(count);
 			}
 			for (const field of ['groupIds','proposalIds','decisionIds']) {
