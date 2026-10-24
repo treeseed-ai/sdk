@@ -13,7 +13,7 @@ class ContractTests {
   readonly outputs: unknown[] = [
     {contractVersion:'0.1.0-cordis.1',platformVersion:'0.0.0-cordis.1',schemaDigest:'a'.repeat(64),plugins:[],operations:['platform.describe']},
     {installationId:'local',engine:'default',desiredComposition:null,activeComposition:null,ready:false,plugins:[],blockers:[],applicationId:null},
-    {formatVersion:1,id:'plan-'+this.hash,digest:this.hash,configuration:this.inputs[2],configurationDigest:this.hash,releaseDigest:this.hash,recipeDigest:this.hash,lockDigest:this.hash,expectedEngine:{context:'default',endpoint:'unix:///var/run/docker.sock',daemonId:'fixture',os:'linux',architecture:'amd64'},expectedComposition:null,projectName:'cordis-'+this.hash.slice(0,16),artifacts:[],effects:[],blockers:[]},
+    {formatVersion:1,id:'plan-'+this.hash,digest:this.hash,configuration:this.inputs[2],recipe:{services:{},volumes:{},secrets:{}},pluginBindings:[],configurationDigest:this.hash,releaseDigest:this.hash,recipeDigest:this.hash,lockDigest:this.hash,expectedEngine:{context:'default',endpoint:'unix:///var/run/docker.sock',daemonId:'fixture',os:'linux',architecture:'amd64'},expectedComposition:null,projectName:'cordis-'+this.hash.slice(0,16),artifacts:[],effects:[],blockers:[]},
     {id:'a1',accepted:true},
     {id:'a1',phase:'prepare',desiredComposition:'a'.repeat(64),activeComposition:null,result:null,recovery:null,historyReference:null},
     {events:[{sequence:1,cursor:'1',phase:'prepare',message:'preparing'}],nextCursor:null},
