@@ -22,7 +22,7 @@ class ContractTests {
   installedProjection():void {
     const projection=ContractProjection.generate() as {contractVersion:string;schemas:Record<string,unknown>};
     expect(projection.contractVersion).toBe("0.4.0-cordis.1");
-    for(const name of ["installedPlan","installedRelease","service","workerRequest","applicationRecord","installationReceipt"])expect(projection.schemas[name]).toBeDefined();
+    for(const name of ["containerDefinition","installedPlan","installedRelease","service","workerRequest","applicationRecord","installationReceipt"])expect(projection.schemas[name]).toBeDefined();
     expect(PlatformOperations.all.length).toBe(7);
   }
   installedBoundaries():void {
@@ -30,8 +30,8 @@ class ContractTests {
     expect(InstalledSchemas.request.parse(request)).toEqual(request);
     for(const extra of [{principal:'forged'},{command:['sh','-c','canary']},{installationDirectory:'/other'},{operation:'exec'},{protocol:1},{idempotencyKey:''}])expect(InstalledSchemas.request.safeParse({...request,...extra}).success).toBe(false);
     const services=[];
-    for(const role of ['database','identity','api','edge'])services.push({role,provider:InstalledDeclarations.service(role,'container.'+role,['deployment.engine']),imageId:role,package:null,entry:null});
-    const composition={profile:'first-installed',worker:{path:'trsd',sha256:this.hash,size:123},services};
+    for(const role of ['database','identity','api','edge'])services.push({role,definition:{role,service:{user:'image-default',workerSocket:false,volumes:[],secrets:[],portTarget:null},slots:{},readiness:{kind:'http-json',path:'/ready',expected:{}}},provider:InstalledDeclarations.service(role,'container.'+role,['deployment.engine']),imageId:role,package:null,entry:null});
+    const composition={profile:'first-installed',assetDigest:this.hash,worker:{path:'trsd',sha256:this.hash,size:123},services};
     expect(InstalledSchemas.composition.safeParse(composition).success).toBe(true);
     expect(InstalledSchemas.composition.safeParse({...composition,services:[services[0],services[0],services[2],services[3]]}).success).toBe(false);
     expect(InstalledSchemas.composition.safeParse({...composition,worker:{...composition.worker,path:'../escape'}}).success).toBe(false);

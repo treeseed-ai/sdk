@@ -132,9 +132,11 @@ class InstalledValidation {
 /** Explicit activation boundary. Historical format-1 schemas above are immutable contracts. */
 export class InstalledSchemas {
   static readonly role=z.enum(['database','identity','api','edge']);
-  static readonly service=z.strictObject({role:this.role,provider:ProviderSchemas.declaration,imageId:PlatformSchemas.slot,package:PlatformSchemas.packageName.nullable(),entry:PlatformSchemas.relative.nullable()});
+  static readonly slotDefinition=z.strictObject({kind:z.enum(['random','uuid','json','properties','text']),value:z.json().optional()});
+  static readonly definition=z.strictObject({role:this.role,service:z.strictObject({command:z.array(PlatformSchemas.text.max(4096)).min(1).max(64).optional(),environment:z.record(z.string().regex(/^[A-Z_][A-Z0-9_]*$/),z.string().max(4096)).optional(),user:z.enum(['image-default','installation-owner']),workerSocket:z.boolean(),volumes:z.array(z.strictObject({source:PlatformSchemas.slot,target:PlatformSchemas.absolute,readOnly:z.boolean()})),secrets:z.array(z.strictObject({source:PlatformSchemas.slot,target:PlatformSchemas.absolute})),portTarget:z.number().int().min(1).max(65535).nullable()}),slots:z.record(PlatformSchemas.slot,this.slotDefinition),readiness:z.discriminatedUnion('kind',[z.strictObject({kind:z.literal('postgres-query')}),z.strictObject({kind:z.literal('http-json'),path:z.string().regex(/^\/[a-zA-Z0-9_./-]+$/),expected:z.record(z.string(),z.json())}),z.strictObject({kind:z.literal('https-json'),path:z.string().regex(/^\/[a-zA-Z0-9_./-]+$/),expected:z.record(z.string(),z.json()),asset:z.boolean()})])});
+  static readonly service=z.strictObject({role:this.role,definition:this.definition,provider:ProviderSchemas.declaration,imageId:PlatformSchemas.slot,package:PlatformSchemas.packageName.nullable(),entry:PlatformSchemas.relative.nullable()});
   static readonly worker=z.strictObject({path:PlatformSchemas.relative,sha256:PlatformSchemas.digest,size:z.number().int().min(1).max(512*1024*1024)});
-  static readonly composition=z.strictObject({profile:z.literal('first-installed'),worker:this.worker,services:z.array(this.service).length(4).refine(InstalledValidation.services)});
+  static readonly composition=z.strictObject({profile:z.literal('first-installed'),assetDigest:PlatformSchemas.digest,worker:this.worker,services:z.array(this.service).length(4).refine(InstalledValidation.services)});
   static readonly release=PlatformSchemas.release.extend({formatVersion:z.literal(2),composition:this.composition});
   static readonly plan=PlatformSchemas.plan.extend({formatVersion:z.literal(2),composition:this.composition,pluginBindings:z.array(ProviderSchemas.declaration),expectedComposition:PlatformSchemas.digest.nullable()});
   static readonly applyOptions=z.strictObject({installationDirectory:PlatformSchemas.absolute,idempotencyKey:z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/)});
@@ -151,6 +153,7 @@ export class InstalledSchemas {
 }
 export type InstalledPlan=z.infer<typeof InstalledSchemas.plan>;
 export type InstalledRelease=z.infer<typeof InstalledSchemas.release>;
+export type ContainerDefinition=z.infer<typeof InstalledSchemas.definition>;
 export type InstalledService=z.infer<typeof InstalledSchemas.service>;
 export type ApplicationRecord=z.infer<typeof InstalledSchemas.applicationRecord>;
 export type ApplyOptions=z.infer<typeof InstalledSchemas.applyOptions>;
@@ -160,7 +163,7 @@ export type TrustedPrincipal=z.infer<typeof InstalledSchemas.principal>;
 export type ServerConfiguration=z.infer<typeof InstalledSchemas.serverConfiguration>;
 /** Bounded Docker operations; implementations own validation, never accept a shell command. */
 export interface ContainerEngine {
-  start(role:z.infer<typeof InstalledSchemas.role>):Promise<void>;
+  start(role:z.infer<typeof InstalledSchemas.role>,definition:ContainerDefinition):Promise<void>;
   ready(role:z.infer<typeof InstalledSchemas.role>):Promise<boolean>;
   identity():Readonly<{installationId:string;composition:string}>;
 }
@@ -199,7 +202,7 @@ export class ContractProjection {
       const {input,output,...metadata}=binding.definition;
       operations.push({...metadata,input:z.toJSONSchema(input,{io:'input'}),output:z.toJSONSchema(output)});
     }
-    const contract={contractVersion:'0.4.0-cordis.1',operations,schemas:{installedPlan:z.toJSONSchema(InstalledSchemas.plan),installedRelease:z.toJSONSchema(InstalledSchemas.release),service:z.toJSONSchema(InstalledSchemas.service),workerRequest:z.toJSONSchema(InstalledSchemas.request),applicationRecord:z.toJSONSchema(InstalledSchemas.applicationRecord),installationReceipt:z.toJSONSchema(InstalledSchemas.receipt),configuration:z.toJSONSchema(PlatformSchemas.desired,{io:'input'}),release:z.toJSONSchema(PlatformSchemas.release),recipe:z.toJSONSchema(PlatformSchemas.recipe),plugin:z.toJSONSchema(PlatformSchemas.pluginDefinition),provider:z.toJSONSchema(ProviderSchemas.declaration),selection:z.toJSONSchema(ProviderSchemas.selection),preparedProvider:z.toJSONSchema(ProviderSchemas.manifest)}};
+    const contract={contractVersion:'0.4.0-cordis.1',operations,schemas:{containerDefinition:z.toJSONSchema(InstalledSchemas.definition),installedPlan:z.toJSONSchema(InstalledSchemas.plan),installedRelease:z.toJSONSchema(InstalledSchemas.release),service:z.toJSONSchema(InstalledSchemas.service),workerRequest:z.toJSONSchema(InstalledSchemas.request),applicationRecord:z.toJSONSchema(InstalledSchemas.applicationRecord),installationReceipt:z.toJSONSchema(InstalledSchemas.receipt),configuration:z.toJSONSchema(PlatformSchemas.desired,{io:'input'}),release:z.toJSONSchema(PlatformSchemas.release),recipe:z.toJSONSchema(PlatformSchemas.recipe),plugin:z.toJSONSchema(PlatformSchemas.pluginDefinition),provider:z.toJSONSchema(ProviderSchemas.declaration),selection:z.toJSONSchema(ProviderSchemas.selection),preparedProvider:z.toJSONSchema(ProviderSchemas.manifest)}};
     return {...contract,digest:createHash('sha256').update(JSON.stringify(contract)).digest('hex')};
   }
 }
