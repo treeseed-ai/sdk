@@ -19,6 +19,12 @@ class ContractTests {
     {events:[{sequence:1,cursor:'1',phase:'prepare',message:'preparing'}],nextCursor:null},
     {id:'a1',cancellationRequested:true,phase:'prepare'}
   ];
+  installedProjection():void {
+    const projection=ContractProjection.generate() as {contractVersion:string;schemas:Record<string,unknown>};
+    expect(projection.contractVersion).toBe("0.4.0-cordis.1");
+    for(const name of ["installedPlan","installedRelease","service","workerRequest","applicationRecord","installationReceipt"])expect(projection.schemas[name]).toBeDefined();
+    expect(PlatformOperations.all.length).toBe(7);
+  }
   artifact(): void {
     const projection = JSON.parse(readFileSync('dist/contract.json','utf8'));
     expect(projection).toEqual(ContractProjection.generate());
@@ -95,3 +101,5 @@ test('unit: effect and exposure policy',suite.policies.bind(suite));
 test('unit: semantic class architecture enforcement',suite.sourcePolicy.bind(suite));
 
 test('integration: fresh build removes obsolete generated modules',suite.freshBuild.bind(suite));
+
+test('smoke: installed contracts project versioned host boundary without adding operations',suite.installedProjection.bind(suite));
