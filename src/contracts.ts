@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
 
+class PlanningValidation {
+  static unique(values:string[]):boolean {return new Set(values).size===values.length;}
+}
 export class PlatformSchemas {
   static readonly text=z.string().trim().min(1);
   static readonly digest=z.string().regex(/^[a-f0-9]{64}$/);
@@ -10,10 +13,23 @@ export class PlatformSchemas {
   static readonly artifact=z.strictObject({package:this.text,version:this.text,integrity:this.digest});
   static readonly plugin=z.strictObject({id:this.text,package:this.text,version:this.text,integrity:this.digest});
   static readonly pluginStatus=z.strictObject({id:this.text,ready:z.boolean()});
-  static readonly desired=z.strictObject({installationId:this.text,engineContext:this.text,installationDirectory:this.absolute,origin:z.url().regex(/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:[0-9]+)?\/?$/),runtimeState:z.enum(['running','stopped']),plugins:z.array(this.plugin).min(1),credentialReferences:z.array(z.string().regex(/^secret:\/\/[a-zA-Z0-9/_-]+$/))});
+  static readonly slot=z.string().regex(/^[a-z][a-z0-9-]{0,62}$/);
+  static readonly relative=z.string().regex(/^(?!\/)(?!.*(?:^|\/)\.\.?(?:\/|$))[a-zA-Z0-9_@./-]+$/);
+  static readonly packageName=z.string().regex(/^(?:@[a-z0-9._-]+\/)?[a-z0-9][a-z0-9._-]*$/);
+  static readonly version=z.string().regex(/^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.-]+)?(?:\+[a-zA-Z0-9.-]+)?$/);
+  static readonly strings=z.array(this.text).refine(PlanningValidation.unique);
+  static readonly desired=z.strictObject({installationId:this.text,engineContext:z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/),installationDirectory:this.absolute,origin:z.url().regex(/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:[0-9]+)?\/?$/),runtimeState:z.enum(['running','stopped']),plugins:z.array(this.plugin).min(1),credentialReferences:z.array(z.string().regex(/^secret:\/\/[a-z][a-z0-9-]{0,62}$/)).refine(PlanningValidation.unique),release:z.strictObject({directory:this.absolute,manifestDigest:this.digest})});
+  static readonly file=z.strictObject({path:this.relative,sha256:this.digest});
+  static readonly imageReference=z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[a-f0-9]{64}$/);
+  static readonly pluginDefinition=z.strictObject({id:this.slot,contractVersion:z.literal('0.2.0-cordis.1'),provide:this.strings,inject:this.strings});
+  static readonly release=z.strictObject({formatVersion:z.literal(1),packageJson:this.file,lockfile:this.file,recipe:this.file,requiredPluginIds:this.strings,requiredServices:this.strings,packages:z.array(z.strictObject({name:this.packageName,version:this.version,path:this.relative,sha256:this.digest})).min(1),images:z.array(z.strictObject({id:this.slot,reference:this.imageReference,layout:this.relative,indexSha256:this.digest,manifestDigest:this.digest})).min(1)});
+  static readonly recipe=z.strictObject({services:z.record(this.slot,z.strictObject({image:this.imageReference,depends_on:z.array(this.slot).optional(),ports:z.array(z.strictObject({target:z.number().int().min(1).max(65535),published:z.number().int().min(1).max(65535),host_ip:z.enum(['127.0.0.1','::1']),protocol:z.literal('tcp')})).optional(),volumes:z.array(z.strictObject({type:z.literal('volume'),source:this.slot,target:z.string().regex(/^\/(?!.*(?:^|\/)\.\.?(?:\/|$))[^\x00]*$/),read_only:z.boolean().optional()})).optional(),secrets:z.array(this.slot).optional()})),volumes:z.record(this.slot,z.strictObject({})),secrets:z.record(this.slot,z.strictObject({file:this.relative}))});
+  static readonly expectedEngine=z.strictObject({context:this.text,endpoint:z.string().regex(/^unix:\/\/\//),daemonId:this.text,os:z.literal('linux'),architecture:z.literal('amd64')});
+  static readonly resolvedArtifact=z.discriminatedUnion('kind',[z.strictObject({kind:z.literal('package'),name:this.packageName,version:this.version,sha256:this.digest}),z.strictObject({kind:z.literal('image'),reference:this.imageReference,manifestDigest:this.digest,configDigest:this.digest,layerDigests:z.array(this.digest)})]);
+  static readonly effect=z.strictObject({kind:z.enum(['stage-package','stage-image','prepare-credential','create-volume','create-network','configure-service','start-service']),target:this.text});
   static readonly describe=z.strictObject({contractVersion:this.text,platformVersion:this.text,schemaDigest:this.digest,plugins:z.array(this.pluginStatus),operations:z.array(this.text)});
   static readonly status=z.strictObject({installationId:this.text,engine:this.text,desiredComposition:this.digest.nullable(),activeComposition:this.digest.nullable(),ready:z.boolean(),plugins:z.array(this.pluginStatus),blockers:z.array(this.blocker),applicationId:this.text.nullable()});
-  static readonly plan=z.strictObject({id:this.text,digest:this.digest,expectedComposition:this.digest.nullable(),artifacts:z.array(this.artifact),effects:z.array(this.text),blockers:z.array(this.blocker)});
+  static readonly plan=z.strictObject({formatVersion:z.literal(1),id:z.string().regex(/^plan-[a-f0-9]{64}$/),digest:this.digest,configuration:this.desired,configurationDigest:this.digest,releaseDigest:this.digest,recipeDigest:this.digest,lockDigest:this.digest,expectedEngine:this.expectedEngine,expectedComposition:z.null(),projectName:z.string().regex(/^cordis-[a-f0-9]{16}$/),artifacts:z.array(this.resolvedArtifact),effects:z.array(this.effect),blockers:z.array(this.blocker).max(0)});
   static readonly apply=z.strictObject({id:this.text,accepted:z.literal(true)});
   static readonly application=z.strictObject({id:this.text,phase:this.phase,desiredComposition:this.digest.nullable(),activeComposition:this.digest.nullable(),result:this.text.nullable(),recovery:this.text.nullable(),historyReference:this.text.nullable()});
   static readonly event=z.strictObject({sequence:z.number().int().nonnegative(),cursor:this.text,phase:this.phase,message:this.text});
@@ -24,7 +40,7 @@ export class PlatformSchemas {
   static readonly check=z.strictObject({id:this.text,status:z.enum(['pass','blocked']),code:this.text,message:this.text});
   static readonly diagnostic=z.strictObject({ready:z.boolean(),host:z.strictObject({os:this.text,architecture:this.text,distribution:this.text,release:this.text}),engine:z.strictObject({context:this.text.nullable(),endpoint:this.text.nullable(),serverVersion:this.text.nullable(),serverArchitecture:this.text.nullable(),composeVersion:this.text.nullable(),cpus:z.number().nonnegative().nullable(),memoryBytes:z.number().nonnegative().nullable()}),installation:z.strictObject({path:this.absolute,exists:z.boolean(),freeBytes:z.number().nonnegative().nullable()}),port:z.number().int().min(1).max(65535),checks:z.array(this.check)});
   static readonly problem=z.strictObject({code:this.text,title:this.text,detail:this.text});
-  private static readonly envelopeBase=z.strictObject({command:this.text,success:z.boolean(),result:z.union([this.diagnostic,z.strictObject({version:this.text}),z.strictObject({help:this.text})]).nullable(),problem:this.problem.nullable(),blockers:z.array(this.blocker),references:z.array(this.text)});
+  private static readonly envelopeBase=z.strictObject({command:this.text,success:z.boolean(),result:z.union([this.plan,this.diagnostic,z.strictObject({version:this.text}),z.strictObject({help:this.text})]).nullable(),problem:this.problem.nullable(),blockers:z.array(this.blocker),references:z.array(this.text)});
   static readonly envelope=z.discriminatedUnion('success',[this.envelopeBase.extend({success:z.literal(true),problem:z.null()}),this.envelopeBase.extend({success:z.literal(false),problem:this.problem})]);
 }
 export type DiagnosticConfiguration=z.infer<typeof PlatformSchemas.configuration>;
@@ -79,7 +95,37 @@ export class ContractProjection {
       const {input,output,...metadata}=binding.definition;
       operations.push({...metadata,input:z.toJSONSchema(input,{io:'input'}),output:z.toJSONSchema(output)});
     }
-    const contract={contractVersion:'0.1.0-cordis.1',operations};
+    const contract={contractVersion:'0.2.0-cordis.1',operations,schemas:{configuration:z.toJSONSchema(PlatformSchemas.desired,{io:'input'}),release:z.toJSONSchema(PlatformSchemas.release),recipe:z.toJSONSchema(PlatformSchemas.recipe),plugin:z.toJSONSchema(PlatformSchemas.pluginDefinition)}};
     return {...contract,digest:createHash('sha256').update(JSON.stringify(contract)).digest('hex')};
+  }
+}
+
+export type DeploymentConfiguration=z.infer<typeof PlatformSchemas.desired>;
+export type DeploymentPlan=z.infer<typeof PlatformSchemas.plan>;
+export type ReleaseInventory=z.infer<typeof PlatformSchemas.release>;
+export type DeploymentRecipe=z.infer<typeof PlatformSchemas.recipe>;
+export type PluginMetadata=z.infer<typeof PlatformSchemas.pluginDefinition>;
+export class PluginDefinition {
+  static define(input:PluginMetadata):Readonly<PluginMetadata> {
+    const value=PlatformSchemas.pluginDefinition.parse(input);
+    return Object.freeze({...value,provide:Object.freeze([...value.provide].sort()) as unknown as string[],inject:Object.freeze([...value.inject].sort()) as unknown as string[]});
+  }
+}
+export class PlanningBlockedError extends Error {
+  readonly blockers:z.infer<typeof PlatformSchemas.blocker>[];
+  constructor(blockers:z.infer<typeof PlatformSchemas.blocker>[]) {
+    super('Deployment planning is blocked.');this.name='PlanningBlockedError';
+    this.blockers=z.array(PlatformSchemas.blocker).min(1).parse(blockers);
+  }
+}
+export class CanonicalJson {
+  static stringify(value:unknown):string {return JSON.stringify(this.normalize(value));}
+  static digest(value:unknown):string {return createHash('sha256').update(this.stringify(value)).digest('hex');}
+  private static normalize(value:unknown):unknown {
+    if(value===null||typeof value==='string'||typeof value==='boolean')return value;
+    if(typeof value==='number'&&Number.isFinite(value))return value;
+    if(Array.isArray(value)){const result:unknown[]=[];for(const item of value)result.push(this.normalize(item));return result;}
+    if(value&&typeof value==='object'&&Object.getPrototypeOf(value)===Object.prototype){const result:Record<string,unknown>={};for(const key of Object.keys(value).sort())Object.defineProperty(result,key,{value:this.normalize((value as Record<string,unknown>)[key]),enumerable:true});return result;}
+    throw new Error('Unsupported canonical JSON value');
   }
 }
