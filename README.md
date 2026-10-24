@@ -1,6 +1,6 @@
 # Cordis SDK contracts
 
-Task 1 defines executable portable schemas and seven operation bindings. There is no transport,
+The SDK defines executable portable schemas and seven operation bindings. There is no transport,
 remote client, server dispatcher, authorization implementation or plugin runtime yet.
 `OperationDefinition.define(definition)` returns a typed binding with `parseInput` and
 `parseOutput`; metadata declares ID, scope, effect, REST, CLI and MCP exposure and mutation
@@ -28,7 +28,7 @@ in user input. Write bindings require idempotency and expected-state metadata; r
 carry those policies, not trusted body fields. Plan persists a private plan, so is a write.
 Desired configuration: installationId, engineContext, installationDirectory, loopback HTTP(S)
 origin, runtimeState (`running`/`stopped`), plugins (id, package, version, integrity),
-credentialReferences (reference URIs only). Artifacts have package, version, integrity.
+credentialReferences (named reference URIs only), and a pinned local release source. Plan artifacts are discriminated package/archive or OCI-image identities; generated `dist/contract.json` includes the configuration, release, recipe and plugin declaration schemas.
 Plugin status has id, ready; blockers have code, message. Application phases are
 resolve, validate, stage, prepare, drain, activate, readiness, commit, completed, failed, cancelled.
 Events have sequence, cursor, phase, message; application result/recovery/historyReference
