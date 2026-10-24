@@ -78,3 +78,5 @@ class DiagnosticHost implements ts.FormatDiagnosticsHost {
 export class ProjectTooling {
   static run():void { new SourcePolicy().check(process.cwd(),process.argv[2]==='build'); }
 }
+
+if(import.meta.main)ProjectTooling.run();
