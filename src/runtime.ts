@@ -1,10 +1,11 @@
 import { Context, FiberState, type Plugin, type Fiber, type Message } from 'cordis';
 import { CapabilityToken, ProviderSchemas, CanonicalJson, type ProviderDeclaration, type ProviderSelection, type ProviderArtifact, type PreparedProviderManifest } from './contracts.js';
 import { openSync, closeSync, fstatSync, readFileSync, lstatSync, readdirSync, constants } from 'node:fs';
-import { resolve, join, dirname, relative, isAbsolute } from 'node:path';
+import { resolve, join, dirname, relative, isAbsolute, basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { parse, visit, type ParseError } from 'jsonc-parser';
+import { valid, validRange, satisfies } from 'semver';
 export { Context } from 'cordis';
 export interface ProviderRegistration {token:CapabilityToken;declaration:unknown;plugin:Plugin.Constructor;configuration:unknown;artifact:ProviderArtifact;}
 export interface TrustedCompositionContext {scopeId:string;target:'cli'|'api'|'deployment'|'agent';principalId:string;resourceScope:string;}
@@ -133,7 +134,7 @@ class VerifiedProvider {
   private constructor(readonly url:string,readonly root:string,readonly manifest:PreparedProviderManifest,readonly digest:string){}
   static read(file:string,digest:string,target:string,scopeId:string):VerifiedProvider {
     CompositionError.require(/^[a-f0-9]{64}$/.test(digest)&&isAbsolute(file),'INVALID_PREPARED_PROVIDER');
-    const root=dirname(file),bytes=InstalledProviderLoader.read(file);CompositionError.require(InstalledProviderLoader.sha(bytes)===digest,'PROVIDER_INTEGRITY');
+    const root=dirname(file);CompositionError.require(basename(root)===digest,'PROVIDER_IMMUTABLE_PATH');const bytes=InstalledProviderLoader.read(file);CompositionError.require(InstalledProviderLoader.sha(bytes)===digest,'PROVIDER_INTEGRITY');
     const value=InstalledProviderLoader.json(bytes);
     const parsed=ProviderSchemas.manifest.safeParse(value);CompositionError.require(parsed.success,'INVALID_PREPARED_PROVIDER');const manifest=parsed.data;CompositionError.require(manifest.target===target&&manifest.scopeId===scopeId,'SCOPE_MISMATCH');
     const verified=new VerifiedProvider(pathToFileURL(join(root,manifest.entry)).href,root,manifest,digest);verified.verify(file);return verified;
@@ -145,8 +146,23 @@ class VerifiedProvider {
     const metadata=InstalledProviderLoader.json(InstalledProviderLoader.read(join(this.root,'package.json'))) as Record<string,unknown>;CompositionError.require(metadata&&typeof metadata==='object'&&metadata.name===this.manifest.package.name&&metadata.version===this.manifest.package.version,'PROVIDER_PACKAGE_IDENTITY');
     const declaration=ProviderSchemas.declaration.safeParse(metadata.cordis);CompositionError.require(declaration.success&&declaration.data.id===this.manifest.providerId&&declaration.data.target===this.manifest.target,'INVALID_PROVIDER_DECLARATION');
     for(const path of expected)if(path==='node_modules/cordis/package.json'||path.endsWith('/node_modules/cordis/package.json')){const framework=InstalledProviderLoader.json(InstalledProviderLoader.read(join(this.root,path))) as {version?:unknown};CompositionError.require(framework.version==='4.0.0-rc.12','INCOMPATIBLE_FRAMEWORK');}
-files.delete(relative(this.root,manifestFile));CompositionError.require(files.size===expected.size,'PROVIDER_CLOSURE');for(const file of files)CompositionError.require(expected.has(file),'PROVIDER_CLOSURE');
+    this.dependencies(this.root,new Set());
+    files.delete(relative(this.root,manifestFile));CompositionError.require(files.size===expected.size,'PROVIDER_CLOSURE');for(const file of files)CompositionError.require(expected.has(file),'PROVIDER_CLOSURE');
     CompositionError.require(InstalledProviderLoader.sha(InstalledProviderLoader.read(manifestFile))===this.digest,'PROVIDER_INTEGRITY');
+  }
+  private dependencies(directory:string,visited:Set<string>):void {
+    if(visited.has(directory))return;visited.add(directory);
+    const metadata=InstalledProviderLoader.json(InstalledProviderLoader.read(join(directory,'package.json'))) as Record<string,unknown>;
+    for(const field of ['dependencies','peerDependencies']){
+      const entries=metadata[field];if(entries===undefined)continue;CompositionError.require(entries!==null&&typeof entries==='object'&&!Array.isArray(entries),'PROVIDER_DEPENDENCY');
+      for(const [name,range] of Object.entries(entries)){
+        CompositionError.require(/^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/.test(name)&&typeof range==='string'&&validRange(range)!==null,'PROVIDER_DEPENDENCY');
+        let current=directory,selected:string|null=null;
+        while(current===this.root||current.startsWith(this.root+'/')){const candidate=join(current,'node_modules',name);try{lstatSync(join(candidate,'package.json'));selected=candidate;break;}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}if(current===this.root)break;current=dirname(current);}
+        if(selected===null){const peers=metadata.peerDependenciesMeta as Record<string,{optional?:unknown}>|undefined;CompositionError.require(field==='peerDependencies'&&peers?.[name]?.optional===true,'PROVIDER_DEPENDENCY');continue;}
+        const dependency=InstalledProviderLoader.json(InstalledProviderLoader.read(join(selected,'package.json'))) as {name?:unknown;version?:unknown};CompositionError.require(dependency.name===name&&typeof dependency.version==='string'&&valid(dependency.version)!==null&&satisfies(dependency.version,range as string),'PROVIDER_DEPENDENCY');this.dependencies(selected,visited);
+      }
+    }
   }
   private files(directory:string,prefix='',budget={entries:0,bytes:0}):Set<string> {
     CompositionError.require(prefix.split('/').length<=64,'PROVIDER_CLOSURE_LIMIT');
