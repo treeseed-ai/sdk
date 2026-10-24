@@ -159,3 +159,13 @@ returns the scoped locator. Plugins cannot register or select a provider for tha
 kernel service. This avoids any global handle map or caller-created resolver and preserves
 native dependency lifetimes. Stream emission after CLI root disposal is an integrated
 presentation invariant: render through the selected output provider, verify cleanup, then emit.
+
+## Task 3B: Portable installed composition contracts
+
+InstalledSchemas owns explicit format-2 service declarations, plans, journal records and fixed worker requests/responses. Native ProviderSchemas remains 0.3.0-cordis.1; historical format-1 schemas remain unchanged. The generated operation contract advances to 0.4.0-cordis.1 with the same seven IDs. Application acceptance is distinct from readiness. All private state binds installation, engine, owner and expected generation. ProjectTooling is available as a public development command; it never runs package scripts.
+
+Task 3B is authorized after the maintainer reviewed the isolated setup. Tracking: #457. Detailed integration plan: https://github.com/treeseed-ai/platform/blob/feature/713-task3b-initialization/docs/superpowers/plans/2026-10-24-task3b-installed-composition.md. Implementation evidence is recorded separately; these requirements are not a passing-test claim.
+
+Development: Bun 1.4.4, Node 24.19.0, TypeScript 5.9.3, native Cordis 4.0.0-rc.12. Run bun run verify (semantic class/source check, strict compiler, build and nonempty unit/integration/program smoke). Installed acceptance uses genuine exact package/OCI bytes, real identity/database/API/HTTPS and explicit isolated certificate trust. No global trust mutation or legacy service changes. All handwritten source, tools and tests are strict TypeScript classes.
+
+All capabilities that can be plugins, including container services, are native Cordis class plugins with typed swappable contracts. No parallel DI graph. Keep independent repository/public package boundaries, exact archive pins and original licenses. Migration PRs target cordis with Part of issue references. All issues remain open until authorized release; installer/Agent/generalized recovery are later tasks.
