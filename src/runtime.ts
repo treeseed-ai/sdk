@@ -67,7 +67,11 @@ export class CompositionHandle {
     await this.context.plugin(CompositionKernel,this);
     const fibers:Fiber[]=[];
     for(const registration of this.registrations)if(this.selected(registration))fibers.push(this.context.plugin(registration.plugin,registration.configuration));
-    for(const fiber of fibers){await fiber.await();CompositionError.require(fiber.state===FiberState.ACTIVE,'PROVIDER_NOT_READY');}
+    while(true){
+      for(const fiber of fibers)await fiber.await();
+      let active=true,transitioning=false;for(const fiber of fibers){if(fiber.state!==FiberState.ACTIVE)active=false;if(fiber.inertia)transitioning=true;}
+      if(active)break;CompositionError.require(transitioning,'PROVIDER_NOT_READY');
+    }
     for(const registration of this.registrations)if(this.selected(registration)){
       const token=registration.token;
       class ReadinessConsumer {static readonly inject=[token.id];constructor(context:Context){token.parse(Reflect.get(context,token.id));}}
