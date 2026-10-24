@@ -22,6 +22,27 @@ function proposal() {
 }
 
 describe('group-owned proposal contributions', () => {
+	it('keeps discussion contributions and dependencies before their authors supply estimates without permitting approval', () => {
+		for (const status of ['draft', 'discussing']) {
+			const input = proposal(); input.status = status;
+			for (const item of input.executionPlan.workItems) for (const field of ['estimate', 'estimateRef', 'reviewEstimate'])
+				Reflect.deleteProperty(item, field);
+			const before = structuredClone(input), checked = validatePortableContentData('proposal', input);
+			expect(checked.ok, JSON.stringify(checked.diagnostics)).toBe(true);
+			expect(checked.data).toEqual(before); expect(input).toEqual(before);
+			for (const executable of ['ready', 'decided'])
+				expect(validatePortableContentData('proposal', { ...input, status: executable }).ok).toBe(false);
+			Object.assign(input.executionPlan.workItems[0]!, proposal().executionPlan.workItems[0]);
+			expect(validatePortableContentData('proposal', input).ok).toBe(true);
+			input.executionPlan.workItems[0]!.dependsOn = ['repair-handoff'];
+			expect(validatePortableContentData('proposal', input).ok).toBe(false);
+		}
+		for (const status of ['ready', 'decided']) for (const field of ['estimate', 'estimateRef', 'reviewEstimate']) {
+			const input = proposal(); input.status = status;
+			Reflect.deleteProperty(input.executionPlan.workItems[1]!, field);
+			expect(validatePortableContentData('proposal', input).ok, `${status}/${field}`).toBe(false);
+		}
+	});
 	it('retains each independently estimated contribution and dependency without agent targeting', () => {
 		const input = proposal(), before = structuredClone(input), checked = validatePortableContentData('proposal', input);
 		expect(checked.ok, JSON.stringify(checked.diagnostics)).toBe(true);
@@ -69,15 +90,24 @@ describe('group-owned proposal contributions', () => {
 		].map(patch => { const value = proposal(); Object.assign(value.executionPlan.workItems[0]!, patch); return value; })];
 		const historical = { ...valid, schemaVersion: 'treeseed.proposal/v1', executionPlan: { workItems:
 			valid.executionPlan.workItems.map(({ estimateRef: _ref, ...item }) => ({ ...item, agentClass: 'historical-class' })) } };
-		const input = [valid, ...denied, historical], before = structuredClone(input);
+		const draft = proposal(); draft.status = 'discussing';
+		for (const item of draft.executionPlan.workItems) for (const field of ['estimate', 'estimateRef', 'reviewEstimate'])
+			Reflect.deleteProperty(item, field);
+		const partial = structuredClone(draft);
+		Object.assign(partial.executionPlan.workItems[0]!, valid.executionPlan.workItems[0]);
+		const invalidDraft = structuredClone(draft); invalidDraft.executionPlan.workItems[0]!.dependsOn = ['absent-product'];
+		const planning = [draft, partial, { ...draft, status: 'ready' }, { ...draft, status: 'decided' }, invalidDraft];
+		const input = [valid, ...denied, ...planning, historical], before = structuredClone(input);
 		const path = fileURLToPath(new URL('../architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
 		const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'proposal-inventory'], {
 			input: JSON.stringify(input), encoding: 'utf8', timeout: 15_000,
 		});
 		expect(child.error).toBeUndefined(); expect(child.signal).toBeNull(); expect(child.status, child.stderr).toBe(0);
 		const output = JSON.parse(child.stdout);
-		expect(output.observations.map((entry: { ok: boolean }) => entry.ok)).toEqual([true, ...denied.map(() => false), true]);
+		expect(output.observations.map((entry: { ok: boolean }) => entry.ok)).toEqual([true, ...denied.map(() => false), true, true, false, false, false, true]);
 		expect(output.observations[0].data).toEqual(valid); expect(output.observations.at(-1).data).toEqual(historical);
+		expect(output.observations[1 + denied.length].data).toEqual(draft);
+		expect(output.observations[2 + denied.length].data).toEqual(partial);
 		const fields = output.schema.properties.executionPlan.properties.workItems.items.properties;
 		expect(fields).toHaveProperty('estimateRef'); expect(fields).not.toHaveProperty('agentClass');
 		expect(input).toEqual(before); expect(readFileSync(path)).toEqual(bytes);

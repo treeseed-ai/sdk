@@ -136,10 +136,10 @@ const estimateAssignmentRefSchema = exactEntityReferenceSchema.innerType().pick(
 const contributionEstimateSchema = estimateSchema.innerType().extend({ rationale: nonEmpty }).refine(
 	value => estimateSchema.safeParse(value).success, { message: 'Contribution estimates must satisfy the shared bounded estimate contract.' });
 const contributionWorkItemSchema = conditionalFields(executionPlanWorkItemSchema.innerType().innerType()
-	.omit({ agentClass: true }).extend({ estimateRef: estimateAssignmentRefSchema,
-		estimate: contributionEstimateSchema, reviewEstimate: contributionEstimateSchema.optional() }), [
-	{ field: 'review', equals: 'required', alternatives: [['maximumReviewCycles', 'reviewEstimate']],
-		message: 'Reviewed contributions require bounded cycles and their author’s own review estimate.' },
+	.omit({ agentClass: true }).extend({ estimateRef: estimateAssignmentRefSchema.optional(),
+		estimate: contributionEstimateSchema.optional(), reviewEstimate: contributionEstimateSchema.optional() }), [
+	{ field: 'review', equals: 'required', alternatives: [['maximumReviewCycles']],
+		message: 'Reviewed contributions require bounded review cycles.' },
 	{ field: 'review', equals: 'none', forbidden: { fields: ['reviewEstimate', 'maximumReviewCycles'] },
 		message: 'Unreviewed work cannot define review estimates or cycles.' },
 ]).superRefine(validateWorkItemWorkspace);
@@ -150,7 +150,9 @@ const contributionProposalSchema = conditionalFields(proposalSchema.innerType().
 	schemaVersion: z.literal('treeseed.proposal/v2'), groupIds: unique(z.array(identifier).min(1)),
 	executionPlan: contributionExecutionPlanSchema.optional(),
 }), [{ field: 'status', in: ['ready', 'decided'], alternatives: [['summary', 'executionPlan']],
-	message: 'Ready proposals require the contribution plan from every subscribed participant.' }]);
+	items: { field: 'executionPlan', key: 'workItems', required: ['estimate', 'estimateRef'],
+		conditional: { field: 'review', equals: 'required', required: ['reviewEstimate'] } },
+	message: 'Ready proposals require every subscribed contribution’s own estimate, authority and required review estimate.' }]);
 
 const schemas = {
 	page: z.object({
