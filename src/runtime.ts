@@ -29,9 +29,8 @@ class CompositionValidation {
       const provide=typeof item.plugin.provide==='string'?[item.plugin.provide]:item.plugin.provide,inject=item.plugin.inject;
       CompositionError.require(Array.isArray(provide)&&Array.isArray(inject)&&CanonicalJson.stringify([...provide].sort())===CanonicalJson.stringify([...declaration.provide].sort())&&CanonicalJson.stringify([...inject].sort())===CanonicalJson.stringify([...declaration.inject].sort())&&declaration.provide.length===1&&declaration.provide[0]===declaration.capability,'DECLARATION_DRIFT');
       CompositionError.require(item.plugin.Config&&typeof item.plugin.Config['~standard']?.validate==='function','INVALID_PROVIDER_CONFIGURATION');
-      const configuration=item.plugin.Config['~standard'].validate(item.configuration);CompositionError.require(!('then' in configuration)&&!configuration.issues,'INVALID_PROVIDER_CONFIGURATION');
-      CanonicalJson.stringify(item.configuration);
-      registrations.push({...item,declaration,artifact:artifact.data});
+      const accepted:unknown=JSON.parse(CanonicalJson.stringify(item.configuration)),configuration=item.plugin.Config['~standard'].validate(accepted);CompositionError.require(!('then' in configuration)&&!configuration.issues,'INVALID_PROVIDER_CONFIGURATION');
+      registrations.push({...item,configuration:accepted,declaration,artifact:artifact.data});
     }
     const selected:ValidatedRegistration[]=[],capabilities=new Set<string>(['cordis.composition']);
     for(const value of descriptor.selections){const selection=ProviderSchemas.selection.safeParse(value);CompositionError.require(selection.success,'INVALID_SELECTION');CompositionError.require(selection.data.scopeId===authority.scopeId,'SCOPE_MISMATCH');CompositionError.require(!capabilities.has(selection.data.capability),'DUPLICATE_SELECTION');capabilities.add(selection.data.capability);let found:ValidatedRegistration|undefined;for(const item of registrations)if(item.declaration.capability===selection.data.capability&&item.declaration.id===selection.data.providerId)found=item;CompositionError.require(found,'MISSING_PROVIDER');selected.push(found);}
@@ -131,20 +130,20 @@ class JsonKeys {
   end():void {this.stack.pop();}
 }
 class VerifiedProvider {
-  private constructor(readonly url:string,readonly root:string,readonly manifest:PreparedProviderManifest,readonly digest:string){}
-  static read(file:string,digest:string,target:string,scopeId:string):VerifiedProvider {
+  private constructor(readonly url:string,readonly root:string,readonly manifest:PreparedProviderManifest,readonly digest:string,private readonly token:CapabilityToken){}
+  static read(file:string,digest:string,target:string,scopeId:string,token:CapabilityToken):VerifiedProvider {
     CompositionError.require(/^[a-f0-9]{64}$/.test(digest)&&isAbsolute(file),'INVALID_PREPARED_PROVIDER');
     const root=dirname(file);CompositionError.require(basename(root)===digest,'PROVIDER_IMMUTABLE_PATH');const bytes=InstalledProviderLoader.read(file);CompositionError.require(InstalledProviderLoader.sha(bytes)===digest,'PROVIDER_INTEGRITY');
     const value=InstalledProviderLoader.json(bytes);
     const parsed=ProviderSchemas.manifest.safeParse(value);CompositionError.require(parsed.success,'INVALID_PREPARED_PROVIDER');const manifest=parsed.data;CompositionError.require(manifest.target===target&&manifest.scopeId===scopeId,'SCOPE_MISMATCH');
-    const verified=new VerifiedProvider(pathToFileURL(join(root,manifest.entry)).href,root,manifest,digest);verified.verify(file);return verified;
+    const verified=new VerifiedProvider(pathToFileURL(join(root,manifest.entry)).href,root,manifest,digest,token);verified.verify(file);return verified;
   }
   verify(manifestFile:string):void {
     const expected=new Set<string>(),files=this.files(this.root),entry=this.manifest.entry;
     for(const file of this.manifest.files){CompositionError.require(!expected.has(file.path)&&file.path!==relative(this.root,manifestFile),'INVALID_PREPARED_PROVIDER');expected.add(file.path);const path=join(this.root,file.path);CompositionError.require(InstalledProviderLoader.sha(InstalledProviderLoader.read(path))===file.sha256,'PROVIDER_INTEGRITY');}
     CompositionError.require(expected.has(entry)&&expected.has('package.json'),'MISSING_PROVIDER_ENTRY');
     const metadata=InstalledProviderLoader.json(InstalledProviderLoader.read(join(this.root,'package.json'))) as Record<string,unknown>;CompositionError.require(metadata&&typeof metadata==='object'&&metadata.name===this.manifest.package.name&&metadata.version===this.manifest.package.version,'PROVIDER_PACKAGE_IDENTITY');
-    const declaration=ProviderSchemas.declaration.safeParse(metadata.cordis);CompositionError.require(declaration.success&&declaration.data.id===this.manifest.providerId&&declaration.data.target===this.manifest.target,'INVALID_PROVIDER_DECLARATION');
+    const declaration=ProviderSchemas.declaration.safeParse(metadata.cordis);CompositionError.require(declaration.success&&declaration.data.id===this.manifest.providerId&&declaration.data.target===this.manifest.target&&declaration.data.capability===this.token.id&&declaration.data.contractVersion===this.token.contractVersion,'INVALID_PROVIDER_DECLARATION');
     for(const path of expected)if(path==='node_modules/cordis/package.json'||path.endsWith('/node_modules/cordis/package.json')){const framework=InstalledProviderLoader.json(InstalledProviderLoader.read(join(this.root,path))) as {version?:unknown};CompositionError.require(framework.version==='4.0.0-rc.12','INCOMPATIBLE_FRAMEWORK');}
     this.dependencies(this.root,new Set());
     files.delete(relative(this.root,manifestFile));CompositionError.require(files.size===expected.size,'PROVIDER_CLOSURE');for(const file of files)CompositionError.require(expected.has(file),'PROVIDER_CLOSURE');
@@ -181,7 +180,7 @@ export class InstalledProviderLoader {
   }
   static async load<T extends object>(file:string,digest:string,token:CapabilityToken<T>,target:TrustedCompositionContext['target'],scopeId:string):Promise<ProviderRegistration> {
     try {
-      const verified=VerifiedProvider.read(file,digest,target,scopeId),module=await this.importVerified(verified);verified.verify(file);
+      const verified=VerifiedProvider.read(file,digest,target,scopeId,token),module=await this.importVerified(verified);verified.verify(file);
       CompositionError.require(typeof module.Provider==='function','INVALID_PROVIDER_EXPORT');
       const plugin=module.Provider as Plugin.Constructor&{declaration?:unknown},parsed=ProviderSchemas.declaration.safeParse(plugin.declaration),metadata=InstalledProviderLoader.json(InstalledProviderLoader.read(join(verified.root,'package.json'))) as {cordis:unknown};CompositionError.require(parsed.success&&parsed.data.id===verified.manifest.providerId&&parsed.data.capability===token.id&&CanonicalJson.stringify(parsed.data)===CanonicalJson.stringify(metadata.cordis),'INVALID_PROVIDER_EXPORT');
       return {token,declaration:parsed.data,plugin,configuration:verified.manifest.configuration,artifact:{kind:'prepared',digest}};
