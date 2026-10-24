@@ -132,8 +132,11 @@ or incompatible class declaration raises a safe CompositionError before activati
 The loader reads an explicitly supplied prepared manifest whose SHA-256 is pinned by its caller.
 Version 1 binds contractVersion, target, scopeId, providerId, package identity, entrypoint,
 configuration and a complete sorted list of relative file paths/SHA-256 identities. The
-manifest directory is its package root; it must be owned/private, contain no symlinks or extra
-files, and have only immutable regular package files. Entry and ordinary ESM dependencies
+manifest directory is its package root, named by the pinned manifest SHA-256 so a new
+generation cannot reuse a cached module URL. It must be owned/private, contain no symlinks or
+extra files, and have only immutable regular package files. Declared dependencies and required
+peers must resolve to compatible packages inside this tree; optional peers may be absent.
+Exact semver@7.8.5 validates ranges; no package manager runs. Entry and ordinary ESM dependencies
 resolve within that verified tree using the native runtime module resolver. Verify before
 imports and read back afterward; same-user/root malicious mutation and trusted plugin code
 are outside a filesystem-sandbox claim. Dynamic import is permitted only in this reviewed
