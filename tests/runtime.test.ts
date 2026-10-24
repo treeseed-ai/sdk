@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { spawnSync } from 'node:child_process';
 import { CapabilityToken, ProviderSchemas, type ProviderDeclaration } from '../src/contracts.js';
 import { SourcePolicy } from '../src/source-policy.js';
-import { Context, CordisComposition, CompositionError, type ProviderRegistration, type TrustedCompositionContext } from '../src/runtime.js';
+import { Context, CordisComposition, CordisServiceLocator, CompositionError, type ProviderRegistration, type TrustedCompositionContext } from '../src/runtime.js';
 
 interface Probe {read():string;}
 class ProbeValidation {parse(value:unknown):Probe {if(!value||typeof (value as Probe).read!=='function')throw new Error('bad adapter');return value as Probe;}}
@@ -24,7 +24,7 @@ class MissingDependency extends ProbeProvider {static override readonly inject=[
 class CycleFirst extends ProbeProvider {static override readonly inject=['cycle'];static override readonly declaration={...ProbeProvider.declaration,inject:['cycle']};}
 class CycleSecond extends ProbeProvider {static override readonly provide=['cycle'];static override readonly inject=['probe'];static override readonly declaration={...ProbeProvider.declaration,id:'cycle',capability:'cycle',provide:['cycle'],inject:['probe']};}
 class Receiver {context:Context|null=null;accept(context:Context):void {this.context=context;}}
-class Consumer {static readonly inject=['probe'];constructor(ctx:Context,receiver:Receiver){receiver.accept(ctx);}}
+class Consumer {static readonly inject=['cordis.composition','probe'];constructor(ctx:Context,receiver:Receiver){receiver.accept(ctx);}}
 class Uninjected {static readonly inject:string[]=[];constructor(ctx:Context,receiver:Receiver){receiver.accept(ctx);}}
 class RuntimeTests {
   authority(scopeId='scope'):TrustedCompositionContext {return {scopeId,target:'cli',principalId:'fixture-owner',resourceScope:'fixture-resource'};}
@@ -34,7 +34,7 @@ class RuntimeTests {
     for(const second of [false,true]) {
       const handle=await CordisComposition.start(this.descriptor(second),this.authority()),receiver=new Receiver();
       try {
-        await handle.mount(Consumer,receiver);const locator=handle.locator(receiver.context!),lease=await locator.acquire(token);
+        await handle.mount(Consumer,receiver);const locator=CordisServiceLocator.from(receiver.context!),lease=await locator.acquire(token);
         expect(Context.is(receiver.context)).toBe(true);expect(handle.context.registry.size).toBeGreaterThan(0);
         expect(lease.value.read()).toBe(second?'second':'first');expect(lease.generation).toBe(handle.generation);
         expect(locator.describe(token).filter(RuntimeTests.selected).length).toBe(1);
