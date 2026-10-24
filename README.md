@@ -1,6 +1,6 @@
 # Cordis SDK contracts
 
-Task 1 defines executable portable schemas and seven operation bindings. There is no transport,
+The SDK defines executable portable schemas and seven operation bindings. There is no transport,
 remote client, server dispatcher, authorization implementation or plugin runtime yet.
 `OperationDefinition.define(definition)` returns a typed binding with `parseInput` and
 `parseOutput`; metadata declares ID, scope, effect, REST, CLI and MCP exposure and mutation
@@ -28,7 +28,7 @@ in user input. Write bindings require idempotency and expected-state metadata; r
 carry those policies, not trusted body fields. Plan persists a private plan, so is a write.
 Desired configuration: installationId, engineContext, installationDirectory, loopback HTTP(S)
 origin, runtimeState (`running`/`stopped`), plugins (id, package, version, integrity),
-credentialReferences (reference URIs only). Artifacts have package, version, integrity.
+credentialReferences (named reference URIs only), and a pinned local release source. Plan artifacts are discriminated package/archive or OCI-image identities; generated `dist/contract.json` includes the configuration, release, recipe and plugin declaration schemas.
 Plugin status has id, ready; blockers have code, message. Application phases are
 resolve, validate, stage, prepare, drain, activate, readiness, commit, completed, failed, cancelled.
 Events have sequence, cursor, phase, message; application result/recovery/historyReference
@@ -68,3 +68,25 @@ archives contain the exact generated package bytes, with source commit and SHA25
 `package.json` and installation integrity in `bun.lock`. Consumers use public package exports,
 never sibling source. These are review candidates, with no registry publication or production
 release. Migration PRs target `cordis`; issues remain open until authorized release.
+
+## Task 2: non-activating plans
+
+`trsd platform plan --file CONFIG [--json]` validates an explicitly prepared local release bundle. It never downloads, installs packages, imports plugin code, runs scripts, binds ports, loads images, creates credentials or starts containers. Apply remains unsupported. Successful plans describe future effects, not an active or healthy installation.
+
+Configuration retains installationId, engineContext, installationDirectory (absolute), origin (loopback), runtimeState, plugins (exact id/package/version/archive SHA-256) and credentialReferences (unique `secret://<slot>` values). Add `release: {directory: ABSOLUTE_PATH, manifestDigest: SHA256}`. The installation and bundle must be disjoint. JSON object keys and semantic sets normalize deterministically; artifact byte identities remain exact.
+
+The SDK release inventory version 1 binds `packageJson`, `lockfile`, and `recipe` descriptors `{path,sha256}`, requiredPluginIds/requiredServices, package entries `{name,version,path,sha256}` and image entries `{id,reference,layout,indexSha256,manifestDigest}`. All paths inside the inventory are relative and contained without symlinks. Image references are digest-only and match the selected OCI manifest. Package archives exactly cover the flat locked runtime closure; Bun v2 registry and local tarball records are accepted, without resolving versions or contacting a registry. Unsupported lock forms fail closed. Selected plugin package metadata is produced from the SDK PluginDefinition declaration also used for class static provide/inject fields.
+
+The recipe is a restricted Compose JSON object with services/volumes/secrets. Service fields: image, depends_on (names), ports (long-form target/published/host_ip/protocol tcp), volumes (type volume/source/target/read_only) and secrets (names). Exactly one published port matches origin; localhost maps to 127.0.0.1, IPv6 literals to ::1. Volume declarations are empty local objects; secret declarations are `{file: '.cordis/credentials/<slot>'}` and match configuration references bijectively. No command/entrypoint/environment/build/include/interpolation/host mount/custom network/privileged/external/hook fields. Named resources derive from `cordis-` plus the first 16 hex SHA-256 characters of canonical `{installationId,installationDirectory}`.
+
+Deployment validates native Ubuntu 26.04 x64, local Docker Linux amd64 context/endpoint/daemon identity, capacity, ownership and ports. Port checks read Linux TCP tables without binding. Existing project containers/networks/volumes block; planning adopts no runtime. Only fresh/empty owned installation directories or valid owner-private plan-only state are accepted.
+
+Plans bind normalized configuration, configuration/release/lock/recipe digests, expected engine, expectedComposition null, exact package/image artifacts and typed future effects. No timestamps or volatile capacity samples enter the digest. ID is `plan-<digest>`. Only unblocked plans are persisted under installation/.cordis (0700 directories, 0600 records), with no-overwrite atomic publication and verified read-back. Descriptor-anchored access rejects symlinks and unsafe ownership/permissions. Repetition revalidates inputs before byte-identical reuse. Interrupted/foreign/malformed state blocks; no automatic adoption or repair. Stored read-back does not require the source bundle, and grants no permission to apply.
+
+CLI exits: 0 verified saved plan; 1 sanitized runtime/I/O failure; 2 invalid arguments/JSON/schema; 3 prerequisites/artifact/authority/state blockers. Blocked responses have result null, structured blockers and no saved reference. Never echo invalid input, archive content, credentials or engine stderr. SDK PlanningBlockedError carries only validated safe blockers. Seven remote operation IDs remain unchanged; platform.plan stays a write operation because saving a plan needs local ownership.
+
+Verification: documentation first; outside-in built-program failure before implementation; exact read-back/modes/determinism; immutable/architecture/graph/recipe/secret/path/journal negative cases; no-runtime snapshots; actual default construction; all owner check/build/unit/integration/smoke gates plus assembled acceptance. Test fixtures are not a production application composition. CI must run a positive plan on ubuntu-26.04 and fail visibly if prerequisites are absent. No container starts, even in tests.
+
+Tracked in #453; parent integration treeseed-ai/platform#697. Issues remain open until authorized release.
+
+Saved plans include the validated restricted recipe and selected plugin bindings, so ports, volume mounts, credential slots and injection edges can be reviewed without reopening a bundle. These declarations contain no plaintext credentials and authorize no execution.
