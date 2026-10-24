@@ -17,6 +17,13 @@ class ProbeProvider {
   effect():()=>void {return this.close.bind(this);}close():void {ProbeProvider.active--;}
   read():string {return this.configuration.label;}
 }
+class IdentityConfiguration {static validate(value:unknown):{value:unknown} {return {value};}}
+class SharedConfigurationProvider {
+  static readonly declaration=ProbeProvider.declaration;static readonly provide=ProbeProvider.provide;static readonly inject=ProbeProvider.inject;
+  static readonly Config={'~standard':{version:1 as const,vendor:'fixture',validate:IdentityConfiguration.validate.bind(IdentityConfiguration)}};
+  constructor(context:Context,readonly configuration:{label:string}){context.provide('probe',this);}
+  read():string{return this.configuration.label;}
+}
 class OtherProvider extends ProbeProvider {static override readonly declaration={...ProbeProvider.declaration,id:'second'};}
 class BadCleanupProvider extends ProbeProvider {override close():void {super.close();throw new Error('secret-cleanup-canary');}}
 class ThrowingProvider extends ProbeProvider {constructor(context:Context,configuration:{label:string}){super(context,configuration);throw new Error('secret-constructor-canary');}}
@@ -51,6 +58,11 @@ class RuntimeTests {
   }
   static call(method:()=>unknown):unknown {return method();}
   static selected(value:{selected:boolean}):boolean {return value.selected;}
+  async configurationIsolation():Promise<void> {
+    const configuration={label:'accepted'},registration:ProviderRegistration={...this.registration(),plugin:SharedConfigurationProvider,configuration};
+    const handle=await CordisComposition.start({registrations:[registration],selections:[{scopeId:'scope',capability:'probe',providerId:'first'}]},this.authority()),receiver=new Receiver();
+    try{configuration.label='changed';await handle.mount(Consumer,receiver);const lease=await handle.locator(receiver.context!).acquire(token);expect(lease.value.read()).toBe('accepted');await lease.release();}finally{await handle.dispose();}
+  }
   async isolation():Promise<void> {
     const first=await CordisComposition.start(this.descriptor(),this.authority());
     const second=await CordisComposition.start(this.descriptor(true),this.authority());
@@ -109,3 +121,5 @@ test('smoke: explicit runtime package executes native Cordis under Node',suite.p
 test('unit: native missing dependencies cycles constructor failures and narrow source policy',suite.additionalBlockers.bind(suite));
 
 test('integration: native dependency loading settles before readiness in reverse registration order',suite.dependencyOrder.bind(suite));
+
+test('integration: caller configuration mutation cannot change an accepted provider generation',suite.configurationIsolation.bind(suite));
