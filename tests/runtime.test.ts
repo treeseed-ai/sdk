@@ -23,6 +23,12 @@ class ThrowingProvider extends ProbeProvider {constructor(context:Context,config
 class MissingDependency extends ProbeProvider {static override readonly inject=['absent'];static override readonly declaration={...ProbeProvider.declaration,inject:['absent']};}
 class CycleFirst extends ProbeProvider {static override readonly inject=['cycle'];static override readonly declaration={...ProbeProvider.declaration,inject:['cycle']};}
 class CycleSecond extends ProbeProvider {static override readonly provide=['cycle'];static override readonly inject=['probe'];static override readonly declaration={...ProbeProvider.declaration,id:'cycle',capability:'cycle',provide:['cycle'],inject:['probe']};}
+class DependentProvider {
+  static readonly declaration:ProviderDeclaration={...ProbeProvider.declaration,id:'dependent',capability:'aa-dependent',provide:['aa-dependent'],inject:['probe']};
+  static readonly provide=this.declaration.provide;static readonly inject=this.declaration.inject;static readonly Config=ProbeProvider.Config;
+  constructor(private readonly context:Context){context.provide('aa-dependent',this);}
+  read():string {return (Reflect.get(this.context,'probe') as Probe).read();}
+}
 class Receiver {context:Context|null=null;accept(context:Context):void {this.context=context;}}
 class Consumer {static readonly inject=['cordis.composition','probe'];constructor(ctx:Context,receiver:Receiver){receiver.accept(ctx);}}
 class Uninjected {static readonly inject:string[]=[];constructor(ctx:Context,receiver:Receiver){receiver.accept(ctx);}}
@@ -67,6 +73,12 @@ class RuntimeTests {
     const incompatible=this.descriptor();incompatible.registrations[0]!.declaration={...ProbeProvider.declaration,contractVersion:'unsupported'};await expect(CordisComposition.start(incompatible,authority)).rejects.toThrow('INVALID_PROVIDER_DECLARATION');
     const drift=this.descriptor();drift.registrations[0]!.declaration={...ProbeProvider.declaration,inject:['missing']};await expect(CordisComposition.start(drift,authority)).rejects.toThrow('DECLARATION_DRIFT');
   }
+  async dependencyOrder():Promise<void> {
+    const dependent=new CapabilityToken<Probe>('aa-dependent','0.3.0-cordis.1',new ProbeValidation());
+    const registration:ProviderRegistration={token:dependent,declaration:DependentProvider.declaration,plugin:DependentProvider,configuration:{label:'dependent'},artifact:{kind:'bundled',identity:'dependent'}};
+    const handle=await CordisComposition.start({registrations:[registration,this.registration()],selections:[{scopeId:'scope',capability:'aa-dependent',providerId:'dependent'},{scopeId:'scope',capability:'probe',providerId:'first'}]},this.authority());
+    try{expect(handle.describe(dependent).filter(RuntimeTests.selected)[0]?.ready).toBe(true);}finally{await handle.dispose();}
+  }
   async additionalBlockers():Promise<void> {
     const dependency={...this.registration(),plugin:MissingDependency,declaration:MissingDependency.declaration};
     await expect(CordisComposition.start({registrations:[dependency],selections:[{scopeId:'scope',capability:'probe',providerId:'first'}]},this.authority())).rejects.toThrow('MISSING_DEPENDENCY');
@@ -95,3 +107,5 @@ test('integration: native cleanup errors cannot become successful completion',su
 test('smoke: explicit runtime package executes native Cordis under Node',suite.packageProgram.bind(suite));
 
 test('unit: native missing dependencies cycles constructor failures and narrow source policy',suite.additionalBlockers.bind(suite));
+
+test('integration: native dependency loading settles before readiness in reverse registration order',suite.dependencyOrder.bind(suite));
