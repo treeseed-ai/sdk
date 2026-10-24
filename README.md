@@ -114,7 +114,8 @@ selections, configurations, contracts and dependency edges before mounting nativ
 plugins. A registration contains its CapabilityToken, declaration, class export, executable
 configuration schema and configuration. Declarations bind provider/plugin/capability IDs,
 contract version, target and native provide/inject fields. Selections bind one provider per
-capability and explicit scope. Descriptor identity also binds each provider's supplied
+capability and explicit scope. Accepted JSON configuration is copied independently of the caller before validation/mounting;
+caller mutation cannot change a generation's provider configuration. Descriptor identity also binds each provider's supplied
 artifact identity; bundled sources and verified external package identities are distinguished.
 `CompositionHandle.mount(ConsumerClass, configuration)` uses native Cordis; `locator(context)`
 requires an actual dependent plugin context in that root. No unrestricted root lookup or
@@ -131,7 +132,8 @@ or incompatible class declaration raises a safe CompositionError before activati
 
 The loader reads an explicitly supplied prepared manifest whose SHA-256 is pinned by its caller.
 Version 1 binds contractVersion, target, scopeId, providerId, package identity, entrypoint,
-configuration and a complete sorted list of relative file paths/SHA-256 identities. The
+configuration and a complete sorted list of relative file paths/SHA-256 identities. Package
+metadata must match the requested capability token and contract before any entry module import. The
 manifest directory is its package root, named by the pinned manifest SHA-256 so a new
 generation cannot reuse a cached module URL. It must be owned/private, contain no symlinks or
 extra files, and have only immutable regular package files. Declared dependencies and required
