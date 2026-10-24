@@ -4,16 +4,35 @@ import { resolve, relative, dirname, extname, join, isAbsolute, sep } from 'node
 
 class SourceVisitor {
   readonly errors:string[]=[];
+  private readonly concrete=new Set<string>();
+  private readonly deploymentNamespaces=new Set<string>();
   constructor(readonly file:string,readonly root:string) {}
   visit(node:ts.Node):void {
+    if(ts.isImportDeclaration(node)&&ts.isStringLiteral(node.moduleSpecifier)&&node.moduleSpecifier.text==='@treeseed-cordis/deployment') {
+      const bindings=node.importClause?.namedBindings;
+      if(bindings&&ts.isNamedImports(bindings))for(const item of bindings.elements)if((item.propertyName??item.name).text==='ComposeDeploymentHost')this.concrete.add(item.name.text);
+      if(bindings&&ts.isNamespaceImport(bindings))this.deploymentNamespaces.add(bindings.name.text);
+    }
+    if(ts.isNewExpression(node)&&!this.deploymentOwner()&&this.file.replaceAll('\\','/').startsWith('src/')) {
+      const expression=node.expression;
+      if((ts.isIdentifier(expression)&&this.concrete.has(expression.text))||(ts.isPropertyAccessExpression(expression)&&ts.isIdentifier(expression.expression)&&this.deploymentNamespaces.has(expression.expression.text)&&expression.name.text==='ComposeDeploymentHost'))this.errors.push(`${this.file}: consumers must use the selected Deployment capability`);
+    }
+
     if(ts.isFunctionDeclaration(node)||ts.isArrowFunction(node)||ts.isFunctionExpression(node)||(ts.isMethodDeclaration(node)&&ts.isObjectLiteralExpression(node.parent))) this.errors.push(`${this.file}: behavior must use class methods`);
     if(ts.isImportDeclaration(node)||ts.isExportDeclaration(node)) {
       if(node.moduleSpecifier)this.module(node.moduleSpecifier);
     }
     if(ts.isImportEqualsDeclaration(node)&&ts.isExternalModuleReference(node.moduleReference))this.module(node.moduleReference.expression);
     if(ts.isImportTypeNode(node)&&ts.isLiteralTypeNode(node.argument))this.module(node.argument.literal);
-    if(ts.isCallExpression(node)&&(node.expression.kind===ts.SyntaxKind.ImportKeyword||(ts.isIdentifier(node.expression)&&node.expression.text==='require')||(ts.isPropertyAccessExpression(node.expression)&&ts.isIdentifier(node.expression.expression)&&node.expression.expression.text==='require'&&node.expression.name.text==='resolve')))this.module(node.arguments[0]);
+    if(ts.isCallExpression(node)&&!this.verifiedImport(node)&&(node.expression.kind===ts.SyntaxKind.ImportKeyword||(ts.isIdentifier(node.expression)&&node.expression.text==='require')||(ts.isPropertyAccessExpression(node.expression)&&ts.isIdentifier(node.expression.expression)&&node.expression.expression.text==='require'&&node.expression.name.text==='resolve')))this.module(node.arguments[0]);
     ts.forEachChild(node,this.visit.bind(this));
+  }
+  private deploymentOwner():boolean {try{return (JSON.parse(readFileSync(join(this.root,'package.json'),'utf8')) as {name?:unknown}).name==='@treeseed-cordis/deployment';}catch{return false;}}
+  private verifiedImport(node:ts.CallExpression):boolean {
+    if(this.file.replaceAll('\\','/')!=='src/runtime.ts'||node.expression.kind!==ts.SyntaxKind.ImportKeyword||node.arguments.length!==1)return false;
+    let ownerName:unknown;try{ownerName=(JSON.parse(readFileSync(join(this.root,'package.json'),'utf8')) as {name?:unknown}).name;}catch{return false;}
+    const argument=node.arguments[0],method=node.parent.parent;
+    return ownerName==='@treeseed-cordis/sdk'&&!!argument&&ts.isPropertyAccessExpression(argument)&&ts.isIdentifier(argument.expression)&&argument.expression.text==='verified'&&argument.name.text==='url'&&ts.isReturnStatement(node.parent)&&ts.isMethodDeclaration(method.parent)&&method.parent.name.getText()==='importVerified'&&ts.isClassDeclaration(method.parent.parent)&&method.parent.parent.name?.text==='InstalledProviderLoader';
   }
   private module(expression:ts.Expression|undefined):void {
     if(!expression||!(ts.isStringLiteral(expression)||ts.isNoSubstitutionTemplateLiteral(expression))) {this.errors.push(`${this.file}: imports require literal owner/package paths`);return;}

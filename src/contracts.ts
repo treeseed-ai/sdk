@@ -95,7 +95,7 @@ export class ContractProjection {
       const {input,output,...metadata}=binding.definition;
       operations.push({...metadata,input:z.toJSONSchema(input,{io:'input'}),output:z.toJSONSchema(output)});
     }
-    const contract={contractVersion:'0.2.0-cordis.1',operations,schemas:{configuration:z.toJSONSchema(PlatformSchemas.desired,{io:'input'}),release:z.toJSONSchema(PlatformSchemas.release),recipe:z.toJSONSchema(PlatformSchemas.recipe),plugin:z.toJSONSchema(PlatformSchemas.pluginDefinition)}};
+    const contract={contractVersion:'0.3.0-cordis.1',operations,schemas:{configuration:z.toJSONSchema(PlatformSchemas.desired,{io:'input'}),release:z.toJSONSchema(PlatformSchemas.release),recipe:z.toJSONSchema(PlatformSchemas.recipe),plugin:z.toJSONSchema(PlatformSchemas.pluginDefinition),provider:z.toJSONSchema(ProviderSchemas.declaration),selection:z.toJSONSchema(ProviderSchemas.selection),preparedProvider:z.toJSONSchema(ProviderSchemas.manifest)}};
     return {...contract,digest:createHash('sha256').update(JSON.stringify(contract)).digest('hex')};
   }
 }
@@ -128,4 +128,25 @@ export class CanonicalJson {
     if(value&&typeof value==='object'&&Object.getPrototypeOf(value)===Object.prototype){const result:Record<string,unknown>={};for(const key of Object.keys(value).sort())Object.defineProperty(result,key,{value:this.normalize((value as Record<string,unknown>)[key]),enumerable:true});return result;}
     throw new Error('Unsupported canonical JSON value');
   }
+}
+
+/** Runtime composition declarations are separate from historical format-1 planning metadata. */
+export class ProviderSchemas {
+  static readonly version='0.3.0-cordis.1';
+  static readonly id=z.string().regex(/^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/);
+  static readonly target=z.enum(['cli','api','deployment','agent']);
+  static readonly declaration=z.strictObject({id:this.id,pluginId:this.id,capability:this.id,contractVersion:z.literal('0.3.0-cordis.1'),target:this.target,provide:z.array(this.id).min(1).refine(PlanningValidation.unique),inject:z.array(this.id).refine(PlanningValidation.unique)});
+  static readonly scope=z.strictObject({scopeId:PlatformSchemas.text,target:this.target,principalId:PlatformSchemas.text,resourceScope:PlatformSchemas.text});
+  static readonly selection=z.strictObject({scopeId:PlatformSchemas.text,capability:this.id,providerId:this.id});
+  static readonly artifact=z.discriminatedUnion('kind',[z.strictObject({kind:z.literal('bundled'),identity:PlatformSchemas.text}),z.strictObject({kind:z.literal('prepared'),digest:PlatformSchemas.digest})]);
+  static readonly manifest=z.strictObject({formatVersion:z.literal(1),contractVersion:z.literal('0.3.0-cordis.1'),target:this.target,scopeId:PlatformSchemas.text,providerId:this.id,package:z.strictObject({name:PlatformSchemas.packageName,version:PlatformSchemas.version}),entry:PlatformSchemas.relative,configuration:z.record(z.string(),z.json()),files:z.array(PlatformSchemas.file).min(1).max(4096)});
+}
+export type ProviderDeclaration=z.infer<typeof ProviderSchemas.declaration>;
+export type ProviderSelection=z.infer<typeof ProviderSchemas.selection>;
+export type ProviderArtifact=z.infer<typeof ProviderSchemas.artifact>;
+export type PreparedProviderManifest=z.infer<typeof ProviderSchemas.manifest>;
+export interface AdapterValidator<T extends object> {parse(value:unknown):T;}
+export class CapabilityToken<T extends object=object> {
+  constructor(readonly id:string,readonly contractVersion:string,private readonly validator:AdapterValidator<T>){ProviderSchemas.id.parse(id);if(contractVersion!==ProviderSchemas.version)throw new Error('Unsupported capability contract');Object.freeze(this);}
+  parse(value:unknown):T {return this.validator.parse(value);}
 }

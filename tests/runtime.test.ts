@@ -1,14 +1,15 @@
 import { test, expect } from 'bun:test';
 import { z } from 'zod';
 import { spawnSync } from 'node:child_process';
-import { CapabilityToken, ProviderSchemas } from '../src/contracts.js';
+import { CapabilityToken, ProviderSchemas, type ProviderDeclaration } from '../src/contracts.js';
+import { SourcePolicy } from '../src/source-policy.js';
 import { Context, CordisComposition, CompositionError, type ProviderRegistration, type TrustedCompositionContext } from '../src/runtime.js';
 
 interface Probe {read():string;}
 class ProbeValidation {parse(value:unknown):Probe {if(!value||typeof (value as Probe).read!=='function')throw new Error('bad adapter');return value as Probe;}}
 const token=new CapabilityToken<Probe>('probe','0.3.0-cordis.1',new ProbeValidation());
 class ProbeProvider {
-  static readonly declaration={id:'first',pluginId:'probe-plugin',capability:'probe',contractVersion:'0.3.0-cordis.1',target:'cli',provide:['probe'],inject:[]};
+  static readonly declaration:ProviderDeclaration={id:'first',pluginId:'probe-plugin',capability:'probe',contractVersion:'0.3.0-cordis.1',target:'cli',provide:['probe'],inject:[]};
   static readonly provide=['probe'];static readonly inject:string[]=[];
   static readonly Config=z.strictObject({label:z.string()});
   static active=0;
@@ -18,6 +19,10 @@ class ProbeProvider {
 }
 class OtherProvider extends ProbeProvider {static override readonly declaration={...ProbeProvider.declaration,id:'second'};}
 class BadCleanupProvider extends ProbeProvider {override close():void {super.close();throw new Error('secret-cleanup-canary');}}
+class ThrowingProvider extends ProbeProvider {constructor(context:Context,configuration:{label:string}){super(context,configuration);throw new Error('secret-constructor-canary');}}
+class MissingDependency extends ProbeProvider {static override readonly inject=['absent'];static override readonly declaration={...ProbeProvider.declaration,inject:['absent']};}
+class CycleFirst extends ProbeProvider {static override readonly inject=['cycle'];static override readonly declaration={...ProbeProvider.declaration,inject:['cycle']};}
+class CycleSecond extends ProbeProvider {static override readonly provide=['cycle'];static override readonly inject=['probe'];static override readonly declaration={...ProbeProvider.declaration,id:'cycle',capability:'cycle',provide:['cycle'],inject:['probe']};}
 class Receiver {context:Context|null=null;accept(context:Context):void {this.context=context;}}
 class Consumer {static readonly inject=['probe'];constructor(ctx:Context,receiver:Receiver){receiver.accept(ctx);}}
 class Uninjected {static readonly inject:string[]=[];constructor(ctx:Context,receiver:Receiver){receiver.accept(ctx);}}
@@ -33,11 +38,12 @@ class RuntimeTests {
         expect(Context.is(receiver.context)).toBe(true);expect(handle.context.registry.size).toBeGreaterThan(0);
         expect(lease.value.read()).toBe(second?'second':'first');expect(lease.generation).toBe(handle.generation);
         expect(locator.describe(token).filter(RuntimeTests.selected).length).toBe(1);
-        const cached=lease.value.read;await lease.release();expect(cached).toThrow('LEASE_CLOSED');
+        const cached=lease.value.read;await lease.release();expect(RuntimeTests.call.bind(null,cached)).toThrow('LEASE_CLOSED');
       }finally{await handle.dispose();}
       expect(ProbeProvider.active).toBe(0);
     }
   }
+  static call(method:()=>unknown):unknown {return method();}
   static selected(value:{selected:boolean}):boolean {return value.selected;}
   async isolation():Promise<void> {
     const first=await CordisComposition.start(this.descriptor(),this.authority());
@@ -48,18 +54,27 @@ class RuntimeTests {
       expect(second.locator.bind(second,receiver.context!)).toThrow('SCOPE_MISMATCH');
       expect(first.locator.bind(first,first.context)).toThrow('DECLARED_INJECTION_REQUIRED');
       const locator=first.locator(uninjected.context!);await expect(locator.acquire(token)).rejects.toThrow('DECLARED_INJECTION_REQUIRED');
-      const lease=await first.locator(receiver.context!).acquire(token);await first.dispose();expect(lease.value.read.bind(lease.value)).toThrow();
+      const lease=await first.locator(receiver.context!).acquire(token),cached=lease.value.read;await first.dispose();expect(RuntimeTests.call.bind(null,cached)).toThrow();
     }finally{await first.dispose();await second.dispose();}
   }
   async blocked():Promise<void> {
     const authority=this.authority();
-    await expect(CordisComposition.start({registrations:[],selections:[]},authority)).resolves.toBeDefined();
+    const empty=await CordisComposition.start({registrations:[],selections:[]},authority);await empty.dispose();
     const duplicate=this.descriptor();duplicate.registrations.push(this.registration());await expect(CordisComposition.start(duplicate,authority)).rejects.toThrow('DUPLICATE_PROVIDER');
     const absent=this.descriptor();absent.selections[0]!.providerId='absent';await expect(CordisComposition.start(absent,authority)).rejects.toThrow('MISSING_PROVIDER');
     const wrongScope=this.descriptor();wrongScope.selections[0]!.scopeId='other';await expect(CordisComposition.start(wrongScope,authority)).rejects.toThrow('SCOPE_MISMATCH');
     const config=this.descriptor();config.registrations[0]!.configuration={label:7};await expect(CordisComposition.start(config,authority)).rejects.toThrow('INVALID_PROVIDER_CONFIGURATION');
     const incompatible=this.descriptor();incompatible.registrations[0]!.declaration={...ProbeProvider.declaration,contractVersion:'unsupported'};await expect(CordisComposition.start(incompatible,authority)).rejects.toThrow('INVALID_PROVIDER_DECLARATION');
     const drift=this.descriptor();drift.registrations[0]!.declaration={...ProbeProvider.declaration,inject:['missing']};await expect(CordisComposition.start(drift,authority)).rejects.toThrow('DECLARATION_DRIFT');
+  }
+  async additionalBlockers():Promise<void> {
+    const dependency={...this.registration(),plugin:MissingDependency,declaration:MissingDependency.declaration};
+    await expect(CordisComposition.start({registrations:[dependency],selections:[{scopeId:'scope',capability:'probe',providerId:'first'}]},this.authority())).rejects.toThrow('MISSING_DEPENDENCY');
+    const cycle={token:new CapabilityToken<Probe>('cycle','0.3.0-cordis.1',new ProbeValidation()),plugin:CycleSecond,declaration:CycleSecond.declaration,configuration:{label:'cycle'},artifact:{kind:'bundled' as const,identity:'cycle'}};
+    await expect(CordisComposition.start({registrations:[{...this.registration(),plugin:CycleFirst,declaration:CycleFirst.declaration},cycle],selections:[{scopeId:'scope',capability:'probe',providerId:'first'},{scopeId:'scope',capability:'cycle',providerId:'cycle'}]},this.authority())).rejects.toThrow('DEPENDENCY_CYCLE');
+    await expect(CordisComposition.start({registrations:[this.registration(false,ThrowingProvider)],selections:[{scopeId:'scope',capability:'probe',providerId:'first'}]},this.authority())).rejects.toThrow('PROVIDER_LIFECYCLE');expect(ProbeProvider.active).toBe(0);
+    const first=await CordisComposition.start(this.descriptor(),this.authority()),reversed=this.descriptor();reversed.registrations.reverse();const second=await CordisComposition.start(reversed,this.authority());try{expect(first.generation).toBe(second.generation);}finally{await first.dispose();await second.dispose();}
+    const policy=new SourcePolicy();expect(policy.inspect('src/main.ts',"import {ComposeDeploymentHost as Concrete} from '@treeseed-cordis/deployment';class Consumer{readonly host=new Concrete();}").length).toBeGreaterThan(0);expect(policy.inspect('src/runtime.ts','class InstalledProviderLoader {async importVerified(path:string){return import(path);}}').length).toBeGreaterThan(0);expect(policy.inspect('src/other.ts','class InstalledProviderLoader {async importVerified(verified:{url:string}){return import(verified.url);}}').length).toBeGreaterThan(0);
   }
   async cleanupFailure():Promise<void> {
     const handle=await CordisComposition.start({registrations:[this.registration(false,BadCleanupProvider)],selections:[{scopeId:'scope',capability:'probe',providerId:'first'}]},this.authority());
@@ -78,3 +93,5 @@ test('unit: provider metadata and strict authority boundary',suite.metadata.bind
 test('unit: composition rejects missing duplicate incompatible and drifted providers',suite.blocked.bind(suite));
 test('integration: native cleanup errors cannot become successful completion',suite.cleanupFailure.bind(suite));
 test('smoke: explicit runtime package executes native Cordis under Node',suite.packageProgram.bind(suite));
+
+test('unit: native missing dependencies cycles constructor failures and narrow source policy',suite.additionalBlockers.bind(suite));
