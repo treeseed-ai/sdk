@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### Added
+- Define native Cordis composition and typed provider contracts (#455).
 - Define exact non-activating deployment plan contracts (#453).
 
 

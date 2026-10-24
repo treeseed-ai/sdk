@@ -1,6 +1,6 @@
 {
   "name": "@treeseed-cordis/sdk",
-  "version": "0.0.0-cordis.2",
+  "version": "0.0.0-cordis.3",
   "private": true,
   "type": "module",
   "exports": {
@@ -11,6 +11,10 @@
     "./source-policy": {
       "types": "./dist/src/source-policy.d.ts",
       "default": "./dist/src/source-policy.js"
+    },
+    "./runtime": {
+      "types": "./dist/src/runtime.d.ts",
+      "default": "./dist/src/runtime.js"
     }
   },
   "files": [
@@ -28,12 +32,16 @@
     "verify": "bun run check && bun run build && bun run test:unit && bun run test:integration && bun run test:smoke"
   },
   "dependencies": {
+    "cordis": "4.0.0-rc.12",
+    "jsonc-parser": "3.3.1",
+    "semver": "7.8.5",
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "typescript": "5.9.3",
     "@types/bun": "1.4.4",
-    "@types/node": "24.10.1"
+    "@types/node": "24.10.1",
+    "@types/semver": "7.8.0",
+    "typescript": "5.9.3"
   },
   "packageManager": "bun@1.4.4",
   "license": "Apache-2.0",
