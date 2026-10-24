@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test';
 import { z } from 'zod';
-import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { readFileSync, mkdtempSync, writeFileSync, rmSync, existsSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -69,14 +69,22 @@ class ContractTests {
   badWrite():void {OperationDefinition.define({...PlatformOperations.apply.definition,idempotency:false});}
   duplicate():void {PlatformOperations.validate([...PlatformOperations.all,PlatformOperations.describe]);}
   badTool():void {OperationDefinition.define({...PlatformOperations.describe.definition,mcp:'collision'});}
+  freshBuild():void {
+    writeFileSync('dist/src/stale-removed.js','export class Removed {}');
+    const result=spawnSync(process.execPath,['scripts/tooling.ts','build'],{encoding:'utf8',env:{...process.env}});
+    expect(result.status).toBe(0);expect(existsSync('dist/src/stale-removed.js')).toBe(false);
+  }
   sourcePolicy(): void {
     const policy=new SourcePolicy();
     expect(policy.inspect('okay.ts','export class A { run(): number { return 1; } } export interface B { run(): void; }')).toEqual([]);
-    const cases: [string,string][]=[['bad.js','class A {}'],['bad.ts','export function bad() {}'],['bad.mts','export function bad() {}'],['bad.cts','const bad = () => 1;'],['bad.ts','const bad = () => 1;'],['bad.ts','const factory = function() { return {}; };'],['bad.tsx','const UI = () => <div/>;'],['bad.ts','const bag = {run() { return 1; }};'],['bad.ts',"export {Thing} from '../../other/src/main';"]];
+    const cases: [string,string][]=[['bad.js','class A {}'],['bad.ts','export function bad() {}'],['bad.mts','export function bad() {}'],['bad.cts','const bad = () => 1;'],['bad.ts','const bad = () => 1;'],['bad.ts','const factory = function() { return {}; };'],['bad.tsx','const UI = () => <div/>;'],['bad.ts','const bag = {run() { return 1; }};'],['bad.ts',"export {Thing} from '../../other/src/main';"],['bad.ts',"class Bad { async load() {return import('../../other/src/main');} }"],['bad.ts',"class Bad {load() {return require('../../other/src/main');}}"],['bad.ts',"import Bad = require('../../other/src/main');"],['bad.ts',"class Bad {load(path:string) {return import(path);}}"]];
     for(const [name,source] of cases) expect(policy.inspect(name,source).length).toBeGreaterThan(0);
     const directory=mkdtempSync(join(tmpdir(),'cordis-source-'));
     try { writeFileSync(join(directory,'hidden.js'),'class Bad {}'); expect(policy.check.bind(policy,directory)).toThrow('handwritten'); }
     finally {rmSync(directory,{recursive:true,force:true});}
+    const nested=mkdtempSync(join(tmpdir(),'cordis-nested-'));
+    try {mkdirSync(join(nested,'src/vendor'),{recursive:true});writeFileSync(join(nested,'src/vendor/hidden.js'),'class Hidden {}');expect(policy.check.bind(policy,nested)).toThrow('handwritten');}
+    finally {rmSync(nested,{recursive:true,force:true});}
   }
 }
 const suite=new ContractTests();
@@ -85,3 +93,5 @@ test('integration: all seven strict public schema boundaries',suite.schemaBounda
 test('unit: reject invalid fields and authority input',suite.invalidFields.bind(suite));
 test('unit: effect and exposure policy',suite.policies.bind(suite));
 test('unit: semantic class architecture enforcement',suite.sourcePolicy.bind(suite));
+
+test('integration: fresh build removes obsolete generated modules',suite.freshBuild.bind(suite));
