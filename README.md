@@ -60,7 +60,7 @@ The SDK's `SourcePolicy` development export checks the actual TypeScript AST and
 compiler diagnostics before every build. Handwritten JavaScript, standalone functions,
 function expressions/arrows, object method bags and source imports escaping the owner
 are rejected. Class methods, interfaces and declarative data/schemas are supported.
-Inherited `.agents` upstream resources and generated `dist`/`vendor` archives are excluded.
+Only root-level inherited `.agents` resources, dependency directories and generated `dist`/`vendor` archives are excluded. Nested directories with those names remain subject to source policy. Static, dynamic and require-style imports must use literal package/builtin or owner-contained paths; computed imports cannot establish an owner boundary. Builds replace generated `dist` only after source and type validation, so removed modules cannot survive in a candidate archive.
 See [TypeScript compiler API](https://github.com/microsoft/TypeScript/wiki/Using-the-Compiler-API).
 
 Private `0.0.0-cordis.1` candidates are packed without lifecycle scripts. Consumer `vendor/`
