@@ -123,17 +123,20 @@ export class CapabilityToken<T extends object=object> {
 }
 
 class InstalledValidation {
-  static services(values:Array<{role:string;provider:ProviderDeclaration;package:string|null;entry:string|null}>):boolean {
+  static slot(value:{kind:string;value?:unknown}):boolean {if(value.kind==='random'||value.kind==='uuid')return value.value===undefined;if(value.value===undefined)return false;if(value.kind==='properties')return value.value!==null&&typeof value.value==='object'&&!Array.isArray(value.value);return true;}
+  static environment(values:Record<string,string>):boolean {for(const [key,value] of Object.entries(values))if((/(PASSWORD|SECRET|TOKEN|CREDENTIAL)/.test(key)&&!key.endsWith('_FILE'))||/[\r\n\0$]/.test(value)||value.includes('secret://'))return false;return true;}
+
+  static services(values:Array<{role:string;provider:ProviderDeclaration;definition:{role:string};package:string|null;entry:string|null}>):boolean {
     const roles=new Set<string>();
-    for(const value of values){if(roles.has(value.role)||value.provider.target!=='deployment'||value.provider.capability!=='container.'+value.role||value.provider.provide.length!==1||value.provider.provide[0]!==value.provider.capability||(value.package===null)!==(value.entry===null))return false;roles.add(value.role);}
+    for(const value of values){if(value.definition.role!==value.role||roles.has(value.role)||value.provider.target!=='deployment'||value.provider.capability!=='container.'+value.role||value.provider.provide.length!==1||value.provider.provide[0]!==value.provider.capability||(value.package===null)!==(value.entry===null))return false;roles.add(value.role);}
     return roles.size===4;
   }
 }
 /** Explicit activation boundary. Historical format-1 schemas above are immutable contracts. */
 export class InstalledSchemas {
   static readonly role=z.enum(['database','identity','api','edge']);
-  static readonly slotDefinition=z.strictObject({kind:z.enum(['random','uuid','json','properties','text']),value:z.json().optional()});
-  static readonly definition=z.strictObject({role:this.role,service:z.strictObject({command:z.array(PlatformSchemas.text.max(4096)).min(1).max(64).optional(),environment:z.record(z.string().regex(/^[A-Z_][A-Z0-9_]*$/),z.string().max(4096)).optional(),user:z.enum(['image-default','installation-owner']),workerSocket:z.boolean(),volumes:z.array(z.strictObject({source:PlatformSchemas.slot,target:PlatformSchemas.absolute,readOnly:z.boolean()})),secrets:z.array(z.strictObject({source:PlatformSchemas.slot,target:PlatformSchemas.absolute})),portTarget:z.number().int().min(1).max(65535).nullable()}),slots:z.record(PlatformSchemas.slot,this.slotDefinition),readiness:z.discriminatedUnion('kind',[z.strictObject({kind:z.literal('postgres-query')}),z.strictObject({kind:z.literal('http-json'),path:z.string().regex(/^\/[a-zA-Z0-9_./-]+$/),expected:z.record(z.string(),z.json())}),z.strictObject({kind:z.literal('https-json'),path:z.string().regex(/^\/[a-zA-Z0-9_./-]+$/),expected:z.record(z.string(),z.json()),asset:z.boolean()})])});
+  static readonly slotDefinition=z.strictObject({kind:z.enum(['random','uuid','json','properties','text']),value:z.json().optional()}).refine(InstalledValidation.slot);
+  static readonly definition=z.strictObject({role:this.role,service:z.strictObject({command:z.array(PlatformSchemas.text.max(4096)).min(1).max(64).optional(),environment:z.record(z.string().regex(/^[A-Z_][A-Z0-9_]*$/),z.string().max(4096)).refine(InstalledValidation.environment).optional(),user:z.enum(['image-default','installation-owner']),workerSocket:z.boolean(),volumes:z.array(z.strictObject({source:PlatformSchemas.slot,target:PlatformSchemas.absolute,readOnly:z.boolean()})),secrets:z.array(z.strictObject({source:PlatformSchemas.slot,target:PlatformSchemas.absolute})),portTarget:z.number().int().min(1).max(65535).nullable()}),slots:z.record(PlatformSchemas.slot,this.slotDefinition),readiness:z.discriminatedUnion('kind',[z.strictObject({kind:z.literal('postgres-query')}),z.strictObject({kind:z.literal('http-json'),path:z.string().regex(/^\/[a-zA-Z0-9_./-]+$/),expected:z.record(z.string(),z.json())}),z.strictObject({kind:z.literal('https-json'),path:z.string().regex(/^\/[a-zA-Z0-9_./-]+$/),expected:z.record(z.string(),z.json()),asset:z.boolean()})])});
   static readonly service=z.strictObject({role:this.role,definition:this.definition,provider:ProviderSchemas.declaration,imageId:PlatformSchemas.slot,package:PlatformSchemas.packageName.nullable(),entry:PlatformSchemas.relative.nullable()});
   static readonly worker=z.strictObject({path:PlatformSchemas.relative,sha256:PlatformSchemas.digest,size:z.number().int().min(1).max(512*1024*1024)});
   static readonly composition=z.strictObject({profile:z.literal('first-installed'),assetDigest:PlatformSchemas.digest,worker:this.worker,services:z.array(this.service).length(4).refine(InstalledValidation.services)});

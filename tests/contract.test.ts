@@ -33,6 +33,7 @@ class ContractTests {
     for(const role of ['database','identity','api','edge'])services.push({role,definition:{role,service:{user:'image-default',workerSocket:false,volumes:[],secrets:[],portTarget:null},slots:{},readiness:{kind:'http-json',path:'/ready',expected:{}}},provider:InstalledDeclarations.service(role,'container.'+role,['deployment.engine']),imageId:role,package:null,entry:null});
     const composition={profile:'first-installed',assetDigest:this.hash,worker:{path:'trsd',sha256:this.hash,size:123},services};
     expect(InstalledSchemas.composition.safeParse(composition).success).toBe(true);
+    const definition=structuredClone(services[0]!.definition);expect(InstalledSchemas.definition.safeParse({...definition,service:{...definition.service,environment:{PASSWORD:'plaintext'}}}).success).toBe(false);expect(InstalledSchemas.slotDefinition.safeParse({kind:'random',value:'secret'}).success).toBe(false);
     expect(InstalledSchemas.composition.safeParse({...composition,services:[services[0],services[0],services[2],services[3]]}).success).toBe(false);
     expect(InstalledSchemas.composition.safeParse({...composition,worker:{...composition.worker,path:'../escape'}}).success).toBe(false);
     expect(InstalledSchemas.plan.safeParse(this.outputs[2]).success).toBe(false);
