@@ -146,3 +146,11 @@ compatibility is native Context recognition, root/service/registry identity and 
 injection, not a misleading class-name check. No provider may construct a competing root or
 resolve a different framework version. Built-program fixtures prove the shared native graph
 and ordinary helper dependency behavior without an external Node/Bun installation.
+
+The reserved native service `cordis.composition` exposes the current CompositionHandle inside
+its own root. Consumers declare that injection and call
+`CordisServiceLocator.from(context)`; this resolves the handle through Cordis itself and
+returns the scoped locator. Plugins cannot register or select a provider for that reserved
+kernel service. This avoids any global handle map or caller-created resolver and preserves
+native dependency lifetimes. Stream emission after CLI root disposal is an integrated
+presentation invariant: render through the selected output provider, verify cleanup, then emit.
