@@ -70,15 +70,19 @@ applied plans retain their derived reporting identity as historical authority.
 ## Group contribution proposal contract
 
 Current proposal metadata uses `treeseed.proposal/v2`. A proposal requires shared
-`groupIds`; its execution plan contains each subscriber's own work items and
-bounded estimates with rationale. Work items have no agent or class selector.
+`groupIds`; its execution plan contains each subscriber's own work items.
+Draft and discussing plans may record those items and their dependencies before
+authors estimate them. Missing estimate fields remain absent. Ready and decided
+plans require every item's own bounded estimate with rationale, `estimateRef`,
+and required review estimate. Dependency, cycle, workspace and malformed-value
+checks apply during planning too. Work items have no agent or class selector.
 Each `estimateRef` names the existing PostgreSQL `assignment-attempt` by its
 admitted ID and attempt ordinal (`revision`), rather than its changing lease state
 version. The API must verify that estimating attempt's actual
 author, current proposal authority, completed result and contribution before
 approval or execution; a syntactically valid reference grants no authority.
 Every subscriber contributes and executes its work, rather than bidding for one
-selected assignment. Dependencies order the contributions and independent review.
+selected assignment. Dependencies order contributions and separate review work.
 
 The validator preserves historical `treeseed.proposal/v1` records unchanged for
 read-back. Schema descriptions default to v2; historical consumers can explicitly
