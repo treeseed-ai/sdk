@@ -90,3 +90,59 @@ Verification: documentation first; outside-in built-program failure before imple
 Tracked in #453; parent integration treeseed-ai/platform#697. Issues remain open until authorized release.
 
 Saved plans include the validated restricted recipe and selected plugin bindings, so ports, volume mounts, credential slots and injection edges can be reviewed without reopening a bundle. These declarations contain no plaintext credentials and authorize no execution.
+
+## Task 3A: native composition contract
+
+Implementation work is authorized in #455, from the approved Platform architecture at
+8974d196318d542eb795f15eaa54150fbd9e08fd. This section specifies the intended new behavior;
+verification evidence is recorded separately. Package candidate advances to 0.0.0-cordis.3;
+the generated contract advances to **0.3.0-cordis.1**, retaining the seven operation IDs.
+Existing format-1 release/plugin planning metadata remains 0.2.0-cordis.1: it does not become
+an executable provider declaration or gain activation authority.
+
+Portable exports add CapabilityToken, ProviderSchemas and inferred declaration/selection types.
+A capability token has a stable service ID, contract version and executable adapter validator.
+The explicit `@treeseed-cordis/sdk/runtime` export owns CordisComposition, CompositionHandle,
+CordisServiceLocator, ProviderLease and InstalledProviderLoader. Portable imports start no
+context. Runtime helpers use **cordis@4.0.0-rc.12**, exact registry SRI in bun.lock and published
+gitHead 01b396240ce47cf2779c40af9bc445bb748fe112, rather than pretending the earlier inspected
+35fdc969 source candidate is the published artifact. Optional Cordis loader/include peers are
+not installed or needed for this bounded native-class composition. Qualify the actual bytes.
+
+`CordisComposition.start(descriptor, trustedContext)` validates all provider metadata,
+selections, configurations, contracts and dependency edges before mounting native class
+plugins. A registration contains its CapabilityToken, declaration, class export, executable
+configuration schema and configuration. Declarations bind provider/plugin/capability IDs,
+contract version, target and native provide/inject fields. Selections bind one provider per
+capability and explicit scope. Descriptor identity also binds each provider's supplied
+artifact identity; bundled sources and verified external package identities are distinguished.
+`CompositionHandle.mount(ConsumerClass, configuration)` uses native Cordis; `locator(context)`
+requires an actual dependent plugin context in that root. No unrestricted root lookup or
+second service-instance map is permitted. `acquire(token)` yields a generation-pinned lease;
+its value validates the adapter and checks lifetime on property/method use. `release()` and
+root disposal fence subsequent calls. `describe(token)` reports safe identities and selection.
+Native effects own disposal; captured lifecycle errors fail completion rather than leaking
+raw plugin errors or allowing false success. Live transitions are not implemented in Task 3A.
+
+The trusted context identifies scope, target, principal and resource scope; the runtime never
+accepts a forged context through ordinary configuration fields. Separate roots isolate service
+instances. A token/selection mismatch, absent/duplicate provider, injection cycle, invalid config
+or incompatible class declaration raises a safe CompositionError before activation.
+
+The loader reads an explicitly supplied prepared manifest whose SHA-256 is pinned by its caller.
+Version 1 binds contractVersion, target, scopeId, providerId, package identity, entrypoint,
+configuration and a complete sorted list of relative file paths/SHA-256 identities. The
+manifest directory is its package root; it must be owned/private, contain no symlinks or extra
+files, and have only immutable regular package files. Entry and ordinary ESM dependencies
+resolve within that verified tree using the native runtime module resolver. Verify before
+imports and read back afterward; same-user/root malicious mutation and trusted plugin code
+are outside a filesystem-sandbox claim. Dynamic import is permitted only in this reviewed
+loader method, through a verified handle; source policy rejects arbitrary computed imports
+elsewhere. Manifest parsing rejects malformed/duplicate JSON and prohibited paths. No
+package extraction, scripts, downloads, persistent registry, plan changes or installer occur.
+
+Prepared plugins may import the exact qualified Cordis library through their package closure;
+compatibility is native Context recognition, root/service/registry identity and declared
+injection, not a misleading class-name check. No provider may construct a competing root or
+resolve a different framework version. Built-program fixtures prove the shared native graph
+and ordinary helper dependency behavior without an external Node/Bun installation.
