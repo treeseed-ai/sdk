@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+### Added
+- Define exact non-activating deployment plan contracts (#453).
 
 ### Added
 
