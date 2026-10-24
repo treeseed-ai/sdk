@@ -22,6 +22,7 @@ class CompositionValidation {
     for(const item of descriptor.registrations){
       const parsed=ProviderSchemas.declaration.safeParse(item.declaration);CompositionError.require(parsed.success,'INVALID_PROVIDER_DECLARATION');
       const declaration=parsed.data,artifact=ProviderSchemas.artifact.safeParse(item.artifact);CompositionError.require(artifact.success,'INVALID_PROVIDER_ARTIFACT');
+      CompositionError.require(declaration.capability!=='cordis.composition','RESERVED_CAPABILITY');
       CompositionError.require(declaration.capability===item.token.id&&declaration.contractVersion===item.token.contractVersion&&declaration.target===authority.target,'INCOMPATIBLE_PROVIDER');
       CompositionError.require(!identities.has(declaration.capability+':'+declaration.id),'DUPLICATE_PROVIDER');identities.add(declaration.capability+':'+declaration.id);
       const provide=typeof item.plugin.provide==='string'?[item.plugin.provide]:item.plugin.provide,inject=item.plugin.inject;
@@ -31,7 +32,7 @@ class CompositionValidation {
       CanonicalJson.stringify(item.configuration);
       registrations.push({...item,declaration,artifact:artifact.data});
     }
-    const selected:ValidatedRegistration[]=[],capabilities=new Set<string>();
+    const selected:ValidatedRegistration[]=[],capabilities=new Set<string>(['cordis.composition']);
     for(const value of descriptor.selections){const selection=ProviderSchemas.selection.safeParse(value);CompositionError.require(selection.success,'INVALID_SELECTION');CompositionError.require(selection.data.scopeId===authority.scopeId,'SCOPE_MISMATCH');CompositionError.require(!capabilities.has(selection.data.capability),'DUPLICATE_SELECTION');capabilities.add(selection.data.capability);let found:ValidatedRegistration|undefined;for(const item of registrations)if(item.declaration.capability===selection.data.capability&&item.declaration.id===selection.data.providerId)found=item;CompositionError.require(found,'MISSING_PROVIDER');selected.push(found);}
     for(const item of selected)for(const dependency of item.declaration.inject)CompositionError.require(capabilities.has(dependency),'MISSING_DEPENDENCY');
     for(const item of selected)this.visit(item.declaration.capability,selected,new Set(),new Set());
@@ -52,6 +53,7 @@ export class CordisComposition {
     try {await handle.start();return handle;}catch{try{await handle.dispose();}catch{}throw new CompositionError('PROVIDER_LIFECYCLE');}
   }
 }
+class CompositionKernel {static readonly provide=['cordis.composition'];constructor(context:Context,handle:CompositionHandle){context.provide('cordis.composition',handle);}}
 class LifecycleFaults {failed=false;export(message:Message):void {if(message.type==='error')this.failed=true;}}
 export class CompositionHandle {
   private readonly faults=new LifecycleFaults();
@@ -62,6 +64,7 @@ export class CompositionHandle {
   constructor(private readonly registrations:ValidatedRegistration[],private readonly selections:readonly ProviderSelection[],readonly authority:TrustedCompositionContext){this.generation=CanonicalJson.digest({authority,selections,providers:registrations.map(CompositionHandle.identity)});this.context.logger.exporters.set(-1,this.faults);}
   private static identity(item:ValidatedRegistration):object {return {declaration:item.declaration,configuration:item.configuration,artifact:item.artifact};}
   async start():Promise<void> {
+    await this.context.plugin(CompositionKernel,this);
     const fibers:Fiber[]=[];
     for(const registration of this.registrations)if(this.selected(registration))fibers.push(this.context.plugin(registration.plugin,registration.configuration));
     for(const fiber of fibers){await fiber.await();CompositionError.require(fiber.state===FiberState.ACTIVE,'PROVIDER_NOT_READY');}
@@ -87,6 +90,7 @@ export class CompositionHandle {
   private async close():Promise<void> {try{await this.context.fiber.dispose();this.checkErrors();}catch{throw new CompositionError('PROVIDER_LIFECYCLE');}finally{this.context.logger.exporters.delete(-1);}}
 }
 export class CordisServiceLocator {
+  static from(context:Context):CordisServiceLocator {CompositionError.require(Context.is(context)&&Object.hasOwn(context.fiber.inject,'cordis.composition'),'DECLARED_INJECTION_REQUIRED');const handle=Reflect.get(context,'cordis.composition') as CompositionHandle;return handle.locator(context);}
   constructor(private readonly handle:CompositionHandle,private readonly context:Context){}
   describe(token:CapabilityToken):ProviderDescription[] {return this.handle.describe(token);}
   async acquire<T extends object>(token:CapabilityToken<T>):Promise<ProviderLease<T>> {
