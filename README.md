@@ -1,7 +1,8 @@
 # Cordis SDK contracts
 
-The SDK defines executable portable schemas and seven operation bindings. There is no transport,
-remote client, server dispatcher, authorization implementation or plugin runtime yet.
+The SDK defines executable portable schemas, seven operation bindings, native Cordis composition
+and verified prepared-provider loading. Network transports, authorization, source acquisition and
+application readiness/durable publication remain in their capability owners.
 `OperationDefinition.define(definition)` returns a typed binding with `parseInput` and
 `parseOutput`; metadata declares ID, scope, effect, REST, CLI and MCP exposure and mutation
 policy. Non-strict or non-object schemas fail definition validation. Success/failure
@@ -234,3 +235,29 @@ publication, releases inspection leases, then calls `commitReplacement()`. Mount
 not an application-health claim. Constructor/disposal failures fence admission for explicit
 repair. Shutdown cancels replacement and awaits cleanup; no new candidate may survive it.
 Unknown native configuration failures are sanitized before returning to a caller.
+
+## Instance-neutral owner projections
+
+Container package declarations describe dependency **ports**, not another instance's name.
+`ServiceProjectionSchemas` distinguishes the owner declaration from its resolved service graph:
+non-secret environment values may refer to a declared dependency endpoint or host context;
+credential grants refer to a dependency port and local slot. Deployment resolves these through
+the graph's exact bindings and verifies the complete result before planning. A class receives
+only its resolved `service.context` and scoped engine, so one class can serve different instance
+IDs without a role catalog. A selected dependency does not itself grant credential access.
+
+Private slot templates support explicit `$secret`, `$endpoint`, `$context` and `$template`
+markers. Secret markers identify an own slot or an explicitly granted dependency-port slot;
+planning resolves references without reading values. Endpoint markers select the declared
+port and URL/host/port/authority part. Context markers select bounded installation/origin/owner
+or asset identity data. Unknown markers, undeclared ports/grants and cycles fail in Deployment.
+No declaration supplies raw trusted principal or account grants. Optional `user` selects image
+default or installation owner; a worker-socket consumer must use the owner identity.
+
+`SourceToolSchemas` is shared by package-management metadata and optional format-3 release/
+plan helper inventory. A helper has exactly one source: a pinned HTTPS URL or a prepared local
+bundle path, with archive SHA-256/size and complete per-file hashes/modes. Prepared helpers allow
+release-managed standard Bun/Git programs without global installation. `stage-helper` is a
+format-3 future effect only. Helper validation, staging and execution remain Deployment-owned;
+SDK validates data and adds no source transport or operation ID. Optional additions preserve
+historical plan bytes and format-1/2 readers.
