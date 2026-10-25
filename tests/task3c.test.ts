@@ -11,6 +11,7 @@ class Task3cTests {
     const services:unknown[]=[];for(let i=0;i<5;i++)services.push(this.service('fixture-'+i));
     const graph={profile:{id:'fixture',version:'1.0.0',requiredBindings:['fixture-0']},assetDigest:'a'.repeat(64),worker:{path:'worker.js',sha256:'a'.repeat(64),size:1},services};
     expect(sdk.ServiceSchemas.graph.safeParse(graph).success).toBe(true);
+    const first=services[0] as {dependencies:object[]};first.dependencies=[{port:'input',bindingId:'missing',contractId:'fixture.echo',contractVersion:'1.0.0'}];expect(sdk.ServiceSchemas.graph.safeParse(graph).success).toBe(false);first.dependencies=[];
     services.push(this.service('fixture-0'));expect(sdk.ServiceSchemas.graph.safeParse(graph).success).toBe(false);
     services.length=0;expect(sdk.ServiceSchemas.graph.safeParse(graph).success).toBe(false);
     for(let i=0;i<257;i++)services.push(this.service('fixture-'+i));expect(sdk.ServiceSchemas.graph.safeParse(graph).success).toBe(false);
