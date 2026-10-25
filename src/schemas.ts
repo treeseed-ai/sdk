@@ -206,6 +206,9 @@ class ServiceValidation {
     for(const item of graph.services){
       const inputs=new Set<string>();
       for(const dependency of item.dependencies){const supplied=bindings.get(dependency.bindingId);if(inputs.has(dependency.port)||!supplied||supplied.contractId!==dependency.contractId||supplied.contractVersion!==dependency.contractVersion)return false;inputs.add(dependency.port);edges.get(item.serviceId)!.push(supplied.service);}
+      const granted=new Set<string>();for(const grant of item.resources.grants){const source=graph.services.find(ServiceValidation.named.bind(null,grant.serviceId)),key='secret://'+grant.serviceId+'/'+grant.slot;if(!source||source.serviceId===item.serviceId||!edges.get(item.serviceId)!.includes(source.serviceId)||granted.has(key)||(!Object.hasOwn(source.resources.slots,grant.slot)&&!source.resources.authorities.some(ServiceValidation.authority.bind(null,grant.slot))))return false;granted.add(key);}
+      const authorities=new Set<string>();for(const authority of item.resources.authorities){if(authorities.has(authority.id)||Object.hasOwn(item.resources.slots,authority.id)||!item.resources.volumes.includes(authority.volume))return false;authorities.add(authority.id);}
+      for(const reference of item.readiness.credentialReferences){const [sourceId,slot]=reference.slice('secret://'.length).split('/');if(sourceId===item.serviceId){if(!Object.hasOwn(item.resources.slots,slot!)&&!authorities.has(slot!))return false;}else if(!granted.has(reference))return false;}
       const target=graph.services.find(ServiceValidation.named.bind(null,item.readiness.endpoint.serviceId));
       if(!target||!target.definition.ports.some(ServiceValidation.port.bind(null,item.readiness.endpoint.portId)))return false;
       if(target.serviceId!==item.serviceId)edges.get(item.serviceId)!.push(target.serviceId);
@@ -218,6 +221,7 @@ class ServiceValidation {
     for(const id of ids)if(!this.visit(id,edges,new Set(),new Set()))return false;
     return true;
   }
+  private static authority(id:string,value:{id:string}):boolean{return value.id===id;}
   private static named(id:string,item:ServiceInstance):boolean{return item.serviceId===id;}
   private static port(id:string,item:{id:string}):boolean{return item.id===id;}
   private static visit(id:string,edges:Map<string,string[]>,visiting:Set<string>,visited:Set<string>):boolean {if(visiting.has(id))return false;if(visited.has(id))return true;visiting.add(id);for(const next of edges.get(id)??[])if(!this.visit(next,edges,visiting,visited))return false;visiting.delete(id);visited.add(id);return true;}
@@ -226,25 +230,42 @@ class ServiceValidation {
 export class ServiceSchemas {
   static readonly serviceId=z.string().regex(/^[a-z][a-z0-9-]{0,47}$/);
   static readonly id=ProviderSchemas.id;
+  static readonly secretReference=z.string().regex(/^secret:\/\/[a-z][a-z0-9-]{0,47}\/[a-z][a-z0-9-]{0,62}$/);
+  static readonly configuration=PlatformSchemas.desired.extend({credentialReferences:z.array(this.secretReference).refine(PlanningValidation.unique)});
   static readonly containerPath=z.string().regex(/^\/(?!.*(?:^|\/)\.\.?(?:\/|$))(?!.*[\r\n\0])[a-zA-Z0-9_./-]+$/);
   static readonly provider=z.strictObject({pluginId:this.id,providerId:this.id,target:z.literal('deployment'),package:z.strictObject({name:PlatformSchemas.packageName,version:PlatformSchemas.version,sha256:PlatformSchemas.digest}),entry:PlatformSchemas.relative,classExport:z.string().regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/),contractVersion:z.literal('0.4.0-cordis.1')});
   static readonly binding=z.strictObject({bindingId:this.id,contractId:this.id,contractVersion:PlatformSchemas.version});
   static readonly dependency=this.binding.extend({port:this.id});
   static readonly endpoint=z.strictObject({serviceId:this.serviceId,portId:this.serviceId,scheme:z.enum(['http','https','tcp']),path:z.string().regex(/^\/[a-zA-Z0-9_./-]*$/)});
-  static readonly definition=z.strictObject({imageId:PlatformSchemas.slot,command:z.array(PlatformSchemas.text.max(4096)).min(1).max(64).optional(),environment:z.record(z.string().regex(/^[A-Z_][A-Z0-9_]*$/),z.union([z.string().max(4096),this.endpoint])).refine(ServiceValidation.environment),ports:z.array(z.strictObject({id:this.serviceId,target:z.number().int().min(1).max(65535),publication:z.strictObject({host:z.enum(['127.0.0.1','::1']),port:z.number().int().min(1).max(65535)}).optional()})).max(32),volumes:z.array(z.strictObject({source:PlatformSchemas.slot,target:this.containerPath,readOnly:z.boolean()})).max(64),secrets:z.array(z.strictObject({slot:PlatformSchemas.slot,target:this.containerPath})).max(64),workerSocket:z.boolean()});
-  static readonly service=z.strictObject({serviceId:this.serviceId,provider:this.provider,configuration:z.record(z.string(),z.json()),definition:this.definition,bindings:z.array(this.binding).min(1).max(64),dependencies:z.array(this.dependency).max(256),readiness:z.strictObject({provider:this.provider,configuration:z.record(z.string(),z.json()),endpoint:z.strictObject({serviceId:this.serviceId,portId:this.serviceId}),deadlineMs:z.number().int().min(1).max(120000),observationContract:this.id}),resources:z.strictObject({volumes:z.array(PlatformSchemas.slot).refine(PlanningValidation.unique),slots:z.record(PlatformSchemas.slot,InstalledSchemas.slotDefinition)}),transitionPolicy:z.strictObject({kind:z.enum(['additive','restart-required','live']),stateVersion:z.number().int().positive()})});
+  static readonly definition=z.strictObject({imageId:ProviderSchemas.id,command:z.array(PlatformSchemas.text.max(4096)).min(1).max(64).optional(),environment:z.record(z.string().regex(/^[A-Z_][A-Z0-9_]*$/),z.union([z.string().max(4096),this.endpoint])).refine(ServiceValidation.environment),ports:z.array(z.strictObject({id:this.serviceId,target:z.number().int().min(1).max(65535),publication:z.strictObject({host:z.enum(['127.0.0.1','::1']),port:z.number().int().min(1).max(65535)}).optional()})).max(32),volumes:z.array(z.strictObject({source:PlatformSchemas.slot,target:this.containerPath,readOnly:z.boolean()})).max(64),secrets:z.array(z.strictObject({slot:PlatformSchemas.slot,target:this.containerPath})).max(64),workerSocket:z.boolean()});
+  static readonly service=z.strictObject({serviceId:this.serviceId,provider:this.provider,configuration:z.record(z.string(),z.json()),definition:this.definition,bindings:z.array(this.binding).min(1).max(64),dependencies:z.array(this.dependency).max(256),readiness:z.strictObject({provider:this.provider,configuration:z.record(z.string(),z.json()),endpoint:z.strictObject({serviceId:this.serviceId,portId:this.serviceId}),deadlineMs:z.number().int().min(1).max(120000),observationContract:this.id,credentialReferences:z.array(this.secretReference).refine(PlanningValidation.unique).default([])}),resources:z.strictObject({volumes:z.array(PlatformSchemas.slot).refine(PlanningValidation.unique),slots:z.record(PlatformSchemas.slot,InstalledSchemas.slotDefinition),grants:z.array(z.strictObject({serviceId:this.serviceId,slot:PlatformSchemas.slot})).max(256).default([]),authorities:z.array(z.strictObject({id:PlatformSchemas.slot,volume:PlatformSchemas.slot,path:PlatformSchemas.relative})).max(16).default([])}),transitionPolicy:z.strictObject({kind:z.enum(['additive','restart-required','live']),stateVersion:z.number().int().positive()})});
   static readonly profile=z.strictObject({id:this.id,version:PlatformSchemas.version,requiredBindings:z.array(this.id).refine(PlanningValidation.unique),workerSocketServiceId:this.serviceId.optional()});
   static readonly graph=z.strictObject({profile:this.profile,assetDigest:PlatformSchemas.digest,worker:InstalledSchemas.worker,services:z.array(this.service).min(1).max(256)}).refine(ServiceValidation.graph.bind(ServiceValidation));
+  static readonly resourceKind=z.enum(['container','network','volume','secret','configuration','authority']);
+  static readonly resourceReceipt=z.strictObject({formatVersion:z.literal(3),installationId:PlatformSchemas.text,installationDirectory:PlatformSchemas.absolute,resourceId:PlatformSchemas.digest,kind:this.resourceKind,serviceId:this.serviceId.nullable(),name:z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,254}$/),creatingGeneration:PlatformSchemas.digest,definitionDigest:PlatformSchemas.digest,references:z.array(PlatformSchemas.digest).min(1).max(4096).refine(PlanningValidation.unique),actualId:PlatformSchemas.text.nullable(),contentDigest:PlatformSchemas.digest.nullable(),imageDigest:PlatformSchemas.digest.nullable(),path:PlatformSchemas.relative.nullable(),ownerUid:z.number().int().nonnegative(),legacy:z.strictObject({formatVersion:z.literal(2),planDigest:PlatformSchemas.digest,serviceId:InstalledSchemas.role.nullable()}).nullable()});
+  static readonly resourceBinding=z.strictObject({resourceId:PlatformSchemas.digest,kind:this.resourceKind,serviceId:this.serviceId.nullable(),creatingGeneration:PlatformSchemas.digest,receiptDigest:PlatformSchemas.digest});
+  static readonly acknowledgement=z.strictObject({target:ProviderV4Schemas.target,scopeId:PlatformSchemas.text,generation:PlatformSchemas.digest,runtimeGeneration:PlatformSchemas.digest,observationDigest:PlatformSchemas.digest,ready:z.boolean()});
+  static readonly snapshot=z.strictObject({formatVersion:z.literal(3),installationId:PlatformSchemas.text,installationDirectory:PlatformSchemas.absolute,compositionGeneration:PlatformSchemas.digest,resources:z.array(this.resourceBinding).max(32768),acknowledgements:z.array(this.acknowledgement).max(512)});
+  static readonly serviceStatus=z.strictObject({serviceId:this.serviceId,providerId:this.id,serviceGeneration:PlatformSchemas.digest,resourceId:PlatformSchemas.digest,ready:z.boolean(),observations:z.array(PlatformSchemas.text).max(64)});
+  static readonly status=PlatformSchemas.status.extend({formatVersion:z.literal(3),services:z.array(this.serviceStatus).max(256),resourceSetDigest:PlatformSchemas.digest.nullable(),acknowledgements:z.array(this.acknowledgement).max(512)});
+  static readonly applicationRecord=InstalledSchemas.applicationRecord.extend({formatVersion:z.literal(3),expectedComposition:PlatformSchemas.digest.nullable(),resourceSetDigest:PlatformSchemas.digest.nullable(),acknowledgements:z.array(this.acknowledgement).max(512)});
   static readonly change=z.strictObject({serviceId:this.serviceId,kind:z.enum(['add','retain','replace','reconfigure','retire']),serviceGeneration:PlatformSchemas.digest,previousGeneration:PlatformSchemas.digest.nullable(),requiredActions:z.array(z.enum(['restart','migration','removal-unsupported'])),affectedDependencies:z.array(this.serviceId)});
   static readonly release=PlatformSchemas.release.extend({formatVersion:z.literal(3),composition:this.graph});
-  static readonly plan=PlatformSchemas.plan.extend({formatVersion:z.literal(3),composition:this.graph,pluginBindings:z.array(ProviderV4Schemas.declaration),expectedComposition:PlatformSchemas.digest.nullable(),changes:z.array(this.change)});
-  static readonly receipt=InstalledSchemas.receipt.extend({formatVersion:z.literal(3),migration:z.strictObject({from:z.literal(2),receiptSha256:PlatformSchemas.digest}).nullable()});
+  static readonly plan=PlatformSchemas.plan.extend({formatVersion:z.literal(3),configuration:this.configuration,composition:this.graph,pluginBindings:z.array(ProviderV4Schemas.declaration),compositionGeneration:PlatformSchemas.digest,expectedComposition:PlatformSchemas.digest.nullable(),expectedResourceSet:PlatformSchemas.digest.nullable(),retainedResources:z.array(this.resourceBinding).max(32768),changes:z.array(this.change)});
+  static readonly envelope=z.discriminatedUnion('success',[PlatformSchemas.envelopeBase.extend({success:z.literal(true),problem:z.null(),result:z.union([this.plan,InstalledSchemas.plan,PlatformSchemas.plan,this.status,PlatformSchemas.status,this.applicationRecord,PlatformSchemas.application,PlatformSchemas.apply,PlatformSchemas.diagnostic,z.strictObject({help:PlatformSchemas.text}),z.strictObject({version:PlatformSchemas.text})])}),PlatformSchemas.envelopeBase.extend({success:z.literal(false),result:z.null(),problem:PlatformSchemas.problem})]);
+  static readonly receipt=InstalledSchemas.receipt.extend({formatVersion:z.literal(3),migration:z.strictObject({from:z.literal(2),receiptSha256:PlatformSchemas.digest,previousComposition:PlatformSchemas.digest,nonServingProof:PlatformSchemas.digest,compatibilityProof:PlatformSchemas.digest}).nullable()});
 }
 export type ServiceInstance=z.infer<typeof ServiceSchemas.service>;
 export type ServiceGraph=z.infer<typeof ServiceSchemas.graph>;
 export type ServicePlan=z.infer<typeof ServiceSchemas.plan>;
 export type ServiceRelease=z.infer<typeof ServiceSchemas.release>;
 export type ServiceChange=z.infer<typeof ServiceSchemas.change>;
+export type ServiceApplicationRecord=z.infer<typeof ServiceSchemas.applicationRecord>;
+export type ServiceResourceReceipt=z.infer<typeof ServiceSchemas.resourceReceipt>;
+export type ServiceSnapshot=z.infer<typeof ServiceSchemas.snapshot>;
+export type ServiceStatus=z.infer<typeof ServiceSchemas.status>;
+export type ServiceEnvelope=z.infer<typeof ServiceSchemas.envelope>;
+export type TargetAcknowledgement=z.infer<typeof ServiceSchemas.acknowledgement>;
 export type ServiceProviderRef=z.infer<typeof ServiceSchemas.provider>;
 export interface ServiceIdentity {installationId:string;serviceId:string;providerId:string;serviceGeneration:string;resourceId:string;}
 export interface ServiceReadiness {ready:boolean;serviceId:string;observations:readonly string[];}
@@ -256,8 +277,8 @@ export class PlatformOperations {
     return OperationDefinition.define({id,input,output,rest:{method:write?'POST':'GET',path},cli,mcp:id.replaceAll('.','_'),effect:write?'write':'read',scope:write?'platform.manage':'platform.read',exposure:['rest','cli','mcp'],idempotency:write,expectedState:write});
   }
   static readonly describe=this.binding('platform.describe',PlatformSchemas.empty,PlatformSchemas.describe,'/v1/platform','platform describe');
-  static readonly status=this.binding('platform.status',PlatformSchemas.empty,PlatformSchemas.status,'/v1/platform/status','platform status');
-  static readonly plan=this.binding('platform.plan',PlatformSchemas.desired,z.discriminatedUnion('formatVersion',[PlatformSchemas.plan,InstalledSchemas.plan,ServiceSchemas.plan]),'/v1/platform/plans','platform plan',true);
+  static readonly status=this.binding('platform.status',PlatformSchemas.empty,z.union([PlatformSchemas.status,ServiceSchemas.status]),'/v1/platform/status','platform status');
+  static readonly plan=this.binding('platform.plan',z.union([PlatformSchemas.desired,ServiceSchemas.configuration]),z.discriminatedUnion('formatVersion',[PlatformSchemas.plan,InstalledSchemas.plan,ServiceSchemas.plan]),'/v1/platform/plans','platform plan',true);
   static readonly apply=this.binding('platform.apply',z.strictObject({planId:PlatformSchemas.text,digest:PlatformSchemas.digest}),PlatformSchemas.apply,'/v1/platform/applications','platform apply',true);
   static readonly get=this.binding('platform.applications.get',z.strictObject({id:PlatformSchemas.text}),PlatformSchemas.application,'/v1/platform/applications/{id}','platform application');
   static readonly events=this.binding('platform.applications.events',z.strictObject({id:PlatformSchemas.text,cursor:PlatformSchemas.text.optional(),limit:z.number().int().min(1).max(1000).optional()}),PlatformSchemas.events,'/v1/platform/applications/{id}/events','platform events');
@@ -287,10 +308,14 @@ export class InstalledTokens {
   static readonly invoker=new CapabilityToken<PlatformInvoker>('platform.invoker',ProviderSchemas.version,new InstalledAdapter(['invoke']));
 }
 
-export interface ProbeContext {serviceId:string;endpoint:string;deadline:number;signal:AbortSignal;}
+export interface ProbeContext {serviceId:string;endpoint:string;deadline:number;signal:AbortSignal;credentialReferences:readonly string[];credential(reference:string):Promise<Uint8Array>;}
+export interface ServiceDependency {serviceId:string;bindingId:string;contractId:string;contractVersion:string;endpoints:Readonly<Record<string,string>>;}
+export interface ServiceExecutionContext {readonly service:ServiceInstance;dependency(port:string):ServiceDependency;}
 export interface ServiceProbe {observe(context:ProbeContext):Promise<ServiceReadiness>;}
 export class ServiceTokens {
+  static readonly invoker=new CapabilityToken<PlatformInvoker>('platform.invoker','0.4.0-cordis.1',new InstalledAdapter(['invoke']));
+  static readonly context=new CapabilityToken<ServiceExecutionContext>('service.context','0.4.0-cordis.1',new InstalledAdapter(['dependency']));
   static readonly engine=new CapabilityToken<ServiceEngine>('deployment.services','0.4.0-cordis.1',new InstalledAdapter(['start','ready','identity']));
-  static container(bindingId:string):CapabilityToken<ContainerService> {ProviderSchemas.id.parse(bindingId);return new CapabilityToken('container.'+bindingId,'0.4.0-cordis.1',new InstalledAdapter(['ready','identity']));}
-  static probe(bindingId:string):CapabilityToken<ServiceProbe> {ProviderSchemas.id.parse(bindingId);return new CapabilityToken('probe.'+bindingId,'0.4.0-cordis.1',new InstalledAdapter(['observe']));}
+  static container(bindingId='service'):CapabilityToken<ContainerService> {ProviderSchemas.id.parse(bindingId);return new CapabilityToken('container.'+bindingId,'0.4.0-cordis.1',new InstalledAdapter(['ready','identity']));}
+  static probe(bindingId='service'):CapabilityToken<ServiceProbe> {ProviderSchemas.id.parse(bindingId);return new CapabilityToken('probe.'+bindingId,'0.4.0-cordis.1',new InstalledAdapter(['observe']));}
 }

@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Bind scoped service resources and durable local request records (#460).
 - Mount native Cordis composition in portable scopes (#460).
 - Define extensible named service and provider contracts (#460).
 - Add exact plugin management and native package contracts (#460).
