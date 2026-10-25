@@ -23,4 +23,6 @@ class Task3cTests {
   browserClosure():void {const code=readFileSync('dist/src/composition.js','utf8');expect(code).not.toContain('node:');expect(code).not.toContain('./contracts.js');}
 }
 const suite=new Task3cTests();
+test('smoke: Task3C portable composition is a real public Node/browser program',suite.portableProgram.bind(suite));
 test('unit: Task3C fifth service repeated providers and bounded graph validation',suite.graph.bind(suite));
+test('integration: Task3C portable composition has no Node entry import',suite.browserClosure.bind(suite));
