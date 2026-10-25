@@ -27,6 +27,15 @@ readiness. The Deployment host must independently bind actual resources/image id
 generation or image label does not prove runtime content. Public operation IDs remain the same
 seven, and historical worker protocols/readers are unchanged.
 
+`ServicePlan.runtimeBindings` optionally records verified native runtime content/image bindings by
+service ID. Every key must identify a selected service and its manifest must match that service's
+digest-pinned recipe image. The owning resolver derives the complete map from the same verified
+package closure and OCI configuration used during planning, and revalidates it before effects.
+Source-free observation reads this accepted map, never infers proof from unqualified labels.
+Absence remains absence when reading earlier format-3 plans; no default field is injected into
+their saved digest payload. External images without native package runtime declarations have no
+binding. SDK schema admission is not a substitute for owner artifact/resource verification.
+
 The SDK defines executable portable schemas, seven operation bindings, native Cordis composition
 and verified prepared-provider loading. Network transports, authorization, source acquisition and
 application readiness/durable publication remain in their capability owners.
