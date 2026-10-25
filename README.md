@@ -173,3 +173,16 @@ All capabilities that can be plugins, including container services, are native C
 Container definitions are generated from owning native class declarations. InstalledSchemas.definition binds bounded container argv, non-secret environment, named-volume/secret targets, private slot projections and readiness predicates. Installed service selections carry that exact definition, and composition binds the Admin browser asset digest. Deployment supplies generic accepted-declaration execution; service configuration remains in its owner. Historical format-1 recipes still reject these new fields.
 
 Format-2 locked closure qualification permits absent optional peers only when archive metadata and lock optionalPeers agree; optional runtime dependencies remain unsupported. Format-1 verification retains its original refusal. This accommodates the qualified Cordis package's unused optional loader/include peers without acquiring or executing them.
+
+## Task 3C: extensible service contracts
+
+Contract projection `0.5.0-cordis.1` retains the seven operations and historical format-1/2
+readers. `ServiceSchemas` adds a format-3 graph of named service instances, typed bindings,
+dependency ports, container definitions, probe exports, transition policies and resources.
+A profile lists required binding IDs; it does not impose a fixed four-role catalog. Missing,
+duplicate, incompatible and cyclic bindings fail validation. Exact provider references bind
+package/version/SHA-256, entry, class export and deployment contract 0.4. Graph limits are
+explicit. `ProviderV4Schemas` adds browser targets and manifest-2 named exports.
+`@treeseed-cordis/sdk/portable` exports these schemas without Node built-ins. Implementation
+and container activation remain owner responsibilities; a valid graph makes no active claim.
+Part of #460 and treeseed-ai/platform#726. All issues remain open until release.
