@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Added
+
+- Declare acyclic release-built runtime image associations (#460).
+
+### Added
 - Describe instance-neutral container projections and prepared source helpers (#460).
 - Drain native scopes and fence interrupted provider replacement (#460).
 - Bind scoped service resources and durable local request records (#460).

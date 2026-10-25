@@ -272,3 +272,13 @@ native-validation/projection regression cases rather than assuming every project
 value for an owner-declared environment/private template. Paths are bounded safe key arrays;
 missing values block instead of becoming implicit defaults. `$context: serviceId` names the
 current instance. Neither marker can select trusted principal or other private host state.
+
+### Release-built runtime images
+
+A package can declare `runtimeImages` as `{id,entry}` associations for images assembled
+from its exact locked runtime archive closure. The entry is an actual packaged file.
+These associations contain no final image digest: package archives are produced first,
+then images bind that closure and the selected asset generation; the exact release binds
+the resulting OCI bytes. External images continue to use complete pinned descriptors in
+`images`. The same image ID cannot appear in both forms or belong to multiple packages.
+This prevents an archive/image hash cycle without weakening either final identity.
