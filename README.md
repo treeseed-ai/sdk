@@ -282,3 +282,9 @@ then images bind that closure and the selected asset generation; the exact relea
 the resulting OCI bytes. External images continue to use complete pinned descriptors in
 `images`. The same image ID cannot appear in both forms or belong to multiple packages.
 This prevents an archive/image hash cycle without weakening either final identity.
+
+The SDK owner gate runs the built public composition and portable exports in real Firefox,
+with no Node polyfills. It holds a provider lease across replacement, observes pending,
+drains and inspects the mounted candidate before commit, and awaits native effect cleanup.
+Ubuntu 26.04 CI installs the exact Playwright Firefox prerequisites and fails visibly if
+those prerequisites are unavailable.
