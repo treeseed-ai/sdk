@@ -173,3 +173,9 @@ All capabilities that can be plugins, including container services, are native C
 Container definitions are generated from owning native class declarations. InstalledSchemas.definition binds bounded container argv, non-secret environment, named-volume/secret targets, private slot projections and readiness predicates. Installed service selections carry that exact definition, and composition binds the Admin browser asset digest. Deployment supplies generic accepted-declaration execution; service configuration remains in its owner. Historical format-1 recipes still reject these new fields.
 
 Format-2 locked closure qualification permits absent optional peers only when archive metadata and lock optionalPeers agree; optional runtime dependencies remain unsupported. Format-1 verification retains its original refusal. This accommodates the qualified Cordis package's unused optional loader/include peers without acquiring or executing them.
+
+## Task 3C contract
+
+Owner issue: https://github.com/treeseed-ai/sdk/issues/460. Follow the approved Platform Task 3C service/provider/UI plan through exact public archives. Preserve independent repository ownership, strict TypeScript classes, native Cordis lifecycle, historical formats and all seven SDK operations. Expected-generation/idempotency, resource/credential/TLS retention and explicit unsafe restart/migration gates are mandatory. All issues remain open until release.
+
+Every visual component must be mobile-first from 320 CSS pixels to widescreen monitors; test 320/375/768/1024/1440/1920/2560 widths, long content, keyboard/touch and 200% text resizing. Keep authored controls at least 44×44 CSS pixels, required actions visible, logical/fluid dimensions and no page overflow (labeled local semantic-table overflow is permitted). UI owns components/styles/renderers; consumers retain domain behavior and Identity retains Keycloak authority.
