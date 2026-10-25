@@ -1,7 +1,8 @@
 # Cordis SDK contracts
 
-The SDK defines executable portable schemas and seven operation bindings. There is no transport,
-remote client, server dispatcher, authorization implementation or plugin runtime yet.
+The SDK defines executable portable schemas, seven operation bindings, native Cordis composition
+and verified prepared-provider loading. Network transports, authorization, source acquisition and
+application readiness/durable publication remain in their capability owners.
 `OperationDefinition.define(definition)` returns a typed binding with `parseInput` and
 `parseOutput`; metadata declares ID, scope, effect, REST, CLI and MCP exposure and mutation
 policy. Non-strict or non-object schemas fail definition validation. Success/failure
@@ -173,3 +174,141 @@ All capabilities that can be plugins, including container services, are native C
 Container definitions are generated from owning native class declarations. InstalledSchemas.definition binds bounded container argv, non-secret environment, named-volume/secret targets, private slot projections and readiness predicates. Installed service selections carry that exact definition, and composition binds the Admin browser asset digest. Deployment supplies generic accepted-declaration execution; service configuration remains in its owner. Historical format-1 recipes still reject these new fields.
 
 Format-2 locked closure qualification permits absent optional peers only when archive metadata and lock optionalPeers agree; optional runtime dependencies remain unsupported. Format-1 verification retains its original refusal. This accommodates the qualified Cordis package's unused optional loader/include peers without acquiring or executing them.
+
+## Task 3C: extensible service contracts
+
+Contract projection `0.5.0-cordis.1` retains the seven operations and historical format-1/2
+readers. `ServiceSchemas` adds a format-3 graph of named service instances, typed bindings,
+dependency ports, container definitions, probe exports, transition policies and resources.
+A profile lists required binding IDs; it does not impose a fixed four-role catalog. Missing,
+duplicate, incompatible and cyclic bindings fail validation. Exact provider references bind
+package/version/SHA-256, entry, class export and deployment contract 0.4. Graph limits are
+explicit. `ProviderV4Schemas` adds browser targets and manifest-2 named exports.
+`@treeseed-cordis/sdk/portable` exports these schemas without Node built-ins. Implementation
+and container activation remain owner responsibilities; a valid graph makes no active claim.
+Part of #460 and treeseed-ai/platform#726. All issues remain open until release.
+
+Portable native composition is exposed through `@treeseed-cordis/sdk/composition`. It uses
+Cordis class plugins, native injection/effects and typed leases in browser and Node scopes.
+Normalized configuration defaults participate in generation identity; the original accepted
+input reaches Cordis exactly once so transforms are not replayed. The Node-only `/runtime`
+loader continues to verify private prepared archives and delegates mounting to that same
+composition implementation. Semantic tooling accepts class TSX and continues to reject
+functional components/hooks and handwritten JavaScript.
+Every visual component must be mobile-first from 320 CSS pixels to widescreen monitors; test 320/375/768/1024/1440/1920/2560 widths, long content, keyboard/touch and 200% text resizing. Keep authored controls at least 44×44 CSS pixels, required actions visible, logical/fluid dimensions and no page overflow (labeled local semantic-table overflow is permitted). UI owns components/styles/renderers; consumers retain domain behavior and Identity retains Keycloak authority.
+
+## Task 3C package management data
+
+`PluginSource.parse(locator)` accepts the bounded documented NPM name/version/range/tag grammar or an HTTPS Git repository with optional `#ref`. It rejects URL credentials, aliases, local paths, alternate Git transports, query strings and ambiguous control/option forms. This is syntax/canonicalization, not resolution or trust. Deployment resolves through pinned standard tooling and records exact bytes/commit/tree before activation. The supported forms follow the [NPM package-spec documentation](https://docs.npmjs.com/cli/v11/using-npm/package-spec/); the broader NPM shorthand/alias/tarball surface is deliberately outside this contract.
+
+`PluginManagementSchemas` defines strict install/select requests, exact source receipts, package descriptors and install results. Requests require a caller-visible idempotency key; a CLI may generate one for a new invocation. Trusted authority and grants are not fields clients can assert. Deployment fills and persists the initial expected generation before any source action and never recomputes it for the same key. Unknown/ambiguous target selection cannot be reported active. Results distinguish active/already-active/prepared/pending/blocked/recovery-required, with null identities before resolution and no fabricated installation references. Only exact acknowledged active generations may return active/already-active.
+
+A version-4 package descriptor binds each exported native declaration to its package entry, class export, configuration-schema projection, replacement policy and optional bounded container/probe metadata. Owner build tooling derives it from the same native class declaration/Config used by actual construction. Immutable browser assets are separately inventoried. These are executable-code identity/compatibility claims; they do not authorize an unknown publisher or sandbox same-process code. SDK adds no installer transport or eighth operation. Historical planning/installed/provider formats remain unchanged.
+
+## Task 3C service journal boundary
+
+Format-3 plans distinguish the desired `compositionGeneration` from the plan digest (which also binds expected prior state), each `serviceGeneration`, and stable resource IDs. Retention references identify immutable private receipts; planning does not read secret values. A resource receipt records its creating generation and referenced compositions, actual ownership/identity and optional exact format-2 origin. It cannot silently adopt a foreign resource. Format-3 application records bind the plan, expected composition, resource-set digest and target acknowledgements. Active/ready completion requires observed target generations; all seven public operation IDs remain unchanged.
+
+`ServiceWorkerSchemas` defines the new private protocol-3 submit/status/application and local plugin-management requests. It does not add an installer REST/MCP endpoint. Historical protocol/receipt/plan formats remain strict and separate; old readers reject the new format. Migration records require exact old receipt/composition, non-serving and compatibility proof identities. The owner must produce/verify those proofs under its single writer before conversion; a schema alone is not authorization or migration implementation.
+
+A package may declare digest-pinned OCI archives as image sources. Source acquisition verifies the archive and OCI closure before emitting a local format-3 release; apply never pulls. Missing source/trust/build/selection requirements remain explicit. An unapproved image origin cannot acquire authority through metadata.
+
+The service-generation CLI envelope accepts historical plan formats 1/2 and format 3 plans,
+service status and application read-back. Failed envelopes carry `result: null`, a safe problem,
+structured blockers and references; transport success never proves plugin activation. Local worker
+protocol 3 failure responses distinguish expected blockers from unexpected runtime failures so
+callers preserve exit codes 3 and 1. Protocol 2 readers remain unchanged.
+
+Each provided binding carries its owner-declared `port` separately from its composition-wide
+`bindingId`. Two ports may advertise the same contract without becoming ambiguous; consumers
+select one exact binding. Readiness explicitly declares `scheme` (`http` by default, `https`
+or `tcp`) and must match the chosen probe's advertised schemes.
+
+## Bounded native scope replacement
+
+`CordisScope` uses the native composition/locator and holds no provider-instance registry.
+Admission closes before draining held leases; a bounded drain may return pending without
+replacing the old provider. Callers hold leases for the full duration of their operation.
+After drain, old effects dispose before the candidate mounts. Candidate inspection is private
+to the owner; admission reopens only after the owner verifies workload read-back and durable
+publication, releases inspection leases, then calls `commitReplacement()`. Mounting alone is
+not an application-health claim. Constructor/disposal failures fence admission for explicit
+repair. Shutdown cancels replacement and awaits cleanup; no new candidate may survive it.
+Unknown native configuration failures are sanitized before returning to a caller.
+
+## Instance-neutral owner projections
+
+Container package declarations describe dependency **ports**, not another instance's name.
+`ServiceProjectionSchemas` distinguishes the owner declaration from its resolved service graph:
+non-secret environment values may refer to a declared dependency endpoint or host context;
+credential grants refer to a dependency port and local slot. Deployment resolves these through
+the graph's exact bindings and verifies the complete result before planning. A class receives
+only its resolved `service.context` and scoped engine, so one class can serve different instance
+IDs without a role catalog. A selected dependency does not itself grant credential access.
+
+Private slot templates support explicit `$secret`, `$endpoint`, `$context` and `$template`
+markers. Secret markers identify an own slot or an explicitly granted dependency-port slot;
+planning resolves references without reading values. Endpoint markers select the declared
+port and URL/host/port/authority part. Context markers select bounded installation/origin/owner
+or asset identity data. Unknown markers, undeclared ports/grants and cycles fail in Deployment.
+No declaration supplies raw trusted principal or account grants. Optional `user` selects image
+default or installation owner; a worker-socket consumer must use the owner identity.
+
+`SourceToolSchemas` is shared by package-management metadata and optional format-3 release/
+plan helper inventory. A helper has exactly one source: a pinned HTTPS URL or a prepared local
+bundle path, with archive SHA-256/size and complete per-file hashes/modes. Prepared helpers allow
+release-managed standard Bun/Git programs without global installation. `stage-helper` is a
+format-3 future effect only. Helper validation, staging and execution remain Deployment-owned;
+SDK validates data and adds no source transport or operation ID. Optional additions preserve
+historical plan bytes and format-1/2 readers.
+
+Configuration projection discards arbitrary Zod metadata overrides so annotations cannot change
+its validation meaning. Unrepresentable custom validation fails package metadata generation;
+planning never imports a class to discover omitted predicates. The pinned Zod conversion and
+its documented [metadata/override behavior](https://zod.dev/json-schema) are qualified with
+native-validation/projection regression cases rather than assuming every projection is sound.
+
+`$configuration: [key, ...]` selects a validated, default-normalized provider configuration
+value for an owner-declared environment/private template. Paths are bounded safe key arrays;
+missing values block instead of becoming implicit defaults. `$context: serviceId` names the
+current instance. Neither marker can select trusted principal or other private host state.
+
+### Release-built runtime images
+
+A package can declare `runtimeImages` as `{id,entry}` associations for images assembled
+from its exact locked runtime archive closure. The entry is an actual packaged file.
+These associations contain no final image digest: package archives are produced first,
+then images bind that closure and the selected asset generation; the exact release binds
+the resulting OCI bytes. External images continue to use complete pinned descriptors in
+`images`. The same image ID cannot appear in both forms or belong to multiple packages.
+This prevents an archive/image hash cycle without weakening either final identity.
+
+The SDK owner gate runs the built public composition and portable exports in real Firefox,
+with no Node polyfills. It holds a provider lease across replacement, observes pending,
+drains and inspects the mounted candidate before commit, and awaits native effect cleanup.
+Ubuntu 26.04 CI installs the exact Playwright Firefox prerequisites and fails visibly if
+those prerequisites are unavailable.
+
+### Accepted probe context and runtime evidence
+
+A `ProbeContext` binds the selected endpoint, deadline/cancellation, exact expected installation,
+composition/service/asset generations, explicit credential references and own declared authority
+IDs. `credential(reference)` and `authority(id)` are bounded host operations; a probe receives
+no filesystem, Docker command or arbitrary service resolver. Service owners retain protocol
+interpretation. The host still independently verifies resource/image identities.
+
+`ServiceReadiness.acknowledgements` carries observed target acknowledgements; ready alone cannot
+acknowledge an API/runtime generation. `ServiceSchemas.runtimeEvidence` binds actual target
+installation/service/composition/runtime/asset identities for owner protocol read-back. Probes
+must compare observed values to accepted context; mounting a provider does not create evidence.
+
+External image declarations can use `source: {kind:'prepared'}` when the exact OCI image is
+provided in the selected local release. Missing prepared bytes remain a blocker; source install
+cannot invent a fetch location or claim activation. Downloadable immutable OCI archives retain
+their existing complete URL/hash/size source. Both forms bind the same exact native manifest and
+local selected index. This keeps curated initial bundles honest without placeholder image URLs.
+
+Private worker protocol 3 also accepts `{operation:'plan',configuration}`. An installed host
+serializes plan publication through its existing durable writer; local callers do not acquire a
+second journal lock. This remains a private local control operation, with the existing public
+`platform.plan` identity unchanged and no remote source-install endpoint.
