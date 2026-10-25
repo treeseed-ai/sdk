@@ -4,6 +4,10 @@
 
 ### Added
 
+- Bind scoped probe evidence and exact prepared-image declarations (#460).
+
+### Added
+
 - Declare acyclic release-built runtime image associations (#460).
 
 ### Added

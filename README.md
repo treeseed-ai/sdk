@@ -288,3 +288,22 @@ with no Node polyfills. It holds a provider lease across replacement, observes p
 drains and inspects the mounted candidate before commit, and awaits native effect cleanup.
 Ubuntu 26.04 CI installs the exact Playwright Firefox prerequisites and fails visibly if
 those prerequisites are unavailable.
+
+### Accepted probe context and runtime evidence
+
+A `ProbeContext` binds the selected endpoint, deadline/cancellation, exact expected installation,
+composition/service/asset generations, explicit credential references and own declared authority
+IDs. `credential(reference)` and `authority(id)` are bounded host operations; a probe receives
+no filesystem, Docker command or arbitrary service resolver. Service owners retain protocol
+interpretation. The host still independently verifies resource/image identities.
+
+`ServiceReadiness.acknowledgements` carries observed target acknowledgements; ready alone cannot
+acknowledge an API/runtime generation. `ServiceSchemas.runtimeEvidence` binds actual target
+installation/service/composition/runtime/asset identities for owner protocol read-back. Probes
+must compare observed values to accepted context; mounting a provider does not create evidence.
+
+External image declarations can use `source: {kind:'prepared'}` when the exact OCI image is
+provided in the selected local release. Missing prepared bytes remain a blocker; source install
+cannot invent a fetch location or claim activation. Downloadable immutable OCI archives retain
+their existing complete URL/hash/size source. Both forms bind the same exact native manifest and
+local selected index. This keeps curated initial bundles honest without placeholder image URLs.
