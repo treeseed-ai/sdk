@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Describe accepted service observation context and runtime content evidence (#460).
 
 - Bind scoped probe evidence and exact prepared-image declarations (#460).
 

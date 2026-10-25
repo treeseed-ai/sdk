@@ -1,5 +1,32 @@
 # Cordis SDK contracts
 
+## Accepted service observation context
+
+Task 3C adds portable `ServiceSchemas.runtimeContent`, `runtimeBinding`, `observationIdentity`
+and `observationContext`, with inferred types. Content evidence binds the actual runtime package
+closure and entry digests. A host runtime binding additionally identifies the selected OCI manifest;
+the service does not claim to rediscover its image manifest from inside a container.
+
+`ServiceObservationContext` contains `formatVersion:1`, an `identity` (installation/service IDs,
+accepted composition/service generations, loopback origin, asset digest and nullable runtime
+binding), and explicitly declared `dependencies` (port/binding/contract, accepted identity and
+endpoint map). Dependency ports are unique and every identity shares the installation, accepted
+composition, origin and asset scope. It contains no credentials, private paths, process authority,
+health samples or readiness claim. Endpoints contain no userinfo, query, fragments or secret refs.
+
+`ProbeContext.observation` is optional for source compatibility with existing provider contracts;
+new host probes that need accepted membership require and validate it. Hosts freeze its nested
+metadata before providing it. The existing `expected` fields and provider contract remain intact.
+`ServiceRuntimeEvidence.content` optionally carries measured package-set/entry digests; new API
+qualification requires that evidence and compares it against the host's exact runtime binding.
+
+Private worker protocol 3 adds readonly `observation.context` with a validated `serviceId`. Its
+response is accepted membership data, never overall worker readiness or permission to mutate.
+This lets an installed API produce leaf generation evidence without recursively querying worker
+readiness. The Deployment host must independently bind actual resources/image identity; an echoed
+generation or image label does not prove runtime content. Public operation IDs remain the same
+seven, and historical worker protocols/readers are unchanged.
+
 The SDK defines executable portable schemas, seven operation bindings, native Cordis composition
 and verified prepared-provider loading. Network transports, authorization, source acquisition and
 application readiness/durable publication remain in their capability owners.
