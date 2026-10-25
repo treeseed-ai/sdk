@@ -217,3 +217,8 @@ service status and application read-back. Failed envelopes carry `result: null`,
 structured blockers and references; transport success never proves plugin activation. Local worker
 protocol 3 failure responses distinguish expected blockers from unexpected runtime failures so
 callers preserve exit codes 3 and 1. Protocol 2 readers remain unchanged.
+
+Each provided binding carries its owner-declared `port` separately from its composition-wide
+`bindingId`. Two ports may advertise the same contract without becoming ambiguous; consumers
+select one exact binding. Readiness explicitly declares `scheme` (`http` by default, `https`
+or `tcp`) and must match the chosen probe's advertised schemes.
