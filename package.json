@@ -1,6 +1,6 @@
 {
   "name": "@treeseed-cordis/sdk",
-  "version": "0.0.0-cordis.5",
+  "version": "0.0.0-cordis.6",
   "private": true,
   "type": "module",
   "exports": {
@@ -16,13 +16,13 @@
       "types": "./dist/src/runtime.d.ts",
       "default": "./dist/src/runtime.js"
     },
-    "./portable": {
-      "types": "./dist/src/schemas.d.ts",
-      "default": "./dist/src/schemas.js"
-    },
     "./composition": {
       "types": "./dist/src/composition.d.ts",
       "default": "./dist/src/composition.js"
+    },
+    "./portable": {
+      "types": "./dist/src/portable.d.ts",
+      "default": "./dist/src/portable.js"
     }
   },
   "files": [

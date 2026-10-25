@@ -5,6 +5,9 @@
 ### Added
 - Mount native Cordis composition in portable scopes (#460).
 - Define extensible named service and provider contracts (#460).
+- Add exact plugin management and native package contracts (#460).
+
+- Sdk: deliver Task 3C typed providers and mobile-first UI integration (#460).
 
 - Define installed composition and worker contracts (#457).
 - Define native Cordis composition and typed provider contracts (#455).
