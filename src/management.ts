@@ -1,9 +1,11 @@
 import { z } from 'zod';
-import { PlatformSchemas, ProviderV4Schemas, SourceToolSchemas, CanonicalJson } from './schemas.js';
+import { PlatformSchemas, ProviderV4Schemas, SourceToolSchemas, CanonicalJson, ServiceSchemas } from './schemas.js';
 export { PluginSource, type PluginLocator } from './plugin-source.js';
 import { PluginSource } from './plugin-source.js';
 import { ServiceProjectionSchemas } from './service-projection.js';
 class ManagementValidation {
+    static bindings(value:Record<string,string>):boolean{return Object.keys(value).length<=256;}
+    static serviceIntent(value:{scope:string;target?:string;serviceId?:string;bindings?:Record<string,string>}):boolean{return value.serviceId===undefined&&value.bindings===undefined||value.scope==='installation'&&value.target==='deployment';}
     static image(value: {
         reference: string;
         manifestDigest: string;
@@ -119,8 +121,9 @@ export class PluginManagementSchemas {
     static readonly source = z.string().min(1).max(2048).refine(PluginSource.valid);
     static readonly target = ProviderV4Schemas.target;
     static readonly scope = z.enum(['installation', 'client']);
-    static readonly install = z.strictObject({ source: this.source, idempotencyKey: this.key, installationDirectory: PlatformSchemas.absolute, scope: this.scope, target: this.target.optional(), providerId: ProviderV4Schemas.declaration.shape.id.optional(), expectedGeneration: PlatformSchemas.digest.nullable().optional(), configuration: z.record(z.string(), z.json()).default({}) });
-    static readonly select = z.strictObject({ capability: ProviderV4Schemas.declaration.shape.capability, providerId: ProviderV4Schemas.declaration.shape.id, idempotencyKey: this.key, installationDirectory: PlatformSchemas.absolute, scope: this.scope, target: this.target, expectedGeneration: PlatformSchemas.digest.nullable().optional(), configuration: z.record(z.string(), z.json()).default({}) });
+    static readonly serviceIntentMetadata={allOf:[{if:{anyOf:[{required:['serviceId']},{required:['bindings']}]},then:{properties:{scope:{const:'installation'},target:{const:'deployment'}},required:['target']}}]};
+    static readonly install = z.strictObject({ source: this.source,serviceId:ServiceSchemas.serviceId.optional(),bindings:z.record(ProviderV4Schemas.declaration.shape.id,ProviderV4Schemas.declaration.shape.id).refine(ManagementValidation.bindings).meta({maxProperties:256}).optional(), idempotencyKey: this.key, installationDirectory: PlatformSchemas.absolute, scope: this.scope, target: this.target.optional(), providerId: ProviderV4Schemas.declaration.shape.id.optional(), expectedGeneration: PlatformSchemas.digest.nullable().optional(), configuration: z.record(z.string(), z.json()).default({}) }).refine(ManagementValidation.serviceIntent).meta(this.serviceIntentMetadata);
+    static readonly select = z.strictObject({ capability: ProviderV4Schemas.declaration.shape.capability, providerId: ProviderV4Schemas.declaration.shape.id,serviceId:ServiceSchemas.serviceId.optional(), idempotencyKey: this.key, installationDirectory: PlatformSchemas.absolute, scope: this.scope, target: this.target, expectedGeneration: PlatformSchemas.digest.nullable().optional(), configuration: z.record(z.string(), z.json()).default({}) }).refine(ManagementValidation.serviceIntent).meta(this.serviceIntentMetadata);
     static readonly replacement = z.strictObject({ kind: z.enum(['live', 'restart', 'migration']), stateVersion: z.number().int().positive(), qualificationDigest: PlatformSchemas.digest.nullable() }).refine(ManagementValidation.policy);
     static readonly container = ServiceProjectionSchemas.container;
     static readonly provider = z.strictObject({ declaration: ProviderV4Schemas.declaration, entry: PlatformSchemas.relative, classExport: ProviderV4Schemas.manifest.shape.classExport, configurationSchema: z.record(z.string(), z.json()).refine(ManagementValidation.configuration), replacement: this.replacement, commandIds: z.array(ProviderV4Schemas.declaration.shape.id).refine(ManagementValidation.unique), container: this.container.optional(), probe: z.strictObject({ observationContracts: z.array(ProviderV4Schemas.declaration.shape.id).min(1).refine(ManagementValidation.unique), schemes: z.array(z.enum(['http', 'https', 'tcp'])).min(1), maximumDeadlineMs: z.number().int().min(1).max(120000) }).optional() });

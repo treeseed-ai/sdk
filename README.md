@@ -383,3 +383,6 @@ explicit service/binding flags; machine callers supply it explicitly. Bare insta
 subject to unique target/provider/dependency resolution in the owning manager. These data
 contracts do not implement acquisition or activation. Generated JSON Schema carries the same
 conditional scope/target rule; the runtime independently validates it.
+
+The explicit dependency-binding map is bounded to 256 declared ports, matching the service graph
+boundary; generated JSON Schema includes the same `maxProperties` limit.
