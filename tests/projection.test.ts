@@ -68,3 +68,5 @@ class WorkerIdentityTests {
 }
 const worker = new WorkerIdentityTests();
 test('unit: a worker-socket consumer must use installation owner identity', worker.identity.bind(worker));
+class SelectorTests {async selectors():Promise<void>{const {PluginSource}=await import('../src/contracts.js');expect(PluginSource.parse('fixture@>=1 <2')).toEqual({kind:'npm',name:'fixture',selector:'>=1 <2'});expect(PluginSource.parse.bind(PluginSource,'fixture@latest random')).toThrow('INVALID_PLUGIN_SOURCE');expect(PluginSource.parse.bind(PluginSource,'fixture@^~1')).toThrow('INVALID_PLUGIN_SOURCE');}}
+const selectors=new SelectorTests();test('unit: locator grammar accepts real ranges and rejects malformed selectors before source actions',selectors.selectors.bind(selectors));
