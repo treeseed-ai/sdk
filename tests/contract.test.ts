@@ -4,7 +4,7 @@ import { readFileSync, mkdtempSync, writeFileSync, rmSync, existsSync, mkdirSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { PlatformOperations, PlatformSchemas, ContractProjection, OperationDefinition } from '../src/contracts.js';
+import { PlatformOperations, PlatformSchemas, ContractProjection, OperationDefinition, InstalledSchemas, InstalledDeclarations } from '../src/contracts.js';
 import { SourcePolicy } from '../src/source-policy.js';
 
 class ContractTests {
@@ -19,6 +19,27 @@ class ContractTests {
     {events:[{sequence:1,cursor:'1',phase:'prepare',message:'preparing'}],nextCursor:null},
     {id:'a1',cancellationRequested:true,phase:'prepare'}
   ];
+  installedProjection():void {
+    const projection=ContractProjection.generate() as {contractVersion:string;schemas:Record<string,unknown>};
+    expect(projection.contractVersion).toBe("0.4.0-cordis.1");
+    for(const name of ["containerDefinition","installedPlan","installedRelease","service","workerRequest","applicationRecord","installationReceipt"])expect(projection.schemas[name]).toBeDefined();
+    expect(PlatformOperations.all.length).toBe(7);
+  }
+  installedBoundaries():void {
+    const request={protocol:2 as const,operation:'submit' as const,planId:'plan-'+this.hash,digest:this.hash,idempotencyKey:'attempt-1'};
+    expect(InstalledSchemas.request.parse(request)).toEqual(request);
+    for(const extra of [{principal:'forged'},{command:['sh','-c','canary']},{installationDirectory:'/other'},{operation:'exec'},{protocol:1},{idempotencyKey:''}])expect(InstalledSchemas.request.safeParse({...request,...extra}).success).toBe(false);
+    const services=[];
+    for(const role of ['database','identity','api','edge'])services.push({role,definition:{role,service:{user:'image-default',workerSocket:false,volumes:[],secrets:[],portTarget:null},slots:{},readiness:{kind:'http-json',path:'/ready',expected:{}}},provider:InstalledDeclarations.service(role,'container.'+role,['deployment.engine']),imageId:role,package:null,entry:null});
+    const composition={profile:'first-installed',assetDigest:this.hash,worker:{path:'trsd',sha256:this.hash,size:123},services};
+    expect(InstalledSchemas.composition.safeParse(composition).success).toBe(true);
+    const definition=structuredClone(services[0]!.definition);expect(InstalledSchemas.definition.safeParse({...definition,service:{...definition.service,environment:{PASSWORD:'plaintext'}}}).success).toBe(false);expect(InstalledSchemas.slotDefinition.safeParse({kind:'random',value:'secret'}).success).toBe(false);
+    expect(InstalledSchemas.composition.safeParse({...composition,services:[services[0],services[0],services[2],services[3]]}).success).toBe(false);
+    expect(InstalledSchemas.composition.safeParse({...composition,worker:{...composition.worker,path:'../escape'}}).success).toBe(false);
+    expect(InstalledSchemas.plan.safeParse(this.outputs[2]).success).toBe(false);
+    expect(PlatformSchemas.plan.safeParse({...this.outputs[2] as object,formatVersion:2,composition}).success).toBe(false);
+    expect(InstalledSchemas.receipt.safeParse({formatVersion:2,installationId:'local',installationDirectory:'/tmp/install',ownerUid:1000,expectedEngine:{context:'default',endpoint:'unix:///var/run/docker.sock',daemonId:'daemon',os:'linux',architecture:'amd64'},migration:{from:1,receiptSha256:this.hash}}).success).toBe(true);
+  }
   artifact(): void {
     const projection = JSON.parse(readFileSync('dist/contract.json','utf8'));
     expect(projection).toEqual(ContractProjection.generate());
@@ -95,3 +116,7 @@ test('unit: effect and exposure policy',suite.policies.bind(suite));
 test('unit: semantic class architecture enforcement',suite.sourcePolicy.bind(suite));
 
 test('integration: fresh build removes obsolete generated modules',suite.freshBuild.bind(suite));
+
+test('smoke: installed contracts project versioned host boundary without adding operations',suite.installedProjection.bind(suite));
+
+test('unit: installed protocol rejects authority and commands and preserves historical formats',suite.installedBoundaries.bind(suite));

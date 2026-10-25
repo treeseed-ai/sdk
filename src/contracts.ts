@@ -40,7 +40,7 @@ export class PlatformSchemas {
   static readonly check=z.strictObject({id:this.text,status:z.enum(['pass','blocked']),code:this.text,message:this.text});
   static readonly diagnostic=z.strictObject({ready:z.boolean(),host:z.strictObject({os:this.text,architecture:this.text,distribution:this.text,release:this.text}),engine:z.strictObject({context:this.text.nullable(),endpoint:this.text.nullable(),serverVersion:this.text.nullable(),serverArchitecture:this.text.nullable(),composeVersion:this.text.nullable(),cpus:z.number().nonnegative().nullable(),memoryBytes:z.number().nonnegative().nullable()}),installation:z.strictObject({path:this.absolute,exists:z.boolean(),freeBytes:z.number().nonnegative().nullable()}),port:z.number().int().min(1).max(65535),checks:z.array(this.check)});
   static readonly problem=z.strictObject({code:this.text,title:this.text,detail:this.text});
-  private static readonly envelopeBase=z.strictObject({command:this.text,success:z.boolean(),result:z.union([this.plan,this.diagnostic,z.strictObject({version:this.text}),z.strictObject({help:this.text})]).nullable(),problem:this.problem.nullable(),blockers:z.array(this.blocker),references:z.array(this.text)});
+  static readonly envelopeBase=z.strictObject({command:this.text,success:z.boolean(),result:z.union([this.plan,this.diagnostic,z.strictObject({version:this.text}),z.strictObject({help:this.text})]).nullable(),problem:this.problem.nullable(),blockers:z.array(this.blocker),references:z.array(this.text)});
   static readonly envelope=z.discriminatedUnion('success',[this.envelopeBase.extend({success:z.literal(true),problem:z.null()}),this.envelopeBase.extend({success:z.literal(false),problem:this.problem})]);
 }
 export type DiagnosticConfiguration=z.infer<typeof PlatformSchemas.configuration>;
@@ -57,47 +57,18 @@ export class OperationDefinition<I extends z.ZodType=z.ZodType,O extends z.ZodTy
   private constructor(readonly definition:OperationMetadata<I,O>) {}
   static define<I extends z.ZodType,O extends z.ZodType>(definition:OperationMetadata<I,O>):OperationDefinition<I,O> {
     for(const schema of [definition.input,definition.output]) {
-      if(!(schema instanceof z.ZodObject)||z.toJSONSchema(schema,{io:'input'}).additionalProperties!==false)throw new Error('Operation schemas must be strict objects');
+      this.strict(schema);
     }
     const write=definition.effect==='write';
     if(!/^platform\.[a-z]+(\.[a-z]+)?$/.test(definition.id)||definition.mcp!==definition.id.replaceAll('.','_')||!definition.cli.trim()||!definition.rest.path.startsWith('/v1/platform')||definition.scope!==(write?'platform.manage':'platform.read')||definition.rest.method!==(write?'POST':'GET')||definition.idempotency!==write||definition.expectedState!==write||definition.exposure.join(',')!=='rest,cli,mcp') throw new Error('Invalid operation policy');
     return new OperationDefinition(Object.freeze({...definition,rest:Object.freeze({...definition.rest}),exposure:Object.freeze([...definition.exposure]) as readonly ['rest','cli','mcp']}));
   }
+  private static strict(schema:z.ZodType):void {
+    if(schema instanceof z.ZodUnion){for(const option of schema.options)this.strict(option as z.ZodType);return;}
+    if(!(schema instanceof z.ZodObject)||z.toJSONSchema(schema,{io:'input'}).additionalProperties!==false)throw new Error('Operation schemas must be strict objects');
+  }
   parseInput(value:unknown):z.infer<I> { return this.definition.input.parse(value); }
   parseOutput(value:unknown):z.infer<O> { return this.definition.output.parse(value); }
-}
-export class PlatformOperations {
-  private static binding<I extends z.ZodType,O extends z.ZodType>(id:string,input:I,output:O,path:string,cli:string,write=false):OperationDefinition<I,O> {
-    return OperationDefinition.define({id,input,output,rest:{method:write?'POST':'GET',path},cli,mcp:id.replaceAll('.','_'),effect:write?'write':'read',scope:write?'platform.manage':'platform.read',exposure:['rest','cli','mcp'],idempotency:write,expectedState:write});
-  }
-  static readonly describe=this.binding('platform.describe',PlatformSchemas.empty,PlatformSchemas.describe,'/v1/platform','platform describe');
-  static readonly status=this.binding('platform.status',PlatformSchemas.empty,PlatformSchemas.status,'/v1/platform/status','platform status');
-  static readonly plan=this.binding('platform.plan',PlatformSchemas.desired,PlatformSchemas.plan,'/v1/platform/plans','platform plan',true);
-  static readonly apply=this.binding('platform.apply',z.strictObject({planId:PlatformSchemas.text,digest:PlatformSchemas.digest}),PlatformSchemas.apply,'/v1/platform/applications','platform apply',true);
-  static readonly get=this.binding('platform.applications.get',z.strictObject({id:PlatformSchemas.text}),PlatformSchemas.application,'/v1/platform/applications/{id}','platform application');
-  static readonly events=this.binding('platform.applications.events',z.strictObject({id:PlatformSchemas.text,cursor:PlatformSchemas.text.optional(),limit:z.number().int().min(1).max(1000).optional()}),PlatformSchemas.events,'/v1/platform/applications/{id}/events','platform events');
-  static readonly cancel=this.binding('platform.applications.cancel',z.strictObject({id:PlatformSchemas.text,expectedState:PlatformSchemas.phase}),PlatformSchemas.cancel,'/v1/platform/applications/{id}/cancel','platform cancel',true);
-  static readonly all=Object.freeze([this.describe,this.status,this.plan,this.apply,this.get,this.events,this.cancel] as const);
-  static validate(bindings:readonly OperationDefinition[]):void {
-    const ids=new Set<string>(), routes=new Set<string>(), tools=new Set<string>();
-    for(const binding of bindings) {
-      const d=binding.definition, route=`${d.rest.method} ${d.rest.path}`;
-      if(ids.has(d.id)||routes.has(route)||tools.has(d.mcp)) throw new Error('Duplicate operation exposure');
-      OperationDefinition.define(d); ids.add(d.id);routes.add(route);tools.add(d.mcp);
-    }
-  }
-}
-export class ContractProjection {
-  static generate():object {
-    PlatformOperations.validate(PlatformOperations.all);
-    const operations=[];
-    for(const binding of PlatformOperations.all) {
-      const {input,output,...metadata}=binding.definition;
-      operations.push({...metadata,input:z.toJSONSchema(input,{io:'input'}),output:z.toJSONSchema(output)});
-    }
-    const contract={contractVersion:'0.3.0-cordis.1',operations,schemas:{configuration:z.toJSONSchema(PlatformSchemas.desired,{io:'input'}),release:z.toJSONSchema(PlatformSchemas.release),recipe:z.toJSONSchema(PlatformSchemas.recipe),plugin:z.toJSONSchema(PlatformSchemas.pluginDefinition),provider:z.toJSONSchema(ProviderSchemas.declaration),selection:z.toJSONSchema(ProviderSchemas.selection),preparedProvider:z.toJSONSchema(ProviderSchemas.manifest)}};
-    return {...contract,digest:createHash('sha256').update(JSON.stringify(contract)).digest('hex')};
-  }
 }
 
 export type DeploymentConfiguration=z.infer<typeof PlatformSchemas.desired>;
@@ -149,4 +120,106 @@ export interface AdapterValidator<T extends object> {parse(value:unknown):T;}
 export class CapabilityToken<T extends object=object> {
   constructor(readonly id:string,readonly contractVersion:string,private readonly validator:AdapterValidator<T>){ProviderSchemas.id.parse(id);if(contractVersion!==ProviderSchemas.version)throw new Error('Unsupported capability contract');Object.freeze(this);}
   parse(value:unknown):T {return this.validator.parse(value);}
+}
+
+class InstalledValidation {
+  static slot(value:{kind:string;value?:unknown}):boolean {if(value.kind==='random'||value.kind==='uuid')return value.value===undefined;if(value.value===undefined)return false;if(value.kind==='properties')return value.value!==null&&typeof value.value==='object'&&!Array.isArray(value.value);return true;}
+  static environment(values:Record<string,string>):boolean {for(const [key,value] of Object.entries(values))if((/(PASSWORD|SECRET|TOKEN|CREDENTIAL)/.test(key)&&!key.endsWith('_FILE'))||/[\r\n\0$]/.test(value)||value.includes('secret://'))return false;return true;}
+
+  static services(values:Array<{role:string;provider:ProviderDeclaration;definition:{role:string};package:string|null;entry:string|null}>):boolean {
+    const roles=new Set<string>();
+    for(const value of values){if(value.definition.role!==value.role||roles.has(value.role)||value.provider.target!=='deployment'||value.provider.capability!=='container.'+value.role||value.provider.provide.length!==1||value.provider.provide[0]!==value.provider.capability||(value.package===null)!==(value.entry===null))return false;roles.add(value.role);}
+    return roles.size===4;
+  }
+}
+/** Explicit activation boundary. Historical format-1 schemas above are immutable contracts. */
+export class InstalledSchemas {
+  static readonly role=z.enum(['database','identity','api','edge']);
+  static readonly slotDefinition=z.strictObject({kind:z.enum(['random','uuid','json','properties','text']),value:z.json().optional()}).refine(InstalledValidation.slot);
+  static readonly definition=z.strictObject({role:this.role,service:z.strictObject({command:z.array(PlatformSchemas.text.max(4096)).min(1).max(64).optional(),environment:z.record(z.string().regex(/^[A-Z_][A-Z0-9_]*$/),z.string().max(4096)).refine(InstalledValidation.environment).optional(),user:z.enum(['image-default','installation-owner']),workerSocket:z.boolean(),volumes:z.array(z.strictObject({source:PlatformSchemas.slot,target:PlatformSchemas.absolute,readOnly:z.boolean()})),secrets:z.array(z.strictObject({source:PlatformSchemas.slot,target:PlatformSchemas.absolute})),portTarget:z.number().int().min(1).max(65535).nullable()}),slots:z.record(PlatformSchemas.slot,this.slotDefinition),readiness:z.discriminatedUnion('kind',[z.strictObject({kind:z.literal('postgres-query')}),z.strictObject({kind:z.literal('http-json'),path:z.string().regex(/^\/[a-zA-Z0-9_./-]+$/),expected:z.record(z.string(),z.json())}),z.strictObject({kind:z.literal('https-json'),path:z.string().regex(/^\/[a-zA-Z0-9_./-]+$/),expected:z.record(z.string(),z.json()),asset:z.boolean()})])});
+  static readonly service=z.strictObject({role:this.role,definition:this.definition,provider:ProviderSchemas.declaration,imageId:PlatformSchemas.slot,package:PlatformSchemas.packageName.nullable(),entry:PlatformSchemas.relative.nullable()});
+  static readonly worker=z.strictObject({path:PlatformSchemas.relative,sha256:PlatformSchemas.digest,size:z.number().int().min(1).max(512*1024*1024)});
+  static readonly composition=z.strictObject({profile:z.literal('first-installed'),assetDigest:PlatformSchemas.digest,worker:this.worker,services:z.array(this.service).length(4).refine(InstalledValidation.services)});
+  static readonly release=PlatformSchemas.release.extend({formatVersion:z.literal(2),composition:this.composition});
+  static readonly plan=PlatformSchemas.plan.extend({formatVersion:z.literal(2),composition:this.composition,pluginBindings:z.array(ProviderSchemas.declaration),expectedComposition:PlatformSchemas.digest.nullable()});
+  static readonly applyOptions=z.strictObject({installationDirectory:PlatformSchemas.absolute,idempotencyKey:z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/)});
+  static readonly receipt=z.strictObject({formatVersion:z.literal(2),installationId:PlatformSchemas.text,installationDirectory:PlatformSchemas.absolute,ownerUid:z.number().int().nonnegative(),expectedEngine:PlatformSchemas.expectedEngine,migration:z.strictObject({from:z.literal(1),receiptSha256:PlatformSchemas.digest}).nullable()});
+  static readonly applicationRecord=z.strictObject({formatVersion:z.literal(2),id:z.string().regex(/^app-[a-f0-9]{64}$/),planId:z.string().regex(/^plan-[a-f0-9]{64}$/),digest:PlatformSchemas.digest,idempotencyKey:this.applyOptions.shape.idempotencyKey,requestDigest:PlatformSchemas.digest,sequence:z.number().int().nonnegative(),phase:PlatformSchemas.phase,desiredComposition:PlatformSchemas.digest,activeComposition:PlatformSchemas.digest.nullable(),result:z.enum(['accepted','ready','stopped','blocked','failed']).nullable(),recovery:z.enum(['repair-required']).nullable(),historyReference:PlatformSchemas.text});
+  static readonly submit=z.strictObject({protocol:z.literal(2),operation:z.literal('submit'),planId:z.string().regex(/^plan-[a-f0-9]{64}$/),digest:PlatformSchemas.digest,idempotencyKey:this.applyOptions.shape.idempotencyKey});
+  static readonly statusRequest=z.strictObject({protocol:z.literal(2),operation:z.literal('status')});
+  static readonly applicationRequest=z.strictObject({protocol:z.literal(2),operation:z.literal('application'),id:z.string().regex(/^app-[a-f0-9]{64}$/)});
+  static readonly request=z.discriminatedUnion('operation',[this.submit,this.statusRequest,this.applicationRequest]);
+  static readonly response=z.discriminatedUnion('success',[z.strictObject({protocol:z.literal(2),success:z.literal(true),result:z.union([PlatformSchemas.apply,PlatformSchemas.status,PlatformSchemas.application])}),z.strictObject({protocol:z.literal(2),success:z.literal(false),code:PlatformSchemas.slot})]);
+  static readonly envelope=z.discriminatedUnion('success',[PlatformSchemas.envelopeBase.extend({success:z.literal(true),problem:z.null(),result:z.union([this.plan,PlatformSchemas.plan,PlatformSchemas.apply,PlatformSchemas.status,PlatformSchemas.application,PlatformSchemas.diagnostic,z.strictObject({help:PlatformSchemas.text}),z.strictObject({version:PlatformSchemas.text})])}),PlatformSchemas.envelopeBase.extend({success:z.literal(false),problem:PlatformSchemas.problem})]);
+  static readonly principal=z.strictObject({issuer:z.url(),subject:PlatformSchemas.text,principalId:PlatformSchemas.text,scopes:z.array(z.enum(['platform.read','platform.manage']))});
+  static readonly serverConfiguration=z.strictObject({installationId:PlatformSchemas.text,origin:z.url().regex(/^https:\/\/(localhost|127\.0\.0\.1|\[::1\])(:[0-9]+)?$/),issuer:z.url(),identityInternalOrigin:z.url(),clientId:PlatformSchemas.text,clientSecret:PlatformSchemas.text,databaseUrl:PlatformSchemas.text,bootstrapSubject:PlatformSchemas.text,workerSocket:PlatformSchemas.absolute,assetDigest:PlatformSchemas.digest});
+}
+export type InstalledPlan=z.infer<typeof InstalledSchemas.plan>;
+export type InstalledRelease=z.infer<typeof InstalledSchemas.release>;
+export type ContainerDefinition=z.infer<typeof InstalledSchemas.definition>;
+export type InstalledService=z.infer<typeof InstalledSchemas.service>;
+export type ApplicationRecord=z.infer<typeof InstalledSchemas.applicationRecord>;
+export type ApplyOptions=z.infer<typeof InstalledSchemas.applyOptions>;
+export type WorkerRequest=z.infer<typeof InstalledSchemas.request>;
+export type WorkerResponse=z.infer<typeof InstalledSchemas.response>;
+export type TrustedPrincipal=z.infer<typeof InstalledSchemas.principal>;
+export type ServerConfiguration=z.infer<typeof InstalledSchemas.serverConfiguration>;
+/** Bounded Docker operations; implementations own validation, never accept a shell command. */
+export interface ContainerEngine {
+  start(role:z.infer<typeof InstalledSchemas.role>,definition:ContainerDefinition):Promise<void>;
+  ready(role:z.infer<typeof InstalledSchemas.role>):Promise<boolean>;
+  identity():Readonly<{installationId:string;composition:string}>;
+}
+export interface ReadyContainer {identity():Readonly<{installationId:string;composition:string}>;ready():Promise<boolean>;}
+export interface PlatformInvoker {invoke(operation:string,input:unknown,principal:TrustedPrincipal):Promise<unknown>;}
+export class InstalledDeclarations {
+  static service(id:string,capability:string,inject:string[]):ProviderDeclaration {return ProviderSchemas.declaration.parse({id,pluginId:id,capability,contractVersion:ProviderSchemas.version,target:'deployment',provide:[capability],inject});}
+}
+
+export class PlatformOperations {
+  private static binding<I extends z.ZodType,O extends z.ZodType>(id:string,input:I,output:O,path:string,cli:string,write=false):OperationDefinition<I,O> {
+    return OperationDefinition.define({id,input,output,rest:{method:write?'POST':'GET',path},cli,mcp:id.replaceAll('.','_'),effect:write?'write':'read',scope:write?'platform.manage':'platform.read',exposure:['rest','cli','mcp'],idempotency:write,expectedState:write});
+  }
+  static readonly describe=this.binding('platform.describe',PlatformSchemas.empty,PlatformSchemas.describe,'/v1/platform','platform describe');
+  static readonly status=this.binding('platform.status',PlatformSchemas.empty,PlatformSchemas.status,'/v1/platform/status','platform status');
+  static readonly plan=this.binding('platform.plan',PlatformSchemas.desired,z.discriminatedUnion('formatVersion',[PlatformSchemas.plan,InstalledSchemas.plan]),'/v1/platform/plans','platform plan',true);
+  static readonly apply=this.binding('platform.apply',z.strictObject({planId:PlatformSchemas.text,digest:PlatformSchemas.digest}),PlatformSchemas.apply,'/v1/platform/applications','platform apply',true);
+  static readonly get=this.binding('platform.applications.get',z.strictObject({id:PlatformSchemas.text}),PlatformSchemas.application,'/v1/platform/applications/{id}','platform application');
+  static readonly events=this.binding('platform.applications.events',z.strictObject({id:PlatformSchemas.text,cursor:PlatformSchemas.text.optional(),limit:z.number().int().min(1).max(1000).optional()}),PlatformSchemas.events,'/v1/platform/applications/{id}/events','platform events');
+  static readonly cancel=this.binding('platform.applications.cancel',z.strictObject({id:PlatformSchemas.text,expectedState:PlatformSchemas.phase}),PlatformSchemas.cancel,'/v1/platform/applications/{id}/cancel','platform cancel',true);
+  static readonly all=Object.freeze([this.describe,this.status,this.plan,this.apply,this.get,this.events,this.cancel] as const);
+  static validate(bindings:readonly OperationDefinition[]):void {
+    const ids=new Set<string>(), routes=new Set<string>(), tools=new Set<string>();
+    for(const binding of bindings) {
+      const d=binding.definition, route=`${d.rest.method} ${d.rest.path}`;
+      if(ids.has(d.id)||routes.has(route)||tools.has(d.mcp)) throw new Error('Duplicate operation exposure');
+      OperationDefinition.define(d); ids.add(d.id);routes.add(route);tools.add(d.mcp);
+    }
+  }
+}
+export class ContractProjection {
+  static generate():object {
+    PlatformOperations.validate(PlatformOperations.all);
+    const operations=[];
+    for(const binding of PlatformOperations.all) {
+      const {input,output,...metadata}=binding.definition;
+      operations.push({...metadata,input:z.toJSONSchema(input,{io:'input'}),output:z.toJSONSchema(output)});
+    }
+    const contract={contractVersion:'0.4.0-cordis.1',operations,schemas:{containerDefinition:z.toJSONSchema(InstalledSchemas.definition),installedPlan:z.toJSONSchema(InstalledSchemas.plan),installedRelease:z.toJSONSchema(InstalledSchemas.release),service:z.toJSONSchema(InstalledSchemas.service),workerRequest:z.toJSONSchema(InstalledSchemas.request),applicationRecord:z.toJSONSchema(InstalledSchemas.applicationRecord),installationReceipt:z.toJSONSchema(InstalledSchemas.receipt),configuration:z.toJSONSchema(PlatformSchemas.desired,{io:'input'}),release:z.toJSONSchema(PlatformSchemas.release),recipe:z.toJSONSchema(PlatformSchemas.recipe),plugin:z.toJSONSchema(PlatformSchemas.pluginDefinition),provider:z.toJSONSchema(ProviderSchemas.declaration),selection:z.toJSONSchema(ProviderSchemas.selection),preparedProvider:z.toJSONSchema(ProviderSchemas.manifest)}};
+    return {...contract,digest:createHash('sha256').update(JSON.stringify(contract)).digest('hex')};
+  }
+}
+
+export type InstalledEnvelope=z.infer<typeof InstalledSchemas.envelope>;
+class InstalledAdapter<T extends object> implements AdapterValidator<T> {
+  constructor(private readonly methods:string[]){}
+  parse(value:unknown):T {if(!value||typeof value!=='object')throw new Error('Invalid installed adapter');for(const method of this.methods)if(typeof Reflect.get(value,method)!=='function')throw new Error('Invalid installed adapter');return value as T;}
+}
+export class InstalledTokens {
+  static readonly engine=new CapabilityToken<ContainerEngine>('deployment.engine',ProviderSchemas.version,new InstalledAdapter(['start','ready','identity']));
+  static readonly database=new CapabilityToken<ReadyContainer>('container.database',ProviderSchemas.version,new InstalledAdapter(['ready','identity']));
+  static readonly identity=new CapabilityToken<ReadyContainer>('container.identity',ProviderSchemas.version,new InstalledAdapter(['ready','identity']));
+  static readonly api=new CapabilityToken<ReadyContainer>('container.api',ProviderSchemas.version,new InstalledAdapter(['ready','identity']));
+  static readonly edge=new CapabilityToken<ReadyContainer>('container.edge',ProviderSchemas.version,new InstalledAdapter(['ready','identity']));
+  static readonly invoker=new CapabilityToken<PlatformInvoker>('platform.invoker',ProviderSchemas.version,new InstalledAdapter(['invoke']));
 }

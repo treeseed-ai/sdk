@@ -16,7 +16,7 @@ class PlanningContractTests {
   projection():void {
     expect(PlatformSchemas.plan.shape.recipe).toBeDefined();expect(PlatformSchemas.plan.shape.pluginBindings).toBeDefined();
     const result=ContractProjection.generate() as {contractVersion:string;schemas?:object};
-    expect(result.contractVersion).toBe('0.3.0-cordis.1');expect(result.schemas).toBeDefined();expect(PlatformOperations.all.length).toBe(7);
+    expect(result.contractVersion).toBe('0.4.0-cordis.1');expect(result.schemas).toBeDefined();expect(PlatformOperations.all.length).toBe(7);
     expect(PlatformSchemas.plan.safeParse({id:'pretend',digest:'a'.repeat(64),expectedComposition:null,artifacts:[],effects:[],blockers:[]}).success).toBe(false);
   }
 }
