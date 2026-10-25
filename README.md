@@ -348,3 +348,17 @@ Private worker protocol 3 also accepts `{operation:'plan',configuration}`. An in
 serializes plan publication through its existing durable writer; local callers do not acquire a
 second journal lock. This remains a private local control operation, with the existing public
 `platform.plan` identity unchanged and no remote source-install endpoint.
+
+### Explicit service restart scope
+
+Task 3C format-3 apply options and private submit requests may include `restartServices`, a
+nonempty unique set of exact service IDs. It authorizes only restart actions named by the exact
+selected plan/digest. It grants no migration, removal, host-binary change or unrelated service
+authority. Missing authorization leaves a changed existing service prepared/action-required.
+Only the explicit reviewed apply action supplies this scope; plugin install cannot infer it.
+
+Format-3 application records preserve that optional scope so request-digest/idempotency read-back
+can verify the actual accepted intent. Owners sort semantic sets before persistence/hashing.
+Absent fields stay absent, and format-1/2 readers/bytes remain unchanged. The public apply
+operation gains the same optional scope without adding an operation ID; API transport activation
+still requires its owning implementation and authorization. A schema alone activates nothing.

@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Describe exact optional restart scopes for format-3 apply and durable request read-back (#460).
 - Bind verified native runtime identities into saved service plans (#460).
 - Describe accepted service observation context and runtime content evidence (#460).
 
