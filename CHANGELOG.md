@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Add exact plugin management and native package contracts (#460).
 
 - Sdk: deliver Task 3C typed providers and mobile-first UI integration (#460).
 
