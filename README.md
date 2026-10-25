@@ -362,3 +362,8 @@ can verify the actual accepted intent. Owners sort semantic sets before persiste
 Absent fields stay absent, and format-1/2 readers/bytes remain unchanged. The public apply
 operation gains the same optional scope without adding an operation ID; API transport activation
 still requires its owning implementation and authorization. A schema alone activates nothing.
+
+Generated JSON Schema declares the restart set's nonempty bound, service-ID pattern and
+`uniqueItems: true`; runtime validation still checks uniqueness. The narrow metadata projection
+uses [Zod's documented JSON Schema metadata](https://zod.dev/json-schema#metadata), and the
+owner regression verifies the actual emitted operation schema.

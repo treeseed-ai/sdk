@@ -183,7 +183,7 @@ export type InstalledRelease=z.infer<typeof InstalledSchemas.release>;
 export type ContainerDefinition=z.infer<typeof InstalledSchemas.definition>;
 export type InstalledService=z.infer<typeof InstalledSchemas.service>;
 export type ApplicationRecord=z.infer<typeof InstalledSchemas.applicationRecord>;
-export type ApplyOptions=z.infer<typeof InstalledSchemas.applyOptions>;
+export type ApplyOptions=z.infer<typeof ServiceSchemas.applyOptions>;
 export type WorkerRequest=z.infer<typeof InstalledSchemas.request>;
 export type WorkerResponse=z.infer<typeof InstalledSchemas.response>;
 export type TrustedPrincipal=z.infer<typeof InstalledSchemas.principal>;
@@ -251,6 +251,8 @@ class ObservationValidation {
 }
 export class ServiceSchemas {
   static readonly serviceId=z.string().regex(/^[a-z][a-z0-9-]{0,47}$/);
+  static readonly restartServices=z.array(this.serviceId).min(1).max(256).refine(PlanningValidation.unique).meta({uniqueItems:true});
+  static readonly applyOptions=InstalledSchemas.applyOptions.extend({restartServices:this.restartServices.optional()});
   static readonly id=ProviderSchemas.id;
   static readonly secretReference=z.string().regex(/^secret:\/\/[a-z][a-z0-9-]{0,47}\/[a-z][a-z0-9-]{0,62}$/);
   static readonly configuration=PlatformSchemas.desired.extend({credentialReferences:z.array(this.secretReference).refine(PlanningValidation.unique)});
@@ -276,7 +278,7 @@ export class ServiceSchemas {
   static readonly snapshot=z.strictObject({formatVersion:z.literal(3),installationId:PlatformSchemas.text,installationDirectory:PlatformSchemas.absolute,compositionGeneration:PlatformSchemas.digest,resources:z.array(this.resourceBinding).max(32768),acknowledgements:z.array(this.acknowledgement).max(512)});
   static readonly serviceStatus=z.strictObject({serviceId:this.serviceId,providerId:this.id,serviceGeneration:PlatformSchemas.digest,resourceId:PlatformSchemas.digest,ready:z.boolean(),observations:z.array(PlatformSchemas.text).max(64)});
   static readonly status=PlatformSchemas.status.extend({formatVersion:z.literal(3),services:z.array(this.serviceStatus).max(256),resourceSetDigest:PlatformSchemas.digest.nullable(),acknowledgements:z.array(this.acknowledgement).max(512)});
-  static readonly applicationRecord=InstalledSchemas.applicationRecord.extend({formatVersion:z.literal(3),expectedComposition:PlatformSchemas.digest.nullable(),resourceSetDigest:PlatformSchemas.digest.nullable(),acknowledgements:z.array(this.acknowledgement).max(512)});
+  static readonly applicationRecord=InstalledSchemas.applicationRecord.extend({formatVersion:z.literal(3),restartServices:this.restartServices.optional(),expectedComposition:PlatformSchemas.digest.nullable(),resourceSetDigest:PlatformSchemas.digest.nullable(),acknowledgements:z.array(this.acknowledgement).max(512)});
   static readonly change=z.strictObject({serviceId:this.serviceId,kind:z.enum(['add','retain','replace','reconfigure','retire']),serviceGeneration:PlatformSchemas.digest,previousGeneration:PlatformSchemas.digest.nullable(),requiredActions:z.array(z.enum(['restart','migration','removal-unsupported'])),affectedDependencies:z.array(this.serviceId)});
   static readonly release=PlatformSchemas.release.extend({formatVersion:z.literal(3),composition:this.graph,helpers:SourceToolSchemas.helperInventory.optional(),images:z.array(PlatformSchemas.release.shape.images.element.extend({id:ProviderSchemas.id})).min(1)});
   static readonly effect=PlatformSchemas.effect.extend({kind:z.enum([...PlatformSchemas.effect.shape.kind.options,'stage-helper'])});
@@ -312,7 +314,7 @@ export class PlatformOperations {
   static readonly describe=this.binding('platform.describe',PlatformSchemas.empty,PlatformSchemas.describe,'/v1/platform','platform describe');
   static readonly status=this.binding('platform.status',PlatformSchemas.empty,z.union([PlatformSchemas.status,ServiceSchemas.status]),'/v1/platform/status','platform status');
   static readonly plan=this.binding('platform.plan',z.union([PlatformSchemas.desired,ServiceSchemas.configuration]),z.discriminatedUnion('formatVersion',[PlatformSchemas.plan,InstalledSchemas.plan,ServiceSchemas.plan]),'/v1/platform/plans','platform plan',true);
-  static readonly apply=this.binding('platform.apply',z.strictObject({planId:PlatformSchemas.text,digest:PlatformSchemas.digest}),PlatformSchemas.apply,'/v1/platform/applications','platform apply',true);
+  static readonly apply=this.binding('platform.apply',z.strictObject({planId:PlatformSchemas.text,digest:PlatformSchemas.digest,restartServices:ServiceSchemas.restartServices.optional()}),PlatformSchemas.apply,'/v1/platform/applications','platform apply',true);
   static readonly get=this.binding('platform.applications.get',z.strictObject({id:PlatformSchemas.text}),PlatformSchemas.application,'/v1/platform/applications/{id}','platform application');
   static readonly events=this.binding('platform.applications.events',z.strictObject({id:PlatformSchemas.text,cursor:PlatformSchemas.text.optional(),limit:z.number().int().min(1).max(1000).optional()}),PlatformSchemas.events,'/v1/platform/applications/{id}/events','platform events');
   static readonly cancel=this.binding('platform.applications.cancel',z.strictObject({id:PlatformSchemas.text,expectedState:PlatformSchemas.phase}),PlatformSchemas.cancel,'/v1/platform/applications/{id}/cancel','platform cancel',true);
