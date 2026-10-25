@@ -222,3 +222,15 @@ Each provided binding carries its owner-declared `port` separately from its comp
 `bindingId`. Two ports may advertise the same contract without becoming ambiguous; consumers
 select one exact binding. Readiness explicitly declares `scheme` (`http` by default, `https`
 or `tcp`) and must match the chosen probe's advertised schemes.
+
+## Bounded native scope replacement
+
+`CordisScope` uses the native composition/locator and holds no provider-instance registry.
+Admission closes before draining held leases; a bounded drain may return pending without
+replacing the old provider. Callers hold leases for the full duration of their operation.
+After drain, old effects dispose before the candidate mounts. Candidate inspection is private
+to the owner; admission reopens only after the owner verifies workload read-back and durable
+publication, releases inspection leases, then calls `commitReplacement()`. Mounting alone is
+not an application-health claim. Constructor/disposal failures fence admission for explicit
+repair. Shutdown cancels replacement and awaits cleanup; no new candidate may survive it.
+Unknown native configuration failures are sanitized before returning to a caller.

@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Drain native scopes and fence interrupted provider replacement (#460).
 - Bind scoped service resources and durable local request records (#460).
 - Mount native Cordis composition in portable scopes (#460).
 - Define extensible named service and provider contracts (#460).
