@@ -238,6 +238,14 @@ class ServiceValidation {
   private static visit(id:string,edges:Map<string,string[]>,visiting:Set<string>,visited:Set<string>):boolean {if(visiting.has(id))return false;if(visited.has(id))return true;visiting.add(id);for(const next of edges.get(id)??[])if(!this.visit(next,edges,visiting,visited))return false;visiting.delete(id);visited.add(id);return true;}
   static environment(values:Record<string,string|{serviceId:string;portId:string;scheme:'http'|'https'|'tcp';path:string}>):boolean {for(const [key,value] of Object.entries(values))if((typeof value==='string'&&(/[\r\n\0$]/.test(value)||value.includes('secret://')))||(/PASSWORD|SECRET|TOKEN|CREDENTIAL/.test(key)&&!key.endsWith('_FILE')))return false;return true;}
 }
+class ObservationValidation {
+  static endpoint(value:string):boolean {try{const url=new URL(value);return ['http:','https:','tcp:'].includes(url.protocol)&&!url.username&&!url.password&&!url.search&&!url.hash&&!value.includes('secret://');}catch{return false;}}
+  static origin(value:string):boolean {try{return new URL(value).origin===value;}catch{return false;}}
+  static endpoints(value:Record<string,string>):boolean{return Object.keys(value).length<=32;}
+  static context(value:{identity:{installationId:string;serviceId:string;compositionGeneration:string;assetDigest:string;origin:string};dependencies:Array<{port:string;identity:{installationId:string;serviceId:string;compositionGeneration:string;assetDigest:string;origin:string}}> }):boolean {
+    const ports=new Set<string>();for(const dependency of value.dependencies){if(ports.has(dependency.port)||dependency.identity.serviceId===value.identity.serviceId)return false;ports.add(dependency.port);for(const field of ['installationId','compositionGeneration','assetDigest','origin'] as const)if(dependency.identity[field]!==value.identity[field])return false;}return true;
+  }
+}
 export class ServiceSchemas {
   static readonly serviceId=z.string().regex(/^[a-z][a-z0-9-]{0,47}$/);
   static readonly id=ProviderSchemas.id;
@@ -256,7 +264,12 @@ export class ServiceSchemas {
   static readonly resourceReceipt=z.strictObject({formatVersion:z.literal(3),installationId:PlatformSchemas.text,installationDirectory:PlatformSchemas.absolute,resourceId:PlatformSchemas.digest,kind:this.resourceKind,serviceId:this.serviceId.nullable(),name:z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,254}$/),creatingGeneration:PlatformSchemas.digest,definitionDigest:PlatformSchemas.digest,references:z.array(PlatformSchemas.digest).min(1).max(4096).refine(PlanningValidation.unique),actualId:PlatformSchemas.text.nullable(),contentDigest:PlatformSchemas.digest.nullable(),imageDigest:PlatformSchemas.digest.nullable(),path:PlatformSchemas.relative.nullable(),ownerUid:z.number().int().nonnegative(),legacy:z.strictObject({formatVersion:z.literal(2),planDigest:PlatformSchemas.digest,serviceId:InstalledSchemas.role.nullable()}).nullable()});
   static readonly resourceBinding=z.strictObject({resourceId:PlatformSchemas.digest,kind:this.resourceKind,serviceId:this.serviceId.nullable(),creatingGeneration:PlatformSchemas.digest,receiptDigest:PlatformSchemas.digest});
   static readonly acknowledgement=z.strictObject({target:ProviderV4Schemas.target,scopeId:PlatformSchemas.text,generation:PlatformSchemas.digest,runtimeGeneration:PlatformSchemas.digest,observationDigest:PlatformSchemas.digest,ready:z.boolean()});
-  static readonly runtimeEvidence=z.strictObject({formatVersion:z.literal(1),installationId:PlatformSchemas.text,serviceId:this.serviceId,compositionGeneration:PlatformSchemas.digest,serviceGeneration:PlatformSchemas.digest,runtimeGeneration:PlatformSchemas.digest,assetDigest:PlatformSchemas.digest,ready:z.boolean()});
+  static readonly runtimeContent=z.strictObject({packageSetDigest:PlatformSchemas.digest,entryDigest:PlatformSchemas.digest});
+  static readonly runtimeBinding=this.runtimeContent.extend({imageManifestDigest:PlatformSchemas.digest});
+  static readonly observationIdentity=z.strictObject({installationId:PlatformSchemas.text,serviceId:this.serviceId,compositionGeneration:PlatformSchemas.digest,serviceGeneration:PlatformSchemas.digest,assetDigest:PlatformSchemas.digest,origin:PlatformSchemas.desired.shape.origin.refine(ObservationValidation.origin),runtime:this.runtimeBinding.nullable()});
+  static readonly observationDependency=this.binding.extend({identity:this.observationIdentity,endpoints:z.record(this.serviceId,z.url().refine(ObservationValidation.endpoint)).refine(ObservationValidation.endpoints)});
+  static readonly observationContext=z.strictObject({formatVersion:z.literal(1),identity:this.observationIdentity,dependencies:z.array(this.observationDependency).max(256)}).refine(ObservationValidation.context);
+  static readonly runtimeEvidence=z.strictObject({formatVersion:z.literal(1),installationId:PlatformSchemas.text,serviceId:this.serviceId,compositionGeneration:PlatformSchemas.digest,serviceGeneration:PlatformSchemas.digest,runtimeGeneration:PlatformSchemas.digest,assetDigest:PlatformSchemas.digest,ready:z.boolean(),content:this.runtimeContent.optional()});
   static readonly snapshot=z.strictObject({formatVersion:z.literal(3),installationId:PlatformSchemas.text,installationDirectory:PlatformSchemas.absolute,compositionGeneration:PlatformSchemas.digest,resources:z.array(this.resourceBinding).max(32768),acknowledgements:z.array(this.acknowledgement).max(512)});
   static readonly serviceStatus=z.strictObject({serviceId:this.serviceId,providerId:this.id,serviceGeneration:PlatformSchemas.digest,resourceId:PlatformSchemas.digest,ready:z.boolean(),observations:z.array(PlatformSchemas.text).max(64)});
   static readonly status=PlatformSchemas.status.extend({formatVersion:z.literal(3),services:z.array(this.serviceStatus).max(256),resourceSetDigest:PlatformSchemas.digest.nullable(),acknowledgements:z.array(this.acknowledgement).max(512)});
@@ -279,6 +292,9 @@ export type ServiceSnapshot=z.infer<typeof ServiceSchemas.snapshot>;
 export type ServiceStatus=z.infer<typeof ServiceSchemas.status>;
 export type ServiceEnvelope=z.infer<typeof ServiceSchemas.envelope>;
 export type ServiceRuntimeEvidence=z.infer<typeof ServiceSchemas.runtimeEvidence>;
+export type ServiceRuntimeContent=z.infer<typeof ServiceSchemas.runtimeContent>;
+export type ServiceRuntimeBinding=z.infer<typeof ServiceSchemas.runtimeBinding>;
+export type ServiceObservationContext=z.infer<typeof ServiceSchemas.observationContext>;
 export type TargetAcknowledgement=z.infer<typeof ServiceSchemas.acknowledgement>;
 export type ServiceProviderRef=z.infer<typeof ServiceSchemas.provider>;
 export interface ServiceIdentity {installationId:string;serviceId:string;providerId:string;serviceGeneration:string;resourceId:string;}
@@ -322,7 +338,7 @@ export class InstalledTokens {
   static readonly invoker=new CapabilityToken<PlatformInvoker>('platform.invoker',ProviderSchemas.version,new InstalledAdapter(['invoke']));
 }
 
-export interface ProbeContext {readonly serviceId:string;readonly endpoint:string;readonly deadline:number;readonly signal:AbortSignal;readonly expected:Readonly<{installationId:string;compositionGeneration:string;serviceGeneration:string;assetDigest:string}>;readonly credentialReferences:readonly string[];readonly authorityIds:readonly string[];credential(reference:string):Promise<Uint8Array>;authority(id:string):Promise<Uint8Array>;}
+export interface ProbeContext {readonly serviceId:string;readonly endpoint:string;readonly deadline:number;readonly signal:AbortSignal;readonly expected:Readonly<{installationId:string;compositionGeneration:string;serviceGeneration:string;assetDigest:string}>;readonly observation?:Readonly<ServiceObservationContext>;readonly credentialReferences:readonly string[];readonly authorityIds:readonly string[];credential(reference:string):Promise<Uint8Array>;authority(id:string):Promise<Uint8Array>;}
 export interface ServiceDependency {serviceId:string;bindingId:string;contractId:string;contractVersion:string;endpoints:Readonly<Record<string,string>>;}
 export interface ServiceExecutionContext {readonly service:ServiceInstance;dependency(port:string):ServiceDependency;}
 export interface ServiceProbe {observe(context:ProbeContext):Promise<ServiceReadiness>;}
