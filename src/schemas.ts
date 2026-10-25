@@ -252,6 +252,7 @@ export class ServiceSchemas {
   static readonly change=z.strictObject({serviceId:this.serviceId,kind:z.enum(['add','retain','replace','reconfigure','retire']),serviceGeneration:PlatformSchemas.digest,previousGeneration:PlatformSchemas.digest.nullable(),requiredActions:z.array(z.enum(['restart','migration','removal-unsupported'])),affectedDependencies:z.array(this.serviceId)});
   static readonly release=PlatformSchemas.release.extend({formatVersion:z.literal(3),composition:this.graph});
   static readonly plan=PlatformSchemas.plan.extend({formatVersion:z.literal(3),configuration:this.configuration,composition:this.graph,pluginBindings:z.array(ProviderV4Schemas.declaration),compositionGeneration:PlatformSchemas.digest,expectedComposition:PlatformSchemas.digest.nullable(),expectedResourceSet:PlatformSchemas.digest.nullable(),retainedResources:z.array(this.resourceBinding).max(32768),changes:z.array(this.change)});
+  static readonly envelope=z.discriminatedUnion('success',[PlatformSchemas.envelopeBase.extend({success:z.literal(true),problem:z.null(),result:z.union([this.plan,InstalledSchemas.plan,PlatformSchemas.plan,this.status,PlatformSchemas.status,this.applicationRecord,PlatformSchemas.application,PlatformSchemas.apply,PlatformSchemas.diagnostic,z.strictObject({help:PlatformSchemas.text}),z.strictObject({version:PlatformSchemas.text})])}),PlatformSchemas.envelopeBase.extend({success:z.literal(false),result:z.null(),problem:PlatformSchemas.problem})]);
   static readonly receipt=InstalledSchemas.receipt.extend({formatVersion:z.literal(3),migration:z.strictObject({from:z.literal(2),receiptSha256:PlatformSchemas.digest,previousComposition:PlatformSchemas.digest,nonServingProof:PlatformSchemas.digest,compatibilityProof:PlatformSchemas.digest}).nullable()});
 }
 export type ServiceInstance=z.infer<typeof ServiceSchemas.service>;
@@ -263,6 +264,7 @@ export type ServiceApplicationRecord=z.infer<typeof ServiceSchemas.applicationRe
 export type ServiceResourceReceipt=z.infer<typeof ServiceSchemas.resourceReceipt>;
 export type ServiceSnapshot=z.infer<typeof ServiceSchemas.snapshot>;
 export type ServiceStatus=z.infer<typeof ServiceSchemas.status>;
+export type ServiceEnvelope=z.infer<typeof ServiceSchemas.envelope>;
 export type TargetAcknowledgement=z.infer<typeof ServiceSchemas.acknowledgement>;
 export type ServiceProviderRef=z.infer<typeof ServiceSchemas.provider>;
 export interface ServiceIdentity {installationId:string;serviceId:string;providerId:string;serviceGeneration:string;resourceId:string;}
