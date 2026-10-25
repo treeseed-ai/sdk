@@ -203,3 +203,9 @@ A package may declare digest-pinned OCI archives as image sources. Source acquis
 A mounted candidate is not an accepted installation. `inspectCandidate(token)` permits owner read-back while general admission remains closed; `commitReplacement()` opens it only after the owner completes qualification, observed cleanup/readiness and durable publication. Owners must hold leases through asynchronous operations and supply their contract-specific external-resource observations. `fence()` invalidates future lease calls; full cross-runtime replacement and crash recovery remain later tasks. SDK scope state describes native admission, never Docker/application health by itself.
 
 Native configuration defaults are normalized before generation hashing. Omitted and explicitly supplied constant defaults describe the same accepted configuration; caller mutations cannot change a captured replacement candidate.
+
+The service-generation CLI envelope accepts historical plan formats 1/2 and format 3 plans,
+service status and application read-back. Failed envelopes carry `result: null`, a safe problem,
+structured blockers and references; transport success never proves plugin activation. Local worker
+protocol 3 failure responses distinguish expected blockers from unexpected runtime failures so
+callers preserve exit codes 3 and 1. Protocol 2 readers remain unchanged.
