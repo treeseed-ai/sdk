@@ -12,7 +12,7 @@ export class CompositionError extends Error {
   constructor(readonly code:string){super(code);this.name='CompositionError';}
   static require(condition:unknown,code:string):asserts condition {if(!condition)throw new CompositionError(code);}
 }
-interface ValidatedRegistration extends ProviderRegistration {declaration:ProviderDeclaration;}
+interface ValidatedRegistration extends ProviderRegistration {declaration:ProviderDeclaration;identityConfiguration:unknown;}
 class CompositionValidation {
   static validate(descriptor:CompositionDescriptor,authority:TrustedCompositionContext):ValidatedRegistration[] {
     CompositionError.require(CompositionProviderSchemas.scope.safeParse(authority).success,'INVALID_SCOPE');
@@ -27,7 +27,7 @@ class CompositionValidation {
       CompositionError.require(Array.isArray(provide)&&Array.isArray(inject)&&CanonicalJson.stringify([...provide].sort())===CanonicalJson.stringify([...declaration.provide].sort())&&CanonicalJson.stringify([...inject].sort())===CanonicalJson.stringify([...declaration.inject].sort())&&declaration.provide.length===1&&declaration.provide[0]===declaration.capability,'DECLARATION_DRIFT');
       CompositionError.require(item.plugin.Config&&typeof item.plugin.Config['~standard']?.validate==='function','INVALID_PROVIDER_CONFIGURATION');
       const accepted:unknown=JSON.parse(CanonicalJson.stringify(item.configuration)),configuration=item.plugin.Config['~standard'].validate(accepted);CompositionError.require(!('then' in configuration)&&!configuration.issues,'INVALID_PROVIDER_CONFIGURATION');
-      registrations.push({...item,configuration:accepted,declaration,artifact:artifact.data});
+      registrations.push({...item,configuration:accepted,identityConfiguration:JSON.parse(CanonicalJson.stringify(configuration.value)),declaration,artifact:artifact.data});
     }
     const selected:ValidatedRegistration[]=[],capabilities=new Set<string>(['cordis.composition']);
     for(const value of descriptor.selections){const selection=ProviderSchemas.selection.safeParse(value);CompositionError.require(selection.success,'INVALID_SELECTION');CompositionError.require(selection.data.scopeId===authority.scopeId,'SCOPE_MISMATCH');CompositionError.require(!capabilities.has(selection.data.capability),'DUPLICATE_SELECTION');capabilities.add(selection.data.capability);let found:ValidatedRegistration|undefined;for(const item of registrations)if(item.declaration.capability===selection.data.capability&&item.declaration.id===selection.data.providerId)found=item;CompositionError.require(found,'MISSING_PROVIDER');selected.push(found);}
@@ -56,10 +56,11 @@ export class CompositionHandle {
   private readonly faults=new LifecycleFaults();
   readonly context=new Context();
   readonly generation:string;
-  private closed=false;
+  private closed=false;private fenced=false;
+  private readonly leases=new Set<ProviderLease<object>>();
   private disposal:Promise<void>|null=null;
   constructor(private readonly registrations:ValidatedRegistration[],private readonly selections:readonly ProviderSelection[],readonly authority:TrustedCompositionContext,generation:string){this.generation=generation;this.context.logger.exporters.set(-1,this.faults);}
-  static identity(item:ValidatedRegistration):object {return {declaration:item.declaration,configuration:item.configuration,artifact:item.artifact};}
+  static identity(item:ValidatedRegistration):object {return {declaration:item.declaration,configuration:item.identityConfiguration,artifact:item.artifact};}
   async start():Promise<void> {
     await this.context.plugin(CompositionKernel,this);
     const fibers:Fiber[]=[];
@@ -84,9 +85,14 @@ export class CompositionHandle {
     for(const item of this.registrations)if(item.token.id===token.id){let ready=false;const runtime=this.context.registry.get(item.plugin);if(runtime)for(const fiber of runtime.fibers)if(fiber.state===FiberState.ACTIVE)ready=true;result.push({id:item.declaration.id,capability:item.token.id,selected:this.selected(item),ready,artifact:item.artifact});}
     return result;
   }
-  healthy():void {CompositionError.require(!this.closed,'COMPOSITION_CLOSED');this.checkErrors();}
+  healthy():void {CompositionError.require(!this.closed,'COMPOSITION_CLOSED');CompositionError.require(!this.fenced,'COMPOSITION_FENCED');this.checkErrors();}
   private checkErrors():void {CompositionError.require(!this.faults.failed,'PROVIDER_LIFECYCLE');}
   isSelected(token:CapabilityToken):boolean {for(const item of this.registrations)if(item.token.id===token.id&&item.token.contractVersion===token.contractVersion&&this.selected(item))return true;return false;}
+  leaseOpened(lease:ProviderLease<object>):void{this.leases.add(lease);}
+  leaseClosed(lease:ProviderLease<object>):void{this.leases.delete(lease);}
+  get leaseCount():number{return this.leases.size;}
+  fence():void{this.fenced=true;}
+  drain(timeoutMs:number):Promise<boolean>{CompositionError.require(Number.isInteger(timeoutMs)&&timeoutMs>=0&&timeoutMs<=120000,'INVALID_DRAIN_INTERVAL');return new LeaseDrain(this,timeoutMs).wait();}
   async dispose():Promise<void> {if(!this.disposal){this.closed=true;this.disposal=this.close();}return this.disposal;}
   private async close():Promise<void> {try{await this.context.fiber.dispose();this.checkErrors();}catch{throw new CompositionError('PROVIDER_LIFECYCLE');}finally{this.context.logger.exporters.delete(-1);}}
 }
@@ -111,12 +117,44 @@ class LeaseAccess<T extends object> implements ProxyHandler<T> {
 }
 export class ProviderLease<T extends object> {
   readonly generation:string;
-  private open=true;
+  private open=true;private releasing:Promise<void>|null=null;
   private readonly proxy:T;
   private readonly disposer:()=>void|Promise<void>;
-  constructor(value:T,private readonly handle:CompositionHandle,private readonly context:Context){this.generation=handle.generation;this.proxy=new Proxy(value,new LeaseAccess(this));this.disposer=context.effect(this.effect.bind(this));}
+  constructor(value:T,private readonly handle:CompositionHandle,private readonly context:Context){this.generation=handle.generation;this.proxy=new Proxy(value,new LeaseAccess(this));this.disposer=context.effect(this.effect.bind(this));this.handle.leaseOpened(this);}
   private effect():()=>Promise<void> {return this.release.bind(this);}
   assertOpen():void {CompositionError.require(this.open,'LEASE_CLOSED');this.handle.healthy();CompositionError.require(this.context.fiber.state===FiberState.ACTIVE,'PROVIDER_NOT_READY');}
   get value():T {this.assertOpen();return this.proxy;}
-  async release():Promise<void> {if(!this.open)return;this.open=false;await this.disposer();}
+  release():Promise<void> {if(!this.open)return this.releasing??Promise.resolve();this.open=false;this.releasing=this.close();return this.releasing;}
+  private async close():Promise<void>{try{await this.disposer();}finally{this.handle.leaseClosed(this);}}
+}
+class LeaseDrain {
+ private complete=false;private timer:ReturnType<typeof setTimeout>|undefined;private disposer:(()=>void|Promise<void>)|undefined;private resolve:((value:boolean)=>void)|null=null;private reject:((error:Error)=>void)|null=null;private readonly deadline:number;
+ constructor(private readonly handle:CompositionHandle,timeoutMs:number){this.deadline=Date.now()+timeoutMs;}
+ wait():Promise<boolean>{return new Promise(this.begin.bind(this));}
+ private begin(resolve:(value:boolean)=>void,reject:(error:Error)=>void):void{this.resolve=resolve;this.reject=reject;this.disposer=this.handle.context.effect(this.effect.bind(this));this.tick();}
+ private effect():()=>Promise<void>{return this.cancel.bind(this);}
+ private cancel():Promise<void>{return this.finish(false,false);}
+ private tick():void{if(this.complete)return;if(this.handle.leaseCount===0){void this.finish(true,true);return;}if(Date.now()>=this.deadline){void this.finish(false,true);return;}this.timer=setTimeout(this.tick.bind(this),5);}
+ private async finish(value:boolean,detach:boolean):Promise<void>{if(this.complete)return;this.complete=true;clearTimeout(this.timer);try{if(detach)await this.disposer?.();this.resolve!(value);}catch{this.reject!(new CompositionError('PROVIDER_LIFECYCLE'));}}
+}
+class ScopeReceiver {context:Context|null=null;accept(context:Context):void{this.context=context;}}
+interface ScopeMount {handle:CompositionHandle;context:Context;}
+export interface ScopeReplacement {state:'pending'|'mounted';generation:string;}
+/** Admission only. Workload readiness and durable publication remain owner invariants. */
+export class CordisScope {
+ private phase:'open'|'draining'|'mounted'|'fenced'|'closed'='open';private pending:CompositionDescriptor|null=null;private disposed:Promise<void>|null=null;private committed:string;private replacementRunning=false;private transition:Promise<ScopeReplacement>|null=null;
+ private constructor(private current:ScopeMount,private readonly authority:TrustedCompositionContext){this.committed=current.handle.generation;}
+ static async start(descriptor:CompositionDescriptor,authority:TrustedCompositionContext):Promise<CordisScope>{const accepted=CompositionProviderSchemas.scope.parse(authority);return new CordisScope(await this.mount(descriptor,accepted),accepted);}
+ private static async mount(descriptor:CompositionDescriptor,authority:TrustedCompositionContext):Promise<ScopeMount>{const handle=await CordisComposition.start(descriptor,authority),receiver=new ScopeReceiver(),inject=['cordis.composition'];for(const selection of descriptor.selections)inject.push(selection.capability);class Gateway {static readonly inject=inject;constructor(context:Context){receiver.accept(context);}}try{await handle.mount(Gateway,undefined);CompositionError.require(receiver.context,'PROVIDER_NOT_READY');return {handle,context:receiver.context};}catch(error){await handle.dispose();throw error;}}
+ get generation():string{return this.committed;}
+ async acquire<T extends object>(token:CapabilityToken<T>):Promise<ProviderLease<T>>{CompositionError.require(this.phase==='open','ADMISSION_CLOSED');return this.current.handle.locator(this.current.context).acquire(token);}
+ async beginReplacement(descriptor:CompositionDescriptor,expectedGeneration:string,timeoutMs=30000):Promise<ScopeReplacement>{CompositionError.require(this.phase==='open','COMPOSITION_BUSY');CompositionError.require(Number.isInteger(timeoutMs)&&timeoutMs>=0&&timeoutMs<=120000,'INVALID_DRAIN_INTERVAL');CompositionError.require(expectedGeneration===this.committed,'STALE_COMPOSITION');const registrations=CompositionValidation.validate(descriptor,this.authority),selections:ProviderSelection[]=[];for(const selection of descriptor.selections)selections.push(ProviderSchemas.selection.parse(selection));this.pending={registrations,selections};this.phase='draining';return this.continueReplacement(timeoutMs);}
+ async continueReplacement(timeoutMs=30000):Promise<ScopeReplacement>{CompositionError.require(this.phase==='draining'&&this.pending,'NO_PENDING_REPLACEMENT');CompositionError.require(!this.replacementRunning,'COMPOSITION_BUSY');this.replacementRunning=true;const operation=this.replace(timeoutMs);this.transition=operation;try{return await operation;}finally{this.replacementRunning=false;this.transition=null;}}
+ private assertReplacing():void{CompositionError.require(this.phase!=='closed','COMPOSITION_CLOSED');CompositionError.require(this.phase==='draining'&&this.pending,'COMPOSITION_FENCED');}
+ private async replace(timeoutMs:number):Promise<ScopeReplacement>{try{const drained=await this.current.handle.drain(timeoutMs);this.assertReplacing();if(!drained)return {state:'pending',generation:this.committed};await this.current.handle.dispose();this.assertReplacing();const candidate=await CordisScope.mount(this.pending!,this.authority);try{this.assertReplacing();}catch(error){await candidate.handle.dispose();throw error;}this.current=candidate;this.phase='mounted';return {state:'mounted',generation:candidate.handle.generation};}catch(error){this.fence();throw error;}}
+ async inspectCandidate<T extends object>(token:CapabilityToken<T>):Promise<ProviderLease<T>>{CompositionError.require(this.phase==='mounted','NO_MOUNTED_CANDIDATE');return this.current.handle.locator(this.current.context).acquire(token);}
+ commitReplacement():string{CompositionError.require(this.phase==='mounted'&&this.current.handle.leaseCount===0,'CANDIDATE_NOT_COMMITTABLE');this.current.handle.healthy();this.committed=this.current.handle.generation;this.pending=null;this.phase='open';return this.committed;}
+ fence():void{if(this.phase==='closed')return;this.phase='fenced';this.current.handle.fence();}
+ dispose():Promise<void>{if(!this.disposed){this.phase='closed';this.disposed=this.close();}return this.disposed;}
+ private async close():Promise<void>{try{await this.current.handle.dispose();}finally{try{await this.transition;}catch{}}}
 }
