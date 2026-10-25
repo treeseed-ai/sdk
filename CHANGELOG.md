@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Mount native Cordis composition in portable scopes (#460).
 - Define extensible named service and provider contracts (#460).
 
 - Define installed composition and worker contracts (#457).

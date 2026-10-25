@@ -186,3 +186,11 @@ explicit. `ProviderV4Schemas` adds browser targets and manifest-2 named exports.
 `@treeseed-cordis/sdk/portable` exports these schemas without Node built-ins. Implementation
 and container activation remain owner responsibilities; a valid graph makes no active claim.
 Part of #460 and treeseed-ai/platform#726. All issues remain open until release.
+
+Portable native composition is exposed through `@treeseed-cordis/sdk/composition`. It uses
+Cordis class plugins, native injection/effects and typed leases in browser and Node scopes.
+Normalized configuration defaults participate in generation identity; the original accepted
+input reaches Cordis exactly once so transforms are not replayed. The Node-only `/runtime`
+loader continues to verify private prepared archives and delegates mounting to that same
+composition implementation. Semantic tooling accepts class TSX and continues to reject
+functional components/hooks and handwritten JavaScript.
