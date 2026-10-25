@@ -307,3 +307,8 @@ provided in the selected local release. Missing prepared bytes remain a blocker;
 cannot invent a fetch location or claim activation. Downloadable immutable OCI archives retain
 their existing complete URL/hash/size source. Both forms bind the same exact native manifest and
 local selected index. This keeps curated initial bundles honest without placeholder image URLs.
+
+Private worker protocol 3 also accepts `{operation:'plan',configuration}`. An installed host
+serializes plan publication through its existing durable writer; local callers do not acquire a
+second journal lock. This remains a private local control operation, with the existing public
+`platform.plan` identity unchanged and no remote source-install endpoint.
