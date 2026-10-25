@@ -154,11 +154,14 @@ export interface NativeDescriptorClass {
 class ConfigurationProjection {
     static check(context: {
         zodSchema: z.core.$ZodType;
-    }): void { const checks = context.zodSchema._zod.def.checks ?? []; for (const check of checks) {
-        const kind = check._zod.def.check;
-        if (!['less_than', 'greater_than', 'multiple_of', 'number_format', 'max_size', 'min_size', 'size_equals', 'max_length', 'min_length', 'length_equals', 'string_format', 'overwrite'].includes(kind))
-            throw new Error('UNREPRESENTABLE_CONFIGURATION_SCHEMA');
-    } }
+    }): void {
+        const checks = context.zodSchema._zod.def.checks ?? [];
+        for (const check of checks) {
+            const kind = check._zod.def.check;
+            if (!['less_than', 'greater_than', 'multiple_of', 'number_format', 'max_size', 'min_size', 'size_equals', 'max_length', 'min_length', 'length_equals', 'string_format', 'overwrite'].includes(kind))
+                throw new Error('UNREPRESENTABLE_CONFIGURATION_SCHEMA');
+        }
+    }
     static generate(schema: z.ZodType): unknown { return z.toJSONSchema(schema, { io: 'input', unrepresentable: 'throw', metadata: z.registry(), override: ConfigurationProjection.check }); }
 }
 export class PackageDefinition {
