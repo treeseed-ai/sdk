@@ -367,3 +367,19 @@ Generated JSON Schema declares the restart set's nonempty bound, service-ID patt
 `uniqueItems: true`; runtime validation still checks uniqueness. The narrow metadata projection
 uses [Zod's documented JSON Schema metadata](https://zod.dev/json-schema#metadata), and the
 owner regression verifies the actual emitted operation schema.
+
+### Explicit container instance intent
+
+Plugin install may carry an optional `serviceId` and `bindings` map from declared dependency
+port to exact installed binding ID. Plugin select may carry an optional `serviceId` for its
+existing service scope. These fields belong only to `scope: installation`, `target: deployment`;
+they never select all instances or grant another scope. Keep provider configuration separate.
+An owner must reject ambiguous/missing bindings before effects and must not replace an existing
+selection merely because a new alternative was registered. The same package can back two
+explicit service IDs; retry identity includes that instance/binding intent.
+
+Absent fields preserve historical request bytes. The CLI may infer deployment target from its
+explicit service/binding flags; machine callers supply it explicitly. Bare installation remains
+subject to unique target/provider/dependency resolution in the owning manager. These data
+contracts do not implement acquisition or activation. Generated JSON Schema carries the same
+conditional scope/target rule; the runtime independently validates it.
