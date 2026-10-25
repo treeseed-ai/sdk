@@ -267,3 +267,8 @@ its validation meaning. Unrepresentable custom validation fails package metadata
 planning never imports a class to discover omitted predicates. The pinned Zod conversion and
 its documented [metadata/override behavior](https://zod.dev/json-schema) are qualified with
 native-validation/projection regression cases rather than assuming every projection is sound.
+
+`$configuration: [key, ...]` selects a validated, default-normalized provider configuration
+value for an owner-declared environment/private template. Paths are bounded safe key arrays;
+missing values block instead of becoming implicit defaults. `$context: serviceId` names the
+current instance. Neither marker can select trusted principal or other private host state.
