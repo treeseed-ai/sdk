@@ -211,3 +211,9 @@ Format-3 plans distinguish the desired `compositionGeneration` from the plan dig
 `ServiceWorkerSchemas` defines the new private protocol-3 submit/status/application and local plugin-management requests. It does not add an installer REST/MCP endpoint. Historical protocol/receipt/plan formats remain strict and separate; old readers reject the new format. Migration records require exact old receipt/composition, non-serving and compatibility proof identities. The owner must produce/verify those proofs under its single writer before conversion; a schema alone is not authorization or migration implementation.
 
 A package may declare digest-pinned OCI archives as image sources. Source acquisition verifies the archive and OCI closure before emitting a local format-3 release; apply never pulls. Missing source/trust/build/selection requirements remain explicit. An unapproved image origin cannot acquire authority through metadata.
+
+The service-generation CLI envelope accepts historical plan formats 1/2 and format 3 plans,
+service status and application read-back. Failed envelopes carry `result: null`, a safe problem,
+structured blockers and references; transport success never proves plugin activation. Local worker
+protocol 3 failure responses distinguish expected blockers from unexpected runtime failures so
+callers preserve exit codes 3 and 1. Protocol 2 readers remain unchanged.
