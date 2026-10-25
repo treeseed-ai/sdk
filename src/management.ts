@@ -27,6 +27,7 @@ class ManagementValidation {
         assets: Array<{
             path: string;
         }>;
+        runtimeImages?: Array<{id:string;entry:string}>;
     }): boolean {
         const ids = new Set<string>(), commands = new Set<string>(), assets = new Set<string>();
         for (const provider of value.providers) {
@@ -52,6 +53,7 @@ class ManagementValidation {
                 return false;
             imageIds.add(image.id);
         }
+        for (const image of value.runtimeImages ?? []) { if (imageIds.has(image.id)) return false; imageIds.add(image.id); }
         return true;
     }
     static configuration(value: Record<string, unknown>): boolean { return value.type === 'object' && value.additionalProperties === false; }
@@ -124,7 +126,7 @@ export class PluginManagementSchemas {
     static readonly provider = z.strictObject({ declaration: ProviderV4Schemas.declaration, entry: PlatformSchemas.relative, classExport: ProviderV4Schemas.manifest.shape.classExport, configurationSchema: z.record(z.string(), z.json()).refine(ManagementValidation.configuration), replacement: this.replacement, commandIds: z.array(ProviderV4Schemas.declaration.shape.id).refine(ManagementValidation.unique), container: this.container.optional(), probe: z.strictObject({ observationContracts: z.array(ProviderV4Schemas.declaration.shape.id).min(1).refine(ManagementValidation.unique), schemes: z.array(z.enum(['http', 'https', 'tcp'])).min(1), maximumDeadlineMs: z.number().int().min(1).max(120000) }).optional() });
     static readonly asset = PlatformSchemas.file.extend({ size: z.number().int().nonnegative().max(64 * 1024 * 1024) });
     static readonly image = z.strictObject({ id: ProviderV4Schemas.declaration.shape.id, reference: PlatformSchemas.imageReference, source: z.strictObject({ kind: z.literal('oci-archive'), url: z.string().refine(PluginSource.https), sha256: PlatformSchemas.digest, size: z.number().int().positive().max(2 * 1024 ** 3) }), indexSha256: PlatformSchemas.digest, manifestDigest: PlatformSchemas.digest }).refine(ManagementValidation.image);
-    static readonly packageDescriptor = z.strictObject({ formatVersion: z.literal(4), contractVersion: z.literal('0.4.0-cordis.1'), pluginId: ProviderV4Schemas.declaration.shape.pluginId, package: z.strictObject({ name: PlatformSchemas.packageName, version: PlatformSchemas.version }), providers: z.array(this.provider).min(1).max(256), assets: z.array(this.asset).max(4096), images: z.array(this.image).max(64).default([]) }).refine(ManagementValidation.descriptor);
+    static readonly packageDescriptor = z.strictObject({ formatVersion: z.literal(4), contractVersion: z.literal('0.4.0-cordis.1'), pluginId: ProviderV4Schemas.declaration.shape.pluginId, package: z.strictObject({ name: PlatformSchemas.packageName, version: PlatformSchemas.version }), providers: z.array(this.provider).min(1).max(256), assets: z.array(this.asset).max(4096), images: z.array(this.image).max(64).default([]), runtimeImages: z.array(z.strictObject({id:ProviderV4Schemas.declaration.shape.id,entry:PlatformSchemas.relative})).max(64).optional() }).refine(ManagementValidation.descriptor);
     static readonly helper = SourceToolSchemas.helper;
     static readonly helperInventory = SourceToolSchemas.helperInventory;
     static readonly receiptCommon = z.strictObject({ locator: this.source, name: PlatformSchemas.packageName, version: PlatformSchemas.version, archiveDigest: PlatformSchemas.digest, sri: z.string().regex(/^sha(?:256|512)-[a-zA-Z0-9+/]+=*$/), closureDigest: PlatformSchemas.digest, helperDigests: z.array(PlatformSchemas.digest).min(1).max(16) });
@@ -171,5 +173,5 @@ export class PackageDefinition {
             throw new Error('PACKAGE_DECLARATION_DRIFT');
         return PluginManagementSchemas.provider.parse({ declaration, entry, classExport, configurationSchema: ConfigurationProjection.generate(plugin.Config), replacement: plugin.replacement, commandIds: plugin.commandIds ?? [], ...plugin.container ? { container: plugin.container } : {}, ...plugin.probe ? { probe: plugin.probe } : {} });
     }
-    static define(name: string, version: string, pluginId: string, providers: PluginExportDescriptor[], assets: PluginPackageDescriptor['assets'] = [], images: PluginPackageDescriptor['images'] = []): PluginPackageDescriptor { return PluginManagementSchemas.packageDescriptor.parse({ formatVersion: 4, contractVersion: '0.4.0-cordis.1', package: { name, version }, pluginId, providers, assets, images }); }
+    static define(name: string, version: string, pluginId: string, providers: PluginExportDescriptor[], assets: PluginPackageDescriptor['assets'] = [], images: PluginPackageDescriptor['images'] = [], runtimeImages?: PluginPackageDescriptor['runtimeImages']): PluginPackageDescriptor { return PluginManagementSchemas.packageDescriptor.parse({ formatVersion: 4, contractVersion: '0.4.0-cordis.1', package: { name, version }, pluginId, providers, assets, images, ...runtimeImages ? {runtimeImages} : {} }); }
 }
