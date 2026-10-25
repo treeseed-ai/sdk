@@ -21,7 +21,7 @@ class ContractTests {
   ];
   installedProjection():void {
     const projection=ContractProjection.generate() as {contractVersion:string;schemas:Record<string,unknown>};
-    expect(projection.contractVersion).toBe("0.4.0-cordis.1");
+    expect(projection.contractVersion).toBe("0.5.0-cordis.1");
     for(const name of ["containerDefinition","installedPlan","installedRelease","service","workerRequest","applicationRecord","installationReceipt"])expect(projection.schemas[name]).toBeDefined();
     expect(PlatformOperations.all.length).toBe(7);
   }
