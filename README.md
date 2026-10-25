@@ -261,3 +261,9 @@ release-managed standard Bun/Git programs without global installation. `stage-he
 format-3 future effect only. Helper validation, staging and execution remain Deployment-owned;
 SDK validates data and adds no source transport or operation ID. Optional additions preserve
 historical plan bytes and format-1/2 readers.
+
+Configuration projection discards arbitrary Zod metadata overrides so annotations cannot change
+its validation meaning. Unrepresentable custom validation fails package metadata generation;
+planning never imports a class to discover omitted predicates. The pinned Zod conversion and
+its documented [metadata/override behavior](https://zod.dev/json-schema) are qualified with
+native-validation/projection regression cases rather than assuming every projection is sound.
