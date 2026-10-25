@@ -1,3 +1,4 @@
+import {validRange} from 'semver';
 export type PluginLocator = {
     kind: 'npm';
     name: string;
@@ -26,7 +27,7 @@ export class PluginSource {
         const match = /^((?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*)(?:@([a-zA-Z0-9*^~<>=][a-zA-Z0-9.*^~<>=|+_ -]*))?$/.exec(value);
         if (!match || /\s--?[a-zA-Z]/.test(value) || match[1]!.length > 214 || match[2]?.endsWith(' '))
             throw new Error('INVALID_PLUGIN_SOURCE');
-        return { kind: 'npm', name: match[1]!, selector: match[2] ?? 'latest' };
+        const selector=match[2]??'latest';if(!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(selector)&&validRange(selector)===null)throw new Error('INVALID_PLUGIN_SOURCE');return { kind: 'npm', name: match[1]!, selector };
     }
     static valid(value: string): boolean {
         try {
