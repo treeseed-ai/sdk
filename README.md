@@ -409,3 +409,10 @@ uses the normal verified local bundle and accepted plan, never a live build.
 The executable contract projection exposes the policy/build data and preserves the same seven
 operation IDs and current provider/installed format versions. SDK provides schemas/types, not
 acquisition, trust decisions, container execution or installation authority.
+
+Optional `liveTransitions` approves exact previous/next package artifacts and provider IDs for
+one capability/target/state version and qualification digest. A provider advertising `live`
+without a matching accepted transition does not authorize replacement. Deployment must still
+close admission, drain held native leases, verify cleanup/readiness and read back the target
+before committing active. These records neither expand source grants nor promise transport-wide
+hot replacement; unsupported target/safety boundaries remain prepared/action-required.
