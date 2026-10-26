@@ -1,6 +1,39 @@
-import {test,expect} from 'bun:test';
-import {spawnSync} from 'node:child_process';
+import { test, expect } from 'bun:test';
+import { spawnSync } from 'node:child_process';
 class SourcePolicyTests {
-    program():void{const result=spawnSync('node',['dist/tests/source-policy-contract-program.js'],{encoding:'utf8',timeout:30000});expect(result.status).toBe(0);expect(result.stderr).toBe('');expect(result.stdout).toBe('source-acquisition-policy-ok\n');}
+    program(): void { const result = spawnSync('node', ['dist/tests/source-policy-contract-program.js'], { encoding: 'utf8', timeout: 30000 }); if (result.status !== 0)
+        throw new Error(result.stderr); expect(result.status).toBe(0); expect(result.stderr).toBe(''); expect(result.stdout).toBe('source-acquisition-policy-ok\n'); }
 }
-const suite=new SourcePolicyTests();test('smoke: portable policy contracts bind source identity target helper and isolated build boundaries',suite.program.bind(suite));
+const suite = new SourcePolicyTests();
+test('smoke: portable policy contracts bind source identity target helper and isolated build boundaries', suite.program.bind(suite));
+interface SchemaProjection {
+    additionalProperties?: boolean;
+    required?: string[];
+    properties?: Record<string, SchemaProjection>;
+    const?: string;
+    pattern?: string;
+}
+class SourcePolicyProjectionTests {
+    async projection(): Promise<void> {
+        const { ContractProjection } = await import('../src/contracts.js');
+        const { ServiceSchemas, SourceAcquisitionSchemas } = await import('../src/schemas.js');
+        const contract = ContractProjection.generate() as {
+            schemas: Record<string, SchemaProjection>;
+        };
+        const policySchema = contract.schemas.sourceAcquisitionPolicy!, planSchema = contract.schemas.servicePlan!, buildSchema = contract.schemas.sourceBuildPolicy!;
+        expect(policySchema.additionalProperties).toBe(false);
+        expect(planSchema.properties!.acquisitionPolicy!.additionalProperties).toBe(false);
+        expect(planSchema.required).not.toContain('acquisitionPolicy');
+        expect(buildSchema.properties!.network!.const).toBe('none');
+        const image = new RegExp(buildSchema.properties!.image!.pattern!);
+        expect(image.test('registry.invalid/build@sha256:' + 'a'.repeat(64))).toBe(true);
+        expect(image.test('registry.invalid/build:latest@sha256:' + 'a'.repeat(64))).toBe(false);
+        expect(ServiceSchemas.release.pick({ acquisitionPolicy: true }).parse({})).toEqual({});
+        expect(ServiceSchemas.plan.shape.acquisitionPolicy.parse(undefined)).toBeUndefined();
+        const policy = { formatVersion: 1, helperReleaseIdentity: 'a'.repeat(64), npm: [{ registry: 'https://registry.npmjs.org/', packages: ['@fixture/plugin'], targets: ['deployment'] }], git: [], builds: [] };
+        expect(SourceAcquisitionSchemas.policy.safeParse({ ...policy, npm: [{ ...policy.npm[0], packages: Array(257).fill('@fixture/plugin') }] }).success).toBe(false);
+        expect(SourceAcquisitionSchemas.policy.safeParse({ ...policy, npm: [{ ...policy.npm[0], certificateAuthority: { path: '../outside', sha256: 'b'.repeat(64) } }] }).success).toBe(false);
+    }
+}
+const projection = new SourcePolicyProjectionTests();
+test('unit: acquisition policy projection preserves absent fields bounds and executable image constraints', projection.projection.bind(projection));
