@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { zodToJsonSchema, type PostProcessCallback } from 'zod-to-json-schema';
 
+export const exactRevisionRefSchema = z.object({ id: z.string().trim().min(1), revision: z.number().int().positive() }).strict();
+export type ExactRevisionReference = z.infer<typeof exactRevisionRefSchema>;
+
 // Zod's exporter cannot infer custom refinements. Register the definition
 // created by the owning check; never borrow assertions from the target.
 type ExportedSchema = NonNullable<Parameters<PostProcessCallback>[0]>;

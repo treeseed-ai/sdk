@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { VALID_RELATIONS } from '../../graph/context-query-contracts.ts';
+import { exactRevisionRefSchema } from './schema-constraints.ts';
 
 const nonEmpty = z.string().trim().min(1);
 const uniqueStrings = z.array(nonEmpty).superRefine((items,context) => {
@@ -8,7 +9,6 @@ const uniqueStrings = z.array(nonEmpty).superRefine((items,context) => {
 const nonEmptyUniqueStrings = z.array(nonEmpty).min(1).superRefine((items,context) => {
 	if (new Set(items).size !== items.length) context.addIssue({ code:z.ZodIssueCode.custom,message:'Values must be unique.' });
 });
-const exactRevisionRefSchema = z.object({ id:nonEmpty,revision:z.number().int().positive() }).strict();
 const contextSourceSelectorSchema = z.discriminatedUnion('scope', [
 	z.object({ scope:z.literal('current-project') }).strict(), z.object({ scope:z.literal('team-library') }).strict(),
 	z.object({ scope:z.literal('same-team'),projectIds:uniqueStrings.default([]),projectSlugs:uniqueStrings.default([]) }).strict(),

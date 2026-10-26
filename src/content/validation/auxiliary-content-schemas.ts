@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PUBLICATION_ACCESS_MODES } from '../../sdk-types/support/platform-contracts.ts';
+import { exactRevisionRefSchema } from './schema-constraints.ts';
 
 const nonEmpty = z.string().trim().min(1);
 
@@ -61,7 +62,6 @@ export const templateProductContentSchema = z.object({
 	relatedObjectives: z.array(z.string()).default([]),
 });
 
-const exactRevisionRefSchema = z.object({ id:nonEmpty,revision:z.number().int().positive() }).strict();
 const artifactExpectationSchema = z.object({
 	id:nonEmpty,agentId:nonEmpty,activityType:nonEmpty,model:nonEmpty,pathPrefix:nonEmpty,
 	subjectRefs:z.array(nonEmpty).min(1),relationFields:z.array(nonEmpty).min(1),requiredClaims:z.array(nonEmpty).min(1),
