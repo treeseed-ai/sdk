@@ -416,3 +416,16 @@ without a matching accepted transition does not authorize replacement. Deploymen
 close admission, drain held native leases, verify cleanup/readiness and read back the target
 before committing active. These records neither expand source grants nor promise transport-wide
 hot replacement; unsupported target/safety boundaries remain prepared/action-required.
+
+### Pending source acquisition
+
+`plugin.install`/`plugin.select` can return `pending` while an accepted durable request is
+acquiring helpers/source/build output and no deployment plan/application exists. The result
+still carries its request ID; plan/application references are both null, active generation is
+null and acknowledgements are empty. Artifact/plugin identity stays null until acquired.
+Inspection derives this progress from the stored request; it does not fabricate an application.
+
+Once apply is accepted, pending retains both actual plan and application references. A partial
+reference pair is invalid. Neither pending form is a successful activation envelope or exit 0.
+Active/already-active still requires exact artifact/target/generation/application evidence.
+The worker protocol and seven public operation IDs remain unchanged.

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- Represent source acquisition pending before an application exists (#475).
+
 ### Added
 - Bind accepted source and isolated-build policy to exact release plans (#460).
 
