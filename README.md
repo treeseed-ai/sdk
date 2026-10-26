@@ -386,3 +386,26 @@ conditional scope/target rule; the runtime independently validates it.
 
 The explicit dependency-binding map is bounded to 256 declared ports, matching the service graph
 boundary; generated JSON Schema includes the same `maxProperties` limit.
+
+### Accepted source and isolated-build policy
+
+Optional format-3 `acquisitionPolicy` binds source authorization as data in the exact accepted
+release/plan. An absent policy authorizes no managed source installation. `SourceAcquisitionSchemas`
+defines explicit NPM registry/package/target grants and HTTPS Git origin/package/target grants,
+optional hash-pinned public CA files, the approved helper-release identity, and exact source-only
+build policies. Unknown publishers/origins/targets remain blocked/prepared before package imports;
+a package hash alone is never publisher approval. Updating policy requires a reviewed exact bundle
+and explicit plan/apply, rather than a plugin changing its own grants.
+
+A source-only Git build policy binds origin, exact commit, recipe entry/hash, package output
+directory, digest-pinned build image, helper-release identity, deadline and `network: none`.
+Policy IDs identify exact canonical build definitions; Deployment independently checks their
+hashes before execution. Package lifecycle fields do not authorize builds. No host paths,
+credential environment, shell selection, networking switch or ambient build tools are policy
+inputs. Disposable isolation executes only the explicitly accepted recipe; activation still
+uses the normal verified local bundle and accepted plan, never a live build.
+
+`acquisitionPolicy` is optional and absent fields remain absent in historical format-3 data.
+The executable contract projection exposes the policy/build data and preserves the same seven
+operation IDs and current provider/installed format versions. SDK provides schemas/types, not
+acquisition, trust decisions, container execution or installation authority.

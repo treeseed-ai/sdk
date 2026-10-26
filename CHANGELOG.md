@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Added
+- Bind accepted source and isolated-build policy to exact release plans (#460).
+
+### Added
 - Describe explicit container service and dependency-binding install intent (#460).
 - Describe exact optional restart scopes for format-3 apply and durable request read-back (#460).
 - Bind verified native runtime identities into saved service plans (#460).
