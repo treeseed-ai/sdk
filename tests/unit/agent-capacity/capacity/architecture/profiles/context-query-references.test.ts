@@ -3,6 +3,9 @@ import { validateAgentDefinitionModel } from '../../../../../../src/agent-capaci
 import { describeContentFrontmatterSchema, validatePortableContentData } from '../../../../../../src/content/validation/index.ts';
 import { exportSchemaConstraints } from '../../../../../../src/content/validation/schema-constraints.ts';
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { stringify } from 'yaml';
 
 const query = { id: 'portfolio/related-objectives', revision: 2 };
 const set = { id: 'portfolio/prior-experience', revision: 3 };
@@ -19,6 +22,13 @@ function definition(profile = 'acting', references: Record<string, unknown> = {}
 }
 
 describe('governed agent context query references', () => {
+	it('preserves exact references through governed YAML and the public process validator', () => {
+		const value = definition('acting', { contextQueryRefs: [query], contextQuerySetRefs: [set] });
+		const child = spawnSync(process.execPath, ['--import', 'tsx', fileURLToPath(new URL('./profile-boundary.ts', import.meta.url))],
+			{ input: stringify(value), encoding: 'utf8' });
+		expect(child.status, child.stderr).toBe(0);
+		expect(JSON.parse(child.stdout)).toMatchObject({ ok: true, data: value });
+	});
 	it.each(['planning', 'estimating', 'acting', 'reviewing', 'reporting', 'chat'])('retains exact global and %s query references through public validation', profile => {
 		const value = definition(profile, { contextQueryRefs: [query], contextQuerySetRefs: [set] }), before = structuredClone(value);
 		expect(validateAgentDefinitionModel(value)).toMatchObject({ ok: true, data: value });
@@ -28,7 +38,7 @@ describe('governed agent context query references', () => {
 	it('exports exact versioned references for machine authoring at both scopes', () => {
 		const schema = zodToJsonSchema(describeContentFrontmatterSchema('agent'), { $refStrategy: 'none', postProcess: exportSchemaConstraints });
 		const references = { type: 'array', uniqueItems: true, items: { type: 'object', additionalProperties: false,
-			required: ['id', 'revision'], properties: { id: { type: 'string', minLength: 1 }, revision: { type: 'integer', minimum: 0, exclusiveMinimum: true } } } };
+			required: ['id', 'revision'], properties: { id: { type: 'string', minLength: 1 }, revision: { type: 'integer', exclusiveMinimum: 0 } } } };
 		expect(schema).toMatchObject({ properties: { contextQueryRefs: references, contextQuerySetRefs: references,
 			activityProfiles: { properties: { acting: { properties: { contextQueryRefs: references, contextQuerySetRefs: references } } } } } });
 	});

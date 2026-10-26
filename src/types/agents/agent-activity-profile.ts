@@ -1,5 +1,6 @@
 
 import { AgentActivityType,AgentReasoningEffort,EngineeringHandlerKind,ExecutionProviderKind,ExecutionProviderPressure,ExecutionProviderQuotaVisibility,ExecutionResourceNeedKind } from './agent-trigger-kinds.ts';
+import type { ExactRevisionReference } from '../../content/validation/schema-constraints.ts';
 
 export const AGENT_CONTENT_MODELS = [
 	'agent','book','knowledge','objective','discussion','discussion-message',
@@ -27,7 +28,12 @@ export interface AgentPrompt {
 	instructions?: string[];
 }
 
-export interface AgentActivityProfile {
+export interface AgentContextQueryReferences {
+	contextQueryRefs?: ExactRevisionReference[];
+	contextQuerySetRefs?: ExactRevisionReference[];
+}
+
+export interface AgentActivityProfile extends AgentContextQueryReferences {
 	handler: string;
 	dependsOn?: AgentDependencySelectors;
 	permissions: AgentPermissionSet;
@@ -38,7 +44,7 @@ export interface AgentActivityProfile {
 
 export type AgentActivityProfilesConfiguration = Partial<Record<AgentActivityType, AgentActivityProfile>>;
 
-export interface AgentDefinition {
+export interface AgentDefinition extends AgentContextQueryReferences {
 	schemaVersion: 'treeseed.agent/v1';
 	id: string;
 	name: string;

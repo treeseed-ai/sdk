@@ -1,11 +1,15 @@
 import { z, type ZodError } from 'zod';
-import { minimumProperties, uniqueArray } from '../../content/validation/schema-constraints.ts';
+import { exactRevisionRefSchema, minimumProperties, uniqueArray } from '../../content/validation/schema-constraints.ts';
 import { AGENT_CONTENT_MODELS, AGENT_TOOL_GROUPS } from '../../types/agents.ts';
 
 const identifier = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u);
 export const agentClassSchema = z.string().min(1).max(100).regex(/^[a-z][a-z0-9-]*$/u);
 const nonEmpty = z.string().trim().min(1);
 const unique = <T extends z.ZodTypeAny>(item: T) => uniqueArray(z.array(item));
+const contextQueryReferences = {
+	contextQueryRefs: unique(exactRevisionRefSchema).optional(),
+	contextQuerySetRefs: unique(exactRevisionRefSchema).optional(),
+};
 
 const dependenciesSchema = minimumProperties(z.object({
 	agents: unique(agentClassSchema).optional(),
@@ -26,6 +30,7 @@ const promptSchema = z.object({
 }).strict();
 
 export const activityProfileSchema = z.object({
+	...contextQueryReferences,
 	handler: identifier,
 	dependsOn: dependenciesSchema.optional(),
 	permissions: permissionSetSchema,
@@ -44,6 +49,7 @@ export const activityProfilesSchema = minimumProperties(z.object({
 }).strict(), 1, 'At least one activity profile is required.');
 
 export const agentDefinitionSchema = z.object({
+	...contextQueryReferences,
 	schemaVersion: z.literal('treeseed.agent/v1'),
 	id: identifier,
 	name: nonEmpty,
