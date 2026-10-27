@@ -1,6 +1,16 @@
 schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/sdk"
 verifiers:
+  sdk.golden.coordinator-proposal-retirement-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/mcp/proposal-lifecycle-mcp.test.ts
+    testName: "exposes (withdraw|supersede) through the same versioned operation and explicit fields"
+  sdk.golden.coordinator-proposal-retirement-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/operator-contracts/mcp/proposal-lifecycle-mcp.test.ts
+    testName: "native SDK (withdraw|supersede) transport preserves version, identity and evidence across denial and exact retry"
   sdk.golden.coordinator-proposal-evaluation-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

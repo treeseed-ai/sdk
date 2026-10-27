@@ -202,8 +202,8 @@ describe('control-plane operation catalog', () => {
 		const proposals = TREESEED_COMMAND_TREE_V1.commands.find((node) => node.nodeType === 'branch' && node.segment === 'proposals');
 		const leaves = proposals?.nodeType === 'branch' ? proposals.children.filter((node) => node.nodeType === 'leaf').map((node) => node.segment) : [];
 		expect(leaves).toEqual(expect.arrayContaining(['withdraw', 'supersede']));
-		expect(CONTROL_PLANE_OPERATIONS.governance.withdraw.descriptor).toMatchObject({ concurrency: { required: true }, surfaces: ['rest', 'cli'] });
-		expect(CONTROL_PLANE_OPERATIONS.governance.supersede.descriptor).toMatchObject({ concurrency: { required: true }, surfaces: ['rest', 'cli'] });
+		expect(CONTROL_PLANE_OPERATIONS.governance.withdraw.descriptor).toMatchObject({ concurrency: { required: true }, surfaces: ['rest', 'cli', 'mcp_tool'] });
+		expect(CONTROL_PLANE_OPERATIONS.governance.supersede.descriptor).toMatchObject({ concurrency: { required: true }, surfaces: ['rest', 'cli', 'mcp_tool'] });
 	});
 
 	it('derives the complete stable MCP catalog from resource-declared operations', () => {
@@ -217,7 +217,9 @@ describe('control-plane operation catalog', () => {
 			expect.objectContaining({ operationId: 'workdays.show', uriTemplate: 'treeseed://teams/{teamId}/workdays/{runId}' }),
 		]));
 		const catalog = buildMcpCatalog(CONTROL_PLANE_CATALOG.operations);
-		expect(catalog.tools).toHaveLength(80);
+		expect(catalog.tools).toHaveLength(82);
+		expect(catalog.tools.filter(tool => tool.operationId === 'governance.proposals.withdraw')).toHaveLength(1);
+		expect(catalog.tools.filter(tool => tool.operationId === 'governance.proposals.supersede')).toHaveLength(1);
 		expect(catalog.tools.filter(tool => tool.operationId === 'governance.proposals.evaluate')).toHaveLength(1);
 		expect(catalog.tools.filter(tool => tool.operationId === 'assignments.recover')).toHaveLength(1);
 		expect(catalog.resources).toEqual(resources);

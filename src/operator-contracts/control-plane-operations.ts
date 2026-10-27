@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { ControlPlaneOperationDescriptor } from './control-plane-operation.ts';
-import { defineOperation as define, defineTreeDxProxyOperation as treedxProxy, defineReadOperation as read } from './operation-builder.ts';
+import { defineOperation as define, defineTreeDxProxyOperation as treedxProxy, defineReadOperation as read, defineResourceOperation as resource } from './operation-builder.ts';
 import { communicationOperations, providerCommunicationLifecycleOperations, providerDiscussionResponseOperation } from './catalog/communication-operations.ts';
 import { inboxOperations } from './catalog/inbox-operations.ts';
 import { WORKDAY_PROFILE_OPERATIONS } from './catalog/workdays/profile-operations.ts';
@@ -17,6 +17,8 @@ import { EXECUTION_OPERATIONS } from './catalog/execution/execution-operations.t
 import { AGENT_TEAM_CLONE_OPERATIONS } from './catalog/agents/agent-team-clone-operations.ts';
 import { workdayIntentRequestSchema } from './workday-lifecycle.ts';
 const empty = z.object({}).strict(), none = z.undefined(), record = z.record(z.unknown()), payload = record;
+const proposalRetirement = z.object({ reason: z.string().trim().min(1).optional(),
+	expectedProposalVersion: z.number().int().min(1).optional(), evidence: record.optional() }).strict();
 const workdayIntent = workdayIntentRequestSchema;
 const scheduledWorkdayIntent = record.transform((value, context) => {
 	const intent = workdayIntent.safeParse(value.intent);
@@ -71,36 +73,6 @@ function postRead<T extends z.ZodRawShape>(
 		capability, authentication: 'oauth', oauthScopes: scopes, kind: 'read', riskClass: 'ordinary', confirmation: 'never',
 		surfaces, cacheScope: 'none', pagination: 'none', idempotencyRequired: false,
 	}, { path: z.object(pathShape).strict(), query: empty, body: record, output: payload });
-}
-function resource<T extends z.ZodRawShape>(
-	operationId: `${string}.${string}`,
-	method: 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT',
-	path: `/v1/${string}`,
-	pathShape: T,
-	options: {
-		capability: string;
-		scopes?: ControlPlaneOperationDescriptor['oauthScopes'];
-		surfaces?: ControlPlaneOperationDescriptor['surfaces'];
-		risk?: ControlPlaneOperationDescriptor['riskClass'];
-		concurrency?: boolean;
-		pagination?: ControlPlaneOperationDescriptor['pagination']; cacheScope?: ControlPlaneOperationDescriptor['cacheScope'];
-		redactedPaths?: string[];
-		authentication?: ControlPlaneOperationDescriptor['authentication'];
-		body?: z.ZodType<unknown>;
-	} = { capability: 'control-plane.use' },
-) {
-	const kind = method === 'GET' ? 'read' : 'mutation';
-	const riskClass = options.risk ?? 'ordinary';
-	return define({
-		operationId, description: `${kind === 'read' ? 'Read' : 'Apply'} ${operationId}.`, rest: { method, path },
-		...(Object.keys(pathShape).length ? { parameters: `treeseed.${operationId}.parameters/v1` } : {}),
-		capability: options.capability,
-		authentication: options.authentication ?? ((options.scopes ?? (kind === 'read' ? ['treeseed:read'] : ['treeseed:projects:write'])).length ? 'oauth' : 'anonymous'),
-		oauthScopes: options.scopes ?? (kind === 'read' ? ['treeseed:read'] : ['treeseed:projects:write']),
-		kind, riskClass, confirmation: riskClass === 'ordinary' ? 'never' : 'input_required',
-		surfaces: options.surfaces ?? ['rest'], cacheScope: options.cacheScope ?? (kind === 'read' ? 'principal' : 'none'),
-		pagination: options.pagination ?? 'none', concurrencyRequired: options.concurrency, redactedPaths: options.redactedPaths,
-	}, { path: z.object(pathShape).strict(), query: kind === 'read' ? record : empty, body: kind === 'read' ? none : options.body ?? record, output: payload });
 }
 export const CONTROL_PLANE_OPERATIONS = {
 	aiInstances: AI_INSTANCE_OPERATIONS,
@@ -216,8 +188,9 @@ export const CONTROL_PLANE_OPERATIONS = {
 		evaluate: resource('governance.proposals.evaluate', 'POST', '/v1/projects/{projectId}/proposals/{proposalId}/evaluate', { projectId: z.string().min(1), proposalId: z.string().min(1) }, { capability: 'governance.decide', scopes: ['treeseed:governance:write'], surfaces: ['rest', 'cli', 'mcp_tool'], concurrency: true,
 			body: z.object({ adminDecision: z.enum(['approved', 'rejected', 'request_changes']).optional(),
 				expectedProposalVersion: z.number().int().min(1).optional(), reason: z.string().trim().min(1).optional() }).strict() }),
-		withdraw: resource('governance.proposals.withdraw', 'POST', '/v1/projects/{projectId}/proposals/{proposalId}/withdraw', { projectId: z.string().min(1), proposalId: z.string().min(1) }, { capability: 'governance.write', scopes: ['treeseed:governance:write'], surfaces: ['rest', 'cli'], risk: 'destructive', concurrency: true }),
-		supersede: resource('governance.proposals.supersede', 'POST', '/v1/projects/{projectId}/proposals/{proposalId}/supersede', { projectId: z.string().min(1), proposalId: z.string().min(1) }, { capability: 'governance.write', scopes: ['treeseed:governance:write'], surfaces: ['rest', 'cli'], concurrency: true }),
+		withdraw: resource('governance.proposals.withdraw', 'POST', '/v1/projects/{projectId}/proposals/{proposalId}/withdraw', { projectId: z.string().min(1), proposalId: z.string().min(1) }, { capability: 'governance.write', scopes: ['treeseed:governance:write'], surfaces: ['rest', 'cli', 'mcp_tool'], risk: 'destructive', concurrency: true, body: proposalRetirement }),
+		supersede: resource('governance.proposals.supersede', 'POST', '/v1/projects/{projectId}/proposals/{proposalId}/supersede', { projectId: z.string().min(1), proposalId: z.string().min(1) }, { capability: 'governance.write', scopes: ['treeseed:governance:write'], surfaces: ['rest', 'cli', 'mcp_tool'], concurrency: true,
+			body: proposalRetirement.extend({ successorProposalId: z.string().trim().min(1).optional() }) }),
 		proposalEvents: resource('governance.proposals.events', 'GET', '/v1/projects/{projectId}/proposals/{proposalId}/events', { projectId: z.string().min(1), proposalId: z.string().min(1) }, { capability: 'governance.read', pagination: 'cursor' }),
 		decisions: resource('governance.decisions.list', 'GET', '/v1/projects/{projectId}/decisions', { projectId: z.string().min(1) }, { capability: 'governance.read', surfaces: ['rest', 'cli', 'mcp_tool', 'mcp_resource'], pagination: 'cursor' }),
 		decision: resource('governance.decisions.show', 'GET', '/v1/projects/{projectId}/decisions/{decisionId}', { projectId: z.string().min(1), decisionId: z.string().min(1) }, { capability: 'governance.read', surfaces: ['rest', 'cli', 'mcp_tool', 'mcp_resource'] }),
