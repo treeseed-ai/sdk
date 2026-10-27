@@ -1,9 +1,9 @@
 import { test, expect } from 'bun:test';
-import { AgentContractBinding, AgentContractError, AgentSchemas, ContractProjection } from '../../src/contracts.js';
+import { AgentContractBinding, AgentContractError, AgentSchemas, ContractProjection, type AgentExecutionRequest, type AgentAuthorityBinding } from '../../src/contracts.js';
 class AgentContractTests {
     private readonly generation = 'a'.repeat(64);
-    private authority(): Record<string, unknown> { return { scopeId: 'installation:fixture:agent', principalId: 'subject:fixture', resourceScope: 'resource:fixture', grantId: 'grant:fixture', grantRevision: 1, state: 'granted' }; }
-    private request(): Record<string, unknown> { return { protocol: 1, operation: 'composition-probe', executionId: 'execution:one', scopeId: 'installation:fixture:agent', principalId: 'subject:fixture', resourceScope: 'resource:fixture', grantId: 'grant:fixture', grantRevision: 1, expectedGeneration: this.generation, handlerId: 'fixture.echo', text: 'harmless' }; }
+    private authority(): AgentAuthorityBinding { return { scopeId: 'installation:fixture:agent', principalId: 'subject:fixture', resourceScope: 'resource:fixture', grantId: 'grant:fixture', grantRevision: 1, state: 'granted' }; }
+    private request(): AgentExecutionRequest { return { protocol: 1, operation: 'composition-probe', executionId: 'execution:one', scopeId: 'installation:fixture:agent', principalId: 'subject:fixture', resourceScope: 'resource:fixture', grantId: 'grant:fixture', grantRevision: 1, expectedGeneration: this.generation, handlerId: 'fixture.echo', text: 'harmless' }; }
     bindings(): void {
         const request = this.request(), accepted = AgentContractBinding.assert(request, this.authority(), this.generation);
         expect(accepted).toEqual(request); expect(accepted).not.toBe(request);
