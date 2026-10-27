@@ -1,0 +1,18 @@
+import * as Portable from '@treeseed-cordis/sdk/portable';
+import { z } from 'zod';
+class SourcePolicyProgram {
+    static run(): void { const schemas = Reflect.get(Portable, 'SourceAcquisitionSchemas') as {
+        policy: z.ZodType;
+        build: z.ZodType;
+    }; if (!schemas)
+        throw new Error('SOURCE_ACQUISITION_POLICY_UNAVAILABLE'); const helper = 'a'.repeat(64), policy = { formatVersion: 1, helperReleaseIdentity: helper, npm: [{ registry: 'https://registry.npmjs.org/', packages: ['@fixture/plugin'], targets: ['deployment'] }], git: [{ origin: 'https://github.com/fixture/plugin.git', packages: ['@fixture/plugin'], targets: ['deployment'] }], builds: [] }; const parsed = schemas.policy.parse(policy); if (JSON.stringify(parsed) !== JSON.stringify(policy))
+        throw new Error('Policy data changed'); for (const change of [{ npm: [{ ...policy.npm[0], registry: 'https://user:credential-canary@registry.npmjs.org/' }] }, { git: [{ ...policy.git[0], origin: 'git@github.com:fixture/plugin' }] }, { npm: [policy.npm[0], policy.npm[0]] }, { npm: [{ ...policy.npm[0], targets: ['deployment', 'deployment'] }] }, { git: [{ ...policy.git[0], buildPolicyDigest: 'b'.repeat(64) }] }, { environment: { TOKEN: 'NEVER_ACCEPT' } }])
+        if (schemas.policy.safeParse({ ...policy, ...change }).success)
+            throw new Error('Unsafe acquisition policy'); const recipe = { id: 'b'.repeat(64), origin: policy.git[0]!.origin, commit: 'c'.repeat(40), entry: 'build.ts', entryDigest: 'd'.repeat(64), packageDirectory: 'package', image: 'registry.invalid/build@sha256:' + 'e'.repeat(64), helperReleaseIdentity: helper, network: 'none', timeoutMs: 120000 }; schemas.policy.parse({ ...policy, git: [{ ...policy.git[0], buildPolicyDigest: recipe.id }], builds: [recipe] }); for (const change of [{ network: 'host' }, { entry: '../outside.ts' }, { image: 'registry.invalid/build:latest' }, { timeoutMs: 300001 }, { environment: { TOKEN: 'NEVER_ACCEPT' } }])
+        if (schemas.build.safeParse({ ...recipe, ...change }).success)
+            throw new Error('Unsafe build policy'); const transition = { capability: 'plugin.source.npm', target: 'deployment', previousProviderId: 'source.npm', nextProviderId: 'fixture.source', previous: { package: '@fixture/source', version: '1.0.0', integrity: 'a'.repeat(64) }, next: { package: '@fixture/source', version: '2.0.0', integrity: 'b'.repeat(64) }, qualificationDigest: 'c'.repeat(64), stateVersion: 1 }; schemas.policy.parse({ ...policy, liveTransitions: [transition] }); if (schemas.policy.safeParse({ ...policy, liveTransitions: [transition, transition] }).success)
+        throw new Error('Duplicate live qualification'); if (schemas.policy.safeParse({ ...policy, liveTransitions: [{ ...transition, next: { ...transition.next, integrity: 'mutable' } }] }).success)
+        throw new Error('Unbound live transition'); if (Portable.PlatformOperations.all.length !== 7)
+        throw new Error('Operation identifiers changed'); process.stdout.write('source-acquisition-policy-ok\n'); }
+}
+SourcePolicyProgram.run();

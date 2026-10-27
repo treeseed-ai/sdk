@@ -63,7 +63,7 @@ export class SourcePolicy {
     const directory=resolve(root), files=this.files(directory), errors:string[]=[];
     for(const file of files) errors.push(...this.inspect(relative(directory,file),readFileSync(file,'utf8'),directory));
     if(errors.length) throw new Error(errors.join('\n'));
-    const options:ts.CompilerOptions={strict:true,noUncheckedIndexedAccess:true,target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext,moduleResolution:ts.ModuleResolutionKind.Bundler,skipLibCheck:true,esModuleInterop:true,declaration:true,noEmit:!emit,noEmitOnError:true,rootDir:directory,outDir:join(directory,'dist'),types:['bun','node'],jsx:ts.JsxEmit.Preserve};
+    const options:ts.CompilerOptions={strict:true,noUncheckedIndexedAccess:true,target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext,moduleResolution:ts.ModuleResolutionKind.Bundler,skipLibCheck:true,esModuleInterop:true,declaration:true,noEmit:!emit,noEmitOnError:true,rootDir:directory,outDir:join(directory,'dist'),types:['bun','node'],jsx:ts.JsxEmit.ReactJSX};
     const program=ts.createProgram(files,options);
     const diagnostics=ts.getPreEmitDiagnostics(program);
     if(diagnostics.length) throw new Error(ts.formatDiagnosticsWithColorAndContext(diagnostics,new DiagnosticHost()));
