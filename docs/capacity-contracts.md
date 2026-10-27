@@ -107,6 +107,14 @@ unless an exact transition has separately passed qualification.
 
 ## Verification
 
+Capability ID sets normalize to lexical order without changing their array type. The first
+`bun run build` projection attempt with Zod 4.6.7, TypeScript 5.9.3 and Bun 1.4.4 failed with
+`Transforms cannot be represented in JSON Schema` when that field used `.transform()`. The
+same pinned build uses Zod's type-preserving
+[`.overwrite()`](https://zod.dev/v4#overwrite) for normalization. No optional Zod plugins or
+unrepresentable-as-any fallback are used. Graph, identity and lifecycle refinements still require
+the executable SDK validators; generated JSON Schema alone cannot prove those invariants.
+
 Outside-in built public Node consumers precede implementation. Contract suites cover external
 profile types, graph/parameter/handler rejection, generation and authority substitutions,
 offline defaults, entrypoint tampering and truthful cleanup states. All four permanent test tiers,
