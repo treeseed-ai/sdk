@@ -53,6 +53,37 @@ const empty = z.object({}).strict();
 const none = z.undefined();
 const record = z.record(z.unknown());
 
+export function defineResourceOperation<T extends z.ZodRawShape>(
+	operationId: `${string}.${string}`,
+	method: 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT',
+	path: `/v1/${string}`,
+	pathShape: T,
+	options: {
+		capability: string;
+		scopes?: ControlPlaneOperationDescriptor['oauthScopes'];
+		surfaces?: ControlPlaneOperationDescriptor['surfaces'];
+		risk?: ControlPlaneOperationDescriptor['riskClass'];
+		concurrency?: boolean;
+		pagination?: ControlPlaneOperationDescriptor['pagination']; cacheScope?: ControlPlaneOperationDescriptor['cacheScope'];
+		redactedPaths?: string[];
+		authentication?: ControlPlaneOperationDescriptor['authentication'];
+		body?: z.ZodType<unknown>;
+	} = { capability: 'control-plane.use' },
+) {
+	const kind = method === 'GET' ? 'read' : 'mutation';
+	const riskClass = options.risk ?? 'ordinary';
+	return defineOperation({
+		operationId, description: `${kind === 'read' ? 'Read' : 'Apply'} ${operationId}.`, rest: { method, path },
+		...(Object.keys(pathShape).length ? { parameters: `treeseed.${operationId}.parameters/v1` } : {}),
+		capability: options.capability,
+		authentication: options.authentication ?? ((options.scopes ?? (kind === 'read' ? ['treeseed:read'] : ['treeseed:projects:write'])).length ? 'oauth' : 'anonymous'),
+		oauthScopes: options.scopes ?? (kind === 'read' ? ['treeseed:read'] : ['treeseed:projects:write']),
+		kind, riskClass, confirmation: riskClass === 'ordinary' ? 'never' : 'input_required',
+		surfaces: options.surfaces ?? ['rest'], cacheScope: options.cacheScope ?? (kind === 'read' ? 'principal' : 'none'),
+		pagination: options.pagination ?? 'none', concurrencyRequired: options.concurrency, redactedPaths: options.redactedPaths,
+	}, { path: z.object(pathShape).strict(), query: kind === 'read' ? record : empty, body: kind === 'read' ? none : options.body ?? record, output: record });
+}
+
 export function defineTreeDxProxyOperation<T extends z.ZodRawShape>(
 	operationId: `${string}.${string}`,
 	upstreamOperationId: string | null,

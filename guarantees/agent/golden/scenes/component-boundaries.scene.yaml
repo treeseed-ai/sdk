@@ -3,6 +3,18 @@ id: sdk.golden.component-boundaries
 title: sdk golden component boundaries
 scope: local-component-tests
 workflow:
+  - id: coordinator-proposal-withdraw-unit
+    action: { verifier: sdk.golden.coordinator-proposal-withdraw-unit }
+    expect: { status: passed }
+  - id: coordinator-proposal-withdraw-native
+    action: { verifier: sdk.golden.coordinator-proposal-withdraw-native }
+    expect: { status: passed }
+  - id: coordinator-proposal-supersede-unit
+    action: { verifier: sdk.golden.coordinator-proposal-supersede-unit }
+    expect: { status: passed }
+  - id: coordinator-proposal-supersede-native
+    action: { verifier: sdk.golden.coordinator-proposal-supersede-native }
+    expect: { status: passed }
   - id: coordinator-proposal-evaluation-unit
     action: { verifier: sdk.golden.coordinator-proposal-evaluation-unit }
     expect: { status: passed }
