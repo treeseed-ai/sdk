@@ -2,7 +2,10 @@ import { z } from 'zod';
 import { PlatformSchemas } from './schemas.js';
 import { SeedSchemas } from './seeds.js';
 
-interface ProfileNode { id: string; dependsOn: string[]; }
+interface ProfileNode {
+  id: string;
+  dependsOn: string[];
+}
 
 /** Declaration graph only: no service instances or lifecycle behavior. */
 class ActivityGraph {
@@ -42,19 +45,43 @@ class ActivityValidation {
 /** Parameters still require the accepted profile provider's validator. */
 export class ActivitySchemas {
   static readonly version = '1.0.0-cordis.1';
-  static readonly coreTypes = ['planning', 'estimating', 'acting', 'reviewing', 'reporting', 'chat'] as const;
-  static readonly contract = z.strictObject({ capability: SeedSchemas.identifier,
-    contractVersion: PlatformSchemas.version });
-  static readonly capability = z.strictObject({ typeId: SeedSchemas.identifier,
-    revision: PlatformSchemas.digest, provider: SeedSchemas.provider.extend({ target: z.literal('agent') }),
-    parameterSchema: SeedSchemas.schema, handler: this.contract, orchestration: this.contract });
-  static readonly instance = z.strictObject({ id: SeedSchemas.key, typeId: SeedSchemas.identifier,
+  static readonly coreTypes = [
+    'planning',
+    'estimating',
+    'acting',
+    'reviewing',
+    'reporting',
+    'chat',
+  ] as const;
+  static readonly contract = z.strictObject({
+    capability: SeedSchemas.identifier,
+    contractVersion: PlatformSchemas.version,
+  });
+  static readonly capability = z.strictObject({
+    typeId: SeedSchemas.identifier,
+    revision: PlatformSchemas.digest,
+    provider: SeedSchemas.provider.extend({ target: z.literal('agent') }),
+    parameterSchema: SeedSchemas.schema,
+    handler: this.contract,
+    orchestration: this.contract,
+  });
+  static readonly instance = z.strictObject({
+    id: SeedSchemas.key,
+    typeId: SeedSchemas.identifier,
     capabilityRevision: PlatformSchemas.digest,
     handler: this.contract.extend({ providerId: SeedSchemas.identifier }),
-    environmentId: SeedSchemas.key, parameters: z.record(z.string(), z.json()), dependsOn: SeedSchemas.keys });
-  static readonly definition = z.strictObject({ schemaVersion: z.literal('treeseed.agent-definition/v1'),
-    id: SeedSchemas.key, revision: PlatformSchemas.digest,
-    profiles: z.array(this.instance).min(1).max(256) }).refine(ActivityValidation.definition);
+    environmentId: SeedSchemas.key,
+    parameters: z.record(z.string(), z.json()),
+    dependsOn: SeedSchemas.keys,
+  });
+  static readonly definition = z
+    .strictObject({
+      schemaVersion: z.literal('treeseed.agent-definition/v1'),
+      id: SeedSchemas.key,
+      revision: PlatformSchemas.digest,
+      profiles: z.array(this.instance).min(1).max(256),
+    })
+    .refine(ActivityValidation.definition);
   static readonly catalogue = z.array(this.capability).min(1).max(256);
 }
 
@@ -66,8 +93,12 @@ export interface ResolvedActivityDefinition {
   readonly capability: ActivityCapability;
 }
 
-export type ActivityContractCode = 'INVALID_ACTIVITY_CONTRACT' | 'ACTIVITY_TYPE_UNAVAILABLE' |
-  'ACTIVITY_TYPE_AMBIGUOUS' | 'ACTIVITY_REVISION_MISMATCH' | 'ACTIVITY_HANDLER_INCOMPATIBLE';
+export type ActivityContractCode =
+  | 'INVALID_ACTIVITY_CONTRACT'
+  | 'ACTIVITY_TYPE_UNAVAILABLE'
+  | 'ACTIVITY_TYPE_AMBIGUOUS'
+  | 'ACTIVITY_REVISION_MISMATCH'
+  | 'ACTIVITY_HANDLER_INCOMPATIBLE';
 
 export class ActivityContractError extends Error {
   constructor(readonly code: ActivityContractCode) {
@@ -113,7 +144,10 @@ export class ActivityContractBinding {
     }
     const actual = instance.handler;
     const required = capability.handler;
-    if (actual.capability !== required.capability || actual.contractVersion !== required.contractVersion) {
+    if (
+      actual.capability !== required.capability ||
+      actual.contractVersion !== required.contractVersion
+    ) {
       throw new ActivityContractError('ACTIVITY_HANDLER_INCOMPATIBLE');
     }
   }

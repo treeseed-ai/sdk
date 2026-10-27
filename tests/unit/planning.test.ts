@@ -12,7 +12,7 @@ class PlanningContractTestsUnit {
     expect(PlatformSchemas.plan.shape.recipe).toBeDefined();
     expect(PlatformSchemas.plan.shape.pluginBindings).toBeDefined();
     const result = ContractProjection.generate() as { contractVersion: string; schemas?: object };
-    expect(result.contractVersion).toBe('0.7.0-cordis.1');
+    expect(result.contractVersion).toBe('0.8.0-cordis.1');
     expect(result.schemas).toBeDefined();
     expect(PlatformOperations.all.length).toBe(7);
     const invalid = { id: 'pretend', digest: 'a'.repeat(64), expectedComposition: null,

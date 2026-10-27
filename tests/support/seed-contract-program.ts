@@ -131,7 +131,7 @@ class SeedContractProgram {
 
   private projection(): void {
     const value = JSON.parse(readFileSync('dist/contract.json', 'utf8'));
-    assert.equal(value.contractVersion, '0.7.0-cordis.1');
+    assert.equal(value.contractVersion, '0.8.0-cordis.1');
     for (const key of ['seedBundle', 'seedPlan', 'seedReceipt', 'seedResourcePlan', 'seedResourceReceipt']) {
       assert.equal(typeof value.schemas[key], 'object');
     }

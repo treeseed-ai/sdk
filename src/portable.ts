@@ -2,6 +2,7 @@ export * from './agent.js';
 export * from './seeds.js';
 export * from './activities.js';
 export * from './environments.js';
+export * from './capacity.js';
 export * from './service-journal.js';
 export * from './schemas.js';
 export * from './management.js';

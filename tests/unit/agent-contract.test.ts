@@ -177,7 +177,7 @@ class AgentContractTests {
       schemas: Record<string, unknown>;
       operations: unknown[];
     };
-    expect(projection.contractVersion).toBe('0.7.0-cordis.1');
+    expect(projection.contractVersion).toBe('0.8.0-cordis.1');
     for (const name of ['agentAuthority', 'agentExecutionRequest', 'agentExecutionResult'])
       expect(projection.schemas[name]).toBeDefined();
     expect(projection.operations.length).toBe(7);

@@ -2,7 +2,11 @@ import { z } from 'zod';
 import { PlatformSchemas, CanonicalJson } from './schemas.js';
 import { SeedSchemas } from './seeds.js';
 
-interface Destination { protocol: 'tcp'; host: string; port: number; }
+interface Destination {
+  protocol: 'tcp';
+  host: string;
+  port: number;
+}
 
 class EnvironmentValidation {
   static host(value: string): boolean {
@@ -42,26 +46,64 @@ class EnvironmentValidation {
 /** Immutable declarations only: host verification and guest-side enforcement remain owner behavior. */
 export class EnvironmentSchemas {
   static readonly version = '1.0.0-cordis.1';
-  static readonly destination = z.strictObject({ protocol: z.literal('tcp'),
-    host: z.string().refine(EnvironmentValidation.host), port: z.number().int().min(1).max(65535) });
-  static readonly network = z.discriminatedUnion('mode', [
-    z.strictObject({ mode: z.literal('offline'), destinations: z.array(this.destination).max(0) }),
-    z.strictObject({ mode: z.literal('allow-list'),
-      destinations: z.array(this.destination).min(1).max(64).refine(EnvironmentValidation.unique) }),
-  ]).default(EnvironmentValidation.offline);
-  static readonly entrypoint = z.strictObject({
-    file: PlatformSchemas.file.extend({ size: z.number().int().min(1).max(64 * 1024 * 1024) }),
-    arguments: z.array(z.string().max(4096).regex(/^[^\x00]*$/)).max(64),
-    deadlineMs: z.number().int().min(1).max(86400000),
-    outputLimitBytes: z.number().int().min(1).max(1024 * 1024),
+  static readonly destination = z.strictObject({
+    protocol: z.literal('tcp'),
+    host: z.string().refine(EnvironmentValidation.host),
+    port: z.number().int().min(1).max(65535),
   });
-  static readonly image = z.strictObject({ reference: PlatformSchemas.imageReference,
-    manifestDigest: PlatformSchemas.digest, os: z.literal('linux'), architecture: z.literal('amd64') });
-  static readonly definition = z.strictObject({ schemaVersion: z.literal('treeseed.agent-environment/v1'),
-    id: SeedSchemas.key, revision: PlatformSchemas.digest,
-    artifact: SeedSchemas.provider.shape.artifact, image: this.image,
-    setup: this.entrypoint, verification: this.entrypoint, network: this.network,
-  }).refine(EnvironmentValidation.image);
+  static readonly network = z
+    .discriminatedUnion('mode', [
+      z.strictObject({
+        mode: z.literal('offline'),
+        destinations: z.array(this.destination).max(0),
+      }),
+      z.strictObject({
+        mode: z.literal('allow-list'),
+        destinations: z.array(this.destination).min(1).max(64).refine(EnvironmentValidation.unique),
+      }),
+    ])
+    .default(EnvironmentValidation.offline);
+  static readonly entrypoint = z.strictObject({
+    file: PlatformSchemas.file.extend({
+      size: z
+        .number()
+        .int()
+        .min(1)
+        .max(64 * 1024 * 1024),
+    }),
+    arguments: z
+      .array(
+        z
+          .string()
+          .max(4096)
+          .regex(/^[^\x00]*$/),
+      )
+      .max(64),
+    deadlineMs: z.number().int().min(1).max(86400000),
+    outputLimitBytes: z
+      .number()
+      .int()
+      .min(1)
+      .max(1024 * 1024),
+  });
+  static readonly image = z.strictObject({
+    reference: PlatformSchemas.imageReference,
+    manifestDigest: PlatformSchemas.digest,
+    os: z.literal('linux'),
+    architecture: z.literal('amd64'),
+  });
+  static readonly definition = z
+    .strictObject({
+      schemaVersion: z.literal('treeseed.agent-environment/v1'),
+      id: SeedSchemas.key,
+      revision: PlatformSchemas.digest,
+      artifact: SeedSchemas.provider.shape.artifact,
+      image: this.image,
+      setup: this.entrypoint,
+      verification: this.entrypoint,
+      network: this.network,
+    })
+    .refine(EnvironmentValidation.image);
 }
 
 export type EnvironmentDefinition = z.infer<typeof EnvironmentSchemas.definition>;
@@ -79,7 +121,11 @@ export class EnvironmentContractError extends Error {
 
 /** Computes already-trusted policy intersection; it never creates grants or enforces egress. */
 export class EnvironmentNetwork {
-  static intersect(requested: unknown, host: unknown, assignment: unknown): EnvironmentNetworkPolicy {
+  static intersect(
+    requested: unknown,
+    host: unknown,
+    assignment: unknown,
+  ): EnvironmentNetworkPolicy {
     const desire = EnvironmentNetwork.parse(requested);
     const hostPolicy = EnvironmentNetwork.parse(host);
     const grant = EnvironmentNetwork.parse(assignment);
@@ -88,7 +134,10 @@ export class EnvironmentNetwork {
       EnvironmentNetwork.require(hostPolicy, destination);
       EnvironmentNetwork.require(grant, destination);
     }
-    return { mode: 'allow-list', destinations: [...desire.destinations].sort(EnvironmentNetwork.compare) };
+    return {
+      mode: 'allow-list',
+      destinations: [...desire.destinations].sort(EnvironmentNetwork.compare),
+    };
   }
 
   private static parse(value: unknown): EnvironmentNetworkPolicy {
@@ -97,7 +146,10 @@ export class EnvironmentNetwork {
     return result.data;
   }
 
-  private static require(policy: EnvironmentNetworkPolicy, destination: EnvironmentDestination): void {
+  private static require(
+    policy: EnvironmentNetworkPolicy,
+    destination: EnvironmentDestination,
+  ): void {
     if (policy.mode === 'allow-list') {
       for (const accepted of policy.destinations) {
         if (EnvironmentNetwork.compare(accepted, destination) === 0) return;

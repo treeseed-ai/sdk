@@ -2,6 +2,10 @@ export * from "./agent.js";
 export * from "./seeds.js";
 export * from './activities.js';
 export * from './environments.js';
+export * from './capacity.js';
+import { ActivitySchemas } from './activities.js';
+import { EnvironmentSchemas } from './environments.js';
+import { CapacitySchemas } from './capacity.js';
 import { SeedSchemas } from "./seeds.js";
 import { AgentSchemas } from "./agent.js";
 export * from "./service-projection.js";
@@ -30,6 +34,15 @@ export class CanonicalJson extends PortableJson {
 }
 export class ContractProjection {
   private static readonly outputSchemas = {
+    agentDefinition: ActivitySchemas.definition,
+    activityCapability: ActivitySchemas.capability,
+    activityProfile: ActivitySchemas.instance,
+    environmentDefinition: EnvironmentSchemas.definition,
+    environmentNetwork: EnvironmentSchemas.network,
+    capacityAuthority: CapacitySchemas.authority,
+    capacityLease: CapacitySchemas.lease,
+    capacityReadiness: CapacitySchemas.readiness,
+    capacityResult: CapacitySchemas.result,
     agentAuthority: AgentSchemas.authority,
     agentExecutionRequest: AgentSchemas.request,
     agentExecutionResult: AgentSchemas.result,
@@ -109,7 +122,7 @@ export class ContractProjection {
   static generate(): object {
     PlatformOperations.validate(PlatformOperations.all);
     const contract = {
-      contractVersion: "0.7.0-cordis.1",
+      contractVersion: "0.8.0-cordis.1",
       operations: this.operations(),
       schemas: this.schemas(),
     };
