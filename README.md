@@ -1,5 +1,10 @@
 # Cordis SDK contracts
 
+The Task 3D capacity candidate is documented in [Portable capacity contracts](docs/capacity-contracts.md).
+It advances the local package candidate to `0.0.0-cordis.19` and the generated projection to
+`0.8.0-cordis.1`, adding activity, environment, lease, readiness and result schemas while retaining
+the seven global operations. These candidate identities do not authorize production publication.
+
 ## Accepted service observation context
 
 Task 3C adds portable `ServiceSchemas.runtimeContent`, `runtimeBinding`, `observationIdentity`
