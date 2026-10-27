@@ -80,11 +80,12 @@ claim deadline. The warm target cannot exceed the maximum; there is no four-sand
 compatibility digest and creation inspection. A warm-base declaration is not destruction evidence
 and cannot replace a cleanup receipt. Deployment must inspect real resources before admission.
 
-Typed `CapacityManagerClient`, `CapacityWorkerClient`, `CapacityRunnerClient` and
-`CapacitySandboxProvider` interfaces describe process boundaries. They pass bounded probe data,
-validated environments and abort signals; they expose no arbitrary host command or raw runtime
-socket. Readiness and cleanup responses still require the binding checks above. These contracts
-do not implement transports, authenticate observations or perform Cordis registration.
+Owner integration must add typed manager, worker, runner and sandbox-provider client interfaces
+around these versioned data contracts. Those interfaces and their transports are still pending.
+They must pass bounded probe data, validated environments and abort signals, exposing no arbitrary
+host command or raw runtime socket. Readiness and cleanup responses still require the binding
+checks above. The current schemas do not implement transports, authenticate observations or
+perform Cordis registration.
 
 ## Fenced protocols and acknowledgements
 
