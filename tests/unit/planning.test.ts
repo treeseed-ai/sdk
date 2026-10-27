@@ -8,11 +8,16 @@ class PlanningContractTestsUnit {
     expect(new PlanningBlockedError([{code:'BLOCKED',message:'Safe explanation'}]).blockers).toEqual([{code:'BLOCKED',message:'Safe explanation'}]);
   }
 
-  projection():void {
-    expect(PlatformSchemas.plan.shape.recipe).toBeDefined();expect(PlatformSchemas.plan.shape.pluginBindings).toBeDefined();
-    const result=ContractProjection.generate() as {contractVersion:string;schemas?:object};
-    expect(result.contractVersion).toBe('0.5.0-cordis.1');expect(result.schemas).toBeDefined();expect(PlatformOperations.all.length).toBe(7);
-    expect(PlatformSchemas.plan.safeParse({id:'pretend',digest:'a'.repeat(64),expectedComposition:null,artifacts:[],effects:[],blockers:[]}).success).toBe(false);
+  projection(): void {
+    expect(PlatformSchemas.plan.shape.recipe).toBeDefined();
+    expect(PlatformSchemas.plan.shape.pluginBindings).toBeDefined();
+    const result = ContractProjection.generate() as { contractVersion: string; schemas?: object };
+    expect(result.contractVersion).toBe('0.7.0-cordis.1');
+    expect(result.schemas).toBeDefined();
+    expect(PlatformOperations.all.length).toBe(7);
+    const invalid = { id: 'pretend', digest: 'a'.repeat(64), expectedComposition: null,
+      artifacts: [], effects: [], blockers: [] };
+    expect(PlatformSchemas.plan.safeParse(invalid).success).toBe(false);
   }
 }
 const suite=new PlanningContractTestsUnit();

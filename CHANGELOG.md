@@ -2,7 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+- Add portable versioned seed reconciliation contracts and exact resource receipt bindings (#487).
+- Define bounded Agent execution and target contracts (#482).
+
 ### Changed
+- Require readable capability layers and contextual refactoring with a twenty-line method gate (#485).
 
 - Organize permanent tests by tier and enforce the shared development/testing strategy (#480).
 

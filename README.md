@@ -429,3 +429,59 @@ Once apply is accepted, pending retains both actual plan and application referen
 reference pair is invalid. Neither pending form is a successful activation envelope or exit 0.
 Active/already-active still requires exact artifact/target/generation/application evidence.
 The worker protocol and seven public operation IDs remain unchanged.
+
+
+## Bounded Agent composition contract
+
+SDK #482 is the first Task 3D delivery slice. Public root and portable exports supply `AgentSchemas`, `AgentContractBinding` and safe `AgentContractError`; runtime composition remains the existing SDK Cordis API. Agent owns execution plugins; Deployment owns accepted-package installation; UI owns human presentation. This is a composition probe, with no real Work/model/sandbox execution or new Keycloak authority.
+
+Protocol 1 request fields: operation `composition-probe`, executionId, scopeId, principalId, resourceScope, grantId, grantRevision (positive safe integer), expectedGeneration (64 lowercase hex), handlerId and text (0–1024 characters). IDs are 1–128 characters from the existing ASCII provider-key alphabet. All objects are strict; unknown model/credential/Work fields fail validation.
+
+Trusted authority fields: scopeId, principalId, resourceScope, grantId, grantRevision and state `granted` or `revoked`. Hosts supply this binding separately; a request is never its own authority. `AgentContractBinding.assert(request, authority, generation)` parses both values, rejects revoked state and any mismatch, and returns a detached parsed request. This verifies binding equality only; the hosting owner must resolve and revalidate the actual grant at each execution seam. No OAuth or live revocation guarantee is implied by a portable data comparison.
+
+Results repeat protocol, executionId, scopeId, principalId, resourceScope, grantId, grantRevision, generation and handlerId. State is completed/cancelled/blocked/recovery-required; output is bounded text or null; blockers have fixed safe code/message; cleanup is disposed/failed. Completed requires output, no blockers and disposed cleanup. All noncompleted states have null output. Cancelled has disposed cleanup. Failed cleanup requires recovery-required, and recovery-required requires failed cleanup plus a blocker. Blocked requires a blocker. Result schemas validate internal consistency; Agent separately binds every result to its admitted request.
+
+Contract binding failures expose only `INVALID_AGENT_CONTRACT`, `AGENT_GRANT_REVOKED`, `AGENT_SCOPE_MISMATCH` or `STALE_AGENT_GENERATION`, with fixed messages. Underlying errors and request bytes are never included.
+
+Generated projection advances to `0.6.0-cordis.1` and adds agentAuthority, agentExecutionRequest and agentExecutionResult. Existing seven operations, ProviderV4 format/version and installed package descriptors are unchanged. Package candidate advances to `0.0.0-cordis.17`; this is local migration candidate identity, not production publication.
+
+Acceptance runs a Node program through the built public portable export. Unit cases pin scope/principal/resource/grant/revision, revocation, generation, payload bounds, unknown fields, safe errors and result consistency. Root and browser portable contracts must share the same schemas without Node runtime imports.
+
+## Portable seed reconciliation contracts
+
+Task 3D adds `SeedSchemas` and inferred `SeedBundle`, `SeedResource`, `SeedPlan`,
+`SeedResourcePlan`, `SeedReceipt` and `SeedResourceReceipt` from the root and portable exports.
+API owns reconciliation behavior and its journal; SDK contracts establish shape/binding, not
+identity authority, plugin trust, filesystem custody or live readiness.
+
+A `treeseed.seed-bundle/v4` has a namespaced name, positive integer version, SHA-256 digest,
+capability requirements and resource declarations. Requirements have unique keys and explicit composition scope IDs and identify the source locator,
+provider, capability, target and compatible contract version. Resource declarations have unique
+keys, extensible namespaced kinds, explicit schema identity/version/digest, required requirement
+keys, dependency keys and owner-validated payload data. Reject duplicate identities, missing
+requirements/dependencies, self-dependencies and cycles. The schema does not fix resource kinds
+or activity types to a closed enum. Legacy v3 receipts are historical and not silently v4.
+
+A `treeseed.seed-plan/v1` binds the bundle digest, project/profile/installation and trusted grant
+references; exact resolved package/source closures; and each resource's selected provider,
+owner identity, configuration/desired digest, expected and desired generations, previous record and future effects. The ID is
+`seed-plan-<digest>`. Only unblocked complete plans are accepted. Exact artifacts, executable
+validators and schema hashes are locked before apply; planning does not establish authority.
+
+A `treeseed.seed-receipt/v1` binds its exact plan identity/digest and the expected resource plans.
+Each resource receipt binds provider/artifact/desired digest, its owner record reference and
+read-back state. Owner identities must match their resource plans. Completed requires one verified matching receipt per planned resource, empty
+blockers and matching observed digests. Partial, pending, blocked and recovery-required cannot
+claim completion. Unknown protocol fields and fabricated identities fail strict validation.
+
+`SeedResourceProvider` defines validate, plan, reconcile and readBack through typed data and a
+trusted execution context with cancellation. Native Cordis supplies selected instances; no SDK
+resource registry, reconciliation engine or service cache is introduced. `SeedContractBinding`
+checks data identity only and raises fixed safe `SeedContractError` codes. The seven existing
+platform operation IDs and bounded Agent probe contracts remain compatible. Generated contract
+projections include the new seed schemas; the actual public portable Node consumer is the outer
+acceptance gate.
+
+This seed candidate advances the package to `0.0.0-cordis.18` and the generated contract
+projection to `0.7.0-cordis.1`. The Agent probe schemas retain their separately versioned
+protocol. Neither candidate identity authorizes publication to production channels.
