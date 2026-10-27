@@ -464,13 +464,13 @@ or activity types to a closed enum. Legacy v3 receipts are historical and not si
 
 A `treeseed.seed-plan/v1` binds the bundle digest, project/profile/installation and trusted grant
 references; exact resolved package/source closures; and each resource's selected provider,
-configuration/desired digest, expected and desired generations, previous record and future effects. The ID is
+owner identity, configuration/desired digest, expected and desired generations, previous record and future effects. The ID is
 `seed-plan-<digest>`. Only unblocked complete plans are accepted. Exact artifacts, executable
 validators and schema hashes are locked before apply; planning does not establish authority.
 
 A `treeseed.seed-receipt/v1` binds its exact plan identity/digest and the expected resource plans.
 Each resource receipt binds provider/artifact/desired digest, its owner record reference and
-read-back state. Completed requires one verified matching receipt per planned resource, empty
+read-back state. Owner identities must match their resource plans. Completed requires one verified matching receipt per planned resource, empty
 blockers and matching observed digests. Partial, pending, blocked and recovery-required cannot
 claim completion. Unknown protocol fields and fabricated identities fail strict validation.
 
