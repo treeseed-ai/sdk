@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Add portable versioned seed reconciliation contracts and exact resource receipt bindings (#487).
 - Define bounded Agent execution and target contracts (#482).
 
 ### Changed

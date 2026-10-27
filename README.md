@@ -446,3 +446,38 @@ Contract binding failures expose only `INVALID_AGENT_CONTRACT`, `AGENT_GRANT_REV
 Generated projection advances to `0.6.0-cordis.1` and adds agentAuthority, agentExecutionRequest and agentExecutionResult. Existing seven operations, ProviderV4 format/version and installed package descriptors are unchanged. Package candidate advances to `0.0.0-cordis.17`; this is local migration candidate identity, not production publication.
 
 Acceptance runs a Node program through the built public portable export. Unit cases pin scope/principal/resource/grant/revision, revocation, generation, payload bounds, unknown fields, safe errors and result consistency. Root and browser portable contracts must share the same schemas without Node runtime imports.
+
+## Portable seed reconciliation contracts
+
+Task 3D adds `SeedSchemas` and inferred `SeedBundle`, `SeedResource`, `SeedPlan`,
+`SeedResourcePlan`, `SeedReceipt` and `SeedResourceReceipt` from the root and portable exports.
+API owns reconciliation behavior and its journal; SDK contracts establish shape/binding, not
+identity authority, plugin trust, filesystem custody or live readiness.
+
+A `treeseed.seed-bundle/v4` has a namespaced name, positive integer version, SHA-256 digest,
+capability requirements and resource declarations. Requirements identify the source locator,
+provider, capability, target and compatible contract version. Resource declarations have unique
+keys, extensible namespaced kinds, explicit schema identity/version/digest, required capability
+IDs, dependency keys and owner-validated payload data. Reject duplicate identities, missing
+requirements/dependencies, self-dependencies and cycles. The schema does not fix resource kinds
+or activity types to a closed enum. Legacy v3 receipts are historical and not silently v4.
+
+A `treeseed.seed-plan/v1` binds the bundle digest, project/profile/installation and trusted grant
+references; exact resolved package/source closures; and each resource's selected provider,
+configuration/desired digest, expected generation, previous record and future effects. The ID is
+`seed-plan-<digest>`. Only unblocked complete plans are accepted. Exact artifacts, executable
+validators and schema hashes are locked before apply; planning does not establish authority.
+
+A `treeseed.seed-receipt/v1` binds its exact plan identity/digest and the expected resource plans.
+Each resource receipt binds provider/artifact/desired digest, its owner record reference and
+read-back state. Completed requires one verified matching receipt per planned resource, empty
+blockers and matching observed digests. Partial, pending, blocked and recovery-required cannot
+claim completion. Unknown protocol fields and fabricated identities fail strict validation.
+
+`SeedResourceProvider` defines validate, plan, reconcile and readBack through typed data and a
+trusted execution context with cancellation. Native Cordis supplies selected instances; no SDK
+resource registry, reconciliation engine or service cache is introduced. `SeedContractBinding`
+checks data identity only and raises fixed safe `SeedContractError` codes. The seven existing
+platform operation IDs and bounded Agent probe contracts remain compatible. Generated contract
+projections include the new seed schemas; the actual public portable Node consumer is the outer
+acceptance gate.
