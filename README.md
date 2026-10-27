@@ -464,7 +464,7 @@ or activity types to a closed enum. Legacy v3 receipts are historical and not si
 
 A `treeseed.seed-plan/v1` binds the bundle digest, project/profile/installation and trusted grant
 references; exact resolved package/source closures; and each resource's selected provider,
-configuration/desired digest, expected generation, previous record and future effects. The ID is
+configuration/desired digest, expected and desired generations, previous record and future effects. The ID is
 `seed-plan-<digest>`. Only unblocked complete plans are accepted. Exact artifacts, executable
 validators and schema hashes are locked before apply; planning does not establish authority.
 
@@ -481,3 +481,7 @@ checks data identity only and raises fixed safe `SeedContractError` codes. The s
 platform operation IDs and bounded Agent probe contracts remain compatible. Generated contract
 projections include the new seed schemas; the actual public portable Node consumer is the outer
 acceptance gate.
+
+This seed candidate advances the package to `0.0.0-cordis.18` and the generated contract
+projection to `0.7.0-cordis.1`. The Agent probe schemas retain their separately versioned
+protocol. Neither candidate identity authorizes publication to production channels.
