@@ -5,10 +5,11 @@ interface Schema { parse(value: unknown): unknown; safeParse(value: unknown): { 
 interface SeedApi { bundle: Schema; plan: Schema; receipt: Schema; }
 
 /** All identities/digests below are explicit schema fixtures, never accepted release artifacts. */
-class SeedFixtures {
+export class SeedFixtures {
   static readonly digest = 'a'.repeat(64);
   static readonly provider = {
     id: 'fixture.provider', capability: 'fixture.resource', target: 'agent',
+    scopeId: 'installation:fixture:agent:manager',
     contractVersion: '1.0.0', artifact: {
       package: '@fixture/provider', version: '1.0.0', integrity: this.digest,
     }, executableDigest: this.digest,
@@ -19,6 +20,7 @@ class SeedFixtures {
     requires: ['fixture.resource'], dependsOn: [], payload: { value: 'harmless fixture' },
   };
   static readonly requirement = {
+    key: 'fixture.resource', scopeId: this.provider.scopeId,
     capability: 'fixture.resource', providerId: 'fixture.provider', target: 'agent',
     contractVersion: '1.0.0', source: '@fixture/provider@1.0.0',
   };
@@ -33,12 +35,19 @@ class SeedFixtures {
   };
   static readonly resourcePlan = {
     key: this.resource.key, kind: this.resource.kind, schema: this.resource.schema,
+    requires: this.resource.requires, dependsOn: [], providerRequirement: this.requirement.key,
     provider: this.provider, configurationDigest: this.digest, desiredDigest: this.digest,
     expectedGeneration: null, previousRecord: null, effects: [],
   };
   static readonly lock = {
     requirement: 'fixture.resource', provider: this.provider,
     closureDigest: this.digest, source: this.requirement.source,
+    receipt: {
+      kind: 'npm', locator: this.requirement.source, name: '@fixture/provider', version: '1.0.0',
+      archiveDigest: this.digest, closureDigest: this.digest, helperDigests: [this.digest],
+      sri: 'sha256-' + Buffer.from(this.digest, 'hex').toString('base64'),
+      registry: 'https://registry.example.invalid',
+    },
   };
   static readonly plan = {
     schemaVersion: 'treeseed.seed-plan/v1', id: 'seed-plan-' + this.digest,
@@ -118,4 +127,4 @@ class SeedContractProgram {
   private reject(schema: Schema, value: unknown): void { assert.equal(schema.safeParse(value).success, false); }
 }
 
-new SeedContractProgram().run();
+if (import.meta.main) new SeedContractProgram().run();
