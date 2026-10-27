@@ -57,8 +57,12 @@ class PoolContractProgram {
 
   private policy(): void {
     const policy = PoolFixtures.policy;
-    for (const value of [{ ...policy, warmTarget: 33 }, { ...policy, maximumSandboxes: 0 },
-      { ...policy, warmTarget: -1 }, { ...policy, claimDeadlineMs: 0 }]) {
+    for (const value of [
+      { ...policy, warmTarget: 33 },
+      { ...policy, maximumSandboxes: 0 },
+      { ...policy, warmTarget: -1 },
+      { ...policy, claimDeadlineMs: 0 },
+    ]) {
       assert.equal(this.schemas.policy.safeParse(value).success, false);
     }
     this.schemas.policy.parse({ ...policy, warmTarget: 0 });
@@ -66,8 +70,10 @@ class PoolContractProgram {
 
   private compatibility(): void {
     const value = PoolFixtures.compatibility;
-    for (const resources of [{ ...value.resources, vcpus: 0 },
-      { ...value.resources, memoryMiB: -1 }]) {
+    for (const resources of [
+      { ...value.resources, vcpus: 0 },
+      { ...value.resources, memoryMiB: -1 },
+    ]) {
       assert.equal(this.schemas.compatibility.safeParse({ ...value, resources }).success, false);
     }
     const image = { ...value.image, manifestDigest: 'b'.repeat(64) };
@@ -77,8 +83,12 @@ class PoolContractProgram {
   }
 
   private virgin(): void {
-    for (const change of [{ assigned: true }, { credentials: 'present' },
-      { inspectionDigest: null }, { compatibilityDigest: null }]) {
+    for (const change of [
+      { assigned: true },
+      { credentials: 'present' },
+      { inspectionDigest: null },
+      { compatibilityDigest: null },
+    ]) {
       assert.equal(this.schemas.base.safeParse({ ...PoolFixtures.base, ...change }).success, false);
     }
   }

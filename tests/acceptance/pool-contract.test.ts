@@ -13,5 +13,7 @@ class PoolPublicProgram {
 }
 
 const suite = new PoolPublicProgram();
-test('acceptance: portable warm-pool contracts require exact compatibility and virgin bases',
-  suite.run.bind(suite));
+test(
+  'acceptance: portable warm-pool contracts require exact compatibility and virgin bases',
+  suite.run.bind(suite),
+);

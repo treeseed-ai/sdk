@@ -3,6 +3,8 @@ export * from "./seeds.js";
 export * from './activities.js';
 export * from './environments.js';
 export * from './capacity.js';
+export * from './pool.js';
+import { PoolSchemas } from './pool.js';
 import { ActivitySchemas } from './activities.js';
 import { EnvironmentSchemas } from './environments.js';
 import { CapacitySchemas } from './capacity.js';
@@ -43,6 +45,9 @@ export class ContractProjection {
     capacityLease: CapacitySchemas.lease,
     capacityReadiness: CapacitySchemas.readiness,
     capacityResult: CapacitySchemas.result,
+    poolCompatibility: PoolSchemas.compatibility,
+    poolPolicy: PoolSchemas.policy,
+    virginSandbox: PoolSchemas.base,
     agentAuthority: AgentSchemas.authority,
     agentExecutionRequest: AgentSchemas.request,
     agentExecutionResult: AgentSchemas.result,
