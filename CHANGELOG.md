@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Organize permanent tests by tier and enforce the shared development/testing strategy (#480).
+
 ### Fixed
 - Represent source acquisition pending before an application exists (#475).
 
