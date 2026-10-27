@@ -69,6 +69,23 @@ never-assigned sandboxes enter the warm pool. Claim is exclusive. Used sandboxes
 and verified, never reset into the pool. Affected old-generation unused bases are discarded;
 in-flight assignments retain their original generation through cleanup.
 
+`PoolSchemas.compatibility` binds a Kata runtime version and archive digest, the native base
+image, vCPU/memory/scratch limits, effective network policy, isolation-policy digest and exact
+worker, runner, pool, sandbox and environment provider generations. A worker restart therefore
+cannot silently adopt another process's warm inventory. The owner hashes canonical parsed bytes
+to obtain the compatibility digest; SDK parsing does not attest that runtime or image bytes exist.
+`PoolSchemas.policy` declares a non-negative warm target, positive maximum sandbox count and
+claim deadline. The warm target cannot exceed the maximum; there is no four-sandbox limit.
+`PoolSchemas.base` admits only credential-free, never-assigned bases and binds their identity,
+compatibility digest and creation inspection. A warm-base declaration is not destruction evidence
+and cannot replace a cleanup receipt. Deployment must inspect real resources before admission.
+
+Typed `CapacityManagerClient`, `CapacityWorkerClient`, `CapacityRunnerClient` and
+`CapacitySandboxProvider` interfaces describe process boundaries. They pass bounded probe data,
+validated environments and abort signals; they expose no arbitrary host command or raw runtime
+socket. Readiness and cleanup responses still require the binding checks above. These contracts
+do not implement transports, authenticate observations or perform Cordis registration.
+
 ## Fenced protocols and acknowledgements
 
 Versioned capacity messages bind installation, capacity-provider identity, manager/worker/runner
