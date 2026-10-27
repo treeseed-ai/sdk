@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- Define bounded Agent execution and target contracts (#482).
+
 ### Changed
 - Require readable capability layers and contextual refactoring with a twenty-line method gate (#485).
 
