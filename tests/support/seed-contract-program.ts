@@ -37,7 +37,7 @@ export class SeedFixtures {
   static readonly resourcePlan = {
     key: this.resource.key, kind: this.resource.kind, schema: this.resource.schema,
     requires: this.resource.requires, dependsOn: [], providerRequirement: this.requirement.key,
-    provider: this.provider, configurationDigest: this.digest, desiredDigest: this.digest,
+    provider: this.provider, owner: 'agent', configurationDigest: this.digest, desiredDigest: this.digest,
     expectedGeneration: null, desiredGeneration: null, previousRecord: null, effects: [],
   };
   static readonly lock = {
@@ -82,6 +82,7 @@ class SeedContractProgram {
     this.bindings();
     this.completion();
     this.projection();
+    this.selections();
     assert.equal(sdk.PlatformOperations.all.length, 7);
     process.stdout.write('seed-contract-ok\n');
   }
@@ -134,6 +135,15 @@ class SeedContractProgram {
     for (const key of ['seedBundle', 'seedPlan', 'seedReceipt', 'seedResourcePlan', 'seedResourceReceipt']) {
       assert.equal(typeof value.schemas[key], 'object');
     }
+  }
+
+  private selections(): void {
+    const other = { ...SeedFixtures.lock, requirement: 'fixture.other' };
+    this.reject(this.schemas.plan, { ...SeedFixtures.plan, locks: [SeedFixtures.lock, other] });
+    const provider = { ...other.provider, scopeId: 'installation:fixture:agent:worker' };
+    this.schemas.plan.parse({ ...SeedFixtures.plan, locks: [SeedFixtures.lock, { ...other, provider }] });
+    const receipt = { ...SeedFixtures.resourceReceipt, owner: 'other.owner' };
+    this.reject(this.schemas.receipt, { ...SeedFixtures.receipt, resources: [receipt] });
   }
 }
 
