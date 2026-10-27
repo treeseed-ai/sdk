@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Added
+- Define portable capacity, profile, environment and fenced lease contracts (#488).
+
+### Added
 - Add portable versioned seed reconciliation contracts and exact resource receipt bindings (#487).
 - Define bounded Agent execution and target contracts (#482).
 
