@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import * as sdk from '@treeseed-cordis/sdk/portable';
 
 interface Schema { parse(value: unknown): unknown; safeParse(value: unknown): { success: boolean }; }
@@ -37,7 +38,7 @@ export class SeedFixtures {
     key: this.resource.key, kind: this.resource.kind, schema: this.resource.schema,
     requires: this.resource.requires, dependsOn: [], providerRequirement: this.requirement.key,
     provider: this.provider, configurationDigest: this.digest, desiredDigest: this.digest,
-    expectedGeneration: null, previousRecord: null, effects: [],
+    expectedGeneration: null, desiredGeneration: null, previousRecord: null, effects: [],
   };
   static readonly lock = {
     requirement: 'fixture.resource', provider: this.provider,
@@ -80,6 +81,7 @@ class SeedContractProgram {
     this.graph();
     this.bindings();
     this.completion();
+    this.projection();
     assert.equal(sdk.PlatformOperations.all.length, 7);
     process.stdout.write('seed-contract-ok\n');
   }
@@ -125,6 +127,14 @@ class SeedContractProgram {
   }
 
   private reject(schema: Schema, value: unknown): void { assert.equal(schema.safeParse(value).success, false); }
+
+  private projection(): void {
+    const value = JSON.parse(readFileSync('dist/contract.json', 'utf8'));
+    assert.equal(value.contractVersion, '0.7.0-cordis.1');
+    for (const key of ['seedBundle', 'seedPlan', 'seedReceipt', 'seedResourcePlan', 'seedResourceReceipt']) {
+      assert.equal(typeof value.schemas[key], 'object');
+    }
+  }
 }
 
 if (import.meta.main) new SeedContractProgram().run();
