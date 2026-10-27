@@ -455,10 +455,10 @@ API owns reconciliation behavior and its journal; SDK contracts establish shape/
 identity authority, plugin trust, filesystem custody or live readiness.
 
 A `treeseed.seed-bundle/v4` has a namespaced name, positive integer version, SHA-256 digest,
-capability requirements and resource declarations. Requirements identify the source locator,
+capability requirements and resource declarations. Requirements have unique keys and explicit composition scope IDs and identify the source locator,
 provider, capability, target and compatible contract version. Resource declarations have unique
-keys, extensible namespaced kinds, explicit schema identity/version/digest, required capability
-IDs, dependency keys and owner-validated payload data. Reject duplicate identities, missing
+keys, extensible namespaced kinds, explicit schema identity/version/digest, required requirement
+keys, dependency keys and owner-validated payload data. Reject duplicate identities, missing
 requirements/dependencies, self-dependencies and cycles. The schema does not fix resource kinds
 or activity types to a closed enum. Legacy v3 receipts are historical and not silently v4.
 
