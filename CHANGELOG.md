@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- Define bounded Agent execution and target contracts (#482).
+
 ### Changed
 
 - Organize permanent tests by tier and enforce the shared development/testing strategy (#480).
