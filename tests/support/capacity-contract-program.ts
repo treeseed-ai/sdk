@@ -40,6 +40,7 @@ class CapacityContractProgram {
     this.authority();
     this.generations();
     this.results();
+    this.safeFailure();
     assert.equal(sdk.PlatformOperations.all.length, 7);
     process.stdout.write('capacity-contract-ok\n');
   }
@@ -85,6 +86,12 @@ class CapacityContractProgram {
   }
 
   private reject(value: unknown): void { assert.equal(this.schemas.result.safeParse(value).success, false); }
+  private safeFailure(): void {
+    const lease = { ...CapacityFixtures.lease, authority: { ...CapacityFixtures.authority,
+      issuer: 'secret-output-canary' } };
+    assert.throws(this.binding.assertLease.bind(null, lease, CapacityFixtures.expectation, 2000),
+      /INVALID_CAPACITY_CONTRACT/);
+  }
   private block(expected: unknown): void {
     assert.throws(this.binding.assertLease.bind(null, CapacityFixtures.lease, expected, 2000), /CAPACITY_/);
   }
