@@ -1,6 +1,7 @@
 export * from "./agent.js";
 export * from "./seeds.js";
 export * from './activities.js';
+export * from './environments.js';
 import { SeedSchemas } from "./seeds.js";
 import { AgentSchemas } from "./agent.js";
 export * from "./service-projection.js";
