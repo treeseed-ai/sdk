@@ -52,6 +52,16 @@ and the selected sandbox/network provider must enforce and qualify the effective
 Setup failure, timeout, cancellation or failed verification prevents handler execution and
 requires cleanup. Credentials and setup output never enter reusable bases or machine errors.
 
+`EnvironmentSchemas.definition` uses `treeseed.agent-environment/v1`, an ID/revision, exact
+package identity, native Linux/amd64 image reference/manifest digest, `setup` and `verification`
+entrypoints, and `network`. Each entrypoint has an inventory file descriptor, argument array,
+deadline and output-byte limit. A network is `offline` with no destinations or `allow-list` with
+unique exact TCP hostname/port destinations. Hostnames are canonical lower-case DNS names or
+IPv4 literals; this first qualified contract does not admit wildcard or IPv6 destinations.
+`EnvironmentNetwork.intersect` rejects any requested destination absent from either supplied
+trusted policy. It is a data computation: callers must obtain host/assignment grants from live
+authority, and the sandbox provider still enforces network isolation.
+
 Pool compatibility binds the exact runtime, base image, CPU/memory/resource shape, isolation
 policy and worker/pool/sandbox/environment provider generations. Capacity is policy-bounded,
 without a fixed four-service or four-sandbox schema limit. Only clean, credential-free,
