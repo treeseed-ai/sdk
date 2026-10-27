@@ -82,6 +82,23 @@ results cannot be accepted. Completion requires successful bounded probe output 
 guest destruction. Cancellation has no productive output. Failed destruction or lost custody
 reports recovery-required and fences further dispatch, never success.
 
+The first wire contracts use `treeseed.capacity-lease/v1`,
+`treeseed.capacity-readiness/v1` and `treeseed.capacity-result/v1`. A scope binds installation
+identity/directory, capacity provider, project/platform profile and worker. Authority carries
+issuer, subject, team, provider, credential/grant identities and revisions, granted capability
+IDs, state and expiry; it carries no token or private credential. Each manager/worker/runner
+identity has both a composition generation and a process generation. Process generations change
+on startup; deterministic artifact/configuration identities alone cannot acknowledge a live
+target. Pool/sandbox/environment provider generations remain explicit.
+
+The admitted lease binds scope, live authority, generations, lease/assignment/sandbox IDs,
+compatibility digest, positive fence and expiry bounded by authority expiry. A trusted owner
+expectation supplies those exact values; ordinary request fields cannot construct it. Results
+repeat the admitted lease and a sandbox cleanup receipt. Completed requires bounded probe output,
+no blockers and destruction inspection evidence. Other states have null output; failed cleanup
+requires recovery-required. Fixed safe blockers reject arbitrary provider exception text.
+Read-back of a historical receipt is distinct from admitting a new expired lease.
+
 Public manager/worker/sandbox/runner client interfaces carry only versioned data across process
 boundaries. Each process owns a native Cordis root. The worker receives a service-scoped bounded
 Deployment control endpoint, never the read-only observer endpoint as a mutation backdoor and
