@@ -1,5 +1,12 @@
 # Cordis SDK contracts
 
+## Portable seed contracts
+
+Root and portable exports provide separately versioned seed bundle/plan/receipt schemas, inferred
+types, owner-resource contracts and safe binding checks. See [seed contracts](docs/seed-contracts.md)
+for graph, exact-artifact and truthful-completion rules. Schema admission does not grant authority
+or activate resources; API and resource owners retain those responsibilities.
+
 ## Accepted service observation context
 
 Task 3C adds portable `ServiceSchemas.runtimeContent`, `runtimeBinding`, `observationIdentity`
