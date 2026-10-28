@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- Bound compiler freshness verification independently of Bun's default test timeout (#491).
+
 ### Added
 - Define portable seed graphs, exact resource plans and linked owner receipts (#487).
 
