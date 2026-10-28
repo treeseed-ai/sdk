@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Added
+- Preserve the existing signed provider enrollment protocol through bounded public clients (#488).
+
 - Define bounded Agent execution and target contracts (#482).
 
 ### Fixed
