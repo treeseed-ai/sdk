@@ -5,6 +5,9 @@
 ### Added
 - Define bounded Agent execution and target contracts (#482).
 
+### Fixed
+- Bound compiler freshness verification independently of Bun's default test timeout (#491).
+
 ### Changed
 - Require readable capability layers and contextual refactoring with a twenty-line method gate (#485).
 
