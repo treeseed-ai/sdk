@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import * as sdk from '@treeseed-cordis/sdk/portable';
+import * as sdk from '@treeseed-cordis/sdk/seeds';
+import { PlatformOperations } from '@treeseed-cordis/sdk/portable';
 
 interface Schema {
   parse(value: unknown): unknown;
@@ -149,7 +150,7 @@ class SeedContractProgram {
     this.completion();
     this.projection();
     this.selections();
-    assert.equal(sdk.PlatformOperations.all.length, 7);
+    assert.equal(PlatformOperations.all.length, 7);
     process.stdout.write('seed-contract-ok\n');
   }
 
