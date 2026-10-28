@@ -7,6 +7,13 @@ implement execution, authenticate a caller or establish sandbox isolation.
 
 ## Public surfaces and ownership
 
+The assembled SDK successor combines the portable capacity protocols with the independent
+existing-provider control-plane client. Consumers select one exact SDK archive for both public
+surfaces; they must not load a second SDK copy or import another checkout's source. Earlier
+`.19`, `.20` capacity and `.21` provider-control archives retain their original bytes and evidence.
+The new combined candidate receives its own version and hash. Its data validators and HTTP client
+still do not substitute for live Agent authority, a private worker transport or a real Kata runner.
+
 The root and portable SDK exports supply `ActivitySchemas`, `EnvironmentSchemas` and
 `CapacitySchemas`, their inferred types and safe binding checks. Generated projections include
 these separately versioned schemas. The seven existing platform operation IDs stay unchanged.
