@@ -1,0 +1,1037 @@
+{
+  "formatVersion": 1,
+  "baselineCommit": "14143e0ba2c336209808d2567ac1962810e7df40",
+  "violations": [
+    {
+      "file": ".agents/skills/release-workflow/scripts/test-layout.ts",
+      "symbol": "TestLayout.inspect",
+      "fingerprint": "bfff01a3fe612610a72c2bcc0f00c92fdb5abbe557d2b876614a24990d557a0c"
+    },
+    {
+      "file": ".agents/skills/release-workflow/scripts/test-layout.ts",
+      "symbol": "TestLayout.check",
+      "fingerprint": "aec11cb99ea6438078fa6cbf353bbf8c4b5f5803a1e0102c86b725180f20e669"
+    },
+    {
+      "file": ".agents/skills/release-workflow/scripts/test-layout.ts",
+      "symbol": "TestLayout.discovery",
+      "fingerprint": "771becf2a0f493fa9ee054d98379140581968b2134e1ccfd778ac1618eb4074b"
+    },
+    {
+      "file": ".agents/skills/release-workflow/scripts/test-layout.ts",
+      "symbol": "TestLayout.partitions",
+      "fingerprint": "95cef1faa4182536c0be52904c7525d3ed245bac04f22d969ea73307ef0fa2bd"
+    },
+    {
+      "file": ".agents/skills/release-workflow/scripts/test-layout.ts",
+      "symbol": "TestLayout.directory",
+      "fingerprint": "fb2f15a07b290e17c566adedf0e37dd7b4093a59a6085ebbf4f787474f6adb0a"
+    },
+    {
+      "file": ".agents/skills/release-workflow/scripts/test-layout.ts",
+      "symbol": "TestRegistrationVisitor.inspect",
+      "fingerprint": "ccbfb614b5e447bf0eb3230ba9a80b6a369bae7ec130ef5e134c087a2d0c7058"
+    },
+    {
+      "file": ".agents/skills/release-workflow/scripts/test-layout.ts",
+      "symbol": "TestRegistrationVisitor.visit",
+      "fingerprint": "8740012694378c96522cedfa0f69377ee1f26c18d316baaee9050fcb4d6e752d"
+    },
+    {
+      "file": ".agents/skills/release-workflow/scripts/test-layout.ts",
+      "symbol": "TestRegistrationVisitor.test",
+      "fingerprint": "facc0ab411b33f7d001b6f8e5852eebf4ff02716394b318b20ec046794e30fe1"
+    },
+    {
+      "file": "scripts/tooling.ts",
+      "symbol": "SdkTooling.static run",
+      "fingerprint": "ef7688729820a80445e94796a072af18962b1ba584c8cd345dc1153c12f747fc"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CompositionHash.static digest",
+      "fingerprint": "21137c41f76e58a877657be4291c0f76c87b3483f3918ca07565a44605f110cc"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CompositionError.constructor",
+      "fingerprint": "436172f8e9b5f5e944738ced65f36e5299462343edaae06af761d71188d3fd9c"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CompositionValidation.static safe",
+      "fingerprint": "12069a0e7675bb2ffa98ff666af461ae2473ddb2c7caf7df6a533ce73215662c"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CompositionValidation.static validate",
+      "fingerprint": "2aea0c32f59103f64e472e61e116d246c2887bc76f96f1604be03748043f10a9"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CompositionValidation.static visit",
+      "fingerprint": "3e0e827c713de70a11ff94416cf8601a300918a5b906bc7b6e3968467363ec8b"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CordisComposition.static registrationOrder",
+      "fingerprint": "c02b93e98a5e089439338f6ec791d11d172dbaa4c1e7860765c48ba3a0ab4d7b"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CordisComposition.static start",
+      "fingerprint": "bdccd431b445fc63edd465ce6acac8626e46a5cc3bf97e80531e6ab3b5028644"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CompositionHandle.constructor",
+      "fingerprint": "60f9e4e9cd2d52a01779254762a0269cdbcf1c8f45fcbe3e763a742cd6573adb"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CompositionHandle.start",
+      "fingerprint": "1c30bbc58d590ae3fa718aca2cdfc77a8fb4becd252d61f18dbfe4fe39b473ad"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CompositionHandle.selected",
+      "fingerprint": "83e3779cfce1a10caa66a292fae09cada9d7b614220cab0a5377e3106c78e20e"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CompositionHandle.mount",
+      "fingerprint": "cab94ede6dc91088235276f20094f5c958ebb1983626978cd02e18a8a0be8332"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CompositionHandle.locator",
+      "fingerprint": "620decf7db78a5fc548bbe79c9c367cb2084b4cc7ea1abca0685455029fb26de"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CompositionHandle.describe",
+      "fingerprint": "4c0d9c0e40b76473c5ae34698bdf558e181cb4339c55a0afae4340204c90ea09"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CompositionHandle.healthy",
+      "fingerprint": "4d8a3f829a8920a7a72bc7c4afb3515ae1d76c3b54b110913e2d6b2fcd4e2be0"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CompositionHandle.isSelected",
+      "fingerprint": "39dee1315610e9d22b202f63ddbd89a506d4eb0ac6898ebee3ce104d0cd543b9"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CompositionHandle.drain",
+      "fingerprint": "69615456463d23ddee2662e856c1b63742bd083e86d85cb16b8f51e00a0e2b7b"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CompositionHandle.dispose",
+      "fingerprint": "5284e8151dacbc8e761b9c83bcb35fd8c0e858ed090c0db1e1f967b9d8e5d63d"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CompositionHandle.close",
+      "fingerprint": "10e27cabad51bbc5b03829f50cf1b6e96b0118f2abfe2204ab4364fb691df0f1"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CordisServiceLocator.static from",
+      "fingerprint": "b5c07d1a7a4793557a5b498ebd7483bdadd420a0843b9b5e2e08a1b830a1b3f5"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CordisServiceLocator.acquire",
+      "fingerprint": "d045cb57e62bfe3accd757073b23fda64c3a6989b289ff58749d688f4bf6fa7c"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "LeaseMethods.apply",
+      "fingerprint": "8bb6ec78ea5ce397093904a4a3818829c39d4bbb82c4208222ff1a53015cd4d9"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "LeaseAccess.get",
+      "fingerprint": "47ad5ace5b719d06c7a5df89c35140c903b1550967acc7566a39fe541fd15565"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "LeaseAccess.set",
+      "fingerprint": "7f829a07113e95579cecff3b0a0336cfac1e4f7ec16527c191f6d98441cac143"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "ProviderLease.constructor",
+      "fingerprint": "aef4243e223b258e6843cb859694308014459344b72fbbab2d1d8e9132d2087b"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "ProviderLease.assertOpen",
+      "fingerprint": "01d81df17a9c8a3ce3b7b228df7d69ee032b214308380cdb8185e3f264ef4a76"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "ProviderLease.get value",
+      "fingerprint": "8bf9e967a70792c4379cc3d46e8c259eecaae797e748bcc460505730da894c97"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "ProviderLease.release",
+      "fingerprint": "0e019b99eacba224776848689c115e02095c0a8b0b4e9fe00e5f5a1b04b3adbb"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "LeaseDrain.begin",
+      "fingerprint": "adfd48fac3a9537bc670eb0306143ec104d2f11ea3dc708f6fb6051ac973ed5f"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "LeaseDrain.tick",
+      "fingerprint": "1767e432293f700fc380c830ecf9d3e461f24dddf5976b4c62f4496e602c5687"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "LeaseDrain.finish",
+      "fingerprint": "1652033c673b0497bbe6574deb456ab0828845f98dcb340a6e533b272352f0f1"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CordisScope.static start",
+      "fingerprint": "aa30111368093ab0229ae7d3d9637930fbd906bf59baaf26f61bd4a0ad3e9706"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CordisScope.static mount",
+      "fingerprint": "798a16765a12aea2800c8feb956c865b89a8955296ff07c36f72d6996a6068ab"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CordisScope.acquire",
+      "fingerprint": "6912a2a6043a1fe90b17c8f31fa2253ab991b4dabc3e603fdf216e8c560dfa16"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CordisScope.beginReplacement",
+      "fingerprint": "b765cb5e2f364602809c80a2dca0fb97fbc76b3d6b09a01bf2413d5a3d103b4b"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CordisScope.continueReplacement",
+      "fingerprint": "227dc6ef141f9ed522a9f4fb92ec087783b99f7adc3e4261f909b4d41ca26f86"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CordisScope.assertReplacing",
+      "fingerprint": "ce454d8b320060b748adb13f65c87862a5b51a734421154264bd0e94de03f29a"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CordisScope.replace",
+      "fingerprint": "14dfc444d7e9b7332efa44f47cce6639a20ac29e5d4408b68cae274abdc7207a"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CordisScope.inspectCandidate",
+      "fingerprint": "eff42d576f3b25fa43908468287b5947fb90644b013137ae1231f59dc74566b3"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CordisScope.commitReplacement",
+      "fingerprint": "4d233fafcf4036d24a4d314a45f1067f381ba237188e867fe83676bb59a1adf7"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CordisScope.fence",
+      "fingerprint": "f16177ce3913ed39dc87afbb6cbd65b6595ac5902691dadb63c4868c27a62f8c"
+    },
+    {
+      "file": "src/composition.ts",
+      "symbol": "CordisScope.dispose",
+      "fingerprint": "8159505954762bc60e505c2dbccdc0d9f4d797be67144ad899e04a1ed4427a94"
+    },
+    {
+      "file": "src/contracts.ts",
+      "symbol": "ContractProjection.static generate",
+      "fingerprint": "455380aec083d0a4b152257bf87db20594aefe8bf5d3c5852f95b0b7f5afc2dc"
+    },
+    {
+      "file": "src/management.ts",
+      "symbol": "ManagementValidation.static descriptor",
+      "fingerprint": "4be3fe2441bb0d957b1f0f834f5092caf70b0d154db5fa3eaf483c0fd9f249e8"
+    },
+    {
+      "file": "src/management.ts",
+      "symbol": "ManagementValidation.static result",
+      "fingerprint": "802b908de04837771c05d22c882f9e094b97bb428f5ef28692b27efbf8817daa"
+    },
+    {
+      "file": "src/management.ts",
+      "symbol": "ConfigurationProjection.static check",
+      "fingerprint": "924e394f7a1a367b717a7d6131e366fe5d093001489d3499d966ec60ca877483"
+    },
+    {
+      "file": "src/management.ts",
+      "symbol": "PackageDefinition.static export",
+      "fingerprint": "bdd297b4136d3d8b16e555a08ad3d069c2e1a4b8aa90d81c90db64b0cdbb164d"
+    },
+    {
+      "file": "src/plugin-source.ts",
+      "symbol": "PluginSource.static parse",
+      "fingerprint": "b064ab2cf04d0be5f79a12855b66c3f00e01208e0aae90fb25e87c20309933a0"
+    },
+    {
+      "file": "src/runtime.ts",
+      "symbol": "JsonKeys.property",
+      "fingerprint": "21ca766399db5a4b9da7a1983c85cf2c3638f468b6d86f99c3bc6a6c6b9270a8"
+    },
+    {
+      "file": "src/runtime.ts",
+      "symbol": "VerifiedProvider.static read",
+      "fingerprint": "daa243305d1e760a9d2adc6037572c754c4d25e5545bf06a397b64e4b8c1878d"
+    },
+    {
+      "file": "src/runtime.ts",
+      "symbol": "VerifiedProvider.verify",
+      "fingerprint": "da1b3dcaecbb3d15f3b7c498a274d05f0e711e65bcc2ff48f762e5e06ff1790f"
+    },
+    {
+      "file": "src/runtime.ts",
+      "symbol": "VerifiedProvider.dependencies",
+      "fingerprint": "4e0a4b7dcf062d99b79478e21bff6e89f4d1d6a2a390059432ec187f576c20b1"
+    },
+    {
+      "file": "src/runtime.ts",
+      "symbol": "VerifiedProvider.files",
+      "fingerprint": "d812e64a7350e23fb72d7366dea06fc3d5c3a39a1497cc99ab33407d6c14b0ac"
+    },
+    {
+      "file": "src/runtime.ts",
+      "symbol": "InstalledProviderLoader.static json",
+      "fingerprint": "396855b29510001082e895f89293f859807ad02ed21d7bf9b1bbec2923666a10"
+    },
+    {
+      "file": "src/runtime.ts",
+      "symbol": "InstalledProviderLoader.static read",
+      "fingerprint": "ec941e5135a21c5ac9152835f8a1d47ee4c1968e8a32d8904a1729d4cd3dbafc"
+    },
+    {
+      "file": "src/runtime.ts",
+      "symbol": "InstalledProviderLoader.static load",
+      "fingerprint": "24216c8498d49cfd53366e7a2c80ff3251c6fd3f629aca33e1d1354df108a703"
+    },
+    {
+      "file": "src/runtime.ts",
+      "symbol": "InstalledProviderLoader.static packageExport",
+      "fingerprint": "665fc996867373a74d17c69ea9442e50c2b399777ac5a14f3552f5372622e8ff"
+    },
+    {
+      "file": "src/runtime.ts",
+      "symbol": "InstalledProviderLoader.static declaration",
+      "fingerprint": "2102808ca053a2b90e66e3d2235471534c710217431f71afef1747b5ef51d398"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "SourceToolValidation.static helper",
+      "fingerprint": "592ae60f059784f2281647cc2809e875ea76b9b051bc1771e2e622e90c95777a"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "SourceToolValidation.static inventory",
+      "fingerprint": "ee094ad326140d97769313fab1ed17a3374570d14e2f5ebc5f63358e3040b527"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "OperationDefinition.static define",
+      "fingerprint": "5f03431385781fc9f3421ea4320c9a8a92943dcb85d0e2759d6aeeda693afe47"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "OperationDefinition.static strict",
+      "fingerprint": "6f44208c279800df536ee9952fb519a041ea67f0711c1366a55d83167b6a3097"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "PlanningBlockedError.constructor",
+      "fingerprint": "85b1694ef2402214a7a01e3162cbd4b41014595a6e0bef48ff86106c515c8fe3"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "CanonicalJson.static normalize",
+      "fingerprint": "a49e9325d6a2837cfcd475ea3bb858e8e90f27514a3ede731234b8fae6bfe521"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "CapabilityToken.constructor",
+      "fingerprint": "3271730795742ce60565279bb04f3ea99b2eb801e72adb4eab33f496f3dc3b60"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "InstalledValidation.static slot",
+      "fingerprint": "d8651d5f72766d0c52c79175cf2bdbce9e6c6adbbf846c0cdc22d48f27c95490"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "InstalledValidation.static environment",
+      "fingerprint": "b028d814c10b3e70cc000ceceb0685c5cbedb3c2e9e240c1992650ea71aa7088"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "InstalledValidation.static services",
+      "fingerprint": "4cf0ee9cf29d739e44fcbf3b4c088374859b74daaf48c950692a99ad466ace4a"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "ServiceValidation.static graph",
+      "fingerprint": "6a7c2a355200e5d3a82d8a2b3e2647101eb77ee1ff0a882e43efa2654e466e48"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "ServiceValidation.static visit",
+      "fingerprint": "1db9f54773ef767413b6e094d2621b70e49edfa0c28d2e05776332bd98bf9fd9"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "ServiceValidation.static environment",
+      "fingerprint": "9dac9c8bc406c751c0e2ea07cf98b43e831c113851b41f4c231c70d0c570421b"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "ObservationValidation.static plan",
+      "fingerprint": "3814c3a4af3eb9696b7d355112df3ddce8c5f554c4b475b0abf7ce692a2ebb18"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "ObservationValidation.static endpoint",
+      "fingerprint": "8d63d1578fec26d03c125da59914e95d10cad0fd275c1f3209952806d1225a67"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "ObservationValidation.static context",
+      "fingerprint": "05a2335df5f0c357b3b6d3bb86690c9f79c47340aba1c50c84821110730b9baa"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "SourcePolicyValidation.static git",
+      "fingerprint": "c3b3edd1f1ed84defac8d556a7d954736ce98197b9a721b9775d93178888cd7e"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "SourcePolicyValidation.static policy",
+      "fingerprint": "d9493cee10ddecd5e17c11d9d1b69f773f4c3390c69f946fc3b66701608bbfc5"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "PlatformOperations.static validate",
+      "fingerprint": "f9e3150b9f0945aca64a768c3816682357cd95ee1a50e9ac61289ec545470f6d"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "InstalledAdapter.parse",
+      "fingerprint": "c4d275d8fa153ec66212c512a50b2449e961033a5c7eccf71da71a22e76a597a"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "ServiceTokens.static container",
+      "fingerprint": "08b1054a30193b73419aa721b32c6632a5a38f419f512c3a15038345b8382981"
+    },
+    {
+      "file": "src/schemas.ts",
+      "symbol": "ServiceTokens.static probe",
+      "fingerprint": "68e7e83daae4ada633c55b4718bb3e39756502a4f6c326d3986bfb87610b0b77"
+    },
+    {
+      "file": "src/service-journal.ts",
+      "symbol": "RequestRecordValidation.static valid",
+      "fingerprint": "f05927f09018888766c2f5f92234aa4fdd05c88ef8f91b3b9eab54ebb39bb8ea"
+    },
+    {
+      "file": "src/source-policy.ts",
+      "symbol": "SourceVisitor.visit",
+      "fingerprint": "1e6eab599c651b251de8bf406ccbad40485a39716efa1f7815bc87055eadf8a8"
+    },
+    {
+      "file": "src/source-policy.ts",
+      "symbol": "SourceVisitor.verifiedImport",
+      "fingerprint": "de1e4e22b2da4561e725fd08350bbd76f6d14d64674b79b52d67257b159b6d56"
+    },
+    {
+      "file": "src/source-policy.ts",
+      "symbol": "SourceVisitor.module",
+      "fingerprint": "3faa46387d09be3a9a474b544b109fe2fecb50512b1b3ad02745aee2fc72ec3d"
+    },
+    {
+      "file": "src/source-policy.ts",
+      "symbol": "SourcePolicy.check",
+      "fingerprint": "250988a48721134f5190afabfb5f533205f54f2958625cf23ece4e1e6663f55a"
+    },
+    {
+      "file": "tests/acceptance/contract.test.ts",
+      "symbol": "ContractTestsAcceptance.artifact",
+      "fingerprint": "8a753e68889d547d078ab5614226276f5a6dfc5bff8154523d59a44807eaa6cc"
+    },
+    {
+      "file": "tests/acceptance/management.test.ts",
+      "symbol": "ManagementTestsAcceptance.program",
+      "fingerprint": "9814dc464d73ff8a0413a34ec257dae95ae1140dd45e246571667218a91b3751"
+    },
+    {
+      "file": "tests/acceptance/observation.test.ts",
+      "symbol": "ObservationTestsAcceptance.program",
+      "fingerprint": "bc19187b1a2f6d7541eab9cfe3860e7d6d97223a5351d62b18aaf8a46647e069"
+    },
+    {
+      "file": "tests/acceptance/plan-runtime-binding.test.ts",
+      "symbol": "PlanRuntimeTestsAcceptance.program",
+      "fingerprint": "02ac767d4b847b995ba3a5770507b32e131b6c443d3dafe4cdd6852cc81bc7f8"
+    },
+    {
+      "file": "tests/acceptance/probe-evidence.test.ts",
+      "symbol": "ProbeEvidenceTestsAcceptance.program",
+      "fingerprint": "e8cbf0beb705d7df5940b89b38148b45bf1463c4bfe7719f4e5c2354f8a77566"
+    },
+    {
+      "file": "tests/acceptance/projection.test.ts",
+      "symbol": "ProjectionTestsAcceptance.program",
+      "fingerprint": "2099e360d0df7fc5c478e0ffe0a74a7a197cd9baefaaf45840294b08b37faef7"
+    },
+    {
+      "file": "tests/acceptance/restart-scope.test.ts",
+      "symbol": "RestartScopeTestsAcceptance.program",
+      "fingerprint": "12f07936a9e7e59eb8b11209924cebe36d198343cc590428197d5c94bb358139"
+    },
+    {
+      "file": "tests/acceptance/runtime-images.test.ts",
+      "symbol": "RuntimeImageTestsAcceptance.program",
+      "fingerprint": "67cdb00d5aa592abe6439e6b15b461a56468c332233b4a14837f42e668efb66e"
+    },
+    {
+      "file": "tests/acceptance/runtime.test.ts",
+      "symbol": "RuntimeTestsAcceptance.packageProgram",
+      "fingerprint": "1ae5c0d1c487941ea67c37279e2ae92e5fa5a4e88acb142a8bfaf8c9c5539ab4"
+    },
+    {
+      "file": "tests/acceptance/scope.test.ts",
+      "symbol": "ScopeProgramTestsAcceptance.program",
+      "fingerprint": "f068b57894ddc00d950063e039007c692b5498791022883098879b9b888fc93a"
+    },
+    {
+      "file": "tests/acceptance/service-composition.test.ts",
+      "symbol": "ServiceCompositionTestsAcceptance.portableProgram",
+      "fingerprint": "a63f34c39719a0f5f656006db6f7eea17d8983c1269dd0f3c8399699ff6994c7"
+    },
+    {
+      "file": "tests/acceptance/service-install-intent.test.ts",
+      "symbol": "ServiceIntentTestsAcceptance.program",
+      "fingerprint": "90846c7d7bf4fac9803384afc95fbefa946c49c6a16da6b3664041a79f466bde"
+    },
+    {
+      "file": "tests/acceptance/service-journal.test.ts",
+      "symbol": "ServiceJournalTestsAcceptance.program",
+      "fingerprint": "7eb37533658deb4aaa60f53f0648d7068d88d636ac4eac48958bc1ddc6de4933"
+    },
+    {
+      "file": "tests/acceptance/source-acquisition-policy.test.ts",
+      "symbol": "SourcePolicyTestsAcceptance.program",
+      "fingerprint": "ccc872f4325363cd70393cbed5abba5ff24e65208d6b068ffd396786d2cbf94c"
+    },
+    {
+      "file": "tests/acceptance/source-pending.test.ts",
+      "symbol": "SourcePendingTestsAcceptance.program",
+      "fingerprint": "9ac6bc45a1c0f5ef5a10ba765fc5b16d57d3d3db1920d094ab299e27a058fd3d"
+    },
+    {
+      "file": "tests/integration/browser.test.ts",
+      "symbol": "BrowserTests.handle",
+      "fingerprint": "e4615d4811b162df18c1c73d0dc54d9cbaf6f59a230ffc2b93b0c056fa679f96"
+    },
+    {
+      "file": "tests/integration/browser.test.ts",
+      "symbol": "BrowserTests.native",
+      "fingerprint": "65b183302bb38f7c40a3a0e79949c38138b0dc2292173f1a73f836b61f7f53ba"
+    },
+    {
+      "file": "tests/integration/contract.test.ts",
+      "symbol": "ContractTestsIntegration.schemaBoundary",
+      "fingerprint": "9a9dcb3adaad3975af107ff0bdb6bc28f4cda0396e2e6129dffadc1b83a9d828"
+    },
+    {
+      "file": "tests/integration/defaults.test.ts",
+      "symbol": "ValueValidation.parse",
+      "fingerprint": "b04bfdf618c74b6d6b246ce2d16af6d555dd3f6d9eb423c70dd25092ed19389c"
+    },
+    {
+      "file": "tests/integration/defaults.test.ts",
+      "symbol": "ValuePlugin.constructor",
+      "fingerprint": "caff9f2e9ec9c45b74783459670fbebc33f188f1d7568c99e8c0fab7291ada1a"
+    },
+    {
+      "file": "tests/integration/defaults.test.ts",
+      "symbol": "DefaultsTests.run",
+      "fingerprint": "52985bb6610cfe24d69e5198055603b54268923732fac154f1598eb315a6154c"
+    },
+    {
+      "file": "tests/integration/management.test.ts",
+      "symbol": "ManagementTestsIntegration.results",
+      "fingerprint": "52767c251f18a058fb66fc01d889293e819bcfac4512ed288ab18cbc702ba80b"
+    },
+    {
+      "file": "tests/integration/management.test.ts",
+      "symbol": "ManagementEnvelopeTestsIntegration.refusal",
+      "fingerprint": "ad8f07c083f43775d9b9821551876a899e50cb17870fa61c247b71589a84a084"
+    },
+    {
+      "file": "tests/integration/management.test.ts",
+      "symbol": "PackageMetadataTestsIntegration.acknowledged",
+      "fingerprint": "1c1cde4cfeedb60a090fbf4141c446d7b3bdb56425bc172614cdf7455541a610"
+    },
+    {
+      "file": "tests/integration/observation.test.ts",
+      "symbol": "ObservationTestsIntegration.scope",
+      "fingerprint": "e263f86186005d0a9ea1d353a3c0d6f489acba6703799379d42daaeb2500d4b0"
+    },
+    {
+      "file": "tests/integration/plan-runtime-binding.test.ts",
+      "symbol": "PlanRuntimeTestsIntegration.selected",
+      "fingerprint": "e2f4c76a085956de8fa485644d1feb84e0524da13fa6bf7f9a6f055d3bff0afb"
+    },
+    {
+      "file": "tests/integration/planning.test.ts",
+      "symbol": "PlanningContractTestsIntegration.configuration",
+      "fingerprint": "75bb5c75d1f70de7cb8153b4829e2ee346813c9909646c0b85390060ee6e87dd"
+    },
+    {
+      "file": "tests/integration/runtime.test.ts",
+      "symbol": "RuntimeTestsIntegration.native",
+      "fingerprint": "ba356fb67e927c793ac249f3e256bb64a71d83e72edfb8c2887ba5c56bc31b40"
+    },
+    {
+      "file": "tests/integration/runtime.test.ts",
+      "symbol": "RuntimeTestsIntegration.configurationIsolation",
+      "fingerprint": "6bd945d6ab677b9e05f5862070f5c9772a3f585e3976ffd87493ceb8f5b81274"
+    },
+    {
+      "file": "tests/integration/runtime.test.ts",
+      "symbol": "RuntimeTestsIntegration.isolation",
+      "fingerprint": "5e228356fe1f1b390742ad59d088c0a79987af4a947661730ec7744a7817b3a4"
+    },
+    {
+      "file": "tests/integration/runtime.test.ts",
+      "symbol": "RuntimeTestsIntegration.blocked",
+      "fingerprint": "392a83d7bd48dfbc39aee9ddd3c78f9ccf53a7ee834ed52df8eca2c201388152"
+    },
+    {
+      "file": "tests/integration/runtime.test.ts",
+      "symbol": "RuntimeTestsIntegration.dependencyOrder",
+      "fingerprint": "67b5ef43fa5c0c59d22d292d9554fd3648ee2be2fe7efd7f9ddb5967e7d0b62f"
+    },
+    {
+      "file": "tests/integration/runtime.test.ts",
+      "symbol": "RuntimeTestsIntegration.additionalBlockers",
+      "fingerprint": "661f9fda5dbc7856a182a1902d80a2c0f96b2d4173838e37a00f36e8840e7a24"
+    },
+    {
+      "file": "tests/integration/runtime.test.ts",
+      "symbol": "RuntimeTestsIntegration.cleanupFailure",
+      "fingerprint": "8e2feb3854c827e5824a5d76ad3ea08d3a166b1e27359e0c0ed5bd6c7496b68a"
+    },
+    {
+      "file": "tests/integration/scope-configuration.test.ts",
+      "symbol": "ConfigurationFailureTestsIntegration.safe",
+      "fingerprint": "8f5dfc179e2485949c6a90fb3a2ec9f7192bd789cb90fac63586cceb16551594"
+    },
+    {
+      "file": "tests/integration/scope.test.ts",
+      "symbol": "ScopeTestsIntegration.defaults",
+      "fingerprint": "0f036725abddba3f23b097d63b7b4c325d167d004501bc2c5a40273a90786c48"
+    },
+    {
+      "file": "tests/integration/scope.test.ts",
+      "symbol": "ScopeTestsIntegration.replacement",
+      "fingerprint": "495a996855410f83f1c2334e74aac84d41359251d75b410a24b7c459c563aa43"
+    },
+    {
+      "file": "tests/integration/scope.test.ts",
+      "symbol": "ScopeBoundaryTestsIntegration.transform",
+      "fingerprint": "223806a4b570b3cb8badb65a57851bf8c2e6f23b0bef3a59999fb2a0604b8243"
+    },
+    {
+      "file": "tests/integration/scope.test.ts",
+      "symbol": "ScopeBoundaryTestsIntegration.concurrent",
+      "fingerprint": "0a7ff8e11cdfeb16430b7ac45503f433698ec62e7976aa7123dbdac8ad01c135"
+    },
+    {
+      "file": "tests/integration/scope.test.ts",
+      "symbol": "ScopeFailureTestsIntegration.rejected",
+      "fingerprint": "0fd51fe3ca306898c93b402b53d9bdf563f3aef7d1b646472502a3e507fe4e37"
+    },
+    {
+      "file": "tests/integration/scope.test.ts",
+      "symbol": "ScopeFailureTestsIntegration.snapshot",
+      "fingerprint": "b94fe10da9526bd0e16db24dc80be6e25969c2fea46d4129596a44024c68bee5"
+    },
+    {
+      "file": "tests/integration/scope.test.ts",
+      "symbol": "ScopeFailureTestsIntegration.fence",
+      "fingerprint": "d8a280b04408e41c4b7bd4c19041290d6207507e263cdc940f735d84ae9781ff"
+    },
+    {
+      "file": "tests/integration/scope.test.ts",
+      "symbol": "ScopeShutdownTestsIntegration.shutdown",
+      "fingerprint": "4fed2c8a1128da7c3036aac34a458318a02e6513aef693f6969a6dd9c095c2b7"
+    },
+    {
+      "file": "tests/integration/service-composition.test.ts",
+      "symbol": "ServiceCompositionTestsIntegration.browserClosure",
+      "fingerprint": "edfc7c4de2c9a66269ca0dc9b5d68b4636dd3c7085b47751aa188ffb4b074e96"
+    },
+    {
+      "file": "tests/integration/service-journal.test.ts",
+      "symbol": "ServiceJournalTestsIntegration.resources",
+      "fingerprint": "1f8f1fbb97fd9912daabebd7d8e6a868c65ebb5698149acd7003b6967f8eb4a1"
+    },
+    {
+      "file": "tests/integration/service-journal.test.ts",
+      "symbol": "ServiceEnvelopeTestsIntegration.envelope",
+      "fingerprint": "6edc46a42928ae737c74f0048a9026584230fea40fd6fd4aa451442f3a38e09d"
+    },
+    {
+      "file": "tests/regression/contract.test.ts",
+      "symbol": "ContractTestsRegression.freshBuild",
+      "fingerprint": "deeaaaa74ab65233c21ae51a37a3fd52f9a4be091a2f4718f5ae5cadf8c834bb"
+    },
+    {
+      "file": "tests/regression/test-layout.test.ts",
+      "symbol": "TestLayoutRegression.check",
+      "fingerprint": "58a1e54d5b4d5e806480547f2c44fc7fd4a30b548e11033ce1aec339518628f4"
+    },
+    {
+      "file": "tests/regression/test-layout.test.ts",
+      "symbol": "TestLayoutRegression.discovery",
+      "fingerprint": "9a2d5796d031c1f6b33cfe9b537b6ebaacb870e3bcdf578110c016bbc44dca2d"
+    },
+    {
+      "file": "tests/regression/test-layout.test.ts",
+      "symbol": "TestLayoutRegression.matrix",
+      "fingerprint": "ec2572e83c489f133b4c787afaaa99cc1106c22b8e76a2cbbc5dae077a23c0c5"
+    },
+    {
+      "file": "tests/regression/test-layout.test.ts",
+      "symbol": "TestLayoutRegression.partitions",
+      "fingerprint": "99923590bc7eb9c1f0b70fd32403786ecdc51b98ed1eec4241ae1a0693c17dcd"
+    },
+    {
+      "file": "tests/regression/test-layout.test.ts",
+      "symbol": "TestLayoutRegression.support",
+      "fingerprint": "e933ea0a60e46f10d31f0368c7d6413a5b60d3e5b392dca3f3c18daa81cb0966"
+    },
+    {
+      "file": "tests/support/browser-program.ts",
+      "symbol": "ValueValidation.parse",
+      "fingerprint": "b04bfdf618c74b6d6b246ce2d16af6d555dd3f6d9eb423c70dd25092ed19389c"
+    },
+    {
+      "file": "tests/support/browser-program.ts",
+      "symbol": "FirstPlugin.constructor",
+      "fingerprint": "71190f96fc1f289bb92423a9678506a71cb54e7a5ca71723007e9331b8dff190"
+    },
+    {
+      "file": "tests/support/browser-program.ts",
+      "symbol": "BrowserProgram.static descriptor",
+      "fingerprint": "dded7b1ffac2a9fe30053625ff3af8c5845ed57ef5471de899c9ec3575268250"
+    },
+    {
+      "file": "tests/support/browser-program.ts",
+      "symbol": "BrowserProgram.static run",
+      "fingerprint": "48d578730beaaa8db6a2dbba8efb7d1345bf86d55d63e03531d83a5d8df27404"
+    },
+    {
+      "file": "tests/support/observation-test-support.ts",
+      "symbol": "ObservationTests.fixture",
+      "fingerprint": "59497b1eb556fbae4d4a956f875fb71f2bdf564dd5177d491cc73cb252ebadf1"
+    },
+    {
+      "file": "tests/support/plan-runtime-binding-test-support.ts",
+      "symbol": "PlanRuntimeTests.fixture",
+      "fingerprint": "f8a9e0568ea1e17f7d7363ac00904ea6367a0732658b1e940bd079d09fe8e306"
+    },
+    {
+      "file": "tests/support/runtime-test-support.ts",
+      "symbol": "ProbeValidation.parse",
+      "fingerprint": "8a32bb5d3605acab763d8ae771a8e2d07e0fcd5f16e8ff8165a827c86cbe260f"
+    },
+    {
+      "file": "tests/support/runtime-test-support.ts",
+      "symbol": "ProbeProvider.constructor",
+      "fingerprint": "49ff1123e32fa65bb9f399c5fd4ae046858fd4641c99f7c92373c8c4ddcc63ee"
+    },
+    {
+      "file": "tests/support/runtime-test-support.ts",
+      "symbol": "BadCleanupProvider.close",
+      "fingerprint": "3dd1c2bfd7f50ae681c4aad9717ea5006981877fb2c81a5046764dab7be167b7"
+    },
+    {
+      "file": "tests/support/runtime-test-support.ts",
+      "symbol": "ThrowingProvider.constructor",
+      "fingerprint": "b226677f4b6dc75e63abc8e9676452e0f2494b4376e2b05a9ee354b5d50711ce"
+    },
+    {
+      "file": "tests/support/scope-program.ts",
+      "symbol": "ListenerValidation.parse",
+      "fingerprint": "beba8e587583cdfdcbdb5e0d4bab1eb1fce4caedeef5f424863f9e1a8855d5c9"
+    },
+    {
+      "file": "tests/support/scope-program.ts",
+      "symbol": "ListenerPlugin.constructor",
+      "fingerprint": "f94ee0d407967d24fc2dd6a47c4403c087b5925c1c648052bcf79f556b31e638"
+    },
+    {
+      "file": "tests/support/scope-program.ts",
+      "symbol": "ListenerPlugin.listen",
+      "fingerprint": "593cbbadd8037e722025937237d2279dc191cba668b3debaa0dc562532ce8b3f"
+    },
+    {
+      "file": "tests/support/scope-program.ts",
+      "symbol": "ScopeProgram.static descriptor",
+      "fingerprint": "d59bf891f0aeb660ad2f84bce269f73bc9bf3bb6ddb810bf04adafb31c4b2b09"
+    },
+    {
+      "file": "tests/support/scope-program.ts",
+      "symbol": "ScopeProgram.static run",
+      "fingerprint": "a643fc152cb24aeefe9ba84c014933dc680e85b1e54ff52da899616a1fcc0c84"
+    },
+    {
+      "file": "tests/support/scope-test-support.ts",
+      "symbol": "ValueValidation.parse",
+      "fingerprint": "b04bfdf618c74b6d6b246ce2d16af6d555dd3f6d9eb423c70dd25092ed19389c"
+    },
+    {
+      "file": "tests/support/scope-test-support.ts",
+      "symbol": "ValuePlugin.constructor",
+      "fingerprint": "caff9f2e9ec9c45b74783459670fbebc33f188f1d7568c99e8c0fab7291ada1a"
+    },
+    {
+      "file": "tests/support/scope-test-support.ts",
+      "symbol": "ScopeTests.descriptor",
+      "fingerprint": "ecdcf1237a18a09aadffd52096db73e9915e11a2f90d88906f209ab53317fb4b"
+    },
+    {
+      "file": "tests/support/scope-test-support.ts",
+      "symbol": "FailedValuePlugin.constructor",
+      "fingerprint": "a4302a2c67b4e25985ef5e3c6d8ec76330f856016172faaaf0aaf8c8d93e83b3"
+    },
+    {
+      "file": "tests/support/scope-test-support.ts",
+      "symbol": "DisposalGate.static reset",
+      "fingerprint": "1b638f3e6313118ae84255dc918899802361430b8e37dc5e274caa41548bd26f"
+    },
+    {
+      "file": "tests/support/scope-test-support.ts",
+      "symbol": "DisposalGate.static close",
+      "fingerprint": "b0eb799522ca1f1fa17c77eb3e02db6a91475d0e99e40e18b3cb241a30c8ca8e"
+    },
+    {
+      "file": "tests/support/scope-test-support.ts",
+      "symbol": "SlowDisposalPlugin.constructor",
+      "fingerprint": "639f3f49ca35c5c2cb6e0d2bfdb8e5bcc6631fe978fdd92ed3e21f3be15b1a03"
+    },
+    {
+      "file": "tests/support/service-composition-test-support.ts",
+      "symbol": "ServiceCompositionTests.service",
+      "fingerprint": "7bc71eadb1b3fe00dfa84b7da7e4ecc08e2ba1c1b5482962b6e4c5573def8e95"
+    },
+    {
+      "file": "tests/support/source-pending-program.ts",
+      "symbol": "SourcePendingProgram.static run",
+      "fingerprint": "47d171a1d34ea2bcd4785ff2096340395a8947db6a569c8bb96cc99efb01a013"
+    },
+    {
+      "file": "tests/support/source-policy-contract-program.ts",
+      "symbol": "SourcePolicyProgram.static run",
+      "fingerprint": "0ad222a51b4972775ab846bbc394856145303b552aa7114218295498b56381a9"
+    },
+    {
+      "file": "tests/unit/contract.test.ts",
+      "symbol": "ContractTestsUnit.installedBoundaries",
+      "fingerprint": "3a00a64ae7914b3551649ef17c9970812b2904cf6097b3bfa950c22439da0fc8"
+    },
+    {
+      "file": "tests/unit/contract.test.ts",
+      "symbol": "ContractTestsUnit.invalidFields",
+      "fingerprint": "b314039708f25ff99721128f50321b636c99b3c68afc60bf0da4383c99e0b376"
+    },
+    {
+      "file": "tests/unit/contract.test.ts",
+      "symbol": "ContractTestsUnit.policies",
+      "fingerprint": "202cbfdedfbbbe19dacf3480f536c32c8c27115dafcd291fdb315e9c2d60d92d"
+    },
+    {
+      "file": "tests/unit/contract.test.ts",
+      "symbol": "ContractTestsUnit.sourcePolicy",
+      "fingerprint": "27be60c5952525b00bbe7ee296a7e60688d0381baa4fe51e14692b4fc0baf64c"
+    },
+    {
+      "file": "tests/unit/management.test.ts",
+      "symbol": "ManagementTestsUnit.sources",
+      "fingerprint": "b9b2e0eaf05c740055eb1388af9018327c194da61514c1ea24fbd12c39cbbf71"
+    },
+    {
+      "file": "tests/unit/management.test.ts",
+      "symbol": "ManagementEnvelopeTestsUnit.target",
+      "fingerprint": "fd325c505ab4c155bfa52fe949f86e31c771fd78df0f5189bfadfd840ef3fbda"
+    },
+    {
+      "file": "tests/unit/management.test.ts",
+      "symbol": "PackageMetadataTestsUnit.derived",
+      "fingerprint": "1f24e1beec5261c168b5ac33df538be01d45669c8ecb62aabb8a183dcb381f96"
+    },
+    {
+      "file": "tests/unit/management.test.ts",
+      "symbol": "InventoryBindingTestsUnit.images",
+      "fingerprint": "b78fb61678228f90d0e8dfc9e91fd08c8d393fba2fb8a70fdfcca7da368b4492"
+    },
+    {
+      "file": "tests/unit/management.test.ts",
+      "symbol": "InventoryBindingTestsUnit.helpers",
+      "fingerprint": "e7d169478b8bbb4b24aba30fb89d1ab1d9081a6d6bcb718cb326f394ec0361ad"
+    },
+    {
+      "file": "tests/unit/observation.test.ts",
+      "symbol": "ObservationTestsUnit.data",
+      "fingerprint": "662e2728ab227fb4a87448c504840d46a082798f469334d2b1275ca1bb346c31"
+    },
+    {
+      "file": "tests/unit/planning.test.ts",
+      "symbol": "PlanningContractTestsUnit.metadata",
+      "fingerprint": "61398661c7792690b47623f08e7d15c2604c5a8b3bd1f5a8e6a383aedc9efcb0"
+    },
+    {
+      "file": "tests/unit/planning.test.ts",
+      "symbol": "PlanningContractTestsUnit.projection",
+      "fingerprint": "cfe952d1d44f81bc28be7628bb8acee6284b662bcfa33e478df9008b2b6d5fdc"
+    },
+    {
+      "file": "tests/unit/probe-evidence.test.ts",
+      "symbol": "ProbeEvidenceTestsUnit.evidence",
+      "fingerprint": "41a45b22cd536069d8868abb2cc772866cd6a4428ad6aa3ccb150c078201b8ca"
+    },
+    {
+      "file": "tests/unit/probe-evidence.test.ts",
+      "symbol": "ProbeEvidenceTestsUnit.prepared",
+      "fingerprint": "9b825c667662c7ac40f56805ccebcb7f1099cacd07ddc46c848dd5818be114f8"
+    },
+    {
+      "file": "tests/unit/probe-evidence.test.ts",
+      "symbol": "PrivatePlanTestsUnit.request",
+      "fingerprint": "6889e25fbc5c9f6042b4cc47c83a0424e6342bd73ece9f1fca6bb778f8577694"
+    },
+    {
+      "file": "tests/unit/projection.test.ts",
+      "symbol": "ProjectionTestsUnit.markers",
+      "fingerprint": "ec290ee023cb24969df8a502fbb2f4febd0e35cb36dbce83d124ddfa6efe9d9e"
+    },
+    {
+      "file": "tests/unit/projection.test.ts",
+      "symbol": "ProjectionTestsUnit.helpers",
+      "fingerprint": "5fe4ac8557a8b762b9e4e8c8d0a2bd64e6fb955509d49cb4338f0d2247a24f30"
+    },
+    {
+      "file": "tests/unit/projection.test.ts",
+      "symbol": "ConfigurationProjectionTestsUnit.annotation",
+      "fingerprint": "686f74bf3c6cdb56a3139a290fc8d4123da0e1b25cbd5d35cfca9ef1e0932e7c"
+    },
+    {
+      "file": "tests/unit/projection.test.ts",
+      "symbol": "ConfigurationProjectionTestsUnit.custom",
+      "fingerprint": "b63b4f471b574b4fe37ec9ce77fd6eb0a3684320ff147c7d2959ba3f3321435d"
+    },
+    {
+      "file": "tests/unit/projection.test.ts",
+      "symbol": "WorkerIdentityTestsUnit.identity",
+      "fingerprint": "2a92f8a2cb1fea40a0188f791812bb4d73e3b03fef9547add85233761c85ec2c"
+    },
+    {
+      "file": "tests/unit/projection.test.ts",
+      "symbol": "SelectorTestsUnit.selectors",
+      "fingerprint": "c1708c17c0fcd6f71a5862bdd627da55ac103eb57040d46f99c9f184c5cc7f61"
+    },
+    {
+      "file": "tests/unit/projection.test.ts",
+      "symbol": "ConfigurationMarkerTestsUnit.marker",
+      "fingerprint": "8852a5f16a11fc397d6d62f64233c3e78d867a5105aadc1c88059c12d0675699"
+    },
+    {
+      "file": "tests/unit/restart-scope.test.ts",
+      "symbol": "RestartScopeTestsUnit.projection",
+      "fingerprint": "f508c215b2178d84135dbb07820717825e2390be6e0ab8425bfd0f1afac3fec3"
+    },
+    {
+      "file": "tests/unit/restart-scope.test.ts",
+      "symbol": "RestartScopeTestsUnit.record",
+      "fingerprint": "9c3bf0e420a6f1f958da5cdf764f3a906eb5a731c7f929a968d972f31c8ec827"
+    },
+    {
+      "file": "tests/unit/runtime-images.test.ts",
+      "symbol": "RuntimeImageTestsUnit.descriptor",
+      "fingerprint": "70f24a694ba084eecbb2471e0aa96ba371074f59f46296b98f1e213729d37eb9"
+    },
+    {
+      "file": "tests/unit/runtime.test.ts",
+      "symbol": "RuntimeTestsUnit.metadata",
+      "fingerprint": "0eeb5d3273c3f77145094b8d0a32b32c5aa4dbae985588c6df04fad1f2437920"
+    },
+    {
+      "file": "tests/unit/service-composition.test.ts",
+      "symbol": "ServiceCompositionTestsUnit.graph",
+      "fingerprint": "c0e18c308661d1d05e52aed53a380c3f7d793029f5d481686cb43bb600dd2396"
+    },
+    {
+      "file": "tests/unit/service-composition.test.ts",
+      "symbol": "ServiceGrantTestsUnit.credentials",
+      "fingerprint": "2852161afcf9f0f3bd8c142d7b5d5f22c6613891c068505b34e7d51c24734001"
+    },
+    {
+      "file": "tests/unit/service-composition.test.ts",
+      "symbol": "ServicePortTestsUnit.ports",
+      "fingerprint": "304452f6285f92961d827ad9da5de45ce05921f932167dccaaf9429e2f35b4f7"
+    },
+    {
+      "file": "tests/unit/service-install-intent.test.ts",
+      "symbol": "ServiceIntentTestsUnit.bounded",
+      "fingerprint": "9c66b90a73d6f66aea828751d65df5d86d739234b53f7fdb68a0db7c34f56871"
+    },
+    {
+      "file": "tests/unit/service-install-intent.test.ts",
+      "symbol": "ServiceIntentTestsUnit.projection",
+      "fingerprint": "ec7df8a026d0ab2dda6c5e029ef93c88876c07c6b8a75f6c0a5fba90d215d486"
+    },
+    {
+      "file": "tests/unit/service-journal.test.ts",
+      "symbol": "ServiceJournalTestsUnit.authority",
+      "fingerprint": "2809061c474d783e07a6aa88003f93c6197d61a78f6a9e1492b667738da830d2"
+    },
+    {
+      "file": "tests/unit/service-journal.test.ts",
+      "symbol": "RequestRecordTestsUnit.intent",
+      "fingerprint": "1b17409bcd49ada52726d5172fcb820694691f7f1baa2657dfd0d5c4fd0589d5"
+    },
+    {
+      "file": "tests/unit/service-journal.test.ts",
+      "symbol": "ServiceEnvelopeTestsUnit.failure",
+      "fingerprint": "7a7cd24e8ef057b5b546622aa33e6531a5467d230293244c7fe188bac494d4a0"
+    },
+    {
+      "file": "tests/unit/source-acquisition-policy.test.ts",
+      "symbol": "SourcePolicyProjectionTestsUnit.projection",
+      "fingerprint": "9ef3b173ac5deb1241aab07d4bcca73f596794bda4015207ae61a498a7e09a05"
+    },
+    {
+      "file": "tests/unit/source-pending.test.ts",
+      "symbol": "PendingProjectionTestsUnit.projection",
+      "fingerprint": "c297fd317dd6b962428f6712f5f67edba2faf82b9d1be390b3b9376c5db85b6f"
+    }
+  ],
+  "exceptions": []
+}
