@@ -1,4 +1,6 @@
 export * from './capacity.js';
+export * from './environments.js';
+export * from './activities.js';
 export * from './agent.js';
 export * from './service-journal.js';
 export * from './schemas.js';
