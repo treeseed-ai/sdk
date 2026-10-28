@@ -1,3 +1,5 @@
+export * from './activities.js';
+import { ActivitySchemas } from './activities.js';
 export * from './seeds.js';
 import { SeedSchemas } from './seeds.js';
 export * from './agent.js';
@@ -17,6 +19,9 @@ export class CanonicalJson extends PortableJson {
 }
 export class ContractProjection {
   private static readonly outputSchemas = {
+    activityCatalogue: ActivitySchemas.catalogue,
+    activityProfile: ActivitySchemas.instance,
+    agentDefinition: ActivitySchemas.definition,
     agentAuthority: AgentSchemas.authority,
     agentExecutionRequest: AgentSchemas.request,
     agentExecutionResult: AgentSchemas.result,
