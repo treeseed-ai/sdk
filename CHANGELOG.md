@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- Define bounded Agent execution and target contracts (#482).
+
 ### Fixed
 - Bound compiler freshness verification independently of Bun's default test timeout (#491).
 
