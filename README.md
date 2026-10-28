@@ -9,6 +9,15 @@ or activate resources; API and resource owners retain those responsibilities.
 The real compiler freshness regression uses a 30-second child deadline and a 35-second case
 deadline, retaining child diagnostics and both freshness assertions. See SDK #491.
 
+## Existing provider enrollment protocol
+
+The public `@treeseed-cordis/sdk/provider-control` client preserves the existing registration,
+signed-proof, team credential and access-token wire contract. Portable schemas and their separate
+JSON projection use `@treeseed-cordis/sdk/provider-control-contracts`. See the
+[provider-control reference](docs/provider-control.md) for exact endpoints, identity boundaries,
+HTTPS and safe-error behavior. Agent owns signing and live team-connection orchestration;
+Keycloak-governed approval is unchanged. This client does not authorize Work or start capacity.
+
 Agent contract admission and generated projections use short capability methods. The projection
 maps remain declarative, with separate input/output conversion and operation projection. Admission
 keeps schema, authority identity and generation checks distinct; tests retain all existing boundary
