@@ -8,7 +8,9 @@
 ### Added
 - Define portable seed graphs, exact resource plans and linked owner receipts (#487).
 
+
 ### Changed
+- Require readable capability layers and contextual refactoring with a twenty-line method gate (#485).
 
 - Organize permanent tests by tier and enforce the shared development/testing strategy (#480).
 

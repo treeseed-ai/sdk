@@ -15,8 +15,4 @@ class ContractTestsRegression {
   }
 }
 const suite = new ContractTestsRegression();
-test(
-  'regression: fresh build removes obsolete generated modules',
-  suite.freshBuild.bind(suite),
-  35000,
-);
+test('regression: fresh build removes obsolete generated modules', suite.freshBuild.bind(suite), 35000);

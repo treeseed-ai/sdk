@@ -9,6 +9,14 @@ or activate resources; API and resource owners retain those responsibilities.
 The real compiler freshness regression uses a 30-second child deadline and a 35-second case
 deadline, retaining child diagnostics and both freshness assertions. See SDK #491.
 
+## Build freshness verification
+
+The regression that verifies removal of obsolete generated modules runs the actual complete
+TypeScript build. Its child process has a 30-second deadline and its enclosing test has a
+35-second deadline. Both are explicit so a valid compile is not killed by Bun's five-second default.
+Child failure diagnostics, exit-status and obsolete-file assertions remain mandatory; timeout is
+a failure, never a retry or a skipped freshness check.
+
 ## Accepted service observation context
 
 Task 3C adds portable `ServiceSchemas.runtimeContent`, `runtimeBinding`, `observationIdentity`
