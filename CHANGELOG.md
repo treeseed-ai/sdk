@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Bind separate worker and guest service messages to exact process and lease identities (#488).
 - Define service-scoped bounded sandbox control contracts and reply binding (#488).
 - Bind manager, worker and guest probe messages to exact reservations and leases (#488).
 - Define exact virgin warm-pool compatibility and admission contracts (#488).
