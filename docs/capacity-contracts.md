@@ -87,6 +87,29 @@ host command or raw runtime socket. Readiness and cleanup responses still requir
 checks above. The current schemas do not implement transports, authenticate observations or
 perform Cordis registration.
 
+### Reservation and dispatch protocol
+
+`CapacityProtocolSchemas` separates a worker reservation from an execution lease. A reserve
+request binds the request/assignment, exact scope, manager and expected worker process,
+compatibility digest, authority, fence and expiry. The worker must authenticate its caller and
+freshly check live authority before claiming a virgin base. A reservation acknowledges the exact
+sandbox and actual manager/worker/runner plus provider generations. It is exclusive and never
+returns to the pool; expiry or cancellation requires destruction, including a lost reply.
+
+A dispatch binds the admitted reservation ID, full fenced lease, exact Agent definition, selected
+profile, immutable environment and bounded harmless probe input. Binding checks reject a different
+request, sandbox, scope, authority, generation, compatibility, fence or expiry. The selected profile
+must belong to the definition and select the supplied environment ID. Package/schema validation,
+profile parameter admission and live authorization remain mandatory owner checks; JSON is not
+authority and a reservation is not an authenticated observation by itself.
+
+Typed `CapacityWorkerClient` and `CapacityRunnerClient` interfaces carry these messages with abort
+signals. Runner outcomes contain no cleanup assertion: only the host-backed worker can issue a
+final capacity result after verified destruction. Cancellation of a worker call resolves to that
+final result, rather than claiming completion from a queued acknowledgement. The runner can only
+return bounded probe output or fixed safe blockers. These portable interfaces do not open sockets,
+start services, grant host authority or add global platform operation IDs.
+
 ## Fenced protocols and acknowledgements
 
 Versioned capacity messages bind installation, capacity-provider identity, manager/worker/runner
