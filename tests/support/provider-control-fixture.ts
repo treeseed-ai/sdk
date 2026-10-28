@@ -60,7 +60,17 @@ export class ProviderControlFixture {
     await once(this.server, 'listening');
   }
   private request(request: IncomingMessage, response: ServerResponse): void {
+    if (!['wire', 'denied'].includes(this.mode)) return this.fault(response);
     void this.respond(request, response);
+  }
+  private fault(response: ServerResponse): void {
+    response.setHeader('content-type', 'application/json');
+    if (this.mode === 'timeout') return;
+    if (this.mode === 'redirect') { response.writeHead(302, { location: 'https://example.invalid/SECRET_REDIRECT' }); response.end(); return; }
+    if (this.mode === 'duplicate') { response.end('{"data":{},"data":{}}'); return; }
+    if (this.mode === 'oversize') { response.end('x'.repeat(1024 * 1024 + 1)); return; }
+    if (this.mode === 'malformed') { response.end('{'); return; }
+    response.end(JSON.stringify({ data: { ...ProviderWireFixtures.token, credentialId: 'foreign-credential' } }));
   }
   private async respond(request: IncomingMessage, response: ServerResponse): Promise<void> {
     try {

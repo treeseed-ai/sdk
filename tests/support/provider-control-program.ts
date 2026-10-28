@@ -3,9 +3,10 @@ import { ProviderProtocolClient } from '@treeseed-cordis/sdk/provider-control';
 import { ProviderWireFixtures as Fixture } from './provider-control-fixture.js';
 
 class ProviderControlProgram {
-  private readonly client = new ProviderProtocolClient({ baseUrl: process.argv[2]! });
+  private readonly client = new ProviderProtocolClient({ baseUrl: process.argv[2]!, timeoutMs: process.argv[3] === 'timeout' ? 100 : 10000 });
   async run(): Promise<void> {
     if (process.argv[3] === 'denied') return this.denied();
+    if (process.argv[3] !== 'wire') return this.fault();
     const registered = await this.client.register('FIXTURE_REGISTRATION', Fixture.submission, 'fixture-register', new AbortController().signal);
     assert.equal(registered.status, 'pending');
     assert.equal(registered.teamId, 'fixture-team');
@@ -18,6 +19,15 @@ class ProviderControlProgram {
     assert.equal(token.providerId, registered.providerId);
     assert.equal(token.credentialId, credential.id);
     process.stdout.write('provider-control-ok\n');
+  }
+  private async fault(): Promise<void> {
+    const expected: Record<string, string> = {
+      duplicate: 'INVALID_PROVIDER_RESPONSE', malformed: 'INVALID_PROVIDER_RESPONSE',
+      oversize: 'PROVIDER_RESPONSE_LIMIT', redirect: 'PROVIDER_TRANSPORT_FAILED',
+      'foreign-credential': 'PROVIDER_IDENTITY_MISMATCH', timeout: 'PROVIDER_CANCELLED',
+    };
+    await assert.rejects(this.client.issueAccessToken('FIXTURE_CREDENTIAL', { credentialId: 'fixture-credential', proof: Fixture.proof }, 'fixture-fault', new AbortController().signal), { code: expected[process.argv[3]!] });
+    process.stdout.write('provider-control-fault-ok\n');
   }
   private async denied(): Promise<void> {
     try {
