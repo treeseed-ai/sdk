@@ -138,3 +138,26 @@ physical destruction and real hosted Kata assembly remain owning implementation 
 Deliver this slice as portable schemas/types and generated projections first, with built Node,
 integration projection and unit binding tests. It enables the actual guest-session provider;
 it does not implement that provider or productive Work/models. All issues remain open.
+
+## Exact standalone guest payload
+
+`GuestRuntimeSchemas.manifest` owns the portable `treeseed.guest-runtime/v1` payload produced
+by Agent and verified by Deployment. The qualified format selects Bun 1.4.4, Linux amd64 GNU
+baseline, the GNU loader and the exact libc/loader/pthread/dl/m requirement list. It binds a gzip
+stream in ordered individually hashed chunks, aggregate compressed identity and executable
+identity/size/mode. No host path, command, lifecycle script or ambient runtime is described.
+
+Each chunk is at most 7 MiB, the complete compressed stream at most 64 MiB and the expanded
+executable at most 128 MiB with mode 0755. Names are exactly consecutive
+`trsd-agent-guest.000.gzpart`, `001`, and so forth, with no duplicates, gaps, zero-length chunks
+or partial intermediate chunks. The manifest has between one and sixteen parts and their sizes
+sum exactly to the declared compressed size. Required libraries are an exact semantic set.
+
+`GuestRuntimeBinding.assert(input)` checks those cross-field relationships with fixed safe errors;
+generated schema carries portable structural bounds. Agent validates its generated manifest
+through this contract. Deployment must independently verify every accepted archive/chunk byte,
+reject unused runtime chunks, hash the complete compressed stream, bound decompression and verify
+expanded bytes and ELF requirements before staging only inside the selected Kata sandbox.
+Schema admission alone executes nothing, authenticates nobody and proves no running guest.
+Existing host/guest generation bindings, immutable image selections, preparation receipts,
+private custody and destruction remain required. All issues remain open; Work stays Task 10.
