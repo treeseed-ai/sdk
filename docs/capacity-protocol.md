@@ -102,6 +102,7 @@ Transport credentials, replay/idempotency journals, bounded framing, cancellatio
 endpoint custody remain owning implementations. Readiness discovery never authorizes a stale
 subsequent operation. The client must use the returned actual generation in its next request.
 
-Portable Node consumers and generated JSON Schema projections must admit the same positive
-messages and reject cross-scope, wrong-role/generation, mismatched reply and unsafe data.
+Portable Node consumers validate cross-message scope, role, process and reply identities through
+the binding methods. Generated JSON Schema projections preserve positive operation/result shapes
+and exclude unknown host configuration; they do not independently compare separate messages.
 This contract slice does not claim that separate programs or live capacity are installed.
