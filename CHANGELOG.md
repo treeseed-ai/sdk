@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Bind manager, worker and guest probe messages to exact reservations and leases (#488).
 - Define fenced capacity leases and generation-bound readiness and cleanup contracts (#488).
 - Define immutable Agent environment contracts and offline network grant intersection (#488).
 - Define extensible activity capabilities, definition-owned profile graphs and safe selection contracts (#488).
