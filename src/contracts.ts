@@ -1,3 +1,5 @@
+export * from './sandbox-control.js';
+import { SandboxControlSchemas } from './sandbox-control.js';
 export * from './capacity-protocol.js';
 import { CapacityProtocolSchemas } from './capacity-protocol.js';
 export * from './pool.js';
@@ -27,6 +29,9 @@ export class CanonicalJson extends PortableJson {
 }
 export class ContractProjection {
   private static readonly outputSchemas = {
+    sandboxControlGrant: SandboxControlSchemas.grant,
+    sandboxControlRequest: SandboxControlSchemas.request,
+    sandboxControlResponse: SandboxControlSchemas.response,
     capacityReserve: CapacityProtocolSchemas.reserve,
     capacityReservation: CapacityProtocolSchemas.reservation,
     capacityDispatch: CapacityProtocolSchemas.dispatch,
