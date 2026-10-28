@@ -3,7 +3,9 @@ import { spawnSync } from 'node:child_process';
 
 class SeedPublicProgram {
   run(): void {
-    const result = spawnSync('node', ['dist/tests/support/seed-contract-program.js'], { encoding: 'utf8' });
+    const result = spawnSync('node', ['dist/tests/support/seed-contract-program.js'], {
+      encoding: 'utf8',
+    });
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
     expect(result.stdout).toBe('seed-contract-ok\n');
@@ -11,4 +13,7 @@ class SeedPublicProgram {
 }
 
 const suite = new SeedPublicProgram();
-test('acceptance: built portable seed contracts bind graphs artifacts and truthful resource completion', suite.run.bind(suite));
+test(
+  'acceptance: built portable seed contracts bind graphs artifacts and truthful resource completion',
+  suite.run.bind(suite),
+);

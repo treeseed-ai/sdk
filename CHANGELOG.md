@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- Define portable seed graphs, exact resource plans and linked owner receipts (#487).
+
 ### Changed
 
 - Organize permanent tests by tier and enforce the shared development/testing strategy (#480).
