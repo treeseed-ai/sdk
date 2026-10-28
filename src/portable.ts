@@ -1,3 +1,4 @@
+export * from './capacity-protocol.js';
 export * from './pool.js';
 export * from './capacity.js';
 export * from './environments.js';
