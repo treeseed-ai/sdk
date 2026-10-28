@@ -4,6 +4,8 @@
 
 ### Added
 
+- Define exact bounded standalone guest payload manifests for owner artifact verification (#488).
+
 - Bind host-mediated guest sessions to exact scoped runner messages and grants (#488).
 - Bind separate worker and guest service messages to exact process and lease identities (#488).
 - Define service-scoped bounded sandbox control contracts and reply binding (#488).
