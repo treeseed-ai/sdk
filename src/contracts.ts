@@ -1,5 +1,5 @@
 export * from './capacity-channel.js';
-import { CapacityChannelSchemas } from './capacity-channel.js';
+import { CapacityChannelSchemas, SandboxRunnerSchemas } from './capacity-channel.js';
 export * from './sandbox-control.js';
 import { SandboxControlSchemas } from './sandbox-control.js';
 export * from './capacity-protocol.js';
@@ -31,6 +31,9 @@ export class CanonicalJson extends PortableJson {
 }
 export class ContractProjection {
   private static readonly outputSchemas = {
+    sandboxRunnerGrant: SandboxRunnerSchemas.grant,
+    sandboxRunnerRequest: SandboxRunnerSchemas.request,
+    sandboxRunnerResponse: SandboxRunnerSchemas.response,
     capacityChannelRequest: CapacityChannelSchemas.request,
     capacityChannelResponse: CapacityChannelSchemas.response,
     sandboxControlGrant: SandboxControlSchemas.grant,

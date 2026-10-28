@@ -106,3 +106,35 @@ Portable Node consumers validate cross-message scope, role, process and reply id
 the binding methods. Generated JSON Schema projections preserve positive operation/result shapes
 and exclude unknown host configuration; they do not independently compare separate messages.
 This contract slice does not claim that separate programs or live capacity are installed.
+
+## Host-mediated runner session
+
+`SandboxRunnerSchemas` is a separately versioned `treeseed.sandbox-runner/v1` bridge. It does
+not change the six sandbox lifecycle operations or the seven global platform operation IDs.
+The host-mediated runner client exchanges one positive runner ready/run/cancel message for a
+logical sandbox. No host path, executable arguments, image, script bytes or runtime socket is
+accepted. Deployment owns transport, immutable runner staging and persistent guest sessions;
+Agent owns the actual guest program, worker admission/pool and live authority orchestration.
+
+An explicit private host grant binds exact service/provider generations and the full capacity
+installation/project/profile/worker scope, a unique allowed runner-operation set and an expiry.
+`SandboxRunnerBinding.assertRequest(input, grant, actualRunnerGeneration, now)` binds both
+scopes, request IDs, logical sandbox and the actual guest process/composition generation.
+Run/cancel also bind the embedded lease sandbox and cannot outlive the host grant.
+`assertGrant(input, grant, now)` performs scope/operation/deadline admission before the host
+starts or stages a guest; it does not qualify an actual guest generation. A ready request may discover the actual process
+with a null expected generation. Grant data alone authenticates nobody; the host must verify
+private credential/custody and fresh grant read-back before effects, then independently verify
+its actual sandbox/assignment, immutable runtime and successful environment receipts.
+
+Success wraps the existing runner response; host failures have null result and one fixed safe
+sandbox problem code. Reply binding checks the host scope, request and sandbox and then the full
+inner capacity-channel response, including nested scope/lease/generation. A valid outer reply
+cannot hide a substituted inner request or outcome. The grant contains no bearer credential.
+Planning does not start a session; installed runner readiness is not inferred from this schema.
+Native roots, worker lease fencing, live Keycloak authority, bounded framing/replay/disposal,
+physical destruction and real hosted Kata assembly remain owning implementation obligations.
+
+Deliver this slice as portable schemas/types and generated projections first, with built Node,
+integration projection and unit binding tests. It enables the actual guest-session provider;
+it does not implement that provider or productive Work/models. All issues remain open.
