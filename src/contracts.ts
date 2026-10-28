@@ -1,3 +1,5 @@
+export * from './capacity.js';
+import { CapacitySchemas } from './capacity.js';
 export * from './seeds.js';
 import { SeedSchemas } from './seeds.js';
 export * from './agent.js';
@@ -17,6 +19,10 @@ export class CanonicalJson extends PortableJson {
 }
 export class ContractProjection {
   private static readonly outputSchemas = {
+    capacityLease: CapacitySchemas.lease,
+    capacityReadiness: CapacitySchemas.readiness,
+    capacityResult: CapacitySchemas.result,
+
     agentAuthority: AgentSchemas.authority,
     agentExecutionRequest: AgentSchemas.request,
     agentExecutionResult: AgentSchemas.result,
