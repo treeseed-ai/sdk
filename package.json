@@ -1,6 +1,6 @@
 {
   "name": "@treeseed-cordis/sdk",
-  "version": "0.0.0-cordis.25",
+  "version": "0.0.0-cordis.26",
   "private": true,
   "type": "module",
   "exports": {
@@ -31,6 +31,10 @@
     "./portable": {
       "types": "./dist/src/portable.d.ts",
       "default": "./dist/src/portable.js"
+    },
+    "./seeds": {
+      "types": "./dist/src/seeds.d.ts",
+      "default": "./dist/src/seeds.js"
     }
   },
   "files": [

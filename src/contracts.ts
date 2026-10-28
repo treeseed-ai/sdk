@@ -1,3 +1,5 @@
+export * from './seeds.js';
+import { SeedSchemas } from './seeds.js';
 export * from './agent.js';
 import { AgentSchemas } from './agent.js';
 export * from './service-projection.js';
@@ -56,6 +58,11 @@ export class ContractProjection {
     provider: ProviderSchemas.declaration,
     selection: ProviderSchemas.selection,
     preparedProvider: ProviderSchemas.manifest,
+    seedBundle: SeedSchemas.bundle,
+    seedPlan: SeedSchemas.plan,
+    seedReceipt: SeedSchemas.receipt,
+    seedResourcePlan: SeedSchemas.resourcePlan,
+    seedResourceReceipt: SeedSchemas.resourceReceipt,
   };
   private static readonly inputSchemas = {
     pluginInstall: PluginManagementSchemas.install,
