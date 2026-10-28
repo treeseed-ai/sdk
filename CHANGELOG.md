@@ -5,7 +5,11 @@
 ### Added
 - Preserve the existing signed provider enrollment protocol through bounded public clients (#488).
 
+### Fixed
+- Bound compiler freshness verification independently of Bun's default test timeout (#491).
+
 ### Changed
+- Require readable capability layers and contextual refactoring with a twenty-line method gate (#485).
 
 - Organize permanent tests by tier and enforce the shared development/testing strategy (#480).
 
