@@ -1,5 +1,7 @@
 export * from './capacity-protocol.js';
 import { CapacityProtocolSchemas } from './capacity-protocol.js';
+export * from './pool.js';
+import { PoolSchemas } from './pool.js';
 export * from './capacity.js';
 import { CapacitySchemas } from './capacity.js';
 export * from './environments.js';
@@ -29,6 +31,9 @@ export class ContractProjection {
     capacityReservation: CapacityProtocolSchemas.reservation,
     capacityDispatch: CapacityProtocolSchemas.dispatch,
     capacityRunnerOutcome: CapacityProtocolSchemas.runnerOutcome,
+    poolCompatibility: PoolSchemas.compatibility,
+    poolPolicy: PoolSchemas.policy,
+    virginSandbox: PoolSchemas.base,
     capacityLease: CapacitySchemas.lease,
     capacityReadiness: CapacitySchemas.readiness,
     capacityResult: CapacitySchemas.result,
