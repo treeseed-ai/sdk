@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Added
+- Define fenced capacity leases and generation-bound readiness and cleanup contracts (#488).
+
+### Added
 - Preserve the existing signed provider enrollment protocol through bounded public clients (#488).
 
 - Define bounded Agent execution and target contracts (#482).
