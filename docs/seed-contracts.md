@@ -1,6 +1,7 @@
 # Portable seed contracts
 
-SDK owns the root and portable `SeedSchemas`, inferred data types, resource-provider contracts,
+SDK owns the root and portable `@treeseed-cordis/sdk/seeds` entry's `SeedSchemas`, inferred data
+types, resource-provider contracts,
 safe `SeedContractError` and `SeedContractBinding`. This bounded candidate extracts the already
 verified seed boundary from the unmerged capacity integration without importing Agent behavior.
 The existing seven global platform operations and their operation-contract version remain intact;

@@ -2,10 +2,12 @@
 
 ## Portable seed contracts
 
-Root and portable exports provide separately versioned seed bundle/plan/receipt schemas, inferred
+Root and the portable `/seeds` entry provide separately versioned seed bundle/plan/receipt schemas, inferred
 types, owner-resource contracts and safe binding checks. See [seed contracts](docs/seed-contracts.md)
 for graph, exact-artifact and truthful-completion rules. Schema admission does not grant authority
 or activate resources; API and resource owners retain those responsibilities.
+The real compiler freshness regression uses a 30-second child deadline and a 35-second case
+deadline, retaining child diagnostics and both freshness assertions. See SDK #491.
 
 ## Accepted service observation context
 
