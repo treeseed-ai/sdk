@@ -477,3 +477,5 @@ Contract binding failures expose only `INVALID_AGENT_CONTRACT`, `AGENT_GRANT_REV
 Generated projection advances to `0.6.0-cordis.1` and adds agentAuthority, agentExecutionRequest and agentExecutionResult. Existing seven operations, ProviderV4 format/version and installed package descriptors are unchanged. Package candidate advances to `0.0.0-cordis.17`; this is local migration candidate identity, not production publication.
 
 Acceptance runs a Node program through the built public portable export. Unit cases pin scope/principal/resource/grant/revision, revocation, generation, payload bounds, unknown fields, safe errors and result consistency. Root and browser portable contracts must share the same schemas without Node runtime imports.
+
+[Immutable environment contracts](docs/environment-contracts.md) define guest entrypoints and network-policy intersection; enforcement remains with Agent and Deployment.
