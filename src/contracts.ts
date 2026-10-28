@@ -1,3 +1,5 @@
+export * from './capacity.js';
+import { CapacitySchemas } from './capacity.js';
 export * from './environments.js';
 import { EnvironmentSchemas } from './environments.js';
 export * from './activities.js';
@@ -21,6 +23,10 @@ export class CanonicalJson extends PortableJson {
 }
 export class ContractProjection {
   private static readonly outputSchemas = {
+    capacityLease: CapacitySchemas.lease,
+    capacityReadiness: CapacitySchemas.readiness,
+    capacityResult: CapacitySchemas.result,
+
     environmentDefinition: EnvironmentSchemas.definition,
 
     activityCatalogue: ActivitySchemas.catalogue,
