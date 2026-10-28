@@ -1,3 +1,7 @@
+export * from './pool.js';
+export * from './capacity-protocol.js';
+import { PoolSchemas } from './pool.js';
+import { CapacityProtocolSchemas } from './capacity-protocol.js';
 export * from './capacity.js';
 import { CapacitySchemas } from './capacity.js';
 export * from './environments.js';
@@ -23,6 +27,13 @@ export class CanonicalJson extends PortableJson {
 }
 export class ContractProjection {
   private static readonly outputSchemas = {
+    poolCompatibility: PoolSchemas.compatibility,
+    poolPolicy: PoolSchemas.policy,
+    virginSandbox: PoolSchemas.base,
+    capacityReserve: CapacityProtocolSchemas.reserve,
+    capacityReservation: CapacityProtocolSchemas.reservation,
+    capacityDispatch: CapacityProtocolSchemas.dispatch,
+    capacityRunnerOutcome: CapacityProtocolSchemas.runnerOutcome,
     capacityLease: CapacitySchemas.lease,
     capacityReadiness: CapacitySchemas.readiness,
     capacityResult: CapacitySchemas.result,

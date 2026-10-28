@@ -107,7 +107,7 @@ export class CapacityProtocolProgram {
   private runner(): void {
     for (const change of [
       { cleanup: CapacityFixtures.result.cleanup },
-      { output: 'x'.repeat(4097) },
+      { output: 'x'.repeat(1025) },
       { state: 'cancelled' },
       { blockers: [{ code: 'LEAK', message: 'SECRET_CANARY' }] },
     ])
