@@ -19,6 +19,9 @@ field or local plugin selection can synthesize approval. The caller binds every 
 existing Ed25519 payload: provider fingerprint/identity version, method/path, canonical body
 SHA-256, audience, issue/expiry and unique proof ID. The client validates the wire shape but does
 not claim that an opaque signature is valid. Signing and server verification are separate seams.
+Optional token validity preserves the existing server's whole-second range of 60 through
+604800 seconds (seven days); omission preserves its 900-second default. The default is not a
+maximum. These values come from the same-repository legacy API's access-token-validity contract.
 
 Use an absolute HTTPS origin with no credentials, path, query or fragment. Redirects fail rather
 than forwarding credentials. Requests use the default real Fetch transport through a typed
