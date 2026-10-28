@@ -1,6 +1,6 @@
 {
   "name": "@treeseed-cordis/sdk",
-  "version": "0.0.0-cordis.21",
+  "version": "0.0.0-cordis.25",
   "private": true,
   "type": "module",
   "exports": {

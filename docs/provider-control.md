@@ -36,3 +36,9 @@ revocation observation, Agent native composition and isolated Keycloak enrollmen
 Task 3D integration gates. Productive assignment/Work/model operations remain Task 10. The seven
 global platform operation IDs are unchanged; provider schemas have their own version and JSON
 projection. All issues stay open; artifacts remain private review candidates targeting cordis.
+# Review successor
+
+The synchronized owner candidate is SDK `.25`, retaining accepted Agent probe contracts and
+the bounded compiler regression. Earlier `.17` and `.21` archives stay immutable; `.25` receives
+its own exact source and archive identity. The seven operation IDs and probe projection remain.
+

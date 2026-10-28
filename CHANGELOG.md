@@ -5,6 +5,8 @@
 ### Added
 - Preserve the existing signed provider enrollment protocol through bounded public clients (#488).
 
+- Define bounded Agent execution and target contracts (#482).
+
 ### Fixed
 - Bound compiler freshness verification independently of Bun's default test timeout (#491).
 
