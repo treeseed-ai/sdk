@@ -1,9 +1,17 @@
 {
   "name": "@treeseed-cordis/sdk",
-  "version": "0.0.0-cordis.16",
+  "version": "0.0.0-cordis.21",
   "private": true,
   "type": "module",
   "exports": {
+    "./provider-control": {
+      "types": "./dist/src/provider-control.d.ts",
+      "default": "./dist/src/provider-control.js"
+    },
+    "./provider-control-contracts": {
+      "types": "./dist/src/provider-control-contracts.d.ts",
+      "default": "./dist/src/provider-control-contracts.js"
+    },
     ".": {
       "types": "./dist/src/contracts.d.ts",
       "default": "./dist/src/contracts.js"

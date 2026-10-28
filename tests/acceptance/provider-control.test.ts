@@ -10,7 +10,9 @@ class ProviderControlAcceptance {
       expect(result.stderr).toBe('');
       expect(result.stdout).toBe('provider-control-ok\n');
       fixture.verify();
-    } finally { await fixture.close(); }
+    } finally {
+      await fixture.close();
+    }
   }
   async denied(): Promise<void> {
     const fixture = await ProviderControlFixture.open('denied');
@@ -20,9 +22,19 @@ class ProviderControlAcceptance {
       expect(result.stderr).toBe('');
       expect(result.stdout).toBe('provider-control-denied\n');
       expect(result.stdout).not.toContain('SECRET_RESPONSE_CANARY');
-    } finally { await fixture.close(); }
+    } finally {
+      await fixture.close();
+    }
   }
 }
 const suite = new ProviderControlAcceptance();
-test('acceptance: built default provider client preserves signed enrollment headers and exact identities over real TLS', suite.wire.bind(suite), 20000);
-test('acceptance: built default provider client redacts a remote denial containing credentials and provider text', suite.denied.bind(suite), 20000);
+test(
+  'acceptance: built default provider client preserves signed enrollment headers and exact identities over real TLS',
+  suite.wire.bind(suite),
+  20000,
+);
+test(
+  'acceptance: built default provider client redacts a remote denial containing credentials and provider text',
+  suite.denied.bind(suite),
+  20000,
+);

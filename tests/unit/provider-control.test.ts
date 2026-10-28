@@ -73,18 +73,37 @@ class ProviderControlContractTests {
   validity(): void {
     const request = { credentialId: 'fixture-credential', proof: Fixture.proof };
     for (const requestedValiditySeconds of [60, 900, 604800])
-      expect(ProviderControlSchemas.tokenRequest.safeParse({ ...request, requestedValiditySeconds }).success).toBe(true);
+      expect(
+        ProviderControlSchemas.tokenRequest.safeParse({ ...request, requestedValiditySeconds })
+          .success,
+      ).toBe(true);
     for (const requestedValiditySeconds of [59, 604801, 60.5])
-      expect(ProviderControlSchemas.tokenRequest.safeParse({ ...request, requestedValiditySeconds }).success).toBe(false);
+      expect(
+        ProviderControlSchemas.tokenRequest.safeParse({ ...request, requestedValiditySeconds })
+          .success,
+      ).toBe(false);
   }
   offers(): void {
-    for (const change of [{ weight: 0 }, { sharePercent: 101 }, { weight: 1, sharePercent: 50 }, { maxConcurrentRunners: 0 }])
-      expect(ProviderControlSchemas.supplyOffer.safeParse({ ...Fixture.supplyOffer, ...change }).success).toBe(false);
+    for (const change of [
+      { weight: 0 },
+      { sharePercent: 101 },
+      { weight: 1, sharePercent: 50 },
+      { maxConcurrentRunners: 0 },
+    ])
+      expect(
+        ProviderControlSchemas.supplyOffer.safeParse({ ...Fixture.supplyOffer, ...change }).success,
+      ).toBe(false);
   }
 }
 const suite = new ProviderControlContractTests();
-test('unit: provider token validity preserves the existing sixty-second through seven-day contract', suite.validity.bind(suite));
-test('unit: provider supply offer preserves existing positive and unambiguous distribution limits', suite.offers.bind(suite));
+test(
+  'unit: provider token validity preserves the existing sixty-second through seven-day contract',
+  suite.validity.bind(suite),
+);
+test(
+  'unit: provider supply offer preserves existing positive and unambiguous distribution limits',
+  suite.offers.bind(suite),
+);
 test(
   'unit: provider enrollment accepts only credential-free HTTPS origins',
   suite.origins.bind(suite),

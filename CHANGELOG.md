@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- Preserve the existing signed provider enrollment protocol through bounded public clients (#488).
+
 ### Changed
 
 - Organize permanent tests by tier and enforce the shared development/testing strategy (#480).

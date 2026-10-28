@@ -1,5 +1,14 @@
 # Cordis SDK contracts
 
+## Existing provider enrollment protocol
+
+The public `@treeseed-cordis/sdk/provider-control` client preserves the existing registration,
+signed-proof, team credential and access-token wire contract. Portable schemas and their separate
+JSON projection use `@treeseed-cordis/sdk/provider-control-contracts`. See the
+[provider-control reference](docs/provider-control.md) for exact endpoints, identity boundaries,
+HTTPS and safe-error behavior. Agent owns signing and live team-connection orchestration;
+Keycloak-governed approval is unchanged. This client does not authorize Work or start capacity.
+
 ## Accepted service observation context
 
 Task 3C adds portable `ServiceSchemas.runtimeContent`, `runtimeBinding`, `observationIdentity`
