@@ -1,31 +1,25 @@
 export * from './seeds.js';
 import { SeedSchemas } from './seeds.js';
+export * from './agent.js';
+import { AgentSchemas } from './agent.js';
 export * from './service-projection.js';
-import { ServiceProjectionSchemas } from './service-projection.js';
+import {ServiceProjectionSchemas} from './service-projection.js';
 export * from './service-journal.js';
 export * from './management.js';
 import { ServiceWorkerSchemas } from './service-journal.js';
 import { PluginManagementSchemas } from './management.js';
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
-import {
-  CanonicalJson as PortableJson,
-  PlatformOperations,
-  PlatformSchemas,
-  InstalledSchemas,
-  ProviderSchemas,
-  ServiceSchemas,
-  SourceAcquisitionSchemas,
-  ProviderV4Schemas,
-} from './schemas.js';
+import { CanonicalJson as PortableJson, PlatformOperations, PlatformSchemas, InstalledSchemas, ProviderSchemas, ServiceSchemas, SourceAcquisitionSchemas, ProviderV4Schemas } from './schemas.js';
 export * from './schemas.js';
 export class CanonicalJson extends PortableJson {
-  static digest(value: unknown): string {
-    return createHash('sha256').update(this.stringify(value)).digest('hex');
-  }
+  static digest(value:unknown):string {return createHash('sha256').update(this.stringify(value)).digest('hex');}
 }
 export class ContractProjection {
   private static readonly outputSchemas = {
+    agentAuthority: AgentSchemas.authority,
+    agentExecutionRequest: AgentSchemas.request,
+    agentExecutionResult: AgentSchemas.result,
     sourceLiveTransition: SourceAcquisitionSchemas.liveTransition,
     sourceAcquisitionPolicy: SourceAcquisitionSchemas.policy,
     sourceBuildPolicy: SourceAcquisitionSchemas.build,
@@ -102,7 +96,7 @@ export class ContractProjection {
   static generate(): object {
     PlatformOperations.validate(PlatformOperations.all);
     const contract = {
-      contractVersion: '0.5.0-cordis.1',
+      contractVersion: '0.6.0-cordis.1',
       operations: this.operations(),
       schemas: this.schemas(),
     };
