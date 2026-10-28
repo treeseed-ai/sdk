@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- Bound compiler freshness verification independently of Bun's default test timeout (#491).
+
 ### Changed
 
 - Organize permanent tests by tier and enforce the shared development/testing strategy (#480).
