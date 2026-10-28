@@ -5,6 +5,7 @@ import { CapacityProtocolFixtures as Protocol } from './capacity-protocol-progra
 import { CapacityFixtures as Capacity } from './capacity-contract-program.js';
 import { SandboxControlFixture as Host } from './sandbox-control-program.js';
 interface RunnerBinding {
+  assertGrant(input: unknown, grant: unknown, now: number): unknown;
   assertRequest(input: unknown, grant: unknown, generation: unknown, now: number): unknown;
   assertResponse(input: unknown, request: unknown): unknown;
 }

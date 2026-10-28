@@ -14,6 +14,22 @@ class SandboxRunnerUnit {
         1000,
       );
   }
+  preparation(): void {
+    const binding = Fixture.binding();
+    binding.assertGrant(Fixture.request(), Fixture.grant, 1000);
+    assert.throws(binding.assertRequest.bind(binding, Fixture.request(), Fixture.grant, {}, 1000));
+    for (const now of [-1, NaN, 10000])
+      assert.throws(binding.assertGrant.bind(binding, Fixture.request(), Fixture.grant, now));
+    assert.throws(
+      binding.assertRequest.bind(
+        binding,
+        Fixture.request(Fixture.frame('run')),
+        { ...Fixture.grant, expiresAtEpochMs: 3000 },
+        Capacity.process,
+        1000,
+      ),
+    );
+  }
   shapes(): void {
     const schema = Fixture.schema('request');
     for (const frame of [
@@ -46,19 +62,22 @@ class SandboxRunnerUnit {
         ...Fixture.frame(),
         expectedGeneration: { ...Capacity.process, processGeneration: 'f'.repeat(64) },
       }),
-      Fixture.request({
-        ...Fixture.frame('run'),
-        parameters: {
-          request: {
-            ...Reflect.get(Fixture.frame('run'), 'parameters').request,
-            lease: Capacity.lease,
-          },
-        },
-      }),
     ])
       assert.throws(
         binding.assertRequest.bind(binding, request, Fixture.grant, Capacity.process, 1000),
       );
+  }
+  sandbox(): void {
+    const binding = Fixture.binding();
+    const frame = Fixture.frame('run');
+    const dispatch = Reflect.get(frame, 'parameters').request;
+    const request = Fixture.request({
+      ...frame,
+      parameters: { request: { ...dispatch, lease: Capacity.lease } },
+    });
+    assert.throws(
+      binding.assertRequest.bind(binding, request, Fixture.grant, Capacity.process, 1000),
+    );
   }
   grants(): void {
     const binding = Fixture.binding();
@@ -129,4 +148,14 @@ test(
 test(
   'unit: logical host runner failures carry only null result and fixed safe codes',
   suite.negative.bind(suite),
+);
+
+test(
+  'unit: host runner preparation admission is separate from actual guest readiness and cannot outlive grants',
+  suite.preparation.bind(suite),
+);
+
+test(
+  'unit: logical host runner cannot dispatch a lease belonging to another sandbox',
+  suite.sandbox.bind(suite),
 );
