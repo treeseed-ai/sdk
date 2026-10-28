@@ -41,4 +41,3 @@ projection. All issues stay open; artifacts remain private review candidates tar
 The synchronized owner candidate is SDK `.25`, retaining accepted Agent probe contracts and
 the bounded compiler regression. Earlier `.17` and `.21` archives stay immutable; `.25` receives
 its own exact source and archive identity. The seven operation IDs and probe projection remain.
-

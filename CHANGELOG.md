@@ -13,6 +13,10 @@
 ### Fixed
 - Bound compiler freshness verification independently of Bun's default test timeout (#491).
 
+### Added
+- Define portable seed graphs, exact resource plans and linked owner receipts (#487).
+
+
 ### Changed
 - Require readable capability layers and contextual refactoring with a twenty-line method gate (#485).
 
