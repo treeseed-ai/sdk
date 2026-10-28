@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Define immutable Agent environment contracts and offline network grant intersection (#488).
 - Define extensible activity capabilities, definition-owned profile graphs and safe selection contracts (#488).
 
 ### Added

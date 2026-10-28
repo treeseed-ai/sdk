@@ -1,3 +1,5 @@
+export * from './environments.js';
+import { EnvironmentSchemas } from './environments.js';
 export * from './activities.js';
 import { ActivitySchemas } from './activities.js';
 export * from './seeds.js';
@@ -19,6 +21,8 @@ export class CanonicalJson extends PortableJson {
 }
 export class ContractProjection {
   private static readonly outputSchemas = {
+    environmentDefinition: EnvironmentSchemas.definition,
+
     activityCatalogue: ActivitySchemas.catalogue,
     activityProfile: ActivitySchemas.instance,
     agentDefinition: ActivitySchemas.definition,
