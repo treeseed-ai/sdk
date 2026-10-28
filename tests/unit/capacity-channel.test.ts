@@ -101,7 +101,10 @@ class CapacityChannelUnit {
   }
   nestedGeneration(): void {
     const generation = { ...Fixture.generation, processGeneration: 'f'.repeat(64) };
-    const lease = { ...Capacity.lease, generations: { ...Capacity.generations, runner: generation } };
+    const lease = {
+      ...Capacity.lease,
+      generations: { ...Capacity.generations, runner: generation },
+    };
     const request = Fixture.request('runner', 'run', { request: { ...Protocol.dispatch, lease } });
     const reply = Fixture.reply('runner', 'run', { ...Protocol.runner, lease });
     const binding = Fixture.binding();
@@ -153,4 +156,7 @@ test(
   suite.safe.bind(suite),
 );
 
-test('unit: reply admission independently rejects a lease from another guest process', suite.nestedGeneration.bind(suite));
+test(
+  'unit: reply admission independently rejects a lease from another guest process',
+  suite.nestedGeneration.bind(suite),
+);

@@ -16,16 +16,38 @@ export class CapacityChannelFixtures {
     return { scope: this.scope, role, generation: this.generation };
   }
   static request(role = 'worker', operation = 'ready', parameters: object = {}): object {
-    return { schemaVersion: 'treeseed.capacity-channel/v1', requestId: 'channel:fixture', scope: this.scope,
-      role, operation, expectedGeneration: this.generation, parameters };
+    return {
+      schemaVersion: 'treeseed.capacity-channel/v1',
+      requestId: 'channel:fixture',
+      scope: this.scope,
+      role,
+      operation,
+      expectedGeneration: this.generation,
+      parameters,
+    };
   }
   static reply(role = 'worker', operation = 'ready', result: unknown = this.ready(role)): object {
-    return { schemaVersion: 'treeseed.capacity-channel/v1', requestId: 'channel:fixture', scope: this.scope,
-      role, operation, generation: this.generation, success: true, result, problem: null };
+    return {
+      schemaVersion: 'treeseed.capacity-channel/v1',
+      requestId: 'channel:fixture',
+      scope: this.scope,
+      role,
+      operation,
+      generation: this.generation,
+      success: true,
+      result,
+      problem: null,
+    };
   }
   static ready(role: string): object {
-    return { schemaVersion: 'treeseed.capacity-readiness/v1', role, scope: this.scope,
-      generation: this.generation, ready: true, blockers: [] };
+    return {
+      schemaVersion: 'treeseed.capacity-readiness/v1',
+      role,
+      scope: this.scope,
+      generation: this.generation,
+      ready: true,
+      blockers: [],
+    };
   }
   static binding(): ChannelBinding {
     const binding = Reflect.get(sdk, 'CapacityChannelBinding');
