@@ -4,6 +4,7 @@ export * from './activities.js';
 export * from './environments.js';
 export * from './capacity.js';
 export * from './pool.js';
+export * from './capacity-protocol.js';
 export * from './service-journal.js';
 export * from './schemas.js';
 export * from './management.js';

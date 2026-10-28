@@ -4,6 +4,8 @@ export * from './activities.js';
 export * from './environments.js';
 export * from './capacity.js';
 export * from './pool.js';
+export * from './capacity-protocol.js';
+import { CapacityProtocolSchemas } from './capacity-protocol.js';
 import { PoolSchemas } from './pool.js';
 import { ActivitySchemas } from './activities.js';
 import { EnvironmentSchemas } from './environments.js';
@@ -36,6 +38,10 @@ export class CanonicalJson extends PortableJson {
 }
 export class ContractProjection {
   private static readonly outputSchemas = {
+    capacityReserve: CapacityProtocolSchemas.reserve,
+    capacityReservation: CapacityProtocolSchemas.reservation,
+    capacityDispatch: CapacityProtocolSchemas.dispatch,
+    capacityRunnerOutcome: CapacityProtocolSchemas.runnerOutcome,
     agentDefinition: ActivitySchemas.definition,
     activityCapability: ActivitySchemas.capability,
     activityProfile: ActivitySchemas.instance,

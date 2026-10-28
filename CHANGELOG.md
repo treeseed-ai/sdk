@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Define reserved capacity dispatch and cleanup-free runner outcome contracts (#488).
 - Define portable capacity, profile, environment and fenced lease contracts (#488).
 - Add portable versioned seed reconciliation contracts and exact resource receipt bindings (#487).
 - Define bounded Agent execution and target contracts (#482).

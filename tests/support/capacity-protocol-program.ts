@@ -23,6 +23,7 @@ export class CapacityProtocolFixtures {
     schemaVersion: 'treeseed.capacity-reserve/v1',
     requestId: 'fixture.request',
     assignmentId: CapacityFixtures.lease.assignmentId,
+    leaseId: CapacityFixtures.lease.id,
     scope: CapacityFixtures.scope,
     authority: CapacityFixtures.authority,
     manager: CapacityFixtures.process,
@@ -69,6 +70,7 @@ export class CapacityProtocolProgram {
     );
     this.binding.assertRunner(CapacityProtocolFixtures.runner, CapacityFixtures.lease);
     this.denied();
+    this.expired();
     this.runner();
     assert.equal(sdk.PlatformOperations.all.length, 7);
     process.stdout.write('capacity-protocol-ok\n');
@@ -88,7 +90,10 @@ export class CapacityProtocolProgram {
           CapacityProtocolFixtures.reservation,
           2000,
         ),
+        /^(?:CapacityContractError: )?(?:STALE_CAPACITY_LEASE|INVALID_CAPACITY_CONTRACT)$/,
       );
+  }
+  private expired(): void {
     assert.throws(
       this.binding.assertDispatch.bind(
         null,
@@ -96,6 +101,7 @@ export class CapacityProtocolProgram {
         CapacityProtocolFixtures.reservation,
         4000,
       ),
+      /CAPACITY_LEASE_EXPIRED/,
     );
   }
   private runner(): void {
