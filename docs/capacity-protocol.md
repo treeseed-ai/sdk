@@ -120,7 +120,9 @@ An explicit private host grant binds exact service/provider generations and the 
 installation/project/profile/worker scope, a unique allowed runner-operation set and an expiry.
 `SandboxRunnerBinding.assertRequest(input, grant, actualRunnerGeneration, now)` binds both
 scopes, request IDs, logical sandbox and the actual guest process/composition generation.
-Run/cancel also bind the embedded lease sandbox. A ready request may discover the actual process
+Run/cancel also bind the embedded lease sandbox and cannot outlive the host grant.
+`assertGrant(input, grant, now)` performs scope/operation/deadline admission before the host
+starts or stages a guest; it does not qualify an actual guest generation. A ready request may discover the actual process
 with a null expected generation. Grant data alone authenticates nobody; the host must verify
 private credential/custody and fresh grant read-back before effects, then independently verify
 its actual sandbox/assignment, immutable runtime and successful environment receipts.

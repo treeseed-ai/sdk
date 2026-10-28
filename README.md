@@ -3,6 +3,15 @@
 The next Task 3D owner slice defines [extensible activity profiles](docs/activity-contracts.md)
 as portable data contracts. Agent owns native resolution, parameter validation and live authority.
 
+## Scoped host-to-guest sessions
+
+Root and portable exports provide `SandboxRunnerSchemas`, inferred types, `SandboxRunnerClient`
+and `SandboxRunnerBinding`. A separately granted host bridge binds service and capacity scopes,
+logical sandbox, operation, lease and actual guest process generation. `assertGrant` performs
+preparation admission; `assertRequest` additionally binds actual guest readiness; reply binding
+checks the wrapped guest outcome. See [capacity protocols](docs/capacity-protocol.md).
+This adds no host commands, runtime sockets or global operations and starts no capacity by itself.
+
 ## Portable seed contracts
 
 Root and the portable `/seeds` entry provide separately versioned seed bundle/plan/receipt schemas, inferred
