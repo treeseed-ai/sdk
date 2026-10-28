@@ -35,4 +35,3 @@ Task 10. All issues stay open; this is a private cordis review candidate with no
 The synchronized SDK `.26` retains accepted Agent probe contracts and their global projection
 `0.6.0-cordis.1`. Seed schemas remain separately versioned and add no global operation IDs.
 Earlier `.24` archive bytes stay immutable. The final source and archive receive separate pins.
-
