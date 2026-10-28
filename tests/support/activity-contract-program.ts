@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import * as sdk from '@treeseed-cordis/sdk/portable';
 
 interface Schemas {
@@ -62,6 +63,7 @@ class ActivityContractProgram {
     this.externalType();
     this.selection();
     this.dependencies();
+    this.projection();
     assert.equal(sdk.PlatformOperations.all.length, 7);
     process.stdout.write('activity-contract-ok\n');
   }
@@ -71,6 +73,14 @@ class ActivityContractProgram {
     const result = this.binding.resolve(ActivityFixtures.definition, [ActivityFixtures.capability]);
     assert.equal(Array.isArray(result), true);
     assert.equal((result as unknown[]).length, 1);
+  }
+
+  private projection(): void {
+    const value = JSON.parse(readFileSync('dist/contract.json', 'utf8'));
+    assert.equal(value.contractVersion, '0.6.0-cordis.1');
+    assert.equal(value.operations.length, 7);
+    for (const key of ['activityCatalogue', 'activityProfile', 'agentDefinition'])
+      assert.equal(typeof value.schemas[key], 'object');
   }
 
   private selection(): void {
