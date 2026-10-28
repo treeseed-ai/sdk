@@ -1,3 +1,4 @@
+export * from './capacity-channel.js';
 export * from './sandbox-control.js';
 export * from './capacity-protocol.js';
 export * from './pool.js';

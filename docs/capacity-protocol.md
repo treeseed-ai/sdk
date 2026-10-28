@@ -74,3 +74,35 @@ it must never mount raw Docker/containerd sockets or reuse the observer channel.
 composition selects both provider and consumer implementations. Worker/provider replacement stays
 restart-only until exact transition qualification, preserving in-flight generation custody through
 verified cleanup. All issues remain open; productive Work/model execution stays Task 10.
+
+## Separate service-channel envelopes
+
+`CapacityChannelSchemas` is a separately versioned `treeseed.capacity-channel/v1` wire
+family. It wraps existing capacity data for authenticated worker and guest transports;
+it does not add global platform operation IDs or create a second plugin system.
+
+Each request binds a request ID, full capacity installation/project/profile/worker scope,
+role (`worker` or `runner`), operation and expected process/composition generation. Only
+`ready` may use a null expected generation to discover the authenticated process. Worker
+operations are ready/reserve/dispatch/cancel; runner operations are ready/run/cancel.
+Parameters contain the existing SDK reserve, dispatch or lease contract, never arbitrary
+commands, host paths, provider configuration or model execution. Productive Work stays Task 10.
+
+Admission validates the envelope against the trusted server scope, role and actual generation,
+then binds the embedded scope/generation. A reserve request's expected worker is the actual
+worker; dispatch/run/cancel bind the corresponding lease generation. Owner kernels must
+independently check live authority, fences, expiry, profile selection, exclusive assignment and
+result custody. A shape-valid message or ready reply establishes no identity authority.
+
+Replies repeat the exact request ID/scope/role/operation and actual server generation. Success
+results use existing readiness, reservation, capacity result or runner outcome schemas. Failures
+contain only the fixed SDK capacity blocker and a null result. Reply binding validates nested
+request, lease and process identities before acceptance; raw provider errors are forbidden.
+Transport credentials, replay/idempotency journals, bounded framing, cancellation and private
+endpoint custody remain owning implementations. Readiness discovery never authorizes a stale
+subsequent operation. The client must use the returned actual generation in its next request.
+
+Portable Node consumers validate cross-message scope, role, process and reply identities through
+the binding methods. Generated JSON Schema projections preserve positive operation/result shapes
+and exclude unknown host configuration; they do not independently compare separate messages.
+This contract slice does not claim that separate programs or live capacity are installed.
