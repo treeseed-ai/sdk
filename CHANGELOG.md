@@ -8,6 +8,8 @@
 - Add portable versioned seed reconciliation contracts and exact resource receipt bindings (#487).
 - Define bounded Agent execution and target contracts (#482).
 
+- Preserve the existing signed provider enrollment protocol through bounded public clients (#488).
+
 ### Changed
 - Require readable capability layers and contextual refactoring with a twenty-line method gate (#485).
 

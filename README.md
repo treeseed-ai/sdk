@@ -1,9 +1,18 @@
 # Cordis SDK contracts
 
 The Task 3D capacity candidate is documented in [Portable capacity contracts](docs/capacity-contracts.md).
-It advances the local package candidate to `0.0.0-cordis.19` and the generated projection to
+It advances the local package candidate to `0.0.0-cordis.22` and the generated projection to
 `0.8.0-cordis.1`, adding activity, environment, lease, readiness and result schemas while retaining
 the seven global operations. These candidate identities do not authorize production publication.
+
+## Existing provider enrollment protocol
+
+The public `@treeseed-cordis/sdk/provider-control` client preserves the existing registration,
+signed-proof, team credential and access-token wire contract. Portable schemas and their separate
+JSON projection use `@treeseed-cordis/sdk/provider-control-contracts`. See the
+[provider-control reference](docs/provider-control.md) for exact endpoints, identity boundaries,
+HTTPS and safe-error behavior. Agent owns signing and live team-connection orchestration;
+Keycloak-governed approval is unchanged. This client does not authorize Work or start capacity.
 
 ## Accepted service observation context
 
