@@ -1,5 +1,8 @@
 # Cordis SDK contracts
 
+The next Task 3D owner slice defines [extensible activity profiles](docs/activity-contracts.md)
+as portable data contracts. Agent owns native resolution, parameter validation and live authority.
+
 ## Existing provider enrollment protocol
 
 The public `@treeseed-cordis/sdk/provider-control` client preserves the existing registration,

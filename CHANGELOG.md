@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Added
+- Define extensible activity capabilities, definition-owned profile graphs and safe selection contracts (#488).
+
+### Added
 - Preserve the existing signed provider enrollment protocol through bounded public clients (#488).
 
 - Define bounded Agent execution and target contracts (#482).
