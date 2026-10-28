@@ -1,3 +1,5 @@
+export * from './guest-runtime.js';
+import { GuestRuntimeSchemas } from './guest-runtime.js';
 export * from './capacity-channel.js';
 import { CapacityChannelSchemas, SandboxRunnerSchemas } from './capacity-channel.js';
 export * from './sandbox-control.js';
@@ -31,6 +33,7 @@ export class CanonicalJson extends PortableJson {
 }
 export class ContractProjection {
   private static readonly outputSchemas = {
+    guestRuntime: GuestRuntimeSchemas.manifest,
     sandboxRunnerGrant: SandboxRunnerSchemas.grant,
     sandboxRunnerRequest: SandboxRunnerSchemas.request,
     sandboxRunnerResponse: SandboxRunnerSchemas.response,

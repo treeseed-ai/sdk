@@ -1,3 +1,4 @@
+export * from './guest-runtime.js';
 export * from './capacity-channel.js';
 export * from './sandbox-control.js';
 export * from './capacity-protocol.js';

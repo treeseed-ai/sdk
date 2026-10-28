@@ -62,7 +62,8 @@ class GuestRuntimeUnit {
   }
   upperBound(): void {
     const input = Fixture.manifest();
-    const parts = Array.from({ length: 17 }, Fixture.part.bind(Fixture));
+    const parts: object[] = [];
+    for (let index = 0; index < 17; index++) parts.push(Fixture.part(index));
     this.reject({ ...input, compressed: { ...input.compressed, parts } });
     this.reject(null);
     this.reject('private-canary');
