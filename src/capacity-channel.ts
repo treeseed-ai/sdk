@@ -15,7 +15,7 @@ class ChannelShapes {
     scope: CapacitySchemas.scope,
   };
   static readonly expected = CapacitySchemas.process;
-  static readonly role = z.enum(['worker', 'runner']);
+  static readonly role = z.enum(['manager', 'worker', 'runner']);
   static readonly reply = { ...this.common, generation: CapacitySchemas.process };
   static readonly success = { ...this.reply, success: z.literal(true), problem: z.null() };
   static readonly failure = {
@@ -26,10 +26,13 @@ class ChannelShapes {
   };
   static readonly workerReady = CapacitySchemas.readiness.safeExtend({ role: z.literal('worker') });
   static readonly runnerReady = CapacitySchemas.readiness.safeExtend({ role: z.literal('runner') });
+  static readonly managerReady = CapacitySchemas.readiness.safeExtend({
+    role: z.literal('manager'),
+  });
 }
 /** Portable wire data only. Owner transports and kernels establish authentication and live authority. */
 export class CapacityChannelSchemas {
-  static readonly version = '1.0.0-cordis.1';
+  static readonly version = '1.1.0-cordis.1';
   static readonly context = z.strictObject({
     role: ChannelShapes.role,
     scope: CapacitySchemas.scope,
@@ -66,7 +69,7 @@ export class CapacityChannelSchemas {
     }),
     z.strictObject({
       ...ChannelShapes.common,
-      role: ChannelShapes.role,
+      role: z.enum(['worker', 'runner']),
       operation: z.literal('cancel'),
       expectedGeneration: ChannelShapes.expected,
       parameters: z.strictObject({ lease: CapacitySchemas.lease }),
@@ -124,6 +127,17 @@ export class CapacityChannelSchemas {
       ...ChannelShapes.failure,
       role: z.literal('runner'),
       operation: z.enum(['ready', 'run', 'cancel']),
+    }),
+    z.strictObject({
+      ...ChannelShapes.success,
+      role: z.literal('manager'),
+      operation: z.literal('ready'),
+      result: ChannelShapes.managerReady,
+    }),
+    z.strictObject({
+      ...ChannelShapes.failure,
+      role: z.literal('manager'),
+      operation: z.literal('ready'),
     }),
   ]);
 }
