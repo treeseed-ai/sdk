@@ -13,6 +13,8 @@ import {
   SandboxProfileBinding,
   SandboxProfileError,
   CanonicalJson,
+  CapacityChannelSchemas,
+  CapacityChannelBinding,
 } from '@treeseed-cordis/sdk/portable';
 interface Value {
   read(): string;
@@ -81,6 +83,51 @@ class BrowserProgram {
     resources: { vcpus: 1, memoryMiB: 512, scratchMiB: 256 },
     isolationPolicyDigest: 'a'.repeat(64),
   };
+  private static readonly managerContext = {
+    role: 'manager',
+    scope: {
+      installationId: 'fixture.installation',
+      installationDirectory: '/fixture/capacity',
+      capacityProviderId: 'fixture.capacity',
+      project: 'fixture.project',
+      platformProfile: 'default',
+      workerId: 'fixture.worker',
+    },
+    generation: { compositionGeneration: 'a'.repeat(64), processGeneration: 'b'.repeat(64) },
+  };
+  private static readonly managerRequest = {
+    schemaVersion: 'treeseed.capacity-channel/v1',
+    requestId: 'fixture.manager',
+    scope: this.managerContext.scope,
+    role: 'manager',
+    operation: 'ready',
+    expectedGeneration: null,
+    parameters: {},
+  };
+  private static readonly managerResponse = {
+    schemaVersion: 'treeseed.capacity-channel/v1',
+    requestId: 'fixture.manager',
+    scope: this.managerContext.scope,
+    role: 'manager',
+    operation: 'ready',
+    generation: this.managerContext.generation,
+    success: true,
+    problem: null,
+    result: {
+      schemaVersion: 'treeseed.capacity-readiness/v1',
+      ...this.managerContext,
+      ready: true,
+      blockers: [],
+    },
+  };
+  private static manager(): void {
+    CapacityChannelBinding.assertRequest(this.managerRequest, this.managerContext);
+    CapacityChannelBinding.assertResponse(this.managerResponse, this.managerRequest);
+    this.assert(
+      !CapacityChannelSchemas.request.safeParse({ ...this.managerRequest, operation: 'cancel' })
+        .success,
+    );
+  }
   static descriptor(next: boolean): CompositionDescriptor {
     const plugin = next ? SecondPlugin : FirstPlugin;
     return {
@@ -103,6 +150,7 @@ class BrowserProgram {
   }
   static async run(): Promise<string> {
     this.sources();
+    this.manager();
     await this.profile();
     const scope = await this.mount();
     let lease = await scope.acquire(token);
