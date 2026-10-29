@@ -7,7 +7,7 @@ import { SandboxControlSchemas } from './sandbox-control.js';
 export * from './capacity-protocol.js';
 import { CapacityProtocolSchemas } from './capacity-protocol.js';
 export * from './pool.js';
-import { PoolSchemas } from './pool.js';
+import { PoolSchemas, SandboxProfileSchemas } from './pool.js';
 export * from './capacity.js';
 import { CapacitySchemas } from './capacity.js';
 export * from './environments.js';
@@ -46,6 +46,8 @@ export class ContractProjection {
     capacityReservation: CapacityProtocolSchemas.reservation,
     capacityDispatch: CapacityProtocolSchemas.dispatch,
     capacityRunnerOutcome: CapacityProtocolSchemas.runnerOutcome,
+    sandboxResourceProfile: SandboxProfileSchemas.profile,
+    sandboxProfileReference: PoolSchemas.profileReference,
     poolCompatibility: PoolSchemas.compatibility,
     poolPolicy: PoolSchemas.policy,
     virginSandbox: PoolSchemas.base,
