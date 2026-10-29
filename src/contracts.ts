@@ -1,4 +1,6 @@
 export * from './guest-runtime.js';
+export * from './provider-availability.js';
+import { ProviderAvailabilitySchemas } from './provider-availability.js';
 import { GuestRuntimeSchemas } from './guest-runtime.js';
 export * from './capacity-channel.js';
 import { CapacityChannelSchemas, SandboxRunnerSchemas } from './capacity-channel.js';
@@ -33,6 +35,10 @@ export class CanonicalJson extends PortableJson {
 }
 export class ContractProjection {
   private static readonly outputSchemas = {
+    providerCapabilityOffer: ProviderAvailabilitySchemas.offer,
+    providerAvailabilityCreate: ProviderAvailabilitySchemas.create,
+    providerAvailabilityRefresh: ProviderAvailabilitySchemas.refresh,
+    providerAvailabilitySession: ProviderAvailabilitySchemas.session,
     guestRuntime: GuestRuntimeSchemas.manifest,
     sandboxRunnerGrant: SandboxRunnerSchemas.grant,
     sandboxRunnerRequest: SandboxRunnerSchemas.request,
