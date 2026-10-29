@@ -22,6 +22,19 @@ function proposal() {
 }
 
 describe('group-owned proposal contributions', () => {
+	it('exports JSON Schema types for every real planning product instead of internal validator type names', () => {
+		const invalid: Array<{ path: string; type: unknown }> = [];
+		const inspect = (value: unknown, path: string) => {
+			if (!value || typeof value !== 'object') return;
+			if (Array.isArray(value)) { value.forEach((item, index) => inspect(item, `${path}/${index}`)); return; }
+			const node = value as Record<string, unknown>;
+			if (node.type !== undefined && !['object', 'array', 'string', 'number', 'integer', 'boolean', 'null'].includes(String(node.type)))
+				invalid.push({ path, type: node.type });
+			for (const [key, item] of Object.entries(node)) inspect(item, `${path}/${key}`);
+		};
+		for (const model of ['proposal', 'question', 'note'] as const) inspect(describeContentFrontmatterJsonSchema(model), model);
+		expect(invalid).toEqual([]);
+	});
 	it('keeps discussion contributions and dependencies before their authors supply estimates without permitting approval', () => {
 		for (const status of ['draft', 'discussing']) {
 			const input = proposal(); input.status = status;
