@@ -69,6 +69,10 @@ export class ProviderWireFixtures {
     identityVersion: 1,
   };
 }
+export interface ProviderWireResponder {
+  result(request: IncomingMessage, body: unknown): unknown;
+  verify(): void;
+}
 export class ProviderControlFixture {
   private readonly directory = mkdtempSync(join(tmpdir(), 'cordis-provider-tls-'));
   private readonly certificateArguments = [
@@ -91,9 +95,15 @@ export class ProviderControlFixture {
   private server: Server | null = null;
   private count = 0;
   private failure: unknown = null;
-  private constructor(private readonly mode: string) {}
-  static async open(mode = 'wire'): Promise<ProviderControlFixture> {
-    const fixture = new ProviderControlFixture(mode);
+  private constructor(
+    private readonly mode: string,
+    private readonly responder: ProviderWireResponder | null,
+  ) {}
+  static async open(
+    mode = 'wire',
+    responder: ProviderWireResponder | null = null,
+  ): Promise<ProviderControlFixture> {
+    const fixture = new ProviderControlFixture(mode, responder);
     try {
       await fixture.start();
       return fixture;
@@ -170,6 +180,7 @@ export class ProviderControlFixture {
   }
   private result(request: IncomingMessage, body: unknown): unknown {
     if (this.mode === 'denied') return null;
+    if (this.responder) return this.responder.result(request, body);
     this.count++;
     if (this.count === 1) return this.register(request, body);
     if (this.count === 2) return this.status(request);
@@ -208,8 +219,11 @@ export class ProviderControlFixture {
     assert.deepEqual(body, { proof: ProviderWireFixtures.proof });
     return ProviderWireFixtures.credential;
   }
-  async program(mode: string): Promise<{ code: number | null; stdout: string; stderr: string }> {
-    const child = this.launch(mode);
+  async program(
+    mode: string,
+    entry = 'dist/tests/support/provider-control-fixture.js',
+  ): Promise<{ code: number | null; stdout: string; stderr: string }> {
+    const child = this.launch(mode, entry);
     const output: Buffer[] = [],
       errors: Buffer[] = [];
     child.stdout.on('data', output.push.bind(output));
@@ -221,25 +235,18 @@ export class ProviderControlFixture {
       stderr: Buffer.concat(errors).toString(),
     };
   }
-  private launch(mode: string) {
+  private launch(mode: string, entry: string) {
     const port = (this.server!.address() as { port: number }).port;
-    return spawn(
-      'node',
-      [
-        resolve('dist/tests/support/provider-control-fixture.js'),
-        'https://127.0.0.1:' + port,
-        mode,
-      ],
-      {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, NODE_EXTRA_CA_CERTS: join(this.directory, 'cert.pem') },
-        timeout: 10000,
-      },
-    );
+    return spawn('node', [resolve(entry), 'https://127.0.0.1:' + port, mode], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, NODE_EXTRA_CA_CERTS: join(this.directory, 'cert.pem') },
+      timeout: 10000,
+    });
   }
   verify(): void {
     assert.equal(this.failure, null);
-    assert.equal(this.count, 4);
+    if (this.responder) this.responder.verify();
+    else assert.equal(this.count, 4);
   }
   async close(): Promise<void> {
     if (this.server?.listening) {

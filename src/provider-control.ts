@@ -8,7 +8,13 @@ import {
   type ProviderCredentialIssue,
   type ProviderTokenRequest,
   type ProviderTokenIssue,
+  ProviderAvailabilitySchemas as Availability,
+  type ProviderAvailabilityCreate,
+  type ProviderAvailabilityRefresh,
+  type ProviderAvailabilitySession,
+  type ProviderExecutionAdapter,
 } from './provider-control-contracts.js';
+import { CanonicalJson } from './schemas.js';
 export * from './provider-control-contracts.js';
 
 type ProviderControlCode =
@@ -31,7 +37,7 @@ export class ProviderControlError extends Error {
 }
 export interface ProviderControlRequest {
   url: string;
-  method: 'GET' | 'POST';
+  method: 'GET' | 'POST' | 'PUT';
   headers: Record<string, string>;
   body?: string;
 }
@@ -134,6 +140,135 @@ export interface ProviderProtocolOptions {
   baseUrl: string;
   timeoutMs?: number;
   transport?: ProviderControlTransport;
+}
+export interface ProviderAvailabilityPrincipal {
+  membershipId: string;
+  teamId: string;
+  providerId: string;
+}
+interface AvailabilitySelection {
+  adapters: ProviderExecutionAdapter[];
+  lanes: Array<{
+    id: string;
+    purpose: string;
+    priority: number;
+    reservedConcurrentWorkers: number;
+    maxConcurrentWorkers: number;
+    capabilities?: string[];
+  }>;
+}
+/** Snapshot data and bind read-back; live membership and signature authority remain server-owned. */
+class ProviderAvailabilityBinding {
+  private static readonly principal = z.strictObject({
+    membershipId: Schemas.key,
+    teamId: Schemas.key,
+    providerId: Schemas.key,
+  });
+  private static read<T>(schema: z.ZodType<T>, input: unknown): T {
+    try {
+      const result = schema.safeParse(input);
+      if (result.success) return result.data;
+    } catch {}
+    throw new ProviderControlError('INVALID_PROVIDER_REQUEST');
+  }
+  static create(
+    inputPrincipal: unknown,
+    input: unknown,
+  ): { principal: ProviderAvailabilityPrincipal; body: ProviderAvailabilityCreate } {
+    const principal = this.read(this.principal, inputPrincipal),
+      body = this.read(Availability.create, input);
+    this.providers(principal, body);
+    return { principal, body };
+  }
+  static refresh(
+    inputPrior: unknown,
+    input: unknown,
+  ): { prior: ProviderAvailabilitySession; body: ProviderAvailabilityRefresh } {
+    const prior = this.read(Availability.session, inputPrior),
+      body = this.read(Availability.refresh, input);
+    if (prior.status !== 'open' || prior.sequence !== body.expectedSequence)
+      throw new ProviderControlError('INVALID_PROVIDER_REQUEST');
+    this.providers(prior, body);
+    return { prior, body };
+  }
+  static close(input: unknown): ProviderAvailabilitySession {
+    const prior = this.read(Availability.session, input);
+    if (prior.status === 'expired') throw new ProviderControlError('INVALID_PROVIDER_REQUEST');
+    this.providers(prior, prior.snapshot);
+    return prior;
+  }
+  private static providers(
+    principal: ProviderAvailabilityPrincipal,
+    selection: AvailabilitySelection,
+  ): void {
+    for (const adapter of selection.adapters)
+      for (const offer of adapter.offers)
+        for (const receipt of offer.conformance)
+          if (receipt.providerId !== principal.providerId)
+            throw new ProviderControlError('INVALID_PROVIDER_REQUEST');
+  }
+  static accept(
+    principal: ProviderAvailabilityPrincipal,
+    selection: AvailabilitySelection,
+    result: ProviderAvailabilitySession,
+    status: 'open' | 'closed',
+    sequence: number,
+    id?: string,
+  ): ProviderAvailabilitySession {
+    if (
+      result.membershipId !== principal.membershipId ||
+      result.teamId !== principal.teamId ||
+      result.providerId !== principal.providerId ||
+      result.status !== status ||
+      result.sequence !== sequence ||
+      (id !== undefined && result.id !== id)
+    )
+      throw new ProviderControlError('PROVIDER_IDENTITY_MISMATCH');
+    if (
+      CanonicalJson.stringify(this.selection(result.snapshot)) !==
+      CanonicalJson.stringify(this.selection(selection))
+    )
+      throw new ProviderControlError('PROVIDER_IDENTITY_MISMATCH');
+    return result;
+  }
+  private static selection(value: AvailabilitySelection): object {
+    return {
+      adapters: value.adapters.map(this.adapter).sort(this.order),
+      lanes: value.lanes.map(this.lane).sort(this.order),
+    };
+  }
+  private static adapter(value: ProviderExecutionAdapter): { id: string; [key: string]: unknown } {
+    return {
+      id: value.id,
+      adapter: value.adapter,
+      runtimeBuild: value.runtimeBuild,
+      isolation: value.isolation,
+      offers: [...value.offers].sort(ProviderAvailabilityBinding.offerOrder),
+      capabilities: [...value.capabilities].sort(),
+      laneIds: [...value.laneIds].sort(),
+      maxConcurrentWorkers: value.maxConcurrentWorkers,
+      nativeLimits: value.nativeLimits,
+    };
+  }
+  private static lane(value: AvailabilitySelection['lanes'][number]): {
+    id: string;
+    [key: string]: unknown;
+  } {
+    return {
+      id: value.id,
+      purpose: value.purpose,
+      priority: value.priority,
+      reservedConcurrentWorkers: value.reservedConcurrentWorkers,
+      maxConcurrentWorkers: value.maxConcurrentWorkers,
+      capabilities: [...(value.capabilities ?? [])].sort(),
+    };
+  }
+  private static order(left: { id: string }, right: { id: string }): number {
+    return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+  }
+  private static offerOrder(left: { offerId: string }, right: { offerId: string }): number {
+    return left.offerId < right.offerId ? -1 : left.offerId > right.offerId ? 1 : 0;
+  }
 }
 export class ProviderProtocolClient {
   private readonly origin: string;
@@ -254,8 +389,72 @@ export class ProviderProtocolClient {
       throw new ProviderControlError('PROVIDER_IDENTITY_MISMATCH');
     return result;
   }
+  async createAvailabilitySession(
+    token: string,
+    principal: ProviderAvailabilityPrincipal,
+    input: ProviderAvailabilityCreate,
+    signal: AbortSignal,
+  ): Promise<ProviderAvailabilitySession> {
+    const prepared = ProviderAvailabilityBinding.create(principal, input);
+    const result = await this.invoke(
+      'POST',
+      '/v1/provider/availability-sessions',
+      prepared.body,
+      ProviderProtocolClient.authorization('Bearer', token),
+      Availability.session,
+      signal,
+    );
+    return ProviderAvailabilityBinding.accept(prepared.principal, prepared.body, result, 'open', 1);
+  }
+  async refreshAvailabilitySession(
+    token: string,
+    prior: ProviderAvailabilitySession,
+    input: ProviderAvailabilityRefresh,
+    signal: AbortSignal,
+  ): Promise<ProviderAvailabilitySession> {
+    const prepared = ProviderAvailabilityBinding.refresh(prior, input);
+    const result = await this.invoke(
+      'PUT',
+      '/v1/provider/availability-sessions/' + prepared.prior.id,
+      prepared.body,
+      ProviderProtocolClient.authorization('Bearer', token),
+      Availability.session,
+      signal,
+    );
+    return ProviderAvailabilityBinding.accept(
+      prepared.prior,
+      prepared.body,
+      result,
+      'open',
+      prepared.prior.sequence + 1,
+      prepared.prior.id,
+    );
+  }
+  async closeAvailabilitySession(
+    token: string,
+    input: ProviderAvailabilitySession,
+    signal: AbortSignal,
+  ): Promise<ProviderAvailabilitySession> {
+    const prior = ProviderAvailabilityBinding.close(input);
+    const result = await this.invoke(
+      'POST',
+      '/v1/provider/availability-sessions/' + prior.id + '/close',
+      {},
+      ProviderProtocolClient.authorization('Bearer', token),
+      Availability.session,
+      signal,
+    );
+    return ProviderAvailabilityBinding.accept(
+      prior,
+      prior.snapshot,
+      result,
+      'closed',
+      prior.sequence,
+      prior.id,
+    );
+  }
   private async invoke<T>(
-    method: 'GET' | 'POST',
+    method: 'GET' | 'POST' | 'PUT',
     path: string,
     body: unknown,
     headers: Record<string, string>,
@@ -279,7 +478,7 @@ export class ProviderProtocolClient {
     }
   }
   private request(
-    method: 'GET' | 'POST',
+    method: 'GET' | 'POST' | 'PUT',
     path: string,
     body: unknown,
     headers: Record<string, string>,
