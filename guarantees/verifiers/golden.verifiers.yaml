@@ -46,6 +46,11 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/operator-contracts/group-workday-intent.test.ts
     testName: "returns nested validation issues for invalid scheduled intents instead of throwing from safeParse"
+  sdk.golden.group-planning-output-schema:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/proposals/group-contributions.test.ts
+    testName: "exports JSON Schema types for every real planning product instead of internal validator type names"
   sdk.golden.group-contribution-unit:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"

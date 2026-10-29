@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { conditionalFields, requiredProperties, uniqueArray as unique } from './schema-constraints.ts';
+import { zodToJsonSchema } from 'zod-to-json-schema';
+import { conditionalFields, exportSchemaConstraints, requiredProperties, uniqueArray as unique } from './schema-constraints.ts';
 import { agentClassSchema as agentClass, agentDefinitionSchema, permissionSetSchema } from '../../agent-capacity/validation/agent-definition-schema.ts';
 import { PROPOSAL_TYPE_ID_PATTERN } from '../../agent-capacity/validation/proposal-type.ts';
 import {
@@ -306,6 +307,28 @@ function fieldContract(schema: z.ZodTypeAny): Record<string, unknown> {
 			: current instanceof z.ZodDefault ? current.removeDefault() : current.unwrap();
 	}
 	const contract: Record<string, unknown> = { required };
+	if (current instanceof z.ZodIntersection) {
+		const left = fieldContract(current._def.left), right = fieldContract(current._def.right);
+		if (left.type !== 'object' || right.type !== 'object') throw new Error('content_contract_intersection_not_object');
+		const fields = { ...left.fields as Record<string, Record<string, unknown>> };
+		for (const [name, next] of Object.entries(right.fields as Record<string, Record<string, unknown>>)) {
+			const prior = fields[name];
+			// Only flatten compatible field constraints. Never erase a second,
+			// different constraint to make a provider-facing schema appear valid.
+			if (prior && Object.keys(prior).some(key => key !== 'required' && key in next
+				&& JSON.stringify(prior[key]) !== JSON.stringify(next[key]))) throw new Error('content_contract_intersection_conflict');
+			fields[name] = { ...prior, ...next, required: prior?.required === true || next.required === true };
+		}
+		// Reuse the owning refinement exporter for requirements not expressed by
+		// the object shape, such as exact dependency endpoint custody fields.
+		const exported = zodToJsonSchema(current, { target: 'jsonSchema7', $refStrategy: 'none', postProcess: exportSchemaConstraints });
+		if (!('allOf' in exported) || !Array.isArray(exported.allOf)) throw new Error('content_contract_intersection_missing_branches');
+		for (const branch of exported.allOf) if ('required' in branch && Array.isArray(branch.required)) for (const name of branch.required) {
+			if (!fields[name]) throw new Error('content_contract_intersection_required_field_missing');
+			fields[name] = { ...fields[name], required: true };
+		}
+		return { ...contract, type: 'object', fields };
+	}
 	if (current instanceof z.ZodEnum) return { ...contract, type: 'string', values: current.options };
 	if (current instanceof z.ZodLiteral) return { ...contract, type: typeof current.value, value: current.value };
 	if (current instanceof z.ZodString) {

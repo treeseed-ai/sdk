@@ -4,7 +4,7 @@ import { AGENT_OPERATIONAL_CONTENT_COLLECTIONS } from '../../../src/content/vali
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describeContentFrontmatterSchema } from '../../../src/content/validation/index.ts';
+import { describeContentFrontmatterJsonSchema, describeContentFrontmatterSchema } from '../../../src/content/validation/index.ts';
 import { exportSchemaConstraints } from '../../../src/content/validation/schema-constraints.ts';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 
@@ -25,7 +25,7 @@ function observeDependencyEndpoints(native: boolean) {
 		const endpoint = note.links[0]![end];
 		const missing = fields.map(field => Object.fromEntries(Object.entries(endpoint).filter(([key]) => key !== field)));
 		return [...missing, ...[{ store: 'git' }, { model: 'note' }, { anchor: 'work-item/' }, { anchor: 'work-item/UPPER' },
-			{ commit: '' }, { digest: '' }, { revision: 0 }, { path: '' }, { repository: '' }, { unexpected: true }].map(patch => ({ ...endpoint, ...patch }))]
+			{ commit: '' }, { digest: '' }, { revision: 0 }, { revision: 1.5 }, { endLine: 2 }, { path: '' }, { repository: '' }, { unexpected: true }].map(patch => ({ ...endpoint, ...patch }))]
 			.map(changed => ({ data: { ...note, links: [{ ...note.links[0]!, [end]: changed }] }, valid: false }));
 	})], held = structuredClone(entries);
 	const expected = { properties: { links: { items: { properties: Object.fromEntries(['from', 'to'].map(end => [end, { allOf: [
@@ -33,6 +33,17 @@ function observeDependencyEndpoints(native: boolean) {
 		{ type: 'object', required: fields, properties: { store: { const: 'treedx' }, model: { const: 'proposal' },
 			anchor: { type: 'string', pattern: '^work-item/[a-z0-9]+(?:-[a-z0-9]+)*$' } } },
 	] }])) } } } };
+	const structuredEndpoint = { type: 'object', additionalProperties: false, properties: {
+		store: { type: 'string', const: 'treedx' }, model: { type: 'string', const: 'proposal' },
+		id: { type: 'string', minLength: 1, maxLength: 200 }, revision: { type: 'number' },
+		digest: { type: 'string', pattern: '^sha256:[a-f0-9]{64}$' }, commit: { type: 'string', pattern: '^[a-f0-9]{40}$' },
+		repository: { type: 'string', minLength: 1 }, path: { type: 'string', minLength: 1 },
+		anchor: { type: 'string', minLength: 1, pattern: new RegExp('^work-item/[a-z0-9]+(?:-[a-z0-9]+)*$').source },
+		startLine: { anyOf: [{ type: 'number' }, { type: 'null' }] },
+	} };
+	const structured = { properties: { links: { anyOf: [{ type: 'array', items: { properties: {
+		from: structuredEndpoint, to: structuredEndpoint,
+	} } }, { type: 'null' }] } } };
 	if (native) {
 		const path = fileURLToPath(new URL('./architecture/closeout-native.ts', import.meta.url)), bytes = readFileSync(path);
 		const child = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), path, 'note-inventory'], {
@@ -44,12 +55,16 @@ function observeDependencyEndpoints(native: boolean) {
 			throw new Error('Native exact work-item endpoint schema and observations required.');
 		expect(output.observations).toHaveLength(entries.length);
 		for (const [index, entry] of entries.entries()) expect(output.observations[index]).toMatchObject(entry.valid ? { ok: true, data: entry.data } : { ok: false });
-		expect(output.schema).toMatchObject(expected); expect(readFileSync(path)).toEqual(bytes);
+		expect(output.schema).toMatchObject(expected);
+		expect(output).toHaveProperty('structuredSchema');
+		expect((output as { structuredSchema: unknown }).structuredSchema).toMatchObject(structured);
+		expect(readFileSync(path)).toEqual(bytes);
 	} else {
 		const observations = entries.map(entry => validatePortableContentData('note', entry.data));
 		expect(observations.map(value => value.ok)).toEqual(entries.map(entry => entry.valid));
 		expect(observations[0]).toMatchObject({ ok: true, data: note });
 		expect(zodToJsonSchema(describeContentFrontmatterSchema('note'), { $refStrategy: 'none', postProcess: exportSchemaConstraints })).toMatchObject(expected);
+		expect(describeContentFrontmatterJsonSchema('note')).toMatchObject(structured);
 	}
 	expect(entries).toEqual(held);
 }
