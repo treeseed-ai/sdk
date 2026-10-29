@@ -63,3 +63,10 @@ red → isolated contract controls → implementation → complete owner checks/
 script-free archive/public declaration consumer → exact-head CI/review. Preserve all earlier
 contracts, methods' canonical twenty-line limits and every open issue. Physical resource-profile
 qualification remains an explicit following owner gate; Work/model execution remains Task 10.
+
+The three profile-binding operations are asynchronous and must be awaited. Canonical digest
+verification uses the portable Web Crypto SHA-256 API, including in Node, Bun and browser
+consumers. Plain JSON schemas validate shape and digest syntax; awaited `assert` and
+`assertCompatible` recompute the canonical digest before accepting a record. No handwritten
+hash algorithm or Node-only import enters the portable export. The existing real Firefox
+qualification must exercise this binding while preserving its native replacement/disposal proof.
