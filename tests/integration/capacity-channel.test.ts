@@ -6,6 +6,14 @@ import { CapacityChannelFixtures as Fixture } from '../support/capacity-channel-
 import * as root from '../../src/contracts.js';
 import * as portable from '../../src/portable.js';
 class CapacityChannelProjection {
+  manager(): void {
+    const document = JSON.parse(readFileSync('dist/contract.json', 'utf8'));
+    const request = z.fromJSONSchema(document.schemas.capacityChannelRequest);
+    const response = z.fromJSONSchema(document.schemas.capacityChannelResponse);
+    assert.equal(request.safeParse(Fixture.request('manager')).success, true);
+    assert.equal(response.safeParse(Fixture.reply('manager')).success, true);
+    assert.equal(request.safeParse(Fixture.request('manager', 'cancel', {})).success, false);
+  }
   request(): void {
     const document = JSON.parse(readFileSync('dist/contract.json', 'utf8'));
     const schema = z.fromJSONSchema(document.schemas.capacityChannelRequest);
@@ -50,4 +58,8 @@ test(
 test(
   'integration: root and portable capacity service projections expose one owner contract',
   suite.portable.bind(suite),
+);
+test(
+  'integration: generated manager readiness preserves a positive manager-only role boundary',
+  suite.manager.bind(suite),
 );
