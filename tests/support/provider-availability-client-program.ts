@@ -59,9 +59,20 @@ export class AvailabilityWireResponder implements ProviderWireResponder {
     if (this.mode === 'changed-runtime')
       session.snapshot.adapters[0]!.runtimeBuild = 'sha256:' + 'e'.repeat(64);
     if (this.mode === 'stale' && this.count === 2) session.sequence = session.snapshot.sequence = 1;
+    if (this.mode === 'changed-offer')
+      session.snapshot.adapters[0]!.offers[0]!.offerDigest = 'sha256:' + 'e'.repeat(64);
+    if (this.mode === 'changed-limit')
+      Reflect.set(session.snapshot.lanes[0]!, 'maxConcurrentWorkers', 2);
+    if (this.mode === 'reordered') {
+      session.snapshot.lanes.reverse();
+      session.snapshot.adapters[0]!.laneIds.reverse();
+    }
   }
   verify(): void {
-    assert.equal(this.count, this.mode === 'wire' ? 3 : this.mode === 'stale' ? 2 : 1);
+    assert.equal(
+      this.count,
+      ['wire', 'reordered'].includes(this.mode) ? 3 : this.mode === 'stale' ? 2 : 1,
+    );
   }
 }
 class AvailabilityClientProgram {
