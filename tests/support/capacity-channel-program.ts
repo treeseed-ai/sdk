@@ -61,7 +61,23 @@ export class CapacityChannelFixtures {
   }
 }
 class CapacityChannelProgram {
+  manager(): void {
+    const fixture = CapacityChannelFixtures;
+    const binding = fixture.binding();
+    const request = { ...fixture.request('manager'), expectedGeneration: null };
+    binding.assertRequest(request, fixture.context('manager'));
+    binding.assertResponse(fixture.reply('manager'), request);
+    const blocked = {
+      ...fixture.ready('manager'),
+      ready: false,
+      blockers: [new sdk.CapacityContractError('CAPACITY_TARGET_UNREADY').blocker()],
+    };
+    binding.assertResponse(fixture.reply('manager', 'ready', blocked), request);
+    assert.equal(sdk.PlatformOperations.all.length, 7);
+    process.stdout.write('capacity-manager-channel-ok\n');
+  }
   run(): void {
+    if (process.argv[2] === '--manager') return this.manager();
     const fixture = CapacityChannelFixtures;
     const binding = fixture.binding();
     const request = fixture.request();
