@@ -4,6 +4,7 @@ import {
   SandboxProfileBinding,
   SandboxProfileError,
   SandboxProfileSchemas,
+  CanonicalJson,
 } from '../../src/contracts.js';
 import { SandboxProfileFixture as Fixture } from '../support/sandbox-profile-program.js';
 class SandboxProfileTests {
@@ -23,18 +24,20 @@ class SandboxProfileTests {
     { isolationPolicyDigest: 'b'.repeat(64) },
     { hostProfile: { id: 'profile:foreign', revision: 'b'.repeat(64) } },
   ];
-  defaults(): void {
+  async defaults(): Promise<void> {
     const { network, ...content } = Fixture.content;
-    const profile = SandboxProfileBinding.create(content);
+    const profile = await SandboxProfileBinding.create(content);
     assert.deepEqual(profile.network, { mode: 'offline', destinations: [] });
-    assert.deepEqual(SandboxProfileBinding.assert(profile), profile);
+    assert.deepEqual(await SandboxProfileBinding.assert(profile), profile);
+    const { revision, ...contentValue } = profile;
+    assert.equal(revision, CanonicalJson.digest(contentValue));
     const changed = structuredClone(profile);
     changed.resources.vcpus++;
-    this.invalid(changed);
+    await this.invalid(changed);
     assert(SandboxProfileSchemas.profile.safeParse(profile).success);
   }
-  malformed(): void {
-    const profile = SandboxProfileBinding.create(Fixture.content);
+  async malformed(): Promise<void> {
+    const profile = await SandboxProfileBinding.create(Fixture.content);
     for (const input of [
       { ...profile, revision: 'b'.repeat(64) },
       { ...profile, timestamp: 12 },
@@ -42,13 +45,16 @@ class SandboxProfileTests {
       { ...profile, image: { ...profile.image, reference: 'fixture.invalid/guest:latest' } },
       { ...profile, resources: { ...profile.resources, vcpus: 0 } },
     ])
-      this.invalid(input);
+      await this.invalid(input);
   }
-  mismatch(change: object): void {
-    const profile = SandboxProfileBinding.create(Fixture.content);
+  async mismatch(change: object): Promise<void> {
+    const profile = await SandboxProfileBinding.create(Fixture.content);
     const compatibility = Fixture.compatibility(profile);
-    assert.throws(
-      SandboxProfileBinding.assertCompatible.bind(null, profile, { ...compatibility, ...change }),
+    await assert.rejects(
+      SandboxProfileBinding.assertCompatible.bind(SandboxProfileBinding, profile, {
+        ...compatibility,
+        ...change,
+      }),
       {
         name: 'SandboxProfileError',
         code: 'SANDBOX_PROFILE_MISMATCH',
@@ -56,27 +62,30 @@ class SandboxProfileTests {
       },
     );
   }
-  detached(): void {
+  async detached(): Promise<void> {
     const source = structuredClone(Fixture.content);
-    const profile = SandboxProfileBinding.create(source);
+    const profile = await SandboxProfileBinding.create(source);
     source.resources.vcpus++;
     source.network.destinations[0]!.host = 'changed.test';
     assert.equal(profile.resources.vcpus, Fixture.content.resources.vcpus);
     assert.equal(profile.network.destinations[0]!.host, 'a.example.test');
-    assert.deepEqual(SandboxProfileBinding.assert(profile), profile);
+    assert.deepEqual(await SandboxProfileBinding.assert(profile), profile);
   }
-  hostile(): void {
+  async hostile(): Promise<void> {
     const input = Object.defineProperty({}, 'schemaVersion', { get: SandboxProfileTests.throwing });
-    assert.throws(SandboxProfileBinding.create.bind(null, input), SandboxProfileError);
-    this.invalid(input);
-    const profile = SandboxProfileBinding.create(Fixture.content);
-    assert.throws(
-      SandboxProfileBinding.assertCompatible.bind(null, profile, input),
+    await assert.rejects(
+      SandboxProfileBinding.create.bind(SandboxProfileBinding, input),
+      SandboxProfileError,
+    );
+    await this.invalid(input);
+    const profile = await SandboxProfileBinding.create(Fixture.content);
+    await assert.rejects(
+      SandboxProfileBinding.assertCompatible.bind(SandboxProfileBinding, profile, input),
       SandboxProfileError,
     );
   }
-  private invalid(input: unknown): void {
-    assert.throws(SandboxProfileBinding.assert.bind(null, input), {
+  private async invalid(input: unknown): Promise<void> {
+    await assert.rejects(SandboxProfileBinding.assert.bind(SandboxProfileBinding, input), {
       name: 'SandboxProfileError',
       code: 'SANDBOX_PROFILE_INVALID',
       message: 'SANDBOX_PROFILE_INVALID',

@@ -8,9 +8,9 @@ interface Profile {
   network: { mode: string; destinations: object[] };
 }
 interface Binding {
-  create(input: unknown): Profile;
-  assert(input: unknown): Profile;
-  assertCompatible(input: unknown, compatibility: unknown): Profile;
+  create(input: unknown): Promise<Profile>;
+  assert(input: unknown): Promise<Profile>;
+  assertCompatible(input: unknown, compatibility: unknown): Promise<Profile>;
 }
 /** Portable fixture declarations only; never proof of physical resource enforcement. */
 export class SandboxProfileFixture {
@@ -39,23 +39,23 @@ export class SandboxProfileFixture {
 }
 class SandboxProfileProgram {
   private readonly binding = Reflect.get(sdk, 'SandboxProfileBinding') as Binding;
-  run(): void {
+  async run(): Promise<void> {
     assert.equal(
       typeof Reflect.get(sdk, 'SandboxProfileBinding'),
       'function',
       'verified profile binding missing',
     );
-    const profile = this.binding.create(SandboxProfileFixture.content);
+    const profile = await this.binding.create(SandboxProfileFixture.content);
     const compatibility = SandboxProfileFixture.compatibility(profile);
-    assert.deepEqual(this.binding.assertCompatible(profile, compatibility), profile);
-    this.canonical(profile);
-    this.wire(profile);
+    assert.deepEqual(await this.binding.assertCompatible(profile, compatibility), profile);
+    await this.canonical(profile);
+    await this.wire(profile);
     this.projection();
     process.stdout.write('sandbox-profile-contract-ok\n');
   }
-  private canonical(profile: Profile): void {
+  private async canonical(profile: Profile): Promise<void> {
     const network = SandboxProfileFixture.content.network;
-    const reordered = this.binding.create({
+    const reordered = await this.binding.create({
       ...SandboxProfileFixture.content,
       network: {
         ...network,
@@ -64,7 +64,7 @@ class SandboxProfileProgram {
     });
     assert.equal(reordered.revision, profile.revision);
   }
-  private wire(profile: Profile): void {
+  private async wire(profile: Profile): Promise<void> {
     const availability = {
       state: 'available',
       configurationDigest: 'c'.repeat(64),
@@ -75,7 +75,7 @@ class SandboxProfileProgram {
     assert(
       !sdk.SandboxControlSchemas.availability.safeParse({ ...availability, profile: null }).success,
     );
-    assert.throws(
+    await assert.rejects(
       this.binding.assertCompatible.bind(this.binding, profile, PoolFixtures.compatibility),
     );
     assert.equal(sdk.PlatformOperations.all.length, 7);
@@ -90,4 +90,4 @@ class SandboxProfileProgram {
     assert(projection.schemas.sandboxProfileReference);
   }
 }
-if (import.meta.main) new SandboxProfileProgram().run();
+if (import.meta.main) await new SandboxProfileProgram().run();
