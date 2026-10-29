@@ -2,6 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { ProviderAvailabilityFixture as Fixture } from '../support/provider-availability-program.js';
 class ProviderAvailabilitySemantics {
+  evidence(): void {
+    const value = structuredClone(Fixture.offer);
+    Reflect.set(value.conformance[0]!, 'expiresAt', '2026-10-29T11:00:00.000Z');
+    assert.equal(Fixture.schemas().offer.safeParse(value).success, false);
+  }
   pressure(mode: string): void {
     const value = structuredClone(Fixture.create);
     if (mode === 'active') Reflect.set(value.runnerPressure, 'activeWorkers', 2);
@@ -72,6 +77,7 @@ class ProviderAvailabilitySemantics {
   }
 }
 const suite = new ProviderAvailabilitySemantics();
+test('unit: capability conformance expiry follows its issue time without claiming live freshness', suite.evidence.bind(suite));
 for (const mode of ['active', 'available', 'reserved', 'alias'])
   test(
     'unit: availability pressure rejects contradictory ' + mode,
