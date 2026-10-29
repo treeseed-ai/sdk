@@ -82,9 +82,14 @@ family. It wraps existing capacity data for authenticated worker and guest trans
 it does not add global platform operation IDs or create a second plugin system.
 
 Each request binds a request ID, full capacity installation/project/profile/worker scope,
-role (`worker` or `runner`), operation and expected process/composition generation. Only
+role (`manager`, `worker` or `runner`), operation and expected process/composition generation. Only
 `ready` may use a null expected generation to discover the authenticated process. Worker
 operations are ready/reserve/dispatch/cancel; runner operations are ready/run/cancel.
+The manager role admits only ready. It cannot reserve, dispatch, run or cancel through this
+channel. This additive contract is version `1.1.0-cordis.1`, retaining the v1 wire envelope.
+Manager readiness uses the existing manager readiness schema and the same exact scope, request,
+composition/process identity and safe-blocker checks. It does not claim enrollment, worker
+availability, authority or completed work. Seven global platform operation IDs remain unchanged.
 Parameters contain the existing SDK reserve, dispatch or lease contract, never arbitrary
 commands, host paths, provider configuration or model execution. Productive Work stays Task 10.
 
@@ -161,3 +166,18 @@ expanded bytes and ELF requirements before staging only inside the selected Kata
 Schema admission alone executes nothing, authenticates nobody and proves no running guest.
 Existing host/guest generation bindings, immutable image selections, preparation receipts,
 private custody and destruction remain required. All issues remain open; Work stays Task 10.
+
+## Manager readiness delivery slice
+
+The separate manager program needs a portable readiness envelope before its native root is
+wired. Extend the positive ready request and append manager ready/failure responses, preserving
+all existing worker/runner operations and the host-mediated runner subset. In particular, a
+manager cancel is invalid rather than accidentally inheriting the worker/runner cancellation
+contract. Ready discovery may omit expected generation; subsequent pinned requests must match
+the actual manager process. A foreign worker/runner response or nested readiness generation
+cannot satisfy a manager request. Safe failures have null result and fixed SDK blockers.
+
+Deliver documentation, failing built portable manager acceptance, generated-schema integration
+and isolated binding negatives, then implementation. Run all owner tiers/build, genuine public
+Node/browser consumers and hosted CI. No transport, manager root, runtime activation, new global
+operation ID or Work/model execution belongs in this SDK slice. All issues stay open.
