@@ -47,7 +47,7 @@ input never becomes error text.
 records remain readable, but cannot pass the new verified-profile admission helper without an
 explicit reference. `SandboxControlSchemas.availability.profile` is likewise optional: unchanged
 legacy host availability remains readable. An absent profile cannot authorize resource-bound pool
-admission. Generated projections expose both profile and reference schemas. SDK candidate .40
+admission. Generated projections expose both profile and reference schemas. SDK candidate .41
 retains the projection version and the same seven global platform operation IDs.
 
 Deployment alone may advertise a profile after actually enforcing and qualifying the declared
@@ -70,3 +70,8 @@ consumers. Plain JSON schemas validate shape and digest syntax; awaited `assert`
 `assertCompatible` recompute the canonical digest before accepting a record. No handwritten
 hash algorithm or Node-only import enters the portable export. The existing real Firefox
 qualification must exercise this binding while preserving its native replacement/disposal proof.
+
+Profile admission snapshots both supplied records before its first asynchronous hash operation.
+Caller mutation during hashing cannot repair an initially mismatched selection or substitute a
+new compatibility record. SDK .41 supersedes the retained immutable .40 candidate for this
+correction; preserve .40 and its verification evidence rather than replacing its archive bytes.
