@@ -27,6 +27,25 @@ class AvailabilityClientSemantics {
   async invalid(mode: string): Promise<void> {
     const transport = new AvailabilityTransport(),
       client = this.client(transport);
+    const { prior, principal } = this.invalidScope(mode);
+    const signal = new AbortController().signal;
+    const pending = ['principal', 'header', 'getter'].includes(mode)
+      ? client.createAvailabilitySession(
+          mode === 'header' ? 'SECRET\nHEADER' : 'TOKEN',
+          principal,
+          Fixture.create,
+          signal,
+        )
+      : client.refreshAvailabilitySession(
+          'TOKEN',
+          prior,
+          { ...Fixture.create, expectedSequence: mode === 'sequence' ? 2 : 1 },
+          signal,
+        );
+    await assert.rejects(pending, { code: 'INVALID_PROVIDER_REQUEST' });
+    assert.equal(transport.calls, 0);
+  }
+  private invalidScope(mode: string) {
     const prior = structuredClone(Fixture.session);
     const principal = {
       membershipId: prior.membershipId,
@@ -34,24 +53,24 @@ class AvailabilityClientSemantics {
       providerId: prior.providerId,
     };
     if (mode === 'principal') Reflect.set(principal, 'account', 'foreign');
+    if (mode === 'getter')
+      Object.defineProperty(principal, 'membershipId', { get: this.fault.bind(this) });
     if (mode === 'provider') prior.providerId = 'provider:foreign';
     if (mode === 'expired') prior.status = 'expired';
-    const signal = new AbortController().signal;
-    const pending =
-      mode === 'principal' || mode === 'header'
-        ? client.createAvailabilitySession(
-            mode === 'header' ? 'SECRET\nHEADER' : 'TOKEN',
-            principal,
-            Fixture.create,
-            signal,
-          )
-        : client.refreshAvailabilitySession(
-            'TOKEN',
-            prior,
-            { ...Fixture.create, expectedSequence: mode === 'sequence' ? 2 : 1 },
-            signal,
-          );
-    await assert.rejects(pending, { code: 'INVALID_PROVIDER_REQUEST' });
+    return { prior, principal };
+  }
+  private fault(): never {
+    throw new Error('PRIVATE_GETTER_CANARY');
+  }
+  async closeScope(): Promise<void> {
+    const transport = new AvailabilityTransport(),
+      client = this.client(transport);
+    const prior = structuredClone(Fixture.session);
+    prior.providerId = 'provider:foreign';
+    await assert.rejects(
+      client.closeAvailabilitySession('TOKEN', prior, new AbortController().signal),
+      { code: 'INVALID_PROVIDER_REQUEST' },
+    );
     assert.equal(transport.calls, 0);
   }
   async snapshot(): Promise<void> {
@@ -102,7 +121,7 @@ class AvailabilityClientSemantics {
   }
 }
 const suite = new AvailabilityClientSemantics();
-for (const mode of ['principal', 'header', 'provider', 'expired', 'sequence'])
+for (const mode of ['principal', 'header', 'getter', 'provider', 'expired', 'sequence'])
   test(
     'unit: availability rejects invalid ' + mode + ' before transport',
     suite.invalid.bind(suite, mode),
@@ -112,4 +131,8 @@ test('unit: availability cancellation prevents transport admission', suite.cance
 test(
   'unit: explicit repeated close preserves exact identity without a hidden retry',
   suite.closed.bind(suite),
+);
+test(
+  'unit: availability close refuses mismatched conformance provider before transport',
+  suite.closeScope.bind(suite),
 );
