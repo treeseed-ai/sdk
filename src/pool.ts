@@ -175,8 +175,8 @@ export class SandboxProfileBinding {
     input: unknown,
     compatibility: unknown,
   ): Promise<SandboxResourceProfile> {
-    const profile = await this.assert(input);
     const pool = this.parse(PoolSchemas.compatibility, compatibility);
+    const profile = await this.assert(input);
     const reference = pool.hostProfile;
     if (!reference || reference.id !== profile.id || reference.revision !== profile.revision)
       throw new SandboxProfileError('SANDBOX_PROFILE_MISMATCH');
