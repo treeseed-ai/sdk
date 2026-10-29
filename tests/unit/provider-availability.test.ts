@@ -77,7 +77,10 @@ class ProviderAvailabilitySemantics {
   }
 }
 const suite = new ProviderAvailabilitySemantics();
-test('unit: capability conformance expiry follows its issue time without claiming live freshness', suite.evidence.bind(suite));
+test(
+  'unit: capability conformance expiry follows its issue time without claiming live freshness',
+  suite.evidence.bind(suite),
+);
 for (const mode of ['active', 'available', 'reserved', 'alias'])
   test(
     'unit: availability pressure rejects contradictory ' + mode,

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+export * from './provider-availability.js';
 
 class ProviderOfferValidation {
   static distribution(value: { weight?: number; sharePercent?: number }): boolean {
