@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Define typed existing-provider availability and signed capability-offer wire contracts (#488).
 - Define portable manager readiness messages with positive role admission (#488).
 - Bind warm-pool compatibility to canonical, explicitly selected sandbox resource profiles (#488).
 
