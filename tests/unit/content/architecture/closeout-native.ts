@@ -7,7 +7,7 @@ import * as treeDxContracts from '../../../../src/treedx/index.ts';
 import * as portfolioContracts from '../../../../src/platform/index.ts';
 import { z } from 'zod';
 import { CONTROL_PLANE_OPERATIONS, buildMcpResources } from '../../../../src/operator-contracts/index.ts';
-import { describeContentFrontmatterSchema, validatePortableContentData } from '../../../../src/content/validation/index.ts';
+import { describeContentFrontmatterJsonSchema, describeContentFrontmatterSchema, validatePortableContentData } from '../../../../src/content/validation/index.ts';
 import { exportSchemaConstraints } from '../../../../src/content/validation/schema-constraints.ts';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 
@@ -36,7 +36,7 @@ if (kind === 'decision-inventory' || kind === 'note-inventory' || kind === 'prop
 	if (!Array.isArray(input)) throw new Error('Native governed content inventory required.');
 	const version = model === 'proposal' && input[0] && typeof input[0] === 'object' && typeof input[0].schemaVersion === 'string'
 		? input[0].schemaVersion : undefined;
-	process.stdout.write(JSON.stringify({ schema: zodToJsonSchema(describeContentFrontmatterSchema(model, version),
+	process.stdout.write(JSON.stringify({ structuredSchema: describeContentFrontmatterJsonSchema(model, version), schema: zodToJsonSchema(describeContentFrontmatterSchema(model, version),
 		{ $refStrategy: 'none', postProcess: exportSchemaConstraints }), observations: input.map(value => validatePortableContentData(model, value)) }));
 	process.exit(0);
 }
