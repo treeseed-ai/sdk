@@ -48,6 +48,12 @@ class SandboxProfileProgram {
     const profile = this.binding.create(SandboxProfileFixture.content);
     const compatibility = SandboxProfileFixture.compatibility(profile);
     assert.deepEqual(this.binding.assertCompatible(profile, compatibility), profile);
+    this.canonical(profile);
+    this.wire(profile);
+    this.projection();
+    process.stdout.write('sandbox-profile-contract-ok\n');
+  }
+  private canonical(profile: Profile): void {
     const network = SandboxProfileFixture.content.network;
     const reordered = this.binding.create({
       ...SandboxProfileFixture.content,
@@ -57,9 +63,6 @@ class SandboxProfileProgram {
       },
     });
     assert.equal(reordered.revision, profile.revision);
-    this.wire(profile);
-    this.projection();
-    process.stdout.write('sandbox-profile-contract-ok\n');
   }
   private wire(profile: Profile): void {
     const availability = {
