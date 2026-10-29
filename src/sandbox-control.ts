@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { PlatformSchemas, CanonicalJson } from './schemas.js';
 import { SeedSchemas } from './seeds.js';
 import { CapacitySchemas } from './capacity.js';
+import { SandboxProfileSchemas } from './pool.js';
 
 class SandboxControlValidation {
   static unique(operations: string[]): boolean {
@@ -65,6 +66,7 @@ export class SandboxControlSchemas {
     state: z.literal('available'),
     configurationDigest: PlatformSchemas.digest,
     capabilityVersion: z.literal(this.version),
+    profile: SandboxProfileSchemas.profile.optional(),
   });
   static readonly receipt = z.strictObject({
     sandboxId: this.sandboxId,

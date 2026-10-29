@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Bind warm-pool compatibility to canonical, explicitly selected sandbox resource profiles (#488).
 
 - Define exact bounded standalone guest payload manifests for owner artifact verification (#488).
 
