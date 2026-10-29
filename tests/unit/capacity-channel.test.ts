@@ -16,12 +16,51 @@ class CapacityChannelUnit {
   }
   roles(): void {
     for (const request of [
-      Fixture.request('manager'),
+      Fixture.request('unknown'),
       Fixture.request('worker', 'run', { request: Protocol.dispatch }),
       Fixture.request('runner', 'reserve', { request: Protocol.request }),
       Fixture.request('runner', 'dispatch', { request: Protocol.dispatch }),
     ])
       assert.equal(Fixture.schema('request').safeParse(request).success, false);
+  }
+  manager(): void {
+    const binding = Fixture.binding();
+    const request = Fixture.request('manager');
+    binding.assertRequest(request, Fixture.context('manager'));
+    binding.assertResponse(Fixture.reply('manager'), request);
+    for (const change of [
+      { role: 'worker' },
+      { scope: { ...Fixture.scope, project: 'foreign' } },
+      { expectedGeneration: { ...Fixture.generation, processGeneration: 'f'.repeat(64) } },
+    ])
+      assert.throws(
+        binding.assertRequest.bind(binding, { ...request, ...change }, Fixture.context('manager')),
+      );
+  }
+  managerOperations(): void {
+    for (const [operation, parameters] of [
+      ['reserve', { request: Protocol.request }],
+      ['dispatch', { request: Protocol.dispatch }],
+      ['run', { request: Protocol.dispatch }],
+      ['cancel', { lease: Capacity.lease }],
+    ] as const)
+      assert.equal(
+        Fixture.schema('request').safeParse(Fixture.request('manager', operation, parameters))
+          .success,
+        false,
+      );
+  }
+  managerReply(): void {
+    const binding = Fixture.binding();
+    const request = Fixture.request('manager');
+    binding.assertResponse(Fixture.reply('manager'), request);
+    const generation = { ...Fixture.generation, processGeneration: 'f'.repeat(64) };
+    for (const response of [
+      Fixture.reply('worker'),
+      { ...Fixture.reply('manager'), result: { ...Fixture.ready('manager'), generation } },
+      { ...Fixture.reply('manager'), generation },
+    ])
+      assert.throws(binding.assertResponse.bind(binding, response, request));
   }
   admission(): void {
     const binding = Fixture.binding();
@@ -159,4 +198,16 @@ test(
 test(
   'unit: reply admission independently rejects a lease from another guest process',
   suite.nestedGeneration.bind(suite),
+);
+test(
+  'unit: manager readiness admission binds its actual scope and process',
+  suite.manager.bind(suite),
+);
+test(
+  'unit: manager readiness cannot inherit worker or guest operations',
+  suite.managerOperations.bind(suite),
+);
+test(
+  'unit: manager replies reject foreign roles and nested process generations',
+  suite.managerReply.bind(suite),
 );
