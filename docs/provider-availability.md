@@ -57,6 +57,10 @@ structural contracts; executable refinements enforce graphs, uniqueness, counter
 Preserve signed canonical offer fields without inserting defaults or silently stripping data.
 Session snapshot.sequence must equal session.sequence; windows must be ordered. Complete identities
 and revisions are preserved byte-for-byte; callers still bind them to live expected authority.
+If pressure and throttleState are both supplied, they must agree. Supplied pressure counters
+must fit their pressure maximum or the supplied capacity maximum. A closed session requires
+closedAt; open/draining sessions cannot carry a closure timestamp. Conformance expiry, when
+present, follows issue time; its actual freshness and signature remain API authority checks.
 
 ## Verification and ordered delivery
 
