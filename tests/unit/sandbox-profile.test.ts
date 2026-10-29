@@ -71,6 +71,20 @@ class SandboxProfileTests {
     assert.equal(profile.network.destinations[0]!.host, 'a.example.test');
     assert.deepEqual(await SandboxProfileBinding.assert(profile), profile);
   }
+  async snapshot(): Promise<void> {
+    const profile = await SandboxProfileBinding.create(Fixture.content);
+    const expected = {
+      ...Fixture.compatibility(profile),
+      hostProfile: { id: 'profile:foreign', revision: profile.revision },
+    };
+    const pending = SandboxProfileBinding.assertCompatible(profile, expected);
+    expected.hostProfile.id = profile.id;
+    await assert.rejects(pending, {
+      name: 'SandboxProfileError',
+      code: 'SANDBOX_PROFILE_MISMATCH',
+      message: 'SANDBOX_PROFILE_MISMATCH',
+    });
+  }
   async hostile(): Promise<void> {
     const input = Object.defineProperty({}, 'schemaVersion', { get: SandboxProfileTests.throwing });
     await assert.rejects(
@@ -114,3 +128,8 @@ for (const [index, change] of SandboxProfileTests.mismatches.entries())
     'unit: sandbox profile admission rejects exact resource or identity mismatch ' + index,
     suite.mismatch.bind(suite, change),
   );
+
+test(
+  'unit: profile admission snapshots compatibility before asynchronous hashing',
+  suite.snapshot.bind(suite),
+);
