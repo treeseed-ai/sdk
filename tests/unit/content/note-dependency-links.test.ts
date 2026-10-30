@@ -239,7 +239,41 @@ function observations(entries: ReturnType<typeof identifierEntries>, native: boo
 		expect(entries).toEqual(held);
 }
 
+// Controlled schema inputs using existing accepted identifier spellings; these
+// are not a new proposal, agent plan, estimate or authorized dependency.
+function workItemLinkEntries(): ReturnType<typeof identifierEntries> {
+	const pairs = [
+		['sdk.remote-git-ref-operation-contract', 'deployment.simulation-origin-materialization'],
+		['deployment-tester/simulation-upstream-acceptance', 'sdk.tester.remote-git-ref-contract-regressions'],
+	];
+	const items = [...new Set(pairs.flat())].map(id => ({ id, activity: 'acting', workspace: 'git', review: 'none',
+		objective: 'Controlled existing identifier grammar input.', dependsOn: [],
+		acceptanceCriteria: ['Preserve the exact controlled identifier without normalization.'],
+		requestedPermissions: { content: { read: [], write: [] }, tools: ['source.read', 'source.write'] },
+		contextRefs: [{ store: 'git', model: 'repository', id: 'fixture-source', repository: 'fixture/sdk', commit: 'b'.repeat(40) }] }));
+	const proposal = { schemaVersion: 'treeseed.proposal/v2', id: 'identifier-fixture', projectId: 'fixture',
+		title: 'Existing work-item identifiers', request: 'Validate exact controlled inputs only.', status: 'draft',
+		groupIds: ['configured-group'], executionPlan: { workItems: items } };
+	const entries: ReturnType<typeof identifierEntries> = [{ model: 'proposal', data: proposal, valid: true }];
+	for (const [predecessor, dependent] of pairs) {
+		const from = ref('sdk', `work-item/${predecessor}`), to = ref('deployment', `work-item/${dependent}`);
+		entries.push({ model: 'note', data: { ...note, subjectRefs: [from, to],
+			links: [{ relation: 'depends_on', from, to }] }, valid: true });
+		for (const anchor of ['work-item/a..b', 'work-item/a//b', 'work-item/a/../b', 'work-item/../main',
+			'work-item/sdk%2Eitem', 'work-item/UPPER', 'work-item/ padded ', 'work-item/a#other']) {
+			entries.push({ model: 'note', data: { ...note, links: [{ relation: 'depends_on', from: { ...from, anchor }, to: ref('api', 'work-item/tests-first') }] }, valid: false });
+		}
+	}
+	return entries;
+}
+
 describe('exact dependency links on an ordinary TreeDX note', () => {
+	it('accepts exact dependency anchors for every admitted dotted and slashed work-item identifier without normalization', () => {
+		observations(workItemLinkEntries().filter(entry => !entry.valid), false); observations(workItemLinkEntries(), false);
+	});
+	it('native public validation preserves admitted work-item identifiers in exact Note links and denies malformed anchors', () => {
+		observations(workItemLinkEntries().filter(entry => !entry.valid), true); observations(workItemLinkEntries(), true);
+	});
 	it('exports the canonical answered Question field alternatives without inventing an answer or changing supplied evidence', () => observeQuestionRules(false));
 	it('native public Question validation and schema preserve canonical answer alternatives and deny missing malformed or duplicate evidence', () => observeQuestionRules(true));
 	it('exports complete exact work-item endpoint requirements rather than silently omitting the dependency authority refinement', () => observeDependencyEndpoints(false));

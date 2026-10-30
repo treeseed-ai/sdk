@@ -222,6 +222,12 @@ workflow:
   - id: execution-dependency-endpoint-unit
     action: { verifier: sdk.golden.execution-dependency-endpoint-unit }
     expect: { status: passed }
+  - id: execution-work-item-link-grammar-unit
+    action: { verifier: sdk.golden.execution-work-item-link-grammar-unit }
+    expect: { status: passed }
+  - id: execution-work-item-link-grammar-native
+    action: { verifier: sdk.golden.execution-work-item-link-grammar-native }
+    expect: { status: passed }
   - id: execution-dependency-endpoint-native
     action: { verifier: sdk.golden.execution-dependency-endpoint-native }
     expect: { status: passed }

@@ -366,6 +366,16 @@ verifiers:
     ownerPackage: "@treeseed/sdk"
     testFile: tests/unit/content/note-dependency-links.test.ts
     testName: "exports complete exact work-item endpoint requirements rather than silently omitting the dependency authority refinement"
+  sdk.golden.execution-work-item-link-grammar-unit:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/note-dependency-links.test.ts
+    testName: "accepts exact dependency anchors for every admitted dotted and slashed work-item identifier without normalization"
+  sdk.golden.execution-work-item-link-grammar-native:
+    kind: vitestCase
+    ownerPackage: "@treeseed/sdk"
+    testFile: tests/unit/content/note-dependency-links.test.ts
+    testName: "native public validation preserves admitted work-item identifiers in exact Note links and denies malformed anchors"
   sdk.golden.execution-dependency-endpoint-native:
     kind: vitestCase
     ownerPackage: "@treeseed/sdk"
